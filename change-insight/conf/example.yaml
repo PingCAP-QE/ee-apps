@@ -1,0 +1,3 @@
+port: 9999
+workspace:
+   path: /tmp/apps

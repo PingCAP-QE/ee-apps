@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <link rel="stylesheet" type="text/css" class="ui" href="https://semantic-ui.com/dist/semantic.min.css">
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.13.1/themes/base/jquery-ui.css">
+
+
+    <script src="https://semantic-ui.com/javascript/library/jquery.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.1/jquery-ui.js"></script>
+    <script src="https://semantic-ui.com/dist/semantic.min.js"></script>
+
+    <script src="https://semantic-ui.com/javascript/library/detect.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/clipboard.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/cookie.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/easing.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/highlight.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/history.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/state.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/tablesort.min.js"></script>
+    <script src="https://semantic-ui.com/javascript/library/underscore.min.js"></script>
+    <title>{{ .title }}</title>
+    <!-- 会被替换成以下注释中的内容 -->
+    <!-- <title>HTML 模板渲染样例</title> -->
+    <script>
+        $( function() {
+          $( ".datepicker" ).datepicker({
+            dateFormat: "yy.mm.dd",
+            showMonthAfterYear: true,
+          }
+          );
+          $('.ui.accordion').accordion(); 
+        } );
+        </script>
+</head>
+    <body>
+        <div class="ui grey inverted menu">
+              <a class="active item" id="menu_home" onClick="clickMenu(this)">
+                Master Seearch
+              </a>
+              <a class="item" id="menu_release" onClick="clickMenu(this)">
+                Release Search
+              </a>
+              <!--a class="item" id="menu_friends" onClick="clickMenu(this)">
+                ongoing...
+              </a-->
+          </div>
+    <div id="pageContent">
+          <div class="ui three column grid">
+            <div class="two wide column"></div>
+            <div class="twelve wide column">
+                    <h2 class="ui center aligned icon header">
+                        <i class="github icon"></i>
+                          <div class="content">
+                            Configuration Management
+                            <div class="sub header">view the configuration changed in commits</div>
+                         </div>
+                    </h2>
+            </div>
+            <div class="two wide column"></div>
+            </div>
+
+
+        <div class="ui three column grid">
+          <div class="two wide column"></div>
+          <div class="twelve wide column">
+        
+            <div class="ui three column grid">
+                <div class="two wide column"></div>
+                <div class="five wide column"></div>
+                <div class="eight wide column">
+                    <div class="ui two column grid">
+                        <div class="eight wide column">
+                            <div class="ui labeled input"  id="from_date_label">
+                                <div class="ui label">
+                                    from date
+                                </div>
+                                <input type="text" class="datepicker" id="from_date">
+                            </div>
+                            <div class="ui labeled input" id="base_branch_label" style="display:none">
+                                <div class="ui label">
+                                    base branch
+                                </div>
+                                <input type="text"  id="base_branch">
+                            </div>
+                        </div>
+                        <div class="eight wide column">
+                            <div class="ui labeled input" id="end_date_label">
+                                <div class="ui label" >
+                                end date
+                                </div>
+                            <input type="text" class="datepicker" id="end_date">
+                        </div>
+                        <div class="ui labeled input"  id="head_branch_label" style="display: none">
+                            <div class="ui label">
+                            head branch
+                        </div>
+                        <input type="text" id="head_branch">
+                    </div>
+                    </div>
+                    </div>
+                </div>
+                <div class="one wide column">
+                    <button class="ui teal button" id="search_by_date">Search</button>
+                    <button class="ui teal button" id="search_by_branch" style="display:none;">Search</button>
+                </div>
+            </div>
+            <div id="search_result">
+                <br>
+                <br>
+                <br>
+                <div class="ui message">
+                        <i class="close icon"></i>
+                        <div class="header">
+                        Welcome!
+                        </div>
+                        <p id="welcome_message_date">Please select the <a class="ui grey label"> from date </a> and <a class="ui grey label"> end date</a> then go to search !</p>
+                        <p id="welcome_message_branch" style="display:none">Please select the <a class="ui grey label"> base branch </a> and <a class="ui grey label"> head branch</a> then go to search !</p>
+                        </div>
+            </div>
+            {{ .body }}
+          </div>
+          <div class="two wide column"></div>
+        </div>
+    </div>
+        <script type="text/javascript">
+           function clickMenu(obj){
+            $("#menu_home").attr("class","item")
+            $("#menu_message").attr("class","item")
+            $("#menu_friends").attr("class","item")
+            $("#"+obj.id).attr("class","active item")
+            if (obj.id == "menu_release") {
+                //$("#pageContent").html("aaaaaa")
+                $("#from_date_label").hide()
+                $("#end_date_label").hide()
+                $("#search_by_date").hide()
+                $("#welcome_message_date").hide()
+                $("#head_branch_label").show()
+                $("#base_branch_label").show()
+                $("#search_by_branch").show()
+                $("#welcome_message_branch").show()
+            }else{
+                $("#head_branch_label").hide()
+                $("#base_branch_label").hide()
+                $("#search_by_branch").hide()
+                $("#welcome_message_branch").hide()
+                $("#from_date_label").show()
+                $("#end_date_label").show()
+                $("#search_by_date").show()
+                $("#welcome_message_date").show()
+            }
+           }
+        </script>
+        <script>
+            $("#search_by_date").click(function(){
+                var beginDate = $("#from_date").val()
+                var endDate = $("#end_date").val()
+                if (beginDate == "" || endDate == ""){
+                    alert("please select the Date")
+                    return
+                } 
+                $.ajax({url:"/confiChangeDuringDate?beginDate="+beginDate+"&endDate="+endDate,success:function(result){
+                    var jsonData = result["configData"]
+                    content = ''
+                    for (o in jsonData) {
+                        //console.log(o)
+                        //console.log(jsonData[o])
+                        commitCount = 0
+                        for(var k in jsonData[o]){
+                            for (f in jsonData[o][k]["FileOper"]){
+                                commitCount += jsonData[o][k]["FileOper"][f].length
+                            }
+                        }
+                        content = content+ '<br><div class="ui active accordion">'+
+                                '<div class="title" style="display:inline;"> <i class="dropdown icon" style="display:inline;"></i>' +
+                                '<h3 style="display:inline;">'+ o + " between from "+ $("#from_date").val() + " to "+  $("#end_date").val()+ " hits : <a class='ui red circular label'>"+commitCount+"</a></h3></div>"
+                        content += '<div class="active content">'
+                        content = content +
+                                    '<table class="ui celled structured table">'+
+                                        '<thead> <tr> <th>product</th> <th>commit id</th> <th>commit date</th> <th>commit message</th> <th>author</th> <th>author mail</th> </tr> </thead>' +
+                                    '<tbody id="table">'
+                        for(var k in jsonData[o]){
+                            var lengthCount = 0
+                            for (f in jsonData[o][k]["FileOper"]){
+                                lengthCount += jsonData[o][k]["FileOper"][f].length+1
+                            }
+                            if (lengthCount == 0) {
+                                 continue
+                            }
+                            var repoUrl = jsonData[o][k]["RepoUrl"]
+                            content = content + "<tr><td rowspan='"+lengthCount+"'>"+jsonData[o][k]["Product"]+"</td>"
+                            var first = 0
+                            for (f in jsonData[o][k]["FileOper"]){
+                                if (first == 0 ){
+                                    content = content + "<td colspan='5' class='warning'>"+f+"</td></tr>"
+                                    first = 1
+                                }else{
+                                    content = content + "<tr><td colspan='5' class='warning'>"+f+"</td></tr>"
+                                }
+                                console.log("lenth:"+jsonData[o][k]["FileOper"][f].length+" || file :"+f)
+                                for (fc in jsonData[o][k]["FileOper"][f]){
+                                    commitID = jsonData[o][k]["FileOper"][f][fc]["ID"]
+                                    commitRef = "https://github.com/"+repoUrl+"/commit/"+commitID
+                                    date=jsonData[o][k]["FileOper"][f][fc]["Date"]
+                                    Message=jsonData[o][k]["FileOper"][f][fc]["Message"]
+                                    Commiter=jsonData[o][k]["FileOper"][f][fc]["Commiter"]
+                                    Mail=jsonData[o][k]["FileOper"][f][fc]["Mail"]
+                                    content = content + "<tr><td><a target='_blank'  href='"+commitRef+"'>"+commitID+"</a></td><td>"+date+"</td><td>"+Message+"</td><td>"+Commiter+"</td><td>"+Mail+"</td></tr>"
+                                }  
+                            }
+                        }
+                        content = content + '</tbody></table></div></div>'
+                    }
+                    $("#search_result")[0].innerHTML = content
+                    $('.ui.accordion').accordion(); 
+                }});
+            });
+        </script>
+        <script>
+              $("#search_by_branch").click(function(){
+                var beginDate = $("#base_branch").val()
+                var endDate = $("#head_branch").val()
+                if (beginDate == "" || endDate == ""){
+                    alert("please select the Date")
+                    return
+                } 
+                $.ajax({url:"/configChangeDuringRelease?branch1="+beginDate+"&branch2="+endDate,success:function(result){
+                    var jsonData = result["configData"]
+                    content = ''
+                    for (o in jsonData) {
+                        //console.log(o)
+                        //console.log(jsonData[o])
+                        commitCount = 0
+                        for(var k in jsonData[o]){
+                            for (f in jsonData[o][k]["FileOper"]){
+                                commitCount += jsonData[o][k]["FileOper"][f].length
+                            }
+                        }
+                        content = content+ '<br><div class="ui active accordion">'+
+                                '<div class="title" style="display:inline;"> <i class="dropdown icon" style="display:inline;"></i>' +
+                                '<h3 style="display:inline;">'+ o + " between from "+ $("#base_branch").val() + " to "+  $("#head_branch").val()+ " hits : <a class='ui red circular label'>"+commitCount+"</a></h3></div>"
+                        content += '<div class="active content">'
+                        content = content +
+                                    '<table class="ui celled structured table">'+
+                                        '<thead> <tr> <th>product</th> <th>commit id</th> <th>commit date</th> <th>commit message</th> <th>author</th> <th>author mail</th> </tr> </thead>' +
+                                    '<tbody id="table">'
+                        for(var k in jsonData[o]){
+                            var lengthCount = 0
+                            for (f in jsonData[o][k]["FileOper"]){
+                                lengthCount += jsonData[o][k]["FileOper"][f].length+1
+                            }
+                            if (lengthCount == 0) {
+                                 continue
+                            }
+                            var repoUrl = jsonData[o][k]["RepoUrl"]
+                            content = content + "<tr><td rowspan='"+lengthCount+"'>"+jsonData[o][k]["Product"]+"</td>"
+                            var first = 0
+                            for (f in jsonData[o][k]["FileOper"]){
+                                if (first == 0 ){
+                                    content = content + "<td colspan='5' class='warning'>"+f+"</td></tr>"
+                                    first = 1
+                                }else{
+                                    content = content + "<tr><td colspan='5' class='warning'>"+f+"</td></tr>"
+                                }
+                                console.log("lenth:"+jsonData[o][k]["FileOper"][f].length+" || file :"+f)
+                                for (fc in jsonData[o][k]["FileOper"][f]){
+                                    commitID = jsonData[o][k]["FileOper"][f][fc]["ID"]
+                                    commitRef = "https://github.com/"+repoUrl+"/commit/"+commitID
+                                    date=jsonData[o][k]["FileOper"][f][fc]["Date"]
+                                    Message=jsonData[o][k]["FileOper"][f][fc]["Message"]
+                                    Commiter=jsonData[o][k]["FileOper"][f][fc]["Commiter"]
+                                    Mail=jsonData[o][k]["FileOper"][f][fc]["Mail"]
+                                    content = content + "<tr><td><a target='_blank'  href='"+commitRef+"'>"+commitID+"</a></td><td>"+date+"</td><td>"+Message+"</td><td>"+Commiter+"</td><td>"+Mail+"</td></tr>"
+                                }  
+                            }
+                        }
+                        content = content + '</tbody></table></div></div>'
+                    }
+                    $("#search_result")[0].innerHTML = content
+                    $('.ui.accordion').accordion(); 
+                }});
+            });
+        </script>
+
+    </body>
+</html>
