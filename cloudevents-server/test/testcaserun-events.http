@@ -1,0 +1,49 @@
+### Binary Content Mode
+POST /events HTTP/1.1
+Host: 127.0.0.1:8080
+Content-Type: application/json; charset=UTF-8
+CE-id: {{$randomInt 1 1000}}
+CE-type: test-case-run-report
+CE-source: http://source.com/subcontext
+CE-specversion: 1.0
+CE-time: {{$localDatetime iso8601}}
+Ce-repo: pingcap/tidb
+Ce-branch: master
+Ce-buildurl: https://build.url/build/123
+
+{
+  "//executor/test/indexmergereadtest:indexmergereadtest_test": {
+    "new_flaky": [
+      "TestOrderByWithLimit"
+    ],
+    "long_time": {
+      "TestOrderByWithLimit": -1
+    }
+  }
+}
+
+### Structured Content Mode
+POST /events HTTP/1.1
+Host: 127.0.0.1:8080
+Content-Type: application/cloudevents+json; charset=UTF-8
+
+{
+    "specversion" : "1.0",
+    "type": "test-case-run-report",
+    "id": "{{$randomInt 0 1000}}",
+    "source": "http://source.com/subcontext",   
+    "time": "{{$localDatetime iso8601}}",
+    "repo": "pingcap/tidb",
+    "branch": "master",
+    "buildurl": "https://build.url/build/123",
+    "data" : {
+        "//executor/test/indexmergereadtest:indexmergereadtest_test": {
+            "new_flaky": [
+            "TestOrderByWithLimit"
+            ],
+            "long_time": {
+            "TestOrderByWithLimit": -1
+            }
+        }
+    }
+}
