@@ -143,6 +143,11 @@ func (pcrc *ProblemCaseRunCreate) check() error {
 	if _, ok := pcrc.mutation.BuildURL(); !ok {
 		return &ValidationError{Name: "build_url", err: errors.New(`ent: missing required field "ProblemCaseRun.build_url"`)}
 	}
+	if v, ok := pcrc.mutation.BuildURL(); ok {
+		if err := problemcaserun.BuildURLValidator(v); err != nil {
+			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
+		}
+	}
 	return nil
 }
 

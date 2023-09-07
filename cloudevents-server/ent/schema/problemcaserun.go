@@ -20,7 +20,7 @@ func (ProblemCaseRun) Fields() []ent.Field {
 		field.Bool("flaky").Default(false).Comment("is it a flay run?"),
 		field.Int("timecost_ms").Comment("timecost(milliseconds) of the test case run"),
 		field.Time("report_time").Comment("report unit timestamp"),
-		field.String("build_url").Comment("CI build url"),
+		field.String("build_url").MaxLen(1024).Comment("CI build url"),
 	}
 }
 

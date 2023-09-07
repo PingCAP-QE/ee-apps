@@ -18,7 +18,7 @@ var (
 		{Name: "flaky", Type: field.TypeBool, Default: false},
 		{Name: "timecost_ms", Type: field.TypeInt},
 		{Name: "report_time", Type: field.TypeTime},
-		{Name: "build_url", Type: field.TypeString},
+		{Name: "build_url", Type: field.TypeString, Size: 1024},
 	}
 	// ProblemCaseRunsTable holds the schema information for the "problem_case_runs" table.
 	ProblemCaseRunsTable = &schema.Table{

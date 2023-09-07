@@ -123,7 +123,20 @@ func (pcru *ProblemCaseRunUpdate) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (pcru *ProblemCaseRunUpdate) check() error {
+	if v, ok := pcru.mutation.BuildURL(); ok {
+		if err := problemcaserun.BuildURLValidator(v); err != nil {
+			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (pcru *ProblemCaseRunUpdate) sqlSave(ctx context.Context) (n int, err error) {
+	if err := pcru.check(); err != nil {
+		return n, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(problemcaserun.Table, problemcaserun.Columns, sqlgraph.NewFieldSpec(problemcaserun.FieldID, field.TypeInt))
 	if ps := pcru.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -287,7 +300,20 @@ func (pcruo *ProblemCaseRunUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (pcruo *ProblemCaseRunUpdateOne) check() error {
+	if v, ok := pcruo.mutation.BuildURL(); ok {
+		if err := problemcaserun.BuildURLValidator(v); err != nil {
+			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (pcruo *ProblemCaseRunUpdateOne) sqlSave(ctx context.Context) (_node *ProblemCaseRun, err error) {
+	if err := pcruo.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(problemcaserun.Table, problemcaserun.Columns, sqlgraph.NewFieldSpec(problemcaserun.FieldID, field.TypeInt))
 	id, ok := pcruo.mutation.ID()
 	if !ok {

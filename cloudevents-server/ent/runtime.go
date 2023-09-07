@@ -17,4 +17,8 @@ func init() {
 	problemcaserunDescFlaky := problemcaserunFields[4].Descriptor()
 	// problemcaserun.DefaultFlaky holds the default value on creation for the flaky field.
 	problemcaserun.DefaultFlaky = problemcaserunDescFlaky.Default.(bool)
+	// problemcaserunDescBuildURL is the schema descriptor for build_url field.
+	problemcaserunDescBuildURL := problemcaserunFields[7].Descriptor()
+	// problemcaserun.BuildURLValidator is a validator for the "build_url" field. It is called by the builders before save.
+	problemcaserun.BuildURLValidator = problemcaserunDescBuildURL.Validators[0].(func(string) error)
 }

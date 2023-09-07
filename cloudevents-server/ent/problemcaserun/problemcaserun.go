@@ -57,6 +57,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultFlaky holds the default value on creation for the "flaky" field.
 	DefaultFlaky bool
+	// BuildURLValidator is a validator for the "build_url" field. It is called by the builders before save.
+	BuildURLValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the ProblemCaseRun queries.
