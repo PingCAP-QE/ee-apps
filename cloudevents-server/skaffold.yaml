@@ -1,0 +1,10 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: cloudevents-server
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: hub.pingcap.net/ee/apps/cloudevents-server
+      docker:
+        dockerfile: Dockerfile
