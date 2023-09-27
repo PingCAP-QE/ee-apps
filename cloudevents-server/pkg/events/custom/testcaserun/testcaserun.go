@@ -9,9 +9,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/ent"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/types"
-
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type Handler struct {
