@@ -1,0 +1,31 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: cloudevents-server
+build:
+  platforms: ["linux/amd64"]
+  artifacts:
+    - image: ghcr.io/pingcap-qe/ee-apps/cloudevents-server
+      ko:
+        env:
+          - GOPROXY={{.GOPROXY}}
+          - CGO_ENABLED=1 # need build in linux
+        labels:
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+manifests:
+  rawYaml:
+    - deployments/k8s-dev.yaml
+portForward:
+  - resourceType: service
+    resourceName: cloudevents-server
+    port: 8080
+deploy:
+  kubectl: {}
+profiles:
+  - name: dev
+    patches:
+      - op: add
+        path: /build/artifacts/0/ko/flags
+        value:
+          - --tags=sqlite3
