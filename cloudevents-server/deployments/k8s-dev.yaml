@@ -8,7 +8,7 @@ stringData:
     store:
       driver: sqlite3
       dsn: file:ent?mode=memory&cache=shared&_fk=1
----    
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -17,8 +17,8 @@ metadata:
     app: cloudevents-server
 spec:
   ports:
-  - port: 8080
-    protocol: TCP
+    - port: 80
+      protocol: TCP
   clusterIP: None
   selector:
     app: cloudevents-server
@@ -40,19 +40,23 @@ spec:
         app: cloudevents-server
     spec:
       containers:
-      - name: cloudevents-server
-        image: ghcr.io/pingcap-qe/ee-apps/cloudevents-server
-        resources:
-          requests:
-            cpu: '100m'
-            memory: 128Mi
-          limits:
-            cpu: '100m'
-            memory: 128Mi
-        args: [-config, "/config/config.yaml"]
-        volumeMounts:
-          - name: config
-            mountPath: /config
+        - name: cloudevents-server
+          image: ghcr.io/pingcap-qe/ee-apps/cloudevents-server
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 128Mi
+            limits:
+              cpu: "100m"
+              memory: 128Mi
+          args: [-config, "/config/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
       volumes:
         - name: config
           secret:
