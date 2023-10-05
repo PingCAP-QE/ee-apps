@@ -3,13 +3,14 @@ kind: Config
 metadata:
   name: cloudevents-server
 build:
-  platforms: ["linux/amd64", "linux/arm64"]
+  platforms: ["linux/amd64"]
   artifacts:
     - image: ghcr.io/pingcap-qe/ee-apps/cloudevents-server
       ko:
         fromImage: cgr.dev/chainguard/bash:latest
         env:
           - GOPROXY={{.GOPROXY}}
+          - CGO_ENABLED=1 # need build in linux
         labels:
           org.opencontainers.image.licenses: MIT
           org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
