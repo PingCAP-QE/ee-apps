@@ -22,7 +22,7 @@ func main() {
 	)
 
 	flag.StringVar(&ginMode, "mode", gin.DebugMode, "server run mode")
-	flag.StringVar(&serveAddr, "addr", "0.0.0.0:8080", "server run addr")
+	flag.StringVar(&serveAddr, "addr", "0.0.0.0:80", "server run addr")
 	flag.StringVar(&configFile, "config", "config.yaml", "Path to the config yaml file")
 	flag.Parse()
 

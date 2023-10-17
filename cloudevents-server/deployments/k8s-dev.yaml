@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudevents-server-sqlite
+type: Opaque
+stringData:
+  config.yaml: |
+    store:
+      driver: sqlite3
+      dsn: file:ent?mode=memory&cache=shared&_fk=1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudevents-server
+  labels:
+    app: cloudevents-server
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+  clusterIP: None
+  selector:
+    app: cloudevents-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudevents-server
+  labels:
+    app: cloudevents-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudevents-server
+  template:
+    metadata:
+      labels:
+        app: cloudevents-server
+    spec:
+      containers:
+        - name: cloudevents-server
+          image: ghcr.io/pingcap-qe/ee-apps/cloudevents-server
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 128Mi
+            limits:
+              cpu: "100m"
+              memory: 128Mi
+          args: [-config, "/config/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          secret:
+            secretName: cloudevents-server-sqlite

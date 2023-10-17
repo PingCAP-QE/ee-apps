@@ -1,6 +1,6 @@
 ### Binary Content Mode
 POST /events HTTP/1.1
-Host: 127.0.0.1:8080
+Host: 127.0.0.1:80
 Content-Type: application/json; charset=UTF-8
 CE-id: {{$randomInt 1 1000}}
 CE-type: test-case-run-report
@@ -24,7 +24,7 @@ Ce-buildurl: https://build.url/build/123
 
 ### Structured Content Mode
 POST /events HTTP/1.1
-Host: 127.0.0.1:8080
+Host: 127.0.0.1:80
 Content-Type: application/cloudevents+json; charset=UTF-8
 
 {

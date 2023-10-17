@@ -1,0 +1,3 @@
+store:
+  driver: sqlite3
+  dsn: file:ent?mode=memory&cache=shared&_fk=1

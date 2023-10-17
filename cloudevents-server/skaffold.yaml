@@ -5,6 +5,25 @@ metadata:
 build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
-    - image: hub.pingcap.net/ee/apps/cloudevents-server
+    - image: cloudevents-server
       docker:
         dockerfile: Dockerfile
+        labels:
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+manifests:
+  rawYaml:
+    - deployments/k8s-dev.yaml
+portForward:
+  - resourceType: service
+    resourceName: cloudevents-server
+    port: 80
+deploy:
+  kubectl: {}
+profiles:
+  - name: dev
+    patches:
+      - op: add
+        path: /build/artifacts/0/ko/flags
+        value:
+          - --tags=sqlite3
