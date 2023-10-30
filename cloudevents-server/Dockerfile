@@ -1,8 +1,11 @@
-FROM golang:1.21.1 AS builder
-
-RUN go build -o server
+FROM golang:1.21.3 AS builder
+COPY . /app
+RUN cd /app && go build -o server
 
 FROM debian:12
-COPY --from=builder --chown=root:root server /app/server
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.source="https://github.com/PingCAP-QE/ee-apps"
+
+COPY --from=builder --chown=root:root /app/server /app/server
 EXPOSE 8080
 ENTRYPOINT [ "/app/server" ]
