@@ -27,3 +27,5 @@ skaffold build --profile local-docker --default-repo <your image registry>
 ```bash
 skaffold build --default-repo <your image registry>
 ```
+
+> more...
