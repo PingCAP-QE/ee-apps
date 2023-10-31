@@ -3,6 +3,10 @@
   "extends": [
     "config:base"
   ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
   "customManagers": [
     {
       "customType": "regex",
