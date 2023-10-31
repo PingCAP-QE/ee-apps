@@ -1,6 +1,8 @@
 name: Skaffold - release
 on:
   push:
+    tags:
+      - v*
     branches:
       - main
     paths:
@@ -8,10 +10,6 @@ on:
       - "**/Dockerfile"
       - "**/*.go"
       - "**/*.gomod"
-  create:
-    # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#create
-    tags:
-      - v*
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
