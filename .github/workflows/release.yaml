@@ -61,7 +61,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: "${{ github.workspace }}/.skaffold/cache"
-          key: skaffold-${{ hashFiles("${{ github.workspace }}/.skaffold/cache") }}
+          key: skaffold-${{ github.sha }}
           restore-keys: |
             skaffold-
 
