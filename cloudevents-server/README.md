@@ -3,7 +3,6 @@ Cloud Events Server
 
 ## How to run
 
-
 ### With sqlite as backend database:
 ```bash
 go run --tags sqlite3 . -config=configs/example-config-sqlite3.yaml
@@ -28,4 +27,3 @@ skaffold build --profile local-docker --default-repo <your image registry>
 ```bash
 skaffold build --default-repo <your image registry>
 ```
-
