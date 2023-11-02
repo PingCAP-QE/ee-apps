@@ -3,16 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-
 	"log"
+	"net/http"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
 )
 
 func main() {
-	ctx := cloudevents.ContextWithTarget(context.Background(), "http://localhost:80/events")
+	ctx := cloudevents.ContextWithTarget(context.Background(), "http://localhost/events")
 	p, err := cloudevents.NewHTTP()
 	if err != nil {
 		log.Fatalf("failed to create protocol: %s", err.Error())

@@ -91,6 +91,12 @@ func (pcru *ProblemCaseRunUpdate) SetBuildURL(s string) *ProblemCaseRunUpdate {
 	return pcru
 }
 
+// SetReason sets the "reason" field.
+func (pcru *ProblemCaseRunUpdate) SetReason(s string) *ProblemCaseRunUpdate {
+	pcru.mutation.SetReason(s)
+	return pcru
+}
+
 // Mutation returns the ProblemCaseRunMutation object of the builder.
 func (pcru *ProblemCaseRunUpdate) Mutation() *ProblemCaseRunMutation {
 	return pcru.mutation
@@ -128,6 +134,11 @@ func (pcru *ProblemCaseRunUpdate) check() error {
 	if v, ok := pcru.mutation.BuildURL(); ok {
 		if err := problemcaserun.BuildURLValidator(v); err != nil {
 			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
+		}
+	}
+	if v, ok := pcru.mutation.Reason(); ok {
+		if err := problemcaserun.ReasonValidator(v); err != nil {
+			return &ValidationError{Name: "reason", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.reason": %w`, err)}
 		}
 	}
 	return nil
@@ -171,6 +182,9 @@ func (pcru *ProblemCaseRunUpdate) sqlSave(ctx context.Context) (n int, err error
 	}
 	if value, ok := pcru.mutation.BuildURL(); ok {
 		_spec.SetField(problemcaserun.FieldBuildURL, field.TypeString, value)
+	}
+	if value, ok := pcru.mutation.Reason(); ok {
+		_spec.SetField(problemcaserun.FieldReason, field.TypeString, value)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, pcru.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -255,6 +269,12 @@ func (pcruo *ProblemCaseRunUpdateOne) SetBuildURL(s string) *ProblemCaseRunUpdat
 	return pcruo
 }
 
+// SetReason sets the "reason" field.
+func (pcruo *ProblemCaseRunUpdateOne) SetReason(s string) *ProblemCaseRunUpdateOne {
+	pcruo.mutation.SetReason(s)
+	return pcruo
+}
+
 // Mutation returns the ProblemCaseRunMutation object of the builder.
 func (pcruo *ProblemCaseRunUpdateOne) Mutation() *ProblemCaseRunMutation {
 	return pcruo.mutation
@@ -305,6 +325,11 @@ func (pcruo *ProblemCaseRunUpdateOne) check() error {
 	if v, ok := pcruo.mutation.BuildURL(); ok {
 		if err := problemcaserun.BuildURLValidator(v); err != nil {
 			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
+		}
+	}
+	if v, ok := pcruo.mutation.Reason(); ok {
+		if err := problemcaserun.ReasonValidator(v); err != nil {
+			return &ValidationError{Name: "reason", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.reason": %w`, err)}
 		}
 	}
 	return nil
@@ -365,6 +390,9 @@ func (pcruo *ProblemCaseRunUpdateOne) sqlSave(ctx context.Context) (_node *Probl
 	}
 	if value, ok := pcruo.mutation.BuildURL(); ok {
 		_spec.SetField(problemcaserun.FieldBuildURL, field.TypeString, value)
+	}
+	if value, ok := pcruo.mutation.Reason(); ok {
+		_spec.SetField(problemcaserun.FieldReason, field.TypeString, value)
 	}
 	_node = &ProblemCaseRun{config: pcruo.config}
 	_spec.Assign = _node.assignValues

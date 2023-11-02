@@ -32,7 +32,9 @@ type ProblemCaseRun struct {
 	// report unit timestamp
 	ReportTime time.Time `json:"report_time,omitempty"`
 	// CI build url
-	BuildURL     string `json:"build_url,omitempty"`
+	BuildURL string `json:"build_url,omitempty"`
+	// failure reason
+	Reason       string `json:"reason,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -45,7 +47,7 @@ func (*ProblemCaseRun) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case problemcaserun.FieldID, problemcaserun.FieldTimecostMs:
 			values[i] = new(sql.NullInt64)
-		case problemcaserun.FieldRepo, problemcaserun.FieldBranch, problemcaserun.FieldSuiteName, problemcaserun.FieldCaseName, problemcaserun.FieldBuildURL:
+		case problemcaserun.FieldRepo, problemcaserun.FieldBranch, problemcaserun.FieldSuiteName, problemcaserun.FieldCaseName, problemcaserun.FieldBuildURL, problemcaserun.FieldReason:
 			values[i] = new(sql.NullString)
 		case problemcaserun.FieldReportTime:
 			values[i] = new(sql.NullTime)
@@ -118,6 +120,12 @@ func (pcr *ProblemCaseRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				pcr.BuildURL = value.String
 			}
+		case problemcaserun.FieldReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field reason", values[i])
+			} else if value.Valid {
+				pcr.Reason = value.String
+			}
 		default:
 			pcr.selectValues.Set(columns[i], values[i])
 		}
@@ -177,6 +185,9 @@ func (pcr *ProblemCaseRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("build_url=")
 	builder.WriteString(pcr.BuildURL)
+	builder.WriteString(", ")
+	builder.WriteString("reason=")
+	builder.WriteString(pcr.Reason)
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -45,26 +45,30 @@ func (h *Handler) addRecords(ctx context.Context, caseData map[string]ProblemCas
 					SetRepo(repo).
 					SetBranch(branch).
 					SetSuiteName(target).
-					SetCaseName(tc).
+					SetCaseName(tc.Name).
 					SetBuildURL(buildURL).
 					SetTimecostMs(0).
 					SetReportTime(reportTime).
-					SetFlaky(true),
+					SetFlaky(true).
+					SetReason(tc.Reason),
 			)
 		}
 
 		for tc, timecost := range caseResults.LongTime {
-			recordBuilders = append(recordBuilders,
-				h.Storage.Create().
-					SetRepo(repo).
-					SetBranch(branch).
-					SetSuiteName(target).
-					SetCaseName(tc).
-					SetBuildURL(buildURL).
-					SetTimecostMs(int(timecost*1000)).
-					SetReportTime(reportTime).
-					SetFlaky(false),
-			)
+			entry := h.Storage.Create().
+				SetRepo(repo).
+				SetBranch(branch).
+				SetSuiteName(target).
+				SetCaseName(tc).
+				SetBuildURL(buildURL).
+				SetTimecostMs(int(timecost * 1000)).
+				SetReportTime(reportTime).
+				SetFlaky(false)
+			if timecost < 0 {
+				entry.SetReason(reasonNotFinished)
+			}
+
+			recordBuilders = append(recordBuilders, entry)
 		}
 	}
 

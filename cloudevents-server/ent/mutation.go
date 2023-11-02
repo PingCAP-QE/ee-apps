@@ -42,6 +42,7 @@ type ProblemCaseRunMutation struct {
 	addtimecost_ms *int
 	report_time    *time.Time
 	build_url      *string
+	reason         *string
 	clearedFields  map[string]struct{}
 	done           bool
 	oldValue       func(context.Context) (*ProblemCaseRun, error)
@@ -454,6 +455,42 @@ func (m *ProblemCaseRunMutation) ResetBuildURL() {
 	m.build_url = nil
 }
 
+// SetReason sets the "reason" field.
+func (m *ProblemCaseRunMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *ProblemCaseRunMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the ProblemCaseRun entity.
+// If the ProblemCaseRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProblemCaseRunMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *ProblemCaseRunMutation) ResetReason() {
+	m.reason = nil
+}
+
 // Where appends a list predicates to the ProblemCaseRunMutation builder.
 func (m *ProblemCaseRunMutation) Where(ps ...predicate.ProblemCaseRun) {
 	m.predicates = append(m.predicates, ps...)
@@ -488,7 +525,7 @@ func (m *ProblemCaseRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProblemCaseRunMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.repo != nil {
 		fields = append(fields, problemcaserun.FieldRepo)
 	}
@@ -512,6 +549,9 @@ func (m *ProblemCaseRunMutation) Fields() []string {
 	}
 	if m.build_url != nil {
 		fields = append(fields, problemcaserun.FieldBuildURL)
+	}
+	if m.reason != nil {
+		fields = append(fields, problemcaserun.FieldReason)
 	}
 	return fields
 }
@@ -537,6 +577,8 @@ func (m *ProblemCaseRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ReportTime()
 	case problemcaserun.FieldBuildURL:
 		return m.BuildURL()
+	case problemcaserun.FieldReason:
+		return m.Reason()
 	}
 	return nil, false
 }
@@ -562,6 +604,8 @@ func (m *ProblemCaseRunMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldReportTime(ctx)
 	case problemcaserun.FieldBuildURL:
 		return m.OldBuildURL(ctx)
+	case problemcaserun.FieldReason:
+		return m.OldReason(ctx)
 	}
 	return nil, fmt.Errorf("unknown ProblemCaseRun field %s", name)
 }
@@ -626,6 +670,13 @@ func (m *ProblemCaseRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBuildURL(v)
+		return nil
+	case problemcaserun.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ProblemCaseRun field %s", name)
@@ -714,6 +765,9 @@ func (m *ProblemCaseRunMutation) ResetField(name string) error {
 		return nil
 	case problemcaserun.FieldBuildURL:
 		m.ResetBuildURL()
+		return nil
+	case problemcaserun.FieldReason:
+		m.ResetReason()
 		return nil
 	}
 	return fmt.Errorf("unknown ProblemCaseRun field %s", name)
