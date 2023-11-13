@@ -3,7 +3,7 @@ module github.com/PingCAP-QE/ee-apps/cloudevents-server
 go 1.21
 
 require (
-	entgo.io/ent v0.12.4
+	entgo.io/ent v0.12.5
 	github.com/cloudevents/sdk-go/v2 v2.14.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-sql-driver/mysql v1.7.1
