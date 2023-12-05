@@ -74,8 +74,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
-github.com/dougsland/jenkinsctl v0.0.0-20210621005337-52c1961b55c4 h1:/+ZUdmbWx9kPxCeu81iZAfC7UOFDOqLsoHcvThFpZEo=
-github.com/dougsland/jenkinsctl v0.0.0-20210621005337-52c1961b55c4/go.mod h1:Ze+aYWRh2E4WrlO7U9xJ+tFUO2sJWTuKBpOUnqA7ZkE=
+github.com/dougsland/jenkinsctl v0.0.1 h1:7aHo4j5269NrRTRd19I8zNXZNskWBkVEAs+f4ckAX3A=
+github.com/dougsland/jenkinsctl v0.0.1/go.mod h1:Ze+aYWRh2E4WrlO7U9xJ+tFUO2sJWTuKBpOUnqA7ZkE=
 github.com/dougsland/jenkinsctl/jenkins v0.0.0-20210621004651-0e2c28d94c9c/go.mod h1:2tpsGdQH3Imo1j+yHF1e+TX4nutt9PavWxnx7R0hhls=
 github.com/dougsland/jenkinsctl/jenkins v0.0.0-20210621005337-52c1961b55c4 h1:SHWI0sXU9WbNkQOCI4UK00FFUhbcdk4oHiNTMWBmjcQ=
 github.com/dougsland/jenkinsctl/jenkins v0.0.0-20210621005337-52c1961b55c4/go.mod h1:2tpsGdQH3Imo1j+yHF1e+TX4nutt9PavWxnx7R0hhls=
