@@ -1,5 +1,6 @@
 name: Skaffold - release
 on:
+  workflow_dispatch:
   push:
     tags:
       - v*
@@ -42,6 +43,9 @@ jobs:
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.4
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
