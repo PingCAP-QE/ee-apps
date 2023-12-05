@@ -4,7 +4,7 @@
 # And if you want to copy the entire folder, then keep the dest folder name is same as the source, make it look like a complete copy.
 
 # Copy 'website/' contents(not entire folder) into .(/webapp/) and build React 
-FROM node:14.15 as webbuilder
+FROM node:14.21 as webbuilder
 WORKDIR /webapp
 COPY website/ .
 RUN yarn build
