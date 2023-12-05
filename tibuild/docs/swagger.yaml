@@ -1,0 +1,403 @@
+definitions:
+  controller.HTTPError:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+  service.BinArtifact:
+    properties:
+      component:
+        type: string
+      platform:
+        type: string
+      sha256URL:
+        type: string
+      url:
+        type: string
+    type: object
+  service.BranchCreateReq:
+    properties:
+      baseVersion:
+        type: string
+      prod:
+        $ref: '#/definitions/service.Product'
+    type: object
+  service.BranchCreateResp:
+    properties:
+      branch:
+        type: string
+      branchURL:
+        type: string
+    type: object
+  service.BuildReport:
+    properties:
+      binaries:
+        items:
+          $ref: '#/definitions/service.BinArtifact'
+        type: array
+      gitHash:
+        type: string
+      images:
+        items:
+          $ref: '#/definitions/service.ImageArtifact'
+        type: array
+      pluginGitHash:
+        type: string
+      printedVersion:
+        type: string
+    type: object
+  service.BuildStatus:
+    enum:
+    - PENDING
+    - PROCESSING
+    - ABORTED
+    - SUCCESS
+    - FAILURE
+    - ERROR
+    type: string
+    x-enum-varnames:
+    - BuildStatusPending
+    - BuildStatusProcessing
+    - BuildStatusAborted
+    - BuildStatusSuccess
+    - BuildStatusFailure
+    - BuildStatusError
+  service.DevBuild:
+    properties:
+      id:
+        type: integer
+      meta:
+        $ref: '#/definitions/service.DevBuildMeta'
+      spec:
+        $ref: '#/definitions/service.DevBuildSpec'
+      status:
+        $ref: '#/definitions/service.DevBuildStatus'
+    type: object
+  service.DevBuildMeta:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  service.DevBuildSpec:
+    properties:
+      buildEnv:
+        type: string
+      builderImg:
+        type: string
+      edition:
+        $ref: '#/definitions/service.ProductEdition'
+      features:
+        type: string
+      gitRef:
+        type: string
+      githubRepo:
+        type: string
+      isHotfix:
+        type: boolean
+      isPushGCR:
+        type: boolean
+      pluginGitRef:
+        type: string
+      product:
+        $ref: '#/definitions/service.Product'
+      productBaseImg:
+        type: string
+      productDockerfile:
+        type: string
+      version:
+        type: string
+    type: object
+  service.DevBuildStatus:
+    properties:
+      buildReport:
+        $ref: '#/definitions/service.BuildReport'
+      errMsg:
+        type: string
+      pipelineBuildID:
+        type: integer
+      pipelineEndAt:
+        type: string
+      pipelineStartAt:
+        type: string
+      pipelineViewURL:
+        type: string
+      status:
+        $ref: '#/definitions/service.BuildStatus'
+    type: object
+  service.ImageArtifact:
+    properties:
+      platform:
+        type: string
+      url:
+        type: string
+    type: object
+  service.ImageSyncRequest:
+    properties:
+      source:
+        type: string
+      target:
+        type: string
+    type: object
+  service.Product:
+    enum:
+    - tidb
+    - enterprise-plugin
+    - tikv
+    - pd
+    - tiflash
+    - br
+    - dumpling
+    - tidb-lightning
+    - ticdc
+    - dm
+    - tidb-binlog
+    - tidb-tools
+    - ""
+    type: string
+    x-enum-varnames:
+    - ProductTidb
+    - ProductEnterprisePlugin
+    - ProductTikv
+    - ProductPd
+    - ProductTiflash
+    - ProductBr
+    - ProductDumpling
+    - ProductTidbLightning
+    - ProductTicdc
+    - ProductDm
+    - ProductTidbBinlog
+    - ProductTidbTools
+    - ProductUnknown
+  service.ProductEdition:
+    enum:
+    - enterprise
+    - community
+    type: string
+    x-enum-varnames:
+    - EnterpriseEdition
+    - CommunityEdition
+  service.TagCreateReq:
+    properties:
+      branch:
+        type: string
+      prod:
+        $ref: '#/definitions/service.Product'
+    type: object
+  service.TagCreateResp:
+    properties:
+      tag:
+        type: string
+      tagURL:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/artifact/sync-image:
+    post:
+      consumes:
+      - application/json
+      description: sync
+      parameters:
+      - description: image sync to public, only hotfix is accepted right now
+        in: body
+        name: ImageSyncRequest
+        required: true
+        schema:
+          $ref: '#/definitions/service.ImageSyncRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.ImageSyncRequest'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: sync hotfix image to dockerhub
+      tags:
+      - artifact
+  /api/devbuilds:
+    get:
+      description: list devbuild
+      parameters:
+      - default: 10
+        description: the size limit of items
+        in: query
+        name: size
+        type: integer
+      - default: 0
+        description: the start position of items
+        in: query
+        name: offset
+        type: integer
+      - description: filter hotfix
+        in: query
+        name: hotfix
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/service.DevBuild'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: list devbuild
+      tags:
+      - devbuild
+    post:
+      consumes:
+      - application/json
+      description: create and trigger devbuild
+      parameters:
+      - description: build to create, only spec filed is required, others are ignored
+        in: body
+        name: DevBuild
+        required: true
+        schema:
+          $ref: '#/definitions/service.DevBuild'
+      - default: false
+        description: dry run
+        in: query
+        name: dryrun
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.DevBuild'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: create and trigger devbuild
+      tags:
+      - devbuild
+  /api/devbuilds/{id}:
+    get:
+      description: get devbuild
+      parameters:
+      - description: id of build
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: false
+        description: whether sync with jenkins
+        in: query
+        name: sync
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.DevBuild'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: get devbuild
+      tags:
+      - devbuild
+    put:
+      consumes:
+      - application/json
+      description: update the status field of a build
+      parameters:
+      - description: id of build
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: build to update
+        in: body
+        name: DevBuild
+        required: true
+        schema:
+          $ref: '#/definitions/service.DevBuild'
+      - default: false
+        description: dry run
+        in: query
+        name: dryrun
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.DevBuild'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: update devbuild status
+      tags:
+      - devbuild
+  /api/devbuilds/{id}/rerun:
+    post:
+      description: rerun devbuild
+      parameters:
+      - description: id of build
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: false
+        description: dry run
+        in: query
+        name: dryrun
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.DevBuild'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: rerun devbuild
+      tags:
+      - devbuild
+swagger: "2.0"
