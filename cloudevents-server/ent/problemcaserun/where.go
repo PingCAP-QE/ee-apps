@@ -94,6 +94,11 @@ func BuildURL(v string) predicate.ProblemCaseRun {
 	return predicate.ProblemCaseRun(sql.FieldEQ(FieldBuildURL, v))
 }
 
+// Reason applies equality check predicate on the "reason" field. It's identical to ReasonEQ.
+func Reason(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldEQ(FieldReason, v))
+}
+
 // RepoEQ applies the EQ predicate on the "repo" field.
 func RepoEQ(v string) predicate.ProblemCaseRun {
 	return predicate.ProblemCaseRun(sql.FieldEQ(FieldRepo, v))
@@ -509,34 +514,82 @@ func BuildURLContainsFold(v string) predicate.ProblemCaseRun {
 	return predicate.ProblemCaseRun(sql.FieldContainsFold(FieldBuildURL, v))
 }
 
+// ReasonEQ applies the EQ predicate on the "reason" field.
+func ReasonEQ(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldEQ(FieldReason, v))
+}
+
+// ReasonNEQ applies the NEQ predicate on the "reason" field.
+func ReasonNEQ(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldNEQ(FieldReason, v))
+}
+
+// ReasonIn applies the In predicate on the "reason" field.
+func ReasonIn(vs ...string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldIn(FieldReason, vs...))
+}
+
+// ReasonNotIn applies the NotIn predicate on the "reason" field.
+func ReasonNotIn(vs ...string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldNotIn(FieldReason, vs...))
+}
+
+// ReasonGT applies the GT predicate on the "reason" field.
+func ReasonGT(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldGT(FieldReason, v))
+}
+
+// ReasonGTE applies the GTE predicate on the "reason" field.
+func ReasonGTE(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldGTE(FieldReason, v))
+}
+
+// ReasonLT applies the LT predicate on the "reason" field.
+func ReasonLT(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldLT(FieldReason, v))
+}
+
+// ReasonLTE applies the LTE predicate on the "reason" field.
+func ReasonLTE(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldLTE(FieldReason, v))
+}
+
+// ReasonContains applies the Contains predicate on the "reason" field.
+func ReasonContains(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldContains(FieldReason, v))
+}
+
+// ReasonHasPrefix applies the HasPrefix predicate on the "reason" field.
+func ReasonHasPrefix(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldHasPrefix(FieldReason, v))
+}
+
+// ReasonHasSuffix applies the HasSuffix predicate on the "reason" field.
+func ReasonHasSuffix(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldHasSuffix(FieldReason, v))
+}
+
+// ReasonEqualFold applies the EqualFold predicate on the "reason" field.
+func ReasonEqualFold(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldEqualFold(FieldReason, v))
+}
+
+// ReasonContainsFold applies the ContainsFold predicate on the "reason" field.
+func ReasonContainsFold(v string) predicate.ProblemCaseRun {
+	return predicate.ProblemCaseRun(sql.FieldContainsFold(FieldReason, v))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.ProblemCaseRun) predicate.ProblemCaseRun {
-	return predicate.ProblemCaseRun(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for _, p := range predicates {
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.ProblemCaseRun(sql.AndPredicates(predicates...))
 }
 
 // Or groups predicates with the OR operator between them.
 func Or(predicates ...predicate.ProblemCaseRun) predicate.ProblemCaseRun {
-	return predicate.ProblemCaseRun(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for i, p := range predicates {
-			if i > 0 {
-				s1.Or()
-			}
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.ProblemCaseRun(sql.OrPredicates(predicates...))
 }
 
 // Not applies the not operator on the given predicate.
 func Not(p predicate.ProblemCaseRun) predicate.ProblemCaseRun {
-	return predicate.ProblemCaseRun(func(s *sql.Selector) {
-		p(s.Not())
-	})
+	return predicate.ProblemCaseRun(sql.NotPredicates(p))
 }

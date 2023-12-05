@@ -21,6 +21,7 @@ func (ProblemCaseRun) Fields() []ent.Field {
 		field.Int("timecost_ms").Comment("timecost(milliseconds) of the test case run"),
 		field.Time("report_time").Comment("report unit timestamp"),
 		field.String("build_url").MaxLen(1024).Comment("CI build url"),
+		field.String("reason").MaxLen(32).Comment("failure reason"),
 	}
 }
 

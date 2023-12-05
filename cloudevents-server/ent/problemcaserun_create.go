@@ -76,6 +76,12 @@ func (pcrc *ProblemCaseRunCreate) SetBuildURL(s string) *ProblemCaseRunCreate {
 	return pcrc
 }
 
+// SetReason sets the "reason" field.
+func (pcrc *ProblemCaseRunCreate) SetReason(s string) *ProblemCaseRunCreate {
+	pcrc.mutation.SetReason(s)
+	return pcrc
+}
+
 // Mutation returns the ProblemCaseRunMutation object of the builder.
 func (pcrc *ProblemCaseRunCreate) Mutation() *ProblemCaseRunMutation {
 	return pcrc.mutation
@@ -148,6 +154,14 @@ func (pcrc *ProblemCaseRunCreate) check() error {
 			return &ValidationError{Name: "build_url", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.build_url": %w`, err)}
 		}
 	}
+	if _, ok := pcrc.mutation.Reason(); !ok {
+		return &ValidationError{Name: "reason", err: errors.New(`ent: missing required field "ProblemCaseRun.reason"`)}
+	}
+	if v, ok := pcrc.mutation.Reason(); ok {
+		if err := problemcaserun.ReasonValidator(v); err != nil {
+			return &ValidationError{Name: "reason", err: fmt.Errorf(`ent: validator failed for field "ProblemCaseRun.reason": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -206,17 +220,25 @@ func (pcrc *ProblemCaseRunCreate) createSpec() (*ProblemCaseRun, *sqlgraph.Creat
 		_spec.SetField(problemcaserun.FieldBuildURL, field.TypeString, value)
 		_node.BuildURL = value
 	}
+	if value, ok := pcrc.mutation.Reason(); ok {
+		_spec.SetField(problemcaserun.FieldReason, field.TypeString, value)
+		_node.Reason = value
+	}
 	return _node, _spec
 }
 
 // ProblemCaseRunCreateBulk is the builder for creating many ProblemCaseRun entities in bulk.
 type ProblemCaseRunCreateBulk struct {
 	config
+	err      error
 	builders []*ProblemCaseRunCreate
 }
 
 // Save creates the ProblemCaseRun entities in the database.
 func (pcrcb *ProblemCaseRunCreateBulk) Save(ctx context.Context) ([]*ProblemCaseRun, error) {
+	if pcrcb.err != nil {
+		return nil, pcrcb.err
+	}
 	specs := make([]*sqlgraph.CreateSpec, len(pcrcb.builders))
 	nodes := make([]*ProblemCaseRun, len(pcrcb.builders))
 	mutators := make([]Mutator, len(pcrcb.builders))

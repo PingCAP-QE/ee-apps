@@ -21,4 +21,8 @@ func init() {
 	problemcaserunDescBuildURL := problemcaserunFields[7].Descriptor()
 	// problemcaserun.BuildURLValidator is a validator for the "build_url" field. It is called by the builders before save.
 	problemcaserun.BuildURLValidator = problemcaserunDescBuildURL.Validators[0].(func(string) error)
+	// problemcaserunDescReason is the schema descriptor for reason field.
+	problemcaserunDescReason := problemcaserunFields[8].Descriptor()
+	// problemcaserun.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	problemcaserun.ReasonValidator = problemcaserunDescReason.Validators[0].(func(string) error)
 }

@@ -27,6 +27,8 @@ const (
 	FieldReportTime = "report_time"
 	// FieldBuildURL holds the string denoting the build_url field in the database.
 	FieldBuildURL = "build_url"
+	// FieldReason holds the string denoting the reason field in the database.
+	FieldReason = "reason"
 	// Table holds the table name of the problemcaserun in the database.
 	Table = "problem_case_runs"
 )
@@ -42,6 +44,7 @@ var Columns = []string{
 	FieldTimecostMs,
 	FieldReportTime,
 	FieldBuildURL,
+	FieldReason,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -59,6 +62,8 @@ var (
 	DefaultFlaky bool
 	// BuildURLValidator is a validator for the "build_url" field. It is called by the builders before save.
 	BuildURLValidator func(string) error
+	// ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	ReasonValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the ProblemCaseRun queries.
@@ -107,4 +112,9 @@ func ByReportTime(opts ...sql.OrderTermOption) OrderOption {
 // ByBuildURL orders the results by the build_url field.
 func ByBuildURL(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBuildURL, opts...).ToFunc()
+}
+
+// ByReason orders the results by the reason field.
+func ByReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReason, opts...).ToFunc()
 }
