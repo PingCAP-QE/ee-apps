@@ -287,6 +287,6 @@ var githubRepoValidator *regexp.Regexp
 func init() {
 	versionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
 	hotfixVersionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
-	gitRefValidator = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|(tag/[\w-_]+)|(branch/[\w-_\.]+))$`)
+	gitRefValidator = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/[\w-_]+)|(branch/[\w-_\.]+))$`)
 	githubRepoValidator = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
 }

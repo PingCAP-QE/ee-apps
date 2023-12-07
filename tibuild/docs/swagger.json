@@ -541,6 +541,10 @@
                 "dm",
                 "tidb-binlog",
                 "tidb-tools",
+                "ng-monitoring",
+                "tidb-dashboard",
+                "drainer",
+                "pump",
                 ""
             ],
             "x-enum-varnames": [
@@ -556,6 +560,10 @@
                 "ProductDm",
                 "ProductTidbBinlog",
                 "ProductTidbTools",
+                "ProductNgMonitoring",
+                "ProductTidbDashboard",
+                "ProductDrainer",
+                "ProductPump",
                 "ProductUnknown"
             ]
         },
