@@ -7,12 +7,26 @@ import (
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/ent"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/types"
 )
 
 type Handler struct {
 	Storage *ent.ProblemCaseRunClient
+}
+
+func NewHandler(cfg config.Store) (*Handler, error) {
+	dbClient, err := newStoreClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Handler{Storage: dbClient.ProblemCaseRun}, nil
+}
+
+func (h *Handler) SupportEventTypes() []string {
+	return []string{EventTypeTestCaseRunReport}
 }
 
 // Handle for test case run events

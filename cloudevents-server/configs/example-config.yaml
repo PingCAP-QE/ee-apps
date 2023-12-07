@@ -1,3 +1,7 @@
 store:
   driver: mysql
   dsn: user:password@tcp(localhost:3306)/debug?parseTime=true
+lark:
+  app_id: cli_12345678
+  app_secret: s123456789
+  receiver: abc@test.com

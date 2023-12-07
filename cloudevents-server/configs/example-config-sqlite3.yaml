@@ -1,3 +1,7 @@
 store:
   driver: sqlite3
   dsn: file:ent?mode=memory&cache=shared&_fk=1
+lark:
+  app_id: cli_12345678
+  app_secret: s123456789
+  receiver: abc@test.com

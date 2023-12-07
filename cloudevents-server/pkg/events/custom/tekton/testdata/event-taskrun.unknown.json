@@ -1,0 +1,252 @@
+{
+    "specversion": "1.0",
+    "id": "7bfbbea3-ae3a-4316-8554-caba12ea43df",
+    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+    "type": "dev.tekton.event.taskrun.unknown.v1",
+    "subject": "build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:20:01.555743624Z",
+    "data": {
+        "taskRun": {
+            "metadata": {
+                "name": "build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+                "generateName": "build-package-pingcap-tidb-linux-2hwws-build-images-",
+                "namespace": "ee-cd",
+                "uid": "2ef9fbb5-3290-4dac-9e09-e80e2ae38534",
+                "resourceVersion": "2432921823",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:20:01Z",
+                "labels": {
+                    "app.kubernetes.io/managed-by": "tekton-pipelines",
+                    "app.kubernetes.io/version": "0.1",
+                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
+                    "tekton.dev/task": "pingcap-build-images"
+                },
+                "annotations": {
+                    "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"tekton.dev/v1beta1\",\"kind\":\"TaskRun\",\"metadata\":{\"annotations\":{},\"generateName\":\"build-package-pingcap-tidb-linux-2hwws-build-images-\",\"namespace\":\"ee-cd\"},\"spec\":{\"params\":[{\"name\":\"os\",\"value\":\"linux\"},{\"name\":\"arch\",\"value\":\"amd64\"},{\"name\":\"profile\",\"value\":\"release\"},{\"name\":\"component\",\"value\":\"tidb\"},{\"name\":\"version\",\"value\":\"v7.6.0-alpha-390-g83f9209925\"},{\"name\":\"git-ref\",\"value\":\"master\"},{\"name\":\"git-sha\",\"value\":\"83f9209925f9183975c3dd2818853ef734f07ce5\"},{\"name\":\"release-dir\",\"value\":\"build\"},{\"name\":\"build\",\"value\":\"false\"}],\"podTemplate\":{\"nodeSelector\":{\"kubernetes.io/arch\":\"amd64\"},\"tolerations\":[{\"effect\":\"NoSchedule\",\"key\":\"dedicated\",\"operator\":\"Equal\",\"value\":\"test-infra\"}]},\"resources\":{},\"serviceAccountName\":\"default\",\"taskRef\":{\"kind\":\"Task\",\"name\":\"pingcap-build-images\"},\"timeout\":\"52m57.744671218s\",\"workspaces\":[{\"name\":\"source\",\"persistentVolumeClaim\":{\"claimName\":\"pvc-3d98a2b3bb\"}},{\"name\":\"dockerconfig\",\"secret\":{\"secretName\":\"hub-pingcap-net-ee\"}}]}}\n",
+                    "tekton.dev/platforms": "linux/amd64"
+                },
+                "managedFields": [
+                    {
+                        "manager": "kubectl",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:01Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    ".": {},
+                                    "f:kubectl.kubernetes.io/last-applied-configuration": {}
+                                },
+                                "f:generateName": {}
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:podTemplate": {
+                                    ".": {},
+                                    "f:nodeSelector": {
+                                        ".": {},
+                                        "f:kubernetes.io/arch": {}
+                                    },
+                                    "f:tolerations": {}
+                                },
+                                "f:resources": {},
+                                "f:serviceAccountName": {},
+                                "f:taskRef": {
+                                    ".": {},
+                                    "f:kind": {},
+                                    "f:name": {}
+                                },
+                                "f:timeout": {},
+                                "f:workspaces": {}
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "params": [
+                    {
+                        "name": "os",
+                        "value": "linux"
+                    },
+                    {
+                        "name": "arch",
+                        "value": "amd64"
+                    },
+                    {
+                        "name": "profile",
+                        "value": "release"
+                    },
+                    {
+                        "name": "component",
+                        "value": "tidb"
+                    },
+                    {
+                        "name": "version",
+                        "value": "v7.6.0-alpha-390-g83f9209925"
+                    },
+                    {
+                        "name": "git-ref",
+                        "value": "master"
+                    },
+                    {
+                        "name": "git-sha",
+                        "value": "83f9209925f9183975c3dd2818853ef734f07ce5"
+                    },
+                    {
+                        "name": "release-dir",
+                        "value": "build"
+                    },
+                    {
+                        "name": "build",
+                        "value": "false"
+                    }
+                ],
+                "resources": {},
+                "serviceAccountName": "default",
+                "taskRef": {
+                    "name": "pingcap-build-images",
+                    "kind": "Task"
+                },
+                "timeout": "52m57.744671218s",
+                "podTemplate": {
+                    "nodeSelector": {
+                        "kubernetes.io/arch": "amd64"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "source",
+                        "persistentVolumeClaim": {
+                            "claimName": "pvc-3d98a2b3bb"
+                        }
+                    },
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "Unknown",
+                        "lastTransitionTime": "2023-12-07T06:20:01Z",
+                        "reason": "Pending",
+                        "message": "Pending"
+                    }
+                ],
+                "podName": "build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r-pod",
+                "startTime": "2023-12-07T06:20:01Z",
+                "taskSpec": {
+                    "params": [
+                        {
+                            "name": "component",
+                            "type": "string"
+                        },
+                        {
+                            "name": "os",
+                            "type": "string",
+                            "default": "linux"
+                        },
+                        {
+                            "name": "arch",
+                            "type": "string",
+                            "default": "amd64"
+                        },
+                        {
+                            "name": "version",
+                            "type": "string",
+                            "description": "the version to releasing."
+                        },
+                        {
+                            "name": "profile",
+                            "type": "string",
+                            "description": "supports: 'release' or 'debug'.\n",
+                            "default": "release"
+                        },
+                        {
+                            "name": "git-ref",
+                            "type": "string"
+                        },
+                        {
+                            "name": "git-sha",
+                            "type": "string"
+                        },
+                        {
+                            "name": "release-dir",
+                            "type": "string",
+                            "default": "build"
+                        },
+                        {
+                            "name": "build",
+                            "type": "string",
+                            "description": "Does it need to build the binaries before packing the images?",
+                            "default": "false"
+                        }
+                    ],
+                    "description": "This task builds images for pingcap components.",
+                    "steps": [
+                        {
+                            "name": "generate",
+                            "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
+                            "resources": {},
+                            "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"master\"\ngit_sha=\"83f9209925f9183975c3dd2818853ef734f07ce5\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-images.sh\"\n/workspace/artifacts/packages/scripts/gen-package-images-with-config.sh \\\n  tidb \\\n  linux \\\n  amd64 \\\n  v7.6.0-alpha-390-g83f9209925 \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nfi\n"
+                        },
+                        {
+                            "name": "build-and-publish",
+                            "image": "gcr.io/kaniko-project/executor:debug",
+                            "workingDir": "$(workspaces.source.path)",
+                            "env": [
+                                {
+                                    "name": "KANIKO_EXECUTOR",
+                                    "value": "/kaniko/executor"
+                                }
+                            ],
+                            "resources": {},
+                            "script": "script=\"/workspace/build-package-images.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip build.\"\n  exit 0\nfi\n\n\"$script\" \"build\" \"$(params.tag)\" ${KANIKO_EXECUTOR} \"false\"\n"
+                        }
+                    ],
+                    "workspaces": [
+                        {
+                            "name": "source"
+                        },
+                        {
+                            "name": "dockerconfig",
+                            "description": "Includes a docker `config.json`",
+                            "mountPath": "/kaniko/.docker",
+                            "optional": true
+                        }
+                    ],
+                    "results": [
+                        {
+                            "name": "IMAGE_DIGEST",
+                            "type": "string",
+                            "description": "Digest of the image just built."
+                        },
+                        {
+                            "name": "IMAGE_URL",
+                            "type": "string",
+                            "description": "URL of the image just built."
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

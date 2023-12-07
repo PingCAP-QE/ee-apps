@@ -1,0 +1,162 @@
+{
+    "specversion": "1.0",
+    "id": "e9f57040-d618-4969-98d8-37064d3c8e51",
+    "source": "/apis///namespaces/ee-cd//auto-compose-multi-arch-image-run-xb7sr",
+    "type": "dev.tekton.event.pipelinerun.running.v1",
+    "subject": "auto-compose-multi-arch-image-run-xb7sr",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:20:50.796032455Z",
+    "data": {
+        "pipelineRun": {
+            "metadata": {
+                "name": "auto-compose-multi-arch-image-run-xb7sr",
+                "generateName": "auto-compose-multi-arch-image-run-",
+                "namespace": "ee-cd",
+                "uid": "1b0e81f9-ccfa-445e-a455-6c12f13646ee",
+                "resourceVersion": "2432924503",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:20:50Z",
+                "labels": {
+                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
+                    "tekton.dev/pipeline": "auto-compose-multi-arch-image",
+                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
+                    "triggers.tekton.dev/trigger": "image-push-on-harbor",
+                    "triggers.tekton.dev/triggers-eventid": "9929c12f-2bd1-42af-b62d-5cfced04364f"
+                },
+                "managedFields": [
+                    {
+                        "manager": "eventlistenersink",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:50Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:generateName": {},
+                                "f:labels": {
+                                    ".": {},
+                                    "f:triggers.tekton.dev/eventlistener": {},
+                                    "f:triggers.tekton.dev/trigger": {},
+                                    "f:triggers.tekton.dev/triggers-eventid": {}
+                                }
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:pipelineRef": {
+                                    ".": {},
+                                    "f:name": {}
+                                },
+                                "f:workspaces": {}
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "pipelineRef": {
+                    "name": "auto-compose-multi-arch-image"
+                },
+                "params": [
+                    {
+                        "name": "image_url",
+                        "value": "hub.pingcap.net/pingcap/tidb/images/tidb-server:master-83f9209-release_linux_amd64"
+                    },
+                    {
+                        "name": "tag",
+                        "value": "master-83f9209-release_linux_amd64"
+                    }
+                ],
+                "serviceAccountName": "default",
+                "timeout": "1h0m0s",
+                "podTemplate": {
+                    "nodeSelector": {
+                        "enable-ci": "true"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "Unknown",
+                        "lastTransitionTime": "2023-12-07T06:20:50Z",
+                        "reason": "Running",
+                        "message": "Tasks Completed: 0 (Failed: 0, Cancelled 0), Incomplete: 1, Skipped: 0"
+                    }
+                ],
+                "startTime": "2023-12-07T06:20:50Z",
+                "taskRuns": {
+                    "auto-compose-multi-arch-image-run-xb7sr-collect-and-push": {
+                        "pipelineTaskName": "collect-and-push",
+                        "status": {
+                            "podName": ""
+                        }
+                    }
+                },
+                "pipelineSpec": {
+                    "tasks": [
+                        {
+                            "name": "collect-and-push",
+                            "taskRef": {
+                                "name": "multi-arch-image-collect",
+                                "kind": "Task"
+                            },
+                            "params": [
+                                {
+                                    "name": "image_url",
+                                    "value": "hub.pingcap.net/pingcap/tidb/images/tidb-server:master-83f9209-release_linux_amd64"
+                                },
+                                {
+                                    "name": "release_tag_suffix",
+                                    "value": "release"
+                                }
+                            ],
+                            "workspaces": [
+                                {
+                                    "name": "dockerconfig",
+                                    "workspace": "dockerconfig"
+                                }
+                            ]
+                        }
+                    ],
+                    "params": [
+                        {
+                            "name": "image_url",
+                            "type": "string",
+                            "description": "The image full url for pull"
+                        },
+                        {
+                            "name": "tag",
+                            "type": "string",
+                            "description": "The pushed image tag"
+                        }
+                    ],
+                    "workspaces": [
+                        {
+                            "name": "dockerconfig",
+                            "description": "Includes a docker `config.json`"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

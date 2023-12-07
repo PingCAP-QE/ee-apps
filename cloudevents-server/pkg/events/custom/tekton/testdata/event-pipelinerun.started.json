@@ -1,0 +1,144 @@
+{
+    "specversion": "1.0",
+    "id": "24d8e932-f66d-4e15-8910-ee52a90e1fb9",
+    "source": "/apis///namespaces/ee-cd//auto-compose-multi-arch-image-run-xb7sr",
+    "type": "dev.tekton.event.pipelinerun.started.v1",
+    "subject": "auto-compose-multi-arch-image-run-xb7sr",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:20:50.835767131Z",
+    "data": {
+        "pipelineRun": {
+            "metadata": {
+                "name": "auto-compose-multi-arch-image-run-xb7sr",
+                "generateName": "auto-compose-multi-arch-image-run-",
+                "namespace": "ee-cd",
+                "uid": "1b0e81f9-ccfa-445e-a455-6c12f13646ee",
+                "resourceVersion": "2432924510",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:20:50Z",
+                "labels": {
+                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
+                    "tekton.dev/pipeline": "auto-compose-multi-arch-image",
+                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
+                    "triggers.tekton.dev/trigger": "image-push-on-harbor",
+                    "triggers.tekton.dev/triggers-eventid": "9929c12f-2bd1-42af-b62d-5cfced04364f"
+                },
+                "annotations": {
+                    "results.tekton.dev/record": "ee-cd/results/9929c12f-2bd1-42af-b62d-5cfced04364f/records/1b0e81f9-ccfa-445e-a455-6c12f13646ee",
+                    "results.tekton.dev/result": "ee-cd/results/9929c12f-2bd1-42af-b62d-5cfced04364f"
+                },
+                "managedFields": [
+                    {
+                        "manager": "Go-http-client",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:50Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:labels": {
+                                    "f:kustomize.toolkit.fluxcd.io/name": {},
+                                    "f:kustomize.toolkit.fluxcd.io/namespace": {},
+                                    "f:tekton.dev/pipeline": {}
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "manager": "eventlistenersink",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:50Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:generateName": {},
+                                "f:labels": {
+                                    ".": {},
+                                    "f:triggers.tekton.dev/eventlistener": {},
+                                    "f:triggers.tekton.dev/trigger": {},
+                                    "f:triggers.tekton.dev/triggers-eventid": {}
+                                }
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:pipelineRef": {
+                                    ".": {},
+                                    "f:name": {}
+                                },
+                                "f:workspaces": {}
+                            }
+                        }
+                    },
+                    {
+                        "manager": "watcher",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:50Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    ".": {},
+                                    "f:results.tekton.dev/record": {},
+                                    "f:results.tekton.dev/result": {}
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "pipelineRef": {
+                    "name": "auto-compose-multi-arch-image"
+                },
+                "params": [
+                    {
+                        "name": "image_url",
+                        "value": "hub.pingcap.net/pingcap/tidb/images/tidb-server:master-83f9209-release_linux_amd64"
+                    },
+                    {
+                        "name": "tag",
+                        "value": "master-83f9209-release_linux_amd64"
+                    }
+                ],
+                "serviceAccountName": "default",
+                "timeout": "1h0m0s",
+                "podTemplate": {
+                    "nodeSelector": {
+                        "enable-ci": "true"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "Unknown",
+                        "lastTransitionTime": "2023-12-07T06:20:50Z",
+                        "reason": "Started"
+                    }
+                ],
+                "startTime": "2023-12-07T06:20:50Z"
+            }
+        }
+    }
+}
