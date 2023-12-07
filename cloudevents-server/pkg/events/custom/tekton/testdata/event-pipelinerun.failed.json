@@ -1,0 +1,1108 @@
+{
+    "specversion": "1.0",
+    "id": "96d36eac-c627-46cb-8579-344516ddd298",
+    "source": "/apis///namespaces/ee-cd//build-package-tikv-tikv-linux-9bn55",
+    "type": "dev.tekton.event.pipelinerun.failed.v1",
+    "subject": "build-package-tikv-tikv-linux-9bn55",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:33:29.91767758Z",
+    "data": {
+        "pipelineRun": {
+            "metadata": {
+                "name": "build-package-tikv-tikv-linux-9bn55",
+                "generateName": "build-package-tikv-tikv-linux-",
+                "namespace": "ee-cd",
+                "uid": "e4821549-eddb-4c78-a686-519c6f173a06",
+                "resourceVersion": "2432973114",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:28:37Z",
+                "labels": {
+                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
+                    "tekton.dev/pipeline": "pingcap-build-package",
+                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
+                    "triggers.tekton.dev/trigger": "tag-create-tikv-tikv",
+                    "triggers.tekton.dev/triggers-eventid": "266f823d-5a57-4dae-9cf2-729580ed94fe"
+                },
+                "annotations": {
+                    "results.tekton.dev/record": "ee-cd/results/266f823d-5a57-4dae-9cf2-729580ed94fe/records/e4821549-eddb-4c78-a686-519c6f173a06",
+                    "results.tekton.dev/result": "ee-cd/results/266f823d-5a57-4dae-9cf2-729580ed94fe",
+                    "tekton.dev/git-repo": "https://github.com/tikv/tikv.git",
+                    "tekton.dev/git-revision": "v6.5.6",
+                    "tekton.dev/git-status": "true",
+                    "tekton.dev/status-target-url": "https://tekton.abc.com/#/namespaces/{{ .Namespace }}/pipelineruns/{{ .Name }}"
+                },
+                "managedFields": [
+                    {
+                        "manager": "eventlistenersink",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:28:37Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    ".": {},
+                                    "f:tekton.dev/git-repo": {},
+                                    "f:tekton.dev/git-revision": {},
+                                    "f:tekton.dev/git-status": {},
+                                    "f:tekton.dev/status-target-url": {}
+                                },
+                                "f:generateName": {},
+                                "f:labels": {
+                                    ".": {},
+                                    "f:triggers.tekton.dev/eventlistener": {},
+                                    "f:triggers.tekton.dev/trigger": {},
+                                    "f:triggers.tekton.dev/triggers-eventid": {}
+                                }
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:pipelineRef": {
+                                    ".": {},
+                                    "f:name": {}
+                                },
+                                "f:taskRunSpecs": {},
+                                "f:timeouts": {
+                                    ".": {},
+                                    "f:pipeline": {}
+                                },
+                                "f:workspaces": {}
+                            }
+                        }
+                    },
+                    {
+                        "manager": "watcher",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:28:37Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    "f:results.tekton.dev/record": {},
+                                    "f:results.tekton.dev/result": {}
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "manager": "Go-http-client",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:30:22Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:labels": {
+                                    "f:kustomize.toolkit.fluxcd.io/name": {},
+                                    "f:kustomize.toolkit.fluxcd.io/namespace": {},
+                                    "f:tekton.dev/pipeline": {}
+                                }
+                            },
+                            "f:status": {
+                                ".": {},
+                                "f:conditions": {},
+                                "f:pipelineSpec": {
+                                    ".": {},
+                                    "f:params": {},
+                                    "f:tasks": {},
+                                    "f:workspaces": {}
+                                },
+                                "f:startTime": {},
+                                "f:taskRuns": {
+                                    ".": {},
+                                    "f:build-package-tikv-tikv-linux-9bn55-build-binaries": {
+                                        ".": {},
+                                        "f:pipelineTaskName": {},
+                                        "f:status": {
+                                            ".": {},
+                                            "f:conditions": {},
+                                            "f:podName": {},
+                                            "f:startTime": {},
+                                            "f:steps": {},
+                                            "f:taskSpec": {
+                                                ".": {},
+                                                "f:description": {},
+                                                "f:params": {},
+                                                "f:results": {},
+                                                "f:steps": {},
+                                                "f:workspaces": {}
+                                            }
+                                        }
+                                    },
+                                    "f:build-package-tikv-tikv-linux-9bn55-checkout": {
+                                        ".": {},
+                                        "f:pipelineTaskName": {},
+                                        "f:status": {
+                                            ".": {},
+                                            "f:completionTime": {},
+                                            "f:conditions": {},
+                                            "f:podName": {},
+                                            "f:startTime": {},
+                                            "f:steps": {},
+                                            "f:taskResults": {},
+                                            "f:taskSpec": {
+                                                ".": {},
+                                                "f:description": {},
+                                                "f:params": {},
+                                                "f:results": {},
+                                                "f:steps": {},
+                                                "f:workspaces": {}
+                                            }
+                                        }
+                                    },
+                                    "f:build-package-tikv-tikv-linux-9bn55-get-release-ver": {
+                                        ".": {},
+                                        "f:pipelineTaskName": {},
+                                        "f:status": {
+                                            ".": {},
+                                            "f:completionTime": {},
+                                            "f:conditions": {},
+                                            "f:podName": {},
+                                            "f:startTime": {},
+                                            "f:steps": {},
+                                            "f:taskResults": {},
+                                            "f:taskSpec": {
+                                                ".": {},
+                                                "f:results": {},
+                                                "f:steps": {},
+                                                "f:workspaces": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "pipelineRef": {
+                    "name": "pingcap-build-package"
+                },
+                "params": [
+                    {
+                        "name": "git-url",
+                        "value": "https://github.com/tikv/tikv.git"
+                    },
+                    {
+                        "name": "git-revision",
+                        "value": "v6.5.6"
+                    },
+                    {
+                        "name": "git-ref",
+                        "value": "v6.5.6"
+                    },
+                    {
+                        "name": "component",
+                        "value": "tikv"
+                    },
+                    {
+                        "name": "os",
+                        "value": "linux"
+                    },
+                    {
+                        "name": "arch",
+                        "value": "amd64"
+                    },
+                    {
+                        "name": "binary-builder-iamge",
+                        "value": "ghcr.io/pingcap-qe/cd/builders/tikv:v20231116-e1c4b43"
+                    }
+                ],
+                "serviceAccountName": "default",
+                "timeouts": {
+                    "pipeline": "2h0m0s"
+                },
+                "podTemplate": {
+                    "nodeSelector": {
+                        "enable-ci": "true"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    },
+                    {
+                        "name": "source",
+                        "volumeClaimTemplate": {
+                            "metadata": {
+                                "creationTimestamp": null
+                            },
+                            "spec": {
+                                "accessModes": [
+                                    "ReadWriteOnce"
+                                ],
+                                "resources": {
+                                    "requests": {
+                                        "storage": "50Gi"
+                                    }
+                                },
+                                "storageClassName": "ceph-block"
+                            },
+                            "status": {}
+                        }
+                    },
+                    {
+                        "name": "git-basic-auth",
+                        "secret": {
+                            "secretName": "git-credentials-basic"
+                        }
+                    }
+                ],
+                "taskRunSpecs": [
+                    {
+                        "pipelineTaskName": "build-binaries",
+                        "taskPodTemplate": {
+                            "nodeSelector": {
+                                "kubernetes.io/arch": "amd64"
+                            }
+                        }
+                    },
+                    {
+                        "pipelineTaskName": "build-images",
+                        "taskPodTemplate": {
+                            "nodeSelector": {
+                                "kubernetes.io/arch": "amd64"
+                            }
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "False",
+                        "lastTransitionTime": "2023-12-07T06:33:29Z",
+                        "reason": "Failed",
+                        "message": "Tasks Completed: 3 (Failed: 1, Cancelled 0), Skipped: 1"
+                    }
+                ],
+                "startTime": "2023-12-07T06:28:37Z",
+                "completionTime": "2023-12-07T06:33:29Z",
+                "taskRuns": {
+                    "build-package-tikv-tikv-linux-9bn55-build-binaries": {
+                        "pipelineTaskName": "build-binaries",
+                        "status": {
+                            "conditions": [
+                                {
+                                    "type": "Succeeded",
+                                    "status": "False",
+                                    "lastTransitionTime": "2023-12-07T06:33:29Z",
+                                    "reason": "Failed",
+                                    "message": "\"step-build\" exited with code 1 (image: \"ghcr.io/pingcap-qe/cd/builders/tikv@sha256:a6cda05e45e34c8409c6c04b953e317a7ec5e63c1224dc5101d38293964e5463\"); for logs run: kubectl -n ee-cd logs build-package-tikv-tikv-linux-9bn55-build-binaries-pod -c step-build\n"
+                                }
+                            ],
+                            "podName": "build-package-tikv-tikv-linux-9bn55-build-binaries-pod",
+                            "startTime": "2023-12-07T06:30:15Z",
+                            "completionTime": "2023-12-07T06:33:29Z",
+                            "steps": [
+                                {
+                                    "terminated": {
+                                        "exitCode": 0,
+                                        "reason": "Completed",
+                                        "startedAt": "2023-12-07T06:30:25Z",
+                                        "finishedAt": "2023-12-07T06:30:27Z",
+                                        "containerID": "containerd://c15662e5fb7e6b14629ee9b7d47d878c171af259e0422d8e14dc76181ee121ce"
+                                    },
+                                    "name": "generate-build-script",
+                                    "container": "step-generate-build-script",
+                                    "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
+                                },
+                                {
+                                    "terminated": {
+                                        "exitCode": 1,
+                                        "reason": "Error",
+                                        "startedAt": "2023-12-07T06:33:27Z",
+                                        "finishedAt": "2023-12-07T06:33:27Z",
+                                        "containerID": "containerd://e0f4269f20acca1d9d25b67bd4148cd4d18af54d65d1e7b97e70788d7774de7c"
+                                    },
+                                    "name": "build",
+                                    "container": "step-build",
+                                    "imageID": "ghcr.io/pingcap-qe/cd/builders/tikv@sha256:a6cda05e45e34c8409c6c04b953e317a7ec5e63c1224dc5101d38293964e5463"
+                                },
+                                {
+                                    "terminated": {
+                                        "exitCode": 1,
+                                        "reason": "Error",
+                                        "startedAt": "2023-12-07T06:33:27Z",
+                                        "finishedAt": "2023-12-07T06:33:27Z",
+                                        "containerID": "containerd://d661b3cd78be75248e52de53e36b865c40cd37e8348924f429f5c824624ac0b5"
+                                    },
+                                    "name": "publish",
+                                    "container": "step-publish",
+                                    "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
+                                }
+                            ],
+                            "taskSpec": {
+                                "params": [
+                                    {
+                                        "name": "component",
+                                        "type": "string"
+                                    },
+                                    {
+                                        "name": "os",
+                                        "type": "string",
+                                        "default": "linux"
+                                    },
+                                    {
+                                        "name": "arch",
+                                        "type": "string",
+                                        "default": "amd64"
+                                    },
+                                    {
+                                        "name": "version",
+                                        "type": "string",
+                                        "description": "the version to releasing."
+                                    },
+                                    {
+                                        "name": "profile",
+                                        "type": "string",
+                                        "description": "supports: 'release' or 'debug'.\n",
+                                        "default": "release"
+                                    },
+                                    {
+                                        "name": "git-ref",
+                                        "type": "string"
+                                    },
+                                    {
+                                        "name": "git-sha",
+                                        "type": "string"
+                                    },
+                                    {
+                                        "name": "builder-image",
+                                        "type": "string",
+                                        "default": "ghcr.io/pingcap-qe/cd/utils/release:5d33328"
+                                    },
+                                    {
+                                        "name": "release-dir",
+                                        "type": "string",
+                                        "default": "build"
+                                    },
+                                    {
+                                        "name": "push",
+                                        "type": "string",
+                                        "default": "false"
+                                    },
+                                    {
+                                        "name": "mac-builder-resource",
+                                        "type": "string",
+                                        "default": ""
+                                    }
+                                ],
+                                "description": "Build binaries for the component.",
+                                "steps": [
+                                    {
+                                        "name": "generate-build-script",
+                                        "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
+                                        "resources": {},
+                                        "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"v6.5.6\"\ngit_sha=\"v6.5.6\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-artifacts.sh\"\n/workspace/artifacts/packages/scripts/gen-package-artifacts-with-config.sh \\\n  tikv \\\n  linux \\\n  amd64 \\\n  v6.5.6 \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nfi\n"
+                                    },
+                                    {
+                                        "name": "build",
+                                        "image": "ghcr.io/pingcap-qe/cd/builders/tikv:v20231116-e1c4b43",
+                                        "workingDir": "$(workspaces.source.path)",
+                                        "resources": {},
+                                        "script": "/workspace/build-package-artifacts.sh -b -a -w \"build\"\n"
+                                    },
+                                    {
+                                        "name": "publish",
+                                        "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
+                                        "workingDir": "$(workspaces.source.path)",
+                                        "resources": {},
+                                        "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip build.\"\n  exit 0\nfi\n\noras version\n\"$script\" -p -w \"build\"\n"
+                                    }
+                                ],
+                                "workspaces": [
+                                    {
+                                        "name": "source"
+                                    },
+                                    {
+                                        "name": "dockerconfig",
+                                        "description": "Includes a docker `config.json`",
+                                        "mountPath": "/root/.docker",
+                                        "optional": true
+                                    },
+                                    {
+                                        "name": "ssh-directory",
+                                        "description": "ssh credential for remote building on mac.",
+                                        "optional": true
+                                    }
+                                ],
+                                "results": [
+                                    {
+                                        "name": "package-artifacts",
+                                        "type": "string",
+                                        "description": "The package artifacts"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "build-package-tikv-tikv-linux-9bn55-checkout": {
+                        "pipelineTaskName": "checkout",
+                        "status": {
+                            "conditions": [
+                                {
+                                    "type": "Succeeded",
+                                    "status": "True",
+                                    "lastTransitionTime": "2023-12-07T06:29:31Z",
+                                    "reason": "Succeeded",
+                                    "message": "All Steps have completed executing"
+                                }
+                            ],
+                            "podName": "build-package-tikv-tikv-linux-9bn55-checkout-pod",
+                            "startTime": "2023-12-07T06:28:37Z",
+                            "completionTime": "2023-12-07T06:29:31Z",
+                            "steps": [
+                                {
+                                    "terminated": {
+                                        "exitCode": 0,
+                                        "reason": "Completed",
+                                        "message": "[{\"key\":\"commit\",\"value\":\"08a6a0f6d6180c01a33b9b3973111d69533269eb\",\"type\":1},{\"key\":\"committer-date\",\"value\":\"1701747528\",\"type\":1},{\"key\":\"url\",\"value\":\"https://github.com/tikv/tikv.git\",\"type\":1}]",
+                                        "startedAt": "2023-12-07T06:28:44Z",
+                                        "finishedAt": "2023-12-07T06:29:10Z",
+                                        "containerID": "containerd://917da65b1b60f27a33c87304448ce90a4cd79a3d3490f8f991bcf1e20d5a6432"
+                                    },
+                                    "name": "clone",
+                                    "container": "step-clone",
+                                    "imageID": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init@sha256:c0b0ed1cd81090ce8eecf60b936e9345089d9dfdb6ebdd2fd7b4a0341ef4f2b9"
+                                }
+                            ],
+                            "taskResults": [
+                                {
+                                    "name": "commit",
+                                    "type": "string",
+                                    "value": "08a6a0f6d6180c01a33b9b3973111d69533269eb"
+                                },
+                                {
+                                    "name": "committer-date",
+                                    "type": "string",
+                                    "value": "1701747528"
+                                },
+                                {
+                                    "name": "url",
+                                    "type": "string",
+                                    "value": "https://github.com/tikv/tikv.git"
+                                }
+                            ],
+                            "taskSpec": {
+                                "params": [
+                                    {
+                                        "name": "url",
+                                        "type": "string",
+                                        "description": "Repository URL to clone from."
+                                    },
+                                    {
+                                        "name": "revision",
+                                        "type": "string",
+                                        "description": "Revision to checkout. (branch, tag, sha, ref, etc...)",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "refspec",
+                                        "type": "string",
+                                        "description": "Refspec to fetch before checking out revision.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "submodules",
+                                        "type": "string",
+                                        "description": "Initialize and fetch git submodules.",
+                                        "default": "true"
+                                    },
+                                    {
+                                        "name": "depth",
+                                        "type": "string",
+                                        "description": "Perform a shallow clone, fetching only the most recent N commits.",
+                                        "default": "1"
+                                    },
+                                    {
+                                        "name": "sslVerify",
+                                        "type": "string",
+                                        "description": "Set the `http.sslVerify` global git config. Setting this to `false` is not advised unless you are sure that you trust your git remote.",
+                                        "default": "true"
+                                    },
+                                    {
+                                        "name": "crtFileName",
+                                        "type": "string",
+                                        "description": "file name of mounted crt using ssl-ca-directory workspace. default value is ca-bundle.crt.",
+                                        "default": "ca-bundle.crt"
+                                    },
+                                    {
+                                        "name": "subdirectory",
+                                        "type": "string",
+                                        "description": "Subdirectory inside the `output` Workspace to clone the repo into.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "sparseCheckoutDirectories",
+                                        "type": "string",
+                                        "description": "Define the directory patterns to match or exclude when performing a sparse checkout.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "deleteExisting",
+                                        "type": "string",
+                                        "description": "Clean out the contents of the destination directory if it already exists before cloning.",
+                                        "default": "true"
+                                    },
+                                    {
+                                        "name": "httpProxy",
+                                        "type": "string",
+                                        "description": "HTTP proxy server for non-SSL requests.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "httpsProxy",
+                                        "type": "string",
+                                        "description": "HTTPS proxy server for SSL requests.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "noProxy",
+                                        "type": "string",
+                                        "description": "Opt out of proxying HTTP/HTTPS requests.",
+                                        "default": ""
+                                    },
+                                    {
+                                        "name": "verbose",
+                                        "type": "string",
+                                        "description": "Log the commands that are executed during `git-clone`'s operation.",
+                                        "default": "true"
+                                    },
+                                    {
+                                        "name": "gitInitImage",
+                                        "type": "string",
+                                        "description": "The image providing the git-init binary that this Task runs.",
+                                        "default": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0"
+                                    },
+                                    {
+                                        "name": "userHome",
+                                        "type": "string",
+                                        "description": "Absolute path to the user's home directory. Set this explicitly if you are running the image as a non-root user or have overridden\nthe gitInitImage param with an image containing custom user configuration.\n",
+                                        "default": "/tekton/home"
+                                    }
+                                ],
+                                "description": "These Tasks are Git tasks to work with repositories used by other tasks in your Pipeline.\nThe git-clone Task will clone a repo from the provided url into the output Workspace. By default the repo will be cloned into the root of your Workspace. You can clone into a subdirectory by setting this Task's subdirectory param. This Task also supports sparse checkouts. To perform a sparse checkout, pass a list of comma separated directory patterns to this Task's sparseCheckoutDirectories param.",
+                                "steps": [
+                                    {
+                                        "name": "clone",
+                                        "image": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0",
+                                        "env": [
+                                            {
+                                                "name": "HOME",
+                                                "value": "/tekton/home"
+                                            },
+                                            {
+                                                "name": "PARAM_URL",
+                                                "value": "https://github.com/tikv/tikv.git"
+                                            },
+                                            {
+                                                "name": "PARAM_REVISION",
+                                                "value": "v6.5.6"
+                                            },
+                                            {
+                                                "name": "PARAM_REFSPEC",
+                                                "value": "+refs/heads/*:refs/remotes/origin/*"
+                                            },
+                                            {
+                                                "name": "PARAM_SUBMODULES",
+                                                "value": "true"
+                                            },
+                                            {
+                                                "name": "PARAM_DEPTH",
+                                                "value": "0"
+                                            },
+                                            {
+                                                "name": "PARAM_SSL_VERIFY",
+                                                "value": "true"
+                                            },
+                                            {
+                                                "name": "PARAM_CRT_FILENAME",
+                                                "value": "ca-bundle.crt"
+                                            },
+                                            {
+                                                "name": "PARAM_SUBDIRECTORY"
+                                            },
+                                            {
+                                                "name": "PARAM_DELETE_EXISTING",
+                                                "value": "true"
+                                            },
+                                            {
+                                                "name": "PARAM_HTTP_PROXY"
+                                            },
+                                            {
+                                                "name": "PARAM_HTTPS_PROXY"
+                                            },
+                                            {
+                                                "name": "PARAM_NO_PROXY"
+                                            },
+                                            {
+                                                "name": "PARAM_VERBOSE",
+                                                "value": "true"
+                                            },
+                                            {
+                                                "name": "PARAM_SPARSE_CHECKOUT_DIRECTORIES"
+                                            },
+                                            {
+                                                "name": "PARAM_USER_HOME",
+                                                "value": "/tekton/home"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_OUTPUT_PATH",
+                                                "value": "$(workspaces.output.path)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_SSH_DIRECTORY_BOUND",
+                                                "value": "$(workspaces.ssh-directory.bound)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_SSH_DIRECTORY_PATH",
+                                                "value": "$(workspaces.ssh-directory.path)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND",
+                                                "value": "$(workspaces.basic-auth.bound)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_PATH",
+                                                "value": "$(workspaces.basic-auth.path)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_SSL_CA_DIRECTORY_BOUND",
+                                                "value": "$(workspaces.ssl-ca-directory.bound)"
+                                            },
+                                            {
+                                                "name": "WORKSPACE_SSL_CA_DIRECTORY_PATH",
+                                                "value": "$(workspaces.ssl-ca-directory.path)"
+                                            },
+                                            {
+                                                "name": "GIT_SSH_COMMAND",
+                                                "value": "ssh -o StrictHostKeyChecking=accept-new"
+                                            }
+                                        ],
+                                        "resources": {},
+                                        "script": "#!/usr/bin/env sh\nset -eu\n\nif [ \"${PARAM_VERBOSE}\" = \"true\" ] ; then\n  set -x\nfi\n\nif [ \"${WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.git-credentials\" \"${PARAM_USER_HOME}/.git-credentials\"\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.gitconfig\" \"${PARAM_USER_HOME}/.gitconfig\"\n  chmod 400 \"${PARAM_USER_HOME}/.git-credentials\"\n  chmod 400 \"${PARAM_USER_HOME}/.gitconfig\"\nfi\n\nif [ \"${WORKSPACE_SSH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp -R \"${WORKSPACE_SSH_DIRECTORY_PATH}\" \"${PARAM_USER_HOME}\"/.ssh\n  chmod 700 \"${PARAM_USER_HOME}\"/.ssh\n  chmod -R 400 \"${PARAM_USER_HOME}\"/.ssh/*\nfi\n\nif [ \"${WORKSPACE_SSL_CA_DIRECTORY_BOUND}\" = \"true\" ] ; then\n   export GIT_SSL_CAPATH=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}\"\n   if [ \"${PARAM_CRT_FILENAME}\" != \"\" ] ; then\n      export GIT_SSL_CAINFO=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}/${PARAM_CRT_FILENAME}\"\n   fi\nfi\nCHECKOUT_DIR=\"${WORKSPACE_OUTPUT_PATH}/${PARAM_SUBDIRECTORY}\"\n\ncleandir() {\n  # Delete any existing contents of the repo directory if it exists.\n  #\n  # We don't just \"rm -rf ${CHECKOUT_DIR}\" because ${CHECKOUT_DIR} might be \"/\"\n  # or the root of a mounted volume.\n  if [ -d \"${CHECKOUT_DIR}\" ] ; then\n    # Delete non-hidden files and directories\n    rm -rf \"${CHECKOUT_DIR:?}\"/*\n    # Delete files and directories starting with . but excluding ..\n    rm -rf \"${CHECKOUT_DIR}\"/.[!.]*\n    # Delete files and directories starting with .. plus any other character\n    rm -rf \"${CHECKOUT_DIR}\"/..?*\n  fi\n}\n\nif [ \"${PARAM_DELETE_EXISTING}\" = \"true\" ] ; then\n  cleandir || true\nfi\n\ntest -z \"${PARAM_HTTP_PROXY}\" || export HTTP_PROXY=\"${PARAM_HTTP_PROXY}\"\ntest -z \"${PARAM_HTTPS_PROXY}\" || export HTTPS_PROXY=\"${PARAM_HTTPS_PROXY}\"\ntest -z \"${PARAM_NO_PROXY}\" || export NO_PROXY=\"${PARAM_NO_PROXY}\"\n\ngit config --global --add safe.directory \"${WORKSPACE_OUTPUT_PATH}\"\n/ko-app/git-init \\\n  -url=\"${PARAM_URL}\" \\\n  -revision=\"${PARAM_REVISION}\" \\\n  -refspec=\"${PARAM_REFSPEC}\" \\\n  -path=\"${CHECKOUT_DIR}\" \\\n  -sslVerify=\"${PARAM_SSL_VERIFY}\" \\\n  -submodules=\"${PARAM_SUBMODULES}\" \\\n  -depth=\"${PARAM_DEPTH}\" \\\n  -sparseCheckoutDirectories=\"${PARAM_SPARSE_CHECKOUT_DIRECTORIES}\"\ncd \"${CHECKOUT_DIR}\"\nRESULT_SHA=\"$(git rev-parse HEAD)\"\nEXIT_CODE=\"$?\"\nif [ \"${EXIT_CODE}\" != 0 ] ; then\n  exit \"${EXIT_CODE}\"\nfi\nRESULT_COMMITTER_DATE=\"$(git log -1 --pretty=%ct)\"\nprintf \"%s\" \"${RESULT_COMMITTER_DATE}\" \u003e \"/tekton/results/committer-date\"\nprintf \"%s\" \"${RESULT_SHA}\" \u003e \"/tekton/results/commit\"\nprintf \"%s\" \"${PARAM_URL}\" \u003e \"/tekton/results/url\"\n"
+                                    }
+                                ],
+                                "workspaces": [
+                                    {
+                                        "name": "output",
+                                        "description": "The git repo will be cloned onto the volume backing this Workspace."
+                                    },
+                                    {
+                                        "name": "ssh-directory",
+                                        "description": "A .ssh directory with private key, known_hosts, config, etc. Copied to\nthe user's home before git commands are executed. Used to authenticate\nwith the git remote when performing the clone. Binding a Secret to this\nWorkspace is strongly recommended over other volume types.\n",
+                                        "optional": true
+                                    },
+                                    {
+                                        "name": "basic-auth",
+                                        "description": "A Workspace containing a .gitconfig and .git-credentials file. These\nwill be copied to the user's home before any git commands are run. Any\nother files in this Workspace are ignored. It is strongly recommended\nto use ssh-directory over basic-auth whenever possible and to bind a\nSecret to this Workspace over other volume types.\n",
+                                        "optional": true
+                                    },
+                                    {
+                                        "name": "ssl-ca-directory",
+                                        "description": "A workspace containing CA certificates, this will be used by Git to\nverify the peer with when fetching or pushing over HTTPS.\n",
+                                        "optional": true
+                                    }
+                                ],
+                                "results": [
+                                    {
+                                        "name": "commit",
+                                        "type": "string",
+                                        "description": "The precise commit SHA that was fetched by this Task."
+                                    },
+                                    {
+                                        "name": "url",
+                                        "type": "string",
+                                        "description": "The precise URL that was fetched by this Task."
+                                    },
+                                    {
+                                        "name": "committer-date",
+                                        "type": "string",
+                                        "description": "The epoch timestamp of the commit that was fetched by this Task."
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "build-package-tikv-tikv-linux-9bn55-get-release-ver": {
+                        "pipelineTaskName": "get-release-ver",
+                        "status": {
+                            "conditions": [
+                                {
+                                    "type": "Succeeded",
+                                    "status": "True",
+                                    "lastTransitionTime": "2023-12-07T06:30:10Z",
+                                    "reason": "Succeeded",
+                                    "message": "All Steps have completed executing"
+                                }
+                            ],
+                            "podName": "build-package-tikv-tikv-linux-9bn55-get-release-ver-pod",
+                            "startTime": "2023-12-07T06:29:33Z",
+                            "completionTime": "2023-12-07T06:30:10Z",
+                            "steps": [
+                                {
+                                    "terminated": {
+                                        "exitCode": 0,
+                                        "reason": "Completed",
+                                        "message": "[{\"key\":\"version\",\"value\":\"v6.5.6\",\"type\":1}]",
+                                        "startedAt": "2023-12-07T06:29:58Z",
+                                        "finishedAt": "2023-12-07T06:30:00Z",
+                                        "containerID": "containerd://27ad6e4d9dd05d5dedc77d017cf1df3eb51871fcf86b495b4cf4039634b047b8"
+                                    },
+                                    "name": "git-describe",
+                                    "container": "step-git-describe",
+                                    "imageID": "docker.io/alpine/git@sha256:1134fdfca49677f3c33445ede74cd64b55f524ad3cb215fa464492ad281eafc0"
+                                }
+                            ],
+                            "taskResults": [
+                                {
+                                    "name": "version",
+                                    "type": "string",
+                                    "value": "v6.5.6"
+                                }
+                            ],
+                            "taskSpec": {
+                                "steps": [
+                                    {
+                                        "name": "git-describe",
+                                        "image": "alpine/git:2.40.1",
+                                        "workingDir": "$(workspaces.source.path)",
+                                        "resources": {},
+                                        "script": "RESULT_VERSION=\"$(git describe --tags --always --dirty)\"\nprintf \"%s\" \"${RESULT_VERSION}\" \u003e /tekton/results/version\n"
+                                    }
+                                ],
+                                "workspaces": [
+                                    {
+                                        "name": "source"
+                                    }
+                                ],
+                                "results": [
+                                    {
+                                        "name": "version",
+                                        "type": "string",
+                                        "description": "The release version of the git repo"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "pipelineSpec": {
+                    "tasks": [
+                        {
+                            "name": "checkout",
+                            "taskRef": {
+                                "name": "git-clone",
+                                "kind": "Task"
+                            },
+                            "params": [
+                                {
+                                    "name": "url",
+                                    "value": "https://github.com/tikv/tikv.git"
+                                },
+                                {
+                                    "name": "revision",
+                                    "value": "v6.5.6"
+                                },
+                                {
+                                    "name": "depth",
+                                    "value": "0"
+                                },
+                                {
+                                    "name": "refspec",
+                                    "value": "+refs/heads/*:refs/remotes/origin/*"
+                                }
+                            ],
+                            "workspaces": [
+                                {
+                                    "name": "output",
+                                    "workspace": "source"
+                                },
+                                {
+                                    "name": "basic-auth",
+                                    "workspace": "git-basic-auth"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "get-release-ver",
+                            "taskSpec": {
+                                "spec": null,
+                                "metadata": {},
+                                "steps": [
+                                    {
+                                        "name": "git-describe",
+                                        "image": "alpine/git:2.40.1",
+                                        "workingDir": "$(workspaces.source.path)",
+                                        "resources": {},
+                                        "script": "RESULT_VERSION=\"$(git describe --tags --always --dirty)\"\nprintf \"%s\" \"${RESULT_VERSION}\" \u003e $(results.version.path)\n"
+                                    }
+                                ],
+                                "workspaces": [
+                                    {
+                                        "name": "source"
+                                    }
+                                ],
+                                "results": [
+                                    {
+                                        "name": "version",
+                                        "type": "string",
+                                        "description": "The release version of the git repo"
+                                    }
+                                ]
+                            },
+                            "runAfter": [
+                                "checkout"
+                            ],
+                            "workspaces": [
+                                {
+                                    "name": "source",
+                                    "workspace": "source"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "build-binaries",
+                            "taskRef": {
+                                "name": "pingcap-build-binaries",
+                                "kind": "Task"
+                            },
+                            "params": [
+                                {
+                                    "name": "os",
+                                    "value": "linux"
+                                },
+                                {
+                                    "name": "arch",
+                                    "value": "amd64"
+                                },
+                                {
+                                    "name": "profile",
+                                    "value": "release"
+                                },
+                                {
+                                    "name": "component",
+                                    "value": "tikv"
+                                },
+                                {
+                                    "name": "version",
+                                    "value": "$(tasks.get-release-ver.results.version)"
+                                },
+                                {
+                                    "name": "git-ref",
+                                    "value": "v6.5.6"
+                                },
+                                {
+                                    "name": "git-sha",
+                                    "value": "v6.5.6"
+                                },
+                                {
+                                    "name": "builder-image",
+                                    "value": "ghcr.io/pingcap-qe/cd/builders/tikv:v20231116-e1c4b43"
+                                },
+                                {
+                                    "name": "release-dir",
+                                    "value": "build"
+                                },
+                                {
+                                    "name": "push",
+                                    "value": "true"
+                                }
+                            ],
+                            "workspaces": [
+                                {
+                                    "name": "source",
+                                    "workspace": "source"
+                                },
+                                {
+                                    "name": "dockerconfig",
+                                    "workspace": "dockerconfig"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "build-images",
+                            "taskRef": {
+                                "name": "pingcap-build-images",
+                                "kind": "Task"
+                            },
+                            "when": [
+                                {
+                                    "input": "linux",
+                                    "operator": "in",
+                                    "values": [
+                                        "linux"
+                                    ]
+                                },
+                                {
+                                    "input": "true",
+                                    "operator": "in",
+                                    "values": [
+                                        "true"
+                                    ]
+                                }
+                            ],
+                            "runAfter": [
+                                "build-binaries"
+                            ],
+                            "params": [
+                                {
+                                    "name": "os",
+                                    "value": "linux"
+                                },
+                                {
+                                    "name": "arch",
+                                    "value": "amd64"
+                                },
+                                {
+                                    "name": "profile",
+                                    "value": "release"
+                                },
+                                {
+                                    "name": "component",
+                                    "value": "tikv"
+                                },
+                                {
+                                    "name": "version",
+                                    "value": "$(tasks.get-release-ver.results.version)"
+                                },
+                                {
+                                    "name": "git-ref",
+                                    "value": "v6.5.6"
+                                },
+                                {
+                                    "name": "git-sha",
+                                    "value": "v6.5.6"
+                                },
+                                {
+                                    "name": "release-dir",
+                                    "value": "build"
+                                },
+                                {
+                                    "name": "build",
+                                    "value": "false"
+                                }
+                            ],
+                            "workspaces": [
+                                {
+                                    "name": "source",
+                                    "workspace": "source"
+                                },
+                                {
+                                    "name": "dockerconfig",
+                                    "workspace": "dockerconfig"
+                                }
+                            ]
+                        }
+                    ],
+                    "params": [
+                        {
+                            "name": "git-url",
+                            "type": "string"
+                        },
+                        {
+                            "name": "git-ref",
+                            "type": "string",
+                            "default": "master"
+                        },
+                        {
+                            "name": "git-revision",
+                            "type": "string",
+                            "default": "master"
+                        },
+                        {
+                            "name": "component",
+                            "type": "string",
+                            "description": "compoent name, supports:\n- tidb\n- tikv\n- pd\n- tiflash\n- tiflow\n- advanced-statefulset\n\nMay be it is an idea to judge it by git-url, but it maybe \nnot a generic way for forked repositories with custom names.\n"
+                        },
+                        {
+                            "name": "os",
+                            "type": "string",
+                            "default": "linux"
+                        },
+                        {
+                            "name": "arch",
+                            "type": "string",
+                            "default": "amd64"
+                        },
+                        {
+                            "name": "profile",
+                            "type": "string",
+                            "default": "release"
+                        },
+                        {
+                            "name": "binary-builder-iamge",
+                            "type": "string",
+                            "description": "The image used to build binaries.",
+                            "default": "ghcr.io/pingcap-qe/cd/utils/release:5d33328"
+                        },
+                        {
+                            "name": "push",
+                            "type": "string",
+                            "default": "true"
+                        }
+                    ],
+                    "workspaces": [
+                        {
+                            "name": "source",
+                            "description": "The workspace where the git repo will be cloned."
+                        },
+                        {
+                            "name": "dockerconfig",
+                            "description": "Includes a docker `config.json`"
+                        },
+                        {
+                            "name": "git-basic-auth",
+                            "description": "secret containing a .gitconfig and .git-credentials file.",
+                            "optional": true
+                        },
+                        {
+                            "name": "mac-ssh-credentials",
+                            "description": "secret contains ssh private key in `id_rsa` key for login mac",
+                            "optional": true
+                        }
+                    ]
+                },
+                "skippedTasks": [
+                    {
+                        "name": "build-images",
+                        "reason": "PipelineRun was stopping",
+                        "whenExpressions": [
+                            {
+                                "input": "linux",
+                                "operator": "in",
+                                "values": [
+                                    "linux"
+                                ]
+                            },
+                            {
+                                "input": "true",
+                                "operator": "in",
+                                "values": [
+                                    "true"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"net/http"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/ent"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events"
 )
 
@@ -27,15 +26,10 @@ func main() {
 	flag.Parse()
 
 	// Load cfg.
-	var cfg config
+	cfg := new(config.Config)
 	if err := cfg.LoadFromFile(configFile); err != nil {
 		log.Fatal().Err(err).Msg("load config failed!")
 	}
-	dbClient, dbErr := newStoreClient(context.Background(), cfg)
-	if dbErr != nil {
-		log.Fatal().Err(dbErr).Msg("connect database failed!")
-	}
-	defer dbClient.Close()
 
 	gin.SetMode(ginMode)
 	switch ginMode {
@@ -51,17 +45,18 @@ func main() {
 	r := gin.Default()
 	_ = r.SetTrustedProxies(nil)
 
-	setRouters(r, dbClient)
+	setRouters(r, cfg)
+	log.Info().Str("address", serveAddr).Msg("server started.")
 
 	if err := http.ListenAndServe(serveAddr, r); err != nil {
 		log.Fatal().Err(err).Send()
 	}
 }
 
-func setRouters(r gin.IRoutes, dbClient *ent.Client) {
+func setRouters(r gin.IRoutes, cfg *config.Config) {
 	r.GET("/", indexHandler)
 	r.GET("/healthz", healthzHandler)
-	r.POST("/events", eventsHandler(dbClient))
+	r.POST("/events", eventsHandler(cfg))
 }
 
 func indexHandler(c *gin.Context) {
@@ -72,19 +67,20 @@ func healthzHandler(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
 }
 
-func eventsHandler(store *ent.Client) gin.HandlerFunc {
+func eventsHandler(cfg *config.Config) gin.HandlerFunc {
 	p, err := cloudevents.NewHTTP()
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("Failed to create protocol")
+		log.Fatal().Err(err).Msg("Failed to create protocol")
 	}
 
-	h, err := cloudevents.NewHTTPReceiveHandler(nil, p, events.NewEventsHandler(store))
+	handler, err := events.NewEventsHandler(cfg)
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("failed to create handler")
+		log.Fatal().Err(err).Msg("failed to create cloudevents handler")
+	}
+
+	h, err := cloudevents.NewHTTPReceiveHandler(nil, p, handler.Handle)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create handler")
 	}
 
 	return func(c *gin.Context) {

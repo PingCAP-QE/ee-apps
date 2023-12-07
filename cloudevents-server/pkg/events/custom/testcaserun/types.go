@@ -1,6 +1,8 @@
 package testcaserun
 
 const (
+	EventTypeTestCaseRunReport = "test-case-run-report"
+
 	reasonNotFinished = "not_finished"
 	reasonUnknown     = "unknown"
 )

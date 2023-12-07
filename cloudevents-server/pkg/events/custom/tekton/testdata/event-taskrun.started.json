@@ -1,0 +1,153 @@
+{
+    "specversion": "1.0",
+    "id": "cc78582f-c4c6-4710-a821-2c4b5ea81b3d",
+    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+    "type": "dev.tekton.event.taskrun.started.v1",
+    "subject": "build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:20:01.518567259Z",
+    "data": {
+        "taskRun": {
+            "metadata": {
+                "name": "build-package-pingcap-tidb-linux-2hwws-build-images-6tm9r",
+                "generateName": "build-package-pingcap-tidb-linux-2hwws-build-images-",
+                "namespace": "ee-cd",
+                "uid": "2ef9fbb5-3290-4dac-9e09-e80e2ae38534",
+                "resourceVersion": "2432921823",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:20:01Z",
+                "labels": {
+                    "app.kubernetes.io/managed-by": "tekton-pipelines"
+                },
+                "annotations": {
+                    "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"tekton.dev/v1beta1\",\"kind\":\"TaskRun\",\"metadata\":{\"annotations\":{},\"generateName\":\"build-package-pingcap-tidb-linux-2hwws-build-images-\",\"namespace\":\"ee-cd\"},\"spec\":{\"params\":[{\"name\":\"os\",\"value\":\"linux\"},{\"name\":\"arch\",\"value\":\"amd64\"},{\"name\":\"profile\",\"value\":\"release\"},{\"name\":\"component\",\"value\":\"tidb\"},{\"name\":\"version\",\"value\":\"v7.6.0-alpha-390-g83f9209925\"},{\"name\":\"git-ref\",\"value\":\"master\"},{\"name\":\"git-sha\",\"value\":\"83f9209925f9183975c3dd2818853ef734f07ce5\"},{\"name\":\"release-dir\",\"value\":\"build\"},{\"name\":\"build\",\"value\":\"false\"}],\"podTemplate\":{\"nodeSelector\":{\"kubernetes.io/arch\":\"amd64\"},\"tolerations\":[{\"effect\":\"NoSchedule\",\"key\":\"dedicated\",\"operator\":\"Equal\",\"value\":\"test-infra\"}]},\"resources\":{},\"serviceAccountName\":\"default\",\"taskRef\":{\"kind\":\"Task\",\"name\":\"pingcap-build-images\"},\"timeout\":\"52m57.744671218s\",\"workspaces\":[{\"name\":\"source\",\"persistentVolumeClaim\":{\"claimName\":\"pvc-3d98a2b3bb\"}},{\"name\":\"dockerconfig\",\"secret\":{\"secretName\":\"hub-pingcap-net-ee\"}}]}}\n"
+                },
+                "managedFields": [
+                    {
+                        "manager": "kubectl",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:20:01Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    ".": {},
+                                    "f:kubectl.kubernetes.io/last-applied-configuration": {}
+                                },
+                                "f:generateName": {}
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:podTemplate": {
+                                    ".": {},
+                                    "f:nodeSelector": {
+                                        ".": {},
+                                        "f:kubernetes.io/arch": {}
+                                    },
+                                    "f:tolerations": {}
+                                },
+                                "f:resources": {},
+                                "f:serviceAccountName": {},
+                                "f:taskRef": {
+                                    ".": {},
+                                    "f:kind": {},
+                                    "f:name": {}
+                                },
+                                "f:timeout": {},
+                                "f:workspaces": {}
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "params": [
+                    {
+                        "name": "os",
+                        "value": "linux"
+                    },
+                    {
+                        "name": "arch",
+                        "value": "amd64"
+                    },
+                    {
+                        "name": "profile",
+                        "value": "release"
+                    },
+                    {
+                        "name": "component",
+                        "value": "tidb"
+                    },
+                    {
+                        "name": "version",
+                        "value": "v7.6.0-alpha-390-g83f9209925"
+                    },
+                    {
+                        "name": "git-ref",
+                        "value": "master"
+                    },
+                    {
+                        "name": "git-sha",
+                        "value": "83f9209925f9183975c3dd2818853ef734f07ce5"
+                    },
+                    {
+                        "name": "release-dir",
+                        "value": "build"
+                    },
+                    {
+                        "name": "build",
+                        "value": "false"
+                    }
+                ],
+                "resources": {},
+                "serviceAccountName": "default",
+                "taskRef": {
+                    "name": "pingcap-build-images",
+                    "kind": "Task"
+                },
+                "timeout": "52m57.744671218s",
+                "podTemplate": {
+                    "nodeSelector": {
+                        "kubernetes.io/arch": "amd64"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "source",
+                        "persistentVolumeClaim": {
+                            "claimName": "pvc-3d98a2b3bb"
+                        }
+                    },
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "Unknown",
+                        "lastTransitionTime": "2023-12-07T06:20:01Z",
+                        "reason": "Started"
+                    }
+                ],
+                "podName": "",
+                "startTime": "2023-12-07T06:20:01Z"
+            }
+        }
+    }
+}
