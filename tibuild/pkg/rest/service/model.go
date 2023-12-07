@@ -27,6 +27,10 @@ const (
 	ProductDm               Product = "dm"
 	ProductTidbBinlog       Product = "tidb-binlog"
 	ProductTidbTools        Product = "tidb-tools"
+	ProductNgMonitoring     Product = "ng-monitoring"
+	ProductTidbDashboard    Product = "tidb-dashboard"
+	ProductDrainer          Product = "drainer"
+	ProductPump             Product = "pump"
 
 	ProductUnknown Product = ""
 )
@@ -70,18 +74,21 @@ func (r GithubRepo) URL() string {
 }
 
 var (
-	RepoTidb       = GithubRepo{Owner: "pingcap", Repo: "tidb"}
-	RepoTikv       = GithubRepo{Owner: "tikv", Repo: "tikv"}
-	RepoPd         = GithubRepo{Owner: "tikv", Repo: "pd"}
-	RepoTiflash    = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
-	RepoTiflow     = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
-	RepoTidbBinlog = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
-	RepoTidbTools  = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
+	RepoTidb          = GithubRepo{Owner: "pingcap", Repo: "tidb"}
+	RepoTikv          = GithubRepo{Owner: "tikv", Repo: "tikv"}
+	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
+	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
+	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
+	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
+	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
+	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
+	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
 )
 
 var allProducts = [...]Product{ProductTidb, ProductTikv, ProductPd,
 	ProductTiflash, ProductBr, ProductTidbLightning, ProductDumpling,
-	ProductTicdc, ProductTidbBinlog, ProductDm, ProductTidbTools}
+	ProductTicdc, ProductTidbBinlog, ProductDm, ProductTidbTools,
+	ProductNgMonitoring, ProductTidbDashboard, ProductDrainer, ProductPump}
 
 func StringToProduct(s string) Product {
 	for _, i := range allProducts {
@@ -106,10 +113,16 @@ func ProdToRepo(prod Product) *GithubRepo {
 		return &RepoTiflash
 	case ProductTicdc, ProductDm:
 		return &RepoTiflow
+	case ProductDrainer, ProductPump:
+		fallthrough
 	case ProductTidbBinlog:
 		return &RepoTidbBinlog
 	case ProductTidbTools:
 		return &RepoTidbTools
+	case ProductNgMonitoring:
+		return &RepoNgMonitoring
+	case ProductTidbDashboard:
+		return &RepoTidbDashboard
 	default:
 		return nil
 	}

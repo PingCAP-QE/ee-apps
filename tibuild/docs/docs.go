@@ -553,6 +553,10 @@ const docTemplate = `{
                 "dm",
                 "tidb-binlog",
                 "tidb-tools",
+                "ng-monitoring",
+                "tidb-dashboard",
+                "drainer",
+                "pump",
                 ""
             ],
             "x-enum-varnames": [
@@ -568,6 +572,10 @@ const docTemplate = `{
                 "ProductDm",
                 "ProductTidbBinlog",
                 "ProductTidbTools",
+                "ProductNgMonitoring",
+                "ProductTidbDashboard",
+                "ProductDrainer",
+                "ProductPump",
                 "ProductUnknown"
             ]
         },

@@ -158,6 +158,10 @@ definitions:
     - dm
     - tidb-binlog
     - tidb-tools
+    - ng-monitoring
+    - tidb-dashboard
+    - drainer
+    - pump
     - ""
     type: string
     x-enum-varnames:
@@ -173,6 +177,10 @@ definitions:
     - ProductDm
     - ProductTidbBinlog
     - ProductTidbTools
+    - ProductNgMonitoring
+    - ProductTidbDashboard
+    - ProductDrainer
+    - ProductPump
     - ProductUnknown
   service.ProductEdition:
     enum:
