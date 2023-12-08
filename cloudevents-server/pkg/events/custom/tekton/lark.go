@@ -1,7 +1,9 @@
 package tekton
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -14,7 +16,17 @@ import (
 )
 
 func newLarkClient(cfg config.Lark) *lark.Client {
-	return lark.NewClient(cfg.AppID, cfg.AppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true))
+	// Disable certificate verification
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	httpClient := &http.Client{Transport: tr}
+
+	return lark.NewClient(cfg.AppID, cfg.AppSecret,
+		lark.WithLogReqAtDebug(true),
+		lark.WithEnableTokenCache(true),
+		lark.WithHttpClient(httpClient),
+	)
 }
 
 func newLarkMessage(receiveEmail string, event cloudevents.Event, detailBaseUrl string) (*larkim.CreateMessageReq, error) {
