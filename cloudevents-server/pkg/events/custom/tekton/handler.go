@@ -21,7 +21,7 @@ func NewHandler(cfg config.Lark) (*Handler, error) {
 	return &Handler{
 		LarkClient:       newLarkClient(cfg),
 		Receiver:         cfg.Receiver,
-		RunDetailBaseURL: "https://do.pigncap.net/tekton",
+		RunDetailBaseURL: "https://do.pingcap.net/tekton",
 	}, nil
 }
 
