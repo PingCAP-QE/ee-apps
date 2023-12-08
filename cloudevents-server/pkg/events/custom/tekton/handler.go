@@ -3,6 +3,7 @@ package tekton
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -21,7 +22,7 @@ func NewHandler(cfg config.Lark) (*Handler, error) {
 	return &Handler{
 		LarkClient:       newLarkClient(cfg),
 		Receiver:         cfg.Receiver,
-		RunDetailBaseURL: "https://do.pigncap.net/tekton",
+		RunDetailBaseURL: "https://do.pingcap.net/tekton",
 	}, nil
 }
 
@@ -50,6 +51,15 @@ func (h *Handler) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewHTTPResult(http.StatusBadRequest, err.Error())
 	}
 
+	if strings.HasPrefix(event.Type(), "dev.tekton.event.pipelinerun.") {
+		return h.notifyRunStatus(event)
+	}
+
+	log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
+	return cloudevents.ResultACK
+}
+
+func (h *Handler) notifyRunStatus(event cloudevents.Event) cloudevents.Result {
 	createMsgReq, err := newLarkMessage(h.Receiver, event, h.RunDetailBaseURL)
 	if err != nil {
 		log.Error().Err(err).Msg("compose lark message failed")
