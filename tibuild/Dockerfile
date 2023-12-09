@@ -2,8 +2,7 @@
 FROM node:20.9.0 as webbuilder
 WORKDIR /webapp
 COPY website/ .
-RUN --mount=type=cache,target=/webapp/node_modules npm install
-RUN yarn build
+RUN --mount=type=cache,target=/webapp/node_modules npm install && yarn build
 
 # Copy whole project's contents(not entire folder) into .(/goapp/) and build Golang
 FROM golang:1.21.5 as serverbuilder
