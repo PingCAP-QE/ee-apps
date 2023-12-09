@@ -10,7 +10,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
 	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
-	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
 )
 
 func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, params map[string]string, pipeline_build_id int64) {

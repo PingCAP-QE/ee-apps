@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
-	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
 )
 
 type PipelinesListShowRequest struct {
