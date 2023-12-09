@@ -12,7 +12,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
 	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
-	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/controller"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/controller"
 	controllers "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/controller"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 

@@ -45,7 +45,7 @@ tibuild
     └── configs/       # Global configuration reader
     └── database/      # Database connectors
     └── httpclient/    # Http client utils
-└── internalpkg/          # Business code & function
+└── internal/          # Business code & function
     └── entity/        # Object entity
     └── service/       # Service for controller/
     └── controller/    # Deal with http request
