@@ -29,6 +29,72 @@ type PipelineTriggerStruct struct {
 	PushGCR      string `form:"push_gcr" json:"push_gcr" validate:"required"`
 }
 
+func (pt *PipelineTriggerStruct) BuildParams() map[string]string {
+	ret := make(map[string]string)
+
+	switch pt.PipelineId {
+	case 1, 2, 3, 4, 5, 6:
+		fmt.Println("触发构建的是多分支流水线，没有传入参数")
+	case 7:
+		fmt.Println("Tab展示名：Nightly Image Build For QA")
+		if pt.Branch == "master" {
+			ret["GIT_BRANCH"] = "master"
+			ret["NEED_MULTIARCH"] = "true"
+		} else {
+			ret["GIT_BRANCH"] = pt.Branch
+			ret["NEED_MULTIARCH"] = "false"
+		}
+		ret["FORCE_REBUILD"] = "false"
+
+	case 8:
+		fmt.Println("Tab展示名：Nightly Image Build to Dockerhub")
+
+	case 9:
+		fmt.Println("Tab展示名：Nightly TiUP Build")
+	case 10:
+		ret["RELEASE_BRANCH"] = pt.Branch
+		ret["RELEASE_TAG"] = pt.Version
+	case 11:
+		ret["RELEASE_TAG"] = pt.Version
+		ret["RELEASE_BRANCH"] = pt.Branch
+		ret["NEED_MULTIARCH"] = "true"
+		ret["DEBUG_MODE"] = "false"
+	case 12: // dev-build
+		ret["PRODUCT"] = pt.Component
+		if pt.Component == "ticdc" || pt.Component == "dm" {
+			ret["REPO"] = "tiflow"
+		} else if pt.Component == "tidb" || pt.Component == "dumpling" || pt.Component == "lightning" || pt.Component == "br" {
+			ret["REPO"] = "tidb"
+		} else {
+			ret["REPO"] = pt.Component
+		}
+		ret["HOTFIX_TAG"] = pt.Version
+		if pt.PushGCR == "Yes" {
+			ret["PUSH_GCR"] = "true"
+		} else {
+			ret["PUSH_GCR"] = "false"
+		}
+		if pt.ArtifactType == "enterprise image" {
+			ret["PUSH_DOCKER_HUB"] = "false"
+			ret["EDITION"] = "enterprise"
+		} else {
+			ret["PUSH_DOCKER_HUB"] = "true"
+			ret["EDITION"] = "community"
+		}
+		ret["FORCE_REBUILD"] = "true"
+		ret["DEBUG"] = "false"
+		if pt.Arch == "All" {
+			ret["ARCH"] = "both"
+		} else if pt.Arch == "linux-amd64" {
+			ret["ARCH"] = "amd64"
+		} else {
+			ret["ARCH"] = "arm64"
+		}
+	}
+
+	return ret
+}
+
 type TibuildInfo struct {
 	PipelineId   int    `form:"pipeline_id"`
 	BuildType    string `form:"build_type"`
@@ -123,11 +189,9 @@ func PipelineTrigger(c *gin.Context) {
 	fmt.Println("pipeline_build_id : ", ps.PipelineBuildId)
 	fmt.Println("begin_time: ", ps.BeginTime)
 
-	params_trans := make(map[string]string)
-	params_trans["PIPELINE_BUILD_ID"] = strconv.Itoa(ps.PipelineBuildId)
-	log.Println(params_trans)
-
-	go triggerJenkinsJob(ctx, &tibuildInfo[0], &params, params_trans, jenkins, int64(ps.PipelineBuildId))
+	go triggerJenkinsJob(ctx, ps.PipelineBuildId, &tibuildInfo[0], &params, jenkins)
+	result := sendEventsForDevBuild("https://cloudevents-server.apps.svc/events", *params.NewCloudEvent(ps.PipelineBuildId))
+	log.Println(result.Error())
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -136,67 +200,10 @@ func PipelineTrigger(c *gin.Context) {
 	})
 }
 
-func triggerJenkinsJob(ctx context.Context, tibuildInfo *TibuildInfo, params *PipelineTriggerStruct, params_trans map[string]string, jenkins *gojenkins.Jenkins, pipelineBuildID int64) {
-	switch params.PipelineId {
-	case 1, 2, 3, 4, 5, 6:
-		fmt.Println("触发构建的是多分支流水线，没有传入参数")
-	case 7:
-		fmt.Println("Tab展示名：Nightly Image Build For QA")
-		if params.Branch == "master" {
-			params_trans["GIT_BRANCH"] = "master"
-			params_trans["NEED_MULTIARCH"] = "true"
-		} else {
-			params_trans["GIT_BRANCH"] = params.Branch
-			params_trans["NEED_MULTIARCH"] = "false"
-		}
-		params_trans["FORCE_REBUILD"] = "false"
-
-	case 8:
-		fmt.Println("Tab展示名：Nightly Image Build to Dockerhub")
-
-	case 9:
-		fmt.Println("Tab展示名：Nightly TiUP Build")
-	case 10:
-		params_trans["RELEASE_BRANCH"] = params.Branch
-		params_trans["RELEASE_TAG"] = params.Version
-	case 11:
-		params_trans["RELEASE_TAG"] = params.Version
-		params_trans["RELEASE_BRANCH"] = params.Branch
-		params_trans["NEED_MULTIARCH"] = "true"
-		params_trans["DEBUG_MODE"] = "false"
-	case 12: // dev-build
-		params_trans["PRODUCT"] = params.Component
-		if params.Component == "ticdc" || params.Component == "dm" {
-			params_trans["REPO"] = "tiflow"
-		} else if params.Component == "tidb" || params.Component == "dumpling" || params.Component == "lightning" || params.Component == "br" {
-			params_trans["REPO"] = "tidb"
-		} else {
-			params_trans["REPO"] = params.Component
-		}
-		params_trans["HOTFIX_TAG"] = params.Version
-		if params.PushGCR == "Yes" {
-			params_trans["PUSH_GCR"] = "true"
-		} else {
-			params_trans["PUSH_GCR"] = "false"
-		}
-		if params.ArtifactType == "enterprise image" {
-			params_trans["PUSH_DOCKER_HUB"] = "false"
-			params_trans["EDITION"] = "enterprise"
-		} else {
-			params_trans["PUSH_DOCKER_HUB"] = "true"
-			params_trans["EDITION"] = "community"
-		}
-		params_trans["FORCE_REBUILD"] = "true"
-		params_trans["DEBUG"] = "false"
-		if params.Arch == "All" {
-			params_trans["ARCH"] = "both"
-		} else if params.Arch == "linux-amd64" {
-			params_trans["ARCH"] = "amd64"
-		} else {
-			params_trans["ARCH"] = "arm64"
-		}
-
-	}
+func triggerJenkinsJob(ctx context.Context, pipelineBuildID int, tibuildInfo *TibuildInfo, params *PipelineTriggerStruct, jenkins *gojenkins.Jenkins) {
+	params_trans := params.BuildParams()
+	params_trans["PIPELINE_BUILD_ID"] = strconv.Itoa(pipelineBuildID)
+	log.Println(params_trans)
 
 	job_name_tmp := strings.Split(tibuildInfo.Pipeline, "/job/")
 	if len(job_name_tmp) <= 1 {
