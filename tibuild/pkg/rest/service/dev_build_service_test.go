@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"tibuild/gojenkins"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
 )
 
 type mockRepo struct {

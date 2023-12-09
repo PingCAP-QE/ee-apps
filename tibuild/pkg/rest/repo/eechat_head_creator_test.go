@@ -2,9 +2,10 @@ package repo
 
 import (
 	"testing"
-	"tibuild/pkg/rest/service"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 func TestGenEEChatOpsCreateBranch(t *testing.T) {

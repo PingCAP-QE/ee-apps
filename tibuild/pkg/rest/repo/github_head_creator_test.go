@@ -6,10 +6,11 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"tibuild/pkg/rest/service"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type httpStub struct {

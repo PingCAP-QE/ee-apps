@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"tibuild/pkg/rest/service"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type httpDoer interface {

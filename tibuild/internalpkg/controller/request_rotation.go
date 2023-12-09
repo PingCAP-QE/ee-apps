@@ -3,11 +3,12 @@ package controller
 import (
 	"net/http"
 	"strconv"
-	"tibuild/commons/database"
-	"tibuild/internalpkg/entity"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
 )
 
 type RequestRotationRequestStruct struct {

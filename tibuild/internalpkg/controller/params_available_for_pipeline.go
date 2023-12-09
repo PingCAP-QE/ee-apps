@@ -1,11 +1,12 @@
 package controller
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 	"net/http"
 	"strings"
-	"tibuild/commons/database"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 type ParamsAvailableForPipelineStruct struct {

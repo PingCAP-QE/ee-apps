@@ -16,7 +16,6 @@ import SendIcon from "@mui/icons-material/Send";
 import Button from "@mui/material/Button";
 import {FRONTHOST} from './utils'
 import ResponsiveAppBar from "./layout/Header";
-// import {ReactSession} from 'react-client-session';
 import storage from "./request/storageUtils";
 import Copyright from "./layout/Copyright";
 

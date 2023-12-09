@@ -2,11 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"net/http"
-	"tibuild/commons/database"
-	"tibuild/internalpkg/entity"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
 )
 
 type PipelinesListShowRequest struct {

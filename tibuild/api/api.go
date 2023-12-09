@@ -3,19 +3,20 @@ package api
 import (
 	"context"
 	"net/http"
-	"tibuild/commons/configs"
-	"tibuild/commons/database"
-	"tibuild/internalpkg/controller"
-	controllers "tibuild/pkg/rest/controller"
-	"tibuild/pkg/rest/service"
-
-	_ "tibuild/docs"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/controller"
+	controllers "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/controller"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
+
+	_ "github.com/PingCAP-QE/ee-apps/tibuild/docs"
 )
 
 // Create gin-routers

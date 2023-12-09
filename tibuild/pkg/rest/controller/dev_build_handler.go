@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"tibuild/pkg/rest/repo"
-	"tibuild/pkg/rest/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/repo"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type DevBuildHandler struct {

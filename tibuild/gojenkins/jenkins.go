@@ -614,9 +614,7 @@ func (j *Jenkins) Poll(ctx context.Context) (int, error) {
 // After creating an instance call init method.
 func CreateJenkins(client *http.Client, base string, auth ...interface{}) *Jenkins {
 	j := &Jenkins{}
-	if strings.HasSuffix(base, "/") {
-		base = base[:len(base)-1]
-	}
+	base = strings.TrimSuffix(base, "/")
 	j.Server = base
 	j.Requester = &Requester{Base: base, SslVerify: true, Client: client}
 	if j.Requester.Client == nil {

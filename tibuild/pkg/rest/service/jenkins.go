@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"tibuild/gojenkins"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
 )
 
 type Jenkins interface {

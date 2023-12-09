@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"tibuild/pkg/rest/controller"
-	"tibuild/pkg/rest/service"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/controller"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 func main() {
