@@ -7,7 +7,7 @@ require (
 	github.com/gin-contrib/requestid v0.0.6
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.8.2
-	github.com/jinzhu/configor v1.2.1
+	github.com/jinzhu/configor v1.2.2
 	github.com/stretchr/testify v1.8.1
 	github.com/swaggo/files v1.0.0
 	github.com/swaggo/gin-swagger v1.5.3
