@@ -22,11 +22,11 @@ type Label struct {
 	Base    string
 }
 
-type MODE string
+type Mode string
 
 const (
-	NORMAL    MODE = "NORMAL"
-	EXCLUSIVE      = "EXCLUSIVE"
+	NORMAL    Mode = "NORMAL"
+	EXCLUSIVE Mode = "EXCLUSIVE"
 )
 
 type LabelNode struct {

@@ -3,10 +3,11 @@ package controller
 import (
 	"errors"
 	"net/http"
-	"tibuild/pkg/rest/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type HTTPError struct {

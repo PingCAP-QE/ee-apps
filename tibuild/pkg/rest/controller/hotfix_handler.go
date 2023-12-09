@@ -2,10 +2,11 @@ package controller
 
 import (
 	"net/http"
-	"tibuild/pkg/rest/repo"
-	"tibuild/pkg/rest/service"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/repo"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type HotfixHandler struct {

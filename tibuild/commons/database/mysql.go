@@ -5,11 +5,13 @@ package database
 
 import (
 	"fmt"
+	"time"
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"tibuild/commons/configs"
-	"time"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
 )
 
 // Mysql handler infomation

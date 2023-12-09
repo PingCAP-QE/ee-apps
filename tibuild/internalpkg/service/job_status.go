@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"tibuild/gojenkins"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
 )
 
 func Job_Status(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string) {

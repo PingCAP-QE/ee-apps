@@ -11,7 +11,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	. "tibuild/pkg/rest/service"
+	. "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 func TestDevBuildCreate(t *testing.T) {

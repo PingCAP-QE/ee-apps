@@ -1,8 +1,8 @@
 package controller
 
 import (
-	"tibuild/pkg/rest/repo"
-	"tibuild/pkg/rest/service"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/repo"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 func NewChatPrintRepoService() service.HotfixService {

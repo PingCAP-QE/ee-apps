@@ -2,9 +2,10 @@ package controller
 
 import (
 	"net/http"
-	"tibuild/pkg/rest/service"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type ArtifactHelperHandler struct {

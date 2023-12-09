@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"tibuild/commons/database"
-	"tibuild/gojenkins"
-	"tibuild/internalpkg/entity"
 	"time"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
 )
 
 func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, params map[string]string, pipeline_build_id int64) {
@@ -26,7 +27,6 @@ func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, 
 
 	if err != nil {
 		panic(err)
-		return
 	}
 	println("qid : ", qid)
 	build, err := jenkins.GetBuildFromQueueID(ctx, qid, jobname)
@@ -43,7 +43,6 @@ func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, 
 
 	if err != nil {
 		panic(err)
-		return
 	}
 	for build.IsRunning(ctx) {
 		time.Sleep(5000 * time.Millisecond)
@@ -79,49 +78,38 @@ func GetInterfaceToString(value interface{}) string {
 		return key
 	}
 
-	switch value.(type) {
+	switch val := value.(type) {
 	case float64:
-		ft := value.(float64)
-		key = strconv.FormatFloat(ft, 'f', -1, 64)
+		key = strconv.FormatFloat(val, 'f', -1, 64)
 	case float32:
-		ft := value.(float32)
-		key = strconv.FormatFloat(float64(ft), 'f', -1, 64)
+		key = strconv.FormatFloat(float64(val), 'f', -1, 64)
 	case int:
-		it := value.(int)
-		key = strconv.Itoa(it)
+		key = strconv.Itoa(val)
 	case uint:
-		it := value.(uint)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case int8:
 		it := value.(int8)
 		key = strconv.Itoa(int(it))
 	case uint8:
-		it := value.(uint8)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case int16:
-		it := value.(int16)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case uint16:
-		it := value.(uint16)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case int32:
-		it := value.(int32)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case uint32:
-		it := value.(uint32)
-		key = strconv.Itoa(int(it))
+		key = strconv.Itoa(int(val))
 	case int64:
-		it := value.(int64)
-		key = strconv.FormatInt(it, 10)
+		key = strconv.FormatInt(val, 10)
 	case uint64:
-		it := value.(uint64)
-		key = strconv.FormatUint(it, 10)
+		key = strconv.FormatUint(val, 10)
 	case string:
-		key = value.(string)
+		key = val
 	case []byte:
-		key = string(value.([]byte))
+		key = string(val)
 	default:
-		newValue, _ := json.Marshal(value)
+		newValue, _ := json.Marshal(val)
 		key = string(newValue)
 	}
 

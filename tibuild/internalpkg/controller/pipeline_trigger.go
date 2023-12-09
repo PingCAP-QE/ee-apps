@@ -3,17 +3,19 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"tibuild/commons/configs"
-	"tibuild/commons/database"
-	"tibuild/gojenkins"
-	"tibuild/internalpkg/entity"
-	"tibuild/internalpkg/service"
 	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/entity"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internalpkg/service"
 )
 
 type PipelineTriggerStruct struct {
@@ -211,8 +213,7 @@ func PipelineTrigger(c *gin.Context) {
 		log.Println(copyContext.Request.URL.Path)
 	}()
 	log.Println(params_trans)
-	var res TriggerRes
-	res = TriggerRes{PipelineBuildId: ps.PipelineBuildId}
+	res := &TriggerRes{PipelineBuildId: ps.PipelineBuildId}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "请求成功",

@@ -3,7 +3,8 @@ package repo
 import (
 	"context"
 	"fmt"
-	"tibuild/pkg/rest/service"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type ChatPrinter struct {

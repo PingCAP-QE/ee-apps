@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	. "tibuild/pkg/rest/service"
-
 	"gorm.io/gorm"
+
+	. "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type DevBuildRepo struct {
