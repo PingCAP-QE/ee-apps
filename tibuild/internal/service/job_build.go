@@ -13,7 +13,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
 )
 
-func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, params map[string]string, pipeline_build_id int64) {
+func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, params map[string]string, pipeline_build_id int) {
 	jobarr := strings.Split(jobname, "/")
 	newjobname := strings.TrimRight(strings.Join(jobarr, "/job/"), "/job/")
 	println("*************** 输入参数是 **************")
@@ -39,7 +39,7 @@ func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, 
 		jenkins_log = "https://cd.pingcap.net/blue/organizations/jenkins/" + jobarr[0] + "/detail/" + jobarr[0] + "/" + strconv.FormatInt(build.GetBuildNumber(), 10) + "/pipeline"
 	}
 
-	err = database.DBConn.DB.Model(new(entity.PipelinesListShow)).Where("pipeline_build_id = ?", int(pipeline_build_id)).Update("jenkins_log", jenkins_log).Error
+	err = database.DBConn.DB.Model(new(entity.PipelinesListShow)).Where("pipeline_build_id = ?", pipeline_build_id).Update("jenkins_log", jenkins_log).Error
 
 	if err != nil {
 		panic(err)
