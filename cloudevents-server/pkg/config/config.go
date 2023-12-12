@@ -22,8 +22,12 @@ type Lark struct {
 }
 
 type Config struct {
-	Store Store `yaml:"store,omitempty" json:"store,omitempty"`
-	Lark  Lark  `yaml:"lark,omitempty" json:"lark,omitempty"`
+	Store   Store `yaml:"store,omitempty" json:"store,omitempty"`
+	Lark    Lark  `yaml:"lark,omitempty" json:"lark,omitempty"`
+	TiBuild struct {
+		ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
+		TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
+	} `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
 }
 
 func (c *Config) LoadFromFile(file string) error {
