@@ -265,5 +265,8 @@ type ImageSyncRequest struct {
 	Target string `json:"target"`
 }
 
-const KeyOfUserName = "username"
+type TibuildCtxKey string
+
+var KeyOfUserName TibuildCtxKey = "username"
+
 const AdminUserName = "admin"
