@@ -144,6 +144,20 @@ func TestDevBuildCreate(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("validate target image", func(t *testing.T) {
+		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: CommunityEdition, GitRef: "branch/feature/somefeat"}}
+		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
+		require.NoError(t, err)
+
+		obj.Spec.TargetImage = "hub.pingcap.net/temp/tidb:somefeat"
+		_, err = server.Create(context.TODO(), obj, DevBuildSaveOption{})
+		require.ErrorIs(t, err, ErrAuth)
+
+		_, err = server.Create(context.WithValue(context.TODO(), KeyOfUserName, AdminUserName), obj, DevBuildSaveOption{})
+		require.NoError(t, err)
+
+	})
+
 	t.Run("bad githubRepo", func(t *testing.T) {
 		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
 			Version: "v6.1.2", Edition: CommunityEdition, GithubRepo: "aa/bb/cc"}}, DevBuildSaveOption{})

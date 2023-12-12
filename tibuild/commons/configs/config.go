@@ -4,6 +4,7 @@ package configs
 
 import (
 	"fmt"
+
 	"github.com/jinzhu/configor"
 )
 
@@ -28,6 +29,10 @@ type ConfigYaml struct {
 
 	Github struct {
 		Token string
+	}
+
+	TiBuild struct {
+		AdminPasswd string
 	}
 }
 

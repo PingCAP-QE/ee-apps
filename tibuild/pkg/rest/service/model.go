@@ -169,6 +169,7 @@ type DevBuildSpec struct {
 	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
+	TargetImage       string         `json:"targetImage,omitempty" gorm:"type:varchar(128)"`
 }
 
 type GitRef string
@@ -263,3 +264,6 @@ type ImageSyncRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 }
+
+const KeyOfUserName = "username"
+const AdminUserName = "admin"

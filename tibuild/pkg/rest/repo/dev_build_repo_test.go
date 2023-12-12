@@ -24,7 +24,7 @@ func TestDevBuildCreate(t *testing.T) {
 	mock.ExpectBegin()
 	now := time.Unix(1, 0)
 	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "v6.7.0", CommunityEdition, "",
-		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "PENDING", 0, "", nil, nil, json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
+		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "", "PENDING", 0, "", nil, nil, json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	entity, err := repo.Create(context.TODO(), DevBuild{
 		Meta: DevBuildMeta{CreatedAt: now, UpdatedAt: now},
@@ -61,7 +61,7 @@ func TestDevBuildUpdate(t *testing.T) {
 	report_text, err := json.Marshal(report)
 	require.NoError(t, err)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", false, "", false, "SUCCESS", 0, "", nil, nil, report_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", false, "", false, "", "SUCCESS", 0, "", nil, nil, report_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	entity, err := repo.Update(context.TODO(),
 		1,

@@ -23,6 +23,11 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	req.Status = DevBuildStatus{}
 	req.Meta.CreatedAt = s.Now()
 	req.Status.Status = BuildStatusPending
+
+	if err := validate_permission(ctx, req); err != nil {
+		return nil, fmt.Errorf("%s%w", err.Error(), ErrAuth)
+	}
+
 	fillWithDefaults(&req)
 	if err := validateReq(req); err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
@@ -73,6 +78,13 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		s.Repo.Update(ctx, entity.ID, entity)
 	}(entity)
 	return &entity, nil
+}
+
+func validate_permission(ctx context.Context, req DevBuild) error {
+	if req.Spec.TargetImage != "" && ctx.Value(KeyOfUserName) != AdminUserName {
+		return fmt.Errorf("targetImage deny because of permission")
+	}
+	return nil
 }
 
 func fillWithDefaults(req *DevBuild) {

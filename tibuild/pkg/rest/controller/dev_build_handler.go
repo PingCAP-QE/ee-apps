@@ -15,16 +15,30 @@ import (
 )
 
 type DevBuildHandler struct {
-	svc service.DevBuildService
+	svc          service.DevBuildService
+	admin_passwd string
 }
 
-func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB) *DevBuildHandler {
+func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, admin_passwd string) *DevBuildHandler {
 	db.AutoMigrate(&service.DevBuild{})
 	return &DevBuildHandler{svc: service.DevbuildServer{
 		Repo:    repo.DevBuildRepo{Db: db},
 		Jenkins: jenkins,
 		Now:     time.Now},
+		admin_passwd: admin_passwd,
 	}
+}
+
+func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
+	user, passwd, ok := c.Request.BasicAuth()
+	if !ok {
+		return c.Request.Context(), nil
+	}
+	if user != service.AdminUserName || passwd != h.admin_passwd {
+		return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+	}
+	ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
+	return ctx, nil
 }
 
 // CreateDevbuild godoc
@@ -40,8 +54,13 @@ func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.D
 // @Failure	500	{object}	HTTPError
 // @Router /api/devbuilds [post]
 func (h DevBuildHandler) Create(c *gin.Context) {
+	ctx, err := h.authenticate(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
 	params := service.DevBuild{}
-	err := bindParam(&params, c)
+	err = bindParam(&params, c)
 	if err != nil {
 		return
 	}
@@ -51,7 +70,7 @@ func (h DevBuildHandler) Create(c *gin.Context) {
 		respondError(c, fmt.Errorf("%s%w", err.Error(), service.ErrBadRequest))
 		return
 	}
-	entity, err := h.svc.Create(c.Request.Context(), params, query)
+	entity, err := h.svc.Create(ctx, params, query)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -132,6 +151,11 @@ func (h DevBuildHandler) Get(c *gin.Context) {
 // @Failure	500	{object}	HTTPError
 // @Router /api/devbuilds/{id}/rerun [post]
 func (h DevBuildHandler) Rerun(c *gin.Context) {
+	ctx, err := h.authenticate(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -144,7 +168,7 @@ func (h DevBuildHandler) Rerun(c *gin.Context) {
 		respondError(c, fmt.Errorf("%s%w", err.Error(), service.ErrBadRequest))
 		return
 	}
-	entity, err := h.svc.Rerun(c.Request.Context(), id, params)
+	entity, err := h.svc.Rerun(ctx, id, params)
 	if err != nil {
 		respondError(c, err)
 		return
