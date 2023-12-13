@@ -138,7 +138,7 @@ if __name__ == "__main__":
     parser_trigger.add_argument('--productDockerfile', help='dockerfile url for product')
     parser_trigger.add_argument('--productBaseImg', help='product base image')
     parser_trigger.add_argument('--builderImg', help='specify docker image for builder')
-    parser_trigger.add_argument('--targetImage', help=argparse.SUPPRESS)
+    parser_trigger.add_argument('--targetImg', help=argparse.SUPPRESS)
     parser_trigger.set_defaults(handler=trigger)
     parser_poll = devbuild.add_parser('poll')
     parser_poll.add_argument('build_id', type=int, help="the triggered build id")
