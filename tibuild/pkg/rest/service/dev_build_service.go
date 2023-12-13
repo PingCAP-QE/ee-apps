@@ -23,6 +23,11 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	req.Status = DevBuildStatus{}
 	req.Meta.CreatedAt = s.Now()
 	req.Status.Status = BuildStatusPending
+
+	if err := validatePermission(ctx, &req); err != nil {
+		return nil, fmt.Errorf("%s%w", err.Error(), ErrAuth)
+	}
+
 	fillWithDefaults(&req)
 	if err := validateReq(req); err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
@@ -52,6 +57,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		"BuilderImg":        entity.Spec.BuilderImg,
 		"ProductDockerfile": entity.Spec.ProductDockerfile,
 		"ProductBaseImg":    entity.Spec.ProductBaseImg,
+		"TargetImg":         entity.Spec.TargetImg,
 	}
 	qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
 	if err != nil {
@@ -73,6 +79,13 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		s.Repo.Update(ctx, entity.ID, entity)
 	}(entity)
 	return &entity, nil
+}
+
+func validatePermission(ctx context.Context, req *DevBuild) error {
+	if req.Spec.TargetImg != "" && ctx.Value(KeyOfApiAccount) != AdminApiAccount {
+		return fmt.Errorf("targetImage deny because of permission")
+	}
+	return nil
 }
 
 func fillWithDefaults(req *DevBuild) {
@@ -172,6 +185,9 @@ func validateReq(req DevBuild) error {
 	if spec.IsHotfix {
 		if !hotfixVersionValidator.MatchString((spec.Version)) {
 			return fmt.Errorf("verion must be like v7.0.0-20230102... for hotfix")
+		}
+		if spec.TargetImg != "" {
+			return fmt.Errorf("target image shall be empty for hotfix")
 		}
 	}
 	return nil
@@ -279,14 +295,7 @@ type DevBuildRepository interface {
 
 var _ DevBuildService = DevbuildServer{}
 
-var versionValidator *regexp.Regexp
-var hotfixVersionValidator *regexp.Regexp
-var gitRefValidator *regexp.Regexp
-var githubRepoValidator *regexp.Regexp
-
-func init() {
-	versionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
-	hotfixVersionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
-	gitRefValidator = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/[\w-_]+)|(branch/[\w-_\.]+))$`)
-	githubRepoValidator = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
-}
+var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
+var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
+var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
+var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)

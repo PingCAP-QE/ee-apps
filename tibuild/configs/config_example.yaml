@@ -3,16 +3,20 @@
 # All configuration information keys is in /tirelease/commons/configs/config.go in struct of ConfigYaml
 # Config like this:
 mysql:
-  username: ""
-  password: ""
-  host: ""
-  port: ""
-  database: ""
+  username: "your user name"
+  password: "your password"
+  host: "127.0.0.1"
+  port: "127.0.0.1"
+  database: "you_db_name"
   charset: ""
   timezone: ""
 
 jenkins:
-  username: ""
-  password: ""
+  username: "your jenkins account"
+  password: "your password"
 github:
   token: ""
+
+restapisecret:
+  admintoken: "1"
+  tibuildtoken: "2"
