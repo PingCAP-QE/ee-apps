@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	LoadConfig("../../configs/config.yaml")
+	LoadConfig("../../configs/config_example.yaml")
 	cfg := Config.AuthConfig
 	assert.NotEmpty(t, cfg.TiBuildPasswd)
 }
