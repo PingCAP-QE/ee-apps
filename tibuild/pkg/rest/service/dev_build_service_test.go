@@ -154,10 +154,10 @@ func TestDevBuildCreate(t *testing.T) {
 		_, err = server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.ErrorIs(t, err, ErrAuth)
 
-		_, err = server.Create(context.WithValue(context.TODO(), KeyOfUserName, "admi"), obj, DevBuildSaveOption{})
+		_, err = server.Create(context.WithValue(context.TODO(), KeyOfApiAccount, "admi"), obj, DevBuildSaveOption{})
 		require.ErrorIs(t, err, ErrAuth)
 
-		_, err = server.Create(context.WithValue(context.TODO(), KeyOfUserName, AdminUserName), obj, DevBuildSaveOption{})
+		_, err = server.Create(context.WithValue(context.TODO(), KeyOfApiAccount, AdminApiAccount), obj, DevBuildSaveOption{})
 		require.NoError(t, err)
 
 	})

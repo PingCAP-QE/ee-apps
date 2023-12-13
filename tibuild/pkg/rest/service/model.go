@@ -267,7 +267,7 @@ type ImageSyncRequest struct {
 
 type TibuildCtxKey string
 
-var KeyOfUserName TibuildCtxKey = "username"
+var KeyOfApiAccount TibuildCtxKey = "apiAccount"
 
-const AdminUserName = "admin"
-const TibuildUserName = "tibuild"
+const AdminApiAccount = "admin"
+const TibuildApiAccount = "tibuild"

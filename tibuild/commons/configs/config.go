@@ -31,12 +31,12 @@ type ConfigYaml struct {
 		Token string
 	}
 
-	AuthConfig TiBuildAuthCfg
+	RestApiSecret RestApiSecret
 }
 
-type TiBuildAuthCfg struct {
-	AdminPasswd   string
-	TiBuildPasswd string
+type RestApiSecret struct {
+	AdminToken   string
+	TiBuildToken string
 }
 
 var Config = &ConfigYaml{}

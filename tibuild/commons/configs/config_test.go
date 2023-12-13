@@ -8,6 +8,6 @@ import (
 
 func TestLoadConfig(t *testing.T) {
 	LoadConfig("../../configs/config_example.yaml")
-	cfg := Config.AuthConfig
-	assert.NotEmpty(t, cfg.TiBuildPasswd)
+	cfg := Config.RestApiSecret
+	assert.NotEmpty(t, cfg.TiBuildToken)
 }

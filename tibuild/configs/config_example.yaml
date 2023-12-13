@@ -17,6 +17,6 @@ jenkins:
 github:
   token: ""
 
-authconfig:
-  adminpasswd: "1"
-  tibuildpasswd: "2"
+restapisecret:
+  admintoken: "1"
+  tibuildtoken: "2"

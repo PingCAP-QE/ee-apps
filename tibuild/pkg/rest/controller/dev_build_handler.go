@@ -17,10 +17,10 @@ import (
 
 type DevBuildHandler struct {
 	svc  service.DevBuildService
-	auth configs.TiBuildAuthCfg
+	auth configs.RestApiSecret
 }
 
-func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, auth configs.TiBuildAuthCfg) *DevBuildHandler {
+func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, auth configs.RestApiSecret) *DevBuildHandler {
 	db.AutoMigrate(&service.DevBuild{})
 	return &DevBuildHandler{svc: service.DevbuildServer{
 		Repo:    repo.DevBuildRepo{Db: db},
@@ -35,17 +35,17 @@ func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
 	if !ok {
 		return c.Request.Context(), nil
 	}
-	if user == service.AdminUserName {
-		if passwd == h.auth.AdminPasswd {
-			ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
+	if user == service.AdminApiAccount {
+		if passwd == h.auth.AdminToken {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfApiAccount, user)
 			return ctx, nil
 		} else {
 			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
 		}
 	}
-	if user == service.TibuildUserName {
-		if passwd == h.auth.TiBuildPasswd {
-			ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
+	if user == service.TibuildApiAccount {
+		if passwd == h.auth.TiBuildToken {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfApiAccount, user)
 			return ctx, nil
 		} else {
 			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
