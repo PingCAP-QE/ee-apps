@@ -186,6 +186,9 @@ func validateReq(req DevBuild) error {
 		if !hotfixVersionValidator.MatchString((spec.Version)) {
 			return fmt.Errorf("verion must be like v7.0.0-20230102... for hotfix")
 		}
+		if spec.TargetImg != "" {
+			return fmt.Errorf("target image shall be empty for hotfix")
+		}
 	}
 	return nil
 }
