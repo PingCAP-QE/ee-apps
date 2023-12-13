@@ -24,7 +24,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	req.Meta.CreatedAt = s.Now()
 	req.Status.Status = BuildStatusPending
 
-	if err := validate_permission(ctx, req); err != nil {
+	if err := validatePermission(ctx, req); err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrAuth)
 	}
 
@@ -81,7 +81,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	return &entity, nil
 }
 
-func validate_permission(ctx context.Context, req DevBuild) error {
+func validatePermission(ctx context.Context, req DevBuild) error {
 	if req.Spec.TargetImg != "" && ctx.Value(KeyOfUserName) != AdminUserName {
 		return fmt.Errorf("targetImage deny because of permission")
 	}
