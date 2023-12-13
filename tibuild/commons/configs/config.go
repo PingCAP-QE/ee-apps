@@ -31,9 +31,12 @@ type ConfigYaml struct {
 		Token string
 	}
 
-	TiBuild struct {
-		AdminPasswd string
-	}
+	AuthConfig TiBuildAuthCfg
+}
+
+type TiBuildAuthCfg struct {
+	AdminPasswd   string
+	TiBuildPasswd string
 }
 
 var Config = &ConfigYaml{}
@@ -41,5 +44,8 @@ var Config = &ConfigYaml{}
 // Load config from file into 'Config' variable
 func LoadConfig(file string) {
 	fmt.Printf("file:%s\n", file)
-	configor.Load(Config, file)
+	err := configor.Load(Config, file)
+	if err != nil {
+		panic(err)
+	}
 }

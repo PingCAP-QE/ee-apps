@@ -102,7 +102,7 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 		panic(err)
 	}
 	devBuildGroup := apiGroup.Group("/devbuilds")
-	devBuildHandler := controllers.NewDevBuildHandler(context.Background(), jenkins, database.DBConn.DB, cfg.TiBuild.AdminPasswd)
+	devBuildHandler := controllers.NewDevBuildHandler(context.Background(), jenkins, database.DBConn.DB, cfg.AuthConfig)
 	{
 		devBuildGroup.POST("", devBuildHandler.Create)
 		devBuildGroup.GET("", devBuildHandler.List)

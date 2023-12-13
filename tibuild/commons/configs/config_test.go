@@ -2,9 +2,12 @@ package configs
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadConfig(t *testing.T) {
-	t.Skip()
-	LoadConfig("../../config.yaml")
+	LoadConfig("../../configs/config.yaml")
+	cfg := Config.AuthConfig
+	assert.NotEmpty(t, cfg.TiBuildPasswd)
 }

@@ -81,7 +81,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 }
 
 func validate_permission(ctx context.Context, req DevBuild) error {
-	if req.Spec.TargetImage != "" && ctx.Value(KeyOfUserName) != AdminUserName {
+	if req.Spec.TargetImg != "" && ctx.Value(KeyOfUserName) != AdminUserName {
 		return fmt.Errorf("targetImage deny because of permission")
 	}
 	return nil

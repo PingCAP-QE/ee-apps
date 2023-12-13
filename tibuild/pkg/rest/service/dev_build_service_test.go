@@ -149,7 +149,7 @@ func TestDevBuildCreate(t *testing.T) {
 		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.NoError(t, err)
 
-		obj.Spec.TargetImage = "hub.pingcap.net/temp/tidb:somefeat"
+		obj.Spec.TargetImg = "hub.pingcap.net/temp/tidb:somefeat"
 		_, err = server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.ErrorIs(t, err, ErrAuth)
 

@@ -10,22 +10,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/repo"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type DevBuildHandler struct {
-	svc          service.DevBuildService
-	admin_passwd string
+	svc  service.DevBuildService
+	auth configs.TiBuildAuthCfg
 }
 
-func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, admin_passwd string) *DevBuildHandler {
+func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, auth configs.TiBuildAuthCfg) *DevBuildHandler {
 	db.AutoMigrate(&service.DevBuild{})
 	return &DevBuildHandler{svc: service.DevbuildServer{
 		Repo:    repo.DevBuildRepo{Db: db},
 		Jenkins: jenkins,
 		Now:     time.Now},
-		admin_passwd: admin_passwd,
+		auth: auth,
 	}
 }
 
@@ -34,11 +35,23 @@ func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
 	if !ok {
 		return c.Request.Context(), nil
 	}
-	if user != service.AdminUserName || passwd != h.admin_passwd {
-		return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+	if user == service.AdminUserName {
+		if passwd == h.auth.AdminPasswd {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
+			return ctx, nil
+		} else {
+			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+		}
 	}
-	ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
-	return ctx, nil
+	if user == service.TibuildUserName {
+		if passwd == h.auth.TiBuildPasswd {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfUserName, user)
+			return ctx, nil
+		} else {
+			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+		}
+	}
+	return c.Request.Context(), nil
 }
 
 // CreateDevbuild godoc
