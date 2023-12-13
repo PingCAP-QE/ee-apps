@@ -57,6 +57,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		"BuilderImg":        entity.Spec.BuilderImg,
 		"ProductDockerfile": entity.Spec.ProductDockerfile,
 		"ProductBaseImg":    entity.Spec.ProductBaseImg,
+		"TargetImg":         entity.Spec.TargetImg,
 	}
 	qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
 	if err != nil {
