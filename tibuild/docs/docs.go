@@ -485,7 +485,7 @@ const docTemplate = `{
                 "productDockerfile": {
                     "type": "string"
                 },
-                "targetImage": {
+                "targetImg": {
                     "type": "string"
                 },
                 "version": {

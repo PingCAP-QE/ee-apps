@@ -110,7 +110,7 @@ definitions:
         type: string
       productDockerfile:
         type: string
-      targetImage:
+      targetImg:
         type: string
       version:
         type: string
