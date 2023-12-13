@@ -295,14 +295,7 @@ type DevBuildRepository interface {
 
 var _ DevBuildService = DevbuildServer{}
 
-var versionValidator *regexp.Regexp
-var hotfixVersionValidator *regexp.Regexp
-var gitRefValidator *regexp.Regexp
-var githubRepoValidator *regexp.Regexp
-
-func init() {
-	versionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
-	hotfixVersionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
-	gitRefValidator = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
-	githubRepoValidator = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
-}
+var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
+var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
+var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
+var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
