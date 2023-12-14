@@ -77,3 +77,47 @@ var _ = Service("oci", func() {
 		})
 	})
 })
+
+var _ = Service("ks3", func() {
+	Description("OCI artifacts download service")
+
+	Method("download-object", func() {
+		Payload(func() {
+			Field(1, "bucket", String, "bucket name")
+			Field(2, "key", String, "object key")
+
+			Required("bucket", "key")
+		})
+
+		// The use of Result here illustrates how HTTP headers can still be
+		// properly encoded and validated when using SkipResponseBodyEncode. It
+		// is not generally required to implement a download method.
+		Result(func() {
+			Attribute("length", Int64, "Length is the downloaded content length in bytes.", func() {
+				Example(4 * 1024 * 1024)
+			})
+			Attribute("contentDisposition", String, "Content-Disposition header for downloading", func() {
+				Example("attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz")
+			})
+			Required("length", "contentDisposition")
+		})
+
+		Error("invalid_file_path", ErrorResult, "Could not locate file for download")
+		Error("internal_error", ErrorResult, "Fault while processing download.")
+
+		HTTP(func() {
+			GET("/s3-obj/{bucket}/{*key}")
+
+			// Bypass response body encoder code generation to alleviate need for
+			// loading the entire response body in memory.
+			SkipResponseBodyEncodeDecode()
+
+			Response(func() {
+				// Set the content type for binary data
+				ContentType("application/octet-stream")
+				Header("length:Content-Length")
+				Header("contentDisposition:Content-Disposition")
+			})
+		})
+	})
+})

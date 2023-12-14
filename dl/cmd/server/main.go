@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	dl "github.com/PingCAP-QE/ee-apps/dl"
+	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 )
 
@@ -20,11 +21,12 @@ func main() {
 	// Define command line flags, add any other flag required to configure the
 	// service.
 	var (
-		hostF     = flag.String("host", "localhost", "Server host (valid values: localhost)")
-		domainF   = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
-		httpPortF = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
-		secureF   = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
-		dbgF      = flag.Bool("debug", false, "Log request and response bodies")
+		hostF       = flag.String("host", "localhost", "Server host (valid values: localhost)")
+		domainF     = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
+		httpPortF   = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
+		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
+		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
+		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
 	)
 	flag.Parse()
 
@@ -39,18 +41,22 @@ func main() {
 	// Initialize the services.
 	var (
 		ociSvc oci.Service
+		ks3Svc ks3.Service
 	)
 	{
 		ociSvc = dl.NewOci(logger)
+		ks3Svc = dl.NewKs3(logger, *ks3CfgPathF)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	var (
 		ociEndpoints *oci.Endpoints
+		ks3Endpoints *ks3.Endpoints
 	)
 	{
 		ociEndpoints = oci.NewEndpoints(ociSvc)
+		ks3Endpoints = ks3.NewEndpoints(ks3Svc)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -92,7 +98,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, ociEndpoints, &wg, errc, logger, *dbgF)
+			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, &wg, errc, logger, *dbgF)
 		}
 
 	default:

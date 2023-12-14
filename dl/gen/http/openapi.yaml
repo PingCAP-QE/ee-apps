@@ -42,6 +42,7 @@ paths:
                     description: OK response.
                     headers:
                         Content-Disposition:
+                            description: Content-Disposition header for downloading
                             type: string
                         Content-Length:
                             description: Length is the downloaded content length in bytes.
@@ -72,6 +73,37 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Culpa illum nihil accusamus nobis aliquid doloremque.
+                            example: Provident temporibus occaecati unde.
+            schemes:
+                - http
+    /s3-obj/{bucket}/{key}:
+        get:
+            tags:
+                - ks3
+            summary: download-object ks3
+            operationId: ks3#download-object
+            produces:
+                - application/octet-stream
+            parameters:
+                - name: bucket
+                  in: path
+                  description: bucket name
+                  required: true
+                  type: string
+                - name: key
+                  in: path
+                  description: object key
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    headers:
+                        Content-Disposition:
+                            description: Content-Disposition header for downloading
+                            type: string
+                        Content-Length:
+                            description: Length is the downloaded content length in bytes.
+                            type: int64
             schemes:
                 - http

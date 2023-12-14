@@ -21,8 +21,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Repellendus id dolorem dolor quasi qui consectetur.
-                  example: Et et fugit.
+                    example: Debitis nostrum maiores est.
+                  example: Eligendi aut vero et neque odit.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -31,8 +31,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Quia aperiam sunt quam et asperiores cupiditate.
-                  example: Esse et.
+                    example: At aperiam laboriosam odio ut quam.
+                  example: Assumenda aliquam est et aut.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -40,17 +40,19 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Quo quidem fugiat tempore sapiente.
-                  example: Et laborum impedit.
+                    example: Magnam a corporis.
+                  example: Sed nihil autem dolor blanditiis accusamus sit.
             responses:
                 "200":
                     description: OK response.
                     headers:
                         Content-Disposition:
+                            description: Content-Disposition header for downloading
                             schema:
                                 type: string
-                                example: Vero dolores amet possimus quasi libero nesciunt.
-                            example: Eligendi aut vero et neque odit.
+                                description: Content-Disposition header for downloading
+                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
+                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
                         Content-Length:
                             description: Length is the downloaded content length in bytes.
                             schema:
@@ -79,8 +81,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Aut labore veniam et maiores.
-                  example: Recusandae voluptatem incidunt.
+                    example: Recusandae dolor voluptas omnis ex.
+                  example: Dolor itaque ullam.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -88,8 +90,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Itaque quos quaerat nulla repudiandae magnam vel.
-                  example: Asperiores at non dignissimos.
+                    example: Repellendus id dolorem dolor quasi qui consectetur.
+                  example: Et et fugit.
             responses:
                 "200":
                     description: OK response.
@@ -99,16 +101,69 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Omnis est natus exercitationem aliquid tempora cumque.
+                                    example: Et aut labore veniam et maiores qui.
                                 example:
-                                    - Eligendi magnam.
-                                    - Recusandae est fugiat repellat provident temporibus.
-                                    - Unde at.
+                                    - Incidunt qui itaque quos.
+                                    - Nulla repudiandae magnam.
+                                    - Nobis asperiores at non dignissimos error.
+                                    - Repellendus iste nam.
                             example:
-                                - Repellendus iste nam.
-                                - Recusandae dolor voluptas omnis ex.
-                                - Dolor itaque ullam.
+                                - Aperiam sunt quam et asperiores cupiditate deserunt.
+                                - Et qui quo.
+                                - Fugiat tempore sapiente dolorem et laborum impedit.
+                                - Vero dolores amet possimus quasi libero nesciunt.
+    /s3-obj/{bucket}/{key}:
+        get:
+            tags:
+                - ks3
+            summary: download-object ks3
+            operationId: ks3#download-object
+            parameters:
+                - name: bucket
+                  in: path
+                  description: bucket name
+                  required: true
+                  schema:
+                    type: string
+                    description: bucket name
+                    example: Neque sunt ut repellendus.
+                  example: Quaerat architecto.
+                - name: key
+                  in: path
+                  description: object key
+                  required: true
+                  schema:
+                    type: string
+                    description: object key
+                    example: Id et sit expedita.
+                  example: Vero voluptatum perspiciatis omnis qui vel.
+            responses:
+                "200":
+                    description: OK response.
+                    headers:
+                        Content-Disposition:
+                            description: Content-Disposition header for downloading
+                            schema:
+                                type: string
+                                description: Content-Disposition header for downloading
+                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
+                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
+                        Content-Length:
+                            description: Length is the downloaded content length in bytes.
+                            schema:
+                                type: integer
+                                description: Length is the downloaded content length in bytes.
+                                example: 4194304
+                                format: int64
+                            example: 4194304
+                    content:
+                        application/octet-stream:
+                            schema:
+                                type: string
+                                format: binary
 components: {}
 tags:
     - name: oci
+      description: OCI artifacts download service
+    - name: ks3
       description: OCI artifacts download service

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 
+	ks3c "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/client"
 	ocic "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -23,12 +24,14 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
 	return `oci (list-files|download-file)
+ks3 download-object
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Aut atque inventore." --tag "Est et libero voluptatibus omnis molestiae."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "Est et libero voluptatibus omnis molestiae." --tag "Excepturi perferendis dolores voluptas eius non."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Omnis est natus exercitationem aliquid tempora cumque." --key "Reiciendis eligendi magnam officiis recusandae est fugiat."` + "\n" +
 		""
 }
 
@@ -52,10 +55,19 @@ func ParseEndpoint(
 		ociDownloadFileRepositoryFlag = ociDownloadFileFlags.String("repository", "REQUIRED", "OCI artifact repository")
 		ociDownloadFileFileFlag       = ociDownloadFileFlags.String("file", "REQUIRED", "")
 		ociDownloadFileTagFlag        = ociDownloadFileFlags.String("tag", "REQUIRED", "")
+
+		ks3Flags = flag.NewFlagSet("ks3", flag.ContinueOnError)
+
+		ks3DownloadObjectFlags      = flag.NewFlagSet("download-object", flag.ExitOnError)
+		ks3DownloadObjectBucketFlag = ks3DownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
+		ks3DownloadObjectKeyFlag    = ks3DownloadObjectFlags.String("key", "REQUIRED", "object key")
 	)
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
 	ociDownloadFileFlags.Usage = ociDownloadFileUsage
+
+	ks3Flags.Usage = ks3Usage
+	ks3DownloadObjectFlags.Usage = ks3DownloadObjectUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -74,6 +86,8 @@ func ParseEndpoint(
 		switch svcn {
 		case "oci":
 			svcf = ociFlags
+		case "ks3":
+			svcf = ks3Flags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -96,6 +110,13 @@ func ParseEndpoint(
 
 			case "download-file":
 				epf = ociDownloadFileFlags
+
+			}
+
+		case "ks3":
+			switch epn {
+			case "download-object":
+				epf = ks3DownloadObjectFlags
 
 			}
 
@@ -129,6 +150,13 @@ func ParseEndpoint(
 				endpoint = c.DownloadFile()
 				data, err = ocic.BuildDownloadFilePayload(*ociDownloadFileRepositoryFlag, *ociDownloadFileFileFlag, *ociDownloadFileTagFlag)
 			}
+		case "ks3":
+			c := ks3c.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "download-object":
+				endpoint = c.DownloadObject()
+				data, err = ks3c.BuildDownloadObjectPayload(*ks3DownloadObjectBucketFlag, *ks3DownloadObjectKeyFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -160,7 +188,7 @@ ListFiles implements list-files.
     -tag STRING: 
 
 Example:
-    %[1]s oci list-files --repository "Aut atque inventore." --tag "Est et libero voluptatibus omnis molestiae."
+    %[1]s oci list-files --repository "Est et libero voluptatibus omnis molestiae." --tag "Excepturi perferendis dolores voluptas eius non."
 `, os.Args[0])
 }
 
@@ -174,5 +202,30 @@ DownloadFile implements download-file.
 
 Example:
     %[1]s oci download-file --repository "Dolores qui voluptas autem illo cum." --file "Quis maiores hic et commodi aut." --tag "Corrupti qui qui iusto."
+`, os.Args[0])
+}
+
+// ks3Usage displays the usage of the ks3 command and its subcommands.
+func ks3Usage() {
+	fmt.Fprintf(os.Stderr, `OCI artifacts download service
+Usage:
+    %[1]s [globalflags] ks3 COMMAND [flags]
+
+COMMAND:
+    download-object: DownloadObject implements download-object.
+
+Additional help:
+    %[1]s ks3 COMMAND --help
+`, os.Args[0])
+}
+func ks3DownloadObjectUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] ks3 download-object -bucket STRING -key STRING
+
+DownloadObject implements download-object.
+    -bucket STRING: bucket name
+    -key STRING: object key
+
+Example:
+    %[1]s ks3 download-object --bucket "Omnis est natus exercitationem aliquid tempora cumque." --key "Reiciendis eligendi magnam officiis recusandae est fugiat."
 `, os.Args[0])
 }
