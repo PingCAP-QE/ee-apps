@@ -1,6 +1,7 @@
 name: Release Charts
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -30,7 +31,15 @@ jobs:
         with:
           version: v3.8.1
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.6.0
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Release charts
+        working-directory: charts
+        run: |
+          echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }}
+
+          for chart in cloudevents-server dl; do
+            CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
+            helm package $chart
+            helm push $chart-${CHART_VERSION}.tgz oci://ghcr.io/pingcap-qe/ee-apps/charts
+          done
+
+
