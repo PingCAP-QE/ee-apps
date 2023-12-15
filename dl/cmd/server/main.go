@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	dl "github.com/PingCAP-QE/ee-apps/dl"
+	health "github.com/PingCAP-QE/ee-apps/dl/gen/health"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 )
@@ -40,10 +41,12 @@ func main() {
 
 	// Initialize the services.
 	var (
-		ociSvc oci.Service
-		ks3Svc ks3.Service
+		healthSvc health.Service
+		ociSvc    oci.Service
+		ks3Svc    ks3.Service
 	)
 	{
+		healthSvc = dl.NewHealth(logger)
 		ociSvc = dl.NewOci(logger)
 		ks3Svc = dl.NewKs3(logger, *ks3CfgPathF)
 	}
@@ -51,10 +54,12 @@ func main() {
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	var (
-		ociEndpoints *oci.Endpoints
-		ks3Endpoints *ks3.Endpoints
+		healthEndpoints *health.Endpoints
+		ociEndpoints    *oci.Endpoints
+		ks3Endpoints    *ks3.Endpoints
 	)
 	{
+		healthEndpoints = health.NewEndpoints(healthSvc)
 		ociEndpoints = oci.NewEndpoints(ociSvc)
 		ks3Endpoints = ks3.NewEndpoints(ks3Svc)
 	}
@@ -98,7 +103,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, &wg, errc, logger, *dbgF)
+			handleHTTPServer(ctx, u, healthEndpoints, ociEndpoints, ks3Endpoints, &wg, errc, logger, *dbgF)
 		}
 
 	default:

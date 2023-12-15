@@ -6,6 +6,36 @@ info:
 servers:
     - url: http://localhost:8000
 paths:
+    /healthz:
+        get:
+            tags:
+                - health
+            summary: healthz health
+            operationId: health#healthz
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: boolean
+                                example: true
+                            example: true
+    /livez:
+        get:
+            tags:
+                - health
+            summary: livez health
+            operationId: health#livez
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: boolean
+                                example: true
+                            example: true
     /oci-file/{repository}:
         get:
             tags:
@@ -21,8 +51,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Debitis nostrum maiores est.
-                  example: Eligendi aut vero et neque odit.
+                    example: Eligendi aut vero et neque odit.
+                  example: At aperiam laboriosam odio ut quam.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -31,8 +61,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: At aperiam laboriosam odio ut quam.
-                  example: Assumenda aliquam est et aut.
+                    example: Assumenda aliquam est et aut.
+                  example: Magnam a corporis.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -40,8 +70,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Magnam a corporis.
-                  example: Sed nihil autem dolor blanditiis accusamus sit.
+                    example: Sed nihil autem dolor blanditiis accusamus sit.
+                  example: Neque sunt ut repellendus.
             responses:
                 "200":
                     description: OK response.
@@ -81,8 +111,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Recusandae dolor voluptas omnis ex.
-                  example: Dolor itaque ullam.
+                    example: Dolor itaque ullam.
+                  example: Repellendus id dolorem dolor quasi qui consectetur.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -90,8 +120,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Repellendus id dolorem dolor quasi qui consectetur.
-                  example: Et et fugit.
+                    example: Et et fugit.
+                  example: Quia aperiam sunt quam et asperiores cupiditate.
             responses:
                 "200":
                     description: OK response.
@@ -101,17 +131,16 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Et aut labore veniam et maiores qui.
+                                    example: Qui itaque quos quaerat nulla.
                                 example:
-                                    - Incidunt qui itaque quos.
-                                    - Nulla repudiandae magnam.
-                                    - Nobis asperiores at non dignissimos error.
-                                    - Repellendus iste nam.
+                                    - Vel nobis asperiores at.
+                                    - Dignissimos error et repellendus.
+                                    - Nam quibusdam recusandae dolor voluptas.
                             example:
-                                - Aperiam sunt quam et asperiores cupiditate deserunt.
                                 - Et qui quo.
                                 - Fugiat tempore sapiente dolorem et laborum impedit.
                                 - Vero dolores amet possimus quasi libero nesciunt.
+                                - Debitis nostrum maiores est.
     /s3-obj/{bucket}/{key}:
         get:
             tags:
@@ -126,8 +155,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: Neque sunt ut repellendus.
-                  example: Quaerat architecto.
+                    example: Quaerat architecto.
+                  example: Id et sit expedita.
                 - name: key
                   in: path
                   description: object key
@@ -135,8 +164,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Id et sit expedita.
-                  example: Vero voluptatum perspiciatis omnis qui vel.
+                    example: Vero voluptatum perspiciatis omnis qui vel.
+                  example: A at dolor soluta molestiae.
             responses:
                 "200":
                     description: OK response.
@@ -163,6 +192,8 @@ paths:
                                 format: binary
 components: {}
 tags:
+    - name: health
+      description: Health service
     - name: oci
       description: OCI artifacts download service
     - name: ks3
