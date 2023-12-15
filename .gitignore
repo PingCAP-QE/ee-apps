@@ -16,3 +16,7 @@
 
 # IDEs
 .vscode/
+
+# go work files
+go.work
+go.work.sum
