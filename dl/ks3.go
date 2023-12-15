@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"log"
+	"net/url"
 	"os"
+	"path/filepath"
 
 	"github.com/ks3sdklib/aws-sdk-go/aws"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
@@ -23,11 +25,11 @@ type ks3srvc struct {
 }
 
 func newKS3Client(cfg *pkgks3.Config) *s3.S3 {
-	var cre = credentials.NewStaticCredentials(cfg.S3AccessKey, cfg.S3SecretKey, "")
+	var cre = credentials.NewStaticCredentials(cfg.AccessKey, cfg.SecretKey, "")
 	awsConfig := aws.Config{
-		Region:           cfg.S3Region, // Ref: https://docs.ksyun.com/documents/6761
+		Region:           cfg.Region, // Ref: https://docs.ksyun.com/documents/6761
 		Credentials:      cre,
-		Endpoint:         cfg.S3Endpoint, // Ref: https://docs.ksyun.com/documents/6761
+		Endpoint:         cfg.Endpoint, // Ref: https://docs.ksyun.com/documents/6761
 		DisableSSL:       true,
 		LogLevel:         0,
 		LogHTTPBody:      false,
@@ -65,9 +67,16 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 		return nil, nil, err
 	}
 
-	res = &ks3.DownloadObjectResult{
-		Length:             *getObjectOutput.ContentLength,
-		ContentDisposition: *getObjectOutput.ContentDisposition,
+	res = &ks3.DownloadObjectResult{}
+	if getObjectOutput != nil {
+		if getObjectOutput.ContentLength != nil {
+			res.Length = *getObjectOutput.ContentLength
+		}
+		if getObjectOutput.ContentDisposition != nil {
+			res.ContentDisposition = *getObjectOutput.ContentDisposition
+		} else {
+			res.ContentDisposition = `attachment; filename*=UTF-8''` + url.QueryEscape(filepath.Base(p.Key))
+		}
 	}
 
 	return res, getObjectOutput.Body, nil
