@@ -8,5 +8,5 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/PingCAP-QE/ee-apps"
 
 COPY --from=builder --chown=root:root /app/server /app/server
-EXPOSE 8080
-ENTRYPOINT [ "/app/server" ]
+EXPOSE 80
+ENTRYPOINT [ "/app/server", "--domain=0.0.0.0:80" ]
