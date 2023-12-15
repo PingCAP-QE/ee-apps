@@ -19,10 +19,10 @@ type pipelineRunHandler struct {
 func (h *pipelineRunHandler) SupportEventTypes() []string {
 	return []string{
 		string(tektoncloudevent.PipelineRunFailedEventV1),
-		string(tektoncloudevent.PipelineRunRunningEventV1),
+		// string(tektoncloudevent.PipelineRunRunningEventV1),
 		string(tektoncloudevent.PipelineRunStartedEventV1),
 		string(tektoncloudevent.PipelineRunSuccessfulEventV1),
-		string(tektoncloudevent.PipelineRunUnknownEventV1),
+		// string(tektoncloudevent.PipelineRunUnknownEventV1),
 	}
 }
 
