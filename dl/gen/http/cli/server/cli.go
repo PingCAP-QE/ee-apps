@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 
+	healthc "github.com/PingCAP-QE/ee-apps/dl/gen/http/health/client"
 	ks3c "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/client"
 	ocic "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/client"
 	goahttp "goa.design/goa/v3/http"
@@ -23,15 +24,17 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `oci (list-files|download-file)
+	return `health (healthz|livez)
+oci (list-files|download-file)
 ks3 download-object
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Est et libero voluptatibus omnis molestiae." --tag "Excepturi perferendis dolores voluptas eius non."` + "\n" +
-		os.Args[0] + ` ks3 download-object --bucket "Omnis est natus exercitationem aliquid tempora cumque." --key "Reiciendis eligendi magnam officiis recusandae est fugiat."` + "\n" +
+	return os.Args[0] + ` health healthz` + "\n" +
+		os.Args[0] + ` oci list-files --repository "Excepturi perferendis dolores voluptas eius non." --tag "Est reprehenderit quibusdam eveniet velit."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."` + "\n" +
 		""
 }
 
@@ -45,6 +48,12 @@ func ParseEndpoint(
 	restore bool,
 ) (goa.Endpoint, any, error) {
 	var (
+		healthFlags = flag.NewFlagSet("health", flag.ContinueOnError)
+
+		healthHealthzFlags = flag.NewFlagSet("healthz", flag.ExitOnError)
+
+		healthLivezFlags = flag.NewFlagSet("livez", flag.ExitOnError)
+
 		ociFlags = flag.NewFlagSet("oci", flag.ContinueOnError)
 
 		ociListFilesFlags          = flag.NewFlagSet("list-files", flag.ExitOnError)
@@ -62,6 +71,10 @@ func ParseEndpoint(
 		ks3DownloadObjectBucketFlag = ks3DownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		ks3DownloadObjectKeyFlag    = ks3DownloadObjectFlags.String("key", "REQUIRED", "object key")
 	)
+	healthFlags.Usage = healthUsage
+	healthHealthzFlags.Usage = healthHealthzUsage
+	healthLivezFlags.Usage = healthLivezUsage
+
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
 	ociDownloadFileFlags.Usage = ociDownloadFileUsage
@@ -84,6 +97,8 @@ func ParseEndpoint(
 	{
 		svcn = flag.Arg(0)
 		switch svcn {
+		case "health":
+			svcf = healthFlags
 		case "oci":
 			svcf = ociFlags
 		case "ks3":
@@ -103,6 +118,16 @@ func ParseEndpoint(
 	{
 		epn = svcf.Arg(0)
 		switch svcn {
+		case "health":
+			switch epn {
+			case "healthz":
+				epf = healthHealthzFlags
+
+			case "livez":
+				epf = healthLivezFlags
+
+			}
+
 		case "oci":
 			switch epn {
 			case "list-files":
@@ -140,6 +165,16 @@ func ParseEndpoint(
 	)
 	{
 		switch svcn {
+		case "health":
+			c := healthc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "healthz":
+				endpoint = c.Healthz()
+				data = nil
+			case "livez":
+				endpoint = c.Livez()
+				data = nil
+			}
 		case "oci":
 			c := ocic.NewClient(scheme, host, doer, enc, dec, restore)
 			switch epn {
@@ -166,6 +201,40 @@ func ParseEndpoint(
 	return endpoint, data, nil
 }
 
+// healthUsage displays the usage of the health command and its subcommands.
+func healthUsage() {
+	fmt.Fprintf(os.Stderr, `Health service
+Usage:
+    %[1]s [globalflags] health COMMAND [flags]
+
+COMMAND:
+    healthz: Healthz implements healthz.
+    livez: Livez implements livez.
+
+Additional help:
+    %[1]s health COMMAND --help
+`, os.Args[0])
+}
+func healthHealthzUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] health healthz
+
+Healthz implements healthz.
+
+Example:
+    %[1]s health healthz
+`, os.Args[0])
+}
+
+func healthLivezUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] health livez
+
+Livez implements livez.
+
+Example:
+    %[1]s health livez
+`, os.Args[0])
+}
+
 // ociUsage displays the usage of the oci command and its subcommands.
 func ociUsage() {
 	fmt.Fprintf(os.Stderr, `OCI artifacts download service
@@ -188,7 +257,7 @@ ListFiles implements list-files.
     -tag STRING: 
 
 Example:
-    %[1]s oci list-files --repository "Est et libero voluptatibus omnis molestiae." --tag "Excepturi perferendis dolores voluptas eius non."
+    %[1]s oci list-files --repository "Excepturi perferendis dolores voluptas eius non." --tag "Est reprehenderit quibusdam eveniet velit."
 `, os.Args[0])
 }
 
@@ -201,7 +270,7 @@ DownloadFile implements download-file.
     -tag STRING: 
 
 Example:
-    %[1]s oci download-file --repository "Dolores qui voluptas autem illo cum." --file "Quis maiores hic et commodi aut." --tag "Corrupti qui qui iusto."
+    %[1]s oci download-file --repository "Quis maiores hic et commodi aut." --file "Corrupti qui qui iusto." --tag "Enim animi exercitationem voluptate perferendis ut."
 `, os.Args[0])
 }
 
@@ -226,6 +295,6 @@ DownloadObject implements download-object.
     -key STRING: object key
 
 Example:
-    %[1]s ks3 download-object --bucket "Omnis est natus exercitationem aliquid tempora cumque." --key "Reiciendis eligendi magnam officiis recusandae est fugiat."
+    %[1]s ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."
 `, os.Args[0])
 }
