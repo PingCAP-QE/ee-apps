@@ -1,11 +1,8 @@
 package ks3
 
 type Config struct {
-	S3Region      string
-	S3Bucket      string
-	S3Endpoint    string
-	S3AccessKey   string
-	S3SecretKey   string
-	BaseUrl       string
-	FileserverUrl string
+	Region    string `yaml:"region,omitempty" json:"region,omitempty"`
+	Endpoint  string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+	AccessKey string `yaml:"access_key,omitempty" json:"access_key,omitempty"`
+	SecretKey string `yaml:"secret_key,omitempty" json:"secret_key,omitempty"`
 }
