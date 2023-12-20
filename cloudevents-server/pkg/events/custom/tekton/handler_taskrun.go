@@ -32,8 +32,13 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewHTTPResult(http.StatusBadRequest, err.Error())
 	}
 
-	log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
-	return cloudevents.ResultACK
+	switch event.Type() {
+	case string(tektoncloudevent.TaskRunFailedEventV1):
+		return h.notifyRunStatus(event)
+	default:
+		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
+		return cloudevents.ResultACK
+	}
 }
 
 func (h *taskRunHandler) notifyRunStatus(event cloudevents.Event) cloudevents.Result {

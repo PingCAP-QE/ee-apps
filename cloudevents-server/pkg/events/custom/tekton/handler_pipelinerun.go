@@ -19,10 +19,10 @@ type pipelineRunHandler struct {
 func (h *pipelineRunHandler) SupportEventTypes() []string {
 	return []string{
 		string(tektoncloudevent.PipelineRunFailedEventV1),
-		// string(tektoncloudevent.PipelineRunRunningEventV1),
+		string(tektoncloudevent.PipelineRunRunningEventV1),
 		string(tektoncloudevent.PipelineRunStartedEventV1),
 		string(tektoncloudevent.PipelineRunSuccessfulEventV1),
-		// string(tektoncloudevent.PipelineRunUnknownEventV1),
+		string(tektoncloudevent.PipelineRunUnknownEventV1),
 	}
 }
 
@@ -32,8 +32,15 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		return cloudevents.NewHTTPResult(http.StatusBadRequest, err.Error())
 	}
 
-	log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
-	return cloudevents.ResultACK
+	switch tektoncloudevent.TektonEventType(event.Type()) {
+	case tektoncloudevent.PipelineRunStartedEventV1,
+		tektoncloudevent.PipelineRunFailedEventV1,
+		tektoncloudevent.PipelineRunSuccessfulEventV1:
+		return h.notifyRunStatus(event)
+	default:
+		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
+		return cloudevents.ResultACK
+	}
 }
 
 func (h *pipelineRunHandler) notifyRunStatus(event cloudevents.Event) cloudevents.Result {
