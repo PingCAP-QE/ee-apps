@@ -6,9 +6,12 @@ import (
 )
 
 func NewHandler(cfg config.Lark) (handler.EventHandler, error) {
-	return &pipelineRunHandler{
-		LarkClient:       newLarkClient(cfg),
-		Receiver:         cfg.Receiver,
-		RunDetailBaseURL: "https://do.pingcap.net/tekton",
-	}, nil
+	larkClient := newLarkClient(cfg)
+	baseURL := "https://do.pingcap.net/tekton"
+	ret := new(handler.CompositeEventHandler).AddHandlers(
+		&pipelineRunHandler{LarkClient: larkClient, Receiver: cfg.Receiver, RunDetailBaseURL: baseURL},
+		&taskRunHandler{LarkClient: larkClient, Receiver: cfg.Receiver, RunDetailBaseURL: baseURL},
+	)
+
+	return ret, nil
 }
