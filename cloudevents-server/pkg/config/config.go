@@ -18,7 +18,7 @@ type Lark struct {
 	AppID     string `yaml:"app_id,omitempty" json:"app_id,omitempty"`
 	AppSecret string `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
 	// TODO: how to get the receiver?
-	Receiver string `yaml:"receiver,omitempty" json:"receiver,omitempty"`
+	Receivers []string `yaml:"receivers,omitempty" json:"receiver,omitempty"`
 }
 
 type Config struct {

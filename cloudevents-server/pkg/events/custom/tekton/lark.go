@@ -1,15 +1,18 @@
 package tekton
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog/log"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
@@ -29,25 +32,57 @@ func newLarkClient(cfg config.Lark) *lark.Client {
 	)
 }
 
-func newLarkMessage(receiveEmail string, event cloudevents.Event, detailBaseUrl string) (*larkim.CreateMessageReq, error) {
+func sendLarkMessages(client *lark.Client, receiveEmails []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
+	createMsgReqs, err := newLarkMessages(receiveEmails, event, detailBaseUrl)
+	if err != nil {
+		log.Error().Err(err).Msg("compose lark message failed")
+		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "compose lark message failed: %v", err)
+	}
+
+	for _, createMsgReq := range createMsgReqs {
+		resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
+		if err != nil {
+			log.Error().Err(err).Msg("send lark message failed")
+			return cloudevents.NewHTTPResult(http.StatusInternalServerError, "send lark message failed: %v", err)
+		}
+
+		if !resp.Success() {
+			return cloudevents.ResultNACK
+		}
+
+		log.Info().
+			Str("request-id", resp.RequestId()).
+			Str("message-id", *resp.Data.MessageId).
+			Msg("send lark message successfully.")
+	}
+
+	return cloudevents.ResultACK
+}
+
+func newLarkMessages(receiveEmails []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
 	messageCard := newLarkCard(event.Type(), event.Subject(), event.Source(), detailBaseUrl)
 	messageRawStr, err := messageCard.String()
 	if err != nil {
 		return nil, err
 	}
 
-	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(larkim.ReceiveIdTypeEmail).
-		Body(
-			larkim.NewCreateMessageReqBodyBuilder().
-				MsgType(larkim.MsgTypeInteractive).
-				ReceiveId(receiveEmail).
-				Content(messageRawStr).
-				Build(),
-		).
-		Build()
+	var reqs []*larkim.CreateMessageReq
+	for _, receiveEmail := range receiveEmails {
+		req := larkim.NewCreateMessageReqBuilder().
+			ReceiveIdType(larkim.ReceiveIdTypeEmail).
+			Body(
+				larkim.NewCreateMessageReqBodyBuilder().
+					MsgType(larkim.MsgTypeInteractive).
+					ReceiveId(receiveEmail).
+					Content(messageRawStr).
+					Build(),
+			).
+			Build()
 
-	return req, nil
+		reqs = append(reqs, req)
+	}
+
+	return reqs, nil
 }
 
 func newLarkCard(etype, subject, source, baseURL string) *larkcard.MessageCard {

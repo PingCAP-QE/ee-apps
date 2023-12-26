@@ -50,7 +50,7 @@ func Test_pipelineRunHandler_Handle(t *testing.T) {
 
 	h := &pipelineRunHandler{
 		LarkClient:       lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
-		Receiver:         receiver,
+		Receivers:        []string{receiver},
 		RunDetailBaseURL: baseURL,
 	}
 	for _, tt := range tests {

@@ -46,7 +46,7 @@ func Test_taskRunHandler_Handle(t *testing.T) {
 
 	h := &taskRunHandler{
 		LarkClient:       lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
-		Receiver:         receiver,
+		Receivers:        []string{receiver},
 		RunDetailBaseURL: baseURL,
 	}
 	for _, tt := range tests {
