@@ -170,7 +170,15 @@ type DevBuildSpec struct {
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
 	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
+	PreferedEngine    PipelineEngine `json:"preferedEngine,omitempty" gorm:"type:varchar(16)"`
 }
+
+type PipelineEngine string
+
+const (
+	JenkinsEngine PipelineEngine = "jenkins"
+	TektonEngine  PipelineEngine = "tekton"
+)
 
 type GitRef string
 
@@ -220,14 +228,41 @@ func (p BuildStatus) IsCompleted() bool {
 }
 
 type DevBuildStatus struct {
-	Status          BuildStatus     `json:"status" gorm:"type:varchar(16)"`
-	PipelineBuildID int64           `json:"pipelineBuildID,omitempty"`
-	PipelineViewURL string          `json:"pipelineViewURL,omitempty" gorm:"-"`
-	ErrMsg          string          `json:"errMsg,omitempty" gorm:"type:varchar(256)"`
+	Status           BuildStatus     `json:"status" gorm:"type:varchar(16)"`
+	PipelineBuildID  int64           `json:"pipelineBuildID,omitempty"`
+	PipelineViewURL  string          `json:"pipelineViewURL,omitempty" gorm:"-"`
+	ErrMsg           string          `json:"errMsg,omitempty" gorm:"type:varchar(256)"`
+	PipelineStartAt  *time.Time      `json:"pipelineStartAt,omitempty"`
+	PipelineEndAt    *time.Time      `json:"pipelineEndAt,omitempty"`
+	BuildReport      *BuildReport    `json:"buildReport,omitempty" gorm:"-:all"`
+	BuildReportJson  json.RawMessage `json:"-" gorm:"column:build_report;type:json"`
+	TektonStatus     *TektonStatus   `json:"tektonStatus,omitempty" gorm:"-:all"`
+	TektonStatusJson json.RawMessage `json:"-" gorm:"column:tekton_status;type:json"`
+}
+
+type TektonStatus struct {
+	Status          BuildStatus      `json:"status"`
+	PipelineStartAt *time.Time       `json:"pipelineStartAt,omitempty"`
+	PipelineEndAt   *time.Time       `json:"pipelineEndAt,omitempty"`
+	BuildReport     *BuildReport     `json:"buildReport,omitempty"`
+	Pipelines       []TektonPipeline `json:"pipelines"`
+}
+
+type TektonPipeline struct {
+	Name            string          `json:"name"`
+	URL             string          `json:"url,omitempty"`
+	GitHash         string          `json:"gitHash,omitempty"`
+	Status          BuildStatus     `json:"status"`
+	Platform        Platform        `json:"platform,omitempty"`
 	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	BuildReport     *BuildReport    `json:"buildReport,omitempty" gorm:"-:all"`
-	BuildReportJson json.RawMessage `json:"-" gorm:"column:build_report;type:json"`
+	OrasFiles       []OrasFile      `json:"ociFiles,omitempty"`
+	Images          []ImageArtifact `json:"images,omitempty"`
+}
+
+type OrasFile struct {
+	URL   string   `json:"URL"`
+	Files []string `json:"files"`
 }
 
 type BuildReport struct {

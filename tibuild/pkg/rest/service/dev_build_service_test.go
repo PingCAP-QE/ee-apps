@@ -292,3 +292,60 @@ func TestDevBuildRerun(t *testing.T) {
 	require.Equal(t, 1, entity.ID)
 	require.Equal(t, "v6.1.2", entity.Spec.Version)
 }
+
+func TestTektonStatusMerge(t *testing.T) {
+	starttime := time.Unix(1, 0)
+	endtime := time.Unix(20, 0)
+
+	t.Run("success", func(t *testing.T) {
+		status := &TektonStatus{
+			Pipelines: []TektonPipeline{
+				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
+					PipelineStartAt: &starttime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
+					PipelineStartAt: &starttime,
+					PipelineEndAt:   &endtime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+			},
+		}
+		compute_tekton_status(status)
+		require.Equal(t, BuildStatusSuccess, status.Status)
+		require.Equal(t, endtime.Sub(starttime), status.PipelineEndAt.Sub(*status.PipelineStartAt))
+	})
+
+	t.Run("processing", func(t *testing.T) {
+		status := &TektonStatus{
+			Pipelines: []TektonPipeline{
+				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
+					PipelineStartAt: &starttime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+				{Name: "pipelinerun2", Status: BuildStatusProcessing, Platform: LinuxArm64,
+					PipelineStartAt: &starttime,
+					PipelineEndAt:   &endtime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+			},
+		}
+		compute_tekton_status(status)
+		require.Equal(t, BuildStatusProcessing, status.Status)
+	})
+	t.Run("processing", func(t *testing.T) {
+		status := &TektonStatus{
+			Pipelines: []TektonPipeline{
+				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
+					PipelineStartAt: &starttime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+				{Name: "pipelinerun2", Status: BuildStatusFailure, Platform: LinuxArm64,
+					PipelineStartAt: &starttime,
+					PipelineEndAt:   &endtime,
+					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+			},
+		}
+		compute_tekton_status(status)
+		require.Equal(t, BuildStatusFailure, status.Status)
+	})
+
+}

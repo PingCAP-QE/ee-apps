@@ -30,6 +30,10 @@ func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.D
 	}
 }
 
+func (h DevBuildHandler) GetService() service.DevBuildService {
+	return h.svc
+}
+
 func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
 	user, passwd, ok := c.Request.BasicAuth()
 	if !ok {

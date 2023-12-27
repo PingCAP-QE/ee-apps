@@ -15,6 +15,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/controller"
 	controllers "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/controller"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
+	events "github.com/PingCAP-QE/ee-apps/tibuild/pkg/webhook/handler"
 
 	_ "github.com/PingCAP-QE/ee-apps/tibuild/docs"
 )
@@ -115,5 +116,11 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 	artifactGroup := apiGroup.Group("/artifact")
 	{
 		artifactGroup.POST("/sync-image", artifactHelper.SyncImage)
+	}
+
+	event := events.NewHandler(devBuildHandler.GetService())
+	eventsGroup := apiGroup.Group("/event")
+	{
+		eventsGroup.POST("", event.Receive)
 	}
 }

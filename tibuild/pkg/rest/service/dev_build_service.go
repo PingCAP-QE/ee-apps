@@ -41,6 +41,9 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, err
 	}
 	entity := *resp
+	if entity.Spec.PreferedEngine == TektonEngine {
+		return &entity, nil
+	}
 
 	params := map[string]string{
 		"Product":           string(entity.Spec.Product),
@@ -93,6 +96,9 @@ func fillWithDefaults(req *DevBuild) {
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
+	if req.Spec.PreferedEngine == "" {
+		req.Spec.PreferedEngine = JenkinsEngine
+	}
 	req.Status.BuildReportJson = json.RawMessage("null")
 }
 
@@ -205,6 +211,9 @@ func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option
 	if !req.Status.Status.IsValid() {
 		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
 	}
+	if req.Status.TektonStatus == nil {
+		req.Status.TektonStatus = old.Status.TektonStatus
+	}
 	old.Status = req.Status
 	old.Meta.UpdatedAt = s.Now()
 	if option.DryRun {
@@ -254,6 +263,9 @@ func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOptio
 }
 
 func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {
+	if entity.Spec.PreferedEngine == TektonEngine {
+		return entity, nil
+	}
 	now := s.Now()
 	build, err := s.Jenkins.GetBuild(ctx, jobname, entity.Status.PipelineBuildID)
 	if err != nil {
@@ -286,6 +298,105 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	}
 }
 
+func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
+	obj, err := s.Get(ctx, id, DevBuildGetOption{})
+	if err != nil {
+		return nil, err
+	}
+	status := obj.Status.TektonStatus
+	name := pipeline.Name
+	index := -1
+	for i, p := range status.Pipelines {
+		if p.Name == name {
+			index = i
+		}
+	}
+	if index >= 0 {
+		status.Pipelines[index] = pipeline
+	} else {
+		status.Pipelines = append(status.Pipelines, pipeline)
+	}
+	compute_tekton_status(status)
+	if obj.Spec.PreferedEngine == TektonEngine {
+		obj.Status.Status = obj.Status.TektonStatus.Status
+		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
+	}
+	return s.Update(ctx, id, *obj, options)
+}
+
+func compute_tekton_status(status *TektonStatus) {
+	phase := BuildStatusPending
+	var success_platforms = map[Platform]struct{}{}
+	var failure_platforms = map[Platform]struct{}{}
+	var latest_endat *time.Time
+	for _, pipeline := range status.Pipelines {
+		switch pipeline.Status {
+		case BuildStatusSuccess:
+			success_platforms[pipeline.Platform] = struct{}{}
+		case BuildStatusFailure:
+			failure_platforms[pipeline.Platform] = struct{}{}
+		}
+		if status.BuildReport == nil {
+			status.BuildReport = &BuildReport{}
+		} else {
+			status.BuildReport.Images = nil
+			status.BuildReport.Binaries = nil
+		}
+		status.BuildReport.GitHash = pipeline.GitHash
+		for _, files := range pipeline.OrasFiles {
+			status.BuildReport.Binaries = append(status.BuildReport.Binaries, oras_to_files(pipeline.Platform, files)...)
+		}
+		for _, image := range pipeline.Images {
+			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
+			status.BuildReport.Images = append(status.BuildReport.Images, img)
+		}
+		if pipeline.PipelineStartAt != nil {
+			if status.PipelineStartAt == nil {
+				status.PipelineStartAt = pipeline.PipelineStartAt
+			} else if pipeline.PipelineStartAt.Before(*status.PipelineStartAt) {
+				status.PipelineStartAt = pipeline.PipelineStartAt
+			}
+		}
+		if pipeline.PipelineEndAt != nil {
+			if latest_endat == nil {
+				latest_endat = pipeline.PipelineEndAt
+			} else if latest_endat.Before(*pipeline.PipelineEndAt) {
+				latest_endat = pipeline.PipelineEndAt
+			}
+		}
+	}
+	target_success_pipeline := 2
+	if len(success_platforms) == target_success_pipeline {
+		phase = BuildStatusSuccess
+	} else if len(failure_platforms) != 0 {
+		phase = BuildStatusFailure
+	} else if len(status.Pipelines) != 0 {
+		phase = BuildStatusProcessing
+	}
+	status.Status = phase
+	if status.Status.IsCompleted() {
+		status.PipelineEndAt = latest_endat
+	}
+}
+
+func oras_to_files(platform Platform, oras OrasFile) []BinArtifact {
+	var rt []BinArtifact
+	for _, file := range oras.Files {
+		rt = append(rt, BinArtifact{Platform: platform, URL: oras_to_file_url(oras.URL, file)})
+	}
+	return rt
+}
+
+func oras_to_file_url(oci, file string) string {
+	ss := strings.SplitN(oci, ":", 2)
+	var repo = ss[0]
+	var tag = "latest"
+	if len(ss) == 2 {
+		tag = ss[1]
+	}
+	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", oras_fileserver_holder, repo, tag, file)
+}
+
 type DevBuildRepository interface {
 	Create(ctx context.Context, req DevBuild) (resp *DevBuild, err error)
 	Get(ctx context.Context, id int) (resp *DevBuild, err error)
@@ -299,3 +410,6 @@ var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
 var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
 var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
+
+const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns/"
+const oras_fileserver_holder = "${oras_fileserver}"
