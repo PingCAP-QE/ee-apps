@@ -18,12 +18,16 @@ type Lark struct {
 	AppID     string `yaml:"app_id,omitempty" json:"app_id,omitempty"`
 	AppSecret string `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
 	// TODO: how to get the receiver?
-	Receiver string `yaml:"receiver,omitempty" json:"receiver,omitempty"`
+	Receivers []string `yaml:"receivers,omitempty" json:"receiver,omitempty"`
 }
 
 type Config struct {
-	Store Store `yaml:"store,omitempty" json:"store,omitempty"`
-	Lark  Lark  `yaml:"lark,omitempty" json:"lark,omitempty"`
+	Store   Store `yaml:"store,omitempty" json:"store,omitempty"`
+	Lark    Lark  `yaml:"lark,omitempty" json:"lark,omitempty"`
+	TiBuild struct {
+		ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
+		TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
+	} `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
 }
 
 func (c *Config) LoadFromFile(file string) error {

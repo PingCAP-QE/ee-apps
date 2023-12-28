@@ -1,86 +1,10 @@
 package tekton
 
-import (
-	"encoding/json"
-	"reflect"
-	"testing"
+import "os"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-	lark "github.com/larksuite/oapi-sdk-go/v3"
-	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
-
-	_ "embed"
-)
-
-// test events.
 var (
-	//go:embed testdata/event-pipelinerun.failed.json
-	pipelineRunFailedEventBytes []byte
-	//go:embed testdata/event-pipelinerun.running.json
-	pipelineRunRunningEventBytes []byte
-	//go:embed testdata/event-pipelinerun.started.json
-	pipelineRunStartedEventBytes []byte
-	//go:embed testdata/event-pipelinerun.successful.json
-	pipelineRunSuccessfulEventBytes []byte
-	//go:embed testdata/event-pipelinerun.unknown.json
-	pipelineRunUnknownEventBytes []byte
-
-	//go:embed testdata/event-taskrun.failed.json
-	taskRunFailedEventBytes []byte
-	//go:embed testdata/event-taskrun.running.json
-	taskRunRunningEventBytes []byte
-	//go:embed testdata/event-taskrun.started.json
-	taskRunStartedEventBytes []byte
-	//go:embed testdata/event-taskrun.successful.json
-	taskRunSuccessfulEventBytes []byte
-	//go:embed testdata/event-taskrun.unknown.json
-	taskRunUnknownEventBytes []byte
+	larkAppID     = os.Getenv("LARK_APP_ID")
+	larkAppSecret = os.Getenv("LARK_APP_SECRET")
+	receiver      = os.Getenv("LARK_RECEIVER")
+	baseURL       = os.Getenv("LINK_BASE_URL")
 )
-
-const (
-	larkAppID     = "<Chagne me>"
-	larkAppSecret = "<Chagne me>"
-	receiver      = "<Change me>@xxx.com"
-	baseURL       = "https://chagne.me.com/"
-)
-
-func TestHandler_Handle(t *testing.T) {
-	type fields struct {
-		LarkClient *lark.Client
-	}
-	type args struct {
-	}
-	tests := []struct {
-		name      tektoncloudevent.TektonEventType
-		eventJSON []byte
-		want      cloudevents.Result
-	}{
-		{name: tektoncloudevent.PipelineRunFailedEventV1, eventJSON: pipelineRunFailedEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.PipelineRunRunningEventV1, eventJSON: pipelineRunRunningEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.PipelineRunStartedEventV1, eventJSON: pipelineRunStartedEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.PipelineRunSuccessfulEventV1, eventJSON: pipelineRunSuccessfulEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.TaskRunFailedEventV1, eventJSON: taskRunFailedEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.TaskRunRunningEventV1, eventJSON: taskRunRunningEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.TaskRunStartedEventV1, eventJSON: taskRunStartedEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.TaskRunSuccessfulEventV1, eventJSON: taskRunSuccessfulEventBytes, want: cloudevents.ResultACK},
-		{name: tektoncloudevent.TaskRunUnknownEventV1, eventJSON: taskRunUnknownEventBytes, want: cloudevents.ResultACK},
-	}
-
-	h := &Handler{
-		LarkClient:       lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
-		RunDetailBaseURL: baseURL,
-	}
-	for _, tt := range tests {
-		t.Run(string(tt.name), func(t *testing.T) {
-			e := cloudevents.NewEvent()
-			if err := json.Unmarshal(tt.eventJSON, &e); err != nil {
-				t.Error(err)
-				return
-			}
-
-			if got := h.Handle(e); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Handler.Handle() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

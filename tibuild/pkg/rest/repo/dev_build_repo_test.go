@@ -25,6 +25,7 @@ func TestDevBuildCreate(t *testing.T) {
 	now := time.Unix(1, 0)
 	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "v6.7.0", CommunityEdition, "",
 		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "" /* target_img */, JenkinsEngine, "PENDING", 0, "", nil, nil, json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
+
 	mock.ExpectCommit()
 	entity, err := repo.Create(context.TODO(), DevBuild{
 		Meta: DevBuildMeta{CreatedAt: now, UpdatedAt: now},

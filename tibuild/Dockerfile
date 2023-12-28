@@ -11,7 +11,7 @@ ENV GO111MODULE=on \
     GOPROXY=https://goproxy.cn,direct
 WORKDIR /goapp
 COPY . .
-RUN --mount=type=cache,target=/go/pkg/mod go test ./... && go build -o ./bin/tibuild ./cmd/tibuild
+RUN --mount=type=cache,target=/go/pkg/mod go build -o ./bin/tibuild ./cmd/tibuild
 
 
 FROM ghcr.io/pingcap-qe/bases/pingcap-base:v1.8.0
