@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,24 +27,47 @@ func NewDevBuildCEServer(ds rest.DevBuildService) DevBuildCEServer {
 }
 
 func (s DevBuildCEServer) Handle(event cloudevents.Event) {
-	pipelinerun := tekton.PipelineRun{}
-	event.DataAs(&pipelinerun)
-	CEContext := pipelinerun.Annotations["tekton.dev/ce-context"]
-	ev := cloudevents.NewEvent()
-	err := json.Unmarshal([]byte(CEContext), &ev)
+	pipeline, bid, err := eventToDevbuildTekton(event)
 	if err != nil {
-		log.Printf("unmarshal ce-context error")
+		log.Printf("parse tekton event failed: %s", err.Error())
 		return
 	}
-	ce_cource := ev.Context.GetType()
-	if ce_cource == "net.pingcap.tibuild.devbuild.push" {
-		bids := ev.Context.GetSubject()
+	if bid == 0 {
+		log.Printf("parse tekton event build id failed")
+		return
+	}
+	_, err = s.ds.MergeTektonStatus(context.TODO(), bid, *pipeline, rest.DevBuildSaveOption{})
+	if err != nil {
+		log.Print("not devbuild event")
+		return
+	}
+}
+
+func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeline, bid int, err error) {
+	data := struct {
+		PipelineRun tekton.PipelineRun `json:"pipelineRun"`
+	}{}
+	event.DataAs(&data)
+	pipelinerun := data.PipelineRun
+	CEContext := pipelinerun.Annotations["tekton.dev/ce-context"]
+	source_event := struct {
+		Source  string `json:"source"`
+		Subject string `json:"subject"`
+	}{}
+	err = json.Unmarshal([]byte(CEContext), &source_event)
+	if err != nil {
+		return nil, 0, fmt.Errorf("unmarshal ce-context error:%w", err)
+	}
+	if strings.Contains(source_event.Source, "tibuild.pingcap.net/api/devbuild") {
+		bids := source_event.Subject
 		bid, err := strconv.Atoi(bids)
 		if err != nil {
-			log.Printf("decode devbuild id failed")
-			return
+			return nil, 0, fmt.Errorf("decode devbuild id failed:%w", err)
 		}
-		pipeline := to_devbuild_pipeline(&pipelinerun)
+		pipeline, err := to_devbuild_pipeline(&pipelinerun)
+		if err != nil {
+			return nil, 0, err
+		}
 		switch event.Context.GetType() {
 		case "dev.tekton.event.pipelinerun.started.v1":
 			pipeline.Status = rest.BuildStatusProcessing
@@ -54,28 +78,24 @@ func (s DevBuildCEServer) Handle(event cloudevents.Event) {
 		default:
 			log.Print("unknown tekton event type")
 		}
-		_, err = s.ds.MergeTektonStatus(context.TODO(), bid, pipeline, rest.DevBuildSaveOption{})
-		if err != nil {
-			log.Printf("merge tekton pipeline failed: %s", err.Error())
-		}
+		return pipeline, bid, nil
 	} else {
-		log.Print("not devbuild event")
-		return
+		return nil, 0, fmt.Errorf("not devbuild event")
 	}
 }
 
-func to_devbuild_pipeline(pipeline *tekton.PipelineRun) rest.TektonPipeline {
-	images, err := parse_tekton_image(pipeline.Status.Results)
+func to_devbuild_pipeline(pipeline *tekton.PipelineRun) (*rest.TektonPipeline, error) {
+	images, err := parse_tekton_image(pipeline.Status.PipelineResults)
 	if err != nil {
-		log.Printf("parse image failed:%s", err.Error())
+		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
-	return rest.TektonPipeline{
-		Name:      pipeline.Name,
-		Platform:  parse_platform(pipeline),
-		GitHash:   parse_git_hash(pipeline),
-		OrasFiles: parse_oras_files(pipeline),
-		Images:    images,
-	}
+	return &rest.TektonPipeline{
+		Name:          pipeline.Name,
+		Platform:      parse_platform(pipeline),
+		GitHash:       parse_git_hash(pipeline),
+		OrasArtifacts: parse_oras_files(pipeline),
+		Images:        images,
+	}, nil
 }
 
 func parse_platform(pipeline *tekton.PipelineRun) rest.Platform {
@@ -108,9 +128,9 @@ func parse_git_hash(pipeline *tekton.PipelineRun) string {
 	return ""
 }
 
-func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OrasFile {
-	var rt []rest.OrasFile
-	for _, r := range pipeline.Status.Results {
+func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OrasArtifact {
+	var rt []rest.OrasArtifact
+	for _, r := range pipeline.Status.PipelineResults {
 		if r.Name == "pushed-binaries" {
 			v, err := parse_oras_file(r.Value.StringVal)
 			if err != nil {
@@ -131,14 +151,15 @@ type TektonOrasStruct struct {
 	Files []string `json:"files"`
 }
 
-func parse_oras_file(text string) (*rest.OrasFile, error) {
+func parse_oras_file(text string) (*rest.OrasArtifact, error) {
 	tekton_oras := TektonOrasStruct{}
 	err := yaml.Unmarshal([]byte(text), &tekton_oras)
 	if err != nil {
 		return nil, err
 	}
-	return &rest.OrasFile{
-		URL:   fmt.Sprintf("%s:%s", tekton_oras.OCI.Repo, tekton_oras.OCI.Tag),
+	return &rest.OrasArtifact{
+		Repo:  tekton_oras.OCI.Repo,
+		Tag:   tekton_oras.OCI.Tag,
 		Files: tekton_oras.Files,
 	}, nil
 }

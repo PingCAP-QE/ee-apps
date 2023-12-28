@@ -256,12 +256,13 @@ type TektonPipeline struct {
 	Platform        Platform        `json:"platform,omitempty"`
 	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	OrasFiles       []OrasFile      `json:"ociFiles,omitempty"`
+	OrasArtifacts   []OrasArtifact  `json:"orasArtifacts,omitempty"`
 	Images          []ImageArtifact `json:"images,omitempty"`
 }
 
-type OrasFile struct {
-	URL   string   `json:"URL"`
+type OrasArtifact struct {
+	Repo  string   `json:"repo"`
+	Tag   string   `json:"tag"`
 	Files []string `json:"files"`
 }
 
@@ -289,10 +290,17 @@ var (
 )
 
 type BinArtifact struct {
-	Component string   `json:"component,omitempty"`
-	Platform  Platform `json:"platform"`
-	URL       string   `json:"url"`
-	Sha256URL string   `json:"sha256URL"`
+	Component string    `json:"component,omitempty"`
+	Platform  Platform  `json:"platform"`
+	URL       string    `json:"url"`
+	Sha256URL string    `json:"sha256URL"`
+	OrasFile  *OrasFile `json:"oras,omitempty"`
+}
+
+type OrasFile struct {
+	Repo string `json:"repo"`
+	Tag  string `json:"tag"`
+	File string `json:"file"`
 }
 
 type ImageSyncRequest struct {

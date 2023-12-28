@@ -265,6 +265,14 @@ func TestDevBuildGet(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "https://cd.pingcap.net//blue/organizations/jenkins/devbuild/detail/devbuild/4/pipeline", entity.Status.PipelineViewURL)
 	})
+	t.Run("render oras file", func(t *testing.T) {
+		mockedRepo.saved = DevBuild{ID: 1,
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OrasFile: &OrasFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
+		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
+		require.NoError(t, err)
+		require.Equal(t, "https://internal.do.pingcap.net:30443/dl/oci-file/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
+	})
 	t.Run("sync", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
@@ -274,6 +282,34 @@ func TestDevBuildGet(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, time.Unix(1, 0).Local(), *entity.Status.PipelineStartAt)
 		require.Equal(t, "https://cd.pingcap.net//blue/organizations/jenkins/devbuild/detail/devbuild/4/pipeline", entity.Status.PipelineViewURL)
+	})
+}
+
+func TestMergeTektonStatus(t *testing.T) {
+	mockedRepo := mockRepo{}
+	server := DevbuildServer{
+		Repo: &mockedRepo,
+		Now:  time.Now,
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		mockedRepo.saved = DevBuild{ID: 1,
+			Spec: DevBuildSpec{
+				Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition,
+				GitRef: "pull/23", PluginGitRef: "master", PreferedEngine: TektonEngine,
+			},
+			Status: DevBuildStatus{TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{
+				{Name: "p1", Platform: LinuxAmd64, Status: BuildStatusSuccess},
+				{Name: "p2", Platform: LinuxArm64, Status: BuildStatusProcessing},
+			}}}}
+		pipelinerun := TektonPipeline{Name: "p2", Platform: LinuxArm64, Status: BuildStatusSuccess, OrasArtifacts: []OrasArtifact{{Repo: "repo", Tag: "tag", Files: []string{"file1.tar.gz", "file2.tar.gz"}}}}
+		entity, err := server.MergeTektonStatus(context.TODO(), 1, pipelinerun, DevBuildSaveOption{})
+		require.NoError(t, err)
+		require.Equal(t, BuildStatusSuccess, entity.Status.Status)
+		require.Equal(t, 2, len(entity.Status.BuildReport.Binaries))
+		entity, err = server.MergeTektonStatus(context.TODO(), 1, pipelinerun, DevBuildSaveOption{})
+		require.NoError(t, err)
+		require.Equal(t, 2, len(entity.Status.BuildReport.Binaries))
 	})
 }
 
@@ -302,12 +338,12 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		compute_tekton_status(status)
@@ -320,12 +356,12 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusProcessing, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		compute_tekton_status(status)
@@ -336,12 +372,12 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag1", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "latest", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusFailure, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasFiles:       []OrasFile{{URL: "harbor.net/org/repo:tag2", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		compute_tekton_status(status)

@@ -296,6 +296,13 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	if entity.Status.PipelineBuildID != 0 {
 		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(jobname, entity.Status.PipelineBuildID)
 	}
+	if entity.Status.BuildReport != nil {
+		for i, bin := range entity.Status.BuildReport.Binaries {
+			if bin.URL == "" && bin.OrasFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = oras_to_file_url(*bin.OrasFile)
+			}
+		}
+	}
 }
 
 func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
@@ -343,7 +350,7 @@ func compute_tekton_status(status *TektonStatus) {
 			status.BuildReport.Binaries = nil
 		}
 		status.BuildReport.GitHash = pipeline.GitHash
-		for _, files := range pipeline.OrasFiles {
+		for _, files := range pipeline.OrasArtifacts {
 			status.BuildReport.Binaries = append(status.BuildReport.Binaries, oras_to_files(pipeline.Platform, files)...)
 		}
 		for _, image := range pipeline.Images {
@@ -379,22 +386,16 @@ func compute_tekton_status(status *TektonStatus) {
 	}
 }
 
-func oras_to_files(platform Platform, oras OrasFile) []BinArtifact {
+func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
 	var rt []BinArtifact
 	for _, file := range oras.Files {
-		rt = append(rt, BinArtifact{Platform: platform, URL: oras_to_file_url(oras.URL, file)})
+		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
 	}
 	return rt
 }
 
-func oras_to_file_url(oci, file string) string {
-	ss := strings.SplitN(oci, ":", 2)
-	var repo = ss[0]
-	var tag = "latest"
-	if len(ss) == 2 {
-		tag = ss[1]
-	}
-	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", oras_fileserver_holder, repo, tag, file)
+func oras_to_file_url(oras OrasFile) string {
+	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", oras_fileserver_url, oras.Repo, oras.Tag, oras.File)
 }
 
 type DevBuildRepository interface {
@@ -412,4 +413,4 @@ var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
 
 const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns/"
-const oras_fileserver_holder = "${oras_fileserver}"
+const oras_fileserver_url = "https://internal.do.pingcap.net:30443/dl"
