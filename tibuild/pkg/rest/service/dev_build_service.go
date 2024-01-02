@@ -335,6 +335,7 @@ func compute_tekton_status(status *TektonStatus) {
 	phase := BuildStatusPending
 	var success_platforms = map[Platform]struct{}{}
 	var failure_platforms = map[Platform]struct{}{}
+	var triggered_platforms = map[Platform]struct{}{}
 	var latest_endat *time.Time
 	for _, pipeline := range status.Pipelines {
 		switch pipeline.Status {
@@ -343,6 +344,7 @@ func compute_tekton_status(status *TektonStatus) {
 		case BuildStatusFailure:
 			failure_platforms[pipeline.Platform] = struct{}{}
 		}
+		triggered_platforms[pipeline.Platform] = struct{}{}
 		if status.BuildReport == nil {
 			status.BuildReport = &BuildReport{}
 		} else {
@@ -372,8 +374,7 @@ func compute_tekton_status(status *TektonStatus) {
 			}
 		}
 	}
-	target_success_pipeline := 2
-	if len(success_platforms) == target_success_pipeline {
+	if len(success_platforms) == len(triggered_platforms) {
 		phase = BuildStatusSuccess
 	} else if len(failure_platforms) != 0 {
 		phase = BuildStatusFailure
