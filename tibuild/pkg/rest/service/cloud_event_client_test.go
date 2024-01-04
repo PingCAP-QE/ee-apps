@@ -9,7 +9,12 @@ import (
 )
 
 func sampleDevBuild() DevBuild {
-	return DevBuild{ID: 1, Meta: DevBuildMeta{CreatedBy: "some@pingcap.com"}, Spec: DevBuildSpec{GitRef: "branch/master"}}
+	obj := DevBuild{
+		ID:   1,
+		Meta: DevBuildMeta{CreatedBy: "some@pingcap.com"},
+		Spec: DevBuildSpec{Product: ProductBr, GitRef: "branch/master", Version: "v7.5.0"}}
+	fillWithDefaults(&obj)
+	return obj
 }
 
 func TestNewEvent(t *testing.T) {
