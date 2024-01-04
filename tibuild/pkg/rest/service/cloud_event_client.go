@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/go-github/github"
@@ -50,13 +49,13 @@ func NewDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	event.SetExtension("user", dev.Meta.CreatedBy)
 	event.SetSource("https://tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
 
-	if branchName, found := strings.CutPrefix(dev.Spec.GitRef, "branch/"); found {
+	if ref := GitRefToGHRef(dev.Spec.GitRef); ref != "" {
 		eventData := &github.PushEvent{
-			Ref:   github.String(fmt.Sprintf("refs/heads/%s", branchName)),
-			After: github.String(branchName),
+			Ref:   github.String(ref),
+			After: github.String(dev.Spec.GitHash),
 			Repo: &github.PushEventRepository{
 				Name:     github.String(string(dev.Spec.Product)),
-				CloneURL: github.String(fmt.Sprintf("https://github.com/%s", dev.Spec.GithubRepo)),
+				CloneURL: github.String(GHRepoToStruct(dev.Spec.GithubRepo).URL()),
 				Owner: &github.PushEventRepoOwner{
 					Name: github.String("pingcap"),
 				},
@@ -65,7 +64,7 @@ func NewDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 		event.SetData(cloudevents.ApplicationJSON, eventData)
 		return &event, nil
 	} else {
-		return nil, fmt.Errorf("not a branch name")
+		return nil, fmt.Errorf("unkown git ref format")
 	}
 }
 

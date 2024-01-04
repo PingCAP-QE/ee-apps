@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -13,10 +12,11 @@ import (
 )
 
 type DevbuildServer struct {
-	Repo    DevBuildRepository
-	Jenkins Jenkins
-	Tekton  BuildTrigger
-	Now     func() time.Time
+	Repo     DevBuildRepository
+	Jenkins  Jenkins
+	Tekton   BuildTrigger
+	Now      func() time.Time
+	GHClient GHClient
 }
 
 const jobname = "devbuild"
@@ -33,6 +33,15 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	fillWithDefaults(&req)
 	if err := validateReq(req); err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
+	}
+	if req.Spec.PipelineEngine == TektonEngine {
+		if req.Meta.CreatedBy == "" {
+			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
+		}
+		err := fillGitHash(ctx, s.GHClient, &req)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if option.DryRun {
 		req.ID = 1
@@ -97,6 +106,15 @@ func validatePermission(ctx context.Context, req *DevBuild) error {
 	return nil
 }
 
+func fillGitHash(ctx context.Context, client GHClient, req *DevBuild) error {
+	commit, err := client.GetHash(ctx, *GHRepoToStruct(req.Spec.GithubRepo), req.Spec.GitRef)
+	if err != nil {
+		return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
+	}
+	req.Spec.GitHash = commit
+	return nil
+}
+
 func fillWithDefaults(req *DevBuild) {
 	spec := &req.Spec
 	guessEnterprisePluginRef(spec)
@@ -105,7 +123,6 @@ func fillWithDefaults(req *DevBuild) {
 	if req.Spec.PipelineEngine == "" {
 		req.Spec.PipelineEngine = JenkinsEngine
 	}
-	req.Status.BuildReportJson = json.RawMessage("null")
 }
 
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
@@ -186,7 +203,7 @@ func validateReq(req DevBuild) error {
 	if !gitRefValidator.MatchString(spec.GitRef) {
 		return fmt.Errorf("gitRef is not valid")
 	}
-	if spec.GithubRepo != "" && !githubRepoValidator.MatchString(spec.GithubRepo) {
+	if spec.GithubRepo != "" && (GHRepoToStruct(spec.GithubRepo) == nil || !githubRepoValidator.MatchString(spec.GithubRepo)) {
 		return fmt.Errorf("githubRepo is not valid, should be like org/repo")
 	}
 	if spec.Edition == EnterpriseEdition && spec.Product == ProductTidb {

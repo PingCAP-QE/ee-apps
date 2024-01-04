@@ -464,6 +464,9 @@ const docTemplate = `{
                 "features": {
                     "type": "string"
                 },
+                "gitHash": {
+                    "type": "string"
+                },
                 "gitRef": {
                     "type": "string"
                 },
@@ -476,11 +479,11 @@ const docTemplate = `{
                 "isPushGCR": {
                     "type": "boolean"
                 },
+                "pipelineEngine": {
+                    "$ref": "#/definitions/service.PipelineEngine"
+                },
                 "pluginGitRef": {
                     "type": "string"
-                },
-                "preferedEngine": {
-                    "$ref": "#/definitions/service.PipelineEngine"
                 },
                 "product": {
                     "$ref": "#/definitions/service.Product"

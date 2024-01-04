@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"time"
 )
@@ -71,6 +72,14 @@ type GithubRepo struct {
 
 func (r GithubRepo) URL() string {
 	return fmt.Sprintf("https://github.com/%s/%s", r.Owner, r.Repo)
+}
+
+func GHRepoToStruct(repo string) *GithubRepo {
+	ss := strings.Split(repo, "/")
+	if len(ss) != 2 {
+		return nil
+	}
+	return &GithubRepo{Owner: ss[0], Repo: ss[1]}
 }
 
 var (
@@ -171,6 +180,7 @@ type DevBuildSpec struct {
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
 	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
 	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
+	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 }
 
 type PipelineEngine string

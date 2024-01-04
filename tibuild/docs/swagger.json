@@ -452,6 +452,9 @@
                 "features": {
                     "type": "string"
                 },
+                "gitHash": {
+                    "type": "string"
+                },
                 "gitRef": {
                     "type": "string"
                 },
@@ -464,11 +467,11 @@
                 "isPushGCR": {
                     "type": "boolean"
                 },
+                "pipelineEngine": {
+                    "$ref": "#/definitions/service.PipelineEngine"
+                },
                 "pluginGitRef": {
                     "type": "string"
-                },
-                "preferedEngine": {
-                    "$ref": "#/definitions/service.PipelineEngine"
                 },
                 "product": {
                     "$ref": "#/definitions/service.Product"

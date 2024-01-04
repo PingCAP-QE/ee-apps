@@ -19,3 +19,7 @@ type DevBuildService interface {
 type ArtifactHelperService interface {
 	SyncImage(ctx context.Context, req ImageSyncRequest) (resp *ImageSyncRequest, err error)
 }
+
+type GHClient interface {
+	GetHash(ctx context.Context, repo GithubRepo, ref string) (string, error)
+}

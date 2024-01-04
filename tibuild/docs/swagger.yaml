@@ -96,6 +96,8 @@ definitions:
         $ref: '#/definitions/service.ProductEdition'
       features:
         type: string
+      gitHash:
+        type: string
       gitRef:
         type: string
       githubRepo:
@@ -104,10 +106,10 @@ definitions:
         type: boolean
       isPushGCR:
         type: boolean
+      pipelineEngine:
+        $ref: '#/definitions/service.PipelineEngine'
       pluginGitRef:
         type: string
-      preferedEngine:
-        $ref: '#/definitions/service.PipelineEngine'
       product:
         $ref: '#/definitions/service.Product'
       productBaseImg:
