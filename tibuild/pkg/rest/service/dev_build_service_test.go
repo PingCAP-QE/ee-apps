@@ -56,6 +56,16 @@ func (mock mockJenkins) BuildURL(jobName string, number int64) string {
 	return fmt.Sprintf("%s/blue/organizations/jenkins/%s/detail/%s/%d/pipeline", "https://cd.pingcap.net/", jobName, jobName, number)
 }
 
+type mockTrigger struct {
+	dev DevBuild
+	err error
+}
+
+func (m *mockTrigger) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
+	m.dev = dev
+	return m.err
+}
+
 func TestDevBuildCreate(t *testing.T) {
 	mockedJenkins := &mockJenkins{resume: make(chan struct{})}
 	mockedRepo := mockRepo{}
@@ -63,6 +73,7 @@ func TestDevBuildCreate(t *testing.T) {
 		Repo:    &mockedRepo,
 		Jenkins: mockedJenkins,
 		Now:     time.Now,
+		Tekton:  &mockTrigger{},
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -273,6 +284,14 @@ func TestDevBuildGet(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "https://internal.do.pingcap.net:30443/dl/oci-file/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
 	})
+	t.Run("render tekton pipeline", func(t *testing.T) {
+		mockedRepo.saved = DevBuild{ID: 1,
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Status: DevBuildStatus{PipelineBuildID: 4, TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{{Name: "p1"}}}}}
+		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
+		require.NoError(t, err)
+		require.Equal(t, tektonURL+"/p1", entity.Status.TektonStatus.Pipelines[0].URL)
+	})
 	t.Run("sync", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
@@ -319,6 +338,7 @@ func TestDevBuildRerun(t *testing.T) {
 		Repo:    &mockedRepo,
 		Jenkins: &mockJenkins{},
 		Now:     time.Now,
+		Tekton:  &mockTrigger{},
 	}
 	mockedRepo.saved = DevBuild{ID: 2,
 		Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},

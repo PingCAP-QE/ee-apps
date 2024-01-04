@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 type DevbuildServer struct {
 	Repo    DevBuildRepository
 	Jenkins Jenkins
+	Tekton  BuildTrigger
 	Now     func() time.Time
 }
 
@@ -41,46 +43,48 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, err
 	}
 	entity := *resp
-	if entity.Spec.PreferedEngine == TektonEngine {
-		return &entity, nil
-	}
-
-	params := map[string]string{
-		"Product":           string(entity.Spec.Product),
-		"GitRef":            entity.Spec.GitRef,
-		"Version":           entity.Spec.Version,
-		"Edition":           string(entity.Spec.Edition),
-		"PluginGitRef":      entity.Spec.PluginGitRef,
-		"GithubRepo":        entity.Spec.GithubRepo,
-		"IsPushGCR":         strconv.FormatBool(entity.Spec.IsPushGCR),
-		"IsHotfix":          strconv.FormatBool(entity.Spec.IsHotfix),
-		"Features":          entity.Spec.Features,
-		"TiBuildID":         strconv.Itoa(entity.ID),
-		"BuildEnv":          entity.Spec.BuildEnv,
-		"BuilderImg":        entity.Spec.BuilderImg,
-		"ProductDockerfile": entity.Spec.ProductDockerfile,
-		"ProductBaseImg":    entity.Spec.ProductBaseImg,
-		"TargetImg":         entity.Spec.TargetImg,
-	}
-	qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
-	if err != nil {
-		entity.Status.Status = BuildStatusError
-		entity.Status.ErrMsg = err.Error()
-		s.Repo.Update(ctx, entity.ID, entity)
-		return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
-	}
-	go func(entity DevBuild) {
-		buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid, jobname)
+	if entity.Spec.PreferedEngine == JenkinsEngine {
+		params := map[string]string{
+			"Product":           string(entity.Spec.Product),
+			"GitRef":            entity.Spec.GitRef,
+			"Version":           entity.Spec.Version,
+			"Edition":           string(entity.Spec.Edition),
+			"PluginGitRef":      entity.Spec.PluginGitRef,
+			"GithubRepo":        entity.Spec.GithubRepo,
+			"IsPushGCR":         strconv.FormatBool(entity.Spec.IsPushGCR),
+			"IsHotfix":          strconv.FormatBool(entity.Spec.IsHotfix),
+			"Features":          entity.Spec.Features,
+			"TiBuildID":         strconv.Itoa(entity.ID),
+			"BuildEnv":          entity.Spec.BuildEnv,
+			"BuilderImg":        entity.Spec.BuilderImg,
+			"ProductDockerfile": entity.Spec.ProductDockerfile,
+			"ProductBaseImg":    entity.Spec.ProductBaseImg,
+			"TargetImg":         entity.Spec.TargetImg,
+		}
+		qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
 		if err != nil {
 			entity.Status.Status = BuildStatusError
 			entity.Status.ErrMsg = err.Error()
 			s.Repo.Update(ctx, entity.ID, entity)
+			return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
 		}
-		println("Jenkins build number is : ", buildNumber)
-		entity.Status.PipelineBuildID = buildNumber
-		entity.Status.Status = BuildStatusProcessing
-		s.Repo.Update(ctx, entity.ID, entity)
-	}(entity)
+		go func(entity DevBuild) {
+			buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid, jobname)
+			if err != nil {
+				entity.Status.Status = BuildStatusError
+				entity.Status.ErrMsg = err.Error()
+				s.Repo.Update(ctx, entity.ID, entity)
+			}
+			println("Jenkins build number is : ", buildNumber)
+			entity.Status.PipelineBuildID = buildNumber
+			entity.Status.Status = BuildStatusProcessing
+			s.Repo.Update(ctx, entity.ID, entity)
+		}(entity)
+	}
+	err = s.Tekton.TriggerDevBuild(ctx, entity)
+	if err != nil {
+		log.Printf("trigger tekton failed: %s", err.Error())
+	}
 	return &entity, nil
 }
 
@@ -301,6 +305,11 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 			if bin.URL == "" && bin.OrasFile != nil {
 				entity.Status.BuildReport.Binaries[i].URL = oras_to_file_url(*bin.OrasFile)
 			}
+		}
+	}
+	if tek := entity.Status.TektonStatus; tek != nil {
+		for i, p := range tek.Pipelines {
+			tek.Pipelines[i].URL = fmt.Sprintf("%s/%s", tektonURL, p.Name)
 		}
 	}
 }

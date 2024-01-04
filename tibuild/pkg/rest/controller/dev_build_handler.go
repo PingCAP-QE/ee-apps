@@ -20,18 +20,21 @@ type DevBuildHandler struct {
 	auth configs.RestApiSecret
 }
 
-func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, auth configs.RestApiSecret) *DevBuildHandler {
-	db.AutoMigrate(&service.DevBuild{})
-	return &DevBuildHandler{svc: service.DevbuildServer{
-		Repo:    repo.DevBuildRepo{Db: db},
-		Jenkins: jenkins,
-		Now:     time.Now},
+func NewDevBuildHandler(svc service.DevBuildService, auth configs.RestApiSecret) *DevBuildHandler {
+	return &DevBuildHandler{
+		svc:  svc,
 		auth: auth,
 	}
 }
 
-func (h DevBuildHandler) GetService() service.DevBuildService {
-	return h.svc
+func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, ce_endpoint string) service.DevBuildService {
+	db.AutoMigrate(&service.DevBuild{})
+	return &service.DevbuildServer{
+		Repo:    repo.DevBuildRepo{Db: db},
+		Jenkins: jenkins,
+		Now:     time.Now,
+		Tekton:  service.NewCEClient(ce_endpoint),
+	}
 }
 
 func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {

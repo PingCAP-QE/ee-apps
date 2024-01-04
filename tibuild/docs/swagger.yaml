@@ -10,6 +10,8 @@ definitions:
     properties:
       component:
         type: string
+      oras:
+        $ref: '#/definitions/service.OrasFile'
       platform:
         type: string
       sha256URL:
@@ -104,6 +106,8 @@ definitions:
         type: boolean
       pluginGitRef:
         type: string
+      preferedEngine:
+        $ref: '#/definitions/service.PipelineEngine'
       product:
         $ref: '#/definitions/service.Product'
       productBaseImg:
@@ -131,6 +135,8 @@ definitions:
         type: string
       status:
         $ref: '#/definitions/service.BuildStatus'
+      tektonStatus:
+        $ref: '#/definitions/service.TektonStatus'
     type: object
   service.ImageArtifact:
     properties:
@@ -146,6 +152,34 @@ definitions:
       target:
         type: string
     type: object
+  service.OrasArtifact:
+    properties:
+      files:
+        items:
+          type: string
+        type: array
+      repo:
+        type: string
+      tag:
+        type: string
+    type: object
+  service.OrasFile:
+    properties:
+      file:
+        type: string
+      repo:
+        type: string
+      tag:
+        type: string
+    type: object
+  service.PipelineEngine:
+    enum:
+    - jenkins
+    - tekton
+    type: string
+    x-enum-varnames:
+    - JenkinsEngine
+    - TektonEngine
   service.Product:
     enum:
     - tidb
@@ -205,6 +239,46 @@ definitions:
         type: string
       tagURL:
         type: string
+    type: object
+  service.TektonPipeline:
+    properties:
+      gitHash:
+        type: string
+      images:
+        items:
+          $ref: '#/definitions/service.ImageArtifact'
+        type: array
+      name:
+        type: string
+      orasArtifacts:
+        items:
+          $ref: '#/definitions/service.OrasArtifact'
+        type: array
+      pipelineEndAt:
+        type: string
+      pipelineStartAt:
+        type: string
+      platform:
+        type: string
+      status:
+        $ref: '#/definitions/service.BuildStatus'
+      url:
+        type: string
+    type: object
+  service.TektonStatus:
+    properties:
+      buildReport:
+        $ref: '#/definitions/service.BuildReport'
+      pipelineEndAt:
+        type: string
+      pipelineStartAt:
+        type: string
+      pipelines:
+        items:
+          $ref: '#/definitions/service.TektonPipeline'
+        type: array
+      status:
+        $ref: '#/definitions/service.BuildStatus'
     type: object
 info:
   contact: {}

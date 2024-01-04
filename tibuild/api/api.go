@@ -103,7 +103,8 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 		panic(err)
 	}
 	devBuildGroup := apiGroup.Group("/devbuilds")
-	devBuildHandler := controllers.NewDevBuildHandler(context.Background(), jenkins, database.DBConn.DB, cfg.RestApiSecret)
+	devBuildServer := controllers.NewDevBuildServer(jenkins, database.DBConn.DB, cfg.CloudEvent.Endpoint)
+	devBuildHandler := controllers.NewDevBuildHandler(devBuildServer, cfg.RestApiSecret)
 	{
 		devBuildGroup.POST("", devBuildHandler.Create)
 		devBuildGroup.GET("", devBuildHandler.List)
@@ -118,7 +119,7 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 		artifactGroup.POST("/sync-image", artifactHelper.SyncImage)
 	}
 
-	event := events.NewHandler(devBuildHandler.GetService())
+	event := events.NewHandler(devBuildServer)
 	eventsGroup := apiGroup.Group("/event")
 	{
 		eventsGroup.POST("", event.Receive)

@@ -32,6 +32,9 @@ type ConfigYaml struct {
 	}
 
 	RestApiSecret RestApiSecret
+	CloudEvent    struct {
+		Endpoint string
+	}
 }
 
 type RestApiSecret struct {
