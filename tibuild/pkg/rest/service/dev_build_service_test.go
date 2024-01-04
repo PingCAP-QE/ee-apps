@@ -315,7 +315,7 @@ func TestMergeTektonStatus(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec: DevBuildSpec{
 				Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition,
-				GitRef: "pull/23", PluginGitRef: "master", PreferedEngine: TektonEngine,
+				GitRef: "pull/23", PluginGitRef: "master", PipelineEngine: TektonEngine,
 			},
 			Status: DevBuildStatus{TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{
 				{Name: "p1", Platform: LinuxAmd64, Status: BuildStatusSuccess},

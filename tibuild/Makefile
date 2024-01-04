@@ -41,6 +41,8 @@ test:
 build.server: swagger test
 	go build -o ${GO_BINARY} ${TIBUILD_MAIN_FILE}
 
+server:
+	go run ${TIBUILD_MAIN_FILE}
 
 # =============================================================================
 # The following are common deployment commands

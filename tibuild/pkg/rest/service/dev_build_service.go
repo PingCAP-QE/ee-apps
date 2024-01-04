@@ -43,7 +43,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, err
 	}
 	entity := *resp
-	if entity.Spec.PreferedEngine == JenkinsEngine {
+	if entity.Spec.PipelineEngine == JenkinsEngine {
 		params := map[string]string{
 			"Product":           string(entity.Spec.Product),
 			"GitRef":            entity.Spec.GitRef,
@@ -80,11 +80,13 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			entity.Status.Status = BuildStatusProcessing
 			s.Repo.Update(ctx, entity.ID, entity)
 		}(entity)
+	} else if entity.Spec.PipelineEngine == TektonEngine {
+		err = s.Tekton.TriggerDevBuild(ctx, entity)
+		if err != nil {
+			log.Printf("trigger tekton failed: %s", err.Error())
+		}
 	}
-	err = s.Tekton.TriggerDevBuild(ctx, entity)
-	if err != nil {
-		log.Printf("trigger tekton failed: %s", err.Error())
-	}
+
 	return &entity, nil
 }
 
@@ -100,8 +102,8 @@ func fillWithDefaults(req *DevBuild) {
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
-	if req.Spec.PreferedEngine == "" {
-		req.Spec.PreferedEngine = JenkinsEngine
+	if req.Spec.PipelineEngine == "" {
+		req.Spec.PipelineEngine = JenkinsEngine
 	}
 	req.Status.BuildReportJson = json.RawMessage("null")
 }
@@ -267,7 +269,7 @@ func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOptio
 }
 
 func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {
-	if entity.Spec.PreferedEngine == TektonEngine {
+	if entity.Spec.PipelineEngine == TektonEngine {
 		return entity, nil
 	}
 	now := s.Now()
@@ -333,7 +335,7 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 		status.Pipelines = append(status.Pipelines, pipeline)
 	}
 	compute_tekton_status(status)
-	if obj.Spec.PreferedEngine == TektonEngine {
+	if obj.Spec.PipelineEngine == TektonEngine {
 		obj.Status.Status = obj.Status.TektonStatus.Status
 		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
 	}

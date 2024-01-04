@@ -32,7 +32,7 @@ func TestDevBuildCreate(t *testing.T) {
 		Spec: DevBuildSpec{Product: ProductBr, Version: "v6.7.0", Edition: CommunityEdition,
 			BuildEnv: "AA=BB", ProductDockerfile: "https://raw.example.com/Dockerfile",
 			BuilderImg:     "pingcap/builder",
-			PreferedEngine: JenkinsEngine},
+			PipelineEngine: JenkinsEngine},
 		Status: DevBuildStatus{Status: BuildStatusPending}})
 	require.NoError(t, err)
 	require.Equal(t, 1, entity.ID)

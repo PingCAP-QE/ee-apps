@@ -170,7 +170,7 @@ type DevBuildSpec struct {
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
 	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
-	PreferedEngine    PipelineEngine `json:"preferedEngine,omitempty" gorm:"type:varchar(16)"`
+	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
 }
 
 type PipelineEngine string
