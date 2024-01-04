@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,10 @@ func TestNewEvent(t *testing.T) {
 }
 
 func TestTrigger(t *testing.T) {
+	if os.Getenv("TEST_FANOUT") == "" {
+		t.Skip("Skipping send event")
+	}
 	trigger := NewCEClient("http://localhost:8000")
 	err := trigger.TriggerDevBuild(context.TODO(), sampleDevBuild())
-	require.Error(t, err)
+	require.NoError(t, err)
 }
