@@ -34,9 +34,25 @@ func (pcru *ProblemCaseRunUpdate) SetRepo(s string) *ProblemCaseRunUpdate {
 	return pcru
 }
 
+// SetNillableRepo sets the "repo" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableRepo(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetRepo(*s)
+	}
+	return pcru
+}
+
 // SetBranch sets the "branch" field.
 func (pcru *ProblemCaseRunUpdate) SetBranch(s string) *ProblemCaseRunUpdate {
 	pcru.mutation.SetBranch(s)
+	return pcru
+}
+
+// SetNillableBranch sets the "branch" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableBranch(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetBranch(*s)
+	}
 	return pcru
 }
 
@@ -46,9 +62,25 @@ func (pcru *ProblemCaseRunUpdate) SetSuiteName(s string) *ProblemCaseRunUpdate {
 	return pcru
 }
 
+// SetNillableSuiteName sets the "suite_name" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableSuiteName(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetSuiteName(*s)
+	}
+	return pcru
+}
+
 // SetCaseName sets the "case_name" field.
 func (pcru *ProblemCaseRunUpdate) SetCaseName(s string) *ProblemCaseRunUpdate {
 	pcru.mutation.SetCaseName(s)
+	return pcru
+}
+
+// SetNillableCaseName sets the "case_name" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableCaseName(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetCaseName(*s)
+	}
 	return pcru
 }
 
@@ -73,6 +105,14 @@ func (pcru *ProblemCaseRunUpdate) SetTimecostMs(i int) *ProblemCaseRunUpdate {
 	return pcru
 }
 
+// SetNillableTimecostMs sets the "timecost_ms" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableTimecostMs(i *int) *ProblemCaseRunUpdate {
+	if i != nil {
+		pcru.SetTimecostMs(*i)
+	}
+	return pcru
+}
+
 // AddTimecostMs adds i to the "timecost_ms" field.
 func (pcru *ProblemCaseRunUpdate) AddTimecostMs(i int) *ProblemCaseRunUpdate {
 	pcru.mutation.AddTimecostMs(i)
@@ -85,15 +125,39 @@ func (pcru *ProblemCaseRunUpdate) SetReportTime(t time.Time) *ProblemCaseRunUpda
 	return pcru
 }
 
+// SetNillableReportTime sets the "report_time" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableReportTime(t *time.Time) *ProblemCaseRunUpdate {
+	if t != nil {
+		pcru.SetReportTime(*t)
+	}
+	return pcru
+}
+
 // SetBuildURL sets the "build_url" field.
 func (pcru *ProblemCaseRunUpdate) SetBuildURL(s string) *ProblemCaseRunUpdate {
 	pcru.mutation.SetBuildURL(s)
 	return pcru
 }
 
+// SetNillableBuildURL sets the "build_url" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableBuildURL(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetBuildURL(*s)
+	}
+	return pcru
+}
+
 // SetReason sets the "reason" field.
 func (pcru *ProblemCaseRunUpdate) SetReason(s string) *ProblemCaseRunUpdate {
 	pcru.mutation.SetReason(s)
+	return pcru
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (pcru *ProblemCaseRunUpdate) SetNillableReason(s *string) *ProblemCaseRunUpdate {
+	if s != nil {
+		pcru.SetReason(*s)
+	}
 	return pcru
 }
 
@@ -212,9 +276,25 @@ func (pcruo *ProblemCaseRunUpdateOne) SetRepo(s string) *ProblemCaseRunUpdateOne
 	return pcruo
 }
 
+// SetNillableRepo sets the "repo" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableRepo(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetRepo(*s)
+	}
+	return pcruo
+}
+
 // SetBranch sets the "branch" field.
 func (pcruo *ProblemCaseRunUpdateOne) SetBranch(s string) *ProblemCaseRunUpdateOne {
 	pcruo.mutation.SetBranch(s)
+	return pcruo
+}
+
+// SetNillableBranch sets the "branch" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableBranch(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetBranch(*s)
+	}
 	return pcruo
 }
 
@@ -224,9 +304,25 @@ func (pcruo *ProblemCaseRunUpdateOne) SetSuiteName(s string) *ProblemCaseRunUpda
 	return pcruo
 }
 
+// SetNillableSuiteName sets the "suite_name" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableSuiteName(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetSuiteName(*s)
+	}
+	return pcruo
+}
+
 // SetCaseName sets the "case_name" field.
 func (pcruo *ProblemCaseRunUpdateOne) SetCaseName(s string) *ProblemCaseRunUpdateOne {
 	pcruo.mutation.SetCaseName(s)
+	return pcruo
+}
+
+// SetNillableCaseName sets the "case_name" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableCaseName(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetCaseName(*s)
+	}
 	return pcruo
 }
 
@@ -251,6 +347,14 @@ func (pcruo *ProblemCaseRunUpdateOne) SetTimecostMs(i int) *ProblemCaseRunUpdate
 	return pcruo
 }
 
+// SetNillableTimecostMs sets the "timecost_ms" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableTimecostMs(i *int) *ProblemCaseRunUpdateOne {
+	if i != nil {
+		pcruo.SetTimecostMs(*i)
+	}
+	return pcruo
+}
+
 // AddTimecostMs adds i to the "timecost_ms" field.
 func (pcruo *ProblemCaseRunUpdateOne) AddTimecostMs(i int) *ProblemCaseRunUpdateOne {
 	pcruo.mutation.AddTimecostMs(i)
@@ -263,15 +367,39 @@ func (pcruo *ProblemCaseRunUpdateOne) SetReportTime(t time.Time) *ProblemCaseRun
 	return pcruo
 }
 
+// SetNillableReportTime sets the "report_time" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableReportTime(t *time.Time) *ProblemCaseRunUpdateOne {
+	if t != nil {
+		pcruo.SetReportTime(*t)
+	}
+	return pcruo
+}
+
 // SetBuildURL sets the "build_url" field.
 func (pcruo *ProblemCaseRunUpdateOne) SetBuildURL(s string) *ProblemCaseRunUpdateOne {
 	pcruo.mutation.SetBuildURL(s)
 	return pcruo
 }
 
+// SetNillableBuildURL sets the "build_url" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableBuildURL(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetBuildURL(*s)
+	}
+	return pcruo
+}
+
 // SetReason sets the "reason" field.
 func (pcruo *ProblemCaseRunUpdateOne) SetReason(s string) *ProblemCaseRunUpdateOne {
 	pcruo.mutation.SetReason(s)
+	return pcruo
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (pcruo *ProblemCaseRunUpdateOne) SetNillableReason(s *string) *ProblemCaseRunUpdateOne {
+	if s != nil {
+		pcruo.SetReason(*s)
+	}
 	return pcruo
 }
 

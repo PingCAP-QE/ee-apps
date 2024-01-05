@@ -5,6 +5,7 @@ const (
 
 	reasonNotFinished = "not_finished"
 	reasonUnknown     = "unknown"
+	reasonNA          = "N/A"
 )
 
 // ProblemCasesFromBazel present case run records from bazel.
