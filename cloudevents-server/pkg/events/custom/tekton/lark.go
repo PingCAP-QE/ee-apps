@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -17,6 +18,47 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 )
+
+// receiver formats:
+// - Open ID: ou_......
+// - Union ID: on_......
+// - Chat ID: oc_......
+// - Email: some email address.
+// - User ID: I do not know
+var (
+	reLarkOpenID  = regexp.MustCompile(`^ou_\w+`)
+	reLarkUnionID = regexp.MustCompile(`^on_\w+`)
+	reLarkChatID  = regexp.MustCompile(`^oc_\w+`)
+	reLarkEmail   = regexp.MustCompile(`^\S+@\S+\.\S+$`)
+)
+
+func getReceiverIDType(id string) string {
+	switch {
+	case reLarkOpenID.MatchString(id):
+		return larkim.ReceiveIdTypeOpenId
+	case reLarkUnionID.MatchString(id):
+		return larkim.ReceiveIdTypeUnionId
+	case reLarkChatID.MatchString(id):
+		return larkim.ReceiveIdTypeChatId
+	case reLarkEmail.MatchString(id):
+		return larkim.ReceiveIdTypeEmail
+	default:
+		return larkim.ReceiveIdTypeUserId
+	}
+}
+
+func newMessageReq(receiver string, messageRawStr string) *larkim.CreateMessageReq {
+	return larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(getReceiverIDType(receiver)).
+		Body(
+			larkim.NewCreateMessageReqBodyBuilder().
+				MsgType(larkim.MsgTypeInteractive).
+				ReceiveId(receiver).
+				Content(messageRawStr).
+				Build(),
+		).
+		Build()
+}
 
 func newLarkClient(cfg config.Lark) *lark.Client {
 	// Disable certificate verification
@@ -32,8 +74,8 @@ func newLarkClient(cfg config.Lark) *lark.Client {
 	)
 }
 
-func sendLarkMessages(client *lark.Client, receiveEmails []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
-	createMsgReqs, err := newLarkMessages(receiveEmails, event, detailBaseUrl)
+func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
+	createMsgReqs, err := newLarkMessages(receivers, event, detailBaseUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("compose lark message failed")
 		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "compose lark message failed: %v", err)
@@ -59,7 +101,7 @@ func sendLarkMessages(client *lark.Client, receiveEmails []string, event cloudev
 	return cloudevents.ResultACK
 }
 
-func newLarkMessages(receiveEmails []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
+func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
 	messageCard := newLarkCard(event.Type(), event.Subject(), event.Source(), detailBaseUrl)
 	messageRawStr, err := messageCard.String()
 	if err != nil {
@@ -67,19 +109,8 @@ func newLarkMessages(receiveEmails []string, event cloudevents.Event, detailBase
 	}
 
 	var reqs []*larkim.CreateMessageReq
-	for _, receiveEmail := range receiveEmails {
-		req := larkim.NewCreateMessageReqBuilder().
-			ReceiveIdType(larkim.ReceiveIdTypeEmail).
-			Body(
-				larkim.NewCreateMessageReqBodyBuilder().
-					MsgType(larkim.MsgTypeInteractive).
-					ReceiveId(receiveEmail).
-					Content(messageRawStr).
-					Build(),
-			).
-			Build()
-
-		reqs = append(reqs, req)
+	for _, r := range receivers {
+		reqs = append(reqs, newMessageReq(r, messageRawStr))
 	}
 
 	return reqs, nil
