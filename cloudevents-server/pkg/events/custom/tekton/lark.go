@@ -6,15 +6,16 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"regexp"
 	"strings"
+	"text/template"
+	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/protocol"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog/log"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
@@ -27,7 +28,7 @@ import (
 	_ "embed"
 )
 
-//go:embed lark_templates/pipelinerun-notify.yaml.tmpl
+//go:embed lark_templates/tekton-run-notify.yaml.tmpl
 var larkTemplateBytes string
 
 // receiver formats:
@@ -100,6 +101,7 @@ func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents
 		}
 
 		if !resp.Success() {
+			log.Error().Msg(string(resp.RawBody))
 			return cloudevents.ResultNACK
 		}
 
@@ -113,13 +115,7 @@ func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents
 }
 
 func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
-	var eventData tektoncloudevent.TektonCloudEventData
-	if err := event.DataAs(&eventData); err != nil {
-		return nil, err
-	}
-
-	messageCard := newLarkCard(event.Type(), event.Subject(), event.Source(), detailBaseUrl, &eventData)
-	messageRawStr, err := messageCard.String()
+	messageRawStr, err := newLarkCardWithGoTemplate(event, detailBaseUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -132,115 +128,104 @@ func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl 
 	return reqs, nil
 }
 
-func newLarkCard(etype, subject, source, baseURL string, data *tektoncloudevent.TektonCloudEventData) *larkcard.MessageCard {
-	title := newLarkTitle(etype, subject)
-	header := larkcard.NewMessageCardHeader().
-		Template(larkCardHeaderTemplates[tektoncloudevent.TektonEventType(etype)]).
-		Title(larkcard.NewMessageCardPlainText().Content(title))
+func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMessageInfos, error) {
+	var data tektoncloudevent.TektonCloudEventData
+	if err := event.DataAs(&data); err != nil {
+		return nil, err
+	}
 
-	return larkcard.NewMessageCard().
-		Config(larkcard.NewMessageCardConfig().WideScreenMode(true)).
-		Header(header).
-		Elements(append(newMessageCardFieldFromTektonCloudEventData(data),
-			// detail link
-			larkcard.NewMessageCardAction().Actions([]larkcard.MessageCardActionElement{
-				larkcard.NewMessageCardEmbedButton().
-					Type(larkcard.MessageCardButtonTypeDefault).
-					Text(larkcard.NewMessageCardPlainText().Content("View")).
-					Url(newDetailURL(etype, source, baseURL)),
-			})),
-		)
-}
+	ret := cardMessageInfos{
+		Title:         newLarkTitle(event.Type(), event.Subject()),
+		TitleTemplate: larkCardHeaderTemplates[tektoncloudevent.TektonEventType(event.Type())],
+		ViewURL:       newDetailURL(event.Type(), event.Source(), baseURL),
+	}
 
-func newMessageCardFieldFromTektonCloudEventData(data *tektoncloudevent.TektonCloudEventData) []larkcard.MessageCardElement {
 	var startTime, endTime *metav1.Time
-	var rerunCmd string
 	switch {
 	case data.PipelineRun != nil:
 		startTime = data.PipelineRun.Status.StartTime
 		endTime = data.PipelineRun.Status.CompletionTime
 		if data.PipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
-			rerunCmd = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
+			ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
 				data.PipelineRun.Namespace, data.PipelineRun.Spec.PipelineRef.Name, data.PipelineRun.Name)
+		}
+
+		if results := data.PipelineRun.Status.PipelineResults; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
 		}
 	case data.TaskRun != nil:
 		startTime = data.TaskRun.Status.StartTime
 		endTime = data.TaskRun.Status.CompletionTime
 		if data.TaskRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
-			rerunCmd = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
+			ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
 				data.TaskRun.Namespace, data.TaskRun.Spec.TaskRef.Name, data.TaskRun.Name)
+		}
+
+		if results := data.TaskRun.Status.TaskRunResults; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				v, _ := r.Value.MarshalJSON()
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), string(v), "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
 		}
 	case data.Run != nil:
 		startTime = data.Run.Status.StartTime
 		endTime = data.Run.Status.CompletionTime
+
+		if results := data.Run.Status.Results; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
+		}
 	}
 
-	var ret []larkcard.MessageCardElement
-	var infoFileds []*larkcard.MessageCardField
 	if startTime != nil {
-		content := fmt.Sprintf(`**Start time:** %s`, startTime.GoString())
-		infoFileds = append(infoFileds,
-			larkcard.NewMessageCardField().IsShort(true).Text(larkcard.NewMessageCardLarkMd().Content(content)))
+		ret.StartTime = startTime.Format(time.RFC3339)
 	}
 	if endTime != nil {
-		content := fmt.Sprintf(`**End time:** %s`, endTime.GoString())
-		infoFileds = append(infoFileds,
-			larkcard.NewMessageCardField().IsShort(true).Text(larkcard.NewMessageCardLarkMd().Content(content)))
+		ret.EndTime = endTime.Format(time.RFC3339)
 	}
 	if startTime != nil && endTime != nil {
-		content := fmt.Sprintf(`**Time cost:** %ds`, endTime.Unix()-startTime.Unix())
-		infoFileds = append(infoFileds,
-			larkcard.NewMessageCardField().IsShort(true).Text(larkcard.NewMessageCardLarkMd().Content(content)))
+		ret.TimeCost = time.Duration(endTime.UnixNano() - startTime.UnixNano()).String()
 	}
 
-	ret = append(ret, larkcard.NewMessageCardDiv().Fields(infoFileds))
-
-	if rerunCmd != "" {
-		content := fmt.Sprintf(`**Rerun command:** %s`, rerunCmd)
-		runRunFileds := []*larkcard.MessageCardField{
-			larkcard.NewMessageCardField().Text(larkcard.NewMessageCardLarkMd().Content(content)),
-		}
-
-		ret = append(ret, larkcard.NewMessageCardHr(), larkcard.NewMessageCardDiv().Fields(runRunFileds))
-	}
-
-	return ret
+	return &ret, nil
 }
 
-func newLarkCardWithGoTemplate(etype, subject, source, baseURL string) *larkcard.MessageCard {
-	// todo: replace with go template
-	tmpl, err := template.New("lark").Parse(larkTemplateBytes)
+func newLarkCardWithGoTemplate(event cloudevents.Event, baseURL string) (string, error) {
+	infos, err := extractLarkInfosFromEvent(event, baseURL)
 	if err != nil {
-		return nil
+		return "", err
+	}
+
+	tmpl, err := template.New("lark").Funcs(sprig.FuncMap()).Parse(larkTemplateBytes)
+	if err != nil {
+		return "", err
 	}
 
 	tmplResult := new(bytes.Buffer)
-	if err := tmpl.Execute(tmplResult, nil); err != nil {
-		return nil
+	if err := tmpl.Execute(tmplResult, infos); err != nil {
+		return "", err
 	}
 
 	values := make(map[string]interface{})
 	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
-		return nil
+		return "", err
 	}
 
-	var yamlBytes []byte
-	data := make(map[string]interface{})
-	if err := yaml.Unmarshal(yamlBytes, data); err != nil {
-		return nil
-	}
-
-	jsonBytes, err := json.Marshal(data)
+	jsonBytes, err := json.Marshal(values)
 	if err != nil {
-		return nil
+		return "", err
 	}
 
-	ret := larkcard.NewMessageCard()
-	if err := json.Unmarshal(jsonBytes, ret); err != nil {
-		return nil
-	}
-
-	return ret
+	return string(jsonBytes), nil
 }
 
 func newLarkTitle(etype, subject string) string {
