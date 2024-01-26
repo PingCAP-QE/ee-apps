@@ -164,7 +164,7 @@ type DevBuildSpec struct {
 	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(128)"`
 	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(128)"`
 	ProductBaseImg    string         `json:"productBaseImg,omitempty" gorm:"type:varchar(128)"`
-	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(64)"`
+	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(128)"`
 	GithubRepo        string         `json:"githubRepo,omitempty" gorm:"type:varchar(64)"`
 	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
