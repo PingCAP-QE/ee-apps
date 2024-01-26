@@ -99,19 +99,15 @@ func fillWithDefaults(req *DevBuild) {
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
 	if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition && spec.PluginGitRef == "" {
 		groups := versionValidator.FindStringSubmatch(spec.Version)
-		if spec.IsHotfix {
-			if len(groups) == 3 {
-				major_sub := groups[1]
+		if len(groups) == 3 {
+			major_sub := groups[1]
+			if spec.IsHotfix {
 				patch := groups[2]
 				spec.PluginGitRef = fmt.Sprintf("release-%s%s", major_sub, patch)
-			}
-		} else {
-			if len(groups) == 3 {
-				major_sub := groups[1]
+			} else {
 				spec.PluginGitRef = fmt.Sprintf("release-%s", major_sub)
 			}
 		}
-
 	}
 }
 
