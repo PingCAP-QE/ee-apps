@@ -81,12 +81,19 @@ func TestDevBuildCreate(t *testing.T) {
 		time.Sleep(time.Millisecond)
 		require.Equal(t, int64(2), mockedRepo.saved.Status.PipelineBuildID)
 	})
-	t.Run("auto fill plugin", func(t *testing.T) {
+	t.Run("auto fill plugin for devbuild", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
 			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1", entity.Spec.PluginGitRef)
+	})
+	t.Run("auto fill plugin for hotfix", func(t *testing.T) {
+		entity, err := server.Create(context.TODO(),
+			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2-20240125-5de58f5", Edition: EnterpriseEdition, GitRef: "pull/23", IsHotfix: true}},
+			DevBuildSaveOption{})
+		require.NoError(t, err)
+		require.Equal(t, "release-6.1.2", entity.Spec.PluginGitRef)
 	})
 	t.Run("auto fill fips", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
