@@ -86,10 +86,19 @@ func fillWithDefaults(req *DevBuild) {
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
 	if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition && spec.PluginGitRef == "" {
 		groups := versionValidator.FindStringSubmatch(spec.Version)
-		if len(groups) == 2 {
-			major := groups[1]
-			spec.PluginGitRef = fmt.Sprintf("release-%s", major)
+		if spec.IsHotfix {
+			if len(groups) == 3 {
+				major_sub := groups[1]
+				patch := groups[2]
+				spec.PluginGitRef = fmt.Sprintf("release-%s%s", major_sub, patch)
+			}
+		} else {
+			if len(groups) == 3 {
+				major_sub := groups[1]
+				spec.PluginGitRef = fmt.Sprintf("release-%s", major_sub)
+			}
 		}
+
 	}
 }
 
@@ -285,7 +294,7 @@ var gitRefValidator *regexp.Regexp
 var githubRepoValidator *regexp.Regexp
 
 func init() {
-	versionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+.*$`)
+	versionValidator = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$`)
 	hotfixVersionValidator = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
 	gitRefValidator = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/[\w-_]+)|(branch/[\w-_\.]+))$`)
 	githubRepoValidator = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
