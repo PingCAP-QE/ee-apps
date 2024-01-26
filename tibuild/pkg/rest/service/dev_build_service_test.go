@@ -75,7 +75,8 @@ func TestDevBuildCreate(t *testing.T) {
 		require.Equal(t, int64(0), entity.Status.PipelineBuildID)
 		require.Equal(t, map[string]string{"Edition": "enterprise", "GitRef": "pull/23", "Product": "tidb",
 			"Version": "v6.1.2", "PluginGitRef": "master", "IsPushGCR": "false", "IsHotfix": "false", "Features": "",
-			"GithubRepo": "pingcap/tidb", "TiBuildID": "1", "BuildEnv": "", "ProductDockerfile": "", "BuilderImg": "", "ProductBaseImg": ""}, mockedJenkins.params)
+			"GithubRepo": "pingcap/tidb", "TiBuildID": "1", "BuildEnv": "", "ProductDockerfile": "", "BuilderImg": "",
+			"ProductBaseImg": "", "TargetImg": ""}, mockedJenkins.params)
 		mockedJenkins.resume <- struct{}{}
 		time.Sleep(time.Millisecond)
 		require.Equal(t, int64(2), mockedRepo.saved.Status.PipelineBuildID)
@@ -149,6 +150,23 @@ func TestDevBuildCreate(t *testing.T) {
 		obj.Spec.GitRef = "release-6.1"
 		_, err = server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.NoError(t, err)
+	})
+
+	t.Run("validate target image", func(t *testing.T) {
+		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: CommunityEdition, GitRef: "branch/feature/somefeat"}}
+		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
+		require.NoError(t, err)
+
+		obj.Spec.TargetImg = "hub.pingcap.net/temp/tidb:somefeat"
+		_, err = server.Create(context.TODO(), obj, DevBuildSaveOption{})
+		require.ErrorIs(t, err, ErrAuth)
+
+		_, err = server.Create(context.WithValue(context.TODO(), KeyOfApiAccount, "admi"), obj, DevBuildSaveOption{})
+		require.ErrorIs(t, err, ErrAuth)
+
+		_, err = server.Create(context.WithValue(context.TODO(), KeyOfApiAccount, AdminApiAccount), obj, DevBuildSaveOption{})
+		require.NoError(t, err)
+
 	})
 
 	t.Run("bad githubRepo", func(t *testing.T) {

@@ -5,3 +5,6 @@ lark:
   app_id: cli_12345678
   app_secret: s123456789
   receiver: abc@test.com
+tibuild:
+  result_sink_url: http://localhost:49244 # url of tibuild events listener.
+  trigger_sink_url: http://localhost:8080 # url of tekton event listener.

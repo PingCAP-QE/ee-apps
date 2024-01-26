@@ -1,19 +1,76 @@
 package tekton
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
+	"text/template"
+	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog/log"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
+	"gopkg.in/yaml.v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
+
+	_ "embed"
 )
+
+//go:embed lark_templates/tekton-run-notify.yaml.tmpl
+var larkTemplateBytes string
+
+// receiver formats:
+// - Open ID: ou_......
+// - Union ID: on_......
+// - Chat ID: oc_......
+// - Email: some email address.
+// - User ID: I do not know
+var (
+	reLarkOpenID  = regexp.MustCompile(`^ou_\w+`)
+	reLarkUnionID = regexp.MustCompile(`^on_\w+`)
+	reLarkChatID  = regexp.MustCompile(`^oc_\w+`)
+	reLarkEmail   = regexp.MustCompile(`^\S+@\S+\.\S+$`)
+)
+
+func getReceiverIDType(id string) string {
+	switch {
+	case reLarkOpenID.MatchString(id):
+		return larkim.ReceiveIdTypeOpenId
+	case reLarkUnionID.MatchString(id):
+		return larkim.ReceiveIdTypeUnionId
+	case reLarkChatID.MatchString(id):
+		return larkim.ReceiveIdTypeChatId
+	case reLarkEmail.MatchString(id):
+		return larkim.ReceiveIdTypeEmail
+	default:
+		return larkim.ReceiveIdTypeUserId
+	}
+}
+
+func newMessageReq(receiver string, messageRawStr string) *larkim.CreateMessageReq {
+	return larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(getReceiverIDType(receiver)).
+		Body(
+			larkim.NewCreateMessageReqBodyBuilder().
+				MsgType(larkim.MsgTypeInteractive).
+				ReceiveId(receiver).
+				Content(messageRawStr).
+				Build(),
+		).
+		Build()
+}
 
 func newLarkClient(cfg config.Lark) *lark.Client {
 	// Disable certificate verification
@@ -29,46 +86,146 @@ func newLarkClient(cfg config.Lark) *lark.Client {
 	)
 }
 
-func newLarkMessage(receiveEmail string, event cloudevents.Event, detailBaseUrl string) (*larkim.CreateMessageReq, error) {
-	messageCard := newLarkCard(event.Type(), event.Subject(), event.Source(), detailBaseUrl)
-	messageRawStr, err := messageCard.String()
+func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
+	createMsgReqs, err := newLarkMessages(receivers, event, detailBaseUrl)
+	if err != nil {
+		log.Error().Err(err).Msg("compose lark message failed")
+		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "compose lark message failed: %v", err)
+	}
+
+	for _, createMsgReq := range createMsgReqs {
+		resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
+		if err != nil {
+			log.Error().Err(err).Msg("send lark message failed")
+			return cloudevents.NewHTTPResult(http.StatusInternalServerError, "send lark message failed: %v", err)
+		}
+
+		if !resp.Success() {
+			log.Error().Msg(string(resp.RawBody))
+			return cloudevents.ResultNACK
+		}
+
+		log.Info().
+			Str("request-id", resp.RequestId()).
+			Str("message-id", *resp.Data.MessageId).
+			Msg("send lark message successfully.")
+	}
+
+	return cloudevents.ResultACK
+}
+
+func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
+	messageRawStr, err := newLarkCardWithGoTemplate(event, detailBaseUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(larkim.ReceiveIdTypeEmail).
-		Body(
-			larkim.NewCreateMessageReqBodyBuilder().
-				MsgType(larkim.MsgTypeInteractive).
-				ReceiveId(receiveEmail).
-				Content(messageRawStr).
-				Build(),
-		).
-		Build()
+	var reqs []*larkim.CreateMessageReq
+	for _, r := range receivers {
+		reqs = append(reqs, newMessageReq(r, messageRawStr))
+	}
 
-	return req, nil
+	return reqs, nil
 }
 
-func newLarkCard(etype, subject, source, baseURL string) *larkcard.MessageCard {
-	title := newLarkTitle(etype, subject)
-	header := larkcard.NewMessageCardHeader().
-		Template(larkCardHeaderTemplates[tektoncloudevent.TektonEventType(etype)]).
-		Title(larkcard.NewMessageCardPlainText().Content(title))
+func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMessageInfos, error) {
+	var data tektoncloudevent.TektonCloudEventData
+	if err := event.DataAs(&data); err != nil {
+		return nil, err
+	}
 
-	detailLinkAction := larkcard.NewMessageCardAction().Actions([]larkcard.MessageCardActionElement{
-		larkcard.NewMessageCardEmbedButton().
-			Type(larkcard.MessageCardButtonTypeDefault).
-			Text(larkcard.NewMessageCardPlainText().Content("View")).
-			Url(newDetailURL(etype, source, baseURL)),
-	})
+	ret := cardMessageInfos{
+		Title:         newLarkTitle(event.Type(), event.Subject()),
+		TitleTemplate: larkCardHeaderTemplates[tektoncloudevent.TektonEventType(event.Type())],
+		ViewURL:       newDetailURL(event.Type(), event.Source(), baseURL),
+	}
 
-	return larkcard.NewMessageCard().
-		Config(larkcard.NewMessageCardConfig().WideScreenMode(true)).
-		Header(header).
-		Elements([]larkcard.MessageCardElement{
-			detailLinkAction,
-		})
+	var startTime, endTime *metav1.Time
+	switch {
+	case data.PipelineRun != nil:
+		startTime = data.PipelineRun.Status.StartTime
+		endTime = data.PipelineRun.Status.CompletionTime
+		if data.PipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
+			ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
+				data.PipelineRun.Namespace, data.PipelineRun.Spec.PipelineRef.Name, data.PipelineRun.Name)
+		}
+
+		if results := data.PipelineRun.Status.PipelineResults; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
+		}
+	case data.TaskRun != nil:
+		startTime = data.TaskRun.Status.StartTime
+		endTime = data.TaskRun.Status.CompletionTime
+		if data.TaskRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
+			ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
+				data.TaskRun.Namespace, data.TaskRun.Spec.TaskRef.Name, data.TaskRun.Name)
+		}
+
+		if results := data.TaskRun.Status.TaskRunResults; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				v, _ := r.Value.MarshalJSON()
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), string(v), "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
+		}
+	case data.Run != nil:
+		startTime = data.Run.Status.StartTime
+		endTime = data.Run.Status.CompletionTime
+
+		if results := data.Run.Status.Results; len(results) > 0 {
+			var parts []string
+			for _, r := range results {
+				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+			}
+			ret.Results = strings.Join(parts, "\n")
+		}
+	}
+
+	if startTime != nil {
+		ret.StartTime = startTime.Format(time.RFC3339)
+	}
+	if endTime != nil {
+		ret.EndTime = endTime.Format(time.RFC3339)
+	}
+	if startTime != nil && endTime != nil {
+		ret.TimeCost = time.Duration(endTime.UnixNano() - startTime.UnixNano()).String()
+	}
+
+	return &ret, nil
+}
+
+func newLarkCardWithGoTemplate(event cloudevents.Event, baseURL string) (string, error) {
+	infos, err := extractLarkInfosFromEvent(event, baseURL)
+	if err != nil {
+		return "", err
+	}
+
+	tmpl, err := template.New("lark").Funcs(sprig.FuncMap()).Parse(larkTemplateBytes)
+	if err != nil {
+		return "", err
+	}
+
+	tmplResult := new(bytes.Buffer)
+	if err := tmpl.Execute(tmplResult, infos); err != nil {
+		return "", err
+	}
+
+	values := make(map[string]interface{})
+	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
 }
 
 func newLarkTitle(etype, subject string) string {

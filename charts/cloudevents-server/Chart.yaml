@@ -1,6 +1,6 @@
 apiVersion: v2
 name: cloudevents-server
-description: A Helm chart for Kubernetes
+description: Cloud events server, its an event bus.
 
 # A chart can be either an 'application' or a 'library' chart.
 #

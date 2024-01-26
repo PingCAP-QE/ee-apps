@@ -37,6 +37,8 @@ jobs:
               - 'cloudevents-server/**'
             tibuild:
               - 'tibuild/**'
+            dl:
+              - 'dl/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -79,6 +81,13 @@ jobs:
       - name: Publish tibuild image
         if: steps.changes.outputs.tibuild == 'true'
         working-directory: tibuild
+        run: |
+          skaffold build \
+            --profile local-docker \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish dl image
+        if: steps.changes.outputs.dl == 'true'
+        working-directory: dl
         run: |
           skaffold build \
             --profile local-docker \

@@ -10,21 +10,48 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/repo"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type DevBuildHandler struct {
-	svc service.DevBuildService
+	svc  service.DevBuildService
+	auth configs.RestApiSecret
 }
 
-func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB) *DevBuildHandler {
+func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.DB, auth configs.RestApiSecret) *DevBuildHandler {
 	db.AutoMigrate(&service.DevBuild{})
 	return &DevBuildHandler{svc: service.DevbuildServer{
 		Repo:    repo.DevBuildRepo{Db: db},
 		Jenkins: jenkins,
 		Now:     time.Now},
+		auth: auth,
 	}
+}
+
+func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
+	user, passwd, ok := c.Request.BasicAuth()
+	if !ok {
+		return c.Request.Context(), nil
+	}
+	if user == service.AdminApiAccount {
+		if passwd == h.auth.AdminToken {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfApiAccount, user)
+			return ctx, nil
+		} else {
+			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+		}
+	}
+	if user == service.TibuildApiAccount {
+		if passwd == h.auth.TiBuildToken {
+			ctx := context.WithValue(c.Request.Context(), service.KeyOfApiAccount, user)
+			return ctx, nil
+		} else {
+			return nil, fmt.Errorf("authenticate error%w", service.ErrAuth)
+		}
+	}
+	return c.Request.Context(), nil
 }
 
 // CreateDevbuild godoc
@@ -40,8 +67,13 @@ func NewDevBuildHandler(ctx context.Context, jenkins service.Jenkins, db *gorm.D
 // @Failure	500	{object}	HTTPError
 // @Router /api/devbuilds [post]
 func (h DevBuildHandler) Create(c *gin.Context) {
+	ctx, err := h.authenticate(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
 	params := service.DevBuild{}
-	err := bindParam(&params, c)
+	err = bindParam(&params, c)
 	if err != nil {
 		return
 	}
@@ -51,7 +83,7 @@ func (h DevBuildHandler) Create(c *gin.Context) {
 		respondError(c, fmt.Errorf("%s%w", err.Error(), service.ErrBadRequest))
 		return
 	}
-	entity, err := h.svc.Create(c.Request.Context(), params, query)
+	entity, err := h.svc.Create(ctx, params, query)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -132,6 +164,11 @@ func (h DevBuildHandler) Get(c *gin.Context) {
 // @Failure	500	{object}	HTTPError
 // @Router /api/devbuilds/{id}/rerun [post]
 func (h DevBuildHandler) Rerun(c *gin.Context) {
+	ctx, err := h.authenticate(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -144,7 +181,7 @@ func (h DevBuildHandler) Rerun(c *gin.Context) {
 		respondError(c, fmt.Errorf("%s%w", err.Error(), service.ErrBadRequest))
 		return
 	}
-	entity, err := h.svc.Rerun(c.Request.Context(), id, params)
+	entity, err := h.svc.Rerun(ctx, id, params)
 	if err != nil {
 		respondError(c, err)
 		return

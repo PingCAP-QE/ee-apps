@@ -169,6 +169,7 @@ type DevBuildSpec struct {
 	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
+	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
 }
 
 type GitRef string
@@ -263,3 +264,10 @@ type ImageSyncRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 }
+
+type TibuildCtxKey string
+
+var KeyOfApiAccount TibuildCtxKey = "apiAccount"
+
+const AdminApiAccount = "admin"
+const TibuildApiAccount = "tibuild"

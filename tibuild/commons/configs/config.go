@@ -4,6 +4,7 @@ package configs
 
 import (
 	"fmt"
+
 	"github.com/jinzhu/configor"
 )
 
@@ -29,6 +30,13 @@ type ConfigYaml struct {
 	Github struct {
 		Token string
 	}
+
+	RestApiSecret RestApiSecret
+}
+
+type RestApiSecret struct {
+	AdminToken   string
+	TiBuildToken string
 }
 
 var Config = &ConfigYaml{}
@@ -36,5 +44,8 @@ var Config = &ConfigYaml{}
 // Load config from file into 'Config' variable
 func LoadConfig(file string) {
 	fmt.Printf("file:%s\n", file)
-	configor.Load(Config, file)
+	err := configor.Load(Config, file)
+	if err != nil {
+		panic(err)
+	}
 }

@@ -12,6 +12,7 @@ devbuild_url = 'https://tibuild.pingcap.net/api/devbuilds'
 
 NOBLOCK = False
 BUILD_CREATED_BY = ''
+BASIC_AUTH_CREDENTIAL=''
 
 
 def dev_build_url(build_id: int):
@@ -35,11 +36,14 @@ def trigger(args):
                      "buildEnv": ' '.join(args.buildEnv) if args.buildEnv else '',
                      "productDockerfile": args.productDockerfile,
                      "productBaseImg": args.productBaseImg,
-                     "builderImg":args.builderImg}}
+                     "builderImg":args.builderImg,
+                     "targetImg": args.targetImg}}
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    if BASIC_AUTH_CREDENTIAL:
+        headers['Authorization']="BASIC " + BASIC_AUTH_CREDENTIAL
     body = json.dumps(data).encode()
     req = urllib.request.Request(f"{devbuild_url}?dryrun={args.dryrun}", body, headers, method="POST")
     build_id = 0
@@ -107,6 +111,7 @@ def get_artifact(build: dict) -> str:
 if __name__ == "__main__":
     NOBLOCK = bool(os.environ.get('NOBLOCK'))
     BUILD_CREATED_BY = os.environ.get('BUILD_CREATED_BY') or ''
+    BASIC_AUTH_CREDENTIAL = os.environ.get('BASIC_AUTH_CREDENTIAL') or ''
     top_parser = argparse.ArgumentParser(
         prog='tbctl',
         description='tibuild commandline client'
@@ -133,6 +138,7 @@ if __name__ == "__main__":
     parser_trigger.add_argument('--productDockerfile', help='dockerfile url for product')
     parser_trigger.add_argument('--productBaseImg', help='product base image')
     parser_trigger.add_argument('--builderImg', help='specify docker image for builder')
+    parser_trigger.add_argument('--targetImg', help=argparse.SUPPRESS)
     parser_trigger.set_defaults(handler=trigger)
     parser_poll = devbuild.add_parser('poll')
     parser_poll.add_argument('build_id', type=int, help="the triggered build id")

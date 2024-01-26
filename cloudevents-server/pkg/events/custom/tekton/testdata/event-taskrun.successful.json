@@ -9,255 +9,316 @@
     "data": {
         "taskRun": {
             "metadata": {
-                "name": "auto-compose-multi-arch-image-run-zc8jc-collect-and-push",
-                "namespace": "ee-cd",
-                "uid": "c11bdd84-9f8b-4043-a934-82886c40fe01",
-                "resourceVersion": "2432973329",
+                "annotations": {
+                    "pipeline.tekton.dev/release": "a34ad6b-dirty",
+                    "tekton.dev/ce-context": "{}",
+                    "tekton.dev/git-repo": "https://github.com/pingcap/tidb.git",
+                    "tekton.dev/git-revision": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff",
+                    "tekton.dev/git-status": "true",
+                    "tekton.dev/platforms": "linux/amd64,linux/arm64",
+                    "tekton.dev/status-target-url": "https://do.pingcap.net/tekton/#/namespaces/{{ .Namespace }}/pipelineruns/{{ .Name }}"
+                },
+                "creationTimestamp": "2024-01-25T15:11:41Z",
                 "generation": 1,
-                "creationTimestamp": "2023-12-07T06:33:25Z",
                 "labels": {
                     "app.kubernetes.io/managed-by": "tekton-pipelines",
+                    "app.kubernetes.io/version": "0.1",
                     "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
                     "kustomize.toolkit.fluxcd.io/namespace": "apps",
                     "tekton.dev/memberOf": "tasks",
-                    "tekton.dev/pipeline": "auto-compose-multi-arch-image",
-                    "tekton.dev/pipelineRun": "auto-compose-multi-arch-image-run-zc8jc",
-                    "tekton.dev/pipelineTask": "collect-and-push",
-                    "tekton.dev/task": "multi-arch-image-collect",
-                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
-                    "triggers.tekton.dev/trigger": "image-push-on-harbor",
-                    "triggers.tekton.dev/triggers-eventid": "8d56c7dc-5523-49a8-9c86-6ea43d355528"
+                    "tekton.dev/pipeline": "pingcap-build-package",
+                    "tekton.dev/pipelineRun": "build-package-tidb-linux-amd64-nmjrj",
+                    "tekton.dev/pipelineTask": "build-binaries",
+                    "tekton.dev/task": "pingcap-build-binaries",
+                    "triggers.tekton.dev/eventlistener": "public",
+                    "triggers.tekton.dev/trigger": "git-push-pingcap-tidb",
+                    "triggers.tekton.dev/triggers-eventid": "8cc589a5-2236-464f-90e4-5b8ac26e68c8"
                 },
-                "annotations": {
-                    "pipeline.tekton.dev/release": "19940f2",
-                    "results.tekton.dev/record": "ee-cd/results/8d56c7dc-5523-49a8-9c86-6ea43d355528/records/c11bdd84-9f8b-4043-a934-82886c40fe01",
-                    "results.tekton.dev/result": "ee-cd/results/8d56c7dc-5523-49a8-9c86-6ea43d355528"
-                },
+                "name": "build-package-tidb-linux-amd64-nmjrj-build-binaries",
+                "namespace": "ee-cd",
                 "ownerReferences": [
                     {
                         "apiVersion": "tekton.dev/v1beta1",
-                        "kind": "PipelineRun",
-                        "name": "auto-compose-multi-arch-image-run-zc8jc",
-                        "uid": "efd38cad-80cf-4a7c-b96b-268252881c9a",
+                        "blockOwnerDeletion": true,
                         "controller": true,
-                        "blockOwnerDeletion": true
+                        "kind": "PipelineRun",
+                        "name": "build-package-tidb-linux-amd64-nmjrj",
+                        "uid": "7e938f27-895c-46a3-b682-e1e6ae2cb131"
                     }
                 ],
-                "managedFields": [
-                    {
-                        "manager": "Go-http-client",
-                        "operation": "Update",
-                        "apiVersion": "tekton.dev/v1beta1",
-                        "time": "2023-12-07T06:33:25Z",
-                        "fieldsType": "FieldsV1",
-                        "fieldsV1": {
-                            "f:metadata": {
-                                "f:annotations": {
-                                    ".": {},
-                                    "f:pipeline.tekton.dev/release": {}
-                                },
-                                "f:labels": {
-                                    ".": {},
-                                    "f:kustomize.toolkit.fluxcd.io/name": {},
-                                    "f:kustomize.toolkit.fluxcd.io/namespace": {},
-                                    "f:tekton.dev/memberOf": {},
-                                    "f:tekton.dev/pipeline": {},
-                                    "f:tekton.dev/pipelineRun": {},
-                                    "f:tekton.dev/pipelineTask": {},
-                                    "f:tekton.dev/task": {},
-                                    "f:triggers.tekton.dev/eventlistener": {},
-                                    "f:triggers.tekton.dev/trigger": {},
-                                    "f:triggers.tekton.dev/triggers-eventid": {}
-                                },
-                                "f:ownerReferences": {
-                                    ".": {},
-                                    "k:{\"uid\":\"efd38cad-80cf-4a7c-b96b-268252881c9a\"}": {
-                                        ".": {},
-                                        "f:apiVersion": {},
-                                        "f:blockOwnerDeletion": {},
-                                        "f:controller": {},
-                                        "f:kind": {},
-                                        "f:name": {},
-                                        "f:uid": {}
-                                    }
-                                }
-                            },
-                            "f:spec": {
-                                ".": {},
-                                "f:params": {},
-                                "f:podTemplate": {
-                                    ".": {},
-                                    "f:nodeSelector": {
-                                        ".": {},
-                                        "f:enable-ci": {}
-                                    },
-                                    "f:tolerations": {}
-                                },
-                                "f:resources": {},
-                                "f:serviceAccountName": {},
-                                "f:taskRef": {
-                                    ".": {},
-                                    "f:kind": {},
-                                    "f:name": {}
-                                },
-                                "f:timeout": {},
-                                "f:workspaces": {}
-                            },
-                            "f:status": {
-                                ".": {},
-                                "f:conditions": {},
-                                "f:podName": {},
-                                "f:startTime": {},
-                                "f:steps": {},
-                                "f:taskSpec": {
-                                    ".": {},
-                                    "f:description": {},
-                                    "f:params": {},
-                                    "f:results": {},
-                                    "f:steps": {},
-                                    "f:workspaces": {}
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "manager": "watcher",
-                        "operation": "Update",
-                        "apiVersion": "tekton.dev/v1beta1",
-                        "time": "2023-12-07T06:33:25Z",
-                        "fieldsType": "FieldsV1",
-                        "fieldsV1": {
-                            "f:metadata": {
-                                "f:annotations": {
-                                    "f:results.tekton.dev/record": {},
-                                    "f:results.tekton.dev/result": {}
-                                }
-                            }
-                        }
-                    }
-                ]
+                "resourceVersion": "2676164142",
+                "uid": "c00e5eba-7d95-47af-80cb-1868ab92bd11"
             },
             "spec": {
                 "params": [
                     {
-                        "name": "image_url",
-                        "value": "hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-be62f75-release_linux_arm64"
+                        "name": "os",
+                        "value": "linux"
                     },
                     {
-                        "name": "release_tag_suffix",
+                        "name": "arch",
+                        "value": "amd64"
+                    },
+                    {
+                        "name": "profile",
                         "value": "release"
+                    },
+                    {
+                        "name": "component",
+                        "value": "tidb"
+                    },
+                    {
+                        "name": "version",
+                        "value": "v8.0.0-alpha-120-g799a46107e"
+                    },
+                    {
+                        "name": "git-ref",
+                        "value": "master"
+                    },
+                    {
+                        "name": "git-sha",
+                        "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                    },
+                    {
+                        "name": "builder-image",
+                        "value": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21"
+                    },
+                    {
+                        "name": "release-dir",
+                        "value": "build"
+                    },
+                    {
+                        "name": "push",
+                        "value": "true"
                     }
                 ],
-                "resources": {},
-                "serviceAccountName": "default",
-                "taskRef": {
-                    "name": "multi-arch-image-collect",
-                    "kind": "Task"
-                },
-                "timeout": "59m59.988451875s",
                 "podTemplate": {
                     "nodeSelector": {
-                        "enable-ci": "true"
+                        "kubernetes.io/arch": "amd64"
                     },
                     "tolerations": [
                         {
+                            "effect": "NoSchedule",
                             "key": "dedicated",
                             "operator": "Equal",
-                            "value": "test-infra",
-                            "effect": "NoSchedule"
+                            "value": "test-infra"
                         }
                     ]
                 },
+                "resources": {},
+                "serviceAccountName": "default",
+                "stepOverrides": [
+                    {
+                        "name": "build",
+                        "resources": {
+                            "requests": {
+                                "cpu": "8",
+                                "memory": "32Gi"
+                            }
+                        }
+                    }
+                ],
+                "taskRef": {
+                    "kind": "Task",
+                    "name": "pingcap-build-binaries"
+                },
+                "timeout": "27m47.854381262s",
                 "workspaces": [
+                    {
+                        "name": "source",
+                        "persistentVolumeClaim": {
+                            "claimName": "pvc-56629b401e"
+                        }
+                    },
                     {
                         "name": "dockerconfig",
                         "secret": {
                             "secretName": "hub-pingcap-net-ee"
                         }
+                    },
+                    {
+                        "name": "cargo-home",
+                        "persistentVolumeClaim": {
+                            "claimName": "cargo-home"
+                        }
                     }
                 ]
             },
             "status": {
+                "completionTime": "2024-01-25T15:16:58Z",
                 "conditions": [
                     {
-                        "type": "Succeeded",
-                        "status": "True",
-                        "lastTransitionTime": "2023-12-07T06:34:54Z",
+                        "lastTransitionTime": "2024-01-25T15:16:58Z",
+                        "message": "All Steps have completed executing",
                         "reason": "Succeeded",
-                        "message": "All Steps have completed executing"
+                        "status": "True",
+                        "type": "Succeeded"
                     }
                 ],
-                "podName": "auto-compose-multi-arch-image-run-zc8jc-collect-and-push-pod",
-                "startTime": "2023-12-07T06:33:25Z",
-                "completionTime": "2023-12-07T06:34:54Z",
+                "podName": "build-package-tidb-linux-amd64-nmjrj-build-binaries-pod",
+                "startTime": "2024-01-25T15:11:41Z",
                 "steps": [
                     {
+                        "container": "step-generate-build-script",
+                        "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                        "name": "generate-build-script",
                         "terminated": {
+                            "containerID": "containerd://e06fa4bdceca4cc0aff66a31fe3b21c7e67888b391e5876903e3d39030bac693",
                             "exitCode": 0,
+                            "finishedAt": "2024-01-25T15:12:10Z",
                             "reason": "Completed",
-                            "message": "[{\"key\":\"repo\",\"value\":\"\",\"type\":1},{\"key\":\"tags\",\"value\":\"\",\"type\":1}]",
-                            "startedAt": "2023-12-07T06:33:29Z",
-                            "finishedAt": "2023-12-07T06:34:53Z",
-                            "containerID": "containerd://95ca9c8dbaf07e02b9b756f1ee2bd14fa5096bb94ae3a648b7ce50f2e33bb8e3"
-                        },
-                        "name": "prepare-manifest",
-                        "container": "step-prepare-manifest",
-                        "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:55c3127c8f14affb633b97365457c86e69f260da52c6698d25c8955b26a06b4d"
+                            "startedAt": "2024-01-25T15:12:08Z"
+                        }
+                    },
+                    {
+                        "container": "step-build",
+                        "imageID": "ghcr.io/pingcap-qe/cd/builders/tidb@sha256:328d64b5c5ec48676c32d0a5ce5fed43007cee076181e41fd22760c7c321dc17",
+                        "name": "build",
+                        "terminated": {
+                            "containerID": "containerd://09aa6613be28e25d0a542f187ff9bb4a65f06c6246ddb4df2d1def17d69f4df6",
+                            "exitCode": 0,
+                            "finishedAt": "2024-01-25T15:16:43Z",
+                            "reason": "Completed",
+                            "startedAt": "2024-01-25T15:12:10Z"
+                        }
+                    },
+                    {
+                        "container": "step-publish",
+                        "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                        "name": "publish",
+                        "terminated": {
+                            "containerID": "containerd://8c4eb08e40a7f6baf4ab74f9a8f44188d84fe27f4270d81ccc1a130a26987963",
+                            "exitCode": 0,
+                            "finishedAt": "2024-01-25T15:16:57Z",
+                            "message": "[{\"key\":\"pushed\",\"value\":\"oci:\\n  repo: hub.pingcap.net/pingcap/tidb/package\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: \\\"sha256:51299c4c53e252e0e5d4c67cbf1eccdcce21dfb7a719a5dd44c0114592e7eb40\\\"\\nfiles:\\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n\",\"type\":1}]",
+                            "reason": "Completed",
+                            "startedAt": "2024-01-25T15:16:44Z"
+                        }
                     }
                 ],
                 "taskResults": [
                     {
-                        "name": "repo",
+                        "name": "pushed",
                         "type": "string",
-                        "value": ""
-                    },
-                    {
-                        "name": "tags",
-                        "type": "string",
-                        "value": ""
+                        "value": "oci:\n  repo: hub.pingcap.net/pingcap/tidb/package\n  tag: \"master-799a461_linux_amd64\"\n  digest: \"sha256:51299c4c53e252e0e5d4c67cbf1eccdcce21dfb7a719a5dd44c0114592e7eb40\"\nfiles:\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n"
                     }
                 ],
                 "taskSpec": {
+                    "description": "Build binaries for the component.",
                     "params": [
                         {
-                            "name": "image_url",
-                            "type": "string",
-                            "description": "The full url of the pushed image, contain the tag part.\nIt will parse the repo from it.\n"
+                            "name": "component",
+                            "type": "string"
                         },
                         {
-                            "name": "release_tag_suffix",
-                            "type": "string",
-                            "default": "release"
-                        }
-                    ],
-                    "description": "The working flow:\n1. list the tags for the repo.\n2. filter the single arch tags.\n3. get the digest of the tags.\n4. the tags should follow the standard format:\n  - master-00595b4-release_linux_amd64 =\u003e master-00595b4-release =\u003e master-00595b4 =\u003e master\n  - master-00595b4-release-linux-arm64 =\u003e master-00595b4-release =\u003e master-00595b4 =\u003e master\n  - master-00595b4-release_arm64       =\u003e master-00595b4-release =\u003e master-00595b4 =\u003e master\n  - master-00595b4-release-arm64       =\u003e master-00595b4-release =\u003e master-00595b4 =\u003e master\n",
-                    "steps": [
+                            "default": "linux",
+                            "name": "os",
+                            "type": "string"
+                        },
                         {
-                            "name": "prepare-manifest",
-                            "image": "ghcr.io/pingcap-qe/cd/utils/release:bcb089f",
-                            "workingDir": "/workspace",
-                            "resources": {},
-                            "script": "#! /usr/bin/env bash\n\nset -exo pipefail\n\n:\u003e /tekton/results/repo\n:\u003e /tekton/results/tags\n:\u003e manifest.yaml\n\n# steps:\n# 1. check the pushed tag, if not existed, step will fail.\noras repo tags hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-be62f75-release_linux_arm64\n\n# 2. compute the mult-arch tags and digests\npushed_repo=\"$(echo hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-be62f75-release_linux_arm64 | cut -d ':' -f 1)\"\npushed_tag=\"$(echo hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-be62f75-release_linux_arm64 | cut -d ':' -f 2)\"\ntag=$(\\\n  echo \"$pushed_tag\" | \\\n  sed -E 's/[-_](amd64|arm64)$//g' | \\\n  sed -E 's/[-_]linux$//g' \\\n)\n\n# repo\nyq -i \".image = \\\"$pushed_repo\\\"\" manifest.yaml\n\n# tags\ntags=\"$tag\"\ntags=\"$tags $(echo $tag | sed -E 's/[-_]release$//g')\"\n# for tags\nfor t in $tags; do\n  yq -i \".tags += [\\\"$t\\\"]\" manifest.yaml\ndone\n\n# digest map\nfor t in `oras repo tags $pushed_repo | grep -E \"${tag}[-_].*[-_](amd64|arm64)$\"`; do\n  manifest-tool inspect --raw \"${pushed_repo}:$t\" \u003e manifest.json\n  platform=`jq -r '.os + \"/\" + .architecture' manifest.json`\n  digest=`jq -r '.digest' manifest.json`\n  echo \"add for: ${platform} =\u003e ${digest}\"\n\n  os=\"$(echo \"$platform\" | awk -F/ '{print $1}')\"\n  architecture=\"${platform#*/}\"\n  yq -i '.manifests += [{}]' manifest.yaml\n  yq -i \".manifests[-1].image = \\\"${pushed_repo}@${digest}\\\"\" manifest.yaml\n  yq -i \".manifests[-1].platform.os = \\\"$os\\\"\" manifest.yaml\n  yq -i \".manifests[-1].platform.architecture = \\\"$architecture\\\"\" manifest.yaml\ndone\n\nif yq -e '.manifests |length \u003e 1' manifest.yaml \u003e/dev/null 2\u003e\u00261; then\n  printf \"%s\" \"$pushed_repo\" \u003e /tekton/results/repo\n  printf \"%s\" \"$tags\" \u003e /tekton/results/tags\n  cat manifest.yaml\n  manifest-tool push from-spec manifest.yaml\nelse\n  echo \"🤷 no more than one arch tags found. Skip push oci manifest tags\"\n  exit 0\nfi\n"
-                        }
-                    ],
-                    "workspaces": [
+                            "default": "amd64",
+                            "name": "arch",
+                            "type": "string"
+                        },
                         {
-                            "name": "dockerconfig",
-                            "description": "Includes a docker `config.json`",
-                            "mountPath": "/root/.docker",
-                            "optional": true
+                            "description": "the version to releasing.",
+                            "name": "version",
+                            "type": "string"
+                        },
+                        {
+                            "default": "release",
+                            "description": "supports: 'release' or 'debug'.\n",
+                            "name": "profile",
+                            "type": "string"
+                        },
+                        {
+                            "name": "git-ref",
+                            "type": "string"
+                        },
+                        {
+                            "name": "git-sha",
+                            "type": "string"
+                        },
+                        {
+                            "default": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                            "name": "builder-image",
+                            "type": "string"
+                        },
+                        {
+                            "default": "build",
+                            "name": "release-dir",
+                            "type": "string"
+                        },
+                        {
+                            "default": "false",
+                            "name": "push",
+                            "type": "string"
+                        },
+                        {
+                            "default": "",
+                            "name": "mac-builder-resource",
+                            "type": "string"
                         }
                     ],
                     "results": [
                         {
-                            "name": "repo",
-                            "type": "string",
-                            "description": "image repo"
+                            "description": "Just built and pushed artifacts, it will be a yaml content.",
+                            "name": "pushed",
+                            "type": "string"
+                        }
+                    ],
+                    "steps": [
+                        {
+                            "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                            "name": "generate-build-script",
+                            "resources": {},
+                            "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"master\"\ngit_sha=\"799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-artifacts.sh\"\n/workspace/artifacts/packages/scripts/gen-package-artifacts-with-config.sh \\\n  tidb \\\n  linux \\\n  amd64 \\\n  v8.0.0-alpha-120-g799a46107e \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nelse\n  echo \"🤷 no output script generated!\"\nfi\n"
                         },
                         {
-                            "name": "tags",
-                            "type": "string",
-                            "description": "tags pushed"
+                            "env": [
+                                {
+                                    "name": "CARGO_NET_GIT_FETCH_WITH_CLI",
+                                    "value": "true"
+                                },
+                                {
+                                    "name": "GOPROXY",
+                                    "value": "http://goproxy.apps.svc,direct"
+                                },
+                                {
+                                    "name": "CARGO_HOME",
+                                    "value": "/workspace/.cargo"
+                                }
+                            ],
+                            "image": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21",
+                            "name": "build",
+                            "resources": {},
+                            "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip it.\"\n  exit 0\nfi\n\n\"$script\" -b -a -w \"build\"\n",
+                            "workingDir": "$(workspaces.source.path)"
+                        },
+                        {
+                            "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                            "name": "publish",
+                            "resources": {},
+                            "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip it.\"\n  printf '\"{}\"' \u003e /tekton/results/pushed\n  exit 0\nfi\n\noras version\n\"$script\" -p -w \"build\" -o /tekton/results/pushed\n",
+                            "workingDir": "$(workspaces.source.path)"
+                        }
+                    ],
+                    "workspaces": [
+                        {
+                            "description": "source code.",
+                            "name": "source"
+                        },
+                        {
+                            "description": "Cache for cargo packages.",
+                            "mountPath": "/workspace/.cargo",
+                            "name": "cargo-home",
+                            "optional": true
+                        },
+                        {
+                            "description": "Includes a docker `config.json`",
+                            "mountPath": "/root/.docker",
+                            "name": "dockerconfig",
+                            "optional": true
                         }
                     ]
                 }

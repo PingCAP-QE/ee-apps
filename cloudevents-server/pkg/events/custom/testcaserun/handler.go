@@ -77,6 +77,7 @@ func (h *Handler) addRecords(ctx context.Context, caseData map[string]ProblemCas
 				SetBuildURL(buildURL).
 				SetTimecostMs(int(timecost * 1000)).
 				SetReportTime(reportTime).
+				SetReason(reasonNA).
 				SetFlaky(false)
 			if timecost < 0 {
 				entry.SetReason(reasonNotFinished)

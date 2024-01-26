@@ -33,6 +33,8 @@ func errorToCode(err error) int {
 		return 400
 	} else if errors.Is(err, service.ErrServerRefuse) {
 		return 422
+	} else if errors.Is(err, service.ErrAuth) {
+		return 401
 	} else {
 		return 500
 	}
