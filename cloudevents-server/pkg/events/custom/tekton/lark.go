@@ -153,9 +153,9 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 		if results := data.PipelineRun.Status.PipelineResults; len(results) > 0 {
 			var parts []string
 			for _, r := range results {
-				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+				parts = append(parts, fmt.Sprintf("%s:", r.Name), r.Value)
+				ret.Results = append(ret.Results, [2]string{r.Name, r.Value})
 			}
-			ret.Results = strings.Join(parts, "\n")
 		}
 	case data.TaskRun != nil:
 		startTime = data.TaskRun.Status.StartTime
@@ -170,8 +170,8 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 			for _, r := range results {
 				v, _ := r.Value.MarshalJSON()
 				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), string(v), "---")
+				ret.Results = append(ret.Results, [2]string{r.Name, string(v)})
 			}
-			ret.Results = strings.Join(parts, "\n")
 		}
 	case data.Run != nil:
 		startTime = data.Run.Status.StartTime
@@ -181,8 +181,9 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 			var parts []string
 			for _, r := range results {
 				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
+				ret.Results = append(ret.Results, [2]string{r.Name, r.Value})
+
 			}
-			ret.Results = strings.Join(parts, "\n")
 		}
 	}
 
