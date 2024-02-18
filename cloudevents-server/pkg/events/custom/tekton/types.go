@@ -13,7 +13,7 @@ type cardMessageInfos struct {
 	StartTime     string
 	EndTime       string
 	TimeCost      string
-	Results       string
+	Results       [][2]string // Key-Value pairs.
 }
 
 var larkCardHeaderTemplates = map[tektoncloudevent.TektonEventType]string{

@@ -26,8 +26,12 @@ elements:
   - tag: markdown
     content: |-
       **Results:**
-
-{{ indent 6 . }}
+      {{- range . }}
+      - **{{ index . 0 }}:**
+      ```YAML
+{{ indent 6 (index . 1) }}
+      ```
+      {{- end }}
   {{- end }}
   {{- with .RerunURL }}
   - tag: hr
@@ -35,7 +39,9 @@ elements:
     content: |-
       🔧 **Rerun:**
 
-      {{ . }}"
+      ```BASH
+      {{ . }}
+      ```
   {{- end }}
   - tag: action
     actions:
