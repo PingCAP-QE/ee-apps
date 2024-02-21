@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v59/github"
 )
 
 type GitHubClient struct{ *github.Client }

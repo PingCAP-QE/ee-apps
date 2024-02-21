@@ -13,7 +13,10 @@ func sampleDevBuild() DevBuild {
 	obj := DevBuild{
 		ID:   1,
 		Meta: DevBuildMeta{CreatedBy: "some@pingcap.com"},
-		Spec: DevBuildSpec{Product: ProductPd, GitRef: "branch/master", Version: "v7.5.0", Edition: CommunityEdition}}
+		Spec: DevBuildSpec{
+			Product: ProductPd, GitRef: "branch/master", Version: "v7.5.0",
+			Edition: CommunityEdition, GitHash: "e264a6143f6d8badde7783577c5fced5dcb2c39f",
+		}}
 	fillWithDefaults(&obj)
 	if err := validateReq(obj); err != nil {
 		panic(err)
@@ -29,7 +32,7 @@ func TestNewEvent(t *testing.T) {
 	require.NoError(t, err)
 	js, err := json.Marshal(ev)
 	require.NoError(t, err)
-	expected := `{"specversion":"1.0","id":"","source":"https://tibuild.pingcap.net/api/devbuilds/1","type":"net.pingcap.tibuild.devbuild.push","subject":"1","datacontenttype":"application/json","data":{"ref":"refs/heads/master","after":"754095a9f460dcf31f053045cfedfb00b9ad8e81","repository":{"name":"pd","owner":{"name":"pingcap"},"clone_url":"https://github.com/tikv/pd"}},"user":"some@pingcap.com"}`
+	expected := `{"specversion":"1.0","id":"","source":"tibuild.pingcap.net/api/devbuilds/1","type":"net.pingcap.tibuild.devbuild.push","subject":"1","datacontenttype":"application/json","data":{"ref":"refs/heads/master","after":"754095a9f460dcf31f053045cfedfb00b9ad8e81", "before":"00000000000000000000000000000000000000000","repository":{"name":"pd","owner":{"login":"tikv"},"clone_url":"https://github.com/tikv/pd"}},"user":"some@pingcap.com"}`
 	require.JSONEq(t, expected, string(js))
 }
 

@@ -1,0 +1,15 @@
+POST / HTTP/1.1
+Host: localhost:8000
+User-Agent: Go-http-client/1.1
+Content-Length: 224
+Ce-Id: 6fb7e270-211a-40f4-9f54-967c01263ad8
+Ce-Source: tibuild.pingcap.net/api/devbuilds/1
+Ce-Specversion: 1.0
+Ce-Subject: 1
+Ce-Time: 2024-02-21T08:26:29.469969Z
+Ce-Type: net.pingcap.tibuild.devbuild.push
+Ce-User: some@pingcap.com
+Content-Type: application/json
+Accept-Encoding: gzip
+
+{"ref":"refs/heads/master","before":"00000000000000000000000000000000000000000","after":"e264a6143f6d8badde7783577c5fced5dcb2c39f","repository":{"name":"pd","owner":{"login":"tikv"},"clone_url":"https://github.com/tikv/pd"}}

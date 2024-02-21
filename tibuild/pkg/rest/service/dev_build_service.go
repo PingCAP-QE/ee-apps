@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -92,7 +92,14 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	} else if entity.Spec.PipelineEngine == TektonEngine {
 		err = s.Tekton.TriggerDevBuild(ctx, entity)
 		if err != nil {
-			log.Printf("trigger tekton failed: %s", err.Error())
+			slog.Error("trigger tekton failed", "reason", err)
+			entity.Status.Status = BuildStatusError
+			entity.Status.ErrMsg = err.Error()
+			resp, err := s.Repo.Update(ctx, entity.ID, entity)
+			if err != nil {
+				slog.Error("save triggered entity failed", "reason", err)
+			}
+			return resp, nil
 		}
 	}
 

@@ -3,10 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/go-github/github"
+	"github.com/cloudevents/sdk-go/v2/protocol"
+	"github.com/google/go-github/v59/github"
 )
 
 type BuildTrigger interface {
@@ -16,7 +17,7 @@ type BuildTrigger interface {
 func NewCEClient(endpoint string) CloudEventClient {
 	client, err := cloudevents.NewClientHTTP()
 	if err != nil {
-		log.Fatalf("create cloudevent http client failed %s", err.Error())
+		slog.Error("create cloudevent http client failed", "reason", err)
 	}
 	return CloudEventClient{
 		client:   client,
@@ -35,8 +36,8 @@ func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) err
 		return err
 	}
 	c := cloudevents.ContextWithTarget(ctx, s.endpoint)
-	if result := s.client.Send(c, *event); result != nil {
-		log.Printf("failed to send, %v", result)
+	if result := s.client.Send(c, *event); !protocol.IsACK(result) {
+		slog.ErrorContext(ctx, "failed to send", "reason", result)
 		return fmt.Errorf("failed to send ce:%w", result)
 	}
 	return nil
@@ -47,17 +48,19 @@ func NewDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	event.SetType(devbuild_ce_type)
 	event.SetSubject(fmt.Sprint(dev.ID))
 	event.SetExtension("user", dev.Meta.CreatedBy)
-	event.SetSource("https://tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
+	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
+	repo := GHRepoToStruct(dev.Spec.GithubRepo)
 
 	if ref := GitRefToGHRef(dev.Spec.GitRef); ref != "" {
 		eventData := &github.PushEvent{
-			Ref:   github.String(ref),
-			After: github.String(dev.Spec.GitHash),
+			Ref:    github.String(ref),
+			After:  github.String(dev.Spec.GitHash),
+			Before: github.String("00000000000000000000000000000000000000000"),
 			Repo: &github.PushEventRepository{
-				Name:     github.String(string(dev.Spec.Product)),
-				CloneURL: github.String(GHRepoToStruct(dev.Spec.GithubRepo).URL()),
-				Owner: &github.PushEventRepoOwner{
-					Name: github.String("pingcap"),
+				Name:     &repo.Repo,
+				CloneURL: github.String(repo.URL()),
+				Owner: &github.User{
+					Login: &repo.Owner,
 				},
 			},
 		}
