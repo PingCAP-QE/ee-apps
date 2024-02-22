@@ -3,7 +3,7 @@ module github.com/PingCAP-QE/ee-apps/tibuild
 go 1.21
 
 require (
-	github.com/DATA-DOG/go-sqlmock v1.5.0
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/cloudevents/sdk-go/v2 v2.14.0
 	github.com/gin-contrib/requestid v0.0.6
 	github.com/gin-contrib/static v0.0.1
