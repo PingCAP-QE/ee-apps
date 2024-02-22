@@ -5,6 +5,17 @@ import (
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 )
 
+type cardMessageInfos struct {
+	Title         string
+	TitleTemplate string
+	RerunURL      string
+	ViewURL       string
+	StartTime     string
+	EndTime       string
+	TimeCost      string
+	Results       [][2]string // Key-Value pairs.
+}
+
 var larkCardHeaderTemplates = map[tektoncloudevent.TektonEventType]string{
 	tektoncloudevent.PipelineRunFailedEventV1:     larkcard.TemplateRed,
 	tektoncloudevent.PipelineRunRunningEventV1:    larkcard.TemplateBlue,

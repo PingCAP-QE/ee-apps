@@ -1,1332 +1,1242 @@
 {
-    "specversion": "1.0",
-    "id": "f813f928-adea-4653-a523-dee1a81dab7e",
-    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-darwin-g9k4f",
-    "type": "dev.tekton.event.pipelinerun.successful.v1",
-    "subject": "build-package-pingcap-tidb-darwin-g9k4f",
-    "datacontenttype": "application/json",
-    "time": "2023-12-07T06:30:55.539307083Z",
-    "data": {
-        "pipelineRun": {
-            "metadata": {
-                "name": "build-package-pingcap-tidb-darwin-g9k4f",
-                "generateName": "build-package-pingcap-tidb-darwin-",
-                "namespace": "ee-cd",
-                "uid": "c011780a-1947-4262-9b1f-4cc9fc78428b",
-                "resourceVersion": "2432962226",
-                "generation": 1,
-                "creationTimestamp": "2023-12-07T06:25:27Z",
-                "labels": {
-                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
-                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
-                    "tekton.dev/pipeline": "pingcap-build-package-darwin",
-                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
-                    "triggers.tekton.dev/trigger": "git-push-pingcap-tidb",
-                    "triggers.tekton.dev/triggers-eventid": "225a7ca4-9355-4dd4-8efc-55f26d155954"
-                },
-                "annotations": {
-                    "results.tekton.dev/record": "ee-cd/results/225a7ca4-9355-4dd4-8efc-55f26d155954/records/c011780a-1947-4262-9b1f-4cc9fc78428b",
-                    "results.tekton.dev/result": "ee-cd/results/225a7ca4-9355-4dd4-8efc-55f26d155954",
-                    "tekton.dev/git-repo": "https://github.com/pingcap/tidb.git",
-                    "tekton.dev/git-revision": "be62f754fb4182a544b52b2f58a5f867136e7695",
-                    "tekton.dev/git-status": "true",
-                    "tekton.dev/status-target-url": "https://tekton.abc.com/#/namespaces/{{ .Namespace }}/pipelineruns/{{ .Name }}"
-                },
-                "managedFields": [
-                    {
-                        "manager": "eventlistenersink",
-                        "operation": "Update",
-                        "apiVersion": "tekton.dev/v1beta1",
-                        "time": "2023-12-07T06:25:27Z",
-                        "fieldsType": "FieldsV1",
-                        "fieldsV1": {
-                            "f:metadata": {
-                                "f:annotations": {
-                                    ".": {},
-                                    "f:tekton.dev/git-repo": {},
-                                    "f:tekton.dev/git-revision": {},
-                                    "f:tekton.dev/git-status": {},
-                                    "f:tekton.dev/status-target-url": {}
-                                },
-                                "f:generateName": {},
-                                "f:labels": {
-                                    ".": {},
-                                    "f:triggers.tekton.dev/eventlistener": {},
-                                    "f:triggers.tekton.dev/trigger": {},
-                                    "f:triggers.tekton.dev/triggers-eventid": {}
-                                }
-                            },
-                            "f:spec": {
-                                ".": {},
-                                "f:params": {},
-                                "f:pipelineRef": {
-                                    ".": {},
-                                    "f:name": {}
-                                },
-                                "f:taskRunSpecs": {},
-                                "f:timeouts": {
-                                    ".": {},
-                                    "f:pipeline": {}
-                                },
-                                "f:workspaces": {}
-                            }
-                        }
-                    },
-                    {
-                        "manager": "watcher",
-                        "operation": "Update",
-                        "apiVersion": "tekton.dev/v1beta1",
-                        "time": "2023-12-07T06:25:31Z",
-                        "fieldsType": "FieldsV1",
-                        "fieldsV1": {
-                            "f:metadata": {
-                                "f:annotations": {
-                                    "f:results.tekton.dev/record": {},
-                                    "f:results.tekton.dev/result": {}
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "manager": "Go-http-client",
-                        "operation": "Update",
-                        "apiVersion": "tekton.dev/v1beta1",
-                        "time": "2023-12-07T06:30:25Z",
-                        "fieldsType": "FieldsV1",
-                        "fieldsV1": {
-                            "f:metadata": {
-                                "f:labels": {
-                                    "f:kustomize.toolkit.fluxcd.io/name": {},
-                                    "f:kustomize.toolkit.fluxcd.io/namespace": {},
-                                    "f:tekton.dev/pipeline": {}
-                                }
-                            },
-                            "f:status": {
-                                ".": {},
-                                "f:conditions": {},
-                                "f:pipelineSpec": {
-                                    ".": {},
-                                    "f:finally": {},
-                                    "f:params": {},
-                                    "f:tasks": {},
-                                    "f:workspaces": {}
-                                },
-                                "f:startTime": {},
-                                "f:taskRuns": {
-                                    ".": {},
-                                    "f:build-package-pingcap-tidb-darwin-g9k4f-acquire-mac-machine": {
-                                        ".": {},
-                                        "f:pipelineTaskName": {},
-                                        "f:status": {
-                                            ".": {},
-                                            "f:completionTime": {},
-                                            "f:conditions": {},
-                                            "f:podName": {},
-                                            "f:startTime": {},
-                                            "f:steps": {},
-                                            "f:taskResults": {},
-                                            "f:taskSpec": {
-                                                ".": {},
-                                                "f:description": {},
-                                                "f:params": {},
-                                                "f:results": {},
-                                                "f:steps": {}
-                                            }
-                                        }
-                                    },
-                                    "f:build-package-pingcap-tidb-darwin-g9k4f-build-binaries": {
-                                        ".": {},
-                                        "f:pipelineTaskName": {},
-                                        "f:status": {
-                                            ".": {},
-                                            "f:completionTime": {},
-                                            "f:conditions": {},
-                                            "f:podName": {},
-                                            "f:startTime": {},
-                                            "f:steps": {},
-                                            "f:taskSpec": {
-                                                ".": {},
-                                                "f:description": {},
-                                                "f:params": {},
-                                                "f:results": {},
-                                                "f:steps": {},
-                                                "f:workspaces": {}
-                                            }
-                                        }
-                                    },
-                                    "f:build-package-pingcap-tidb-darwin-g9k4f-checkout": {
-                                        ".": {},
-                                        "f:pipelineTaskName": {},
-                                        "f:status": {
-                                            ".": {},
-                                            "f:completionTime": {},
-                                            "f:conditions": {},
-                                            "f:podName": {},
-                                            "f:startTime": {},
-                                            "f:steps": {},
-                                            "f:taskResults": {},
-                                            "f:taskSpec": {
-                                                ".": {},
-                                                "f:description": {},
-                                                "f:params": {},
-                                                "f:results": {},
-                                                "f:steps": {},
-                                                "f:workspaces": {}
-                                            }
-                                        }
-                                    },
-                                    "f:build-package-pingcap-tidb-darwin-g9k4f-get-release-ver": {
-                                        ".": {},
-                                        "f:pipelineTaskName": {},
-                                        "f:status": {
-                                            ".": {},
-                                            "f:completionTime": {},
-                                            "f:conditions": {},
-                                            "f:podName": {},
-                                            "f:startTime": {},
-                                            "f:steps": {},
-                                            "f:taskResults": {},
-                                            "f:taskSpec": {
-                                                ".": {},
-                                                "f:results": {},
-                                                "f:steps": {},
-                                                "f:workspaces": {}
-                                            }
-                                        }
-                                    },
-                                    "f:build-package-pingcap-tidb-darwin-g9k4f-release-mac-machine": {
-                                        ".": {},
-                                        "f:pipelineTaskName": {},
-                                        "f:status": {
-                                            ".": {},
-                                            "f:conditions": {},
-                                            "f:podName": {},
-                                            "f:startTime": {},
-                                            "f:steps": {},
-                                            "f:taskSpec": {
-                                                ".": {},
-                                                "f:description": {},
-                                                "f:params": {},
-                                                "f:steps": {}
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ]
-            },
-            "spec": {
-                "pipelineRef": {
-                    "name": "pingcap-build-package-darwin"
-                },
-                "params": [
-                    {
-                        "name": "git-url",
-                        "value": "https://github.com/pingcap/tidb.git"
-                    },
-                    {
-                        "name": "git-revision",
-                        "value": "be62f754fb4182a544b52b2f58a5f867136e7695"
-                    },
-                    {
-                        "name": "git-ref",
-                        "value": "master"
-                    },
-                    {
-                        "name": "component",
-                        "value": "tidb"
-                    },
-                    {
-                        "name": "arch",
-                        "value": "arm64"
-                    },
-                    {
-                        "name": "binary-builder-iamge",
-                        "value": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21"
-                    }
-                ],
-                "serviceAccountName": "default",
-                "timeouts": {
-                    "pipeline": "1h0m0s"
-                },
-                "podTemplate": {
-                    "nodeSelector": {
-                        "enable-ci": "true"
-                    },
-                    "tolerations": [
-                        {
-                            "key": "dedicated",
-                            "operator": "Equal",
-                            "value": "test-infra",
-                            "effect": "NoSchedule"
-                        }
-                    ]
-                },
-                "workspaces": [
-                    {
-                        "name": "dockerconfig",
-                        "secret": {
-                            "secretName": "hub-pingcap-net-ee"
-                        }
-                    },
-                    {
-                        "name": "mac-ssh-credentials",
-                        "secret": {
-                            "secretName": "mac-ssh-credentials"
-                        }
-                    },
-                    {
-                        "name": "source",
-                        "volumeClaimTemplate": {
-                            "metadata": {
-                                "creationTimestamp": null
-                            },
-                            "spec": {
-                                "accessModes": [
-                                    "ReadWriteOnce"
-                                ],
-                                "resources": {
-                                    "requests": {
-                                        "storage": "10Gi"
-                                    }
-                                },
-                                "storageClassName": "ceph-block"
-                            },
-                            "status": {}
-                        }
-                    },
-                    {
-                        "name": "git-basic-auth",
-                        "secret": {
-                            "secretName": "git-credentials-basic"
-                        }
-                    }
-                ],
-                "taskRunSpecs": [
-                    {
-                        "pipelineTaskName": "acquire-mac-machine",
-                        "taskPodTemplate": {
-                            "nodeSelector": {
-                                "kubernetes.io/arch": "amd64"
-                            }
-                        }
-                    },
-                    {
-                        "pipelineTaskName": "release-mac-machine",
-                        "taskPodTemplate": {
-                            "nodeSelector": {
-                                "kubernetes.io/arch": "amd64"
-                            }
-                        }
-                    }
-                ]
-            },
-            "status": {
-                "conditions": [
-                    {
-                        "type": "Succeeded",
-                        "status": "True",
-                        "lastTransitionTime": "2023-12-07T06:30:55Z",
-                        "reason": "Succeeded",
-                        "message": "Tasks Completed: 5 (Failed: 0, Cancelled 0), Skipped: 0"
-                    }
-                ],
-                "startTime": "2023-12-07T06:25:29Z",
-                "completionTime": "2023-12-07T06:30:55Z",
-                "taskRuns": {
-                    "build-package-pingcap-tidb-darwin-g9k4f-acquire-mac-machine": {
-                        "pipelineTaskName": "acquire-mac-machine",
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Succeeded",
-                                    "status": "True",
-                                    "lastTransitionTime": "2023-12-07T06:25:48Z",
-                                    "reason": "Succeeded",
-                                    "message": "All Steps have completed executing"
-                                }
-                            ],
-                            "podName": "build-package-pingcap-tidb-darwin-g9k4f-acquire-mac-machine-pod",
-                            "startTime": "2023-12-07T06:25:30Z",
-                            "completionTime": "2023-12-07T06:25:48Z",
-                            "steps": [
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "message": "[{\"key\":\"leased-resource\",\"value\":\"darwin-arm64-1\",\"type\":1}]",
-                                        "startedAt": "2023-12-07T06:25:37Z",
-                                        "finishedAt": "2023-12-07T06:25:37Z",
-                                        "containerID": "containerd://6f5e41e495555c20c2ae80194100a4d1cf032e5dbf7c9c42cffa07d3884994fa"
-                                    },
-                                    "name": "boskosctl-acquire",
-                                    "container": "step-boskosctl-acquire",
-                                    "imageID": "gcr.io/k8s-staging-boskos/boskosctl@sha256:a7fc984732c5dd0b4e0fe0a92e2730fa4b6bddecd0f6f6c7c6b5501abe4ab105"
-                                },
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "message": "[{\"key\":\"leased-resource\",\"value\":\"darwin-arm64-1\",\"type\":1}]",
-                                        "startedAt": "2023-12-07T06:25:37Z",
-                                        "finishedAt": "2023-12-07T06:25:38Z",
-                                        "containerID": "containerd://a4c26a35381fc513541f6d9e7be2fbe6a26b79fdaad80c59a80c12ec0af7b566"
-                                    },
-                                    "name": "create-heartbeat-pod-yaml",
-                                    "container": "step-create-heartbeat-pod-yaml",
-                                    "imageID": "docker.io/lachlanevenson/k8s-kubectl@sha256:3a5e22a406a109f4f26ec06b5f1f6a66ae0cd0e185bc28499eb7b7a3bbf1fe09"
-                                }
-                            ],
-                            "taskResults": [
-                                {
-                                    "name": "leased-resource",
-                                    "type": "string",
-                                    "value": "darwin-arm64-1"
-                                }
-                            ],
-                            "taskSpec": {
-                                "params": [
-                                    {
-                                        "name": "server-url",
-                                        "type": "string",
-                                        "description": "The URL of the running boskos server",
-                                        "default": "http://boskos.test-pods.svc.cluster.local"
-                                    },
-                                    {
-                                        "name": "type",
-                                        "type": "string",
-                                        "description": "The type of resource to request. Resource types are specified in the resource\nConfigMap provided to the Boskos server.\n",
-                                        "default": "gke-project"
-                                    },
-                                    {
-                                        "name": "owner-name",
-                                        "type": "string",
-                                        "description": "A string that identifies the owner of the leased resource to request."
-                                    }
-                                ],
-                                "description": "Acquire a project using Boskos.\n\nThe boskos-acquire Task will request a resource of the specified type from the\nserver-url. If successful, it will start a pod that will run the boskosctl heartbeat\ncommand. When you are done with the resource, release it with boskos-release.\n",
-                                "steps": [
-                                    {
-                                        "name": "boskosctl-acquire",
-                                        "image": "gcr.io/k8s-staging-boskos/boskosctl@sha256:a7fc984732c5dd0b4e0fe0a92e2730fa4b6bddecd0f6f6c7c6b5501abe4ab105",
-                                        "resources": {},
-                                        "script": "RESOURCE=$(boskosctl acquire \\\n  --server-url=http://boskos.apps.svc \\\n  --owner-name=build-package-pingcap-tidb-darwin-g9k4f \\\n  --type=mac-machine-arm64 \\\n  --state=free \\\n  --target-state=busy)\necho $RESOURCE \u003e /workspace/full-resource-output.json\necho $RESOURCE | jq -rj \".name\" \u003e /tekton/results/leased-resource\n"
-                                    },
-                                    {
-                                        "name": "create-heartbeat-pod-yaml",
-                                        "image": "docker.io/lachlanevenson/k8s-kubectl@sha256:3a5e22a406a109f4f26ec06b5f1f6a66ae0cd0e185bc28499eb7b7a3bbf1fe09",
-                                        "resources": {},
-                                        "script": "FULL_RESOURCE_OUTPUT=$(cat /workspace/full-resource-output.json)\nLEASED_RESOURCE=$(cat /tekton/results/leased-resource)\ncat \u003c\u003cEOF | kubectl apply -f -\napiVersion: v1\nkind: Pod\nmetadata:\n  name: boskos-heartbeat-$LEASED_RESOURCE\nspec:\n  nodeSelector:\n    kubernetes.io/arch: amd64\n  containers:\n  - name: heartbeat\n    image: gcr.io/k8s-staging-boskos/boskosctl@sha256:a7fc984732c5dd0b4e0fe0a92e2730fa4b6bddecd0f6f6c7c6b5501abe4ab105\n    args:\n    - heartbeat\n    - --server-url=http://boskos.apps.svc\n    - --owner-name=build-package-pingcap-tidb-darwin-g9k4f\n    - --resource=$FULL_RESOURCE_OUTPUT\n    - --period=5m\nEOF\n"
-                                    }
-                                ],
-                                "results": [
-                                    {
-                                        "name": "leased-resource",
-                                        "type": "string",
-                                        "description": "The name of the leased resource"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "build-package-pingcap-tidb-darwin-g9k4f-build-binaries": {
-                        "pipelineTaskName": "build-binaries",
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Succeeded",
-                                    "status": "True",
-                                    "lastTransitionTime": "2023-12-07T06:30:11Z",
-                                    "reason": "Succeeded",
-                                    "message": "All Steps have completed executing"
-                                }
-                            ],
-                            "podName": "build-package-pingcap-tidb-darwin-g9k4f-build-binaries-pod",
-                            "startTime": "2023-12-07T06:27:03Z",
-                            "completionTime": "2023-12-07T06:30:11Z",
-                            "steps": [
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:27:27Z",
-                                        "finishedAt": "2023-12-07T06:27:28Z",
-                                        "containerID": "containerd://ad6ad060e2d1b42c1a5f816e0271a3968d0385dace38e2646aad53ebf5a37d66"
-                                    },
-                                    "name": "generate-build-script",
-                                    "container": "step-generate-build-script",
-                                    "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
-                                },
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:27:29Z",
-                                        "finishedAt": "2023-12-07T06:27:29Z",
-                                        "containerID": "containerd://c14124c747a4208193c984497cf771d954a2b993be2bbd24ed1072a589affd1e"
-                                    },
-                                    "name": "prepare-remote-builder",
-                                    "container": "step-prepare-remote-builder",
-                                    "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
-                                },
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:27:29Z",
-                                        "finishedAt": "2023-12-07T06:30:00Z",
-                                        "containerID": "containerd://eeca8cdb857f192620ddf7b3d14c2e62cdad760b345a901f9b9c9169d4322f87"
-                                    },
-                                    "name": "build",
-                                    "container": "step-build",
-                                    "imageID": "ghcr.io/pingcap-qe/cd/builders/tidb@sha256:328d64b5c5ec48676c32d0a5ce5fed43007cee076181e41fd22760c7c321dc17"
-                                },
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:30:00Z",
-                                        "finishedAt": "2023-12-07T06:30:09Z",
-                                        "containerID": "containerd://f4651e41a3c59f67e4b6ff3f477f4aecab3606a7ac9de1ab042d259bcdd197a9"
-                                    },
-                                    "name": "publish",
-                                    "container": "step-publish",
-                                    "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
-                                }
-                            ],
-                            "taskSpec": {
-                                "params": [
-                                    {
-                                        "name": "component",
-                                        "type": "string"
-                                    },
-                                    {
-                                        "name": "os",
-                                        "type": "string",
-                                        "default": "linux"
-                                    },
-                                    {
-                                        "name": "arch",
-                                        "type": "string",
-                                        "default": "amd64"
-                                    },
-                                    {
-                                        "name": "version",
-                                        "type": "string",
-                                        "description": "the version to releasing."
-                                    },
-                                    {
-                                        "name": "profile",
-                                        "type": "string",
-                                        "description": "supports: 'release' or 'debug'.\n",
-                                        "default": "release"
-                                    },
-                                    {
-                                        "name": "git-ref",
-                                        "type": "string"
-                                    },
-                                    {
-                                        "name": "git-sha",
-                                        "type": "string"
-                                    },
-                                    {
-                                        "name": "builder-image",
-                                        "type": "string",
-                                        "default": "ghcr.io/pingcap-qe/cd/utils/release:5d33328"
-                                    },
-                                    {
-                                        "name": "release-dir",
-                                        "type": "string",
-                                        "default": "build"
-                                    },
-                                    {
-                                        "name": "push",
-                                        "type": "string",
-                                        "default": "false"
-                                    },
-                                    {
-                                        "name": "mac-builder-resource",
-                                        "type": "string"
-                                    }
-                                ],
-                                "description": "Build binaries for the component.",
-                                "steps": [
-                                    {
-                                        "name": "generate-build-script",
-                                        "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
-                                        "resources": {},
-                                        "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"master\"\ngit_sha=\"be62f754fb4182a544b52b2f58a5f867136e7695\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-artifacts.sh\"\n/workspace/artifacts/packages/scripts/gen-package-artifacts-with-config.sh \\\n  tidb \\\n  darwin \\\n  arm64 \\\n  v7.6.0-alpha-391-gbe62f754fb \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nfi\n"
-                                    },
-                                    {
-                                        "name": "prepare-remote-builder",
-                                        "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
-                                        "env": [
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_BOUND",
-                                                "value": "$(workspaces.ssh-directory.bound)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_PATH",
-                                                "value": "$(workspaces.ssh-directory.path)"
-                                            },
-                                            {
-                                                "name": "REMOTE_BUILDER_INFO_DIR",
-                                                "value": "/workspace/remote-builder"
-                                            }
-                                        ],
-                                        "resources": {},
-                                        "script": "#!/usr/bin/env bash\nset -exo pipefail\n\nif [ \"${WORKSPACE_SSH_DIRECTORY_BOUND}\" != \"true\" ] ; then\n  exit 0\nfi\n\nif [ \"darwin\" != \"darwin\" ]; then\n  exit 0\nfi\n\n\nif [ ! -f \"${WORKSPACE_SSH_DIRECTORY_PATH}/hosts.yaml\" ]; then\n  echo \"No ~/.ssh/hosts.yaml found, we need it to get the address and other insecret configurations.\"\n  exit 1\nfi\n\nwhich yq || (echo \"No yq tool found, I need it!\"; exit 1)\nmkdir -p \"$REMOTE_BUILDER_INFO_DIR\"\n\n######### checks and sets #########\nyq '.[\"darwin-arm64-1\"].host'   \"${WORKSPACE_SSH_DIRECTORY_PATH}/hosts.yaml\" \u003e \"$REMOTE_BUILDER_INFO_DIR/ssh_host\"\nyq '.[\"darwin-arm64-1\"].config.workspace_dir'   \"${WORKSPACE_SSH_DIRECTORY_PATH}/hosts.yaml\" \u003e \"$REMOTE_BUILDER_INFO_DIR/ssh_workspace\"\n# TODO: do more pre-check or pre-set.\n"
-                                    },
-                                    {
-                                        "name": "build",
-                                        "image": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21",
-                                        "workingDir": "$(workspaces.source.path)",
-                                        "env": [
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_BOUND",
-                                                "value": "$(workspaces.ssh-directory.bound)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_PATH",
-                                                "value": "$(workspaces.ssh-directory.path)"
-                                            },
-                                            {
-                                                "name": "MAC_MACHINE_RES_ID",
-                                                "value": "(params.mac-builder-resource)"
-                                            },
-                                            {
-                                                "name": "REMOTE_BUILDER_INFO_DIR",
-                                                "value": "/workspace/remote-builder"
-                                            }
-                                        ],
-                                        "resources": {},
-                                        "script": "#!/usr/bin/env bash\nset -exo pipefail\n\nscript=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip build.\"\n  exit 0\nfi\n\n##### Build mac targets in tekton task (k8s pod) ####\n# 1. Set ssh credentials\nif [ \"${WORKSPACE_SSH_DIRECTORY_BOUND}\" != \"true\" ] ; then\n  echo \"❌: No ssh credential volume mounted, it's required!\"\n  exit 1\nfi\ncp -R \"${WORKSPACE_SSH_DIRECTORY_PATH}\" ~/.ssh\nchmod 700 ~/.ssh\nchmod -R 400 ~/.ssh/*\nusername=$(cat ~/.ssh/username)\nhost=$(cat \"$REMOTE_BUILDER_INFO_DIR/ssh_host\")\nssh-keyscan -H $host \u003e\u003e ~/.ssh/known_hosts\nworkspace_base_dir=$(cat \"$REMOTE_BUILDER_INFO_DIR/ssh_workspace\")\n\n# 2. login to the remote builder with ssh and then execute the shell.\n# TODO: we need some pre-check scripts: such as get git version...\n\n# 2.1 create a randon workspace dir in the remote host:\nremote_workspace_dir=\"${workspace_base_dir}/$(uuidgen)\"\nssh ${username}@${host} \"mkdir -p '$remote_workspace_dir'\"\n\n# 2.2 copy the build shell to the remote host by ssh.\nscp \"\"$script\"\" ${username}@${host}:\"$remote_workspace_dir/\"\n\n# 2.3 copy source codes from workspace `source` to the remote host by ssh.\nscp -r $(workspaces.source.path) ${username}@${host}:\"$remote_workspace_dir/\"\nremote_workspace_source_path=\"$remote_workspace_dir/$(basename $(workspaces.source.path))\"\n\n# 2.4 run the shell on the mac host by ssh.\n# 2.4.1 optional get go builder in PATH env var, got the go version(x.y) from the current container with `go version`.\ngo_bin_path=\"\"\nif go version; then\n  go_bin_path=\"/usr/local/$(go version | cut -d ' ' -f 3 | cut -d '.' -f -2)/bin\"\nfi\n\n# run remote build\nssh $username@$host -t  \"bash -lc '\n  PATH=${go_bin_path}:\\$PATH;\n  cd \"$remote_workspace_source_path\";\n  ${remote_workspace_dir}/build-package-artifacts.sh -b -a -w build\n'\"\n\n# 2.5 copy the artifacts from the mac hosts to the workspace `source`, we need delivery them internal firstly.\nscp -r ${username}@${host}:\"$remote_workspace_source_path/build\" ./\n\n# 3. clean the workspace dir(it will be a random name) on the ssh mac host.\nssh ${username}@${host} \"rm -rf '$remote_workspace_dir'\"\n"
-                                    },
-                                    {
-                                        "name": "publish",
-                                        "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
-                                        "workingDir": "$(workspaces.source.path)",
-                                        "resources": {},
-                                        "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip build.\"\n  exit 0\nfi\n\noras version\n\"$script\" -p -w \"build\"\n"
-                                    }
-                                ],
-                                "workspaces": [
-                                    {
-                                        "name": "source"
-                                    },
-                                    {
-                                        "name": "dockerconfig",
-                                        "description": "Includes a docker `config.json`",
-                                        "mountPath": "/root/.docker",
-                                        "optional": true
-                                    },
-                                    {
-                                        "name": "ssh-directory",
-                                        "description": "ssh credential for remote building on mac."
-                                    }
-                                ],
-                                "results": [
-                                    {
-                                        "name": "package-artifacts",
-                                        "type": "string",
-                                        "description": "The package artifacts"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "build-package-pingcap-tidb-darwin-g9k4f-checkout": {
-                        "pipelineTaskName": "checkout",
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Succeeded",
-                                    "status": "True",
-                                    "lastTransitionTime": "2023-12-07T06:26:29Z",
-                                    "reason": "Succeeded",
-                                    "message": "All Steps have completed executing"
-                                }
-                            ],
-                            "podName": "build-package-pingcap-tidb-darwin-g9k4f-checkout-pod",
-                            "startTime": "2023-12-07T06:25:30Z",
-                            "completionTime": "2023-12-07T06:26:29Z",
-                            "steps": [
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "message": "[{\"key\":\"commit\",\"value\":\"be62f754fb4182a544b52b2f58a5f867136e7695\",\"type\":1},{\"key\":\"committer-date\",\"value\":\"1701930321\",\"type\":1},{\"key\":\"url\",\"value\":\"https://github.com/pingcap/tidb.git\",\"type\":1}]",
-                                        "startedAt": "2023-12-07T06:25:39Z",
-                                        "finishedAt": "2023-12-07T06:26:29Z",
-                                        "containerID": "containerd://0f3de6986b7ffc1ebc3c1a4c09bb3eb08f78c9b65b62787367bfecf41934a59e"
-                                    },
-                                    "name": "clone",
-                                    "container": "step-clone",
-                                    "imageID": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init@sha256:c0b0ed1cd81090ce8eecf60b936e9345089d9dfdb6ebdd2fd7b4a0341ef4f2b9"
-                                }
-                            ],
-                            "taskResults": [
-                                {
-                                    "name": "commit",
-                                    "type": "string",
-                                    "value": "be62f754fb4182a544b52b2f58a5f867136e7695"
-                                },
-                                {
-                                    "name": "committer-date",
-                                    "type": "string",
-                                    "value": "1701930321"
-                                },
-                                {
-                                    "name": "url",
-                                    "type": "string",
-                                    "value": "https://github.com/pingcap/tidb.git"
-                                }
-                            ],
-                            "taskSpec": {
-                                "params": [
-                                    {
-                                        "name": "url",
-                                        "type": "string",
-                                        "description": "Repository URL to clone from."
-                                    },
-                                    {
-                                        "name": "revision",
-                                        "type": "string",
-                                        "description": "Revision to checkout. (branch, tag, sha, ref, etc...)",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "refspec",
-                                        "type": "string",
-                                        "description": "Refspec to fetch before checking out revision.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "submodules",
-                                        "type": "string",
-                                        "description": "Initialize and fetch git submodules.",
-                                        "default": "true"
-                                    },
-                                    {
-                                        "name": "depth",
-                                        "type": "string",
-                                        "description": "Perform a shallow clone, fetching only the most recent N commits.",
-                                        "default": "1"
-                                    },
-                                    {
-                                        "name": "sslVerify",
-                                        "type": "string",
-                                        "description": "Set the `http.sslVerify` global git config. Setting this to `false` is not advised unless you are sure that you trust your git remote.",
-                                        "default": "true"
-                                    },
-                                    {
-                                        "name": "crtFileName",
-                                        "type": "string",
-                                        "description": "file name of mounted crt using ssl-ca-directory workspace. default value is ca-bundle.crt.",
-                                        "default": "ca-bundle.crt"
-                                    },
-                                    {
-                                        "name": "subdirectory",
-                                        "type": "string",
-                                        "description": "Subdirectory inside the `output` Workspace to clone the repo into.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "sparseCheckoutDirectories",
-                                        "type": "string",
-                                        "description": "Define the directory patterns to match or exclude when performing a sparse checkout.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "deleteExisting",
-                                        "type": "string",
-                                        "description": "Clean out the contents of the destination directory if it already exists before cloning.",
-                                        "default": "true"
-                                    },
-                                    {
-                                        "name": "httpProxy",
-                                        "type": "string",
-                                        "description": "HTTP proxy server for non-SSL requests.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "httpsProxy",
-                                        "type": "string",
-                                        "description": "HTTPS proxy server for SSL requests.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "noProxy",
-                                        "type": "string",
-                                        "description": "Opt out of proxying HTTP/HTTPS requests.",
-                                        "default": ""
-                                    },
-                                    {
-                                        "name": "verbose",
-                                        "type": "string",
-                                        "description": "Log the commands that are executed during `git-clone`'s operation.",
-                                        "default": "true"
-                                    },
-                                    {
-                                        "name": "gitInitImage",
-                                        "type": "string",
-                                        "description": "The image providing the git-init binary that this Task runs.",
-                                        "default": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0"
-                                    },
-                                    {
-                                        "name": "userHome",
-                                        "type": "string",
-                                        "description": "Absolute path to the user's home directory. Set this explicitly if you are running the image as a non-root user or have overridden\nthe gitInitImage param with an image containing custom user configuration.\n",
-                                        "default": "/tekton/home"
-                                    }
-                                ],
-                                "description": "These Tasks are Git tasks to work with repositories used by other tasks in your Pipeline.\nThe git-clone Task will clone a repo from the provided url into the output Workspace. By default the repo will be cloned into the root of your Workspace. You can clone into a subdirectory by setting this Task's subdirectory param. This Task also supports sparse checkouts. To perform a sparse checkout, pass a list of comma separated directory patterns to this Task's sparseCheckoutDirectories param.",
-                                "steps": [
-                                    {
-                                        "name": "clone",
-                                        "image": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0",
-                                        "env": [
-                                            {
-                                                "name": "HOME",
-                                                "value": "/tekton/home"
-                                            },
-                                            {
-                                                "name": "PARAM_URL",
-                                                "value": "https://github.com/pingcap/tidb.git"
-                                            },
-                                            {
-                                                "name": "PARAM_REVISION",
-                                                "value": "be62f754fb4182a544b52b2f58a5f867136e7695"
-                                            },
-                                            {
-                                                "name": "PARAM_REFSPEC",
-                                                "value": "+refs/heads/*:refs/remotes/origin/*"
-                                            },
-                                            {
-                                                "name": "PARAM_SUBMODULES",
-                                                "value": "true"
-                                            },
-                                            {
-                                                "name": "PARAM_DEPTH",
-                                                "value": "0"
-                                            },
-                                            {
-                                                "name": "PARAM_SSL_VERIFY",
-                                                "value": "true"
-                                            },
-                                            {
-                                                "name": "PARAM_CRT_FILENAME",
-                                                "value": "ca-bundle.crt"
-                                            },
-                                            {
-                                                "name": "PARAM_SUBDIRECTORY"
-                                            },
-                                            {
-                                                "name": "PARAM_DELETE_EXISTING",
-                                                "value": "true"
-                                            },
-                                            {
-                                                "name": "PARAM_HTTP_PROXY"
-                                            },
-                                            {
-                                                "name": "PARAM_HTTPS_PROXY"
-                                            },
-                                            {
-                                                "name": "PARAM_NO_PROXY"
-                                            },
-                                            {
-                                                "name": "PARAM_VERBOSE",
-                                                "value": "true"
-                                            },
-                                            {
-                                                "name": "PARAM_SPARSE_CHECKOUT_DIRECTORIES"
-                                            },
-                                            {
-                                                "name": "PARAM_USER_HOME",
-                                                "value": "/tekton/home"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_OUTPUT_PATH",
-                                                "value": "$(workspaces.output.path)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_BOUND",
-                                                "value": "$(workspaces.ssh-directory.bound)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSH_DIRECTORY_PATH",
-                                                "value": "$(workspaces.ssh-directory.path)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND",
-                                                "value": "$(workspaces.basic-auth.bound)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_PATH",
-                                                "value": "$(workspaces.basic-auth.path)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSL_CA_DIRECTORY_BOUND",
-                                                "value": "$(workspaces.ssl-ca-directory.bound)"
-                                            },
-                                            {
-                                                "name": "WORKSPACE_SSL_CA_DIRECTORY_PATH",
-                                                "value": "$(workspaces.ssl-ca-directory.path)"
-                                            },
-                                            {
-                                                "name": "GIT_SSH_COMMAND",
-                                                "value": "ssh -o StrictHostKeyChecking=accept-new"
-                                            }
-                                        ],
-                                        "resources": {},
-                                        "script": "#!/usr/bin/env sh\nset -eu\n\nif [ \"${PARAM_VERBOSE}\" = \"true\" ] ; then\n  set -x\nfi\n\nif [ \"${WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.git-credentials\" \"${PARAM_USER_HOME}/.git-credentials\"\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.gitconfig\" \"${PARAM_USER_HOME}/.gitconfig\"\n  chmod 400 \"${PARAM_USER_HOME}/.git-credentials\"\n  chmod 400 \"${PARAM_USER_HOME}/.gitconfig\"\nfi\n\nif [ \"${WORKSPACE_SSH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp -R \"${WORKSPACE_SSH_DIRECTORY_PATH}\" \"${PARAM_USER_HOME}\"/.ssh\n  chmod 700 \"${PARAM_USER_HOME}\"/.ssh\n  chmod -R 400 \"${PARAM_USER_HOME}\"/.ssh/*\nfi\n\nif [ \"${WORKSPACE_SSL_CA_DIRECTORY_BOUND}\" = \"true\" ] ; then\n   export GIT_SSL_CAPATH=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}\"\n   if [ \"${PARAM_CRT_FILENAME}\" != \"\" ] ; then\n      export GIT_SSL_CAINFO=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}/${PARAM_CRT_FILENAME}\"\n   fi\nfi\nCHECKOUT_DIR=\"${WORKSPACE_OUTPUT_PATH}/${PARAM_SUBDIRECTORY}\"\n\ncleandir() {\n  # Delete any existing contents of the repo directory if it exists.\n  #\n  # We don't just \"rm -rf ${CHECKOUT_DIR}\" because ${CHECKOUT_DIR} might be \"/\"\n  # or the root of a mounted volume.\n  if [ -d \"${CHECKOUT_DIR}\" ] ; then\n    # Delete non-hidden files and directories\n    rm -rf \"${CHECKOUT_DIR:?}\"/*\n    # Delete files and directories starting with . but excluding ..\n    rm -rf \"${CHECKOUT_DIR}\"/.[!.]*\n    # Delete files and directories starting with .. plus any other character\n    rm -rf \"${CHECKOUT_DIR}\"/..?*\n  fi\n}\n\nif [ \"${PARAM_DELETE_EXISTING}\" = \"true\" ] ; then\n  cleandir || true\nfi\n\ntest -z \"${PARAM_HTTP_PROXY}\" || export HTTP_PROXY=\"${PARAM_HTTP_PROXY}\"\ntest -z \"${PARAM_HTTPS_PROXY}\" || export HTTPS_PROXY=\"${PARAM_HTTPS_PROXY}\"\ntest -z \"${PARAM_NO_PROXY}\" || export NO_PROXY=\"${PARAM_NO_PROXY}\"\n\ngit config --global --add safe.directory \"${WORKSPACE_OUTPUT_PATH}\"\n/ko-app/git-init \\\n  -url=\"${PARAM_URL}\" \\\n  -revision=\"${PARAM_REVISION}\" \\\n  -refspec=\"${PARAM_REFSPEC}\" \\\n  -path=\"${CHECKOUT_DIR}\" \\\n  -sslVerify=\"${PARAM_SSL_VERIFY}\" \\\n  -submodules=\"${PARAM_SUBMODULES}\" \\\n  -depth=\"${PARAM_DEPTH}\" \\\n  -sparseCheckoutDirectories=\"${PARAM_SPARSE_CHECKOUT_DIRECTORIES}\"\ncd \"${CHECKOUT_DIR}\"\nRESULT_SHA=\"$(git rev-parse HEAD)\"\nEXIT_CODE=\"$?\"\nif [ \"${EXIT_CODE}\" != 0 ] ; then\n  exit \"${EXIT_CODE}\"\nfi\nRESULT_COMMITTER_DATE=\"$(git log -1 --pretty=%ct)\"\nprintf \"%s\" \"${RESULT_COMMITTER_DATE}\" \u003e \"/tekton/results/committer-date\"\nprintf \"%s\" \"${RESULT_SHA}\" \u003e \"/tekton/results/commit\"\nprintf \"%s\" \"${PARAM_URL}\" \u003e \"/tekton/results/url\"\n"
-                                    }
-                                ],
-                                "workspaces": [
-                                    {
-                                        "name": "output",
-                                        "description": "The git repo will be cloned onto the volume backing this Workspace."
-                                    },
-                                    {
-                                        "name": "ssh-directory",
-                                        "description": "A .ssh directory with private key, known_hosts, config, etc. Copied to\nthe user's home before git commands are executed. Used to authenticate\nwith the git remote when performing the clone. Binding a Secret to this\nWorkspace is strongly recommended over other volume types.\n",
-                                        "optional": true
-                                    },
-                                    {
-                                        "name": "basic-auth",
-                                        "description": "A Workspace containing a .gitconfig and .git-credentials file. These\nwill be copied to the user's home before any git commands are run. Any\nother files in this Workspace are ignored. It is strongly recommended\nto use ssh-directory over basic-auth whenever possible and to bind a\nSecret to this Workspace over other volume types.\n",
-                                        "optional": true
-                                    },
-                                    {
-                                        "name": "ssl-ca-directory",
-                                        "description": "A workspace containing CA certificates, this will be used by Git to\nverify the peer with when fetching or pushing over HTTPS.\n",
-                                        "optional": true
-                                    }
-                                ],
-                                "results": [
-                                    {
-                                        "name": "commit",
-                                        "type": "string",
-                                        "description": "The precise commit SHA that was fetched by this Task."
-                                    },
-                                    {
-                                        "name": "url",
-                                        "type": "string",
-                                        "description": "The precise URL that was fetched by this Task."
-                                    },
-                                    {
-                                        "name": "committer-date",
-                                        "type": "string",
-                                        "description": "The epoch timestamp of the commit that was fetched by this Task."
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "build-package-pingcap-tidb-darwin-g9k4f-get-release-ver": {
-                        "pipelineTaskName": "get-release-ver",
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Succeeded",
-                                    "status": "True",
-                                    "lastTransitionTime": "2023-12-07T06:27:03Z",
-                                    "reason": "Succeeded",
-                                    "message": "All Steps have completed executing"
-                                }
-                            ],
-                            "podName": "build-package-pingcap-tidb-darwin-g9k4f-get-release-ver-pod",
-                            "startTime": "2023-12-07T06:26:29Z",
-                            "completionTime": "2023-12-07T06:27:03Z",
-                            "steps": [
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "message": "[{\"key\":\"version\",\"value\":\"v7.6.0-alpha-391-gbe62f754fb\",\"type\":1}]",
-                                        "startedAt": "2023-12-07T06:26:58Z",
-                                        "finishedAt": "2023-12-07T06:27:02Z",
-                                        "containerID": "containerd://1cff6503e23d0b2eb85c1bd4e75187d2d2d4051c7a5d9927befd5ba4e9e104dd"
-                                    },
-                                    "name": "git-describe",
-                                    "container": "step-git-describe",
-                                    "imageID": "docker.io/alpine/git@sha256:9a2947ae3651a9db60411eabb254fab595ee7fbd37817020ff7e43f0f2c463e3"
-                                }
-                            ],
-                            "taskResults": [
-                                {
-                                    "name": "version",
-                                    "type": "string",
-                                    "value": "v7.6.0-alpha-391-gbe62f754fb"
-                                }
-                            ],
-                            "taskSpec": {
-                                "steps": [
-                                    {
-                                        "name": "git-describe",
-                                        "image": "alpine/git:2.40.1",
-                                        "workingDir": "$(workspaces.source.path)",
-                                        "resources": {},
-                                        "script": "RESULT_VERSION=\"$(git describe --tags --always --dirty)\"\nprintf \"%s\" \"${RESULT_VERSION}\" \u003e /tekton/results/version\n"
-                                    }
-                                ],
-                                "workspaces": [
-                                    {
-                                        "name": "source"
-                                    }
-                                ],
-                                "results": [
-                                    {
-                                        "name": "version",
-                                        "type": "string",
-                                        "description": "The release version of the git repo"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "build-package-pingcap-tidb-darwin-g9k4f-release-mac-machine": {
-                        "pipelineTaskName": "release-mac-machine",
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Succeeded",
-                                    "status": "True",
-                                    "lastTransitionTime": "2023-12-07T06:30:55Z",
-                                    "reason": "Succeeded",
-                                    "message": "All Steps have completed executing"
-                                }
-                            ],
-                            "podName": "build-package-pingcap-tidb-darwin-g9k4f-release-mac-machine-pod",
-                            "startTime": "2023-12-07T06:30:15Z",
-                            "completionTime": "2023-12-07T06:30:55Z",
-                            "steps": [
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:30:21Z",
-                                        "finishedAt": "2023-12-07T06:30:21Z",
-                                        "containerID": "containerd://0bb42aa6888600eecd12d92b55a9747154c00767b1d9de7a8bf2f63700d59195"
-                                    },
-                                    "name": "boskosctl-release",
-                                    "container": "step-boskosctl-release",
-                                    "imageID": "gcr.io/k8s-staging-boskos/boskosctl@sha256:a7fc984732c5dd0b4e0fe0a92e2730fa4b6bddecd0f6f6c7c6b5501abe4ab105"
-                                },
-                                {
-                                    "terminated": {
-                                        "exitCode": 0,
-                                        "reason": "Completed",
-                                        "startedAt": "2023-12-07T06:30:21Z",
-                                        "finishedAt": "2023-12-07T06:30:52Z",
-                                        "containerID": "containerd://6a8fb4eddc6359844724bf1ee548d9fa5a21053f0fe095737e0c8a1a73902712"
-                                    },
-                                    "name": "stop-boskosctl-heartbeat",
-                                    "container": "step-stop-boskosctl-heartbeat",
-                                    "imageID": "docker.io/lachlanevenson/k8s-kubectl@sha256:3a5e22a406a109f4f26ec06b5f1f6a66ae0cd0e185bc28499eb7b7a3bbf1fe09"
-                                }
-                            ],
-                            "taskSpec": {
-                                "params": [
-                                    {
-                                        "name": "server-url",
-                                        "type": "string",
-                                        "description": "The URL of the running boskos server",
-                                        "default": "http://boskos.test-pods.svc.cluster.local"
-                                    },
-                                    {
-                                        "name": "leased-resource",
-                                        "type": "string",
-                                        "description": "A string that identifies the leased resource to release."
-                                    },
-                                    {
-                                        "name": "owner-name",
-                                        "type": "string",
-                                        "description": "A string that identifies the owner of the leased resource to request."
-                                    }
-                                ],
-                                "description": "Release a project acquired using Boskos.\n\nThe boskos-release Task will release the specified resource from the boskos instance\nat server-url. It also assumes the resource was obtained via boskos-acquire and so\nterminates the heartbeat pod that was created by that Task to keep the resource obtained.\nIt will mark the resource as dirty so that the boskos Janitor will clean it (by deleting\nany state created).\n",
-                                "steps": [
-                                    {
-                                        "name": "boskosctl-release",
-                                        "image": "gcr.io/k8s-staging-boskos/boskosctl@sha256:a7fc984732c5dd0b4e0fe0a92e2730fa4b6bddecd0f6f6c7c6b5501abe4ab105",
-                                        "args": [
-                                            "release",
-                                            "--server-url=http://boskos.apps.svc",
-                                            "--owner-name=build-package-pingcap-tidb-darwin-g9k4f",
-                                            "--name=darwin-arm64-1",
-                                            "--target-state=dirty"
-                                        ],
-                                        "resources": {}
-                                    },
-                                    {
-                                        "name": "stop-boskosctl-heartbeat",
-                                        "image": "docker.io/lachlanevenson/k8s-kubectl@sha256:3a5e22a406a109f4f26ec06b5f1f6a66ae0cd0e185bc28499eb7b7a3bbf1fe09",
-                                        "args": [
-                                            "delete",
-                                            "pod",
-                                            "boskos-heartbeat-darwin-arm64-1"
-                                        ],
-                                        "resources": {}
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                },
-                "pipelineSpec": {
-                    "tasks": [
-                        {
-                            "name": "checkout",
-                            "taskRef": {
-                                "name": "git-clone",
-                                "kind": "Task"
-                            },
-                            "retries": 3,
-                            "params": [
-                                {
-                                    "name": "url",
-                                    "value": "https://github.com/pingcap/tidb.git"
-                                },
-                                {
-                                    "name": "revision",
-                                    "value": "be62f754fb4182a544b52b2f58a5f867136e7695"
-                                },
-                                {
-                                    "name": "depth",
-                                    "value": "0"
-                                },
-                                {
-                                    "name": "refspec",
-                                    "value": "+refs/heads/*:refs/remotes/origin/*"
-                                }
-                            ],
-                            "workspaces": [
-                                {
-                                    "name": "output",
-                                    "workspace": "source"
-                                },
-                                {
-                                    "name": "basic-auth",
-                                    "workspace": "git-basic-auth"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "get-release-ver",
-                            "taskSpec": {
-                                "spec": null,
-                                "metadata": {},
-                                "steps": [
-                                    {
-                                        "name": "git-describe",
-                                        "image": "alpine/git:2.40.1",
-                                        "workingDir": "$(workspaces.source.path)",
-                                        "resources": {},
-                                        "script": "RESULT_VERSION=\"$(git describe --tags --always --dirty)\"\nprintf \"%s\" \"${RESULT_VERSION}\" \u003e $(results.version.path)\n"
-                                    }
-                                ],
-                                "workspaces": [
-                                    {
-                                        "name": "source"
-                                    }
-                                ],
-                                "results": [
-                                    {
-                                        "name": "version",
-                                        "type": "string",
-                                        "description": "The release version of the git repo"
-                                    }
-                                ]
-                            },
-                            "runAfter": [
-                                "checkout"
-                            ],
-                            "workspaces": [
-                                {
-                                    "name": "source",
-                                    "workspace": "source"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "acquire-mac-machine",
-                            "taskRef": {
-                                "name": "boskos-acquire",
-                                "kind": "Task"
-                            },
-                            "retries": 5,
-                            "params": [
-                                {
-                                    "name": "server-url",
-                                    "value": "http://boskos.apps.svc"
-                                },
-                                {
-                                    "name": "type",
-                                    "value": "mac-machine-arm64"
-                                },
-                                {
-                                    "name": "owner-name",
-                                    "value": "build-package-pingcap-tidb-darwin-g9k4f"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "build-binaries",
-                            "taskRef": {
-                                "name": "pingcap-build-binaries-darwin",
-                                "kind": "Task"
-                            },
-                            "params": [
-                                {
-                                    "name": "os",
-                                    "value": "darwin"
-                                },
-                                {
-                                    "name": "arch",
-                                    "value": "arm64"
-                                },
-                                {
-                                    "name": "profile",
-                                    "value": "release"
-                                },
-                                {
-                                    "name": "component",
-                                    "value": "tidb"
-                                },
-                                {
-                                    "name": "version",
-                                    "value": "$(tasks.get-release-ver.results.version)"
-                                },
-                                {
-                                    "name": "git-ref",
-                                    "value": "master"
-                                },
-                                {
-                                    "name": "git-sha",
-                                    "value": "be62f754fb4182a544b52b2f58a5f867136e7695"
-                                },
-                                {
-                                    "name": "builder-image",
-                                    "value": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21"
-                                },
-                                {
-                                    "name": "release-dir",
-                                    "value": "build"
-                                },
-                                {
-                                    "name": "push",
-                                    "value": "true"
-                                },
-                                {
-                                    "name": "mac-builder-resource",
-                                    "value": "$(tasks.acquire-mac-machine.results.leased-resource)"
-                                }
-                            ],
-                            "workspaces": [
-                                {
-                                    "name": "source",
-                                    "workspace": "source"
-                                },
-                                {
-                                    "name": "dockerconfig",
-                                    "workspace": "dockerconfig"
-                                },
-                                {
-                                    "name": "ssh-directory",
-                                    "workspace": "mac-ssh-credentials"
-                                }
-                            ]
-                        }
-                    ],
-                    "params": [
-                        {
-                            "name": "git-url",
-                            "type": "string"
-                        },
-                        {
-                            "name": "git-ref",
-                            "type": "string",
-                            "default": "master"
-                        },
-                        {
-                            "name": "git-revision",
-                            "type": "string",
-                            "default": "master"
-                        },
-                        {
-                            "name": "component",
-                            "type": "string",
-                            "description": "compoent name, supports:\n- tidb\n- tikv\n- pd\n- tiflash\n- tiflow\n- advanced-statefulset\n\nMay be it is an idea to judge it by git-url, but it maybe \nnot a generic way for forked repositories with custom names.\n"
-                        },
-                        {
-                            "name": "arch",
-                            "type": "string",
-                            "default": "amd64"
-                        },
-                        {
-                            "name": "profile",
-                            "type": "string",
-                            "default": "release"
-                        },
-                        {
-                            "name": "binary-builder-iamge",
-                            "type": "string",
-                            "description": "The image used to build binaries.",
-                            "default": "ghcr.io/pingcap-qe/cd/utils/release:5d33328"
-                        },
-                        {
-                            "name": "push",
-                            "type": "string",
-                            "default": "true"
-                        }
-                    ],
-                    "workspaces": [
-                        {
-                            "name": "source",
-                            "description": "The workspace where the git repo will be cloned."
-                        },
-                        {
-                            "name": "dockerconfig",
-                            "description": "Includes a docker `config.json`"
-                        },
-                        {
-                            "name": "git-basic-auth",
-                            "description": "secret containing a .gitconfig and .git-credentials file.",
-                            "optional": true
-                        },
-                        {
-                            "name": "mac-ssh-credentials",
-                            "description": "secret contains ssh private key in `id_rsa` key for login mac"
-                        }
-                    ],
-                    "finally": [
-                        {
-                            "name": "release-mac-machine",
-                            "taskRef": {
-                                "name": "boskos-release",
-                                "kind": "Task"
-                            },
-                            "params": [
-                                {
-                                    "name": "server-url",
-                                    "value": "http://boskos.apps.svc"
-                                },
-                                {
-                                    "name": "leased-resource",
-                                    "value": "$(tasks.acquire-mac-machine.results.leased-resource)"
-                                },
-                                {
-                                    "name": "owner-name",
-                                    "value": "build-package-pingcap-tidb-darwin-g9k4f"
-                                }
-                            ]
-                        }
-                    ]
-                }
+  "specversion": "1.0",
+  "id": "f813f928-adea-4653-a523-dee1a81dab7e",
+  "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-darwin-g9k4f",
+  "type": "dev.tekton.event.pipelinerun.successful.v1",
+  "subject": "build-package-pingcap-tidb-darwin-g9k4f",
+  "datacontenttype": "application/json",
+  "time": "2023-12-07T06:30:55.539307083Z",
+  "data": {
+    "pipelineRun": {
+      "metadata": {
+        "annotations": {
+          "tekton.dev/ce-context": "{}",
+          "tekton.dev/git-repo": "https://github.com/pingcap/tidb.git",
+          "tekton.dev/git-revision": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff",
+          "tekton.dev/git-status": "true",
+          "tekton.dev/status-target-url": "https://do.pingcap.net/tekton/#/namespaces/{{ .Namespace }}/pipelineruns/{{ .Name }}"
+        },
+        "creationTimestamp": "2024-01-25T15:09:29Z",
+        "generateName": "build-package-tidb-linux-amd64-",
+        "generation": 1,
+        "labels": {
+          "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+          "kustomize.toolkit.fluxcd.io/namespace": "apps",
+          "tekton.dev/pipeline": "pingcap-build-package",
+          "triggers.tekton.dev/eventlistener": "public",
+          "triggers.tekton.dev/trigger": "git-push-pingcap-tidb",
+          "triggers.tekton.dev/triggers-eventid": "8cc589a5-2236-464f-90e4-5b8ac26e68c8"
+        },
+        "name": "build-package-tidb-linux-amd64-nmjrj",
+        "namespace": "ee-cd",
+        "resourceVersion": "2676170386",
+        "uid": "7e938f27-895c-46a3-b682-e1e6ae2cb131"
+      },
+      "spec": {
+        "params": [
+          {
+            "name": "git-url",
+            "value": "https://github.com/pingcap/tidb.git"
+          },
+          {
+            "name": "git-revision",
+            "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+          },
+          {
+            "name": "git-ref",
+            "value": "master"
+          },
+          {
+            "name": "component",
+            "value": "tidb"
+          },
+          {
+            "name": "profile",
+            "value": "release"
+          },
+          {
+            "name": "os",
+            "value": "linux"
+          },
+          {
+            "name": "arch",
+            "value": "amd64"
+          }
+        ],
+        "pipelineRef": {
+          "name": "pingcap-build-package"
+        },
+        "podTemplate": {
+          "nodeSelector": {
+            "enable-ci": "true"
+          },
+          "tolerations": [
+            {
+              "effect": "NoSchedule",
+              "key": "dedicated",
+              "operator": "Equal",
+              "value": "test-infra"
             }
+          ]
+        },
+        "serviceAccountName": "default",
+        "taskRunSpecs": [
+          {
+            "pipelineTaskName": "build-binaries",
+            "stepOverrides": [
+              {
+                "name": "build",
+                "resources": {
+                  "requests": {
+                    "cpu": "8",
+                    "memory": "32Gi"
+                  }
+                }
+              }
+            ],
+            "taskPodTemplate": {
+              "nodeSelector": {
+                "kubernetes.io/arch": "amd64"
+              }
+            }
+          },
+          {
+            "pipelineTaskName": "build-images",
+            "taskPodTemplate": {
+              "nodeSelector": {
+                "kubernetes.io/arch": "amd64"
+              }
+            }
+          }
+        ],
+        "timeouts": {
+          "pipeline": "30m0s"
+        },
+        "workspaces": [
+          {
+            "name": "dockerconfig",
+            "secret": {
+              "secretName": "hub-pingcap-net-ee"
+            }
+          },
+          {
+            "name": "source",
+            "volumeClaimTemplate": {
+              "metadata": {
+                "creationTimestamp": null
+              },
+              "spec": {
+                "accessModes": [
+                  "ReadWriteOnce"
+                ],
+                "resources": {
+                  "requests": {
+                    "storage": "50Gi"
+                  }
+                },
+                "storageClassName": "ceph-block"
+              },
+              "status": {}
+            }
+          },
+          {
+            "name": "git-basic-auth",
+            "secret": {
+              "secretName": "git-credentials-basic"
+            }
+          },
+          {
+            "name": "cargo-home",
+            "persistentVolumeClaim": {
+              "claimName": "cargo-home"
+            }
+          }
+        ]
+      },
+      "status": {
+        "completionTime": "2024-01-25T15:18:47Z",
+        "conditions": [
+          {
+            "lastTransitionTime": "2024-01-25T15:18:47Z",
+            "message": "Tasks Completed: 5 (Failed: 0, Cancelled 0), Skipped: 0",
+            "reason": "Succeeded",
+            "status": "True",
+            "type": "Succeeded"
+          }
+        ],
+        "pipelineResults": [
+          {
+            "name": "pushed-binaries",
+            "value": "oci:\n  repo: hub.pingcap.net/pingcap/tidb/package\n  tag: \"master-799a461_linux_amd64\"\n  digest: \"sha256:51299c4c53e252e0e5d4c67cbf1eccdcce21dfb7a719a5dd44c0114592e7eb40\"\nfiles:\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n"
+          },
+          {
+            "name": "pushed-images",
+            "value": "images:\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-server\n  url: \"hub.pingcap.net/pingcap/tidb/images/tidb-server:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/br\n  url: \"hub.pingcap.net/pingcap/tidb/images/br:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/dumpling\n  url: \"hub.pingcap.net/pingcap/tidb/images/dumpling:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-lightning\n  url: \"hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n"
+          }
+        ],
+        "pipelineSpec": {
+          "params": [
+            {
+              "name": "git-url",
+              "type": "string"
+            },
+            {
+              "default": "master",
+              "name": "git-ref",
+              "type": "string"
+            },
+            {
+              "default": "master",
+              "name": "git-revision",
+              "type": "string"
+            },
+            {
+              "description": "compoent name, supports:\n- tidb\n- tikv\n- pd\n- tiflash\n- tiflow\n- advanced-statefulset\n\nMay be it is an idea to judge it by git-url, but it maybe\nnot a generic way for forked repositories with custom names.\n",
+              "name": "component",
+              "type": "string"
+            },
+            {
+              "default": "linux",
+              "name": "os",
+              "type": "string"
+            },
+            {
+              "default": "amd64",
+              "name": "arch",
+              "type": "string"
+            },
+            {
+              "default": "release",
+              "name": "profile",
+              "type": "string"
+            },
+            {
+              "default": "true",
+              "name": "push",
+              "type": "string"
+            }
+          ],
+          "results": [
+            {
+              "description": "pushed binaries.",
+              "name": "pushed-binaries",
+              "value": "$(tasks.build-binaries.results.pushed)"
+            },
+            {
+              "description": "pushed images.",
+              "name": "pushed-images",
+              "value": "$(tasks.build-images.results.pushed)"
+            }
+          ],
+          "tasks": [
+            {
+              "name": "checkout",
+              "params": [
+                {
+                  "name": "url",
+                  "value": "https://github.com/pingcap/tidb.git"
+                },
+                {
+                  "name": "revision",
+                  "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                },
+                {
+                  "name": "depth",
+                  "value": "0"
+                },
+                {
+                  "name": "refspec",
+                  "value": "+refs/heads/*:refs/remotes/origin/*"
+                }
+              ],
+              "taskRef": {
+                "kind": "Task",
+                "name": "git-clone"
+              },
+              "workspaces": [
+                {
+                  "name": "output",
+                  "workspace": "source"
+                },
+                {
+                  "name": "basic-auth",
+                  "workspace": "git-basic-auth"
+                }
+              ]
+            },
+            {
+              "name": "get-release-ver",
+              "runAfter": [
+                "checkout"
+              ],
+              "taskRef": {
+                "kind": "Task",
+                "name": "pingcap-get-release-version"
+              },
+              "workspaces": [
+                {
+                  "name": "source",
+                  "workspace": "source"
+                }
+              ]
+            },
+            {
+              "name": "get-binaries-builder",
+              "params": [
+                {
+                  "name": "component",
+                  "value": "tidb"
+                },
+                {
+                  "name": "os",
+                  "value": "linux"
+                },
+                {
+                  "name": "arch",
+                  "value": "amd64"
+                },
+                {
+                  "name": "profile",
+                  "value": "release"
+                },
+                {
+                  "name": "version",
+                  "value": "$(tasks.get-release-ver.results.version)"
+                }
+              ],
+              "taskRef": {
+                "kind": "Task",
+                "name": "pingcap-get-builder-image"
+              }
+            },
+            {
+              "name": "build-binaries",
+              "params": [
+                {
+                  "name": "os",
+                  "value": "linux"
+                },
+                {
+                  "name": "arch",
+                  "value": "amd64"
+                },
+                {
+                  "name": "profile",
+                  "value": "release"
+                },
+                {
+                  "name": "component",
+                  "value": "tidb"
+                },
+                {
+                  "name": "version",
+                  "value": "$(tasks.get-release-ver.results.version)"
+                },
+                {
+                  "name": "git-ref",
+                  "value": "master"
+                },
+                {
+                  "name": "git-sha",
+                  "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                },
+                {
+                  "name": "builder-image",
+                  "value": "$(tasks.get-binaries-builder.results.image-url)"
+                },
+                {
+                  "name": "release-dir",
+                  "value": "build"
+                },
+                {
+                  "name": "push",
+                  "value": "true"
+                }
+              ],
+              "taskRef": {
+                "kind": "Task",
+                "name": "pingcap-build-binaries"
+              },
+              "workspaces": [
+                {
+                  "name": "source",
+                  "workspace": "source"
+                },
+                {
+                  "name": "dockerconfig",
+                  "workspace": "dockerconfig"
+                },
+                {
+                  "name": "cargo-home",
+                  "workspace": "cargo-home"
+                }
+              ]
+            },
+            {
+              "name": "build-images",
+              "params": [
+                {
+                  "name": "os",
+                  "value": "linux"
+                },
+                {
+                  "name": "arch",
+                  "value": "amd64"
+                },
+                {
+                  "name": "profile",
+                  "value": "release"
+                },
+                {
+                  "name": "component",
+                  "value": "tidb"
+                },
+                {
+                  "name": "version",
+                  "value": "$(tasks.get-release-ver.results.version)"
+                },
+                {
+                  "name": "git-ref",
+                  "value": "master"
+                },
+                {
+                  "name": "git-sha",
+                  "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                },
+                {
+                  "name": "release-dir",
+                  "value": "build"
+                },
+                {
+                  "name": "build",
+                  "value": "false"
+                }
+              ],
+              "runAfter": [
+                "build-binaries"
+              ],
+              "taskRef": {
+                "kind": "Task",
+                "name": "pingcap-build-images"
+              },
+              "when": [
+                {
+                  "input": "linux",
+                  "operator": "in",
+                  "values": [
+                    "linux"
+                  ]
+                },
+                {
+                  "input": "true",
+                  "operator": "in",
+                  "values": [
+                    "true"
+                  ]
+                }
+              ],
+              "workspaces": [
+                {
+                  "name": "source",
+                  "workspace": "source"
+                },
+                {
+                  "name": "dockerconfig",
+                  "workspace": "dockerconfig"
+                }
+              ]
+            }
+          ],
+          "workspaces": [
+            {
+              "description": "The workspace where the git repo will be cloned.",
+              "name": "source"
+            },
+            {
+              "description": "Includes a docker `config.json`",
+              "name": "dockerconfig"
+            },
+            {
+              "description": "secret containing a .gitconfig and .git-credentials file.",
+              "name": "git-basic-auth",
+              "optional": true
+            },
+            {
+              "description": "cache for cargo pacakges when build binaries",
+              "name": "cargo-home",
+              "optional": true
+            }
+          ]
+        },
+        "startTime": "2024-01-25T15:09:29Z",
+        "taskRuns": {
+          "build-package-tidb-linux-amd64-nmjrj-build-binaries": {
+            "pipelineTaskName": "build-binaries",
+            "status": {
+              "completionTime": "2024-01-25T15:16:58Z",
+              "conditions": [
+                {
+                  "lastTransitionTime": "2024-01-25T15:16:58Z",
+                  "message": "All Steps have completed executing",
+                  "reason": "Succeeded",
+                  "status": "True",
+                  "type": "Succeeded"
+                }
+              ],
+              "podName": "build-package-tidb-linux-amd64-nmjrj-build-binaries-pod",
+              "startTime": "2024-01-25T15:11:41Z",
+              "steps": [
+                {
+                  "container": "step-generate-build-script",
+                  "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                  "name": "generate-build-script",
+                  "terminated": {
+                    "containerID": "containerd://e06fa4bdceca4cc0aff66a31fe3b21c7e67888b391e5876903e3d39030bac693",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:12:10Z",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:12:08Z"
+                  }
+                },
+                {
+                  "container": "step-build",
+                  "imageID": "ghcr.io/pingcap-qe/cd/builders/tidb@sha256:328d64b5c5ec48676c32d0a5ce5fed43007cee076181e41fd22760c7c321dc17",
+                  "name": "build",
+                  "terminated": {
+                    "containerID": "containerd://09aa6613be28e25d0a542f187ff9bb4a65f06c6246ddb4df2d1def17d69f4df6",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:16:43Z",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:12:10Z"
+                  }
+                },
+                {
+                  "container": "step-publish",
+                  "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                  "name": "publish",
+                  "terminated": {
+                    "containerID": "containerd://8c4eb08e40a7f6baf4ab74f9a8f44188d84fe27f4270d81ccc1a130a26987963",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:16:57Z",
+                    "message": "[{\"key\":\"pushed\",\"value\":\"oci:\\n  repo: hub.pingcap.net/pingcap/tidb/package\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: \\\"sha256:51299c4c53e252e0e5d4c67cbf1eccdcce21dfb7a719a5dd44c0114592e7eb40\\\"\\nfiles:\\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\\n\",\"type\":1}]",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:16:44Z"
+                  }
+                }
+              ],
+              "taskResults": [
+                {
+                  "name": "pushed",
+                  "type": "string",
+                  "value": "oci:\n  repo: hub.pingcap.net/pingcap/tidb/package\n  tag: \"master-799a461_linux_amd64\"\n  digest: \"sha256:51299c4c53e252e0e5d4c67cbf1eccdcce21dfb7a719a5dd44c0114592e7eb40\"\nfiles:\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - br-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - dumpling-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-ctl-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz\n  - tidb-lightning-v8.0.0-alpha-120-g799a46107e-linux-amd64.tar.gz.sha256\n"
+                }
+              ],
+              "taskSpec": {
+                "description": "Build binaries for the component.",
+                "params": [
+                  {
+                    "name": "component",
+                    "type": "string"
+                  },
+                  {
+                    "default": "linux",
+                    "name": "os",
+                    "type": "string"
+                  },
+                  {
+                    "default": "amd64",
+                    "name": "arch",
+                    "type": "string"
+                  },
+                  {
+                    "description": "the version to releasing.",
+                    "name": "version",
+                    "type": "string"
+                  },
+                  {
+                    "default": "release",
+                    "description": "supports: 'release' or 'debug'.\n",
+                    "name": "profile",
+                    "type": "string"
+                  },
+                  {
+                    "name": "git-ref",
+                    "type": "string"
+                  },
+                  {
+                    "name": "git-sha",
+                    "type": "string"
+                  },
+                  {
+                    "default": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                    "name": "builder-image",
+                    "type": "string"
+                  },
+                  {
+                    "default": "build",
+                    "name": "release-dir",
+                    "type": "string"
+                  },
+                  {
+                    "default": "false",
+                    "name": "push",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "name": "mac-builder-resource",
+                    "type": "string"
+                  }
+                ],
+                "results": [
+                  {
+                    "description": "Just built and pushed artifacts, it will be a yaml content.",
+                    "name": "pushed",
+                    "type": "string"
+                  }
+                ],
+                "steps": [
+                  {
+                    "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                    "name": "generate-build-script",
+                    "resources": {},
+                    "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"master\"\ngit_sha=\"799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-artifacts.sh\"\n/workspace/artifacts/packages/scripts/gen-package-artifacts-with-config.sh \\\n  tidb \\\n  linux \\\n  amd64 \\\n  v8.0.0-alpha-120-g799a46107e \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nelse\n  echo \"🤷 no output script generated!\"\nfi\n"
+                  },
+                  {
+                    "env": [
+                      {
+                        "name": "CARGO_NET_GIT_FETCH_WITH_CLI",
+                        "value": "true"
+                      },
+                      {
+                        "name": "GOPROXY",
+                        "value": "http://goproxy.apps.svc,direct"
+                      },
+                      {
+                        "name": "CARGO_HOME",
+                        "value": "/workspace/.cargo"
+                      }
+                    ],
+                    "image": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21",
+                    "name": "build",
+                    "resources": {},
+                    "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip it.\"\n  exit 0\nfi\n\n\"$script\" -b -a -w \"build\"\n",
+                    "workingDir": "$(workspaces.source.path)"
+                  },
+                  {
+                    "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                    "name": "publish",
+                    "resources": {},
+                    "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip it.\"\n  printf '\"{}\"' > /tekton/results/pushed\n  exit 0\nfi\n\noras version\n\"$script\" -p -w \"build\" -o /tekton/results/pushed\n",
+                    "workingDir": "$(workspaces.source.path)"
+                  }
+                ],
+                "workspaces": [
+                  {
+                    "description": "source code.",
+                    "name": "source"
+                  },
+                  {
+                    "description": "Cache for cargo packages.",
+                    "mountPath": "/workspace/.cargo",
+                    "name": "cargo-home",
+                    "optional": true
+                  },
+                  {
+                    "description": "Includes a docker `config.json`",
+                    "mountPath": "/root/.docker",
+                    "name": "dockerconfig",
+                    "optional": true
+                  }
+                ]
+              }
+            }
+          },
+          "build-package-tidb-linux-amd64-nmjrj-build-images": {
+            "pipelineTaskName": "build-images",
+            "status": {
+              "completionTime": "2024-01-25T15:18:46Z",
+              "conditions": [
+                {
+                  "lastTransitionTime": "2024-01-25T15:18:46Z",
+                  "message": "All Steps have completed executing",
+                  "reason": "Succeeded",
+                  "status": "True",
+                  "type": "Succeeded"
+                }
+              ],
+              "podName": "build-package-tidb-linux-amd64-nmjrj-build-images-pod",
+              "startTime": "2024-01-25T15:16:58Z",
+              "steps": [
+                {
+                  "container": "step-generate",
+                  "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                  "name": "generate",
+                  "terminated": {
+                    "containerID": "containerd://78ba56b2000598709de91dedc6ad48d2d643a36ac228e9a34f9fdbc7dbac399e",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:17:15Z",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:17:13Z"
+                  }
+                },
+                {
+                  "container": "step-build-and-publish",
+                  "imageID": "gcr.io/kaniko-project/executor@sha256:899886a2db1c127ff1565d5c7b1e574af1810bbdad048e9850e4f40b5848d79c",
+                  "name": "build-and-publish",
+                  "terminated": {
+                    "containerID": "containerd://9b118163e14f035e9261b0062ba91a8e43dfcf0fc87f52b6d7aba8dc8843065b",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:18:46Z",
+                    "message": "[{\"key\":\"pushed\",\"value\":\"images:\\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-server\\n  url: \\\"hub.pingcap.net/pingcap/tidb/images/tidb-server:master-799a461_linux_amd64\\\"\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\\n- repo: hub.pingcap.net/pingcap/tidb/images/br\\n  url: \\\"hub.pingcap.net/pingcap/tidb/images/br:master-799a461_linux_amd64\\\"\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\\n- repo: hub.pingcap.net/pingcap/tidb/images/dumpling\\n  url: \\\"hub.pingcap.net/pingcap/tidb/images/dumpling:master-799a461_linux_amd64\\\"\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-lightning\\n  url: \\\"hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-799a461_linux_amd64\\\"\\n  tag: \\\"master-799a461_linux_amd64\\\"\\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\\n\",\"type\":1}]",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:17:16Z"
+                  }
+                }
+              ],
+              "taskResults": [
+                {
+                  "name": "pushed",
+                  "type": "string",
+                  "value": "images:\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-server\n  url: \"hub.pingcap.net/pingcap/tidb/images/tidb-server:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/br\n  url: \"hub.pingcap.net/pingcap/tidb/images/br:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/dumpling\n  url: \"hub.pingcap.net/pingcap/tidb/images/dumpling:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n- repo: hub.pingcap.net/pingcap/tidb/images/tidb-lightning\n  url: \"hub.pingcap.net/pingcap/tidb/images/tidb-lightning:master-799a461_linux_amd64\"\n  tag: \"master-799a461_linux_amd64\"\n  digest: 'sha256:27c3360d6d4997622ace495dc846bcc409e817ba3cf2e64215b5627cdb2ba323sha256:ed38c95735c25503babb774e9446472f52299bb1717e0e7a67e676917b98adc8sha256:cadc63573a084a2890b74da27bf51cca21e88ee7321cc2e6e5e62728d0e85387sha256:66bd4b3db82a9ff3ac1fca173e1b86cccb79465fde19defaaea2198495b54739'\n"
+                }
+              ],
+              "taskSpec": {
+                "description": "This task builds images for pingcap components.",
+                "params": [
+                  {
+                    "name": "component",
+                    "type": "string"
+                  },
+                  {
+                    "default": "linux",
+                    "name": "os",
+                    "type": "string"
+                  },
+                  {
+                    "default": "amd64",
+                    "name": "arch",
+                    "type": "string"
+                  },
+                  {
+                    "description": "the version to releasing.",
+                    "name": "version",
+                    "type": "string"
+                  },
+                  {
+                    "default": "release",
+                    "description": "supports: 'release' or 'debug'.\n",
+                    "name": "profile",
+                    "type": "string"
+                  },
+                  {
+                    "name": "git-ref",
+                    "type": "string"
+                  },
+                  {
+                    "name": "git-sha",
+                    "type": "string"
+                  },
+                  {
+                    "default": "build",
+                    "name": "release-dir",
+                    "type": "string"
+                  },
+                  {
+                    "default": "false",
+                    "description": "Does it need to build the binaries before packing the images?",
+                    "name": "build",
+                    "type": "string"
+                  }
+                ],
+                "results": [
+                  {
+                    "description": "Just built and pushed images, it will be a yaml content.",
+                    "name": "pushed",
+                    "type": "string"
+                  }
+                ],
+                "steps": [
+                  {
+                    "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                    "name": "generate",
+                    "resources": {},
+                    "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"master\"\ngit_sha=\"799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-images.sh\"\n/workspace/artifacts/packages/scripts/gen-package-images-with-config.sh \\\n  tidb \\\n  linux \\\n  amd64 \\\n  v8.0.0-alpha-120-g799a46107e \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nelse\n  echo \"🤷 no output script generated!\"\nfi\n"
+                  },
+                  {
+                    "env": [
+                      {
+                        "name": "KANIKO_EXECUTOR",
+                        "value": "/kaniko/executor"
+                      }
+                    ],
+                    "image": "gcr.io/kaniko-project/executor:debug",
+                    "name": "build-and-publish",
+                    "resources": {
+                      "requests": {
+                        "cpu": "4",
+                        "memory": "8Gi"
+                      }
+                    },
+                    "script": "script=\"/workspace/build-package-images.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip it.\"\n  printf '\"{}\"' > /tekton/results/pushed\n  exit 0\nfi\n\nif [ \"false\" = \"true\" ]; then\n  \"$script\" -w \"build\" -k ${KANIKO_EXECUTOR} -o /tekton/results/pushed -b\nelse\n  \"$script\" -w \"build\" -k ${KANIKO_EXECUTOR} -o /tekton/results/pushed\nfi\n",
+                    "workingDir": "$(workspaces.source.path)"
+                  }
+                ],
+                "workspaces": [
+                  {
+                    "name": "source"
+                  },
+                  {
+                    "description": "Includes a docker `config.json`",
+                    "mountPath": "/kaniko/.docker",
+                    "name": "dockerconfig",
+                    "optional": true
+                  }
+                ]
+              }
+            }
+          },
+          "build-package-tidb-linux-amd64-nmjrj-checkout": {
+            "pipelineTaskName": "checkout",
+            "status": {
+              "completionTime": "2024-01-25T15:11:16Z",
+              "conditions": [
+                {
+                  "lastTransitionTime": "2024-01-25T15:11:16Z",
+                  "message": "All Steps have completed executing",
+                  "reason": "Succeeded",
+                  "status": "True",
+                  "type": "Succeeded"
+                }
+              ],
+              "podName": "build-package-tidb-linux-amd64-nmjrj-checkout-pod",
+              "startTime": "2024-01-25T15:09:29Z",
+              "steps": [
+                {
+                  "container": "step-clone",
+                  "imageID": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init@sha256:c0b0ed1cd81090ce8eecf60b936e9345089d9dfdb6ebdd2fd7b4a0341ef4f2b9",
+                  "name": "clone",
+                  "terminated": {
+                    "containerID": "containerd://5ecc10ba014f790b23bd6cbd06177fbefa0b8c46fa95c2f917ceae202c815acd",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:11:12Z",
+                    "message": "[{\"key\":\"commit\",\"value\":\"799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff\",\"type\":1},{\"key\":\"committer-date\",\"value\":\"1706195361\",\"type\":1},{\"key\":\"url\",\"value\":\"https://github.com/pingcap/tidb.git\",\"type\":1}]",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:09:49Z"
+                  }
+                }
+              ],
+              "taskResults": [
+                {
+                  "name": "commit",
+                  "type": "string",
+                  "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                },
+                {
+                  "name": "committer-date",
+                  "type": "string",
+                  "value": "1706195361"
+                },
+                {
+                  "name": "url",
+                  "type": "string",
+                  "value": "https://github.com/pingcap/tidb.git"
+                }
+              ],
+              "taskSpec": {
+                "description": "These Tasks are Git tasks to work with repositories used by other tasks in your Pipeline.\nThe git-clone Task will clone a repo from the provided url into the output Workspace. By default the repo will be cloned into the root of your Workspace. You can clone into a subdirectory by setting this Task's subdirectory param. This Task also supports sparse checkouts. To perform a sparse checkout, pass a list of comma separated directory patterns to this Task's sparseCheckoutDirectories param.",
+                "params": [
+                  {
+                    "description": "Repository URL to clone from.",
+                    "name": "url",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "Revision to checkout. (branch, tag, sha, ref, etc...)",
+                    "name": "revision",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "Refspec to fetch before checking out revision.",
+                    "name": "refspec",
+                    "type": "string"
+                  },
+                  {
+                    "default": "true",
+                    "description": "Initialize and fetch git submodules.",
+                    "name": "submodules",
+                    "type": "string"
+                  },
+                  {
+                    "default": "1",
+                    "description": "Perform a shallow clone, fetching only the most recent N commits.",
+                    "name": "depth",
+                    "type": "string"
+                  },
+                  {
+                    "default": "true",
+                    "description": "Set the `http.sslVerify` global git config. Setting this to `false` is not advised unless you are sure that you trust your git remote.",
+                    "name": "sslVerify",
+                    "type": "string"
+                  },
+                  {
+                    "default": "ca-bundle.crt",
+                    "description": "file name of mounted crt using ssl-ca-directory workspace. default value is ca-bundle.crt.",
+                    "name": "crtFileName",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "Subdirectory inside the `output` Workspace to clone the repo into.",
+                    "name": "subdirectory",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "Define the directory patterns to match or exclude when performing a sparse checkout.",
+                    "name": "sparseCheckoutDirectories",
+                    "type": "string"
+                  },
+                  {
+                    "default": "true",
+                    "description": "Clean out the contents of the destination directory if it already exists before cloning.",
+                    "name": "deleteExisting",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "HTTP proxy server for non-SSL requests.",
+                    "name": "httpProxy",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "HTTPS proxy server for SSL requests.",
+                    "name": "httpsProxy",
+                    "type": "string"
+                  },
+                  {
+                    "default": "",
+                    "description": "Opt out of proxying HTTP/HTTPS requests.",
+                    "name": "noProxy",
+                    "type": "string"
+                  },
+                  {
+                    "default": "true",
+                    "description": "Log the commands that are executed during `git-clone`'s operation.",
+                    "name": "verbose",
+                    "type": "string"
+                  },
+                  {
+                    "default": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0",
+                    "description": "The image providing the git-init binary that this Task runs.",
+                    "name": "gitInitImage",
+                    "type": "string"
+                  },
+                  {
+                    "default": "/tekton/home",
+                    "description": "Absolute path to the user's home directory. Set this explicitly if you are running the image as a non-root user or have overridden\nthe gitInitImage param with an image containing custom user configuration.\n",
+                    "name": "userHome",
+                    "type": "string"
+                  }
+                ],
+                "results": [
+                  {
+                    "description": "The precise commit SHA that was fetched by this Task.",
+                    "name": "commit",
+                    "type": "string"
+                  },
+                  {
+                    "description": "The precise URL that was fetched by this Task.",
+                    "name": "url",
+                    "type": "string"
+                  },
+                  {
+                    "description": "The epoch timestamp of the commit that was fetched by this Task.",
+                    "name": "committer-date",
+                    "type": "string"
+                  }
+                ],
+                "steps": [
+                  {
+                    "env": [
+                      {
+                        "name": "HOME",
+                        "value": "/tekton/home"
+                      },
+                      {
+                        "name": "PARAM_URL",
+                        "value": "https://github.com/pingcap/tidb.git"
+                      },
+                      {
+                        "name": "PARAM_REVISION",
+                        "value": "799a46107ec9fb7dd19c0734f9a4e8da2a3d29ff"
+                      },
+                      {
+                        "name": "PARAM_REFSPEC",
+                        "value": "+refs/heads/*:refs/remotes/origin/*"
+                      },
+                      {
+                        "name": "PARAM_SUBMODULES",
+                        "value": "true"
+                      },
+                      {
+                        "name": "PARAM_DEPTH",
+                        "value": "0"
+                      },
+                      {
+                        "name": "PARAM_SSL_VERIFY",
+                        "value": "true"
+                      },
+                      {
+                        "name": "PARAM_CRT_FILENAME",
+                        "value": "ca-bundle.crt"
+                      },
+                      {
+                        "name": "PARAM_SUBDIRECTORY"
+                      },
+                      {
+                        "name": "PARAM_DELETE_EXISTING",
+                        "value": "true"
+                      },
+                      {
+                        "name": "PARAM_HTTP_PROXY"
+                      },
+                      {
+                        "name": "PARAM_HTTPS_PROXY"
+                      },
+                      {
+                        "name": "PARAM_NO_PROXY"
+                      },
+                      {
+                        "name": "PARAM_VERBOSE",
+                        "value": "true"
+                      },
+                      {
+                        "name": "PARAM_SPARSE_CHECKOUT_DIRECTORIES"
+                      },
+                      {
+                        "name": "PARAM_USER_HOME",
+                        "value": "/tekton/home"
+                      },
+                      {
+                        "name": "WORKSPACE_OUTPUT_PATH",
+                        "value": "$(workspaces.output.path)"
+                      },
+                      {
+                        "name": "WORKSPACE_SSH_DIRECTORY_BOUND",
+                        "value": "$(workspaces.ssh-directory.bound)"
+                      },
+                      {
+                        "name": "WORKSPACE_SSH_DIRECTORY_PATH",
+                        "value": "$(workspaces.ssh-directory.path)"
+                      },
+                      {
+                        "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND",
+                        "value": "$(workspaces.basic-auth.bound)"
+                      },
+                      {
+                        "name": "WORKSPACE_BASIC_AUTH_DIRECTORY_PATH",
+                        "value": "$(workspaces.basic-auth.path)"
+                      },
+                      {
+                        "name": "WORKSPACE_SSL_CA_DIRECTORY_BOUND",
+                        "value": "$(workspaces.ssl-ca-directory.bound)"
+                      },
+                      {
+                        "name": "WORKSPACE_SSL_CA_DIRECTORY_PATH",
+                        "value": "$(workspaces.ssl-ca-directory.path)"
+                      },
+                      {
+                        "name": "GIT_SSH_COMMAND",
+                        "value": "ssh -o StrictHostKeyChecking=accept-new"
+                      }
+                    ],
+                    "image": "gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0",
+                    "name": "clone",
+                    "resources": {},
+                    "script": "#!/usr/bin/env sh\nset -eu\n\nif [ \"${PARAM_VERBOSE}\" = \"true\" ] ; then\n  set -x\nfi\n\nif [ \"${WORKSPACE_BASIC_AUTH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.git-credentials\" \"${PARAM_USER_HOME}/.git-credentials\"\n  cp \"${WORKSPACE_BASIC_AUTH_DIRECTORY_PATH}/.gitconfig\" \"${PARAM_USER_HOME}/.gitconfig\"\n  chmod 400 \"${PARAM_USER_HOME}/.git-credentials\"\n  chmod 400 \"${PARAM_USER_HOME}/.gitconfig\"\nfi\n\nif [ \"${WORKSPACE_SSH_DIRECTORY_BOUND}\" = \"true\" ] ; then\n  cp -R \"${WORKSPACE_SSH_DIRECTORY_PATH}\" \"${PARAM_USER_HOME}\"/.ssh\n  chmod 700 \"${PARAM_USER_HOME}\"/.ssh\n  chmod -R 400 \"${PARAM_USER_HOME}\"/.ssh/*\nfi\n\nif [ \"${WORKSPACE_SSL_CA_DIRECTORY_BOUND}\" = \"true\" ] ; then\n   export GIT_SSL_CAPATH=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}\"\n   if [ \"${PARAM_CRT_FILENAME}\" != \"\" ] ; then\n      export GIT_SSL_CAINFO=\"${WORKSPACE_SSL_CA_DIRECTORY_PATH}/${PARAM_CRT_FILENAME}\"\n   fi\nfi\nCHECKOUT_DIR=\"${WORKSPACE_OUTPUT_PATH}/${PARAM_SUBDIRECTORY}\"\n\ncleandir() {\n  # Delete any existing contents of the repo directory if it exists.\n  #\n  # We don't just \"rm -rf ${CHECKOUT_DIR}\" because ${CHECKOUT_DIR} might be \"/\"\n  # or the root of a mounted volume.\n  if [ -d \"${CHECKOUT_DIR}\" ] ; then\n    # Delete non-hidden files and directories\n    rm -rf \"${CHECKOUT_DIR:?}\"/*\n    # Delete files and directories starting with . but excluding ..\n    rm -rf \"${CHECKOUT_DIR}\"/.[!.]*\n    # Delete files and directories starting with .. plus any other character\n    rm -rf \"${CHECKOUT_DIR}\"/..?*\n  fi\n}\n\nif [ \"${PARAM_DELETE_EXISTING}\" = \"true\" ] ; then\n  cleandir || true\nfi\n\ntest -z \"${PARAM_HTTP_PROXY}\" || export HTTP_PROXY=\"${PARAM_HTTP_PROXY}\"\ntest -z \"${PARAM_HTTPS_PROXY}\" || export HTTPS_PROXY=\"${PARAM_HTTPS_PROXY}\"\ntest -z \"${PARAM_NO_PROXY}\" || export NO_PROXY=\"${PARAM_NO_PROXY}\"\n\ngit config --global --add safe.directory \"${WORKSPACE_OUTPUT_PATH}\"\n/ko-app/git-init \\\n  -url=\"${PARAM_URL}\" \\\n  -revision=\"${PARAM_REVISION}\" \\\n  -refspec=\"${PARAM_REFSPEC}\" \\\n  -path=\"${CHECKOUT_DIR}\" \\\n  -sslVerify=\"${PARAM_SSL_VERIFY}\" \\\n  -submodules=\"${PARAM_SUBMODULES}\" \\\n  -depth=\"${PARAM_DEPTH}\" \\\n  -sparseCheckoutDirectories=\"${PARAM_SPARSE_CHECKOUT_DIRECTORIES}\"\ncd \"${CHECKOUT_DIR}\"\nRESULT_SHA=\"$(git rev-parse HEAD)\"\nEXIT_CODE=\"$?\"\nif [ \"${EXIT_CODE}\" != 0 ] ; then\n  exit \"${EXIT_CODE}\"\nfi\nRESULT_COMMITTER_DATE=\"$(git log -1 --pretty=%ct)\"\nprintf \"%s\" \"${RESULT_COMMITTER_DATE}\" > \"/tekton/results/committer-date\"\nprintf \"%s\" \"${RESULT_SHA}\" > \"/tekton/results/commit\"\nprintf \"%s\" \"${PARAM_URL}\" > \"/tekton/results/url\"\n"
+                  }
+                ],
+                "workspaces": [
+                  {
+                    "description": "The git repo will be cloned onto the volume backing this Workspace.",
+                    "name": "output"
+                  },
+                  {
+                    "description": "A .ssh directory with private key, known_hosts, config, etc. Copied to\nthe user's home before git commands are executed. Used to authenticate\nwith the git remote when performing the clone. Binding a Secret to this\nWorkspace is strongly recommended over other volume types.\n",
+                    "name": "ssh-directory",
+                    "optional": true
+                  },
+                  {
+                    "description": "A Workspace containing a .gitconfig and .git-credentials file. These\nwill be copied to the user's home before any git commands are run. Any\nother files in this Workspace are ignored. It is strongly recommended\nto use ssh-directory over basic-auth whenever possible and to bind a\nSecret to this Workspace over other volume types.\n",
+                    "name": "basic-auth",
+                    "optional": true
+                  },
+                  {
+                    "description": "A workspace containing CA certificates, this will be used by Git to\nverify the peer with when fetching or pushing over HTTPS.\n",
+                    "name": "ssl-ca-directory",
+                    "optional": true
+                  }
+                ]
+              }
+            }
+          },
+          "build-package-tidb-linux-amd64-nmjrj-get-binaries-builder": {
+            "pipelineTaskName": "get-binaries-builder",
+            "status": {
+              "completionTime": "2024-01-25T15:11:41Z",
+              "conditions": [
+                {
+                  "lastTransitionTime": "2024-01-25T15:11:41Z",
+                  "message": "All Steps have completed executing",
+                  "reason": "Succeeded",
+                  "status": "True",
+                  "type": "Succeeded"
+                }
+              ],
+              "podName": "build-package-tidb-linux-amd64-nmjrj-get-binaries-builder-pod",
+              "startTime": "2024-01-25T15:11:33Z",
+              "steps": [
+                {
+                  "container": "step-get",
+                  "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:eb2fa80b95d41fd1ed7e7de5bb482d33e38b89e968993f39150e1f3cf71d9d14",
+                  "name": "get",
+                  "terminated": {
+                    "containerID": "containerd://5390ac1b0072f052e1e52bdb2f2b39819f902bdbd79ec2dbb914547fed7ec19b",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:11:40Z",
+                    "message": "[{\"key\":\"image-url\",\"value\":\"ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21\",\"type\":1}]",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:11:39Z"
+                  }
+                }
+              ],
+              "taskResults": [
+                {
+                  "name": "image-url",
+                  "type": "string",
+                  "value": "ghcr.io/pingcap-qe/cd/builders/tidb:v20231115-e1c4b43-go1.21"
+                }
+              ],
+              "taskSpec": {
+                "description": "Build binaries for the component.",
+                "params": [
+                  {
+                    "name": "component",
+                    "type": "string"
+                  },
+                  {
+                    "default": "linux",
+                    "name": "os",
+                    "type": "string"
+                  },
+                  {
+                    "default": "amd64",
+                    "name": "arch",
+                    "type": "string"
+                  },
+                  {
+                    "description": "the version to releasing.",
+                    "name": "version",
+                    "type": "string"
+                  },
+                  {
+                    "default": "release",
+                    "description": "supports: 'release' or 'debug' or others.\n",
+                    "name": "profile",
+                    "type": "string"
+                  }
+                ],
+                "results": [
+                  {
+                    "description": "The builder image url",
+                    "name": "image-url",
+                    "type": "string"
+                  }
+                ],
+                "steps": [
+                  {
+                    "image": "ghcr.io/pingcap-qe/cd/utils/release:v20231216-37-g8e0ca7e",
+                    "name": "get",
+                    "resources": {},
+                    "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\nout=\"/workspace/builder-package-artifacts.txt\"\n/workspace/artifacts/packages/scripts/get-package-builder-with-config.sh \\\n  tidb \\\n  linux \\\n  amd64 \\\n  v8.0.0-alpha-120-g799a46107e \\\n  release \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  $out\n\nprintf \"%s\" \"$(cat $out)\" > /tekton/results/image-url\n"
+                  }
+                ]
+              }
+            }
+          },
+          "build-package-tidb-linux-amd64-nmjrj-get-release-ver": {
+            "pipelineTaskName": "get-release-ver",
+            "status": {
+              "completionTime": "2024-01-25T15:11:33Z",
+              "conditions": [
+                {
+                  "lastTransitionTime": "2024-01-25T15:11:33Z",
+                  "message": "All Steps have completed executing",
+                  "reason": "Succeeded",
+                  "status": "True",
+                  "type": "Succeeded"
+                }
+              ],
+              "podName": "build-package-tidb-linux-amd64-nmjrj-get-release-ver-pod",
+              "startTime": "2024-01-25T15:11:17Z",
+              "steps": [
+                {
+                  "container": "step-git-describe",
+                  "imageID": "docker.io/alpine/git@sha256:1134fdfca49677f3c33445ede74cd64b55f524ad3cb215fa464492ad281eafc0",
+                  "name": "git-describe",
+                  "terminated": {
+                    "containerID": "containerd://e10eeb2d7380d9f83d60d6f78e1be903a10544a5af0ed1630f4f58150d4b8b8b",
+                    "exitCode": 0,
+                    "finishedAt": "2024-01-25T15:11:32Z",
+                    "message": "[{\"key\":\"version\",\"value\":\"v8.0.0-alpha-120-g799a46107e\",\"type\":1}]",
+                    "reason": "Completed",
+                    "startedAt": "2024-01-25T15:11:28Z"
+                  }
+                }
+              ],
+              "taskResults": [
+                {
+                  "name": "version",
+                  "type": "string",
+                  "value": "v8.0.0-alpha-120-g799a46107e"
+                }
+              ],
+              "taskSpec": {
+                "results": [
+                  {
+                    "description": "The release version of the git repo",
+                    "name": "version",
+                    "type": "string"
+                  }
+                ],
+                "steps": [
+                  {
+                    "image": "alpine/git:2.40.1",
+                    "name": "git-describe",
+                    "resources": {
+                      "requests": {
+                        "cpu": "100m",
+                        "memory": "512Mi"
+                      }
+                    },
+                    "script": "RESULT_VERSION=\"$(git describe --tags --always --dirty --exclude 'v20[0-9][0-9].[0-1][0-9].[0-3][0-9]*')\"\nprintf \"%s\" \"${RESULT_VERSION}\" > /tekton/results/version\n",
+                    "workingDir": "$(workspaces.source.path)"
+                  }
+                ],
+                "workspaces": [
+                  {
+                    "name": "source"
+                  }
+                ]
+              }
+            }
+          }
         }
+      }
     }
+  }
 }

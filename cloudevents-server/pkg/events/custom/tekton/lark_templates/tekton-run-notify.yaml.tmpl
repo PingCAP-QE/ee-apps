@@ -1,0 +1,59 @@
+config:
+  wide_screen_mode: true
+elements:
+  - tag: div
+    fields:
+      {{- with .StartTime }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "🛫 **Start time:**\t{{ . }}"
+      {{- end }}
+      {{- with .EndTime }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "🛬 **End time:**\t{{ . }}"
+      {{- end }}
+      {{- with .TimeCost }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "⏱️ **Time cost:**\t{{ . }}"
+      {{- end }}
+  {{- with .Results }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Results:**
+      {{- range . }}
+      - **{{ index . 0 }}:**
+      ```YAML
+{{ indent 6 (index . 1) }}
+      ```
+      {{- end }}
+  {{- end }}
+  {{- with .RerunURL }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      🔧 **Rerun:**
+
+      ```BASH
+      {{ . }}
+      ```
+  {{- end }}
+  - tag: action
+    actions:
+      - tag: button
+        text:
+          content: View
+          tag: plain_text
+        type: primary
+        multi_url:
+          url: "{{ .ViewURL }}"
+header:
+  template: {{ .TitleTemplate }}
+  title:
+    content: {{ .Title }}
+    tag: plain_text
