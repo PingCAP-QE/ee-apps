@@ -1,0 +1,93 @@
+{
+    "specversion": "1.0",
+    "id": "f813f928-adea-4653-a523-dee1a81dab7e",
+    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-darwin-g9k4f",
+    "type": "dev.tekton.event.pipelinerun.successful.v1",
+    "subject": "build-package-pingcap-tidb-darwin-g9k4f",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:30:55.539307083Z",
+    "data": {
+        "pipelineRun": 
+            {
+                "apiVersion": "tekton.dev/v1beta1",
+                "kind": "PipelineRun",
+                "metadata": {
+                  "annotations": {
+                    "tekton.dev/ce-context": "{ \"source\":\"https://tibuild.pingcap.net/api/devbuilds/123\", \"subject\":\"123\", \"type\":\"net.pingcap.tibuild.devbuild.push\", \"user\":\"wuhui.zuo@pingcap.com\" }",
+                    "tekton.dev/git-repo": "https://github.com/tikv/pd.git",
+                    "tekton.dev/git-revision": "e26a4f7292280345d5813d7a1990a77a8785c0d6",
+                    "tekton.dev/git-status": "true"
+                  },
+                  "labels": {
+                    "tekton.dev/pipeline": "pingcap-build-package",
+                    "triggers.tekton.dev/eventlistener": "internal",
+                    "triggers.tekton.dev/trigger": "fake-git-push-tikv-pd",
+                    "triggers.tekton.dev/triggers-eventid": "a7d6d450-8788-4db6-9a09-958ddf9ff0bf"
+                  },
+                  "name": "build-package-tikv-pd-linux-dwfjt",
+                  "namespace": "ee-cd"
+                },
+                "spec": {
+                  "params": [
+                    {
+                      "name": "git-url",
+                      "value": "https://github.com/tikv/pd.git"
+                    },
+                    {
+                      "name": "git-revision",
+                      "value": "e26a4f7292280345d5813d7a1990a77a8785c0d6"
+                    },
+                    {
+                      "name": "git-ref",
+                      "value": "master"
+                    },
+                    {
+                      "name": "component",
+                      "value": "pd"
+                    },
+                    {
+                      "name": "os",
+                      "value": "linux"
+                    },
+                    {
+                      "name": "arch",
+                      "value": "arm64"
+                    },
+                    {
+                      "name": "binary-builder-iamge",
+                      "value": "ghcr.io/pingcap-qe/cd/builders/pd:v20231115-e1c4b43-go1.21"
+                    }
+                  ],
+                  "pipelineRef": {
+                    "name": "pingcap-build-package"
+                  },
+                  "timeouts": {
+                    "pipeline": "1h0m0s"
+                  }
+                },
+                "status": {
+                  "startTime": "2023-12-13T09:46:54Z",
+                  "completionTime": "2023-12-13T09:49:58Z",
+                  "conditions": [
+                    {
+                      "lastTransitionTime": "2023-12-13T09:49:58Z",
+                      "message": "Tasks Completed: 4 (Failed: 0, Cancelled 0), Skipped: 0",
+                      "reason": "Succeeded",
+                      "status": "True",
+                      "type": "Succeeded"
+                    }
+                  ],
+                  "pipelineResults": [
+                    {
+                      "name": "pushed-binaries",
+                      "value": "oci:\n  repo: hub.pingcap.net/tikv/pd/package\n  tag: \"master-e26a4f7-release_linux_arm64\"\n  digest: \"sha256:fa7773f18b5eb3df058352fca3d100014fd4d9f978e68c6153c6b48b20b97426\"\nfiles:\n  - pd-v7.6.0-alpha-116-ge26a4f72-linux-arm64.tar.gz\n  - pd-recover-v7.6.0-alpha-116-ge26a4f72-linux-arm64.tar.gz\n  - pd-ctl-v7.6.0-alpha-116-ge26a4f72-linux-arm64.tar.gz\n"
+                    },
+                    {
+                      "name": "pushed-images",
+                      "value": "images:\n- repo: hub.pingcap.net/tikv/pd/image\n  url: \"hub.pingcap.net/tikv/pd/image:master-e26a4f7-release_linux_arm64\"\n  tag: \"master-e26a4f7-release_linux_arm64\"\n  digest: 'sha256:a3a7de235766c141e9ad64cf3d8b77fef49f06f1b998350d79bc0b0ec507ac7a'\n"
+                    }
+                  ]
+                }
+        }
+    }
+}

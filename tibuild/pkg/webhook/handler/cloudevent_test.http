@@ -1,0 +1,16 @@
+POST http://127.0.0.1:8080 HTTP/1.1
+Content-Type: application/cloudevents+json; charset=utf-8
+
+{
+    "specversion": "1.0",
+    "id": "f813f928-adea-4653-a523-dee1a81dab7e",
+    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-darwin-g9k4f",
+    "type": "dev.tekton.event.pipelinerun.successful.v1",
+    "subject": "build-package-pingcap-tidb-darwin-g9k4f",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:30:55.539307083Z",
+    "data": {
+        "pipelineRun": {
+        }
+    }
+}

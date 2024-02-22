@@ -337,6 +337,9 @@ const docTemplate = `{
                 "component": {
                     "type": "string"
                 },
+                "oras": {
+                    "$ref": "#/definitions/service.OrasFile"
+                },
                 "platform": {
                     "type": "string"
                 },
@@ -461,6 +464,9 @@ const docTemplate = `{
                 "features": {
                     "type": "string"
                 },
+                "gitHash": {
+                    "type": "string"
+                },
                 "gitRef": {
                     "type": "string"
                 },
@@ -472,6 +478,9 @@ const docTemplate = `{
                 },
                 "isPushGCR": {
                     "type": "boolean"
+                },
+                "pipelineEngine": {
+                    "$ref": "#/definitions/service.PipelineEngine"
                 },
                 "pluginGitRef": {
                     "type": "string"
@@ -516,6 +525,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/service.BuildStatus"
+                },
+                "tektonStatus": {
+                    "$ref": "#/definitions/service.TektonStatus"
                 }
             }
         },
@@ -540,6 +552,48 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "service.OrasArtifact": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.OrasFile": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.PipelineEngine": {
+            "type": "string",
+            "enum": [
+                "jenkins",
+                "tekton"
+            ],
+            "x-enum-varnames": [
+                "JenkinsEngine",
+                "TektonEngine"
+            ]
         },
         "service.Product": {
             "type": "string",
@@ -612,6 +666,67 @@ const docTemplate = `{
                 },
                 "tagURL": {
                     "type": "string"
+                }
+            }
+        },
+        "service.TektonPipeline": {
+            "type": "object",
+            "properties": {
+                "gitHash": {
+                    "type": "string"
+                },
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.ImageArtifact"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "orasArtifacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.OrasArtifact"
+                    }
+                },
+                "pipelineEndAt": {
+                    "type": "string"
+                },
+                "pipelineStartAt": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/service.BuildStatus"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.TektonStatus": {
+            "type": "object",
+            "properties": {
+                "buildReport": {
+                    "$ref": "#/definitions/service.BuildReport"
+                },
+                "pipelineEndAt": {
+                    "type": "string"
+                },
+                "pipelineStartAt": {
+                    "type": "string"
+                },
+                "pipelines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.TektonPipeline"
+                    }
+                },
+                "status": {
+                    "$ref": "#/definitions/service.BuildStatus"
                 }
             }
         }

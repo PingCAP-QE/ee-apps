@@ -70,25 +70,38 @@ func intoDB(entity *DevBuild) (err error) {
 		return err
 	}
 	entity.Status.BuildReportJson = json.RawMessage(js)
+
+	tektonjs, err := json.Marshal(entity.Status.TektonStatus)
+	if err != nil {
+		return err
+	}
+	entity.Status.TektonStatusJson = json.RawMessage(tektonjs)
 	return nil
 }
 
 func outofDB(entity *DevBuild) (err error) {
-	entity.Status.BuildReport, err = fromRawMessage(entity.Status.BuildReportJson)
+	report, err := fromRawMessage(entity.Status.BuildReportJson, &BuildReport{})
+	if err != nil {
+		return
+	}
+	entity.Status.BuildReport, _ = report.(*BuildReport)
+	entity.Status.BuildReportJson = nil
+	tekton, err := fromRawMessage(entity.Status.TektonStatusJson, &TektonStatus{})
+	if err != nil {
+		return
+	}
+	entity.Status.TektonStatus, _ = tekton.(*TektonStatus)
+	entity.Status.TektonStatusJson = nil
 	return
 }
 
-func fromRawMessage(js json.RawMessage) (*BuildReport, error) {
+func fromRawMessage(js json.RawMessage, target any) (any, error) {
 	bytes, _ := js.MarshalJSON()
 	if string(bytes) == "null" {
 		return nil, nil
 	}
-	report := BuildReport{}
-	err := json.Unmarshal(bytes, &report)
-	if err != nil {
-		return nil, err
-	}
-	return &report, nil
+	err := json.Unmarshal(bytes, target)
+	return target, err
 }
 
 var _ DevBuildRepository = DevBuildRepo{}

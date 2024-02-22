@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -12,9 +12,11 @@ import (
 )
 
 type DevbuildServer struct {
-	Repo    DevBuildRepository
-	Jenkins Jenkins
-	Now     func() time.Time
+	Repo     DevBuildRepository
+	Jenkins  Jenkins
+	Tekton   BuildTrigger
+	Now      func() time.Time
+	GHClient GHClient
 }
 
 const jobname = "devbuild"
@@ -32,6 +34,15 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	if err := validateReq(req); err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
 	}
+	if req.Spec.PipelineEngine == TektonEngine {
+		if req.Meta.CreatedBy == "" {
+			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
+		}
+		err := fillGitHash(ctx, s.GHClient, &req)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if option.DryRun {
 		req.ID = 1
 		return &req, nil
@@ -41,43 +52,57 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, err
 	}
 	entity := *resp
-
-	params := map[string]string{
-		"Product":           string(entity.Spec.Product),
-		"GitRef":            entity.Spec.GitRef,
-		"Version":           entity.Spec.Version,
-		"Edition":           string(entity.Spec.Edition),
-		"PluginGitRef":      entity.Spec.PluginGitRef,
-		"GithubRepo":        entity.Spec.GithubRepo,
-		"IsPushGCR":         strconv.FormatBool(entity.Spec.IsPushGCR),
-		"IsHotfix":          strconv.FormatBool(entity.Spec.IsHotfix),
-		"Features":          entity.Spec.Features,
-		"TiBuildID":         strconv.Itoa(entity.ID),
-		"BuildEnv":          entity.Spec.BuildEnv,
-		"BuilderImg":        entity.Spec.BuilderImg,
-		"ProductDockerfile": entity.Spec.ProductDockerfile,
-		"ProductBaseImg":    entity.Spec.ProductBaseImg,
-		"TargetImg":         entity.Spec.TargetImg,
-	}
-	qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
-	if err != nil {
-		entity.Status.Status = BuildStatusError
-		entity.Status.ErrMsg = err.Error()
-		s.Repo.Update(ctx, entity.ID, entity)
-		return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
-	}
-	go func(entity DevBuild) {
-		buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid, jobname)
+	if entity.Spec.PipelineEngine == JenkinsEngine {
+		params := map[string]string{
+			"Product":           string(entity.Spec.Product),
+			"GitRef":            entity.Spec.GitRef,
+			"Version":           entity.Spec.Version,
+			"Edition":           string(entity.Spec.Edition),
+			"PluginGitRef":      entity.Spec.PluginGitRef,
+			"GithubRepo":        entity.Spec.GithubRepo,
+			"IsPushGCR":         strconv.FormatBool(entity.Spec.IsPushGCR),
+			"IsHotfix":          strconv.FormatBool(entity.Spec.IsHotfix),
+			"Features":          entity.Spec.Features,
+			"TiBuildID":         strconv.Itoa(entity.ID),
+			"BuildEnv":          entity.Spec.BuildEnv,
+			"BuilderImg":        entity.Spec.BuilderImg,
+			"ProductDockerfile": entity.Spec.ProductDockerfile,
+			"ProductBaseImg":    entity.Spec.ProductBaseImg,
+			"TargetImg":         entity.Spec.TargetImg,
+		}
+		qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
 		if err != nil {
 			entity.Status.Status = BuildStatusError
 			entity.Status.ErrMsg = err.Error()
 			s.Repo.Update(ctx, entity.ID, entity)
+			return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
 		}
-		println("Jenkins build number is : ", buildNumber)
-		entity.Status.PipelineBuildID = buildNumber
-		entity.Status.Status = BuildStatusProcessing
-		s.Repo.Update(ctx, entity.ID, entity)
-	}(entity)
+		go func(entity DevBuild) {
+			buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid, jobname)
+			if err != nil {
+				entity.Status.Status = BuildStatusError
+				entity.Status.ErrMsg = err.Error()
+				s.Repo.Update(ctx, entity.ID, entity)
+			}
+			println("Jenkins build number is : ", buildNumber)
+			entity.Status.PipelineBuildID = buildNumber
+			entity.Status.Status = BuildStatusProcessing
+			s.Repo.Update(ctx, entity.ID, entity)
+		}(entity)
+	} else if entity.Spec.PipelineEngine == TektonEngine {
+		err = s.Tekton.TriggerDevBuild(ctx, entity)
+		if err != nil {
+			slog.Error("trigger tekton failed", "reason", err)
+			entity.Status.Status = BuildStatusError
+			entity.Status.ErrMsg = err.Error()
+			_, err := s.Repo.Update(ctx, entity.ID, entity)
+			if err != nil {
+				slog.Error("save triggered entity failed", "reason", err)
+			}
+			return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
+		}
+	}
+
 	return &entity, nil
 }
 
@@ -88,12 +113,23 @@ func validatePermission(ctx context.Context, req *DevBuild) error {
 	return nil
 }
 
+func fillGitHash(ctx context.Context, client GHClient, req *DevBuild) error {
+	commit, err := client.GetHash(ctx, *GHRepoToStruct(req.Spec.GithubRepo), req.Spec.GitRef)
+	if err != nil {
+		return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
+	}
+	req.Spec.GitHash = commit
+	return nil
+}
+
 func fillWithDefaults(req *DevBuild) {
 	spec := &req.Spec
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
-	req.Status.BuildReportJson = json.RawMessage("null")
+	if req.Spec.PipelineEngine == "" {
+		req.Spec.PipelineEngine = JenkinsEngine
+	}
 }
 
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
@@ -179,7 +215,7 @@ func validateReq(req DevBuild) error {
 	if !gitRefValidator.MatchString(spec.GitRef) {
 		return fmt.Errorf("gitRef is not valid")
 	}
-	if spec.GithubRepo != "" && !githubRepoValidator.MatchString(spec.GithubRepo) {
+	if spec.GithubRepo != "" && (GHRepoToStruct(spec.GithubRepo) == nil || !githubRepoValidator.MatchString(spec.GithubRepo)) {
 		return fmt.Errorf("githubRepo is not valid, should be like org/repo")
 	}
 	if spec.Edition == EnterpriseEdition && spec.Product == ProductTidb {
@@ -209,6 +245,9 @@ func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option
 	}
 	if !req.Status.Status.IsValid() {
 		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
+	}
+	if req.Status.TektonStatus == nil {
+		req.Status.TektonStatus = old.Status.TektonStatus
 	}
 	old.Status = req.Status
 	old.Meta.UpdatedAt = s.Now()
@@ -259,6 +298,9 @@ func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOptio
 }
 
 func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {
+	if entity.Spec.PipelineEngine == TektonEngine {
+		return entity, nil
+	}
 	now := s.Now()
 	build, err := s.Jenkins.GetBuild(ctx, jobname, entity.Status.PipelineBuildID)
 	if err != nil {
@@ -289,6 +331,112 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	if entity.Status.PipelineBuildID != 0 {
 		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(jobname, entity.Status.PipelineBuildID)
 	}
+	if entity.Status.BuildReport != nil {
+		for i, bin := range entity.Status.BuildReport.Binaries {
+			if bin.URL == "" && bin.OrasFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = oras_to_file_url(*bin.OrasFile)
+			}
+		}
+	}
+	if tek := entity.Status.TektonStatus; tek != nil {
+		for i, p := range tek.Pipelines {
+			tek.Pipelines[i].URL = fmt.Sprintf("%s/%s", tektonURL, p.Name)
+		}
+	}
+}
+
+func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
+	obj, err := s.Get(ctx, id, DevBuildGetOption{})
+	if err != nil {
+		return nil, err
+	}
+	status := obj.Status.TektonStatus
+	name := pipeline.Name
+	index := -1
+	for i, p := range status.Pipelines {
+		if p.Name == name {
+			index = i
+		}
+	}
+	if index >= 0 {
+		status.Pipelines[index] = pipeline
+	} else {
+		status.Pipelines = append(status.Pipelines, pipeline)
+	}
+	compute_tekton_status(status)
+	if obj.Spec.PipelineEngine == TektonEngine {
+		obj.Status.Status = obj.Status.TektonStatus.Status
+		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
+	}
+	return s.Update(ctx, id, *obj, options)
+}
+
+func compute_tekton_status(status *TektonStatus) {
+	phase := BuildStatusPending
+	var success_platforms = map[Platform]struct{}{}
+	var failure_platforms = map[Platform]struct{}{}
+	var triggered_platforms = map[Platform]struct{}{}
+	var latest_endat *time.Time
+	for _, pipeline := range status.Pipelines {
+		switch pipeline.Status {
+		case BuildStatusSuccess:
+			success_platforms[pipeline.Platform] = struct{}{}
+		case BuildStatusFailure:
+			failure_platforms[pipeline.Platform] = struct{}{}
+		}
+		triggered_platforms[pipeline.Platform] = struct{}{}
+		if status.BuildReport == nil {
+			status.BuildReport = &BuildReport{}
+		} else {
+			status.BuildReport.Images = nil
+			status.BuildReport.Binaries = nil
+		}
+		status.BuildReport.GitHash = pipeline.GitHash
+		for _, files := range pipeline.OrasArtifacts {
+			status.BuildReport.Binaries = append(status.BuildReport.Binaries, oras_to_files(pipeline.Platform, files)...)
+		}
+		for _, image := range pipeline.Images {
+			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
+			status.BuildReport.Images = append(status.BuildReport.Images, img)
+		}
+		if pipeline.PipelineStartAt != nil {
+			if status.PipelineStartAt == nil {
+				status.PipelineStartAt = pipeline.PipelineStartAt
+			} else if pipeline.PipelineStartAt.Before(*status.PipelineStartAt) {
+				status.PipelineStartAt = pipeline.PipelineStartAt
+			}
+		}
+		if pipeline.PipelineEndAt != nil {
+			if latest_endat == nil {
+				latest_endat = pipeline.PipelineEndAt
+			} else if latest_endat.Before(*pipeline.PipelineEndAt) {
+				latest_endat = pipeline.PipelineEndAt
+			}
+		}
+	}
+	if len(success_platforms) == len(triggered_platforms) {
+		phase = BuildStatusSuccess
+	} else if len(failure_platforms) != 0 {
+		phase = BuildStatusFailure
+	} else if len(status.Pipelines) != 0 {
+		phase = BuildStatusProcessing
+	}
+	status.Status = phase
+	if status.Status.IsCompleted() {
+		status.PipelineEndAt = latest_endat
+	}
+}
+
+func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
+	var rt []BinArtifact
+	for _, file := range oras.Files {
+		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
+	}
+	return rt
+}
+
+func oras_to_file_url(oras OrasFile) string {
+	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", oras_fileserver_url, oras.Repo, oras.Tag, oras.File)
 }
 
 type DevBuildRepository interface {
@@ -304,3 +452,6 @@ var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$
 var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
 var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
+
+const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns/"
+const oras_fileserver_url = "https://internal.do.pingcap.net:30443/dl"

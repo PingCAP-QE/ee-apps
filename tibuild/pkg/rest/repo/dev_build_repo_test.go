@@ -24,12 +24,15 @@ func TestDevBuildCreate(t *testing.T) {
 	mock.ExpectBegin()
 	now := time.Unix(1, 0)
 	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "v6.7.0", CommunityEdition, "",
-		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "", "PENDING", 0, "", nil, nil, json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
+		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "" /* target_img */, JenkinsEngine, "" /* githash */, "PENDING", 0, "", nil, nil, json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
+
 	mock.ExpectCommit()
 	entity, err := repo.Create(context.TODO(), DevBuild{
 		Meta: DevBuildMeta{CreatedAt: now, UpdatedAt: now},
 		Spec: DevBuildSpec{Product: ProductBr, Version: "v6.7.0", Edition: CommunityEdition,
-			BuildEnv: "AA=BB", ProductDockerfile: "https://raw.example.com/Dockerfile", BuilderImg: "pingcap/builder"},
+			BuildEnv: "AA=BB", ProductDockerfile: "https://raw.example.com/Dockerfile",
+			BuilderImg:     "pingcap/builder",
+			PipelineEngine: JenkinsEngine},
 		Status: DevBuildStatus{Status: BuildStatusPending}})
 	require.NoError(t, err)
 	require.Equal(t, 1, entity.ID)
@@ -59,16 +62,18 @@ func TestDevBuildUpdate(t *testing.T) {
 	now := time.Unix(1, 0)
 	report := BuildReport{GitHash: "a1b2c3"}
 	report_text, err := json.Marshal(report)
+	tekton_status := TektonStatus{Status: BuildStatusProcessing}
+	tekton_text, err := json.Marshal(tekton_status)
 	require.NoError(t, err)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", false, "", false, "", "SUCCESS", 0, "", nil, nil, report_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", false, "", false, "", "", "" /* GitHash */, "SUCCESS", 0, "", nil, nil, report_text, tekton_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	entity, err := repo.Update(context.TODO(),
 		1,
 		DevBuild{ID: 1,
 			Meta:   DevBuildMeta{CreatedAt: now, UpdatedAt: now},
 			Spec:   DevBuildSpec{Product: ProductBr},
-			Status: DevBuildStatus{Status: BuildStatusSuccess, BuildReport: &report},
+			Status: DevBuildStatus{Status: BuildStatusSuccess, BuildReport: &report, TektonStatus: &tekton_status},
 		})
 	require.NoError(t, err)
 	require.Equal(t, BuildStatusSuccess, entity.Status.Status)
@@ -98,6 +103,18 @@ func TestDevBuildGet(t *testing.T) {
 		entity, err := repo.Get(context.TODO(), 1)
 		require.NoError(t, err)
 		require.Equal(t, report, *entity.Status.BuildReport)
+		require.Empty(t, entity.Status.BuildReportJson)
+	})
+	t.Run("tekton_status", func(t *testing.T) {
+		tekton := TektonStatus{Status: BuildStatusProcessing}
+		tekton_text, err := json.Marshal(tekton)
+		require.NoError(t, err)
+		rows := sqlmock.NewRows([]string{"id", "status", "tekton_status"}).AddRow(1, BuildStatusSuccess, tekton_text)
+		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnRows(rows)
+		entity, err := repo.Get(context.TODO(), 1)
+		require.NoError(t, err)
+		require.Equal(t, tekton, *entity.Status.TektonStatus)
+		require.Empty(t, entity.Status.TektonStatusJson)
 	})
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnError(gorm.ErrRecordNotFound)
@@ -105,4 +122,14 @@ func TestDevBuildGet(t *testing.T) {
 		require.Nil(t, entity)
 		require.ErrorIs(t, err, ErrNotFound)
 	})
+}
+
+func TestDevbuildOutofDb(t *testing.T) {
+	entity := &DevBuild{
+		Status: DevBuildStatus{
+			BuildReportJson: json.RawMessage("null"),
+		},
+	}
+	err := outofDB(entity)
+	require.NoError(t, err)
 }

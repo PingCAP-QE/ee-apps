@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"time"
 )
@@ -71,6 +72,14 @@ type GithubRepo struct {
 
 func (r GithubRepo) URL() string {
 	return fmt.Sprintf("https://github.com/%s/%s", r.Owner, r.Repo)
+}
+
+func GHRepoToStruct(repo string) *GithubRepo {
+	ss := strings.Split(repo, "/")
+	if len(ss) != 2 {
+		return nil
+	}
+	return &GithubRepo{Owner: ss[0], Repo: ss[1]}
 }
 
 var (
@@ -170,7 +179,16 @@ type DevBuildSpec struct {
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
 	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
+	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
+	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 }
+
+type PipelineEngine string
+
+const (
+	JenkinsEngine PipelineEngine = "jenkins"
+	TektonEngine  PipelineEngine = "tekton"
+)
 
 type GitRef string
 
@@ -220,14 +238,42 @@ func (p BuildStatus) IsCompleted() bool {
 }
 
 type DevBuildStatus struct {
-	Status          BuildStatus     `json:"status" gorm:"type:varchar(16)"`
-	PipelineBuildID int64           `json:"pipelineBuildID,omitempty"`
-	PipelineViewURL string          `json:"pipelineViewURL,omitempty" gorm:"-"`
-	ErrMsg          string          `json:"errMsg,omitempty" gorm:"type:varchar(256)"`
+	Status           BuildStatus     `json:"status" gorm:"type:varchar(16)"`
+	PipelineBuildID  int64           `json:"pipelineBuildID,omitempty"`
+	PipelineViewURL  string          `json:"pipelineViewURL,omitempty" gorm:"-"`
+	ErrMsg           string          `json:"errMsg,omitempty" gorm:"type:varchar(256)"`
+	PipelineStartAt  *time.Time      `json:"pipelineStartAt,omitempty"`
+	PipelineEndAt    *time.Time      `json:"pipelineEndAt,omitempty"`
+	BuildReport      *BuildReport    `json:"buildReport,omitempty" gorm:"-:all"`
+	BuildReportJson  json.RawMessage `json:"-" gorm:"column:build_report;type:json"`
+	TektonStatus     *TektonStatus   `json:"tektonStatus,omitempty" gorm:"-:all"`
+	TektonStatusJson json.RawMessage `json:"-" gorm:"column:tekton_status;type:json"`
+}
+
+type TektonStatus struct {
+	Status          BuildStatus      `json:"status"`
+	PipelineStartAt *time.Time       `json:"pipelineStartAt,omitempty"`
+	PipelineEndAt   *time.Time       `json:"pipelineEndAt,omitempty"`
+	BuildReport     *BuildReport     `json:"buildReport,omitempty"`
+	Pipelines       []TektonPipeline `json:"pipelines"`
+}
+
+type TektonPipeline struct {
+	Name            string          `json:"name"`
+	URL             string          `json:"url,omitempty"`
+	GitHash         string          `json:"gitHash,omitempty"`
+	Status          BuildStatus     `json:"status"`
+	Platform        Platform        `json:"platform,omitempty"`
 	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	BuildReport     *BuildReport    `json:"buildReport,omitempty" gorm:"-:all"`
-	BuildReportJson json.RawMessage `json:"-" gorm:"column:build_report;type:json"`
+	OrasArtifacts   []OrasArtifact  `json:"orasArtifacts,omitempty"`
+	Images          []ImageArtifact `json:"images,omitempty"`
+}
+
+type OrasArtifact struct {
+	Repo  string   `json:"repo"`
+	Tag   string   `json:"tag"`
+	Files []string `json:"files"`
 }
 
 type BuildReport struct {
@@ -254,10 +300,17 @@ var (
 )
 
 type BinArtifact struct {
-	Component string   `json:"component,omitempty"`
-	Platform  Platform `json:"platform"`
-	URL       string   `json:"url"`
-	Sha256URL string   `json:"sha256URL"`
+	Component string    `json:"component,omitempty"`
+	Platform  Platform  `json:"platform"`
+	URL       string    `json:"url"`
+	Sha256URL string    `json:"sha256URL"`
+	OrasFile  *OrasFile `json:"oras,omitempty"`
+}
+
+type OrasFile struct {
+	Repo string `json:"repo"`
+	Tag  string `json:"tag"`
+	File string `json:"file"`
 }
 
 type ImageSyncRequest struct {
