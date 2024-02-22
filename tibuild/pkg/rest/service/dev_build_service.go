@@ -114,6 +114,9 @@ func validatePermission(ctx context.Context, req *DevBuild) error {
 }
 
 func fillGitHash(ctx context.Context, client GHClient, req *DevBuild) error {
+	if req.Spec.GitHash != "" {
+		return nil
+	}
 	commit, err := client.GetHash(ctx, *GHRepoToStruct(req.Spec.GithubRepo), req.Spec.GitRef)
 	if err != nil {
 		return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
