@@ -95,11 +95,11 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			slog.Error("trigger tekton failed", "reason", err)
 			entity.Status.Status = BuildStatusError
 			entity.Status.ErrMsg = err.Error()
-			resp, err := s.Repo.Update(ctx, entity.ID, entity)
+			_, err := s.Repo.Update(ctx, entity.ID, entity)
 			if err != nil {
 				slog.Error("save triggered entity failed", "reason", err)
 			}
-			return resp, nil
+			return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
 		}
 	}
 
