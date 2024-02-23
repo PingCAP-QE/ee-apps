@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"log"
+	"log/slog"
 
 	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/webhook/service"
@@ -20,12 +20,12 @@ func NewHandler(ds rest.DevBuildService) CloudEventHandler {
 func (h CloudEventHandler) Receive(c *gin.Context) {
 	p, err := cloudevents.NewHTTP()
 	if err != nil {
-		log.Print(err, "Failed to create protocol")
+		slog.Error("Failed to create protocol", "error", err)
 	}
 
 	ceh, err := cloudevents.NewHTTPReceiveHandler(c, p, h.svc.Handle)
 	if err != nil {
-		log.Print(err, "failed to create handler")
+		slog.Error("failed to create handler", "error", err)
 	}
 	ceh.ServeHTTP(c.Writer, c.Request)
 }
