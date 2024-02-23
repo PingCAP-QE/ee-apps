@@ -13,7 +13,7 @@
                 "kind": "PipelineRun",
                 "metadata": {
                   "annotations": {
-                    "tekton.dev/ce-context": "{ \"source\":\"https://tibuild.pingcap.net/api/devbuilds/123\", \"subject\":\"123\", \"type\":\"net.pingcap.tibuild.devbuild.push\", \"user\":\"wuhui.zuo@pingcap.com\" }",
+                    "tekton.dev/ce-context": "{ \"source\":\"tibuild.pingcap.net/api/devbuilds/123\", \"subject\":\"123\", \"type\":\"net.pingcap.tibuild.devbuild.push\", \"user\":\"wuhui.zuo@pingcap.com\" }",
                     "tekton.dev/git-repo": "https://github.com/tikv/pd.git",
                     "tekton.dev/git-revision": "e26a4f7292280345d5813d7a1990a77a8785c0d6",
                     "tekton.dev/git-status": "true"

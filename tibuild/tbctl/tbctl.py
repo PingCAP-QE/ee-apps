@@ -29,15 +29,19 @@ def get(id: int) -> dict:
 def trigger(args):
     data = {
         "meta":{"createdBy": BUILD_CREATED_BY},
-        "spec": {"edition": args.edition, "gitRef": args.gitRef, "version": args.version,
-                     "product": args.product, "pluginGitRef": args.pluginGitRef,
-                     "isPushGCR":args.pushGCR, "githubRepo": args.githubRepo,
-                     "features": args.features, "isHotfix":args.hotfix,
-                     "buildEnv": ' '.join(args.buildEnv) if args.buildEnv else '',
-                     "productDockerfile": args.productDockerfile,
-                     "productBaseImg": args.productBaseImg,
-                     "builderImg":args.builderImg,
-                     "targetImg": args.targetImg}}
+        "spec": {
+                    "edition": args.edition, "gitRef": args.gitRef, "version": args.version,
+                    "product": args.product, "pluginGitRef": args.pluginGitRef,
+                    "isPushGCR":args.pushGCR, "githubRepo": args.githubRepo,
+                    "features": args.features, "isHotfix":args.hotfix,
+                    "buildEnv": ' '.join(args.buildEnv) if args.buildEnv else '',
+                    "productDockerfile": args.productDockerfile,
+                    "productBaseImg": args.productBaseImg,
+                    "builderImg":args.builderImg,
+                    "targetImg": args.targetImg,
+                    "pipelineEngine": args.engine
+                }
+    }
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",

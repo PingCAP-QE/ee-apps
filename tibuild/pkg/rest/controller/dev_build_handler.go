@@ -27,14 +27,14 @@ func NewDevBuildHandler(svc service.DevBuildService, auth configs.RestApiSecret)
 	}
 }
 
-func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, ce_endpoint string) service.DevBuildService {
+func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, ce_endpoint string, gh_token string) service.DevBuildService {
 	db.AutoMigrate(&service.DevBuild{})
 	return &service.DevbuildServer{
 		Repo:     repo.DevBuildRepo{Db: db},
 		Jenkins:  jenkins,
 		Now:      time.Now,
 		Tekton:   service.NewCEClient(ce_endpoint),
-		GHClient: service.NewGHClient(),
+		GHClient: service.NewGHClient(gh_token),
 	}
 }
 

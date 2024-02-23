@@ -103,7 +103,7 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 		panic(err)
 	}
 	devBuildGroup := apiGroup.Group("/devbuilds")
-	devBuildServer := controllers.NewDevBuildServer(jenkins, database.DBConn.DB, cfg.CloudEvent.Endpoint)
+	devBuildServer := controllers.NewDevBuildServer(jenkins, database.DBConn.DB, cfg.CloudEvent.Endpoint, cfg.Github.Token)
 	devBuildHandler := controllers.NewDevBuildHandler(devBuildServer, cfg.RestApiSecret)
 	{
 		devBuildGroup.POST("", devBuildHandler.Create)
