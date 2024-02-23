@@ -35,7 +35,11 @@ func (c GitHubClient) GetHash(ctx context.Context, repo GithubRepo, ref string) 
 }
 
 func NewGHClient(token string) GHClient {
-	return GitHubClient{github.NewClient(http.DefaultClient).WithAuthToken(token)}
+	client := github.NewClient(http.DefaultClient)
+	if token != "" {
+		client = client.WithAuthToken(token)
+	}
+	return GitHubClient{client}
 }
 
 var sha1regex *regexp.Regexp = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
