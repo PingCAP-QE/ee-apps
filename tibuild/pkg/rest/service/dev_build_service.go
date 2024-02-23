@@ -460,5 +460,5 @@ var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d
 var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
 
-const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns/"
+const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
 const oras_fileserver_url = "https://internal.do.pingcap.net:30443/dl"
