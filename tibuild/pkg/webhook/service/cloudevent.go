@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -27,18 +27,22 @@ func NewDevBuildCEServer(ds rest.DevBuildService) DevBuildCEServer {
 }
 
 func (s DevBuildCEServer) Handle(event cloudevents.Event) {
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		eventjson, _ := event.MarshalJSON()
+		slog.Debug("received event", "ev", string(eventjson))
+	}
 	pipeline, bid, err := eventToDevbuildTekton(event)
 	if err != nil {
-		log.Printf("parse tekton event failed: %s", err.Error())
+		slog.Error("parse tekton event failed", "error", err.Error())
 		return
 	}
 	if bid == 0 {
-		log.Printf("parse tekton event build id failed")
+		slog.Error("parse tekton event failed", "error", err.Error())
 		return
 	}
 	_, err = s.ds.MergeTektonStatus(context.TODO(), bid, *pipeline, rest.DevBuildSaveOption{})
 	if err != nil {
-		log.Print("not devbuild event")
+		slog.Error("not devbuild event")
 		return
 	}
 }
@@ -68,7 +72,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 		if err != nil {
 			return nil, 0, err
 		}
-		switch event.Context.GetType() {
+		switch ty := event.Context.GetType(); ty {
 		case "dev.tekton.event.pipelinerun.started.v1":
 			pipeline.Status = rest.BuildStatusProcessing
 		case "dev.tekton.event.pipelinerun.successful.v1":
@@ -76,7 +80,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 		case "dev.tekton.event.pipelinerun.failed.v1":
 			pipeline.Status = rest.BuildStatusFailure
 		default:
-			log.Print("unknown tekton event type")
+			slog.Error("unknown tekton event type", "type", ty)
 		}
 		return pipeline, bid, nil
 	} else {
@@ -134,7 +138,7 @@ func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OrasArtifact {
 		if r.Name == "pushed-binaries" {
 			v, err := parse_oras_file(r.Value.StringVal)
 			if err != nil {
-				log.Printf("can not parse oras file %s", err.Error())
+				slog.Error("can not parse oras file", "error", err.Error())
 			}
 			rt = append(rt, *v)
 		}

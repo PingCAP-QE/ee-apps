@@ -42,6 +42,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		if err != nil {
 			return nil, err
 		}
+		req.Status.TektonStatus = &TektonStatus{Status: BuildStatusPending}
 	}
 	if option.DryRun {
 		req.ID = 1
@@ -352,6 +353,9 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	obj, err := s.Get(ctx, id, DevBuildGetOption{})
 	if err != nil {
 		return nil, err
+	}
+	if obj.Status.TektonStatus == nil {
+		obj.Status.TektonStatus = &TektonStatus{}
 	}
 	status := obj.Status.TektonStatus
 	name := pipeline.Name
