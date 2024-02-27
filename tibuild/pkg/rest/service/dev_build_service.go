@@ -12,11 +12,13 @@ import (
 )
 
 type DevbuildServer struct {
-	Repo     DevBuildRepository
-	Jenkins  Jenkins
-	Tekton   BuildTrigger
-	Now      func() time.Time
-	GHClient GHClient
+	Repo              DevBuildRepository
+	Jenkins           Jenkins
+	Tekton            BuildTrigger
+	Now               func() time.Time
+	GHClient          GHClient
+	TektonViewURL     string
+	OrasFileserverURL string
 }
 
 const jobname = "devbuild"
@@ -338,13 +340,13 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
 			if bin.URL == "" && bin.OrasFile != nil {
-				entity.Status.BuildReport.Binaries[i].URL = oras_to_file_url(*bin.OrasFile)
+				entity.Status.BuildReport.Binaries[i].URL = s.oras_to_file_url(*bin.OrasFile)
 			}
 		}
 	}
 	if tek := entity.Status.TektonStatus; tek != nil {
 		for i, p := range tek.Pipelines {
-			tek.Pipelines[i].URL = fmt.Sprintf("%s/%s", tektonURL, p.Name)
+			tek.Pipelines[i].URL = fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name)
 		}
 	}
 }
@@ -442,8 +444,8 @@ func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
 	return rt
 }
 
-func oras_to_file_url(oras OrasFile) string {
-	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", orasFileserverUrl, oras.Repo, oras.Tag, oras.File)
+func (s DevbuildServer) oras_to_file_url(oras OrasFile) string {
+	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OrasFileserverURL, oras.Repo, oras.Tag, oras.File)
 }
 
 type DevBuildRepository interface {
@@ -459,6 +461,3 @@ var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$
 var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
 var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
-
-const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
-const orasFileserverUrl = "https://internal.do.pingcap.net:30443/dl"

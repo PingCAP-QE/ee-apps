@@ -270,9 +270,11 @@ func TestDevBuildGet(t *testing.T) {
 	mockedRepo := mockRepo{}
 	mockedJenkins := mockJenkins{}
 	server := DevbuildServer{
-		Repo:    &mockedRepo,
-		Jenkins: &mockedJenkins,
-		Now:     time.Now,
+		Repo:              &mockedRepo,
+		Jenkins:           &mockedJenkins,
+		Now:               time.Now,
+		TektonViewURL:     "http://tekton.net",
+		OrasFileserverURL: "http://orasdownload.net",
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -289,7 +291,7 @@ func TestDevBuildGet(t *testing.T) {
 			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OrasFile: &OrasFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
-		require.Equal(t, "https://internal.do.pingcap.net:30443/dl/oci-file/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
+		require.Equal(t, "http://orasdownload.net/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
 	})
 	t.Run("render tekton pipeline", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
@@ -297,7 +299,7 @@ func TestDevBuildGet(t *testing.T) {
 			Status: DevBuildStatus{PipelineBuildID: 4, TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{{Name: "p1"}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
-		require.Equal(t, tektonURL+"/p1", entity.Status.TektonStatus.Pipelines[0].URL)
+		require.Equal(t, "http://tekton.net/p1", entity.Status.TektonStatus.Pipelines[0].URL)
 	})
 	t.Run("sync", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,

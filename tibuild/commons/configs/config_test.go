@@ -10,4 +10,5 @@ func TestLoadConfig(t *testing.T) {
 	LoadConfig("../../configs/config_example.yaml")
 	cfg := Config.RestApiSecret
 	assert.NotEmpty(t, cfg.TiBuildToken)
+	assert.NotEmpty(t, Config.OrasFileserverURL)
 }

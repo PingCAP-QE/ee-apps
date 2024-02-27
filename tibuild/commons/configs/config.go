@@ -35,6 +35,9 @@ type ConfigYaml struct {
 	CloudEvent    struct {
 		Endpoint string
 	}
+
+	TektonViewURL     string
+	OrasFileserverURL string
 }
 
 type RestApiSecret struct {
