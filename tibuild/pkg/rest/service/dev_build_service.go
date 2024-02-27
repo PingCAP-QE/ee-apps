@@ -443,7 +443,7 @@ func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
 }
 
 func oras_to_file_url(oras OrasFile) string {
-	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", oras_fileserver_url, oras.Repo, oras.Tag, oras.File)
+	return fmt.Sprintf("%s/oci-file/%s?tag=%s&file=%s", orasFileserverUrl, oras.Repo, oras.Tag, oras.File)
 }
 
 type DevBuildRepository interface {
@@ -461,4 +461,4 @@ var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
 
 const tektonURL = "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
-const oras_fileserver_url = "https://internal.do.pingcap.net:30443/dl"
+const orasFileserverUrl = "https://internal.do.pingcap.net:30443/dl"
