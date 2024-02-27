@@ -384,6 +384,12 @@ func compute_tekton_status(status *TektonStatus) {
 	var failure_platforms = map[Platform]struct{}{}
 	var triggered_platforms = map[Platform]struct{}{}
 	var latest_endat *time.Time
+	if status.BuildReport == nil {
+		status.BuildReport = &BuildReport{}
+	} else {
+		status.BuildReport.Images = nil
+		status.BuildReport.Binaries = nil
+	}
 	for _, pipeline := range status.Pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
@@ -392,12 +398,6 @@ func compute_tekton_status(status *TektonStatus) {
 			failure_platforms[pipeline.Platform] = struct{}{}
 		}
 		triggered_platforms[pipeline.Platform] = struct{}{}
-		if status.BuildReport == nil {
-			status.BuildReport = &BuildReport{}
-		} else {
-			status.BuildReport.Images = nil
-			status.BuildReport.Binaries = nil
-		}
 		status.BuildReport.GitHash = pipeline.GitHash
 		for _, files := range pipeline.OrasArtifacts {
 			status.BuildReport.Binaries = append(status.BuildReport.Binaries, oras_to_files(pipeline.Platform, files)...)

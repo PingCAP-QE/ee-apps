@@ -365,17 +365,20 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag2"}},
+					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		compute_tekton_status(status)
 		require.Equal(t, BuildStatusSuccess, status.Status)
 		require.Equal(t, endtime.Sub(starttime), status.PipelineEndAt.Sub(*status.PipelineStartAt))
+		require.Equal(t, 2, len(status.BuildReport.Images))
+		require.Equal(t, 4, len(status.BuildReport.Binaries))
 	})
 
 	t.Run("processing", func(t *testing.T) {
