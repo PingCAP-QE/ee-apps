@@ -376,7 +376,7 @@ func TestTektonStatusMerge(t *testing.T) {
 					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		compute_tekton_status(status)
+		computeTektonStatus(status)
 		require.Equal(t, BuildStatusSuccess, status.Status)
 		require.Equal(t, endtime.Sub(starttime), status.PipelineEndAt.Sub(*status.PipelineStartAt))
 		require.Equal(t, 2, len(status.BuildReport.Images))
@@ -396,7 +396,7 @@ func TestTektonStatusMerge(t *testing.T) {
 					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		compute_tekton_status(status)
+		computeTektonStatus(status)
 		require.Equal(t, BuildStatusProcessing, status.Status)
 	})
 	t.Run("processing", func(t *testing.T) {
@@ -412,7 +412,7 @@ func TestTektonStatusMerge(t *testing.T) {
 					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		compute_tekton_status(status)
+		computeTektonStatus(status)
 		require.Equal(t, BuildStatusFailure, status.Status)
 	})
 

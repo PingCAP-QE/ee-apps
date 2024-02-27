@@ -372,7 +372,7 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	} else {
 		status.Pipelines = append(status.Pipelines, pipeline)
 	}
-	compute_tekton_status(status)
+	computeTektonStatus(status)
 	if obj.Spec.PipelineEngine == TektonEngine {
 		obj.Status.Status = obj.Status.TektonStatus.Status
 		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
@@ -380,19 +380,49 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	return s.Update(ctx, id, *obj, options)
 }
 
-func compute_tekton_status(status *TektonStatus) {
+func computeTektonStatus(status *TektonStatus) {
+	status.BuildReport = &BuildReport{}
+	collectTektonArtifacts(status.Pipelines, status.BuildReport)
+	status.PipelineStartAt = getTektonStartAt(status.Pipelines)
+	status.Status = computeTektonPhase(status.Pipelines)
+	if status.Status.IsCompleted() {
+		status.PipelineEndAt = getLatestEndAt(status.Pipelines)
+	}
+}
+
+func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
+	for _, pipeline := range pipelines {
+		report.GitHash = pipeline.GitHash
+		for _, files := range pipeline.OrasArtifacts {
+			report.Binaries = append(report.Binaries, oras_to_files(pipeline.Platform, files)...)
+		}
+		for _, image := range pipeline.Images {
+			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
+			report.Images = append(report.Images, img)
+		}
+	}
+}
+
+func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
+	var startAt *time.Time = nil
+	for _, pipeline := range pipelines {
+		if pipeline.PipelineStartAt != nil {
+			if startAt == nil {
+				startAt = pipeline.PipelineStartAt
+			} else if pipeline.PipelineStartAt.Before(*startAt) {
+				startAt = pipeline.PipelineStartAt
+			}
+		}
+	}
+	return startAt
+}
+
+func computeTektonPhase(pipelines []TektonPipeline) BuildStatus {
 	phase := BuildStatusPending
 	var success_platforms = map[Platform]struct{}{}
 	var failure_platforms = map[Platform]struct{}{}
 	var triggered_platforms = map[Platform]struct{}{}
-	var latest_endat *time.Time
-	if status.BuildReport == nil {
-		status.BuildReport = &BuildReport{}
-	} else {
-		status.BuildReport.Images = nil
-		status.BuildReport.Binaries = nil
-	}
-	for _, pipeline := range status.Pipelines {
+	for _, pipeline := range pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
 			success_platforms[pipeline.Platform] = struct{}{}
@@ -400,21 +430,20 @@ func compute_tekton_status(status *TektonStatus) {
 			failure_platforms[pipeline.Platform] = struct{}{}
 		}
 		triggered_platforms[pipeline.Platform] = struct{}{}
-		status.BuildReport.GitHash = pipeline.GitHash
-		for _, files := range pipeline.OrasArtifacts {
-			status.BuildReport.Binaries = append(status.BuildReport.Binaries, oras_to_files(pipeline.Platform, files)...)
-		}
-		for _, image := range pipeline.Images {
-			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
-			status.BuildReport.Images = append(status.BuildReport.Images, img)
-		}
-		if pipeline.PipelineStartAt != nil {
-			if status.PipelineStartAt == nil {
-				status.PipelineStartAt = pipeline.PipelineStartAt
-			} else if pipeline.PipelineStartAt.Before(*status.PipelineStartAt) {
-				status.PipelineStartAt = pipeline.PipelineStartAt
-			}
-		}
+	}
+	if len(success_platforms) == len(triggered_platforms) {
+		phase = BuildStatusSuccess
+	} else if len(failure_platforms) != 0 {
+		phase = BuildStatusFailure
+	} else if len(pipelines) != 0 {
+		phase = BuildStatusProcessing
+	}
+	return phase
+}
+
+func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
+	var latest_endat *time.Time
+	for _, pipeline := range pipelines {
 		if pipeline.PipelineEndAt != nil {
 			if latest_endat == nil {
 				latest_endat = pipeline.PipelineEndAt
@@ -423,17 +452,7 @@ func compute_tekton_status(status *TektonStatus) {
 			}
 		}
 	}
-	if len(success_platforms) == len(triggered_platforms) {
-		phase = BuildStatusSuccess
-	} else if len(failure_platforms) != 0 {
-		phase = BuildStatusFailure
-	} else if len(status.Pipelines) != 0 {
-		phase = BuildStatusProcessing
-	}
-	status.Status = phase
-	if status.Status.IsCompleted() {
-		status.PipelineEndAt = latest_endat
-	}
+	return latest_endat
 }
 
 func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
