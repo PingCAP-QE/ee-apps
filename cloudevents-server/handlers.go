@@ -12,6 +12,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/testcaserun"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/tibuild"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/lark"
 )
 
 func indexHandler(c *gin.Context) {
@@ -52,7 +53,8 @@ func newCloudEventsHandler(cfg *config.Config) (handler.EventHandler, error) {
 		return nil, err
 	}
 
-	tektonHandler, err := tekton.NewHandler(cfg.Lark)
+	larkClient := lark.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret)
+	tektonHandler, err := tekton.NewHandler(cfg.Tekton, larkClient)
 	if err != nil {
 		return nil, err
 	}

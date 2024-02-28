@@ -14,16 +14,21 @@ type Store struct {
 	DSN    string `yaml:"dsn,omitempty" json:"dsn,omitempty"`
 }
 
-type Lark struct {
+type LarkBotApp struct {
 	AppID     string `yaml:"app_id,omitempty" json:"app_id,omitempty"`
 	AppSecret string `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
-	// TODO: how to get the receiver?
-	Receivers []string `yaml:"receivers,omitempty" json:"receiver,omitempty"`
+}
+
+type Tekton struct {
+	DashboardBaseURL string `yaml:"dashboard_base_url,omitempty" json:"dashboard_base_url,omitempty"`
+	// Receivers receivers list of the event type, if you want it send all types, set the key "*".
+	Receivers map[string][]string `yaml:"receivers,omitempty" json:"receiver,omitempty"`
 }
 
 type Config struct {
-	Store   Store `yaml:"store,omitempty" json:"store,omitempty"`
-	Lark    Lark  `yaml:"lark,omitempty" json:"lark,omitempty"`
+	Store   Store      `yaml:"store,omitempty" json:"store,omitempty"`
+	Lark    LarkBotApp `yaml:"lark,omitempty" json:"lark,omitempty"`
+	Tekton  Tekton     `yaml:"tekton,omitempty" json:"tekton,omitempty"`
 	TiBuild struct {
 		ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
 		TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
