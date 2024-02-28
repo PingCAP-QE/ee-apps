@@ -140,7 +140,7 @@ func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
 			if err != nil {
 				slog.Error("can not parse oras file", "error", err.Error())
 				// this make error can be seen by frontend, and not block other result
-				v = &rest.OciArtifact{Repo: "parse_error", Files: []string{r.Value.StringVal}}
+				v = &rest.OciArtifact{Repo: "parse_error", Tag: r.Value.StringVal, Files: []string{"error_parse_artifact"}}
 			}
 			rt = append(rt, *v)
 		}
