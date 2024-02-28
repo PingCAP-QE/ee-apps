@@ -94,11 +94,13 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
 	return &rest.TektonPipeline{
-		Name:         pipeline.Name,
-		Platform:     parsePlatform(pipeline),
-		GitHash:      parseGitHash(pipeline),
-		OciArtifacts: convertOciArtifacts(pipeline),
-		Images:       images,
+		Name:            pipeline.Name,
+		Platform:        parsePlatform(pipeline),
+		GitHash:         parseGitHash(pipeline),
+		OciArtifacts:    convertOciArtifacts(pipeline),
+		Images:          images,
+		PipelineStartAt: &pipeline.Status.StartTime.Time,
+		PipelineEndAt:   &pipeline.Status.CompletionTime.Time,
 	}, nil
 }
 
