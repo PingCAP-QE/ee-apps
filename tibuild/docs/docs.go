@@ -337,8 +337,8 @@ const docTemplate = `{
                 "component": {
                     "type": "string"
                 },
-                "oras": {
-                    "$ref": "#/definitions/service.OrasFile"
+                "ociFile": {
+                    "$ref": "#/definitions/service.OciFile"
                 },
                 "platform": {
                     "type": "string"
@@ -570,7 +570,7 @@ const docTemplate = `{
                 }
             }
         },
-        "service.OrasFile": {
+        "service.OciFile": {
             "type": "object",
             "properties": {
                 "file": {

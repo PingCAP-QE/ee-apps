@@ -288,7 +288,7 @@ func TestDevBuildGet(t *testing.T) {
 	t.Run("render oras file", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
-			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OrasFile: &OrasFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
+			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OciFile: &OciFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
 		require.Equal(t, "http://orasdownload.net/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)

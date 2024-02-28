@@ -339,8 +339,8 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	}
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
-			if bin.URL == "" && bin.OrasFile != nil {
-				entity.Status.BuildReport.Binaries[i].URL = s.oras_to_file_url(*bin.OrasFile)
+			if bin.URL == "" && bin.OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
 			}
 		}
 	}
@@ -458,12 +458,12 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 func oras_to_files(platform Platform, oras OciArtifact) []BinArtifact {
 	var rt []BinArtifact
 	for _, file := range oras.Files {
-		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
+		rt = append(rt, BinArtifact{Platform: platform, OciFile: &OciFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
 	}
 	return rt
 }
 
-func (s DevbuildServer) oras_to_file_url(oras OrasFile) string {
+func (s DevbuildServer) ociFileToUrl(oras OciFile) string {
 	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, oras.Repo, oras.Tag, oras.File)
 }
 

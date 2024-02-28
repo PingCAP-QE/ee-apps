@@ -300,14 +300,14 @@ var (
 )
 
 type BinArtifact struct {
-	Component string    `json:"component,omitempty"`
-	Platform  Platform  `json:"platform"`
-	URL       string    `json:"url"`
-	Sha256URL string    `json:"sha256URL"`
-	OrasFile  *OrasFile `json:"oras,omitempty"`
+	Component string   `json:"component,omitempty"`
+	Platform  Platform `json:"platform"`
+	URL       string   `json:"url"`
+	Sha256URL string   `json:"sha256URL"`
+	OciFile   *OciFile `json:"ociFile,omitempty"`
 }
 
-type OrasFile struct {
+type OciFile struct {
 	Repo string `json:"repo"`
 	Tag  string `json:"tag"`
 	File string `json:"file"`
