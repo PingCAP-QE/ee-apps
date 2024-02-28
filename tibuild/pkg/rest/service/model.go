@@ -266,7 +266,7 @@ type TektonPipeline struct {
 	Platform        Platform        `json:"platform,omitempty"`
 	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	OciArtifacts    []OciArtifact   `json:"orasArtifacts,omitempty"`
+	OciArtifacts    []OciArtifact   `json:"ociArtifacts,omitempty"`
 	Images          []ImageArtifact `json:"images,omitempty"`
 }
 

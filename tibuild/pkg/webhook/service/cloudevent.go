@@ -138,7 +138,7 @@ func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
 		if r.Name == "pushed-binaries" {
 			v, err := convertOciArtifact(r.Value.StringVal)
 			if err != nil {
-				slog.Error("can not parse oras file", "error", err.Error())
+				slog.Error("can not parse oci file", "error", err.Error())
 				// this make error can be seen by frontend, and not block other result
 				v = &rest.OciArtifact{Repo: "parse_error", Tag: r.Value.StringVal, Files: []string{"error_parse_artifact"}}
 			}
@@ -148,7 +148,7 @@ func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
 	return rt
 }
 
-type TektonOrasStruct struct {
+type TektonOciArtifactStruct struct {
 	OCI struct {
 		Repo   string `json:"repo"`
 		Tag    string `json:"tag"`
@@ -158,15 +158,15 @@ type TektonOrasStruct struct {
 }
 
 func convertOciArtifact(text string) (*rest.OciArtifact, error) {
-	tekton_oras := TektonOrasStruct{}
-	err := yaml.Unmarshal([]byte(text), &tekton_oras)
+	tekton_oci_artifact := TektonOciArtifactStruct{}
+	err := yaml.Unmarshal([]byte(text), &tekton_oci_artifact)
 	if err != nil {
 		return nil, err
 	}
 	return &rest.OciArtifact{
-		Repo:  tekton_oras.OCI.Repo,
-		Tag:   tekton_oras.OCI.Tag,
-		Files: tekton_oras.Files,
+		Repo:  tekton_oci_artifact.OCI.Repo,
+		Tag:   tekton_oci_artifact.OCI.Tag,
+		Files: tekton_oci_artifact.Files,
 	}, nil
 }
 

@@ -252,7 +252,7 @@ definitions:
         type: array
       name:
         type: string
-      orasArtifacts:
+      ociArtifacts:
         items:
           $ref: '#/definitions/service.OciArtifact'
         type: array
