@@ -132,7 +132,6 @@ func parseGitHash(pipeline tekton.PipelineRun) string {
 	return ""
 }
 
-// ensure pipeline is not nil
 func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
 	var rt []rest.OciArtifact
 	for _, r := range pipeline.Status.PipelineResults {
