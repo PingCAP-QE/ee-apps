@@ -420,3 +420,13 @@ func TestTektonStatusMerge(t *testing.T) {
 	})
 
 }
+
+func TestOciArtifactToFiles(t *testing.T) {
+	files := ociArtifactToFiles(LinuxAmd64,
+		OciArtifact{Repo: "repo", Tag: "tag",
+			Files: []string{"f1.tar.gz", "f1.tar.gz.sha256"},
+		},
+	)
+	require.Equal(t, 1, len(files))
+	require.NotNil(t, files[0].Sha256OciFile)
+}
