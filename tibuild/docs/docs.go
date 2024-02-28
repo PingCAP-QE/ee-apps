@@ -343,6 +343,9 @@ const docTemplate = `{
                 "platform": {
                     "type": "string"
                 },
+                "sha256OciFile": {
+                    "$ref": "#/definitions/service.OciFile"
+                },
                 "sha256URL": {
                     "type": "string"
                 },
@@ -672,6 +675,9 @@ const docTemplate = `{
         "service.TektonPipeline": {
             "type": "object",
             "properties": {
+                "endAt": {
+                    "type": "string"
+                },
                 "gitHash": {
                     "type": "string"
                 },
@@ -690,13 +696,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/service.OciArtifact"
                     }
                 },
-                "pipelineEndAt": {
-                    "type": "string"
-                },
-                "pipelineStartAt": {
-                    "type": "string"
-                },
                 "platform": {
+                    "type": "string"
+                },
+                "startAt": {
                     "type": "string"
                 },
                 "status": {

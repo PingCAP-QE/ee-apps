@@ -255,15 +255,15 @@ type TektonStatus struct {
 }
 
 type TektonPipeline struct {
-	Name            string          `json:"name"`
-	URL             string          `json:"url,omitempty"`
-	GitHash         string          `json:"gitHash,omitempty"`
-	Status          BuildStatus     `json:"status"`
-	Platform        Platform        `json:"platform,omitempty"`
-	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
-	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	OciArtifacts    []OciArtifact   `json:"ociArtifacts,omitempty"`
-	Images          []ImageArtifact `json:"images,omitempty"`
+	Name         string          `json:"name"`
+	URL          string          `json:"url,omitempty"`
+	GitHash      string          `json:"gitHash,omitempty"`
+	Status       BuildStatus     `json:"status"`
+	Platform     Platform        `json:"platform,omitempty"`
+	StartAt      *time.Time      `json:"startAt,omitempty"`
+	EndAt        *time.Time      `json:"endAt,omitempty"`
+	OciArtifacts []OciArtifact   `json:"ociArtifacts,omitempty"`
+	Images       []ImageArtifact `json:"images,omitempty"`
 }
 
 type OciArtifact struct {

@@ -99,6 +99,8 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 		GitHash:      parseGitHash(pipeline),
 		OciArtifacts: convertOciArtifacts(pipeline),
 		Images:       images,
+		StartAt:      &pipeline.Status.StartTime.Time,
+		EndAt:        &pipeline.Status.CompletionTime.Time,
 	}, nil
 }
 

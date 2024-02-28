@@ -14,6 +14,8 @@ definitions:
         $ref: '#/definitions/service.OciFile'
       platform:
         type: string
+      sha256OciFile:
+        $ref: '#/definitions/service.OciFile'
       sha256URL:
         type: string
       url:
@@ -244,6 +246,8 @@ definitions:
     type: object
   service.TektonPipeline:
     properties:
+      endAt:
+        type: string
       gitHash:
         type: string
       images:
@@ -256,11 +260,9 @@ definitions:
         items:
           $ref: '#/definitions/service.OciArtifact'
         type: array
-      pipelineEndAt:
-        type: string
-      pipelineStartAt:
-        type: string
       platform:
+        type: string
+      startAt:
         type: string
       status:
         $ref: '#/definitions/service.BuildStatus'

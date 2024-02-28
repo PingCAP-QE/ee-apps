@@ -366,14 +366,14 @@ func TestTektonStatusMerge(t *testing.T) {
 		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
-					PipelineStartAt: &starttime,
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
-					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+					StartAt:      &starttime,
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
-					PipelineStartAt: &starttime,
-					PipelineEndAt:   &endtime,
-					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag2"}},
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					StartAt:      &starttime,
+					EndAt:        &endtime,
+					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag2"}},
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		status := &DevBuildStatus{TektonStatus: tekton}
@@ -388,13 +388,13 @@ func TestTektonStatusMerge(t *testing.T) {
 		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
-					PipelineStartAt: &starttime,
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
-					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+					StartAt:      &starttime,
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusProcessing, Platform: LinuxArm64,
-					PipelineStartAt: &starttime,
-					PipelineEndAt:   &endtime,
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					StartAt:      &starttime,
+					EndAt:        &endtime,
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		status := &DevBuildStatus{TektonStatus: tekton}
@@ -405,13 +405,13 @@ func TestTektonStatusMerge(t *testing.T) {
 		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
-					PipelineStartAt: &starttime,
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "latest", Files: []string{"a.tar.gz", "b.tar.gz"}}},
-					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
+					StartAt:      &starttime,
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "latest", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusFailure, Platform: LinuxArm64,
-					PipelineStartAt: &starttime,
-					PipelineEndAt:   &endtime,
-					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					StartAt:      &starttime,
+					EndAt:        &endtime,
+					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		status := &DevBuildStatus{TektonStatus: tekton}

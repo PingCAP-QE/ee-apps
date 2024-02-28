@@ -407,11 +407,11 @@ func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
 func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
 	var startAt *time.Time = nil
 	for _, pipeline := range pipelines {
-		if pipeline.PipelineStartAt != nil {
+		if pipeline.StartAt != nil {
 			if startAt == nil {
-				startAt = pipeline.PipelineStartAt
-			} else if pipeline.PipelineStartAt.Before(*startAt) {
-				startAt = pipeline.PipelineStartAt
+				startAt = pipeline.StartAt
+			} else if pipeline.StartAt.Before(*startAt) {
+				startAt = pipeline.StartAt
 			}
 		}
 	}
@@ -445,11 +445,11 @@ func computeTektonPhase(pipelines []TektonPipeline) BuildStatus {
 func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	var latest_endat *time.Time
 	for _, pipeline := range pipelines {
-		if pipeline.PipelineEndAt != nil {
+		if pipeline.EndAt != nil {
 			if latest_endat == nil {
-				latest_endat = pipeline.PipelineEndAt
-			} else if latest_endat.Before(*pipeline.PipelineEndAt) {
-				latest_endat = pipeline.PipelineEndAt
+				latest_endat = pipeline.EndAt
+			} else if latest_endat.Before(*pipeline.EndAt) {
+				latest_endat = pipeline.EndAt
 			}
 		}
 	}
