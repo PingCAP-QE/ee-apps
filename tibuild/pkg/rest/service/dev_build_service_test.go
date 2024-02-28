@@ -433,4 +433,5 @@ func TestOciArtifactToFiles(t *testing.T) {
 	)
 	require.Equal(t, 2, len(files))
 	require.NotNil(t, files[0].Sha256OciFile)
+	require.NotNil(t, files[1].Sha256OciFile)
 }
