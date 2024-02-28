@@ -11,7 +11,7 @@ require (
 	github.com/google/go-github/v59 v59.0.0
 	github.com/jinzhu/configor v1.2.2
 	github.com/stretchr/testify v1.8.4
-	github.com/swaggo/files v1.0.1
+	github.com/swaggo/files/v2 v2.0.0
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.3
 	github.com/tektoncd/pipeline v0.39.0
