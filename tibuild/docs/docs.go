@@ -553,7 +553,7 @@ const docTemplate = `{
                 }
             }
         },
-        "service.OrasArtifact": {
+        "service.OciArtifact": {
             "type": "object",
             "properties": {
                 "files": {
@@ -687,7 +687,7 @@ const docTemplate = `{
                 "orasArtifacts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/service.OrasArtifact"
+                        "$ref": "#/definitions/service.OciArtifact"
                     }
                 },
                 "pipelineEndAt": {

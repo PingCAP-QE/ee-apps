@@ -68,7 +68,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 		if err != nil {
 			return nil, 0, fmt.Errorf("decode devbuild id failed:%w", err)
 		}
-		pipeline, err := to_devbuild_pipeline(&pipelinerun)
+		pipeline, err := toDevbuildPipeline(pipelinerun)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -88,21 +88,21 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 	}
 }
 
-func to_devbuild_pipeline(pipeline *tekton.PipelineRun) (*rest.TektonPipeline, error) {
+func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, error) {
 	images, err := parse_tekton_image(pipeline.Status.PipelineResults)
 	if err != nil {
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
 	return &rest.TektonPipeline{
-		Name:          pipeline.Name,
-		Platform:      parse_platform(pipeline),
-		GitHash:       parse_git_hash(pipeline),
-		OrasArtifacts: parse_oras_files(pipeline),
-		Images:        images,
+		Name:         pipeline.Name,
+		Platform:     parsePlatform(pipeline),
+		GitHash:      parseGitHash(pipeline),
+		OciArtifacts: convertOciArtifacts(pipeline),
+		Images:       images,
 	}, nil
 }
 
-func parse_platform(pipeline *tekton.PipelineRun) rest.Platform {
+func parsePlatform(pipeline tekton.PipelineRun) rest.Platform {
 	os := ""
 	arch := ""
 	for _, p := range pipeline.Spec.Params {
@@ -120,7 +120,7 @@ func parse_platform(pipeline *tekton.PipelineRun) rest.Platform {
 	}
 }
 
-func parse_git_hash(pipeline *tekton.PipelineRun) string {
+func parseGitHash(pipeline tekton.PipelineRun) string {
 	for _, p := range pipeline.Spec.Params {
 		if p.Name == "git-revision" {
 			v := p.Value.StringVal
@@ -132,13 +132,15 @@ func parse_git_hash(pipeline *tekton.PipelineRun) string {
 	return ""
 }
 
-func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OrasArtifact {
-	var rt []rest.OrasArtifact
+func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
+	var rt []rest.OciArtifact
 	for _, r := range pipeline.Status.PipelineResults {
 		if r.Name == "pushed-binaries" {
-			v, err := parse_oras_file(r.Value.StringVal)
+			v, err := convertOciArtifact(r.Value.StringVal)
 			if err != nil {
 				slog.Error("can not parse oras file", "error", err.Error())
+				// this make error can be seen by frontend, and not block other result
+				v = &rest.OciArtifact{Repo: "parse_error", Tag: r.Value.StringVal, Files: []string{"error_parse_artifact"}}
 			}
 			rt = append(rt, *v)
 		}
@@ -155,13 +157,13 @@ type TektonOrasStruct struct {
 	Files []string `json:"files"`
 }
 
-func parse_oras_file(text string) (*rest.OrasArtifact, error) {
+func convertOciArtifact(text string) (*rest.OciArtifact, error) {
 	tekton_oras := TektonOrasStruct{}
 	err := yaml.Unmarshal([]byte(text), &tekton_oras)
 	if err != nil {
 		return nil, err
 	}
-	return &rest.OrasArtifact{
+	return &rest.OciArtifact{
 		Repo:  tekton_oras.OCI.Repo,
 		Tag:   tekton_oras.OCI.Tag,
 		Files: tekton_oras.Files,

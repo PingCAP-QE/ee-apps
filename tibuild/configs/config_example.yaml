@@ -20,3 +20,10 @@ github:
 restapisecret:
   admintoken: "1"
   tibuildtoken: "2"
+
+cloudevent:
+  endpoint: "http://localhost:8000"
+
+tektonviewurl: "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
+
+ocifileserverurl: "https://internal.do.pingcap.net:30443/dl/oci-file"
