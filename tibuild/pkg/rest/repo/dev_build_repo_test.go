@@ -62,7 +62,7 @@ func TestDevBuildUpdate(t *testing.T) {
 	now := time.Unix(1, 0)
 	report := BuildReport{GitHash: "a1b2c3"}
 	report_text, err := json.Marshal(report)
-	tekton_status := TektonStatus{Status: BuildStatusProcessing}
+	tekton_status := TektonStatus{}
 	tekton_text, err := json.Marshal(tekton_status)
 	require.NoError(t, err)
 	mock.ExpectBegin()
@@ -106,7 +106,7 @@ func TestDevBuildGet(t *testing.T) {
 		require.Empty(t, entity.Status.BuildReportJson)
 	})
 	t.Run("tekton_status", func(t *testing.T) {
-		tekton := TektonStatus{Status: BuildStatusProcessing}
+		tekton := TektonStatus{}
 		tekton_text, err := json.Marshal(tekton)
 		require.NoError(t, err)
 		rows := sqlmock.NewRows([]string{"id", "status", "tekton_status"}).AddRow(1, BuildStatusSuccess, tekton_text)

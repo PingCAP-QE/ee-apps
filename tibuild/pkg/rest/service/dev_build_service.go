@@ -44,7 +44,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		if err != nil {
 			return nil, err
 		}
-		req.Status.TektonStatus = &TektonStatus{Status: BuildStatusPending}
+		req.Status.TektonStatus = &TektonStatus{}
 	}
 	if option.DryRun {
 		req.ID = 1
@@ -339,8 +339,11 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	}
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
-			if bin.URL == "" && bin.OrasFile != nil {
-				entity.Status.BuildReport.Binaries[i].URL = s.oras_to_file_url(*bin.OrasFile)
+			if bin.URL == "" && bin.OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
+			}
+			if bin.Sha256OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].Sha256URL = s.ociFileToUrl(*bin.Sha256OciFile)
 			}
 		}
 	}
@@ -359,34 +362,32 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	if obj.Status.TektonStatus == nil {
 		obj.Status.TektonStatus = &TektonStatus{}
 	}
-	status := obj.Status.TektonStatus
+	tekton := obj.Status.TektonStatus
 	name := pipeline.Name
 	index := -1
-	for i, p := range status.Pipelines {
+	for i, p := range tekton.Pipelines {
 		if p.Name == name {
 			index = i
 		}
 	}
 	if index >= 0 {
-		status.Pipelines[index] = pipeline
+		tekton.Pipelines[index] = pipeline
 	} else {
-		status.Pipelines = append(status.Pipelines, pipeline)
+		tekton.Pipelines = append(tekton.Pipelines, pipeline)
 	}
-	computeTektonStatus(status)
 	if obj.Spec.PipelineEngine == TektonEngine {
-		obj.Status.Status = obj.Status.TektonStatus.Status
-		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
+		computeTektonStatus(tekton, &obj.Status)
 	}
 	return s.Update(ctx, id, *obj, options)
 }
 
-func computeTektonStatus(status *TektonStatus) {
+func computeTektonStatus(tekton *TektonStatus, status *DevBuildStatus) {
 	status.BuildReport = &BuildReport{}
-	collectTektonArtifacts(status.Pipelines, status.BuildReport)
-	status.PipelineStartAt = getTektonStartAt(status.Pipelines)
-	status.Status = computeTektonPhase(status.Pipelines)
+	collectTektonArtifacts(tekton.Pipelines, status.BuildReport)
+	status.PipelineStartAt = getTektonStartAt(tekton.Pipelines)
+	status.Status = computeTektonPhase(tekton.Pipelines)
 	if status.Status.IsCompleted() {
-		status.PipelineEndAt = getLatestEndAt(status.Pipelines)
+		status.PipelineEndAt = getLatestEndAt(tekton.Pipelines)
 	}
 }
 
@@ -394,7 +395,7 @@ func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
 	for _, pipeline := range pipelines {
 		report.GitHash = pipeline.GitHash
 		for _, files := range pipeline.OciArtifacts {
-			report.Binaries = append(report.Binaries, oras_to_files(pipeline.Platform, files)...)
+			report.Binaries = append(report.Binaries, ociArtifactToFiles(pipeline.Platform, files)...)
 		}
 		for _, image := range pipeline.Images {
 			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
@@ -455,16 +456,24 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	return latest_endat
 }
 
-func oras_to_files(platform Platform, oras OciArtifact) []BinArtifact {
+func ociArtifactToFiles(platform Platform, artifact OciArtifact) []BinArtifact {
 	var rt []BinArtifact
-	for _, file := range oras.Files {
-		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
+	var sha256s = make(map[string]*OciFile)
+	for _, file := range artifact.Files {
+		if origin, isSha256 := strings.CutSuffix(file, ".sha256"); isSha256 {
+			sha256s[origin] = &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}
+		} else {
+			rt = append(rt, BinArtifact{Platform: platform, OciFile: &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}})
+		}
+	}
+	for idx := 0; idx < len(rt); idx += 1 {
+		rt[idx].Sha256OciFile = sha256s[rt[idx].OciFile.File]
 	}
 	return rt
 }
 
-func (s DevbuildServer) oras_to_file_url(oras OrasFile) string {
-	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, oras.Repo, oras.Tag, oras.File)
+func (s DevbuildServer) ociFileToUrl(artifact OciFile) string {
+	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, artifact.Repo, artifact.Tag, artifact.File)
 }
 
 type DevBuildRepository interface {

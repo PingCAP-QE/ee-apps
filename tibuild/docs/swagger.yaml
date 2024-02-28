@@ -10,8 +10,8 @@ definitions:
     properties:
       component:
         type: string
-      oras:
-        $ref: '#/definitions/service.OrasFile'
+      ociFile:
+        $ref: '#/definitions/service.OciFile'
       platform:
         type: string
       sha256URL:
@@ -165,7 +165,7 @@ definitions:
       tag:
         type: string
     type: object
-  service.OrasFile:
+  service.OciFile:
     properties:
       file:
         type: string
@@ -252,7 +252,7 @@ definitions:
         type: array
       name:
         type: string
-      orasArtifacts:
+      ociArtifacts:
         items:
           $ref: '#/definitions/service.OciArtifact'
         type: array
@@ -269,18 +269,10 @@ definitions:
     type: object
   service.TektonStatus:
     properties:
-      buildReport:
-        $ref: '#/definitions/service.BuildReport'
-      pipelineEndAt:
-        type: string
-      pipelineStartAt:
-        type: string
       pipelines:
         items:
           $ref: '#/definitions/service.TektonPipeline'
         type: array
-      status:
-        $ref: '#/definitions/service.BuildStatus'
     type: object
 info:
   contact: {}

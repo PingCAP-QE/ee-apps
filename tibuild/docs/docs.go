@@ -337,8 +337,8 @@ const docTemplate = `{
                 "component": {
                     "type": "string"
                 },
-                "oras": {
-                    "$ref": "#/definitions/service.OrasFile"
+                "ociFile": {
+                    "$ref": "#/definitions/service.OciFile"
                 },
                 "platform": {
                     "type": "string"
@@ -570,7 +570,7 @@ const docTemplate = `{
                 }
             }
         },
-        "service.OrasFile": {
+        "service.OciFile": {
             "type": "object",
             "properties": {
                 "file": {
@@ -684,7 +684,7 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "orasArtifacts": {
+                "ociArtifacts": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.OciArtifact"
@@ -710,23 +710,11 @@ const docTemplate = `{
         "service.TektonStatus": {
             "type": "object",
             "properties": {
-                "buildReport": {
-                    "$ref": "#/definitions/service.BuildReport"
-                },
-                "pipelineEndAt": {
-                    "type": "string"
-                },
-                "pipelineStartAt": {
-                    "type": "string"
-                },
                 "pipelines": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.TektonPipeline"
                     }
-                },
-                "status": {
-                    "$ref": "#/definitions/service.BuildStatus"
                 }
             }
         }

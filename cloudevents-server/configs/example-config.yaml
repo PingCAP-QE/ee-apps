@@ -4,7 +4,14 @@ store:
 lark:
   app_id: cli_12345678
   app_secret: s123456789
-  receiver: abc@test.com
 tibuild:
-  result_sink_url: http://localhost:49244 # url of tibuild events listener.
-  trigger_sink_url: http://localhost:8080 # url of tekton event listener.
+  result_sink_url: http://tibuild.event.url:8080 # url of tibuild events listener.
+  trigger_sink_url: http://el-xxx.tekton.url:8080 # url of tekton event listener.
+tekton:
+  dashboard_base_url: https://tekton.local.com/dashboard-path
+  receivers:
+    "*": [all-level-receiver]
+    dev.tekton.event.pipelinerun.started.v1: [started-receiver]
+    dev.tekton.event.pipelinerun.running.v1: [running-receiver]
+    dev.tekton.event.pipelinerun.successful.v1: [successful-receiver]
+    dev.tekton.event.pipelinerun.failed.v1: [failure-receiver]

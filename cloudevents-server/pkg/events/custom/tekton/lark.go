@@ -3,7 +3,6 @@ package tekton
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,8 +21,6 @@ import (
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
-
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 
 	_ "embed"
 )
@@ -72,21 +69,11 @@ func newMessageReq(receiver string, messageRawStr string) *larkim.CreateMessageR
 		Build()
 }
 
-func newLarkClient(cfg config.Lark) *lark.Client {
-	// Disable certificate verification
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	httpClient := &http.Client{Transport: tr}
-
-	return lark.NewClient(cfg.AppID, cfg.AppSecret,
-		lark.WithLogReqAtDebug(true),
-		lark.WithEnableTokenCache(true),
-		lark.WithHttpClient(httpClient),
-	)
-}
-
 func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
+	if len(receivers) == 0 {
+		return cloudevents.ResultACK
+	}
+
 	createMsgReqs, err := newLarkMessages(receivers, event, detailBaseUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("compose lark message failed")

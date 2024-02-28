@@ -3,6 +3,7 @@ package tekton
 import (
 	"net/http"
 
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/rs/zerolog/log"
@@ -10,9 +11,8 @@ import (
 )
 
 type taskRunHandler struct {
-	LarkClient       *lark.Client
-	RunDetailBaseURL string
-	Receivers        []string
+	config.Tekton
+	LarkClient *lark.Client
 }
 
 func (h *taskRunHandler) SupportEventTypes() []string {
@@ -33,7 +33,15 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 
 	switch event.Type() {
 	case string(tektoncloudevent.TaskRunFailedEventV1):
-		return sendLarkMessages(h.LarkClient, h.Receivers, event, h.RunDetailBaseURL)
+		var receivers []string
+		// send notify to the trigger user if it's existed, else send to the receivers configurated by type.
+		if receiver := getTriggerUser(data.TaskRun); receiver != "" {
+			receivers = []string{receiver}
+		} else {
+			receivers = append(h.Receivers[defaultReceiversKey], h.Receivers[event.Type()]...)
+		}
+
+		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
 	default:
 		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
 		return cloudevents.ResultACK
