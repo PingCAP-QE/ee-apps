@@ -296,11 +296,12 @@ var (
 )
 
 type BinArtifact struct {
-	Component string   `json:"component,omitempty"`
-	Platform  Platform `json:"platform"`
-	URL       string   `json:"url"`
-	Sha256URL string   `json:"sha256URL"`
-	OciFile   *OciFile `json:"ociFile,omitempty"`
+	Component     string   `json:"component,omitempty"`
+	Platform      Platform `json:"platform"`
+	URL           string   `json:"url"`
+	Sha256URL     string   `json:"sha256URL"`
+	OciFile       *OciFile `json:"ociFile,omitempty"`
+	Sha256OciFile *OciFile `json:"sha256OciFile,omitempty"`
 }
 
 type OciFile struct {

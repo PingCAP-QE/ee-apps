@@ -342,6 +342,9 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 			if bin.URL == "" && bin.OciFile != nil {
 				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
 			}
+			if bin.Sha256OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].Sha256URL = s.ociFileToUrl(*bin.Sha256OciFile)
+			}
 		}
 	}
 	if tek := entity.Status.TektonStatus; tek != nil {
@@ -455,8 +458,16 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 
 func ociArtifactToFiles(platform Platform, artifact OciArtifact) []BinArtifact {
 	var rt []BinArtifact
+	var sha256s = make(map[string]*OciFile)
 	for _, file := range artifact.Files {
-		rt = append(rt, BinArtifact{Platform: platform, OciFile: &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}})
+		if origin, isSha256 := strings.CutSuffix(file, ".sha256"); isSha256 {
+			sha256s[origin] = &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}
+		} else {
+			rt = append(rt, BinArtifact{Platform: platform, OciFile: &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}})
+		}
+	}
+	for idx := 0; idx < len(rt); idx += 1 {
+		rt[idx].Sha256OciFile = sha256s[rt[idx].OciFile.File]
 	}
 	return rt
 }
