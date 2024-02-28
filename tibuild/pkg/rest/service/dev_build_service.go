@@ -456,10 +456,6 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 func oras_to_files(platform Platform, oras OciArtifact) []BinArtifact {
 	var rt []BinArtifact
 	for _, file := range oras.Files {
-		if strings.HasSuffix(file, ".sha256") {
-			// ignore sha256 file
-			continue
-		}
 		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
 	}
 	return rt
