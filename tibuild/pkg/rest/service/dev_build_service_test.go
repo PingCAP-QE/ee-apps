@@ -274,7 +274,7 @@ func TestDevBuildGet(t *testing.T) {
 		Jenkins:          &mockedJenkins,
 		Now:              time.Now,
 		TektonViewURL:    "http://tekton.net",
-		OciFileserverURL: "http://orasdownload.net",
+		OciFileserverURL: "http://ocidownload.net",
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -285,13 +285,13 @@ func TestDevBuildGet(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "https://cd.pingcap.net//blue/organizations/jenkins/devbuild/detail/devbuild/4/pipeline", entity.Status.PipelineViewURL)
 	})
-	t.Run("render oras file", func(t *testing.T) {
+	t.Run("render oci file", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
-			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OrasFile: &OrasFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
+			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OciFile: &OciFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
-		require.Equal(t, "http://orasdownload.net/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
+		require.Equal(t, "http://ocidownload.net/repo?tag=tag&file=file", entity.Status.BuildReport.Binaries[0].URL)
 	})
 	t.Run("render tekton pipeline", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,

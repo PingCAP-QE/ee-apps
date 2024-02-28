@@ -339,8 +339,8 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 	}
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
-			if bin.URL == "" && bin.OrasFile != nil {
-				entity.Status.BuildReport.Binaries[i].URL = s.oras_to_file_url(*bin.OrasFile)
+			if bin.URL == "" && bin.OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
 			}
 		}
 	}
@@ -392,7 +392,7 @@ func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
 	for _, pipeline := range pipelines {
 		report.GitHash = pipeline.GitHash
 		for _, files := range pipeline.OciArtifacts {
-			report.Binaries = append(report.Binaries, oras_to_files(pipeline.Platform, files)...)
+			report.Binaries = append(report.Binaries, ociArtifactToFiles(pipeline.Platform, files)...)
 		}
 		for _, image := range pipeline.Images {
 			img := ImageArtifact{Platform: pipeline.Platform, URL: image.URL}
@@ -453,16 +453,16 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	return latest_endat
 }
 
-func oras_to_files(platform Platform, oras OciArtifact) []BinArtifact {
+func ociArtifactToFiles(platform Platform, artifact OciArtifact) []BinArtifact {
 	var rt []BinArtifact
-	for _, file := range oras.Files {
-		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
+	for _, file := range artifact.Files {
+		rt = append(rt, BinArtifact{Platform: platform, OciFile: &OciFile{Repo: artifact.Repo, Tag: artifact.Tag, File: file}})
 	}
 	return rt
 }
 
-func (s DevbuildServer) oras_to_file_url(oras OrasFile) string {
-	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, oras.Repo, oras.Tag, oras.File)
+func (s DevbuildServer) ociFileToUrl(artifact OciFile) string {
+	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, artifact.Repo, artifact.Tag, artifact.File)
 }
 
 type DevBuildRepository interface {

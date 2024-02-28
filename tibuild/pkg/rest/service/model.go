@@ -262,7 +262,7 @@ type TektonPipeline struct {
 	Platform        Platform        `json:"platform,omitempty"`
 	PipelineStartAt *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt   *time.Time      `json:"pipelineEndAt,omitempty"`
-	OciArtifacts    []OciArtifact   `json:"orasArtifacts,omitempty"`
+	OciArtifacts    []OciArtifact   `json:"ociArtifacts,omitempty"`
 	Images          []ImageArtifact `json:"images,omitempty"`
 }
 
@@ -296,14 +296,14 @@ var (
 )
 
 type BinArtifact struct {
-	Component string    `json:"component,omitempty"`
-	Platform  Platform  `json:"platform"`
-	URL       string    `json:"url"`
-	Sha256URL string    `json:"sha256URL"`
-	OrasFile  *OrasFile `json:"oras,omitempty"`
+	Component string   `json:"component,omitempty"`
+	Platform  Platform `json:"platform"`
+	URL       string   `json:"url"`
+	Sha256URL string   `json:"sha256URL"`
+	OciFile   *OciFile `json:"ociFile,omitempty"`
 }
 
-type OrasFile struct {
+type OciFile struct {
 	Repo string `json:"repo"`
 	Tag  string `json:"tag"`
 	File string `json:"file"`

@@ -325,8 +325,8 @@
                 "component": {
                     "type": "string"
                 },
-                "oras": {
-                    "$ref": "#/definitions/service.OrasFile"
+                "ociFile": {
+                    "$ref": "#/definitions/service.OciFile"
                 },
                 "platform": {
                     "type": "string"
@@ -558,7 +558,7 @@
                 }
             }
         },
-        "service.OrasFile": {
+        "service.OciFile": {
             "type": "object",
             "properties": {
                 "file": {
@@ -672,7 +672,7 @@
                 "name": {
                     "type": "string"
                 },
-                "orasArtifacts": {
+                "ociArtifacts": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.OciArtifact"
