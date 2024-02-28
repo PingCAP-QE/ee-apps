@@ -12,13 +12,13 @@ import (
 )
 
 type DevbuildServer struct {
-	Repo              DevBuildRepository
-	Jenkins           Jenkins
-	Tekton            BuildTrigger
-	Now               func() time.Time
-	GHClient          GHClient
-	TektonViewURL     string
-	OrasFileserverURL string
+	Repo             DevBuildRepository
+	Jenkins          Jenkins
+	Tekton           BuildTrigger
+	Now              func() time.Time
+	GHClient         GHClient
+	TektonViewURL    string
+	OciFileserverURL string
 }
 
 const jobname = "devbuild"
@@ -393,7 +393,7 @@ func computeTektonStatus(status *TektonStatus) {
 func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
 	for _, pipeline := range pipelines {
 		report.GitHash = pipeline.GitHash
-		for _, files := range pipeline.OrasArtifacts {
+		for _, files := range pipeline.OciArtifacts {
 			report.Binaries = append(report.Binaries, oras_to_files(pipeline.Platform, files)...)
 		}
 		for _, image := range pipeline.Images {
@@ -455,7 +455,7 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	return latest_endat
 }
 
-func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
+func oras_to_files(platform Platform, oras OciArtifact) []BinArtifact {
 	var rt []BinArtifact
 	for _, file := range oras.Files {
 		rt = append(rt, BinArtifact{Platform: platform, OrasFile: &OrasFile{Repo: oras.Repo, Tag: oras.Tag, File: file}})
@@ -464,7 +464,7 @@ func oras_to_files(platform Platform, oras OrasArtifact) []BinArtifact {
 }
 
 func (s DevbuildServer) oras_to_file_url(oras OrasFile) string {
-	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OrasFileserverURL, oras.Repo, oras.Tag, oras.File)
+	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, oras.Repo, oras.Tag, oras.File)
 }
 
 type DevBuildRepository interface {

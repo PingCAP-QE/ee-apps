@@ -20,7 +20,7 @@ func TestEventToDevbuildTekton(t *testing.T) {
 	pipeline, bid, err := eventToDevbuildTekton(ev)
 	require.NoError(t, err)
 	require.NotZero(t, bid)
-	require.Equal(t, 1, len(pipeline.OrasArtifacts))
+	require.Equal(t, 1, len(pipeline.OciArtifacts))
 	require.Equal(t, 1, len(pipeline.Images))
 	require.Equal(t, rest.LinuxArm64, pipeline.Platform)
 }

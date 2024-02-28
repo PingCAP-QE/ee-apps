@@ -94,11 +94,11 @@ func to_devbuild_pipeline(pipeline *tekton.PipelineRun) (*rest.TektonPipeline, e
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
 	return &rest.TektonPipeline{
-		Name:          pipeline.Name,
-		Platform:      parse_platform(pipeline),
-		GitHash:       parse_git_hash(pipeline),
-		OrasArtifacts: parse_oras_files(pipeline),
-		Images:        images,
+		Name:         pipeline.Name,
+		Platform:     parse_platform(pipeline),
+		GitHash:      parse_git_hash(pipeline),
+		OciArtifacts: parse_oras_files(pipeline),
+		Images:       images,
 	}, nil
 }
 
@@ -132,8 +132,8 @@ func parse_git_hash(pipeline *tekton.PipelineRun) string {
 	return ""
 }
 
-func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OrasArtifact {
-	var rt []rest.OrasArtifact
+func parse_oras_files(pipeline *tekton.PipelineRun) []rest.OciArtifact {
+	var rt []rest.OciArtifact
 	for _, r := range pipeline.Status.PipelineResults {
 		if r.Name == "pushed-binaries" {
 			v, err := parse_oras_file(r.Value.StringVal)
@@ -155,13 +155,13 @@ type TektonOrasStruct struct {
 	Files []string `json:"files"`
 }
 
-func parse_oras_file(text string) (*rest.OrasArtifact, error) {
+func parse_oras_file(text string) (*rest.OciArtifact, error) {
 	tekton_oras := TektonOrasStruct{}
 	err := yaml.Unmarshal([]byte(text), &tekton_oras)
 	if err != nil {
 		return nil, err
 	}
-	return &rest.OrasArtifact{
+	return &rest.OciArtifact{
 		Repo:  tekton_oras.OCI.Repo,
 		Tag:   tekton_oras.OCI.Tag,
 		Files: tekton_oras.Files,

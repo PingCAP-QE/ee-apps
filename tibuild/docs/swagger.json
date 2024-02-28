@@ -541,7 +541,7 @@
                 }
             }
         },
-        "service.OrasArtifact": {
+        "service.OciArtifact": {
             "type": "object",
             "properties": {
                 "files": {
@@ -675,7 +675,7 @@
                 "orasArtifacts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/service.OrasArtifact"
+                        "$ref": "#/definitions/service.OciArtifact"
                     }
                 },
                 "pipelineEndAt": {

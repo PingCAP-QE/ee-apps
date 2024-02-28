@@ -270,11 +270,11 @@ func TestDevBuildGet(t *testing.T) {
 	mockedRepo := mockRepo{}
 	mockedJenkins := mockJenkins{}
 	server := DevbuildServer{
-		Repo:              &mockedRepo,
-		Jenkins:           &mockedJenkins,
-		Now:               time.Now,
-		TektonViewURL:     "http://tekton.net",
-		OrasFileserverURL: "http://orasdownload.net",
+		Repo:             &mockedRepo,
+		Jenkins:          &mockedJenkins,
+		Now:              time.Now,
+		TektonViewURL:    "http://tekton.net",
+		OciFileserverURL: "http://orasdownload.net",
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -330,7 +330,7 @@ func TestMergeTektonStatus(t *testing.T) {
 				{Name: "p1", Platform: LinuxAmd64, Status: BuildStatusSuccess},
 				{Name: "p2", Platform: LinuxArm64, Status: BuildStatusProcessing},
 			}}}}
-		pipelinerun := TektonPipeline{Name: "p2", Platform: LinuxArm64, Status: BuildStatusSuccess, OrasArtifacts: []OrasArtifact{{Repo: "repo", Tag: "tag", Files: []string{"file1.tar.gz", "file2.tar.gz"}}}}
+		pipelinerun := TektonPipeline{Name: "p2", Platform: LinuxArm64, Status: BuildStatusSuccess, OciArtifacts: []OciArtifact{{Repo: "repo", Tag: "tag", Files: []string{"file1.tar.gz", "file2.tar.gz"}}}}
 		entity, err := server.MergeTektonStatus(context.TODO(), 1, pipelinerun, DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, BuildStatusSuccess, entity.Status.Status)
@@ -367,13 +367,13 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag2"}},
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		computeTektonStatus(status)
@@ -388,12 +388,12 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusProcessing, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		computeTektonStatus(status)
@@ -404,12 +404,12 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Tag: "latest", Files: []string{"a.tar.gz", "b.tar.gz"}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "latest", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:          []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
 				{Name: "pipelinerun2", Status: BuildStatusFailure, Platform: LinuxArm64,
 					PipelineStartAt: &starttime,
 					PipelineEndAt:   &endtime,
-					OrasArtifacts:   []OrasArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
+					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
 		computeTektonStatus(status)

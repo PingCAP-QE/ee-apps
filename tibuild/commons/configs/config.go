@@ -36,8 +36,8 @@ type ConfigYaml struct {
 		Endpoint string
 	}
 
-	TektonViewURL     string
-	OrasFileserverURL string
+	TektonViewURL    string
+	OciFileserverURL string
 }
 
 type RestApiSecret struct {

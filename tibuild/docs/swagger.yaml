@@ -154,7 +154,7 @@ definitions:
       target:
         type: string
     type: object
-  service.OrasArtifact:
+  service.OciArtifact:
     properties:
       files:
         items:
@@ -254,7 +254,7 @@ definitions:
         type: string
       orasArtifacts:
         items:
-          $ref: '#/definitions/service.OrasArtifact'
+          $ref: '#/definitions/service.OciArtifact'
         type: array
       pipelineEndAt:
         type: string

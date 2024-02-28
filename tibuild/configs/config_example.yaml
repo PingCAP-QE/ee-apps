@@ -26,4 +26,4 @@ cloudevent:
 
 tektonviewurl: "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
 
-orasfileserverurl: "https://internal.do.pingcap.net:30443/dl/oci-file"
+ocifileserverurl: "https://internal.do.pingcap.net:30443/dl/oci-file"
