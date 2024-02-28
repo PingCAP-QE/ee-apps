@@ -269,18 +269,10 @@ definitions:
     type: object
   service.TektonStatus:
     properties:
-      buildReport:
-        $ref: '#/definitions/service.BuildReport'
-      pipelineEndAt:
-        type: string
-      pipelineStartAt:
-        type: string
       pipelines:
         items:
           $ref: '#/definitions/service.TektonPipeline'
         type: array
-      status:
-        $ref: '#/definitions/service.BuildStatus'
     type: object
 info:
   contact: {}

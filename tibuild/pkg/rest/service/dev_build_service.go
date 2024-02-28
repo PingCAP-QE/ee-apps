@@ -44,7 +44,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		if err != nil {
 			return nil, err
 		}
-		req.Status.TektonStatus = &TektonStatus{Status: BuildStatusPending}
+		req.Status.TektonStatus = &TektonStatus{}
 	}
 	if option.DryRun {
 		req.ID = 1
@@ -359,34 +359,32 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	if obj.Status.TektonStatus == nil {
 		obj.Status.TektonStatus = &TektonStatus{}
 	}
-	status := obj.Status.TektonStatus
+	tekton := obj.Status.TektonStatus
 	name := pipeline.Name
 	index := -1
-	for i, p := range status.Pipelines {
+	for i, p := range tekton.Pipelines {
 		if p.Name == name {
 			index = i
 		}
 	}
 	if index >= 0 {
-		status.Pipelines[index] = pipeline
+		tekton.Pipelines[index] = pipeline
 	} else {
-		status.Pipelines = append(status.Pipelines, pipeline)
+		tekton.Pipelines = append(tekton.Pipelines, pipeline)
 	}
-	computeTektonStatus(status)
 	if obj.Spec.PipelineEngine == TektonEngine {
-		obj.Status.Status = obj.Status.TektonStatus.Status
-		obj.Status.BuildReport = obj.Status.TektonStatus.BuildReport
+		computeTektonStatus(tekton, &obj.Status)
 	}
 	return s.Update(ctx, id, *obj, options)
 }
 
-func computeTektonStatus(status *TektonStatus) {
+func computeTektonStatus(tekton *TektonStatus, status *DevBuildStatus) {
 	status.BuildReport = &BuildReport{}
-	collectTektonArtifacts(status.Pipelines, status.BuildReport)
-	status.PipelineStartAt = getTektonStartAt(status.Pipelines)
-	status.Status = computeTektonPhase(status.Pipelines)
+	collectTektonArtifacts(tekton.Pipelines, status.BuildReport)
+	status.PipelineStartAt = getTektonStartAt(tekton.Pipelines)
+	status.Status = computeTektonPhase(tekton.Pipelines)
 	if status.Status.IsCompleted() {
-		status.PipelineEndAt = getLatestEndAt(status.Pipelines)
+		status.PipelineEndAt = getLatestEndAt(tekton.Pipelines)
 	}
 }
 

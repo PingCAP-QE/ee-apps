@@ -251,11 +251,7 @@ type DevBuildStatus struct {
 }
 
 type TektonStatus struct {
-	Status          BuildStatus      `json:"status"`
-	PipelineStartAt *time.Time       `json:"pipelineStartAt,omitempty"`
-	PipelineEndAt   *time.Time       `json:"pipelineEndAt,omitempty"`
-	BuildReport     *BuildReport     `json:"buildReport,omitempty"`
-	Pipelines       []TektonPipeline `json:"pipelines"`
+	Pipelines []TektonPipeline `json:"pipelines"`
 }
 
 type TektonPipeline struct {
