@@ -136,12 +136,9 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 			ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
 				data.PipelineRun.Namespace, data.PipelineRun.Spec.PipelineRef.Name, data.PipelineRun.Name)
 		}
-
 		if results := data.PipelineRun.Status.PipelineResults; len(results) > 0 {
-			var parts []string
 			for _, r := range results {
-				parts = append(parts, fmt.Sprintf("%s:", r.Name), r.Value)
-				ret.Results = append(ret.Results, [2]string{r.Name, r.Value})
+				ret.Results = append(ret.Results, [2]string{r.Name, r.Value.StringVal})
 			}
 		}
 	case data.TaskRun != nil:
@@ -153,10 +150,8 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 		}
 
 		if results := data.TaskRun.Status.TaskRunResults; len(results) > 0 {
-			var parts []string
 			for _, r := range results {
 				v, _ := r.Value.MarshalJSON()
-				parts = append(parts, fmt.Sprintf("**%s**:", r.Name), string(v), "---")
 				ret.Results = append(ret.Results, [2]string{r.Name, string(v)})
 			}
 		}

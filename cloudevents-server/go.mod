@@ -11,9 +11,9 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.18
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.31.0
-	github.com/tektoncd/pipeline v0.37.2
+	github.com/tektoncd/pipeline v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.23.5
+	k8s.io/apimachinery v0.23.9
 )
 
 require (
@@ -95,7 +95,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	go.uber.org/zap v1.21.0 // indirect
+	go.uber.org/zap v1.22.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
@@ -118,12 +118,12 @@ require (
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.23.5 // indirect
-	k8s.io/client-go v0.23.5 // indirect
-	k8s.io/klog/v2 v2.60.1-0.20220317184644-43cc75f9ae89 // indirect
+	k8s.io/api v0.23.9 // indirect
+	k8s.io/client-go v0.23.9 // indirect
+	k8s.io/klog/v2 v2.70.2-0.20220707122935-0990e81f1a8f // indirect
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
-	knative.dev/pkg v0.0.0-20220329144915-0a1ec2e0d46c
+	knative.dev/pkg v0.0.0-20220805012121-7b8b06028e4f
 	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
