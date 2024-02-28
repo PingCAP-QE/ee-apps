@@ -1,3 +1,5 @@
 approvers:
   - purelind
   - wuhuizuo
+labels:
+  - area/change-insight
