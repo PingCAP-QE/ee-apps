@@ -1,25 +1,26 @@
 package tekton
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/rs/zerolog/log"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 )
 
 const (
-	eventContextAnnotationKey          = "tekton.dev/ce-context"
-	eventContextAnnotationInnerKeyUser = "user"
+	defaultReceiversKey = "*"
 )
 
 type pipelineRunHandler struct {
-	LarkClient       *lark.Client
-	RunDetailBaseURL string
-	Receivers        []string
+	config.Tekton
+	LarkClient *lark.Client
+}
+
+type AnnotationsGetter interface {
+	GetAnnotations() map[string]string
 }
 
 func (h *pipelineRunHandler) SupportEventTypes() []string {
@@ -42,28 +43,17 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 	case tektoncloudevent.PipelineRunStartedEventV1,
 		tektoncloudevent.PipelineRunFailedEventV1,
 		tektoncloudevent.PipelineRunSuccessfulEventV1:
-		receivers := h.Receivers
+		var receivers []string
+		// send notify to the trigger user if it's existed, else send to the receivers configurated by type.
 		if receiver := getTriggerUser(data.PipelineRun); receiver != "" {
-			receivers = append(receivers, receiver)
+			receivers = []string{receiver}
+		} else {
+			receivers = append(h.Receivers[defaultReceiversKey], h.Receivers[event.Type()]...)
 		}
 
-		return sendLarkMessages(h.LarkClient, receivers, event, h.RunDetailBaseURL)
+		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
 	default:
 		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
 		return cloudevents.ResultACK
 	}
-}
-
-func getTriggerUser(pr *v1beta1.PipelineRun) string {
-	eventContext := pr.Annotations[eventContextAnnotationKey]
-	if eventContext == "" {
-		return ""
-	}
-
-	contextData := make(map[string]string)
-	if err := json.Unmarshal([]byte(eventContext), &contextData); err != nil {
-		return ""
-	}
-
-	return contextData[eventContextAnnotationInnerKeyUser]
 }

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
@@ -45,9 +46,11 @@ func Test_taskRunHandler_Handle(t *testing.T) {
 	}
 
 	h := &taskRunHandler{
-		LarkClient:       lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
-		Receivers:        []string{receiver},
-		RunDetailBaseURL: baseURL,
+		LarkClient: lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
+		Tekton: config.Tekton{
+			Receivers:        map[string][]string{"*": {receiver}},
+			DashboardBaseURL: baseURL,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.name), func(t *testing.T) {
