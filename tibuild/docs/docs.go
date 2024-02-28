@@ -690,7 +690,7 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "orasArtifacts": {
+                "ociArtifacts": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.OciArtifact"
