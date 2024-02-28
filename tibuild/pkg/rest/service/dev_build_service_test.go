@@ -363,7 +363,7 @@ func TestTektonStatusMerge(t *testing.T) {
 	endtime := time.Unix(20, 0)
 
 	t.Run("success", func(t *testing.T) {
-		status := &TektonStatus{
+		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
@@ -376,7 +376,8 @@ func TestTektonStatusMerge(t *testing.T) {
 					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		computeTektonStatus(status)
+		status := &DevBuildStatus{TektonStatus: tekton}
+		computeTektonStatus(tekton, status)
 		require.Equal(t, BuildStatusSuccess, status.Status)
 		require.Equal(t, endtime.Sub(starttime), status.PipelineEndAt.Sub(*status.PipelineStartAt))
 		require.Equal(t, 2, len(status.BuildReport.Images))
@@ -384,7 +385,7 @@ func TestTektonStatusMerge(t *testing.T) {
 	})
 
 	t.Run("processing", func(t *testing.T) {
-		status := &TektonStatus{
+		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
@@ -396,11 +397,12 @@ func TestTektonStatusMerge(t *testing.T) {
 					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		computeTektonStatus(status)
+		status := &DevBuildStatus{TektonStatus: tekton}
+		computeTektonStatus(tekton, status)
 		require.Equal(t, BuildStatusProcessing, status.Status)
 	})
 	t.Run("processing", func(t *testing.T) {
-		status := &TektonStatus{
+		tekton := &TektonStatus{
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					PipelineStartAt: &starttime,
@@ -412,7 +414,8 @@ func TestTektonStatusMerge(t *testing.T) {
 					OciArtifacts:    []OciArtifact{{Repo: "harbor.net/org/repo", Files: []string{"c.tar.gz", "d.tar.gz"}}}},
 			},
 		}
-		computeTektonStatus(status)
+		status := &DevBuildStatus{TektonStatus: tekton}
+		computeTektonStatus(tekton, status)
 		require.Equal(t, BuildStatusFailure, status.Status)
 	})
 
