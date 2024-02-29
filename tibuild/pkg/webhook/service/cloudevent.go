@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -93,14 +94,21 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 	if err != nil {
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
+	var startAt, endAt *time.Time
+	if pipeline.Status.StartTime != nil {
+		startAt = &pipeline.Status.StartTime.Time
+	}
+	if pipeline.Status.CompletionTime != nil {
+		endAt = &pipeline.Status.CompletionTime.Time
+	}
 	return &rest.TektonPipeline{
 		Name:         pipeline.Name,
 		Platform:     parsePlatform(pipeline),
 		GitHash:      parseGitHash(pipeline),
 		OciArtifacts: convertOciArtifacts(pipeline),
 		Images:       images,
-		StartAt:      &pipeline.Status.StartTime.Time,
-		EndAt:        &pipeline.Status.CompletionTime.Time,
+		StartAt:      startAt,
+		EndAt:        endAt,
 	}, nil
 }
 
