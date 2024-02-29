@@ -2,6 +2,7 @@ package tekton
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -50,6 +51,11 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		} else {
 			receivers = append(h.Receivers[defaultReceiversKey], h.Receivers[event.Type()]...)
 		}
+
+		log.Debug().
+			Str("ce-type", event.Type()).
+			Str("receivers", strings.Join(receivers, ",")).
+			Msg("send notification for the event type.")
 
 		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
 	default:
