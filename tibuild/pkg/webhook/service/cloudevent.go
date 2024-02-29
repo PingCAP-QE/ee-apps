@@ -28,9 +28,9 @@ func NewDevBuildCEServer(ds rest.DevBuildService) DevBuildCEServer {
 }
 
 func (s DevBuildCEServer) Handle(event cloudevents.Event) {
-	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+	if slog.Default().Enabled(context.Background(), slog.LevelInfo) {
 		eventjson, _ := event.MarshalJSON()
-		slog.Debug("received event", "ev", string(eventjson))
+		slog.Info("received event", "ev", string(eventjson))
 	}
 	pipeline, bid, err := eventToDevbuildTekton(event)
 	if err != nil {
@@ -38,7 +38,7 @@ func (s DevBuildCEServer) Handle(event cloudevents.Event) {
 		return
 	}
 	if bid == 0 {
-		slog.Error("parse tekton event failed", "error", err.Error())
+		slog.Error("parse tekton event devbuild id failed")
 		return
 	}
 	_, err = s.ds.MergeTektonStatus(context.TODO(), bid, *pipeline, rest.DevBuildSaveOption{})
