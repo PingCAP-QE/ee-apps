@@ -137,6 +137,10 @@ definitions:
         type: string
       pipelineViewURL:
         type: string
+      pipelineViewURLs:
+        items:
+          type: string
+        type: array
       status:
         $ref: '#/definitions/service.BuildStatus'
       tektonStatus:
