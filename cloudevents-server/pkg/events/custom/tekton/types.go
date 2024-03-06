@@ -13,6 +13,7 @@ type cardMessageInfos struct {
 	StartTime     string
 	EndTime       string
 	TimeCost      string
+	Params        [][2]string // key-value pairs.
 	Results       [][2]string // Key-Value pairs.
 }
 
