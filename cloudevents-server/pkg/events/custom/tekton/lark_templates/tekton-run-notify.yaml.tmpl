@@ -21,6 +21,17 @@ elements:
           tag: lark_md
           content: "⏱️ **Time cost:**\t{{ . }}"
       {{- end }}
+
+  {{- with .Params }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Params:**
+      {{- range . }}
+      - **{{ index . 0 }}:** {{ index . 1 }}
+      {{- end }}
+  {{- end }}
+
   {{- with .Results }}
   - tag: hr
   - tag: markdown
@@ -33,6 +44,7 @@ elements:
       ```
       {{- end }}
   {{- end }}
+
   {{- with .RerunURL }}
   - tag: hr
   - tag: markdown
@@ -43,6 +55,8 @@ elements:
       {{ . }}
       ```
   {{- end }}
+
+  - tag: hr
   - tag: action
     actions:
       - tag: button

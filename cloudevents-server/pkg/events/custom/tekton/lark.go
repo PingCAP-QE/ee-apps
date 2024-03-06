@@ -132,6 +132,10 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 	case data.PipelineRun != nil:
 		startTime = data.PipelineRun.Status.StartTime
 		endTime = data.PipelineRun.Status.CompletionTime
+		for _, p := range data.PipelineRun.Spec.Params {
+			v, _ := p.Value.MarshalJSON()
+			ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
+		}
 		if data.PipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
 			ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
 				data.PipelineRun.Namespace, data.PipelineRun.Spec.PipelineRef.Name, data.PipelineRun.Name)
@@ -142,6 +146,10 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 			}
 		}
 	case data.TaskRun != nil:
+		for _, p := range data.TaskRun.Spec.Params {
+			v, _ := p.Value.MarshalJSON()
+			ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
+		}
 		startTime = data.TaskRun.Status.StartTime
 		endTime = data.TaskRun.Status.CompletionTime
 		if data.TaskRun.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
@@ -158,7 +166,10 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 	case data.Run != nil:
 		startTime = data.Run.Status.StartTime
 		endTime = data.Run.Status.CompletionTime
-
+		for _, p := range data.Run.Spec.Params {
+			v, _ := p.Value.MarshalJSON()
+			ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
+		}
 		if results := data.Run.Status.Results; len(results) > 0 {
 			var parts []string
 			for _, r := range results {
