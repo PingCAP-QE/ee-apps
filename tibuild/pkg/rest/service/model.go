@@ -241,6 +241,7 @@ type DevBuildStatus struct {
 	Status           BuildStatus     `json:"status" gorm:"type:varchar(16)"`
 	PipelineBuildID  int64           `json:"pipelineBuildID,omitempty"`
 	PipelineViewURL  string          `json:"pipelineViewURL,omitempty" gorm:"-"`
+	PipelineViewURLs []string        `json:"pipelineViewURLs,omitempty" gorm:"-"`
 	ErrMsg           string          `json:"errMsg,omitempty" gorm:"type:varchar(256)"`
 	PipelineStartAt  *time.Time      `json:"pipelineStartAt,omitempty"`
 	PipelineEndAt    *time.Time      `json:"pipelineEndAt,omitempty"`

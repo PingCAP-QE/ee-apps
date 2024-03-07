@@ -336,6 +336,7 @@ func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, 
 func (s DevbuildServer) inflate(entity *DevBuild) {
 	if entity.Status.PipelineBuildID != 0 {
 		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(jobname, entity.Status.PipelineBuildID)
+		entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, entity.Status.PipelineViewURL)
 	}
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
@@ -348,8 +349,8 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 		}
 	}
 	if tek := entity.Status.TektonStatus; tek != nil {
-		for i, p := range tek.Pipelines {
-			tek.Pipelines[i].URL = fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name)
+		for _, p := range tek.Pipelines {
+			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
 		}
 	}
 }

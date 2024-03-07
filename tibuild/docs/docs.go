@@ -526,6 +526,12 @@ const docTemplate = `{
                 "pipelineViewURL": {
                     "type": "string"
                 },
+                "pipelineViewURLs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "status": {
                     "$ref": "#/definitions/service.BuildStatus"
                 },
