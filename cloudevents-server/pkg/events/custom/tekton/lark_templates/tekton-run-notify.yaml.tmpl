@@ -32,6 +32,29 @@ elements:
       {{- end }}
   {{- end }}
 
+  {{- with .FailedTasks }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Failed tasks:**
+      {{- range $t, $ss := . }}
+      - {{ $t }}:
+      {{- range $ss }}
+        1. {{ index . 0 }}: {{ index . 1 }}
+      {{- end }}
+      {{- end }}
+  {{- end }}
+
+  {{- with .StepStatuses }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Steps:**
+      {{- range . }}
+      1. {{ index . 0 }}: {{ index . 1 }}
+      {{- end }}
+  {{- end }}
+
   {{- with .Results }}
   - tag: hr
   - tag: markdown

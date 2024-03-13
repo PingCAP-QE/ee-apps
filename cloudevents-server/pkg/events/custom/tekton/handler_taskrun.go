@@ -8,6 +8,7 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/rs/zerolog/log"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 )
 
@@ -34,6 +35,11 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 
 	switch event.Type() {
 	case string(tektoncloudevent.TaskRunFailedEventV1):
+		// Skip notify the taskrun when it created by a pipelineRun.
+		if data.TaskRun.Labels[pipeline.PipelineRunLabelKey] != "" {
+			break
+		}
+
 		var receivers []string
 		// send notify to the trigger user if it's existed, else send to the receivers configurated by type.
 		if receiver := getTriggerUser(data.TaskRun); receiver != "" {
@@ -48,8 +54,11 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 			Msg("send notification for the event type.")
 
 		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
-	default:
-		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
-		return cloudevents.ResultACK
 	}
+
+	log.Debug().
+		Str("handler", "taskRunHandler").
+		Str("ce-type", event.Type()).
+		Msg("skip notifing for the event type.")
+	return cloudevents.ResultACK
 }

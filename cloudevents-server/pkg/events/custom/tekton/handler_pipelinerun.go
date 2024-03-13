@@ -59,7 +59,10 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 
 		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
 	default:
-		log.Debug().Str("ce-type", event.Type()).Msg("skip notifing for the event type.")
+		log.Debug().
+			Str("handler", "pipelineRunHandler").
+			Str("ce-type", event.Type()).
+			Msg("skip notifing for the event type.")
 		return cloudevents.ResultACK
 	}
 }
