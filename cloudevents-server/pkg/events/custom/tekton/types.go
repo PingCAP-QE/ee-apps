@@ -13,8 +13,10 @@ type cardMessageInfos struct {
 	StartTime     string
 	EndTime       string
 	TimeCost      string
-	Params        [][2]string // key-value pairs.
-	Results       [][2]string // Key-Value pairs.
+	Params        [][2]string            // key-value pairs.
+	Results       [][2]string            // Key-Value pairs.
+	StepStatuses  [][2]string            // name-status pairs.
+	FailedTasks   map[string][][2]string // task id => step statuses.
 }
 
 var larkCardHeaderTemplates = map[tektoncloudevent.TektonEventType]string{
