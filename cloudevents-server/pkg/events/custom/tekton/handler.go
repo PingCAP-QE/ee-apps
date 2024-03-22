@@ -168,6 +168,9 @@ func getStepStatuses(status *v1beta1.TaskRunStatus) [][2]string {
 	for _, s := range status.Steps {
 		if s.Terminated != nil {
 			ret = append(ret, [2]string{s.Name, s.Terminated.Reason})
+			if s.Terminated.Reason != "Completed" {
+				break
+			}
 		}
 	}
 
