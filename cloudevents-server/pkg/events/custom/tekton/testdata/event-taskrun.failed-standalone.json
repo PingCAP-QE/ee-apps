@@ -1,0 +1,367 @@
+{
+    "specversion": "1.0",
+    "id": "7c799f3b-af55-4006-8ac6-b63b15d7ec18",
+    "source": "/apis///namespaces/ee-cd//task-run-standalone-12345",
+    "type": "dev.tekton.event.taskrun.failed.v1",
+    "subject": "fake-task-run-standalone-12345",
+    "datacontenttype": "application/json",
+    "time": "2023-12-07T06:33:29.885017352Z",
+    "data": {
+        "taskRun": {
+            "metadata": {
+                "name": "task-run-standalone-12345",
+                "namespace": "ee-cd",
+                "uid": "3e51f558-f6c4-4edb-9500-d6565d372649",
+                "resourceVersion": "2432973111",
+                "generation": 1,
+                "creationTimestamp": "2023-12-07T06:30:14Z",
+                "labels": {
+                    "app.kubernetes.io/managed-by": "tekton-pipelines",
+                    "app.kubernetes.io/version": "0.1",
+                    "kustomize.toolkit.fluxcd.io/name": "tekton-configs",
+                    "kustomize.toolkit.fluxcd.io/namespace": "apps",
+                    "tekton.dev/memberOf": "tasks",
+                    "tekton.dev/task": "pingcap-build-binaries",
+                    "triggers.tekton.dev/eventlistener": "trigger-groups-listener",
+                    "triggers.tekton.dev/trigger": "tag-create-tikv-tikv",
+                    "triggers.tekton.dev/triggers-eventid": "266f823d-5a57-4dae-9cf2-729580ed94fe"
+                },
+                "annotations": {
+                    "pipeline.tekton.dev/release": "19940f2",
+                    "results.tekton.dev/record": "ee-cd/results/266f823d-5a57-4dae-9cf2-729580ed94fe/records/e4821549-eddb-4c78-a686-519c6f173a06",
+                    "results.tekton.dev/result": "ee-cd/results/266f823d-5a57-4dae-9cf2-729580ed94fe",
+                    "tekton.dev/git-repo": "https://github.com/tikv/tikv.git",
+                    "tekton.dev/git-revision": "v6.5.6",
+                    "tekton.dev/git-status": "true",
+                    "tekton.dev/platforms": "linux/amd64",
+                    "tekton.dev/status-target-url": "https://tekton.abc.com/#/namespaces/{{ .Namespace }}/pipelineruns/{{ .Name }}"
+                },
+                "ownerReferences": [
+                    {
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "kind": "PipelineRun",
+                        "name": "build-package-tikv-tikv-linux-9bn55",
+                        "uid": "e4821549-eddb-4c78-a686-519c6f173a06",
+                        "controller": true,
+                        "blockOwnerDeletion": true
+                    }
+                ],
+                "managedFields": [
+                    {
+                        "manager": "Go-http-client",
+                        "operation": "Update",
+                        "apiVersion": "tekton.dev/v1beta1",
+                        "time": "2023-12-07T06:30:22Z",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:annotations": {
+                                    ".": {},
+                                    "f:pipeline.tekton.dev/release": {},
+                                    "f:results.tekton.dev/record": {},
+                                    "f:results.tekton.dev/result": {},
+                                    "f:tekton.dev/git-repo": {},
+                                    "f:tekton.dev/git-revision": {},
+                                    "f:tekton.dev/git-status": {},
+                                    "f:tekton.dev/platforms": {},
+                                    "f:tekton.dev/status-target-url": {}
+                                },
+                                "f:labels": {
+                                    ".": {},
+                                    "f:app.kubernetes.io/version": {},
+                                    "f:kustomize.toolkit.fluxcd.io/name": {},
+                                    "f:kustomize.toolkit.fluxcd.io/namespace": {},
+                                    "f:tekton.dev/memberOf": {},
+                                    "f:tekton.dev/task": {},
+                                    "f:triggers.tekton.dev/eventlistener": {},
+                                    "f:triggers.tekton.dev/trigger": {},
+                                    "f:triggers.tekton.dev/triggers-eventid": {}
+                                },
+                                "f:ownerReferences": {
+                                    ".": {},
+                                    "k:{\"uid\":\"e4821549-eddb-4c78-a686-519c6f173a06\"}": {
+                                        ".": {},
+                                        "f:apiVersion": {},
+                                        "f:blockOwnerDeletion": {},
+                                        "f:controller": {},
+                                        "f:kind": {},
+                                        "f:name": {},
+                                        "f:uid": {}
+                                    }
+                                }
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:params": {},
+                                "f:podTemplate": {
+                                    ".": {},
+                                    "f:nodeSelector": {
+                                        ".": {},
+                                        "f:kubernetes.io/arch": {}
+                                    }
+                                },
+                                "f:resources": {},
+                                "f:serviceAccountName": {},
+                                "f:taskRef": {
+                                    ".": {},
+                                    "f:kind": {},
+                                    "f:name": {}
+                                },
+                                "f:timeout": {},
+                                "f:workspaces": {}
+                            },
+                            "f:status": {
+                                ".": {},
+                                "f:conditions": {},
+                                "f:podName": {},
+                                "f:startTime": {},
+                                "f:steps": {},
+                                "f:taskSpec": {
+                                    ".": {},
+                                    "f:description": {},
+                                    "f:params": {},
+                                    "f:results": {},
+                                    "f:steps": {},
+                                    "f:workspaces": {}
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "spec": {
+                "params": [
+                    {
+                        "name": "os",
+                        "value": "linux"
+                    },
+                    {
+                        "name": "arch",
+                        "value": "amd64"
+                    },
+                    {
+                        "name": "profile",
+                        "value": "release"
+                    },
+                    {
+                        "name": "component",
+                        "value": "tikv"
+                    },
+                    {
+                        "name": "version",
+                        "value": "v6.5.6"
+                    },
+                    {
+                        "name": "git-ref",
+                        "value": "v6.5.6"
+                    },
+                    {
+                        "name": "git-sha",
+                        "value": "v6.5.6"
+                    },
+                    {
+                        "name": "builder-image",
+                        "value": "ghcr.io/pingcap-qe/cd/builders/tikv:v20231116-e1c4b43"
+                    },
+                    {
+                        "name": "release-dir",
+                        "value": "build"
+                    },
+                    {
+                        "name": "push",
+                        "value": "true"
+                    }
+                ],
+                "resources": {},
+                "serviceAccountName": "default",
+                "taskRef": {
+                    "name": "pingcap-build-binaries",
+                    "kind": "Task"
+                },
+                "timeout": "1h58m22.827501242s",
+                "podTemplate": {
+                    "nodeSelector": {
+                        "kubernetes.io/arch": "amd64"
+                    },
+                    "tolerations": [
+                        {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "test-infra",
+                            "effect": "NoSchedule"
+                        }
+                    ]
+                },
+                "workspaces": [
+                    {
+                        "name": "source",
+                        "persistentVolumeClaim": {
+                            "claimName": "pvc-78509dfaf5"
+                        }
+                    },
+                    {
+                        "name": "dockerconfig",
+                        "secret": {
+                            "secretName": "hub-pingcap-net-ee"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Succeeded",
+                        "status": "False",
+                        "lastTransitionTime": "2023-12-07T06:33:29Z",
+                        "reason": "Failed",
+                        "message": "\"step-build\" exited with code 1 (image: \"ghcr.io/pingcap-qe/cd/builders/tikv@sha256:a6cda05e45e34c8409c6c04b953e317a7ec5e63c1224dc5101d38293964e5463\"); for logs run: kubectl -n ee-cd logs build-package-tikv-tikv-linux-9bn55-build-binaries-pod -c step-build\n"
+                    }
+                ],
+                "podName": "build-package-tikv-tikv-linux-9bn55-build-binaries-pod",
+                "startTime": "2023-12-07T06:30:15Z",
+                "completionTime": "2023-12-07T06:33:29Z",
+                "steps": [
+                    {
+                        "terminated": {
+                            "exitCode": 0,
+                            "reason": "Completed",
+                            "startedAt": "2023-12-07T06:30:25Z",
+                            "finishedAt": "2023-12-07T06:30:27Z",
+                            "containerID": "containerd://c15662e5fb7e6b14629ee9b7d47d878c171af259e0422d8e14dc76181ee121ce"
+                        },
+                        "name": "generate-build-script",
+                        "container": "step-generate-build-script",
+                        "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
+                    },
+                    {
+                        "terminated": {
+                            "exitCode": 1,
+                            "reason": "Error",
+                            "startedAt": "2023-12-07T06:33:27Z",
+                            "finishedAt": "2023-12-07T06:33:27Z",
+                            "containerID": "containerd://e0f4269f20acca1d9d25b67bd4148cd4d18af54d65d1e7b97e70788d7774de7c"
+                        },
+                        "name": "build",
+                        "container": "step-build",
+                        "imageID": "ghcr.io/pingcap-qe/cd/builders/tikv@sha256:a6cda05e45e34c8409c6c04b953e317a7ec5e63c1224dc5101d38293964e5463"
+                    },
+                    {
+                        "terminated": {
+                            "exitCode": 1,
+                            "reason": "Error",
+                            "startedAt": "2023-12-07T06:33:27Z",
+                            "finishedAt": "2023-12-07T06:33:27Z",
+                            "containerID": "containerd://d661b3cd78be75248e52de53e36b865c40cd37e8348924f429f5c824624ac0b5"
+                        },
+                        "name": "publish",
+                        "container": "step-publish",
+                        "imageID": "ghcr.io/pingcap-qe/cd/utils/release@sha256:a3819b92f2c78836bbe2f734e5ece968ed966717f735531d10fafad8d1f0ff89"
+                    }
+                ],
+                "taskSpec": {
+                    "params": [
+                        {
+                            "name": "component",
+                            "type": "string"
+                        },
+                        {
+                            "name": "os",
+                            "type": "string",
+                            "default": "linux"
+                        },
+                        {
+                            "name": "arch",
+                            "type": "string",
+                            "default": "amd64"
+                        },
+                        {
+                            "name": "version",
+                            "type": "string",
+                            "description": "the version to releasing."
+                        },
+                        {
+                            "name": "profile",
+                            "type": "string",
+                            "description": "supports: 'release' or 'debug'.\n",
+                            "default": "release"
+                        },
+                        {
+                            "name": "git-ref",
+                            "type": "string"
+                        },
+                        {
+                            "name": "git-sha",
+                            "type": "string"
+                        },
+                        {
+                            "name": "builder-image",
+                            "type": "string",
+                            "default": "ghcr.io/pingcap-qe/cd/utils/release:5d33328"
+                        },
+                        {
+                            "name": "release-dir",
+                            "type": "string",
+                            "default": "build"
+                        },
+                        {
+                            "name": "push",
+                            "type": "string",
+                            "default": "false"
+                        },
+                        {
+                            "name": "mac-builder-resource",
+                            "type": "string",
+                            "default": ""
+                        }
+                    ],
+                    "description": "Build binaries for the component.",
+                    "steps": [
+                        {
+                            "name": "generate-build-script",
+                            "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
+                            "resources": {},
+                            "script": "git clone --depth=1 --branch=main https://github.com/PingCAP-QE/artifacts.git /workspace/artifacts\n\ngit_ref=\"v6.5.6\"\ngit_sha=\"v6.5.6\"\nif [ \"$git_sha\" == \"$git_ref\" ]; then\n  git_sha=\"\"\nfi\n\nout_script=\"/workspace/build-package-artifacts.sh\"\n/workspace/artifacts/packages/scripts/gen-package-artifacts-with-config.sh \\\n  tikv \\\n  linux \\\n  amd64 \\\n  v6.5.6 \\\n  release \\\n  $git_ref \\\n  \"$git_sha\" \\\n  /workspace/artifacts/packages/packages.yaml.tmpl \\\n  \"$out_script\"\n\nif [ -f \"$out_script\" ]; then\n  cat \"$out_script\"\nfi\n"
+                        },
+                        {
+                            "name": "build",
+                            "image": "ghcr.io/pingcap-qe/cd/builders/tikv:v20231116-e1c4b43",
+                            "workingDir": "$(workspaces.source.path)",
+                            "resources": {},
+                            "script": "/workspace/build-package-artifacts.sh -b -a -w \"build\"\n"
+                        },
+                        {
+                            "name": "publish",
+                            "image": "ghcr.io/pingcap-qe/cd/utils/release:5d33328",
+                            "workingDir": "$(workspaces.source.path)",
+                            "resources": {},
+                            "script": "script=\"/workspace/build-package-artifacts.sh\"\nif [ ! -f \"$script\" ]; then\n  echo \"No build script, skip build.\"\n  exit 0\nfi\n\noras version\n\"$script\" -p -w \"build\"\n"
+                        }
+                    ],
+                    "workspaces": [
+                        {
+                            "name": "source"
+                        },
+                        {
+                            "name": "dockerconfig",
+                            "description": "Includes a docker `config.json`",
+                            "mountPath": "/root/.docker",
+                            "optional": true
+                        },
+                        {
+                            "name": "ssh-directory",
+                            "description": "ssh credential for remote building on mac.",
+                            "optional": true
+                        }
+                    ],
+                    "results": [
+                        {
+                            "name": "package-artifacts",
+                            "type": "string",
+                            "description": "The package artifacts"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

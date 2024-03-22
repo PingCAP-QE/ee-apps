@@ -9,9 +9,15 @@ tibuild:
   trigger_sink_url: http://el-xxx.tekton.url:8080 # url of tekton event listener.
 tekton:
   dashboard_base_url: https://tekton.local.com/dashboard-path
-  receivers:
-    "*": [all-level-receiver]
-    dev.tekton.event.pipelinerun.started.v1: [started-receiver]
-    dev.tekton.event.pipelinerun.running.v1: [running-receiver]
-    dev.tekton.event.pipelinerun.successful.v1: [successful-receiver]
-    dev.tekton.event.pipelinerun.failed.v1: [failure-receiver]
+  notifications:
+    - event_type: ".*"
+      receivers: [all-level-receiver]
+    - event_type: dev.tekton.event.pipelinerun.started.v1
+      receivers: [started-receiver]
+    - event_type: dev.tekton.event.pipelinerun.running.v1
+      receivers: [running-receiver]
+    - event_type: dev.tekton.event.pipelinerun.successful.v1
+      receivers: [successful-receiver]
+    - event_type: dev.tekton.event.pipelinerun.failed.v1
+      event_subject_reg: ^xxx-from-.*
+      receivers: [failure-receiver]

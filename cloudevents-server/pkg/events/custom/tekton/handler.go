@@ -12,6 +12,7 @@ import (
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"knative.dev/pkg/apis"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
@@ -44,6 +45,20 @@ func getTriggerUser(run AnnotationsGetter) string {
 	}
 
 	return contextData[eventContextAnnotationInnerKeyUser]
+}
+
+func getReceivers(event cloudevents.Event, cfgs []config.TektonNotification) []string {
+	eventType := event.Type()
+	eventSub := event.Subject()
+
+	ret := sets.NewString()
+	for _, cfg := range cfgs {
+		if cfg.IsMatched(eventType, eventSub) {
+			ret.Insert(cfg.Receivers...)
+		}
+	}
+
+	return ret.List()
 }
 
 // <dashboard base url>/#/namespaces/<namespace>/<run-type>s/<run-name>

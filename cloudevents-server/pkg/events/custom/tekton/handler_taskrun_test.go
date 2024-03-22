@@ -25,6 +25,8 @@ var (
 	taskRunSuccessfulEventBytes []byte
 	//go:embed testdata/event-taskrun.unknown.json
 	taskRunUnknownEventBytes []byte
+	//go:embed testdata/event-taskrun.failed-standalone.json
+	standaloneTaskRunFailedEventBytes []byte
 )
 
 func Test_taskRunHandler_Handle(t *testing.T) {
@@ -43,12 +45,16 @@ func Test_taskRunHandler_Handle(t *testing.T) {
 		{name: tektoncloudevent.TaskRunStartedEventV1, eventJSON: taskRunStartedEventBytes, want: cloudevents.ResultACK},
 		{name: tektoncloudevent.TaskRunSuccessfulEventV1, eventJSON: taskRunSuccessfulEventBytes, want: cloudevents.ResultACK},
 		{name: tektoncloudevent.TaskRunUnknownEventV1, eventJSON: taskRunUnknownEventBytes, want: cloudevents.ResultACK},
+		{name: "standalone-taskrun-failed", eventJSON: standaloneTaskRunFailedEventBytes, want: cloudevents.ResultACK},
 	}
 
 	h := &taskRunHandler{
 		LarkClient: lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
 		Tekton: config.Tekton{
-			Receivers:        map[string][]string{"*": {receiver}},
+			Notifications: []config.TektonNotification{
+				{Receivers: []string{receiver}},
+				{Receivers: []string{receiver}, EventSubjectReg: "^fake-task-run-standalone-"},
+			},
 			DashboardBaseURL: baseURL,
 		},
 	}

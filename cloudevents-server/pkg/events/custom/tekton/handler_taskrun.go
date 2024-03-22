@@ -45,7 +45,7 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 		if receiver := getTriggerUser(data.TaskRun); receiver != "" {
 			receivers = []string{receiver}
 		} else {
-			receivers = append(h.Receivers[defaultReceiversKey], h.Receivers[event.Type()]...)
+			receivers = getReceivers(event, h.Notifications)
 		}
 
 		log.Debug().

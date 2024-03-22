@@ -49,7 +49,7 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		if receiver := getTriggerUser(data.PipelineRun); receiver != "" {
 			receivers = []string{receiver}
 		} else {
-			receivers = append(h.Receivers[defaultReceiversKey], h.Receivers[event.Type()]...)
+			receivers = getReceivers(event, h.Notifications)
 		}
 
 		log.Debug().
