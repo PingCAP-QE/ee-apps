@@ -53,7 +53,7 @@ func Test_pipelineRunHandler_Handle(t *testing.T) {
 	h := &pipelineRunHandler{
 		LarkClient: lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
 		Tekton: config.Tekton{
-			Receivers:        map[string][]string{"*": {receiver}},
+			Notifications:    []config.TektonNotification{{Receivers: []string{receiver}}},
 			DashboardBaseURL: baseURL,
 		},
 	}
