@@ -3,11 +3,15 @@ package tekton
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	larksdk "github.com/larksuite/oapi-sdk-go/v3"
+	"github.com/rs/zerolog/log"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
@@ -62,10 +66,10 @@ func getReceivers(event cloudevents.Event, cfgs []config.TektonNotification) []s
 }
 
 // <dashboard base url>/#/namespaces/<namespace>/<run-type>s/<run-name>
-// source: /apis///namespaces/<namespace>//<run-name>
+// source: /apis/namespaces/<namespace>/<run-name>
 // https://tekton.abc.com/tekton/apis/tekton.dev/v1beta1/namespaces/ee-cd/pipelineruns/auto-compose-multi-arch-image-run-g5hqv
 //
-//	"source": "/apis///namespaces/ee-cd//build-package-tikv-tikv-linux-9bn55-build-binaries",
+//	"source": "/apis/namespaces/ee-cd/build-package-tikv-tikv-linux-9bn55-build-binaries",
 func newDetailURL(etype, source, baseURL string) string {
 	words := strings.Split(source, "/")
 	runName := words[len(words)-1]
@@ -79,7 +83,7 @@ func newDetailURL(etype, source, baseURL string) string {
 	return fmt.Sprintf("%s/#/namespaces/%s/%s/%s", baseURL, runNamespace, runType, runName)
 }
 
-func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMessageInfos, error) {
+func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogLines int) (*cardMessageInfos, error) {
 	var data tektoncloudevent.TektonCloudEventData
 	if err := event.DataAs(&data); err != nil {
 		return nil, err
@@ -95,12 +99,21 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string) (*cardMe
 	case data.PipelineRun != nil:
 		fillInfosWithPipelineRun(data.PipelineRun, &ret)
 		if event.Type() == string(tektoncloudevent.PipelineRunFailedEventV1) {
-			ret.FailedTasks = getFailedTasks(data.PipelineRun)
+			namespace := data.PipelineRun.Namespace
+			ret.FailedTasks = getFailedTasks(data.PipelineRun, func(podName, containerName string) string {
+				logs, _ := getStepLog(baseURL, namespace, podName, containerName, tailLogLines)
+				return logs
+			})
 		}
 	case data.TaskRun != nil:
 		fillInfosWithTaskRun(data.TaskRun, &ret)
 		if event.Type() == string(tektoncloudevent.TaskRunFailedEventV1) {
-			ret.StepStatuses = getStepStatuses(&data.TaskRun.Status)
+			namespace := data.TaskRun.Namespace
+			ret.StepStatuses = getStepStatuses(&data.TaskRun.Status, func(podName, containerName string) string {
+				logs, _ := getStepLog(baseURL, namespace, podName, containerName, tailLogLines)
+				log.Debug().Msg(logs)
+				return logs
+			})
 		}
 	case data.Run != nil:
 		fillInfosWithCustomRun(data.Run, &ret)
@@ -143,8 +156,6 @@ func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) {
 			ret.Results = append(ret.Results, [2]string{r.Name, string(v)})
 		}
 	}
-
-	getStepStatuses(&data.Status)
 }
 
 func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) {
@@ -166,30 +177,51 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 
 }
 
-func getFailedTasks(data *v1beta1.PipelineRun) map[string][][2]string {
-	ret := make(map[string][][2]string)
+func getFailedTasks(data *v1beta1.PipelineRun, logGetter func(podName, containerName string) string) map[string][]stepInfo {
+	ret := make(map[string][]stepInfo)
 	for _, v := range data.Status.TaskRuns {
 		succeededCondition := v.Status.GetCondition(apis.ConditionSucceeded)
 		if !succeededCondition.IsTrue() {
-			ret[v.PipelineTaskName] = getStepStatuses(v.Status)
+			ret[v.PipelineTaskName] = getStepStatuses(v.Status, logGetter)
 		}
 	}
 
 	return ret
 }
 
-func getStepStatuses(status *v1beta1.TaskRunStatus) [][2]string {
-	var ret [][2]string
+func getStepStatuses(status *v1beta1.TaskRunStatus, logGetter func(podName, containerName string) string) []stepInfo {
+	var ret []stepInfo
 	for _, s := range status.Steps {
 		if s.Terminated != nil {
-			ret = append(ret, [2]string{s.Name, s.Terminated.Reason})
 			if s.Terminated.Reason != "Completed" {
+				ret = append(ret, stepInfo{s, logGetter(status.PodName, s.ContainerName)})
 				break
 			}
+			ret = append(ret, stepInfo{s, ""})
 		}
 	}
 
 	return ret
+}
+
+func getStepLog(baseURL, ns, podName, containerName string, tailLines int) (string, error) {
+	apiURL, err := url.JoinPath(baseURL, fmt.Sprintf("api/v1/namespaces/%s/pods/%s/log", ns, podName))
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(fmt.Sprintf("%s?container=%s&tailLines=%d", apiURL, containerName, tailLines))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
 }
 
 func fillTimeFileds(ret *cardMessageInfos, startTime, endTime *metav1.Time) {

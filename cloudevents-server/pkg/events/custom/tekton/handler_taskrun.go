@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/rs/zerolog/log"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
+
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 )
 
 type taskRunHandler struct {
@@ -47,13 +48,20 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 		} else {
 			receivers = getReceivers(event, h.Notifications)
 		}
+		if len(receivers) == 0 {
+			return cloudevents.ResultACK
+		}
+
+		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL, h.FailedStepTailLines)
+		if err != nil {
+			return err
+		}
 
 		log.Debug().
 			Str("ce-type", event.Type()).
 			Str("receivers", strings.Join(receivers, ",")).
 			Msg("send notification for the event type.")
-
-		return sendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
+		return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
 	}
 
 	log.Debug().
