@@ -14,10 +14,15 @@ type cardMessageInfos struct {
 	StartTime     string
 	EndTime       string
 	TimeCost      string
-	Params        [][2]string                    // key-value pairs.
-	Results       [][2]string                    // Key-Value pairs.
-	StepStatuses  []v1beta1.StepState            // name-status pairs.
-	FailedTasks   map[string][]v1beta1.StepState // task id => step statuses.
+	Params        [][2]string           // key-value pairs.
+	Results       [][2]string           // Key-Value pairs.
+	StepStatuses  []stepInfo            // name-status pairs.
+	FailedTasks   map[string][]stepInfo // task id => step statuses.
+}
+
+type stepInfo struct {
+	v1beta1.StepState
+	Logs string
 }
 
 var larkCardHeaderTemplates = map[cloudevent.TektonEventType]string{
@@ -52,4 +57,8 @@ var larkCardHeaderEmojis = map[cloudevent.TektonEventType]string{
 	cloudevent.RunSuccessfulEventV1:         "✅",
 	cloudevent.PipelineRunUnknownEventV1:    "⌛️",
 	cloudevent.TaskRunUnknownEventV1:        "⌛️",
+}
+
+func headerEmoji(etype string) string {
+	return larkCardHeaderEmojis[cloudevent.TektonEventType(etype)]
 }

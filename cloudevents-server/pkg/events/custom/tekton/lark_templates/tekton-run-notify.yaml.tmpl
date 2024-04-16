@@ -41,6 +41,11 @@ elements:
       - {{ $t }}:
       {{- range $ss }}
         1. {{ .Name }}: {{ .Terminated.Reason }}
+        {{- with .Logs }}
+          ```log
+{{ indent 10 . }}
+          ```
+        {{- end }}
       {{- end }}
       {{- end }}
   {{- end }}
@@ -52,6 +57,11 @@ elements:
       **Steps:**
       {{- range . }}
       1. {{ .Name }}: {{ .Terminated.Reason }}
+        {{- with .Logs }}
+        ```log
+{{ indent 8 . }}
+        ```
+        {{- end }}
       {{- end }}
   {{- end }}
 

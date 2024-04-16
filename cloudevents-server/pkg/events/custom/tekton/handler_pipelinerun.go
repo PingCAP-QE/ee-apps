@@ -52,13 +52,20 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		} else {
 			receivers = getReceivers(event, h.Notifications)
 		}
+		if len(receivers) == 0 {
+			return cloudevents.ResultACK
+		}
+
+		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL, h.FailedStepTailLines)
+		if err != nil {
+			return cloudevents.ResultNACK
+		}
 
 		log.Debug().
 			Str("ce-type", event.Type()).
 			Str("receivers", strings.Join(receivers, ",")).
 			Msg("send notification for the event type.")
-
-		return composeAndSendLarkMessages(h.LarkClient, receivers, event, h.DashboardBaseURL)
+		return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
 	default:
 		log.Debug().
 			Str("handler", "pipelineRunHandler").
