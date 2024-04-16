@@ -6,7 +6,7 @@ require (
 	entgo.io/ent v0.13.1
 	github.com/cloudevents/sdk-go/v2 v2.14.0
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-sql-driver/mysql v1.7.1
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.2.2
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/pkg/errors v0.9.1
@@ -15,6 +15,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.23.9
 )
+
+require filippo.io/edwards25519 v1.1.0 // indirect
 
 require (
 	ariga.io/atlas v0.19.1-0.20240203083654-5948b60a8e43 // indirect
