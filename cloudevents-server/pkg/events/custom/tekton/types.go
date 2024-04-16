@@ -2,7 +2,8 @@ package tekton
 
 import (
 	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
-	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 )
 
 type cardMessageInfos struct {
@@ -13,42 +14,42 @@ type cardMessageInfos struct {
 	StartTime     string
 	EndTime       string
 	TimeCost      string
-	Params        [][2]string            // key-value pairs.
-	Results       [][2]string            // Key-Value pairs.
-	StepStatuses  [][2]string            // name-status pairs.
-	FailedTasks   map[string][][2]string // task id => step statuses.
+	Params        [][2]string                    // key-value pairs.
+	Results       [][2]string                    // Key-Value pairs.
+	StepStatuses  []v1beta1.StepState            // name-status pairs.
+	FailedTasks   map[string][]v1beta1.StepState // task id => step statuses.
 }
 
-var larkCardHeaderTemplates = map[tektoncloudevent.TektonEventType]string{
-	tektoncloudevent.PipelineRunFailedEventV1:     larkcard.TemplateRed,
-	tektoncloudevent.PipelineRunRunningEventV1:    larkcard.TemplateBlue,
-	tektoncloudevent.PipelineRunStartedEventV1:    larkcard.TemplateYellow,
-	tektoncloudevent.PipelineRunSuccessfulEventV1: larkcard.TemplateGreen,
-	tektoncloudevent.PipelineRunUnknownEventV1:    larkcard.TemplateGrey,
-	tektoncloudevent.RunFailedEventV1:             larkcard.TemplateRed,
-	tektoncloudevent.RunRunningEventV1:            larkcard.TemplateBlue,
-	tektoncloudevent.RunStartedEventV1:            larkcard.TemplateYellow,
-	tektoncloudevent.RunSuccessfulEventV1:         larkcard.TemplateGreen,
-	tektoncloudevent.TaskRunFailedEventV1:         larkcard.TemplateRed,
-	tektoncloudevent.TaskRunRunningEventV1:        larkcard.TemplateBlue,
-	tektoncloudevent.TaskRunStartedEventV1:        larkcard.TemplateYellow,
-	tektoncloudevent.TaskRunSuccessfulEventV1:     larkcard.TemplateGreen,
-	tektoncloudevent.TaskRunUnknownEventV1:        larkcard.TemplateGrey,
+var larkCardHeaderTemplates = map[cloudevent.TektonEventType]string{
+	cloudevent.PipelineRunFailedEventV1:     larkcard.TemplateRed,
+	cloudevent.PipelineRunRunningEventV1:    larkcard.TemplateBlue,
+	cloudevent.PipelineRunStartedEventV1:    larkcard.TemplateYellow,
+	cloudevent.PipelineRunSuccessfulEventV1: larkcard.TemplateGreen,
+	cloudevent.PipelineRunUnknownEventV1:    larkcard.TemplateGrey,
+	cloudevent.RunFailedEventV1:             larkcard.TemplateRed,
+	cloudevent.RunRunningEventV1:            larkcard.TemplateBlue,
+	cloudevent.RunStartedEventV1:            larkcard.TemplateYellow,
+	cloudevent.RunSuccessfulEventV1:         larkcard.TemplateGreen,
+	cloudevent.TaskRunFailedEventV1:         larkcard.TemplateRed,
+	cloudevent.TaskRunRunningEventV1:        larkcard.TemplateBlue,
+	cloudevent.TaskRunStartedEventV1:        larkcard.TemplateYellow,
+	cloudevent.TaskRunSuccessfulEventV1:     larkcard.TemplateGreen,
+	cloudevent.TaskRunUnknownEventV1:        larkcard.TemplateGrey,
 }
 
-var larkCardHeaderEmojis = map[tektoncloudevent.TektonEventType]string{
-	tektoncloudevent.PipelineRunFailedEventV1:     "❌",
-	tektoncloudevent.TaskRunFailedEventV1:         "❌",
-	tektoncloudevent.RunFailedEventV1:             "❌",
-	tektoncloudevent.PipelineRunRunningEventV1:    "🚧",
-	tektoncloudevent.TaskRunRunningEventV1:        "🚧",
-	tektoncloudevent.RunRunningEventV1:            "🚧",
-	tektoncloudevent.PipelineRunStartedEventV1:    "🚀",
-	tektoncloudevent.TaskRunStartedEventV1:        "🚀",
-	tektoncloudevent.RunStartedEventV1:            "🚀",
-	tektoncloudevent.PipelineRunSuccessfulEventV1: "✅",
-	tektoncloudevent.TaskRunSuccessfulEventV1:     "✅",
-	tektoncloudevent.RunSuccessfulEventV1:         "✅",
-	tektoncloudevent.PipelineRunUnknownEventV1:    "⌛️",
-	tektoncloudevent.TaskRunUnknownEventV1:        "⌛️",
+var larkCardHeaderEmojis = map[cloudevent.TektonEventType]string{
+	cloudevent.PipelineRunFailedEventV1:     "❌",
+	cloudevent.TaskRunFailedEventV1:         "❌",
+	cloudevent.RunFailedEventV1:             "❌",
+	cloudevent.PipelineRunRunningEventV1:    "🚧",
+	cloudevent.TaskRunRunningEventV1:        "🚧",
+	cloudevent.RunRunningEventV1:            "🚧",
+	cloudevent.PipelineRunStartedEventV1:    "🚀",
+	cloudevent.TaskRunStartedEventV1:        "🚀",
+	cloudevent.RunStartedEventV1:            "🚀",
+	cloudevent.PipelineRunSuccessfulEventV1: "✅",
+	cloudevent.TaskRunSuccessfulEventV1:     "✅",
+	cloudevent.RunSuccessfulEventV1:         "✅",
+	cloudevent.PipelineRunUnknownEventV1:    "⌛️",
+	cloudevent.TaskRunUnknownEventV1:        "⌛️",
 }

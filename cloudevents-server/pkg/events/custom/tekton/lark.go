@@ -3,8 +3,10 @@ package tekton
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/protocol"
+	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog/log"
@@ -53,52 +56,47 @@ func getReceiverIDType(id string) string {
 	}
 }
 
-func newMessageReq(receiver string, messageRawStr string) *larkim.CreateMessageReq {
-	return larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(getReceiverIDType(receiver)).
-		Body(
-			larkim.NewCreateMessageReqBodyBuilder().
-				MsgType(larkim.MsgTypeInteractive).
-				ReceiveId(receiver).
-				Content(messageRawStr).
-				Build(),
-		).
-		Build()
-}
-
-func sendLarkMessages(client *lark.Client, receivers []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
+func composeAndSendLarkMessages(client *lark.Client, receivers []string, event cloudevents.Event, detailBaseUrl string) protocol.Result {
 	if len(receivers) == 0 {
 		return cloudevents.ResultACK
 	}
 
-	createMsgReqs, err := newLarkMessages(receivers, event, detailBaseUrl)
+	createMsgReqs, err := composeLarkMessages(receivers, event, detailBaseUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("compose lark message failed")
 		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "compose lark message failed: %v", err)
 	}
 
 	for _, createMsgReq := range createMsgReqs {
-		resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
-		if err != nil {
-			log.Error().Err(err).Msg("send lark message failed")
-			return cloudevents.NewHTTPResult(http.StatusInternalServerError, "send lark message failed: %v", err)
+		failedAck := sendLarkMessage(client, createMsgReq)
+		if failedAck != nil {
+			return failedAck
 		}
-
-		if !resp.Success() {
-			log.Error().Msg(string(resp.RawBody))
-			return cloudevents.ResultNACK
-		}
-
-		log.Info().
-			Str("request-id", resp.RequestId()).
-			Str("message-id", *resp.Data.MessageId).
-			Msg("send lark message successfully.")
 	}
 
 	return cloudevents.ResultACK
 }
 
-func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
+func sendLarkMessage(client *lark.Client, createMsgReq *larkim.CreateMessageReq) error {
+	resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
+	if err != nil {
+		log.Error().Err(err).Msg("send lark message failed")
+		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "send lark message failed: %v", err)
+	}
+
+	if !resp.Success() {
+		log.Error().Msg(string(resp.RawBody))
+		return cloudevents.ResultNACK
+	}
+
+	log.Info().
+		Str("request-id", resp.RequestId()).
+		Str("message-id", *resp.Data.MessageId).
+		Msg("send lark message successfully.")
+	return nil
+}
+
+func composeLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl string) ([]*larkim.CreateMessageReq, error) {
 	messageRawStr, err := newLarkCardWithGoTemplate(event, detailBaseUrl)
 	if err != nil {
 		return nil, err
@@ -110,6 +108,22 @@ func newLarkMessages(receivers []string, event cloudevents.Event, detailBaseUrl 
 	}
 
 	return reqs, nil
+}
+
+func newMessageReq(receiver string, messageRawStr string) *larkim.CreateMessageReq {
+	msgBuilder := larkim.NewCreateMessageReqBodyBuilder().
+		MsgType(larkim.MsgTypeInteractive).
+		ReceiveId(receiver).
+		Content(messageRawStr)
+	// Add uuid to reduce message dupplication.
+	if msgUUID, err := newLarkMsgUUID(receiver, messageRawStr); err == nil {
+		msgBuilder.Uuid(msgUUID.String())
+	}
+
+	return larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(getReceiverIDType(receiver)).
+		Body(msgBuilder.Build()).
+		Build()
 }
 
 func newLarkCardWithGoTemplate(event cloudevents.Event, baseURL string) (string, error) {
@@ -150,4 +164,18 @@ func newLarkTitle(etype, subject string) string {
 	}
 
 	return fmt.Sprintf("%s [%s] %s is %s ", larkCardHeaderEmojis[tektoncloudevent.TektonEventType(etype)], runType, subject, runState)
+}
+
+func newLarkMsgUUID(receiver, content string) (uuid.UUID, error) {
+	h := sha1.New()
+	io.WriteString(h, receiver)
+	io.WriteString(h, content)
+	hashed := h.Sum(nil)
+
+	uuidBytes := make([]byte, 16)
+	copy(uuidBytes, hashed[:16])
+	// Set the variant and version bits according to RFC 4122
+	uuidBytes[8] = (uuidBytes[8] & 0x3f) | 0x80 // Set variant bits
+	uuidBytes[6] = (uuidBytes[6] & 0x0f) | 0x40 // Set version bits (version 4)
+	return uuid.FromBytes(uuidBytes)
 }

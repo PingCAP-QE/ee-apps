@@ -40,7 +40,7 @@ elements:
       {{- range $t, $ss := . }}
       - {{ $t }}:
       {{- range $ss }}
-        1. {{ index . 0 }}: {{ index . 1 }}
+        1. {{ .Name }}: {{ .Terminated.Reason }}
       {{- end }}
       {{- end }}
   {{- end }}
@@ -51,7 +51,7 @@ elements:
     content: |-
       **Steps:**
       {{- range . }}
-      1. {{ index . 0 }}: {{ index . 1 }}
+      1. {{ .Name }}: {{ .Terminated.Reason }}
       {{- end }}
   {{- end }}
 

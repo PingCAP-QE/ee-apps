@@ -3,6 +3,9 @@ package tekton
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -166,8 +169,8 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 
 }
 
-func getFailedTasks(data *v1beta1.PipelineRun) map[string][][2]string {
-	ret := make(map[string][][2]string)
+func getFailedTasks(data *v1beta1.PipelineRun) map[string][]v1beta1.StepState {
+	ret := make(map[string][]v1beta1.StepState)
 	for _, v := range data.Status.TaskRuns {
 		succeededCondition := v.Status.GetCondition(apis.ConditionSucceeded)
 		if !succeededCondition.IsTrue() {
@@ -178,11 +181,11 @@ func getFailedTasks(data *v1beta1.PipelineRun) map[string][][2]string {
 	return ret
 }
 
-func getStepStatuses(status *v1beta1.TaskRunStatus) [][2]string {
-	var ret [][2]string
+func getStepStatuses(status *v1beta1.TaskRunStatus) []v1beta1.StepState {
+	var ret []v1beta1.StepState
 	for _, s := range status.Steps {
 		if s.Terminated != nil {
-			ret = append(ret, [2]string{s.Name, s.Terminated.Reason})
+			ret = append(ret, s)
 			if s.Terminated.Reason != "Completed" {
 				break
 			}
@@ -190,6 +193,28 @@ func getStepStatuses(status *v1beta1.TaskRunStatus) [][2]string {
 	}
 
 	return ret
+}
+
+func getStepLog(baseURL, ns, podName, containerName string, tailLines int) (string, error) {
+	urlPath := fmt.Sprintf("api/v1/namespaces/%s/pods/%s/log?container=%s&tailLines=%d",
+		ns, podName, containerName, tailLines)
+	apiURL, err := url.JoinPath(baseURL, urlPath)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
 }
 
 func fillTimeFileds(ret *cardMessageInfos, startTime, endTime *metav1.Time) {
