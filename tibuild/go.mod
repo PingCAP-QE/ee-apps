@@ -8,7 +8,7 @@ require (
 	github.com/gin-contrib/requestid v0.0.6
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
-	github.com/google/go-github/v59 v59.0.0
+	github.com/google/go-github/v61 v61.0.0
 	github.com/jinzhu/configor v1.2.2
 	github.com/stretchr/testify v1.8.4
 	github.com/swaggo/files v1.0.1
