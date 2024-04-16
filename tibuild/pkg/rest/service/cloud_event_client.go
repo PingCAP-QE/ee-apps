@@ -7,7 +7,7 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/protocol"
-	"github.com/google/go-github/v59/github"
+	"github.com/google/go-github/v61/github"
 )
 
 type BuildTrigger interface {
