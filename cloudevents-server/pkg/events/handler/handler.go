@@ -27,7 +27,7 @@ func (h *CompositeEventHandler) SupportEventTypes() []string {
 func (h *CompositeEventHandler) Handle(event cloudevents.Event) cloudevents.Result {
 	handlers, ok := h.handleMap[event.Type()]
 	if !ok {
-		log.Error().Str("type", event.Type()).Msg("no handlers registered for the event")
+		log.Warn().Str("ce-type", event.Type()).Msg("no handlers registered for the event")
 		return cloudevents.NewHTTPResult(http.StatusNotFound, "no handlers registered for event type: %s, ignoring it", event.Type())
 	}
 

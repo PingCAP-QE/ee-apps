@@ -205,22 +205,38 @@ func getStepStatuses(status *v1beta1.TaskRunStatus, logGetter func(podName, cont
 }
 
 func getStepLog(baseURL, ns, podName, containerName string, tailLines int) (string, error) {
+	errLogEvent := log.Error().
+		Str("namespace", ns).
+		Str("pod", podName).
+		Str("container", containerName).
+		Int("tail", tailLines)
+
 	apiURL, err := url.JoinPath(baseURL, fmt.Sprintf("api/v1/namespaces/%s/pods/%s/log", ns, podName))
 	if err != nil {
+		errLogEvent.Err(err).Send()
 		return "", err
 	}
 
 	resp, err := http.Get(fmt.Sprintf("%s?container=%s&tailLines=%d", apiURL, containerName, tailLines))
 	if err != nil {
+		errLogEvent.Err(err).Send()
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		errLogEvent.Err(err).Send()
 		return "", err
 	}
+	errLogEvent.Discard()
 
+	log.Debug().
+		Str("namespace", ns).
+		Str("pod", podName).
+		Str("container", containerName).
+		Int("tail", tailLines).
+		Msg("get log succeed.")
 	return string(body), nil
 }
 
