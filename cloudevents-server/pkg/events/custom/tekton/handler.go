@@ -1,6 +1,7 @@
 package tekton
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -217,7 +218,14 @@ func getStepLog(baseURL, ns, podName, containerName string, tailLines int) (stri
 		return "", err
 	}
 
-	resp, err := http.Get(fmt.Sprintf("%s?container=%s&tailLines=%d", apiURL, containerName, tailLines))
+	// Create a custom transport with InsecureSkipVerify set to true
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	// Create a custom HTTP client with the custom transport
+	client := &http.Client{Transport: transport}
+
+	resp, err := client.Get(fmt.Sprintf("%s?container=%s&tailLines=%d", apiURL, containerName, tailLines))
 	if err != nil {
 		errLogEvent.Err(err).Send()
 		return "", err
