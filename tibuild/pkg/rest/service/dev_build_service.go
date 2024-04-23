@@ -212,7 +212,7 @@ func validateReq(req DevBuild) error {
 	if !spec.Product.IsValid() {
 		return fmt.Errorf("product is not valid")
 	}
-	if !spec.Edition.IsValid() {
+	if !validProductEditions.Contains(string(spec.Edition)) {
 		return fmt.Errorf("edition is not valid")
 	}
 	if !versionValidator.MatchString(spec.Version) {
