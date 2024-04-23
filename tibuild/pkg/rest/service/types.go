@@ -1,21 +1,21 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"time"
+
+	set "github.com/deckarep/golang-set/v2"
 )
 
-type Context interface {
-	context.Context
-}
-
-type Product string
-
 const (
+	// Editions
+	EnterpriseEdition = "enterprise"
+	CommunityEdition  = "community"
+
+	// Products
 	ProductTidb             Product = "tidb"
 	ProductEnterprisePlugin Product = "enterprise-plugin"
 	ProductTikv             Product = "tikv"
@@ -32,9 +32,42 @@ const (
 	ProductTidbDashboard    Product = "tidb-dashboard"
 	ProductDrainer          Product = "drainer"
 	ProductPump             Product = "pump"
+	ProductUnknown          Product = ""
 
-	ProductUnknown Product = ""
+	// Engine types
+	JenkinsEngine = "jenkins"
+	TektonEngine  = "tekton"
+
+	// Build status
+	BuildStatusPending    BuildStatus = "PENDING"
+	BuildStatusProcessing BuildStatus = "PROCESSING"
+	BuildStatusAborted    BuildStatus = "ABORTED"
+	BuildStatusSuccess    BuildStatus = "SUCCESS"
+	BuildStatusFailure    BuildStatus = "FAILURE"
+	BuildStatusError      BuildStatus = "ERROR"
+
+	// Acounts
+	KeyOfApiAccount   = "apiAccount"
+	AdminApiAccount   = "admin"
+	TibuildApiAccount = "tibuild"
 )
+
+var (
+	allProducts = [...]Product{ProductTidb, ProductTikv, ProductPd,
+		ProductTiflash, ProductBr, ProductTidbLightning, ProductDumpling,
+		ProductTicdc, ProductTidbBinlog, ProductDm, ProductTidbTools,
+		ProductNgMonitoring, ProductTidbDashboard, ProductDrainer, ProductPump}
+
+	MultiArch   Platform = "multi-arch"
+	LinuxAmd64  Platform = "linux/amd64"
+	LinuxArm64  Platform = "linux/arm64"
+	DarwinAmd64 Platform = "darwin/amd64"
+	DarwinArm64 Platform = "darwin/arm64"
+
+	validProductEditions = set.NewSet[string](EnterpriseEdition, CommunityEdition)
+)
+
+type Product string
 
 func (p Product) IsValid() bool {
 	for _, v := range allProducts {
@@ -94,11 +127,6 @@ var (
 	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
 )
 
-var allProducts = [...]Product{ProductTidb, ProductTikv, ProductPd,
-	ProductTiflash, ProductBr, ProductTidbLightning, ProductDumpling,
-	ProductTicdc, ProductTidbBinlog, ProductDm, ProductTidbTools,
-	ProductNgMonitoring, ProductTidbDashboard, ProductDrainer, ProductPump}
-
 func StringToProduct(s string) Product {
 	for _, i := range allProducts {
 		if s == string(i) {
@@ -146,8 +174,8 @@ type DevBuild struct {
 
 type DevBuildMeta struct {
 	CreatedAt time.Time `json:"createdAt"`
-	CreatedBy string    `json:"createdBy" gorm:"type:varchar(32)"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	CreatedBy string    `json:"createdBy" gorm:"type:varchar(32)"`
 }
 
 type DevBuildListOption struct {
@@ -165,76 +193,39 @@ type DevBuildSaveOption struct {
 }
 
 type DevBuildSpec struct {
-	Product           Product        `json:"product"`
-	GitRef            string         `json:"gitRef"`
-	Version           string         `json:"version"`
-	Edition           ProductEdition `json:"edition"`
-	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
-	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(128)"`
-	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(128)"`
-	ProductBaseImg    string         `json:"productBaseImg,omitempty" gorm:"type:varchar(128)"`
-	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(128)"`
-	GithubRepo        string         `json:"githubRepo,omitempty" gorm:"type:varchar(64)"`
-	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
-	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
-	IsHotfix          bool           `json:"isHotfix,omitempty"`
-	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
-	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
-	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
-}
-
-type PipelineEngine string
-
-const (
-	JenkinsEngine PipelineEngine = "jenkins"
-	TektonEngine  PipelineEngine = "tekton"
-)
-
-type GitRef string
-
-type ProductEdition string
-
-const (
-	EnterpriseEdition ProductEdition = "enterprise"
-	CommunityEdition  ProductEdition = "community"
-)
-
-func (p ProductEdition) IsValid() bool {
-	switch p {
-	case EnterpriseEdition, CommunityEdition:
-		return true
-	default:
-		return false
-	}
+	Product           Product `json:"product"`
+	GitRef            string  `json:"gitRef"`
+	Version           string  `json:"version"`
+	Edition           string  `json:"edition"`
+	PluginGitRef      string  `json:"pluginGitRef,omitempty"`
+	BuildEnv          string  `json:"buildEnv,omitempty" gorm:"type:varchar(128)"`
+	ProductDockerfile string  `json:"productDockerfile,omitempty" gorm:"type:varchar(128)"`
+	ProductBaseImg    string  `json:"productBaseImg,omitempty" gorm:"type:varchar(128)"`
+	BuilderImg        string  `json:"builderImg,omitempty" gorm:"type:varchar(128)"`
+	GithubRepo        string  `json:"githubRepo,omitempty" gorm:"type:varchar(64)"`
+	IsPushGCR         bool    `json:"isPushGCR,omitempty"`
+	Features          string  `json:"features,omitempty" gorm:"type:varchar(128)"`
+	IsHotfix          bool    `json:"isHotfix,omitempty"`
+	TargetImg         string  `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
+	PipelineEngine    string  `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
+	GitHash           string  `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 }
 
 type BuildStatus string
 
-const (
-	BuildStatusPending    BuildStatus = "PENDING"
-	BuildStatusProcessing BuildStatus = "PROCESSING"
-	BuildStatusAborted    BuildStatus = "ABORTED"
-	BuildStatusSuccess    BuildStatus = "SUCCESS"
-	BuildStatusFailure    BuildStatus = "FAILURE"
-	BuildStatusError      BuildStatus = "ERROR"
-)
-
 func (p BuildStatus) IsValid() bool {
-	switch p {
-	case BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError:
-		return true
-	default:
-		return false
-	}
+	return set.NewSet[BuildStatus](
+		BuildStatusPending,
+		BuildStatusProcessing,
+		BuildStatusAborted,
+		BuildStatusSuccess,
+		BuildStatusFailure,
+		BuildStatusError,
+	).Contains(p)
 }
 
 func (p BuildStatus) IsCompleted() bool {
-	switch p {
-	case BuildStatusPending, BuildStatusProcessing:
-		return false
-	default:
-		return true
-	}
+	return set.NewSet[BuildStatus](BuildStatusPending, BuildStatusProcessing).Contains(p)
 }
 
 type DevBuildStatus struct {
@@ -288,14 +279,6 @@ type ImageArtifact struct {
 
 type Platform string
 
-var (
-	MultiArch   Platform = "multi-arch"
-	LinuxAmd64  Platform = "linux/amd64"
-	LinuxArm64  Platform = "linux/arm64"
-	DarwinAmd64 Platform = "darwin/amd64"
-	DarwinArm64 Platform = "darwin/arm64"
-)
-
 type BinArtifact struct {
 	Component     string   `json:"component,omitempty"`
 	Platform      Platform `json:"platform"`
@@ -315,10 +298,3 @@ type ImageSyncRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 }
-
-type TibuildCtxKey string
-
-var KeyOfApiAccount TibuildCtxKey = "apiAccount"
-
-const AdminApiAccount = "admin"
-const TibuildApiAccount = "tibuild"
