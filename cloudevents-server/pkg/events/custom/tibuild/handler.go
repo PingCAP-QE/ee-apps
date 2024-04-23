@@ -6,6 +6,7 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/client"
+	"github.com/rs/zerolog/log"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
@@ -61,6 +62,11 @@ type routeHandler struct {
 
 // Handle routes the given event to the specified sink URL using the CloudEvents SDK.
 func (h *routeHandler) Handle(event cloudevents.Event) cloudevents.Result {
+	log.Debug().
+		Str("sink-url", h.sinkURL).
+		Str("ce-type", event.Type()).
+		Any("detail", event).
+		Msg("Send to sinker")
 	return h.client.Send(context.Background(), event)
 }
 
