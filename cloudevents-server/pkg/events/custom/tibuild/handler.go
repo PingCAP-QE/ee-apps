@@ -38,8 +38,10 @@ func (h *triggerHandler) SupportEventTypes() []string {
 	return []string{
 		EventTypeDevbuildFakeGithubCreate,
 		EventTypeDevbuildFakeGithubPush,
+		EventTypeDevbuildFakeGithubPullRequest,
 		EventTypeHotfixFakeGithubCreate,
 		EventTypeHotfixFakeGithubPush,
+		EventTypeHotfixFakeGithubPullRequest,
 	}
 }
 
