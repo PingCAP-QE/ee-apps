@@ -10,28 +10,29 @@ import (
 	"github.com/google/go-github/v61/github"
 )
 
+var _ GHClient = (*GitHubClient)(nil)
+var sha1regex *regexp.Regexp = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
+
 type GitHubClient struct{ *github.Client }
 
-func GitRefToGHRef(ref string) string {
-	if branchName, found := strings.CutPrefix(ref, "branch/"); found {
-		return fmt.Sprintf("refs/heads/%s", branchName)
-	}
-	return ""
-}
-
-func (c GitHubClient) GetHash(ctx context.Context, repo GithubRepo, ref string) (string, error) {
+func (c GitHubClient) GetHash(ctx context.Context, owner, repo, ref string) (string, error) {
 	if sha1regex.MatchString(ref) {
 		return ref, nil
 	}
-	gref := GitRefToGHRef(ref)
+	gref := convertParamGitRefToGitHubRef(ref)
 	if gref == "" {
 		return "", fmt.Errorf("bad git ref:%s", ref)
 	}
-	rt, _, err := c.Git.GetRef(ctx, repo.Owner, repo.Repo, gref)
+	rt, _, err := c.Git.GetRef(ctx, owner, repo, gref)
 	if err != nil {
 		return "", err
 	}
 	return *rt.Object.SHA, nil
+}
+
+func (c GitHubClient) GetPullRequestInfo(ctx context.Context, owner, repo string, prNum int) (*github.PullRequest, error) {
+	pr, _, err := c.PullRequests.Get(ctx, owner, repo, prNum)
+	return pr, err
 }
 
 func NewGHClient(token string) GHClient {
@@ -42,4 +43,15 @@ func NewGHClient(token string) GHClient {
 	return GitHubClient{client}
 }
 
-var sha1regex *regexp.Regexp = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
+func convertParamGitRefToGitHubRef(ref string) string {
+	switch {
+	case strings.HasPrefix(ref, "branch/"):
+		return strings.Replace(ref, "branch/", "refs/heads/", 1)
+	case strings.HasPrefix(ref, "tag/"):
+		return strings.Replace(ref, "tag/", "refs/tags/", 1)
+	case strings.HasPrefix(ref, "pull/"), strings.HasPrefix(ref, "pr/"):
+		return strings.Join([]string{strings.Replace(ref, "pull/", "refs/pulls/", 1), "head"}, "/")
+	default:
+		return ""
+	}
+}

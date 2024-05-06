@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/protocol"
 	"github.com/google/go-github/v61/github"
+)
+
+const (
+	ceTypeFakeGHPushDevBuild = "net.pingcap.tibuild.devbuild.push"
+	ceTypeFakeGHPRDevBuild   = "net.pingcap.tibuild.devbuild.pull_request"
 )
 
 type BuildTrigger interface {
@@ -31,7 +37,7 @@ type CloudEventClient struct {
 }
 
 func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
-	event, err := NewDevBuildCloudEvent(dev)
+	event, err := newDevBuildCloudEvent(dev)
 	if err != nil {
 		return err
 	}
@@ -43,32 +49,71 @@ func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) err
 	return nil
 }
 
-func NewDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
-	event := cloudevents.NewEvent()
-	event.SetType(devbuild_ce_type)
-	event.SetSubject(fmt.Sprint(dev.ID))
-	event.SetExtension("user", dev.Meta.CreatedBy)
-	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
+func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	repo := GHRepoToStruct(dev.Spec.GithubRepo)
 
-	if ref := GitRefToGHRef(dev.Spec.GitRef); ref != "" {
-		eventData := &github.PushEvent{
-			Ref:    github.String(ref),
-			After:  github.String(dev.Spec.GitHash),
-			Before: github.String("00000000000000000000000000000000000000000"),
-			Repo: &github.PushEventRepository{
-				Name:     &repo.Repo,
-				CloneURL: github.String(repo.URL()),
-				Owner: &github.User{
-					Login: &repo.Owner,
-				},
-			},
-		}
-		event.SetData(cloudevents.ApplicationJSON, eventData)
-		return &event, nil
-	} else {
+	var eventType string
+	var eventData interface{}
+	switch {
+	case strings.HasPrefix(dev.Spec.GitRef, "branch/"):
+		ref := strings.Replace(dev.Spec.GitRef, "branch/", "refs/heads/", 1)
+		eventType = ceTypeFakeGHPushDevBuild
+		eventData = newFakeGitHubPushEventPayload(repo.Owner, repo.Repo, ref, dev.Spec.GitHash)
+	case strings.HasPrefix(dev.Spec.GitRef, "pull/"):
+		eventType = ceTypeFakeGHPRDevBuild
+		eventData = newFakeGitHubPullRequestPayload(repo.Owner, repo.Repo, dev.Spec.prBaseRef,
+			dev.Spec.GitHash, dev.Spec.prNumber)
+	default:
 		return nil, fmt.Errorf("unkown git ref format")
+	}
+
+	event := cloudevents.NewEvent()
+	event.SetType(eventType)
+	event.SetData(cloudevents.ApplicationJSON, eventData)
+	event.SetSubject(fmt.Sprint(dev.ID))
+	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
+	event.SetExtension("user", dev.Meta.CreatedBy)
+
+	return &event, nil
+}
+
+func newFakeGitHubPushEventPayload(owner, repo, ref, sha string) *github.PushEvent {
+	return &github.PushEvent{
+		Ref:    github.String(ref),
+		After:  github.String(sha),
+		Before: github.String("00000000000000000000000000000000000000000"),
+		Repo: &github.PushEventRepository{
+			FullName: github.String(fmt.Sprintf("%s/%s", owner, repo)),
+			Name:     github.String(repo),
+			CloneURL: github.String(fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)),
+			Owner: &github.User{
+				Login: github.String(owner),
+			},
+		},
 	}
 }
 
-const devbuild_ce_type = "net.pingcap.tibuild.devbuild.push"
+func newFakeGitHubPullRequestPayload(owner, repo, baseRef, headSHA string, number int) *github.PullRequestEvent {
+	return &github.PullRequestEvent{
+		Action: github.String("opened"),
+		Number: github.Int(number),
+		PullRequest: &github.PullRequest{
+			Number: github.Int(number),
+			State:  github.String("open"),
+			Head: &github.PullRequestBranch{
+				SHA: github.String(headSHA),
+			},
+			Base: &github.PullRequestBranch{
+				Ref: github.String(baseRef),
+			},
+		},
+		Repo: &github.Repository{
+			FullName: github.String(fmt.Sprintf("%s/%s", owner, repo)),
+			Name:     github.String(repo),
+			CloneURL: github.String(fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)),
+			Owner: &github.User{
+				Login: github.String(owner),
+			},
+		},
+	}
+}
