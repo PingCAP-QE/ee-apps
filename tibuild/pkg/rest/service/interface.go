@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/go-github/v61/github"
+)
 
 type HotfixService interface {
 	CreateBranch(ctx context.Context, req BranchCreateReq) (resp *BranchCreateResp, err error)
@@ -21,5 +25,6 @@ type ArtifactHelperService interface {
 }
 
 type GHClient interface {
-	GetHash(ctx context.Context, repo GithubRepo, ref string) (string, error)
+	GetHash(ctx context.Context, owner, repo, ref string) (string, error)
+	GetPullRequestInfo(ctx context.Context, owner, repo string, prNum int) (*github.PullRequest, error)
 }

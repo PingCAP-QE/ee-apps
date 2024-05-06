@@ -110,9 +110,7 @@ func StringToProduct(s string) Product {
 
 func ProdToRepo(prod Product) *GithubRepo {
 	switch prod {
-	case ProductBr, ProductTidbLightning, ProductDumpling:
-		fallthrough
-	case ProductTidb:
+	case ProductBr, ProductTidbLightning, ProductDumpling, ProductTidb:
 		return &RepoTidb
 	case ProductTikv:
 		return &RepoTikv
@@ -167,6 +165,7 @@ type DevBuildSaveOption struct {
 type DevBuildSpec struct {
 	Product           Product        `json:"product"`
 	GitRef            string         `json:"gitRef"`
+	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 	Version           string         `json:"version"`
 	Edition           ProductEdition `json:"edition"`
 	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
@@ -180,7 +179,8 @@ type DevBuildSpec struct {
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
 	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
 	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
-	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
+	prNumber          int
+	prBaseRef         string
 }
 
 type PipelineEngine string

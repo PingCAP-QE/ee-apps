@@ -28,7 +28,7 @@ func TestNewEvent(t *testing.T) {
 	dev := sampleDevBuild()
 	dev.Spec.GitHash = "754095a9f460dcf31f053045cfedfb00b9ad8e81"
 
-	ev, err := NewDevBuildCloudEvent(dev)
+	ev, err := newDevBuildCloudEvent(dev)
 	require.NoError(t, err)
 	js, err := json.Marshal(ev)
 	require.NoError(t, err)

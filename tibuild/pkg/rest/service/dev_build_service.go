@@ -40,7 +40,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		if req.Meta.CreatedBy == "" {
 			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
 		}
-		err := fillGitHash(ctx, s.GHClient, &req)
+		err := fillDetailInfoForTekton(ctx, s.GHClient, &req)
 		if err != nil {
 			return nil, err
 		}
@@ -116,15 +116,35 @@ func validatePermission(ctx context.Context, req *DevBuild) error {
 	return nil
 }
 
-func fillGitHash(ctx context.Context, client GHClient, req *DevBuild) error {
+func fillDetailInfoForTekton(ctx context.Context, client GHClient, req *DevBuild) error {
+	repo := GHRepoToStruct(req.Spec.GithubRepo)
+	if strings.HasPrefix(req.Spec.GitRef, "pull/") {
+		prNumber, err := strconv.ParseInt(strings.Replace(req.Spec.GitRef, "pull/", "", 1), 10, 32)
+		if err != nil {
+			return err
+		}
+		req.Spec.prNumber = int(prNumber)
+
+		pr, err := client.GetPullRequestInfo(ctx, repo.Owner, repo.Repo, req.Spec.prNumber)
+		if err != nil {
+			return err
+		}
+		req.Spec.GitHash = pr.Head.GetSHA()
+		req.Spec.prBaseRef = pr.Base.GetRef()
+
+		return nil
+	}
+
 	if req.Spec.GitHash != "" {
 		return nil
 	}
-	commit, err := client.GetHash(ctx, *GHRepoToStruct(req.Spec.GithubRepo), req.Spec.GitRef)
+
+	commit, err := client.GetHash(ctx, repo.Owner, repo.Repo, req.Spec.GitRef)
 	if err != nil {
 		return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
 	}
 	req.Spec.GitHash = commit
+
 	return nil
 }
 
