@@ -57,7 +57,7 @@ func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) (resp
 	if option.Hotfix != nil {
 		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}})
 	}
-	if option.CreatedBy != nil {
+	if option.CreatedBy != nil && *option.CreatedBy != "" {
 		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}})
 	}
 
