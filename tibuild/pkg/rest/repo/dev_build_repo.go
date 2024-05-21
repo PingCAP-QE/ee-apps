@@ -55,10 +55,10 @@ func (m DevBuildRepo) Update(ctx context.Context, id int, req DevBuild) (resp *D
 func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error) {
 	db := m.Db.Order("created_at DESC").Offset(int(option.Offset)).Limit(int(option.Size))
 	if option.Hotfix != nil {
-		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}})
+		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}}, *option.Hotfix)
 	}
 	if option.CreatedBy != nil && *option.CreatedBy != "" {
-		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}})
+		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}}, *option.CreatedBy)
 	}
 
 	result := []DevBuild{}
