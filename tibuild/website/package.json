@@ -12,7 +12,7 @@
     "@mui/icons-material": "^5.14.19",
     "@mui/lab": "^5.0.0-alpha.155",
     "@mui/material": "^5.14.20",
-    "@mui/x-data-grid": "^6.18.4",
+    "@mui/x-data-grid": "^7.0.0",
     "@octokit/core": "^6.0.0",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.2",
