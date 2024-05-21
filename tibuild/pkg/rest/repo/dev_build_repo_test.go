@@ -46,7 +46,8 @@ func TestDevBuildList(t *testing.T) {
 	require.NoError(t, err)
 	repo := DevBuildRepo{Db: odb}
 	rows := sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2)
-	mock.ExpectQuery("SELECT \\* FROM `dev_builds`  WHERE  `dev_builds`.`is_hotfix` = \\? ORDER BY created_at DESC LIMIT 10 OFFSET 5").WithArgs(false).WillReturnRows(rows)
+	mock.ExpectQuery("SELECT \\* FROM `dev_builds`  WHERE  `dev_builds`.`is_hotfix` = \\? ORDER BY created_at DESC LIMIT \\? OFFSET \\?").
+		WithArgs(false, 10, 5).WillReturnRows(rows)
 	entities, err := repo.List(context.TODO(), DevBuildListOption{Offset: 5, Size: 10, Hotfix: &[]bool{false}[0]})
 	require.NoError(t, err)
 	require.Equal(t, 2, len(entities))

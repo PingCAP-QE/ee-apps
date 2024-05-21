@@ -52,22 +52,22 @@ func (m DevBuildRepo) Update(ctx context.Context, id int, req DevBuild) (resp *D
 	return &req, nil
 }
 
-func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error) {
+func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) (resp []*DevBuild, err error) {
 	db := m.Db.Order("created_at DESC").Offset(int(option.Offset)).Limit(int(option.Size))
 	if option.Hotfix != nil {
-		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}}, *option.Hotfix)
+		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}}, "IsHotfix")
 	}
 	if option.CreatedBy != nil && *option.CreatedBy != "" {
-		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}}, *option.CreatedBy)
+		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}}, "CreatedBy")
 	}
 
-	result := []DevBuild{}
+	result := []*DevBuild{}
 	if err := db.Find(&result).Error; err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrInternalError)
 	}
 
 	for i := range result {
-		err = outofDB(&result[i])
+		err = outofDB(result[i])
 		if err != nil {
 			return nil, err
 		}
