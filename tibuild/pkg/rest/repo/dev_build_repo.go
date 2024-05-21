@@ -53,14 +53,26 @@ func (m DevBuildRepo) Update(ctx context.Context, id int, req DevBuild) (resp *D
 }
 
 func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error) {
-	result := []DevBuild{}
-	db := m.Db.Order("created_at DESC")
+	db := m.Db.Order("created_at DESC").Offset(int(option.Offset)).Limit(int(option.Size))
 	if option.Hotfix != nil {
-		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}}, "IsHotfix")
+		db = db.Where(&DevBuild{Spec: DevBuildSpec{IsHotfix: *option.Hotfix}})
 	}
-	if err := db.Offset(int(option.Offset)).Limit(int(option.Size)).Find(&result).Error; err != nil {
+	if option.CreatedBy != nil {
+		db = db.Where(&DevBuild{Meta: DevBuildMeta{CreatedBy: *option.CreatedBy}})
+	}
+
+	result := []DevBuild{}
+	if err := db.Find(&result).Error; err != nil {
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrInternalError)
 	}
+
+	for i := range result {
+		err = outofDB(&result[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return result, err
 }
 

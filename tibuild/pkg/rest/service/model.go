@@ -149,9 +149,10 @@ type DevBuildMeta struct {
 }
 
 type DevBuildListOption struct {
-	Offset uint  `form:"offset"`
-	Size   uint  `form:"size"`
-	Hotfix *bool `form:"hotfix"`
+	Offset    uint    `form:"offset"`
+	Size      uint    `form:"size"`
+	Hotfix    *bool   `form:"hotfix"`
+	CreatedBy *string `form:"createdBy"`
 }
 
 type DevBuildGetOption struct {

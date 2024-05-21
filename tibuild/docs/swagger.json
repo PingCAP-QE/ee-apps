@@ -80,6 +80,12 @@
                         "description": "filter hotfix",
                         "name": "hotfix",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter created by",
+                        "name": "createdBy",
+                        "in": "query"
                     }
                 ],
                 "responses": {
