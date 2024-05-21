@@ -331,6 +331,10 @@ paths:
         in: query
         name: hotfix
         type: boolean
+      - description: filter created by
+        in: query
+        name: createdBy
+        type: string
       produces:
       - application/json
       responses:

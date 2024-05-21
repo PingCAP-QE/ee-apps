@@ -14,16 +14,16 @@ type HotfixHandler struct {
 }
 
 // // CreateHotfixBranch godoc
-// @Summary	create hotfix branch
-// @Description	create hotfix branch
-// @Tags	hotfix
-// @Accept json
-// @Produce json
-// @Param	BranchCreateReq	body	service.BranchCreateReq	true	"hotfix param"
-// @Success	200 {object}	service.BranchCreateResp
-// @Failure	422	{object}	HTTPError
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
+//	@Summary		create hotfix branch
+//	@Description	create hotfix branch
+//	@Tags			hotfix
+//	@Accept			json
+//	@Produce		json
+//	@Param			BranchCreateReq	body		service.BranchCreateReq	true	"hotfix param"
+//	@Success		200				{object}	service.BranchCreateResp
+//	@Failure		422				{object}	HTTPError
+//	@Failure		400				{object}	HTTPError
+//	@Failure		500				{object}	HTTPError
 // // @Router /api/hotfix/create-branch [post]
 func (h HotfixHandler) CreateBranch(c *gin.Context) {
 	params := service.BranchCreateReq{}
@@ -40,16 +40,16 @@ func (h HotfixHandler) CreateBranch(c *gin.Context) {
 }
 
 // // CreateHotfixTag godoc
-// @Summary	create hotfix tag
-// @Description	create hotfix tag
-// @Tags	hotfix
-// @Accept json
-// @Produce json
-// @Param	TagCreateReq	body	service.TagCreateReq	true	"hotfix param"
-// @Success	200 {object}	service.TagCreateResp
-// @Failure	422	{object}	HTTPError
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
+//	@Summary		create hotfix tag
+//	@Description	create hotfix tag
+//	@Tags			hotfix
+//	@Accept			json
+//	@Produce		json
+//	@Param			TagCreateReq	body		service.TagCreateReq	true	"hotfix param"
+//	@Success		200				{object}	service.TagCreateResp
+//	@Failure		422				{object}	HTTPError
+//	@Failure		400				{object}	HTTPError
+//	@Failure		500				{object}	HTTPError
 // // @Router /api/hotfix/create-tag [post]
 func (h HotfixHandler) CreateTag(c *gin.Context) {
 	params := service.TagCreateReq{}

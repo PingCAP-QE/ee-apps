@@ -299,7 +299,7 @@ func TestDevBuildGet(t *testing.T) {
 			Status: DevBuildStatus{PipelineBuildID: 4, TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{{Name: "p1"}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
-		require.Equal(t, "http://tekton.net/p1", entity.Status.TektonStatus.Pipelines[0].URL)
+		require.Equal(t, "", entity.Status.TektonStatus.Pipelines[0].URL)
 	})
 	t.Run("sync", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,

@@ -65,17 +65,18 @@ func (h DevBuildHandler) authenticate(c *gin.Context) (context.Context, error) {
 }
 
 // CreateDevbuild godoc
-// @Summary	create and trigger devbuild
-// @Description	create and trigger devbuild
-// @Tags	devbuild
-// @Accept json
-// @Produce json
-// @Param	DevBuild	body	service.DevBuild	true	"build to create, only spec filed is required, others are ignored"
-// @Param	dryrun	query	bool	false	"dry run"	default(false)
-// @Success	200 {object}	service.DevBuild
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
-// @Router /api/devbuilds [post]
+//
+//	@Summary		create and trigger devbuild
+//	@Description	create and trigger devbuild
+//	@Tags			devbuild
+//	@Accept			json
+//	@Produce		json
+//	@Param			DevBuild	body		service.DevBuild	true	"build to create, only spec filed is required, others are ignored"
+//	@Param			dryrun		query		bool				false	"dry run"	default(false)
+//	@Success		200			{object}	service.DevBuild
+//	@Failure		400			{object}	HTTPError
+//	@Failure		500			{object}	HTTPError
+//	@Router			/api/devbuilds [post]
 func (h DevBuildHandler) Create(c *gin.Context) {
 	ctx, err := h.authenticate(c)
 	if err != nil {
@@ -102,16 +103,18 @@ func (h DevBuildHandler) Create(c *gin.Context) {
 }
 
 // ListDevbuild godoc
-// @Summary	list devbuild
-// @Description	list devbuild
-// @Tags	devbuild
-// @Produce json
-// @Param	size	query	int	false	"the size limit of items"	default(10)
-// @Param	offset	query	int	false	"the start position of items"	default(0)
-// @Param	hotfix	query	bool	false	"filter hotfix"	default(null)
-// @Success	200 {array}	service.DevBuild
-// @Failure	400	{object}	HTTPError
-// @Router /api/devbuilds [get]
+//
+//	@Summary		list devbuild
+//	@Description	list devbuild
+//	@Tags			devbuild
+//	@Produce		json
+//	@Param			size		query		int		false	"the size limit of items"		default(10)
+//	@Param			offset		query		int		false	"the start position of items"	default(0)
+//	@Param			hotfix		query		bool	false	"filter hotfix"					default(null)
+//	@Param			createdBy	query		string	false	"filter created by"
+//	@Success		200			{array}		service.DevBuild
+//	@Failure		400			{object}	HTTPError
+//	@Router			/api/devbuilds [get]
 func (h DevBuildHandler) List(c *gin.Context) {
 	params := service.DevBuildListOption{}
 	err := c.ShouldBindQuery(&params)
@@ -131,16 +134,17 @@ func (h DevBuildHandler) List(c *gin.Context) {
 }
 
 // GetDevbuild godoc
-// @Summary	get devbuild
-// @Description	get devbuild
-// @Tags	devbuild
-// @Produce json
-// @Param	id	path	int	true	"id of build"
-// @Param	sync	query	bool	false	"whether sync with jenkins"	default(false)
-// @Success	200 {object}	service.DevBuild
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
-// @Router /api/devbuilds/{id} [get]
+//
+//	@Summary		get devbuild
+//	@Description	get devbuild
+//	@Tags			devbuild
+//	@Produce		json
+//	@Param			id		path		int		true	"id of build"
+//	@Param			sync	query		bool	false	"whether sync with jenkins"	default(false)
+//	@Success		200		{object}	service.DevBuild
+//	@Failure		400		{object}	HTTPError
+//	@Failure		500		{object}	HTTPError
+//	@Router			/api/devbuilds/{id} [get]
 func (h DevBuildHandler) Get(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -163,16 +167,17 @@ func (h DevBuildHandler) Get(c *gin.Context) {
 }
 
 // GetDevbuild godoc
-// @Summary	rerun devbuild
-// @Description	rerun devbuild
-// @Tags	devbuild
-// @Produce json
-// @Param	id	path	int	true	"id of build"
-// @Param	dryrun	query	bool	false	"dry run"	default(false)
-// @Success	200 {object}	service.DevBuild
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
-// @Router /api/devbuilds/{id}/rerun [post]
+//
+//	@Summary		rerun devbuild
+//	@Description	rerun devbuild
+//	@Tags			devbuild
+//	@Produce		json
+//	@Param			id		path		int		true	"id of build"
+//	@Param			dryrun	query		bool	false	"dry run"	default(false)
+//	@Success		200		{object}	service.DevBuild
+//	@Failure		400		{object}	HTTPError
+//	@Failure		500		{object}	HTTPError
+//	@Router			/api/devbuilds/{id}/rerun [post]
 func (h DevBuildHandler) Rerun(c *gin.Context) {
 	ctx, err := h.authenticate(c)
 	if err != nil {
@@ -200,18 +205,19 @@ func (h DevBuildHandler) Rerun(c *gin.Context) {
 }
 
 // UpdateDevbuild godoc
-// @Summary	update devbuild status
-// @Description	update the status field of a build
-// @Tags	devbuild
-// @Accept json
-// @Produce json
-// @Param	id	path	int	true	"id of build"
-// @Param	DevBuild	body	service.DevBuild	true	"build to update"
-// @Param	dryrun	query	bool	false	"dry run"	default(false)
-// @Success	200 {object}	service.DevBuild
-// @Failure	400	{object}	HTTPError
-// @Failure	500	{object}	HTTPError
-// @Router /api/devbuilds/{id} [put]
+//
+//	@Summary		update devbuild status
+//	@Description	update the status field of a build
+//	@Tags			devbuild
+//	@Accept			json
+//	@Produce		json
+//	@Param			id			path		int					true	"id of build"
+//	@Param			DevBuild	body		service.DevBuild	true	"build to update"
+//	@Param			dryrun		query		bool				false	"dry run"	default(false)
+//	@Success		200			{object}	service.DevBuild
+//	@Failure		400			{object}	HTTPError
+//	@Failure		500			{object}	HTTPError
+//	@Router			/api/devbuilds/{id} [put]
 func (h DevBuildHandler) Update(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)

@@ -33,7 +33,9 @@ build.web:
 	yarn build
 
 swagger:
-	swag init -d cmd/tibuild,pkg/rest
+	if [ ! -f $$(go env GOPATH)/bin/swag ]; then go install github.com/swaggo/swag/cmd/swag@v1.16.3; fi
+	$$(go env GOPATH)/bin/swag fmt -d ./cmd/tibuild,./pkg/rest
+	$$(go env GOPATH)/bin/swag init -d ./cmd/tibuild,./pkg/rest
 
 test:
 	go test ./...
