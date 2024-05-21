@@ -23,8 +23,10 @@ func TestDevBuildCreate(t *testing.T) {
 	repo := DevBuildRepo{Db: odb}
 	mock.ExpectBegin()
 	now := time.Unix(1, 0)
-	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "v6.7.0", CommunityEdition, "",
-		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "" /* target_img */, JenkinsEngine, "" /* githash */, "PENDING", 0, "", nil, nil, json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "", "v6.7.0", CommunityEdition, "",
+		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "", /* target_img */
+		JenkinsEngine, "PENDING", 0, "", nil, nil,
+		json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectCommit()
 	entity, err := repo.Create(context.TODO(), DevBuild{
@@ -67,7 +69,7 @@ func TestDevBuildUpdate(t *testing.T) {
 	tekton_text, err := json.Marshal(tekton_status)
 	require.NoError(t, err)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", false, "", false, "", "", "" /* GitHash */, "SUCCESS", 0, "", nil, nil, report_text, tekton_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", "", false, "", false, "", "", "SUCCESS", 0, "", nil, nil, report_text, tekton_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	entity, err := repo.Update(context.TODO(),
 		1,
@@ -89,7 +91,7 @@ func TestDevBuildGet(t *testing.T) {
 	repo := DevBuildRepo{Db: odb}
 	t.Run("proccessing", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "status"}).AddRow(1, BuildStatusProcessing)
-		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT \\?").WillReturnRows(rows)
 		entity, err := repo.Get(context.TODO(), 1)
 		require.NoError(t, err)
 		require.Nil(t, entity.Status.BuildReport)
@@ -100,7 +102,7 @@ func TestDevBuildGet(t *testing.T) {
 		report_text, err := json.Marshal(report)
 		require.NoError(t, err)
 		rows := sqlmock.NewRows([]string{"id", "status", "build_report"}).AddRow(1, BuildStatusSuccess, report_text)
-		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT \\?").WillReturnRows(rows)
 		entity, err := repo.Get(context.TODO(), 1)
 		require.NoError(t, err)
 		require.Equal(t, report, *entity.Status.BuildReport)
@@ -111,14 +113,14 @@ func TestDevBuildGet(t *testing.T) {
 		tekton_text, err := json.Marshal(tekton)
 		require.NoError(t, err)
 		rows := sqlmock.NewRows([]string{"id", "status", "tekton_status"}).AddRow(1, BuildStatusSuccess, tekton_text)
-		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT \\?").WillReturnRows(rows)
 		entity, err := repo.Get(context.TODO(), 1)
 		require.NoError(t, err)
 		require.Equal(t, tekton, *entity.Status.TektonStatus)
 		require.Empty(t, entity.Status.TektonStatusJson)
 	})
 	t.Run("not found", func(t *testing.T) {
-		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT 1").WillReturnError(gorm.ErrRecordNotFound)
+		mock.ExpectQuery("SELECT \\* FROM `dev_builds` WHERE `dev_builds`.`id` = \\? LIMIT \\?").WillReturnError(gorm.ErrRecordNotFound)
 		entity, err := repo.Get(context.TODO(), 1)
 		require.Nil(t, entity)
 		require.ErrorIs(t, err, ErrNotFound)
