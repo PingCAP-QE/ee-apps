@@ -1,97 +1,91 @@
 import * as React from 'react';
-import {useState,useEffect} from 'react';
-import {DataGrid, GridColDef, GridToolbar} from '@mui/x-data-grid';
-import {useQuery,useQueryClient} from "react-query";
-import {fetchList} from "../request/BuildList";
-import {FRONTHOST} from "../utils";
+import { useState, useEffect } from 'react';
+import { DataGrid, GridColDef, GridToolbar } from '@mui/x-data-grid';
+import { useQuery, useQueryClient } from "react-query";
+import { fetchList } from "../request/BuildList";
+import { FRONTHOST } from "../utils";
 
 const columns: GridColDef[] = [
-        {
-            field: "id",
-            hide: true,
-            valueGetter: (params) => params.row.pipeline_build_id,
-        },
-        {
-            field: 'pipeline_build_id',
-            headerName: 'ID',
-            width: 70,
-            valueGetter: (params) => params.row.pipeline_build_id,
-            renderCell: function (params) {
-                return <p>
-                    <a target="_blank"
-                       href={`${FRONTHOST}/home/build/result/${params.row.pipeline_build_id}`}>{params.row.pipeline_build_id}</a>
-                </p>
-            }
-        },
-        {
-            field: 'status',
-            headerName: 'Status',
-        },
-        {
-            field: 'begin_time',
-            headerName: 'Begin Time',
-            width: 170
-        },
-        {
-            field: 'end_time',
-            headerName: 'End Time',
-            width: 170
-        },
-        {
-            field: 'triggered_by',
-            headerName: 'Triggered By',
-            width: 120
-        },
-        {
-            field: 'component',
-            headerName: 'Component',
-            width: 170
-        },
-        {
-            field: 'arch',
-            headerName: 'Arch',
-            width: 170
-        },
-        {
-            field: 'artifact_type',
-            headerName: 'Artifact Type',
-            width: 170
-        },
-        {
-            field: 'branch',
-            headerName: 'Branch',
-            width: 120
-        },
-        {
-            field: 'version',
-            headerName: 'Version',
-            width: 170
-        },
-        {
-            field: 'push_gcr',
-            headerName: 'Push GCR',
-        },
-        {
-            field: 'artifact_meta',
-            headerName: 'Artifact Meta',
-            renderCell: function (params) {
-                return <p>
-                    {params.row.artifact_type===""?"not ready":<a target="_blank" href={FRONTHOST+"/home/build/result/"+params.row.pipeline_build_id}>Artifact Meta</a>}
-                </p>
-            }
-        },
-        {
-            field: 'jenkins_log',
-            headerName: 'Jenkins Log',
-            width: 100,
-            renderCell: function (params) {
-                return <p>
-                    {params.row.jenkins_log===""?"not ready":<a target="_blank" href={params.row.jenkins_log}>Jenkins Log</a>}
-                </p>
-            }
-        },
-    ]
-;
+    {
+        field: 'pipeline_build_id',
+        headerName: 'ID',
+        width: 70,
+        renderCell: function (params) {
+            return <p>
+                <a target="_blank"
+                    href={`${FRONTHOST}/home/build/result/${params.row.pipeline_build_id}`}>{params.row.pipeline_build_id}</a>
+            </p>
+        }
+    },
+    {
+        field: 'status',
+        headerName: 'Status',
+    },
+    {
+        field: 'begin_time',
+        headerName: 'Begin Time',
+        width: 170
+    },
+    {
+        field: 'end_time',
+        headerName: 'End Time',
+        width: 170
+    },
+    {
+        field: 'triggered_by',
+        headerName: 'Triggered By',
+        width: 120
+    },
+    {
+        field: 'component',
+        headerName: 'Component',
+        width: 170
+    },
+    {
+        field: 'arch',
+        headerName: 'Arch',
+        width: 170
+    },
+    {
+        field: 'artifact_type',
+        headerName: 'Artifact Type',
+        width: 170
+    },
+    {
+        field: 'branch',
+        headerName: 'Branch',
+        width: 120
+    },
+    {
+        field: 'version',
+        headerName: 'Version',
+        width: 170
+    },
+    {
+        field: 'push_gcr',
+        headerName: 'Push GCR',
+    },
+    {
+        field: 'artifact_meta',
+        headerName: 'Artifact Meta',
+        renderCell: function (params) {
+            return <p>
+                {params.row.artifact_type === "" ? "not ready" : <a target="_blank" href={FRONTHOST + "/home/build/result/" + params.row.pipeline_build_id}>Artifact Meta</a>}
+            </p>
+        }
+    },
+    {
+        field: 'jenkins_log',
+        headerName: 'Jenkins Log',
+        width: 100,
+        renderCell: function (params) {
+            return <p>
+                {params.row.jenkins_log === "" ? "not ready" : <a target="_blank" href={params.row.jenkins_log}>Jenkins Log</a>}
+            </p>
+        }
+    },
+]
+    ;
 
 const rows = [
     {
@@ -176,11 +170,11 @@ export default function DataGrid4List(tipipelineId) {
         );
     }
     const r8 = listQuery.data.map((v) => {
-            return {...v, id: v.pipeline_build_id}
-        }
+        return { ...v, id: v.pipeline_build_id }
+    }
     )
     return (
-        <div style={{height: 400, width: '100%'}}>
+        <div style={{ height: 400, width: '100%' }}>
             <DataGrid
                 rows={r8}
                 columns={columns}
@@ -193,8 +187,8 @@ export default function DataGrid4List(tipipelineId) {
                     Toolbar: GridToolbar,
                 }}
                 disableSelectionOnClick
-                showCellRightBorder = {true}
-                showColumnRightBorder = {false}
+                showCellRightBorder={true}
+                showColumnRightBorder={false}
 
             />
         </div>

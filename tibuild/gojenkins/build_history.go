@@ -1,10 +1,11 @@
 package gojenkins
 
 import (
-	"golang.org/x/net/html"
 	"io"
 	"strconv"
 	"strings"
+
+	"golang.org/x/net/html"
 )
 
 // Parse jenkins ajax response in order find the current jenkins build history
@@ -24,7 +25,6 @@ func parseBuildHistory(d io.Reader) []*History {
 			}
 		case html.SelfClosingTagToken:
 			tn, hasAttr := z.TagName()
-			// fmt.Println("START__", string(tn), hasAttr)
 			if hasAttr {
 				a := attr(z)
 				// <img src="/static/f2881562/images/16x16/red.png" alt="Failed &gt; Console Output" tooltip="Failed &gt; Console Output" style="width: 16px; height: 16px; " class="icon-red icon-sm" />
@@ -39,7 +39,6 @@ func parseBuildHistory(d io.Reader) []*History {
 		case html.StartTagToken:
 			depth++
 			tn, hasAttr := z.TagName()
-			// fmt.Println("START__", string(tn), hasAttr)
 			if hasAttr {
 				a := attr(z)
 				// <td class="build-row-cell">

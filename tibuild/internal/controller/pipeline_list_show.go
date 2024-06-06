@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +59,6 @@ func PipelinesShow(c *gin.Context) {
 		pipelines_info = append(pipelines_info, m)
 
 	}
-	fmt.Printf("result的类型是%T", pipelines_info)
 
 	start_p := 0
 	if params.Page > 1 {
