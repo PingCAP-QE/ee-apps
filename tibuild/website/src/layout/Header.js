@@ -5,9 +5,9 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import {CLIENTID} from "../utils";
+import { CLIENTID } from "../utils";
 import storage from "../request/storageUtils";
-import {Badge, Link, Tooltip} from "@mui/material";
+import { Badge, Link, Tooltip } from "@mui/material";
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
 function userLoginIn() {
@@ -32,8 +32,8 @@ export default function ButtonAppBar() {
         }
     };
 
-    const handleUserGuide=(event)=>{
-        const userGuideUrl="https://pingcap.feishu.cn/wiki/wikcnlRSh8dyOoHGbMQEJN9x77d";
+    const handleUserGuide = (event) => {
+        const userGuideUrl = "https://pingcap-cn.feishu.cn/wiki/ST9jwAE5ZiPHJUkFjT4cspRSnAf";
         window.open(userGuideUrl);
     }
 
@@ -46,7 +46,7 @@ export default function ButtonAppBar() {
     };
 
     return (
-        <Box sx={{flexGrow: 1}}>
+        <Box sx={{ flexGrow: 1 }}>
             <AppBar position="static" color="primary">
                 <Toolbar>
                     <IconButton
@@ -54,13 +54,13 @@ export default function ButtonAppBar() {
                         edge="start"
                         color="inherit"
                         aria-label="menu"
-                        sx={{mr: 2}}
+                        sx={{ mr: 2 }}
                     >
                         {/*<MenuIcon />*/}
                     </IconButton>
-                    <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
+                    <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
                         <Link href={"/"} underline="none" align={"left"}><font color="#F5F5F5" size={5} face="Comic Sans MS">TiBuild</font>
-                         </Link>
+                        </Link>
                     </Typography>
                     <Box>
                         <Tooltip title="User Guide">
@@ -69,9 +69,9 @@ export default function ButtonAppBar() {
                             </IconButton>
                         </Tooltip>
                     </Box>
-                    <Box sx={{flexGrow: 0}}>
+                    <Box sx={{ flexGrow: 0 }}>
                         <Tooltip title="LogIn or LogOut">
-                            <Button onClick={handleOpenUserMenu} sx={{p: 0}}>
+                            <Button onClick={handleOpenUserMenu} sx={{ p: 0 }}>
                                 {/*<Avatar alt="Remy Sharp" src="/static/images/avatar/2.jpg" />*/}
                                 <p align={"left"}><font color="#F5F5F5" size={4} face="Comic Sans MS">{loginName}</font>
                                 </p>

@@ -22,9 +22,6 @@ make run
 ```
 After waiting a few seconds, application is available and can be visited in the browser:[localhost:8080](http://localhost:8080/)
 
-## User Guide
-[click and jump](https://pingcap.feishu.cn/wiki/wikcnlRSh8dyOoHGbMQEJN9x77d)
-
 ## File Structure
 ```
 tibuild
