@@ -13,7 +13,7 @@ require (
 	github.com/rs/zerolog v1.32.0
 	github.com/tektoncd/pipeline v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.23.9
+	k8s.io/apimachinery v0.30.2
 )
 
 require (
