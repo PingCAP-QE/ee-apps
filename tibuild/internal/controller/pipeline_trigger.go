@@ -3,19 +3,19 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bndr/gojenkins"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
-	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/configs"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 type PipelineTriggerStruct struct {
@@ -58,34 +58,41 @@ type WhiteList struct {
 }
 
 func PipelineTrigger(c *gin.Context) {
-	log.Println(c.Request.URL.Path)
-
 	var params PipelineTriggerStruct
 	if err := c.Bind(&params); err != nil {
 		return
 	}
-	println(params.PipelineId)
-	println(params.TriggeredBy)
-	println(params.ArtifactType)
-	println(params.Arch)
-	println(params.Component)
-	println(params.Branch)
-	println(params.Version)
+	log.Debug().
+		Int("pipeline_id", params.PipelineId).
+		Str("triggered_by", params.TriggeredBy).
+		Str("artifact_type", params.ArtifactType).
+		Str("arch", params.Arch).
+		Str("component", params.Component).
+		Str("branch", params.Branch).
+		Str("version", params.Version).
+		Msg("received trigger request")
 
 	// 查数据库关联
-	var tibuildInfo []TibuildInfo
+	var tibuildInfo TibuildInfo
 	database.DBConn.DB.Where(&TibuildInfo{PipelineId: params.PipelineId}).Find(&tibuildInfo)
-	fmt.Printf("tibuildInfo : %+v \n", tibuildInfo)
+	if database.DBConn.DB.Where(&TibuildInfo{PipelineId: params.PipelineId}).First(&tibuildInfo).Error != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    404,
+			"message": "build not found",
+			"data":    params.TriggeredBy,
+		})
+		return
+	}
+	log.Debug().Any("data", &tibuildInfo).Msg("build info")
 
 	onlinePipList := [...]string{"rc-build", "ga-build", "hotfix-build"}
 	for _, value := range onlinePipList {
-		if tibuildInfo[0].BuildType == value {
+		if tibuildInfo.BuildType == value {
 			// 白名单查询
-			var whileList []WhiteList
-			database.DBConn.DB.Raw("select name from tibuild_white_list where name = ?", params.TriggeredBy).Scan(&whileList)
-			println("在白名单中：%v", params.TriggeredBy)
+			var whileListCount int64
+			database.DBConn.DB.Raw("select name from tibuild_white_list where name = ?", params.TriggeredBy).Count(&whileListCount)
 
-			if len(whileList) <= 0 {
+			if whileListCount <= 0 {
 				c.JSON(http.StatusOK, gin.H{
 					"code":    401,
 					"message": "没有触发权限，白名单拦截",

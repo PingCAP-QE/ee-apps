@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
-	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
+	"github.com/bndr/gojenkins"
+
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, params map[string]string, pipeline_build_id int64) {
@@ -29,7 +31,10 @@ func Job_Build(jenkins *gojenkins.Jenkins, ctx context.Context, jobname string, 
 		panic(err)
 	}
 	println("qid : ", qid)
-	build, err := jenkins.GetBuildFromQueueID(ctx, qid, jobname)
+	build, err := jenkins.GetBuildFromQueueID(ctx, qid)
+	if err != nil {
+		log.Println(err)
+	}
 	println("Jenkins build number is : ", build.GetBuildNumber())
 
 	var jenkins_log string

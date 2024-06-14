@@ -21,7 +21,7 @@ func (helper *ArtifactHelper) SyncImage(ctx context.Context, req ImageSyncReques
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrInternalError)
 	}
 	go func() {
-		bid, err := helper.jenkins.GetBuildNumberFromQueueID(ctx, qid, ImageSyncJobName)
+		bid, err := helper.jenkins.GetBuildNumberFromQueueID(ctx, qid)
 		if err != nil {
 			fmt.Printf("get build id from jenkins error: %+v", err)
 			return

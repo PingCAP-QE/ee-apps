@@ -81,7 +81,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			return nil, fmt.Errorf("trigger jenkins fail: %w", ErrInternalError)
 		}
 		go func(entity DevBuild) {
-			buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid, jobname)
+			buildNumber, err := s.Jenkins.GetBuildNumberFromQueueID(ctx, qid)
 			if err != nil {
 				entity.Status.Status = BuildStatusError
 				entity.Status.ErrMsg = err.Error()
