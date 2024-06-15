@@ -6,6 +6,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.14.0
+	github.com/dougsland/jenkinsctl v0.0.1
 	github.com/gin-contrib/requestid v0.0.6
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
@@ -36,7 +37,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dougsland/jenkinsctl v0.0.1
 	github.com/dougsland/jenkinsctl/jenkins v0.0.0-20210621004651-0e2c28d94c9c // indirect
 	github.com/emicklei/go-restful v2.15.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect

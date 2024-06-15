@@ -2,12 +2,12 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
+	"io/ioutil"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"io/ioutil"
-	"log"
-	"net/http"
+	"github.com/rs/zerolog/log"
 )
 
 type TestGithubSSO struct {
@@ -38,24 +38,26 @@ func GithubSSOToken(c *gin.Context) {
 		return
 	}
 
-	//   请求github接口
-	client := &http.Client{}
-	// get请求
+	//
 	req, err := http.NewRequest("GET", "https://github.com/login/oauth/access_token?client_id="+param.ClientId+"&client_secret="+param.ClientSecret+"&code="+param.Code+"&redirect_uri="+param.RedirectUri, nil)
 	if err != nil {
-		fmt.Println(err)
-		log.Fatal(err)
+		log.Error().Err(err).Msg("new request failed")
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
-	// 在请求头中加入校验的token
 	req.Header.Set("Accept", "application/json")
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println(err)
-		log.Fatal(err)
+		log.Error().Err(err).Msg("send request failed")
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 	returnMap, err := ParseResponse(resp)
+	if err != nil {
+		log.Error().Err(err).Msg("parse response failed")
+		c.AbortWithError(http.StatusInternalServerError, err)
+	}
 
-	//fmt.Printf("%s\n", bodyText)
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "请求成功",

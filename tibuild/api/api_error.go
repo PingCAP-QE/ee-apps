@@ -1,10 +1,10 @@
 package api
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 // error return struct definition
@@ -33,22 +33,9 @@ func APIErrorJSONReporterHandler(errType gin.ErrorType) gin.HandlerFunc {
 				Code:    http.StatusInternalServerError,
 				Message: err.Error(),
 			}
-			log.Println(parsedError)
+			log.Error().Err(parsedError).Send()
 
-			// var parsedError *APIError
-			// switch err.(type) {
-			// case *APIError:
-			// 	parsedError = err.(*APIError)
-			// default:
-			// 	parsedError = &APIError{
-			// 		Code:    http.StatusInternalServerError,
-			// 		Message: "Internal Server Error",
-			// 	}
-			// }
-
-			// Put the error into response
-			c.IndentedJSON(parsedError.Code, parsedError)
-			c.Abort()
+			c.AbortWithStatusJSON(parsedError.Code, parsedError)
 			return
 		}
 

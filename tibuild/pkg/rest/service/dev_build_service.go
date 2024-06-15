@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
-
-	"regexp"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type DevbuildServer struct {
@@ -21,7 +21,7 @@ type DevbuildServer struct {
 	OciFileserverURL string
 }
 
-const jobname = "devbuild"
+const devbuildJobname = "devbuild"
 
 func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuildSaveOption) (*DevBuild, error) {
 	req.Status = DevBuildStatus{}
@@ -73,7 +73,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			"ProductBaseImg":    entity.Spec.ProductBaseImg,
 			"TargetImg":         entity.Spec.TargetImg,
 		}
-		qid, err := s.Jenkins.BuildJob(ctx, jobname, params)
+		qid, err := s.Jenkins.BuildJob(ctx, devbuildJobname, params)
 		if err != nil {
 			entity.Status.Status = BuildStatusError
 			entity.Status.ErrMsg = err.Error()
@@ -87,7 +87,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 				entity.Status.ErrMsg = err.Error()
 				s.Repo.Update(ctx, entity.ID, entity)
 			}
-			println("Jenkins build number is : ", buildNumber)
+			log.Info().Int64("build_number", buildNumber).Msg("Jenkins build number got")
 			entity.Status.PipelineBuildID = buildNumber
 			entity.Status.Status = BuildStatusProcessing
 			s.Repo.Update(ctx, entity.ID, entity)
@@ -95,12 +95,12 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	} else if entity.Spec.PipelineEngine == TektonEngine {
 		err = s.Tekton.TriggerDevBuild(ctx, entity)
 		if err != nil {
-			slog.Error("trigger tekton failed", "reason", err)
+			log.Error().Err(err).Msg("trigger tekton failed")
 			entity.Status.Status = BuildStatusError
 			entity.Status.ErrMsg = err.Error()
 			_, err := s.Repo.Update(ctx, entity.ID, entity)
 			if err != nil {
-				slog.Error("save triggered entity failed", "reason", err)
+				log.Error().Err(err).Msg("save triggered entity failed")
 			}
 			return nil, fmt.Errorf("trigger Tekton fail: %w", ErrInternalError)
 		}
@@ -328,7 +328,7 @@ func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, 
 		return entity, nil
 	}
 	now := s.Now()
-	build, err := s.Jenkins.GetBuild(ctx, jobname, entity.Status.PipelineBuildID)
+	build, err := s.Jenkins.GetBuild(ctx, devbuildJobname, entity.Status.PipelineBuildID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch jenkins status error%w", ErrInternalError)
 	}
@@ -355,7 +355,7 @@ func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, 
 
 func (s DevbuildServer) inflate(entity *DevBuild) {
 	if entity.Status.PipelineBuildID != 0 {
-		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(jobname, entity.Status.PipelineBuildID)
+		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(devbuildJobname, entity.Status.PipelineBuildID)
 		entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, entity.Status.PipelineViewURL)
 	}
 	if entity.Status.BuildReport != nil {

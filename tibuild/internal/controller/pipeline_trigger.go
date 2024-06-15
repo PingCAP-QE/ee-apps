@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +16,22 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/configs"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
+
+const (
+	nightlyQAImageBuildPipelineID = 7
+	nightlyImageBuildPipelineID   = 8
+	nightlyTiupBuildPipelineID    = 9
+	devBuildpipelineID            = 12
+)
+
+var componentToRepoMap = map[string]string{
+	"ticdc":     "tiflow",
+	"dm":        "tiflow",
+	"tidb":      "tidb",
+	"dumpling":  "tidb",
+	"lightning": "tidb",
+	"br":        "tidb",
+}
 
 type PipelineTriggerStruct struct {
 	Arch         string `form:"arch" json:"arch" validate:"required"`
@@ -110,10 +125,10 @@ func PipelineTrigger(c *gin.Context) {
 
 	ps := entity.PipelinesListShow{
 		PipelineId:   params.PipelineId,
-		PipelineName: tibuildInfo[0].TabName,
+		PipelineName: tibuildInfo.TabName,
 		Status:       "Processing",
 		Branch:       params.Branch,
-		BuildType:    tibuildInfo[0].BuildType,
+		BuildType:    tibuildInfo.BuildType,
 		Version:      params.Version,
 		Arch:         params.Arch,
 		Component:    params.Component,
@@ -127,14 +142,12 @@ func PipelineTrigger(c *gin.Context) {
 	}
 
 	database.DBConn.DB.Debug().Create(&ps)
-	fmt.Println("pipeline_build_id : ", ps.PipelineBuildId)
-	fmt.Println("begin_time: ", ps.BeginTime)
+	log.Debug().Int("pipeline_build_id", ps.PipelineBuildId).Str("begin_time", ps.BeginTime).Send()
 
 	params_trans := make(map[string]string)
 	params_trans["PIPELINE_BUILD_ID"] = strconv.Itoa(ps.PipelineBuildId)
-	log.Println(params_trans)
 
-	go triggerJenkinsJob(ctx, &tibuildInfo[0], &params, params_trans, jenkins, int64(ps.PipelineBuildId))
+	go triggerJenkinsJob(ctx, &tibuildInfo, &params, params_trans, jenkins, int64(ps.PipelineBuildId))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -145,24 +158,9 @@ func PipelineTrigger(c *gin.Context) {
 
 func triggerJenkinsJob(ctx context.Context, tibuildInfo *TibuildInfo, params *PipelineTriggerStruct, params_trans map[string]string, jenkins *gojenkins.Jenkins, pipelineBuildID int64) {
 	switch params.PipelineId {
-	case 1, 2, 3, 4, 5, 6:
-		fmt.Println("触发构建的是多分支流水线，没有传入参数")
-	case 7:
-		fmt.Println("Tab展示名：Nightly Image Build For QA")
-		if params.Branch == "master" {
-			params_trans["GIT_BRANCH"] = "master"
-			params_trans["NEED_MULTIARCH"] = "true"
-		} else {
-			params_trans["GIT_BRANCH"] = params.Branch
-			params_trans["NEED_MULTIARCH"] = "false"
-		}
+	case nightlyQAImageBuildPipelineID:
+		params_trans["NEED_MULTIARCH"] = strconv.FormatBool(params.Branch == "master")
 		params_trans["FORCE_REBUILD"] = "false"
-
-	case 8:
-		fmt.Println("Tab展示名：Nightly Image Build to Dockerhub")
-
-	case 9:
-		fmt.Println("Tab展示名：Nightly TiUP Build")
 	case 10:
 		params_trans["RELEASE_BRANCH"] = params.Branch
 		params_trans["RELEASE_TAG"] = params.Version
@@ -171,50 +169,28 @@ func triggerJenkinsJob(ctx context.Context, tibuildInfo *TibuildInfo, params *Pi
 		params_trans["RELEASE_BRANCH"] = params.Branch
 		params_trans["NEED_MULTIARCH"] = "true"
 		params_trans["DEBUG_MODE"] = "false"
-	case 12: // dev-build
+	case devBuildpipelineID:
 		params_trans["PRODUCT"] = params.Component
-		if params.Component == "ticdc" || params.Component == "dm" {
-			params_trans["REPO"] = "tiflow"
-		} else if params.Component == "tidb" || params.Component == "dumpling" || params.Component == "lightning" || params.Component == "br" {
-			params_trans["REPO"] = "tidb"
-		} else {
-			params_trans["REPO"] = params.Component
-		}
+		params_trans["REPO"] = componentToRepoMap[params.Component]
 		params_trans["HOTFIX_TAG"] = params.Version
-		if params.PushGCR == "Yes" {
-			params_trans["PUSH_GCR"] = "true"
-		} else {
-			params_trans["PUSH_GCR"] = "false"
-		}
-		if params.ArtifactType == "enterprise image" {
-			params_trans["PUSH_DOCKER_HUB"] = "false"
-			params_trans["EDITION"] = "enterprise"
-		} else {
-			params_trans["PUSH_DOCKER_HUB"] = "true"
-			params_trans["EDITION"] = "community"
-		}
+		params_trans["PUSH_GCR"] = strconv.FormatBool(params.PushGCR == "Yes")
+		params_trans["PUSH_DOCKER_HUB"] = strconv.FormatBool(params.ArtifactType != "enterprise image")
+		params_trans["EDITION"] = map[bool]string{true: "enterprise", false: "community"}[params.ArtifactType == "enterprise image"]
 		params_trans["FORCE_REBUILD"] = "true"
 		params_trans["DEBUG"] = "false"
-		if params.Arch == "All" {
-			params_trans["ARCH"] = "both"
-		} else if params.Arch == "linux-amd64" {
-			params_trans["ARCH"] = "amd64"
-		} else {
-			params_trans["ARCH"] = "arm64"
+		archMap := map[string]string{
+			"All":         "both",
+			"linux-amd64": "amd64",
 		}
-
+		params_trans["ARCH"] = archMap[params.Arch]
 	}
 
-	job_name_tmp := strings.Split(tibuildInfo.Pipeline, "/job/")
-	if len(job_name_tmp) <= 1 {
-		println("Jenkins uri 非法！")
-	} else if len(job_name_tmp) == 2 {
-		job_name := strings.Split(job_name_tmp[1], "/")[0]
-		println(job_name)
-		service.Job_Build(jenkins, ctx, job_name, params_trans, pipelineBuildID)
-	} else {
-		job_name := job_name_tmp[1] + "/" + job_name_tmp[2]
-		println(job_name)
-		service.Job_Build(jenkins, ctx, job_name, params_trans, pipelineBuildID)
+	jobNameParts := strings.Split(tibuildInfo.Pipeline, "/job/")
+	if len(jobNameParts) < 2 {
+		log.Error().Str("pipeline_name", tibuildInfo.Pipeline).Msg("Invalid Jenkins URI!")
+		return
 	}
+
+	jobName := strings.Split(jobNameParts[1], "/")[0]
+	service.JobBuild(jenkins, ctx, jobName, params_trans, pipelineBuildID)
 }
