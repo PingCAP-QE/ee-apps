@@ -5,9 +5,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/entity"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 type PipelinesListShowRequest struct {
@@ -27,15 +28,14 @@ func PipelinesShow(c *gin.Context) {
 		})
 		return
 	}
+	log.Debug().Int("pipeline_id", params.PipelineId).Send()
 
 	var pipelines_list_show []entity.PipelinesListShow
-	println("params.PipelineId : %v", params.PipelineId)
 	database.DBConn.DB.Where(&entity.PipelinesListShow{PipelineId: params.PipelineId}).Order("begin_time desc").Find(&pipelines_list_show)
 
 	var pipelines_info []map[string]interface{}
 
 	for index, value := range pipelines_list_show {
-		println(value.BeginTime)
 		m := map[string]interface{}{
 			"index":             index,
 			"pipeline_id":       value.PipelineId,
@@ -72,9 +72,7 @@ func PipelinesShow(c *gin.Context) {
 		end_p = len(pipelines_info)
 	}
 
-	println("all len : %d", len(pipelines_info))
-	println("start position : %s", start_p)
-	println("end position : %s", end_p)
+	log.Debug().Int("start_p", start_p).Int("end_p", end_p).Int("all len", len(pipelines_info)).Msg("results summary")
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "请求成功",

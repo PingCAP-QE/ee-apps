@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/api"
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/configs"
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/configs"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 func main() {

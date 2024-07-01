@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
+	"github.com/bndr/gojenkins"
 )
 
 type Jenkins interface {
 	BuildJob(ctx context.Context, name string, params map[string]string) (int64, error)
-	GetBuildNumberFromQueueID(ctx context.Context, queueid int64, jobname string) (int64, error)
+	GetBuildNumberFromQueueID(ctx context.Context, queueid int64) (int64, error)
 	GetBuild(ctx context.Context, jobName string, number int64) (*gojenkins.Build, error)
 	BuildURL(jobName string, number int64) string
 }
@@ -22,8 +22,8 @@ func (j JenkinsClient) BuildJob(ctx context.Context, name string, params map[str
 	return j.Delegate.BuildJob(ctx, name, params)
 }
 
-func (j JenkinsClient) GetBuildNumberFromQueueID(ctx context.Context, queueid int64, jobname string) (int64, error) {
-	build, err := j.Delegate.GetBuildFromQueueID(ctx, queueid, jobname)
+func (j JenkinsClient) GetBuildNumberFromQueueID(ctx context.Context, queueid int64) (int64, error) {
+	build, err := j.Delegate.GetBuildFromQueueID(ctx, queueid)
 	if err != nil {
 		return 0, err
 	}

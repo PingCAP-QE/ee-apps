@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 type PipelineForBuildTypeStruct struct {
@@ -30,8 +30,7 @@ func PipelineForBuildType(c *gin.Context) {
 	database.DBConn.DB.Where(&TibuildInfo{BuildType: params.BuildType}).Find(&tibuildInfo)
 	var pipelines []map[string]interface{}
 
-	for index, value := range tibuildInfo {
-		println(index)
+	for _, value := range tibuildInfo {
 		m := map[string]interface{}{
 			"pipeline_id":   value.PipelineId,
 			"pipeline_name": value.TabName,

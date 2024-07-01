@@ -4,9 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/commons/database"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/rs/zerolog/log"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
 )
 
 type ParamsAvailableForPipelineStruct struct {
@@ -25,13 +27,13 @@ func ParamsAvailableForPipeline(c *gin.Context) {
 		})
 		return
 	}
+	log.Debug().Int("pipeline_id", params.PipelineId).Send()
 
-	var tibuild_info []TibuildInfo
-	println("params.PipelineId: ", params.PipelineId)
-	database.DBConn.DB.Where(&TibuildInfo{PipelineId: params.PipelineId}).Find(&tibuild_info)
+	var tibuildInfo []TibuildInfo
+	database.DBConn.DB.Where(&TibuildInfo{PipelineId: params.PipelineId}).Find(&tibuildInfo)
 	var component []map[string]interface{}
 
-	for _, value := range tibuild_info {
+	for _, value := range tibuildInfo {
 		available_params := map[string]interface{}{
 			"build_type":    value.BuildType,
 			"tab":           value.TabName,
@@ -45,11 +47,9 @@ func ParamsAvailableForPipeline(c *gin.Context) {
 		component = append(component, available_params)
 	}
 
-	// 成功返回
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "请求成功",
 		"data":    component,
 	})
-
 }

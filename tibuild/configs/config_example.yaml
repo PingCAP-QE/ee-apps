@@ -2,15 +2,8 @@
 # Because some configurations involve security, they cannot be disclosed. You should create "config.yaml" under this project by yourself.
 # All configuration information keys is in /tirelease/commons/configs/config.go in struct of ConfigYaml
 # Config like this:
-mysql:
-  username: "your user name"
-  password: "your password"
-  host: "127.0.0.1"
-  port: "127.0.0.1"
-  database: "you_db_name"
-  charset: ""
-  timezone: ""
-
+mysql_dsn: "root:your password@tcp(127.0.0.1:3306)/your_db_name?charset=utf8mb4&parseTime=True&loc=Local"
+ 
 jenkins:
   username: "your jenkins account"
   password: "your password"
@@ -25,5 +18,4 @@ cloudevent:
   endpoint: "http://localhost:8000"
 
 tektonviewurl: "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
-
 ocifileserverurl: "https://internal.do.pingcap.net:30443/dl/oci-file"

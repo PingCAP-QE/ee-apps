@@ -2,18 +2,22 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"os"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/controller"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	prodName := "tidb"
 	baseVersion := "v5.4.1"
 	prod := service.StringToProduct(prodName)
-	if prod == service.ProductUnknown {
-		fmt.Println("bad prod name" + prodName)
+	if prod == "" {
+		log.Error().Str("name", prodName).Msg("bad product name")
+		os.Exit(1)
 	}
-	controller.NewChatPrintRepoService().CreateBranch(context.TODO(), service.BranchCreateReq{Prod: prod, BaseVersion: baseVersion})
+
+	req := service.BranchCreateReq{Prod: prod, BaseVersion: baseVersion}
+	controller.NewChatPrintRepoService().CreateBranch(context.TODO(), req)
 }

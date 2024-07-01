@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/gojenkins"
+	"github.com/bndr/gojenkins"
 )
 
 type mockRepo struct {
@@ -42,7 +42,7 @@ func (m *mockJenkins) BuildJob(ctx context.Context, name string, params map[stri
 	m.params = params
 	return 1, nil
 }
-func (m mockJenkins) GetBuildNumberFromQueueID(ctx context.Context, queueid int64, jobname string) (int64, error) {
+func (m mockJenkins) GetBuildNumberFromQueueID(ctx context.Context, queueid int64) (int64, error) {
 	if m.resume != nil {
 		<-m.resume
 	}
