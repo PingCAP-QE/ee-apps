@@ -5,7 +5,7 @@ COPY website/ .
 RUN --mount=type=cache,target=/webapp/node_modules npm install && yarn build
 
 # Copy whole project's contents(not entire folder) into .(/goapp/) and build Golang
-FROM golang:1.22.2 as serverbuilder
+FROM golang:1.22.4 as serverbuilder
 ENV GO111MODULE=on \
     CGO_ENABLED=0 \
     GOPROXY=https://goproxy.cn,direct
