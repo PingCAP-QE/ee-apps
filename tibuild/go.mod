@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/bndr/gojenkins v1.1.0
-	github.com/cloudevents/sdk-go/v2 v2.14.0
+	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/dougsland/jenkinsctl v0.0.1
 	github.com/gin-contrib/requestid v1.0.2
 	github.com/gin-contrib/static v0.0.1
