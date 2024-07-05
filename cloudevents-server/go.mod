@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	entgo.io/ent v0.13.1
-	github.com/cloudevents/sdk-go/v2 v2.14.0
+	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.2.2
