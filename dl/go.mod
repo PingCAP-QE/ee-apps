@@ -3,7 +3,7 @@ module github.com/PingCAP-QE/ee-apps/dl
 go 1.21
 
 require (
-	github.com/ks3sdklib/aws-sdk-go v1.2.9
+	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/opencontainers/image-spec v1.1.0
 	goa.design/goa/v3 v3.16.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -23,7 +23,6 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go v1.44.204 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
