@@ -9,7 +9,7 @@ require (
 	github.com/dougsland/jenkinsctl v0.0.1
 	github.com/gin-contrib/requestid v1.0.2
 	github.com/gin-contrib/static v1.1.2
-	github.com/gin-gonic/gin v1.9.1
+	github.com/gin-gonic/gin v1.10.0
 	github.com/google/go-github/v61 v61.0.0
 	github.com/jinzhu/configor v1.2.2
 	github.com/rs/zerolog v1.33.0
