@@ -1,5 +1,5 @@
 # Copy 'website/' contents(not entire folder) into .(/webapp/) and build React 
-FROM node:20.12.2 as webbuilder
+FROM node:20.15.1 as webbuilder
 WORKDIR /webapp
 COPY website/ .
 RUN --mount=type=cache,target=/webapp/node_modules npm install && yarn build
