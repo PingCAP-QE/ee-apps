@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 
 	oras "oras.land/oras-go/v2"
-	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry/remote"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -69,47 +67,20 @@ func NewFileReadCloser(ctx context.Context, repo, tag, filename string) (io.Read
 	return rc, desiredFileDescriptor.Size, nil
 }
 
-func DownloadFile(ctx context.Context, repo, tag, filename, saveFile string) error {
+func GetFileSHA256(ctx context.Context, repo, tag, filename string) (string, error) {
 	repository, err := remote.NewRepository(repo)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// 1. get desired file descriptor in the artifact.
 	// destination := strings.Join([]string{repo, tag}, ":")
 	desiredFileDescriptor, err := fetchFileDescriptor(ctx, repository, tag, filename)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// 2. Fetch the blob of the desired file
-	// blobRef := strings.Join([]string{repo, desiredFileDescriptor.Digest.String()}, "@")
-	rc, err := repository.Blobs().Fetch(ctx, *desiredFileDescriptor)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-
-	// 3. Create a file to save the desired file
-	writer, err := os.Create(saveFile)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-
-	// 4. Copy the content the target file.
-	vr := content.NewVerifyReader(rc, *desiredFileDescriptor)
-	if _, err = io.Copy(writer, vr); err != nil {
-		return err
-	}
-
-	// 5. Handle the downloaded file
-	if err := vr.Verify(); err != nil {
-		return err
-	}
-
-	fmt.Println("File downloaded successfully:", saveFile)
-	return nil
+	return desiredFileDescriptor.Digest.Encoded(), nil
 }
 
 func listArtifactLayers(ctx context.Context, target oras.ReadOnlyTarget, ref string) ([]ocispec.Descriptor, error) {
