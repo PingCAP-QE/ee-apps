@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/url"
+	"strings"
 
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
@@ -47,4 +48,20 @@ func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) 
 		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(p.File),
 	}
 	return res, rc, nil
+}
+
+// DownloadFileSha256 implements download-file-sha256.
+func (s *ocisrvc) DownloadFileSha256(ctx context.Context, p *oci.DownloadFileSha256Payload) (res *oci.DownloadFileSha256Result, resp io.ReadCloser, err error) {
+	s.logger.Print("oci.download-file-sha256")
+
+	value, err := pkgoci.GetFileSHA256(ctx, p.Repository, p.Tag, p.File)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res = &oci.DownloadFileSha256Result{
+		Length:             int64(len(value)),
+		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(p.File) + ".sha256",
+	}
+	return res, io.NopCloser(strings.NewReader(value)), nil
 }

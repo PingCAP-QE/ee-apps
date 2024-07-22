@@ -94,6 +94,45 @@ var _ = Service("oci", func() {
 			})
 		})
 	})
+
+	Method("download-file-sha256", func() {
+		Payload(func() {
+			Field(1, "repository", String, "OCI artifact repository")
+			Field(2, "tag", String, "OCI artifact tag")
+			Field(3, "file", String, "file name in OCI artifact")
+			Required("repository", "tag", "file")
+		})
+
+		Result(func() {
+			Attribute("length", Int64, "Length is the downloaded content length in bytes.", func() {
+				Example(4 * 1024 * 1024)
+			})
+			Attribute("contentDisposition", String, "Content-Disposition header for downloading", func() {
+				Example("attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz.sha256")
+			})
+			Required("length", "contentDisposition")
+		})
+
+		Error("invalid_file_path", ErrorResult, "Could not locate file for download")
+		Error("internal_error", ErrorResult, "Fault while processing download.")
+
+		HTTP(func() {
+			GET("/oci-file-sha256/{*repository}")
+			Param("file:file", String, "file name in OCI artifact")
+			Param("tag:tag", String, "OCI artifact tag")
+
+			// Bypass response body encoder code generation to alleviate need for
+			// loading the entire response body in memory.
+			SkipResponseBodyEncodeDecode()
+
+			Response(func() {
+				// Set the content type for binary data
+				ContentType("application/plain-text")
+				Header("length:Content-Length")
+				Header("contentDisposition:Content-Disposition")
+			})
+		})
+	})
 })
 
 var _ = Service("ks3", func() {
