@@ -6,31 +6,14 @@ import (
 	"fmt"
 	"io"
 
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/registry/remote"
-
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const AnnotationKeyFileName = "org.opencontainers.image.title"
 
-func ListFiles(ctx context.Context, repo, tag string) ([]string, error) {
-	repository, err := remote.NewRepository(repo)
-	if err != nil {
-		return nil, err
-	}
-
-	// Note: The below code can be omitted if authentication is not required
-	// reg := strings.SplitN(repo, "/", 2)[0]
-	// repository.Client = &auth.Client{
-	// 	Client: retry.DefaultClient,
-	// 	Cache:  auth.DefaultCache,
-	// 	Credential: auth.StaticCredential(reg, auth.Credential{
-	// 		Username: "username",
-	// 		Password: "password",
-	// 	}),
-	// }
-
+func ListFiles(ctx context.Context, repository *remote.Repository, tag string) ([]string, error) {
 	layers, err := listArtifactLayers(ctx, repository, tag)
 	if err != nil {
 		return nil, err
@@ -44,12 +27,7 @@ func ListFiles(ctx context.Context, repo, tag string) ([]string, error) {
 	return ret, nil
 }
 
-func NewFileReadCloser(ctx context.Context, repo, tag, filename string) (io.ReadCloser, int64, error) {
-	repository, err := remote.NewRepository(repo)
-	if err != nil {
-		return nil, 0, err
-	}
-
+func NewFileReadCloser(ctx context.Context, repository *remote.Repository, tag, filename string) (io.ReadCloser, int64, error) {
 	// 1. get desired file descriptor in the artifact.
 	// destination := strings.Join([]string{repo, tag}, ":")
 	desiredFileDescriptor, err := fetchFileDescriptor(ctx, repository, tag, filename)
@@ -67,12 +45,7 @@ func NewFileReadCloser(ctx context.Context, repo, tag, filename string) (io.Read
 	return rc, desiredFileDescriptor.Size, nil
 }
 
-func GetFileSHA256(ctx context.Context, repo, tag, filename string) (string, error) {
-	repository, err := remote.NewRepository(repo)
-	if err != nil {
-		return "", err
-	}
-
+func GetFileSHA256(ctx context.Context, repository oras.ReadOnlyTarget, tag, filename string) (string, error) {
 	// 1. get desired file descriptor in the artifact.
 	// destination := strings.Join([]string{repo, tag}, ":")
 	desiredFileDescriptor, err := fetchFileDescriptor(ctx, repository, tag, filename)

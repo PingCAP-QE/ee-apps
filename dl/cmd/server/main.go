@@ -28,6 +28,7 @@ func main() {
 		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
 		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
 		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
+		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
 	)
 	flag.Parse()
 
@@ -47,7 +48,7 @@ func main() {
 	)
 	{
 		healthSvc = dl.NewHealth(logger)
-		ociSvc = dl.NewOci(logger)
+		ociSvc = dl.NewOci(logger, ociCfgPathF)
 		ks3Svc = dl.NewKs3(logger, *ks3CfgPathF)
 	}
 

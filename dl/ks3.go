@@ -25,7 +25,10 @@ type ks3srvc struct {
 }
 
 func newKS3Client(cfg *pkgks3.Config) *s3.S3 {
-	var cre = credentials.NewStaticCredentials(cfg.AccessKey, cfg.SecretKey, "")
+	var cre *credentials.Credentials
+	if cfg != nil && cfg.AccessKey != "" && cfg.SecretKey != "" {
+		cre = credentials.NewStaticCredentials(cfg.AccessKey, cfg.SecretKey, "")
+	}
 	awsConfig := aws.Config{
 		Region:           cfg.Region, // Ref: https://docs.ksyun.com/documents/6761
 		Credentials:      cre,
