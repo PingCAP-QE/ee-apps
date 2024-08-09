@@ -8,6 +8,8 @@ import (
 	"regexp"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/kafka"
 )
 
 type Store struct {
@@ -50,14 +52,25 @@ type Tekton struct {
 	FailedStepTailLines int                  `yaml:"failed_step_tail_lines,omitempty" json:"failed_step_tail_lines,omitempty"`
 }
 
+type Kafka struct {
+	Brokers        []string             `yaml:"brokers,omitempty" json:"brokers,omitempty"`
+	ClientID       string               `yaml:"client_id,omitempty" json:"client_id,omitempty"`
+	Authentication kafka.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
+	Producer       kafka.Producer       `yaml:"producer,omitempty" json:"producer,omitempty"`
+	Consumer       kafka.Consumer       `yaml:"consumer,omitempty" json:"consumer,omitempty"`
+}
+
+type TiBuild struct {
+	ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
+	TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
+}
+
 type Config struct {
 	Store   Store      `yaml:"store,omitempty" json:"store,omitempty"`
 	Lark    LarkBotApp `yaml:"lark,omitempty" json:"lark,omitempty"`
 	Tekton  Tekton     `yaml:"tekton,omitempty" json:"tekton,omitempty"`
-	TiBuild struct {
-		ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
-		TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
-	} `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
+	TiBuild TiBuild    `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
+	Kafka   Kafka      `yaml:"kafka,omitempty" json:"kafka,omitempty"`
 }
 
 func (c *Config) LoadFromFile(file string) error {
