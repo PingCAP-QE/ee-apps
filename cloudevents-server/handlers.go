@@ -29,13 +29,12 @@ func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
 		log.Fatal().Err(err).Msg("Failed to create protocol")
 	}
 
-	handler, err := newCloudEventsHandler(cfg)
+	handler, err := handler.NewEventProducer(cfg.Kafka)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create cloudevents handler")
+		log.Fatal().Err(err).Msg("failed to create broker handler")
 	}
-	log.Debug().Any("types", handler.SupportEventTypes()).Msgf("registered event handlers")
 
-	h, err := cloudevents.NewHTTPReceiveHandler(nil, p, handler.Handle)
+	h, err := cloudevents.NewHTTPReceiveHandler(nil, p, handler.HandleCloudEvent)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create handler")
 	}
