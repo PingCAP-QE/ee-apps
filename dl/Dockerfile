@@ -3,7 +3,7 @@ FROM golang:1.22.4 AS builder
 COPY . /app
 RUN --mount=type=cache,target=/go/pkg/mod cd /app && go build -o server ./cmd/server
 
-FROM ghcr.io/pingcap-qe/bases/pingcap-base:v1.9.0
+FROM ghcr.io/pingcap-qe/bases/pingcap-base:v1.9.1
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/PingCAP-QE/ee-apps"
 
