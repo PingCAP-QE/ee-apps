@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
 )
 
 func main() {
@@ -44,8 +46,21 @@ func main() {
 	_ = r.SetTrustedProxies(nil)
 
 	setRouters(r, cfg)
-	log.Info().Str("address", serveAddr).Msg("server started.")
 
+	hd, err := newCloudEventsHandler(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create cloudevents handler")
+	}
+	log.Debug().Any("types", hd.SupportEventTypes()).Msgf("registered event handlers")
+
+	cg, err := handler.NewEventConsumerGroup(cfg.Kafka, hd)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create consumer group")
+	}
+	defer cg.Close()
+	go cg.Start(context.Background())
+
+	log.Info().Str("address", serveAddr).Msg("server started.")
 	if err := http.ListenAndServe(serveAddr, r); err != nil {
 		log.Fatal().Err(err).Send()
 	}
