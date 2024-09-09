@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -42,10 +46,10 @@ func main() {
 	}
 
 	gin.SetMode(ginMode)
-	r := gin.Default()
-	_ = r.SetTrustedProxies(nil)
+	ginEngine := gin.Default()
+	_ = ginEngine.SetTrustedProxies(nil)
 
-	setRouters(r, cfg)
+	setRouters(ginEngine, cfg)
 
 	hd, err := newCloudEventsHandler(cfg)
 	if err != nil {
@@ -57,13 +61,39 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create consumer group")
 	}
-	defer cg.Close()
-	go cg.Start(context.Background())
 
-	log.Info().Str("address", serveAddr).Msg("server started.")
-	if err := http.ListenAndServe(serveAddr, r); err != nil {
-		log.Fatal().Err(err).Send()
+	srv := &http.Server{Addr: serveAddr, Handler: ginEngine}
+	startServices(srv, cg)
+}
+
+func startServices(srv *http.Server, cg handler.EventConsumerGroup) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("server error")
+		}
+	}()
+	log.Info().Str("address", srv.Addr).Msg("server started.")
+	cgCtx, cgCancel := context.WithCancel(context.Background())
+	go cg.Start(cgCtx)
+
+	// Wait for interrupt signal to gracefully shutdown
+	sig := <-sigChan
+	log.Warn().Str("signal", sig.String()).Msg("signal received")
+
+	// shutdown consumer group.
+	cgCancel()
+
+	// shutdown http server.
+	shutdownSrvCtx, shutdownSrvCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownSrvCancel()
+	if err := srv.Shutdown(shutdownSrvCtx); err != nil {
+		log.Error().Err(err).Msg("server shutdown error")
 	}
+
+	log.Info().Msg("server gracefully stopped")
 }
 
 func setRouters(r gin.IRoutes, cfg *config.Config) {
