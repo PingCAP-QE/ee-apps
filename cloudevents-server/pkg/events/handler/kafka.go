@@ -2,10 +2,7 @@ package handler
 
 import (
 	"context"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/rs/zerolog/log"
@@ -28,25 +25,32 @@ func NewEventProducer(cfg config.Kafka) (*EventProducer, error) {
 	}, nil
 }
 
-func NewEventConsumer(cfg config.Kafka, topic string, hander EventHandler) (*EventConsumer, error) {
+func NewEventConsumer(cfg config.Kafka, topic string, hander EventHandler, faultWriter *kafka.Writer) (*EventConsumer, error) {
 	reader, err := skakfa.NewReader(cfg.Authentication, cfg.Brokers, topic, cfg.Consumer.GroupID, cfg.ClientID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &EventConsumer{
-		reader:  reader,
-		handler: hander,
+		reader:     reader,
+		handler:    hander,
+		writer:     faultWriter,
+		faultTopic: cfg.Consumer.DeadLetterTopic,
 	}, nil
 }
 
 func NewEventConsumerGroup(cfg config.Kafka, hander EventHandler) (EventConsumerGroup, error) {
+	faultWriter, err := skakfa.NewWriter(cfg.Authentication, cfg.Brokers, "", cfg.ClientID)
+	if err != nil {
+		return nil, err
+	}
+
 	consumerGroup := make(EventConsumerGroup)
 	for _, topic := range cfg.Consumer.TopicMapping {
 		if consumerGroup[topic] != nil {
 			continue
 		}
-		consumer, err := NewEventConsumer(cfg, topic, hander)
+		consumer, err := NewEventConsumer(cfg, topic, hander, faultWriter)
 		if err != nil {
 			return nil, err
 		}
@@ -106,6 +110,9 @@ func (ecs EventConsumerGroup) Close() {
 	}
 }
 
+// Start runs the EventConsumerGroup in parallel, starting each EventConsumer
+// in a separate goroutine. It waits for all EventConsumers to finish before
+// returning.
 func (ecs EventConsumerGroup) Start(ctx context.Context) {
 	wg := new(sync.WaitGroup)
 	for _, ec := range ecs {
@@ -129,19 +136,12 @@ type EventConsumer struct {
 
 // consumer workers
 func (ec *EventConsumer) Start(ctx context.Context) error {
-	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
-
 	defer ec.Close()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-sigterm:
-			// When SIGTERM received, try to flush remaining messages
-			// and exit gracefully
-			return nil
 		default:
 			m, err := ec.reader.ReadMessage(ctx)
 			if err != nil {
@@ -157,7 +157,7 @@ func (ec *EventConsumer) Start(ctx context.Context) error {
 			result := ec.handler.Handle(event)
 			if !cloudevents.IsACK(result) {
 				log.Error().Err(err).Msg("error handling event")
-				// ec.writer.WriteMessages(ctx, kafka.Message{Topic: ec.faultTopic, Key: m.Key, Value: m.Value})
+				ec.writer.WriteMessages(ctx, kafka.Message{Topic: ec.faultTopic, Key: m.Key, Value: m.Value})
 			}
 		}
 	}

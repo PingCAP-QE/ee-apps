@@ -21,3 +21,19 @@ tekton:
     - event_type: dev.tekton.event.pipelinerun.failed.v1
       event_subject_reg: ^xxx-from-.*
       receivers: [failure-receiver]
+kafka:
+  brokers:
+    - broker1:9092
+  client_id: cloudevents-server
+  # authentication:
+  #   mechanism: SCRAM-SHA-256
+  #   user: username
+  #   password: password
+  producer:
+    topic_mapping: {}
+    default_topic: test-topic
+  consumer:
+    group_id: consumer-group-1
+    topic_mapping:
+      '*': test-topic
+    dead_letter_topic: test-topic-dead-letter

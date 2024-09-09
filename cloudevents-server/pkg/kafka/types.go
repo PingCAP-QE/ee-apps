@@ -6,6 +6,7 @@ type Producer struct {
 }
 
 type Consumer struct {
-	GroupID      string            `yaml:"group_id,omitempty" json:"group_id,omitempty"`
-	TopicMapping map[string]string `yaml:"topic_mapping,omitempty" json:"topic_mapping,omitempty"` // event type to topic.
+	GroupID         string            `yaml:"group_id,omitempty" json:"group_id,omitempty"`
+	TopicMapping    map[string]string `yaml:"topic_mapping,omitempty" json:"topic_mapping,omitempty"` // event type to topic.
+	DeadLetterTopic string            `yaml:"dead_letter_topic,omitempty" json:"dead_letter_topic,omitempty"`
 }
