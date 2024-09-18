@@ -77,26 +77,34 @@ func DecodeDownloadFileRequest(mux goahttp.Muxer, decoder func(*http.Request) go
 	return func(r *http.Request) (any, error) {
 		var (
 			repository string
-			file       string
 			tag        string
+			file       *string
+			fileRegex  *string
 			err        error
 
 			params = mux.Vars(r)
 		)
 		repository = params["repository"]
 		qp := r.URL.Query()
-		file = qp.Get("file")
-		if file == "" {
-			err = goa.MergeErrors(err, goa.MissingFieldError("file", "query string"))
-		}
 		tag = qp.Get("tag")
 		if tag == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("tag", "query string"))
 		}
+		fileRaw := qp.Get("file")
+		if fileRaw != "" {
+			file = &fileRaw
+		}
+		fileRegexRaw := qp.Get("file_regex")
+		if fileRegexRaw != "" {
+			fileRegex = &fileRegexRaw
+		}
+		if fileRegex != nil {
+			err = goa.MergeErrors(err, goa.ValidateFormat("file_regex", *fileRegex, goa.FormatRegexp))
+		}
 		if err != nil {
 			return nil, err
 		}
-		payload := NewDownloadFilePayload(repository, file, tag)
+		payload := NewDownloadFilePayload(repository, tag, file, fileRegex)
 
 		return payload, nil
 	}

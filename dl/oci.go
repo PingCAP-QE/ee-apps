@@ -2,10 +2,13 @@ package dl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
@@ -79,20 +82,49 @@ func (s *ocisrvc) getTargetRepo(repo string) (*remote.Repository, error) {
 
 // DownloadFile implements download-file.
 func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) (res *oci.DownloadFileResult, resp io.ReadCloser, err error) {
-	s.logger.Print("oci.download-files")
+	s.logger.Print("oci.download-file")
 
 	repository, err := s.getTargetRepo(p.Repository)
 	if err != nil {
 		return nil, nil, err
 	}
-	rc, length, err := pkgoci.NewFileReadCloser(ctx, repository, p.Tag, p.File)
+
+	if p.File != nil {
+		return s.downloadFile(ctx, repository, p.Tag, *p.File)
+	}
+
+	if p.FileRegex != nil {
+		pattern, err := regexp.Compile(*p.FileRegex)
+		if err != nil {
+			return nil, nil, oci.MakeInvalidFilePath(err)
+		}
+
+		files, err := pkgoci.ListFiles(ctx, repository, p.Tag)
+		if err != nil {
+			return nil, nil, oci.MakeInvalidFilePath(err)
+		}
+
+		for _, file := range files {
+			if pattern.MatchString(file) {
+				return s.downloadFile(ctx, repository, p.Tag, file)
+			}
+		}
+
+		return nil, nil, oci.MakeInvalidFilePath(fmt.Errorf("could not locate file for download: %s", *p.FileRegex))
+	}
+
+	return nil, nil, oci.MakeInvalidFilePath(errors.New("none `file` or `file_regex` param given"))
+}
+
+func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag, file string) (res *oci.DownloadFileResult, resp io.ReadCloser, err error) {
+	rc, length, err := pkgoci.NewFileReadCloser(ctx, repo, tag, file)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	res = &oci.DownloadFileResult{
 		Length:             length,
-		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(p.File),
+		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(file),
 	}
 	return res, rc, nil
 }

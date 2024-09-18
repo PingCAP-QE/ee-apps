@@ -21,11 +21,12 @@ func NewListFilesPayload(repository string, tag string) *oci.ListFilesPayload {
 }
 
 // NewDownloadFilePayload builds a oci service download-file endpoint payload.
-func NewDownloadFilePayload(repository string, file string, tag string) *oci.DownloadFilePayload {
+func NewDownloadFilePayload(repository string, tag string, file *string, fileRegex *string) *oci.DownloadFilePayload {
 	v := &oci.DownloadFilePayload{}
 	v.Repository = repository
-	v.File = file
 	v.Tag = tag
+	v.File = file
+	v.FileRegex = fileRegex
 
 	return v
 }

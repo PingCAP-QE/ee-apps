@@ -20,7 +20,7 @@ paths:
                             schema:
                                 type: boolean
                                 example: true
-                            example: false
+                            example: true
     /livez:
         get:
             tags:
@@ -35,7 +35,7 @@ paths:
                             schema:
                                 type: boolean
                                 example: true
-                            example: false
+                            example: true
     /oci-file-sha256/{repository}:
         get:
             tags:
@@ -51,8 +51,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Vero voluptatum perspiciatis omnis qui vel.
-                  example: A at dolor soluta molestiae.
+                    example: Eligendi aut vero et neque odit.
+                  example: At aperiam laboriosam odio ut quam.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -61,8 +61,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Sequi dolor voluptatem atque.
-                  example: Nesciunt eum quia.
+                    example: Assumenda aliquam est et aut.
+                  example: Magnam a corporis.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -70,8 +70,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Nobis possimus eaque dolor sunt similique.
-                  example: Quod nulla nostrum voluptatem soluta reprehenderit reiciendis.
+                    example: Sed nihil autem dolor blanditiis accusamus sit.
+                  example: Neque sunt ut repellendus.
             responses:
                 "200":
                     description: OK response.
@@ -103,16 +103,6 @@ paths:
             summary: download-file oci
             operationId: oci#download-file
             parameters:
-                - name: file
-                  in: query
-                  description: file name in OCI artifact
-                  allowEmptyValue: true
-                  required: true
-                  schema:
-                    type: string
-                    description: file name in OCI artifact
-                    example: Est et.
-                  example: Non magnam a corporis.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -121,8 +111,27 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Sed nihil autem dolor blanditiis accusamus sit.
-                  example: Neque sunt ut repellendus.
+                    example: v8.1.0_darwin_arm64
+                  example: v8.1.0_darwin_arm64
+                - name: file
+                  in: query
+                  description: file name in OCI artifact
+                  allowEmptyValue: true
+                  schema:
+                    type: string
+                    description: file name in OCI artifact
+                    example: tidb-v7.5.0-darwin-arm64.tar.gz
+                  example: tidb-v7.5.0-darwin-arm64.tar.gz
+                - name: file_regex
+                  in: query
+                  description: file name regex pattern in OCI artifact
+                  allowEmptyValue: true
+                  schema:
+                    type: string
+                    description: file name regex pattern in OCI artifact
+                    example: tidb-.+[.]tar[.]gz
+                    format: regexp
+                  example: tidb-.+[.]tar[.]gz
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -130,8 +139,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Quaerat architecto.
-                  example: Id et sit expedita.
+                    example: hub.pingcap.net/pingcap/tidb/package
+                  example: hub.pingcap.net/pingcap/tidb/package
             responses:
                 "200":
                     description: OK response.
@@ -171,8 +180,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Et qui quo.
-                  example: Fugiat tempore sapiente dolorem et laborum impedit.
+                    example: Dolor itaque ullam.
+                  example: Repellendus id dolorem dolor quasi qui consectetur.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -180,8 +189,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Vero dolores amet possimus quasi libero nesciunt.
-                  example: Debitis nostrum maiores est.
+                    example: Et et fugit.
+                  example: Quia aperiam sunt quam et asperiores cupiditate.
             responses:
                 "200":
                     description: OK response.
@@ -191,15 +200,16 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Dolor itaque ullam.
+                                    example: Qui itaque quos quaerat nulla.
                                 example:
-                                    - Id dolorem dolor quasi qui.
-                                    - Dolore et et fugit officia quia aperiam.
-                                    - Quam et asperiores.
+                                    - Vel nobis asperiores at.
+                                    - Dignissimos error et repellendus.
+                                    - Nam quibusdam recusandae dolor voluptas.
                             example:
-                                - Aut vero et.
-                                - Odit rerum at aperiam laboriosam odio.
-                                - Quam iusto assumenda.
+                                - Et qui quo.
+                                - Fugiat tempore sapiente dolorem et laborum impedit.
+                                - Vero dolores amet possimus quasi libero nesciunt.
+                                - Debitis nostrum maiores est.
     /s3-obj/{bucket}/{key}:
         get:
             tags:
@@ -214,8 +224,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: Ut nulla et itaque.
-                  example: Molestiae dolorum.
+                    example: Quaerat architecto.
+                  example: Id et sit expedita.
                 - name: key
                   in: path
                   description: object key
@@ -223,8 +233,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Cupiditate recusandae qui.
-                  example: Iste dolorem quasi eos.
+                    example: Vero voluptatum perspiciatis omnis qui vel.
+                  example: A at dolor soluta molestiae.
             responses:
                 "200":
                     description: OK response.
