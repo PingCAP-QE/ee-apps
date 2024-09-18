@@ -48,7 +48,9 @@ type DownloadFilePayload struct {
 	// OCI artifact tag
 	Tag string
 	// file name in OCI artifact
-	File string
+	File *string
+	// file name regexp pattern
+	FileRegex *string
 }
 
 // DownloadFileResult is the result type of the oci service download-file

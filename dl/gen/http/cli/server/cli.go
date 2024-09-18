@@ -33,8 +33,8 @@ ks3 download-object
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` health healthz` + "\n" +
-		os.Args[0] + ` oci list-files --repository "Earum quia." --tag "Nostrum cupiditate ipsa explicabo cum a."` + "\n" +
-		os.Args[0] + ` ks3 download-object --bucket "Quos quaerat nulla repudiandae magnam vel nobis." --key "At non dignissimos error et repellendus."` + "\n" +
+		os.Args[0] + ` oci list-files --repository "Excepturi perferendis dolores voluptas eius non." --tag "Est reprehenderit quibusdam eveniet velit."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."` + "\n" +
 		""
 }
 
@@ -62,8 +62,9 @@ func ParseEndpoint(
 
 		ociDownloadFileFlags          = flag.NewFlagSet("download-file", flag.ExitOnError)
 		ociDownloadFileRepositoryFlag = ociDownloadFileFlags.String("repository", "REQUIRED", "OCI artifact repository")
-		ociDownloadFileFileFlag       = ociDownloadFileFlags.String("file", "REQUIRED", "")
 		ociDownloadFileTagFlag        = ociDownloadFileFlags.String("tag", "REQUIRED", "")
+		ociDownloadFileFileFlag       = ociDownloadFileFlags.String("file", "", "")
+		ociDownloadFileFileRegexFlag  = ociDownloadFileFlags.String("file-regex", "", "")
 
 		ociDownloadFileSha256Flags          = flag.NewFlagSet("download-file-sha256", flag.ExitOnError)
 		ociDownloadFileSha256RepositoryFlag = ociDownloadFileSha256Flags.String("repository", "REQUIRED", "OCI artifact repository")
@@ -192,7 +193,7 @@ func ParseEndpoint(
 				data, err = ocic.BuildListFilesPayload(*ociListFilesRepositoryFlag, *ociListFilesTagFlag)
 			case "download-file":
 				endpoint = c.DownloadFile()
-				data, err = ocic.BuildDownloadFilePayload(*ociDownloadFileRepositoryFlag, *ociDownloadFileFileFlag, *ociDownloadFileTagFlag)
+				data, err = ocic.BuildDownloadFilePayload(*ociDownloadFileRepositoryFlag, *ociDownloadFileTagFlag, *ociDownloadFileFileFlag, *ociDownloadFileFileRegexFlag)
 			case "download-file-sha256":
 				endpoint = c.DownloadFileSha256()
 				data, err = ocic.BuildDownloadFileSha256Payload(*ociDownloadFileSha256RepositoryFlag, *ociDownloadFileSha256FileFlag, *ociDownloadFileSha256TagFlag)
@@ -270,20 +271,21 @@ ListFiles implements list-files.
     -tag STRING: 
 
 Example:
-    %[1]s oci list-files --repository "Earum quia." --tag "Nostrum cupiditate ipsa explicabo cum a."
+    %[1]s oci list-files --repository "Excepturi perferendis dolores voluptas eius non." --tag "Est reprehenderit quibusdam eveniet velit."
 `, os.Args[0])
 }
 
 func ociDownloadFileUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] oci download-file -repository STRING -file STRING -tag STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] oci download-file -repository STRING -tag STRING -file STRING -file-regex STRING
 
 DownloadFile implements download-file.
     -repository STRING: OCI artifact repository
-    -file STRING: 
     -tag STRING: 
+    -file STRING: 
+    -file-regex STRING: 
 
 Example:
-    %[1]s oci download-file --repository "Quis maiores hic et commodi aut." --file "Corrupti qui qui iusto." --tag "Enim animi exercitationem voluptate perferendis ut."
+    %[1]s oci download-file --repository "hub.pingcap.net/pingcap/tidb/package" --tag "v8.1.0_darwin_arm64" --file "tidb-v7.5.0-darwin-arm64.tar.gz" --file-regex "tidb-.+[.]tar[.]gz"
 `, os.Args[0])
 }
 
@@ -296,7 +298,7 @@ DownloadFileSha256 implements download-file-sha256.
     -tag STRING: 
 
 Example:
-    %[1]s oci download-file-sha256 --repository "Omnis est natus exercitationem aliquid tempora cumque." --file "Reiciendis eligendi magnam officiis recusandae est fugiat." --tag "Provident temporibus occaecati unde."
+    %[1]s oci download-file-sha256 --repository "Quis maiores hic et commodi aut." --file "Corrupti qui qui iusto." --tag "Enim animi exercitationem voluptate perferendis ut."
 `, os.Args[0])
 }
 
@@ -321,6 +323,6 @@ DownloadObject implements download-object.
     -key STRING: object key
 
 Example:
-    %[1]s ks3 download-object --bucket "Quos quaerat nulla repudiandae magnam vel nobis." --key "At non dignissimos error et repellendus."
+    %[1]s ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."
 `, os.Args[0])
 }

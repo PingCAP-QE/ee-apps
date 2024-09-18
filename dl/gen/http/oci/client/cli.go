@@ -9,6 +9,7 @@ package client
 
 import (
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildListFilesPayload builds the payload for the oci list-files endpoint
@@ -31,23 +32,37 @@ func BuildListFilesPayload(ociListFilesRepository string, ociListFilesTag string
 
 // BuildDownloadFilePayload builds the payload for the oci download-file
 // endpoint from CLI flags.
-func BuildDownloadFilePayload(ociDownloadFileRepository string, ociDownloadFileFile string, ociDownloadFileTag string) (*oci.DownloadFilePayload, error) {
+func BuildDownloadFilePayload(ociDownloadFileRepository string, ociDownloadFileTag string, ociDownloadFileFile string, ociDownloadFileFileRegex string) (*oci.DownloadFilePayload, error) {
+	var err error
 	var repository string
 	{
 		repository = ociDownloadFileRepository
-	}
-	var file string
-	{
-		file = ociDownloadFileFile
 	}
 	var tag string
 	{
 		tag = ociDownloadFileTag
 	}
+	var file *string
+	{
+		if ociDownloadFileFile != "" {
+			file = &ociDownloadFileFile
+		}
+	}
+	var fileRegex *string
+	{
+		if ociDownloadFileFileRegex != "" {
+			fileRegex = &ociDownloadFileFileRegex
+			err = goa.MergeErrors(err, goa.ValidateFormat("file_regex", *fileRegex, goa.FormatRegexp))
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	v := &oci.DownloadFilePayload{}
 	v.Repository = repository
-	v.File = file
 	v.Tag = tag
+	v.File = file
+	v.FileRegex = fileRegex
 
 	return v, nil
 }

@@ -55,10 +55,21 @@ var _ = Service("oci", func() {
 
 	Method("download-file", func() {
 		Payload(func() {
-			Field(1, "repository", String, "OCI artifact repository")
-			Field(2, "tag", String, "OCI artifact tag")
-			Field(3, "file", String, "file name in OCI artifact")
-			Required("repository", "tag", "file")
+			Field(1, "repository", String, "OCI artifact repository", func() {
+				Example("hub.pingcap.net/pingcap/tidb/package")
+			})
+			Field(2, "tag", String, "OCI artifact tag", func() {
+				Example("v8.1.0_darwin_arm64")
+			})
+			Field(3, "file", String, "file name in OCI artifact", func() {
+				Example("tidb-v7.5.0-darwin-arm64.tar.gz")
+			})
+			Field(4, "file_regex", String, "file name regexp pattern", func() {
+				Format(FormatRegexp)
+				Example("tidb-.+[.]tar[.]gz")
+			})
+
+			Required("repository", "tag")
 		})
 
 		// The use of Result here illustrates how HTTP headers can still be
@@ -79,8 +90,9 @@ var _ = Service("oci", func() {
 
 		HTTP(func() {
 			GET("/oci-file/{*repository}")
-			Param("file:file", String, "file name in OCI artifact")
-			Param("tag:tag", String, "OCI artifact tag")
+			Param("tag", String, "OCI artifact tag")
+			Param("file", String, "file name in OCI artifact")
+			Param("file_regex", String, "file name regex pattern in OCI artifact")
 
 			// Bypass response body encoder code generation to alleviate need for
 			// loading the entire response body in memory.

@@ -84,16 +84,22 @@ paths:
             produces:
                 - application/octet-stream
             parameters:
-                - name: file
-                  in: query
-                  description: file name in OCI artifact
-                  required: true
-                  type: string
                 - name: tag
                   in: query
                   description: OCI artifact tag
                   required: true
                   type: string
+                - name: file
+                  in: query
+                  description: file name in OCI artifact
+                  required: false
+                  type: string
+                - name: file_regex
+                  in: query
+                  description: file name regex pattern in OCI artifact
+                  required: false
+                  type: string
+                  format: regexp
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -135,7 +141,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Nam quibusdam recusandae dolor voluptas.
+                            example: Et aut labore veniam et maiores qui.
             schemes:
                 - http
     /s3-obj/{bucket}/{key}:

@@ -129,8 +129,13 @@ func EncodeDownloadFileRequest(encoder func(*http.Request) goahttp.Encoder) func
 			return goahttp.ErrInvalidType("oci", "download-file", "*oci.DownloadFilePayload", v)
 		}
 		values := req.URL.Query()
-		values.Add("file", p.File)
 		values.Add("tag", p.Tag)
+		if p.File != nil {
+			values.Add("file", *p.File)
+		}
+		if p.FileRegex != nil {
+			values.Add("file_regex", *p.FileRegex)
+		}
 		req.URL.RawQuery = values.Encode()
 		return nil
 	}
