@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/opencontainers/image-spec v1.1.0
-	goa.design/goa/v3 v3.19.0
+	goa.design/goa/v3 v3.19.1
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.5.0
 )
