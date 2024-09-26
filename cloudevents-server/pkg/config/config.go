@@ -76,7 +76,7 @@ type Config struct {
 func (c *Config) LoadFromFile(file string) error {
 	content, err := os.ReadFile(file)
 	if err != nil {
-		return fmt.Errorf("Failed to read file: %w", err)
+		return fmt.Errorf("failed to read file: %w", err)
 	}
 
 	ext := filepath.Ext(file)

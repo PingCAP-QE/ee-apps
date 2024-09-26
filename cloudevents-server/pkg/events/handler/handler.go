@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"net/http"
-
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -28,7 +26,7 @@ func (h *CompositeEventHandler) Handle(event cloudevents.Event) cloudevents.Resu
 	handlers, ok := h.handleMap[event.Type()]
 	if !ok {
 		log.Warn().Str("ce-type", event.Type()).Msg("no handlers registered for the event")
-		return cloudevents.NewHTTPResult(http.StatusNotFound, "no handlers registered for event type: %s, ignoring it", event.Type())
+		return cloudevents.NewReceipt(false, "no handlers registered for the event")
 	}
 
 	var results []cloudevents.Result
