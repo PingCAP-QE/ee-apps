@@ -8,9 +8,9 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/tekton"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/testcaserun"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/tibuild"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/lark"
 )

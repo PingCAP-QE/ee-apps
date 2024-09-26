@@ -1,7 +1,6 @@
 package tekton
 
 import (
-	"net/http"
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -31,7 +30,7 @@ func (h *taskRunHandler) SupportEventTypes() []string {
 func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 	data := new(tektoncloudevent.TektonCloudEventData)
 	if err := event.DataAs(&data); err != nil {
-		return cloudevents.NewHTTPResult(http.StatusBadRequest, err.Error())
+		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
 	switch event.Type() {

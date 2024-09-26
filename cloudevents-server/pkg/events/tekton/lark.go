@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"regexp"
 	"strings"
 	"text/template"
@@ -59,7 +58,7 @@ func composeAndSendLarkMessages(client *lark.Client, receivers []string, infos *
 	createMsgReqs, err := composeLarkMessages(receivers, infos)
 	if err != nil {
 		log.Error().Err(err).Msg("compose lark message failed")
-		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "compose lark message failed: %v", err)
+		return cloudevents.NewReceipt(true, "compose lark message failed: %v", err)
 	}
 
 	for _, createMsgReq := range createMsgReqs {
@@ -76,7 +75,7 @@ func sendLarkMessage(client *lark.Client, createMsgReq *larkim.CreateMessageReq)
 	resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
 	if err != nil {
 		log.Error().Err(err).Msg("send lark message failed")
-		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "send lark message failed: %v", err)
+		return cloudevents.NewReceipt(true, "send lark message failed: %v", err)
 	}
 
 	if !resp.Success() {

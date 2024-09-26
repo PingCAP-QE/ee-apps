@@ -3,7 +3,6 @@ package testcaserun
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/ent"
@@ -33,7 +32,7 @@ func (h *Handler) SupportEventTypes() []string {
 func (h *Handler) Handle(event cloudevents.Event) cloudevents.Result {
 	caseData := make(map[string]ProblemCasesFromBazel)
 	if err := event.DataAs(&caseData); err != nil {
-		return cloudevents.NewHTTPResult(http.StatusBadRequest, err.Error())
+		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
 	buildURL, _ := types.ToString(event.Extensions()["buildurl"])
@@ -42,7 +41,7 @@ func (h *Handler) Handle(event cloudevents.Event) cloudevents.Result {
 
 	// Insert records
 	if err := h.addRecords(context.Background(), caseData, repo, branch, buildURL); err != nil {
-		return cloudevents.NewHTTPResult(http.StatusInternalServerError, "insert failed: %v", err)
+		return cloudevents.NewReceipt(true, "insert database records failed: %v", err)
 	}
 
 	return cloudevents.ResultACK
