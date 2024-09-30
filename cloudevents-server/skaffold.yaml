@@ -6,22 +6,12 @@ build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
     - image: cloudevents-server
-      kaniko:
+      docker:
         dockerfile: Dockerfile
-        cache: {}
-  cluster:
+  local:
+    useDockerCLI: true
+    useBuildkit: true
     concurrency: 0
-    randomDockerConfigSecret: false
-    randomPullSecret: false
-    dockerConfig:
-      secretName: hub-pingcap-net-ee
-    resources:
-      requests:
-        cpu: "1"
-        memory: 2Gi
-      limits:
-        cpu: "2"
-        memory: 4Gi
 manifests:
   rawYaml:
     - deployments/k8s-dev.yaml
@@ -31,14 +21,3 @@ portForward:
     port: 80
 deploy:
   kubectl: {}
-profiles:
-  - name: local-docker
-    build:
-      local:
-        useDockerCLI: true
-        useBuildkit: true
-        concurrency: 0
-    patches:
-      - op: move
-        from: /build/artifacts/0/kaniko
-        path: /build/artifacts/0/docker

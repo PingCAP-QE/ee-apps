@@ -19,7 +19,7 @@ go run . -config=configs/example-config.yaml
 - manualy build the container images with docker
 
 ```bash
-skaffold build --profile local-docker --default-repo <your image registry>
+skaffold build --default-repo <your image registry>
 ```
 
 - manualy build the container images with cluster(that has amd64 and arm64 nodes)
