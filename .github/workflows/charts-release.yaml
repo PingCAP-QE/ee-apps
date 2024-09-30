@@ -36,7 +36,7 @@ jobs:
         run: |
           echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          for chart in cloudevents-server dl; do
+          for chart in cloudevents-server dl tiup-publisher; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
             helm package $chart
             helm push $chart-${CHART_VERSION}.tgz oci://ghcr.io/pingcap-qe/ee-apps/charts

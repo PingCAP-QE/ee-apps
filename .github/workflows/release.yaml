@@ -28,8 +28,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
         with: # we need it for skaffold build
-          fetch-depth: '0'
-          fetch-tags: 'true'
+          fetch-depth: "0"
+          fetch-tags: "true"
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -41,6 +41,8 @@ jobs:
               - 'tibuild/**'
             dl:
               - 'dl/**'
+            tiup-publisher:
+              - 'tiup-publisher/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -65,32 +67,23 @@ jobs:
           curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.8.0/skaffold-linux-amd64 && \
           sudo install skaffold /usr/local/bin/
 
-      - name: Cache layers
-        uses: actions/cache@v4
-        with:
-          path: "${{ github.workspace }}/.skaffold/cache"
-          key: skaffold-${{ github.sha }}
-          restore-keys: |
-            skaffold-
-
-      - name: Publish cloudevents-server image
+      - name: Publish image - cloudevents-server
         if: steps.changes.outputs.cloudevents-server == 'true'
         working-directory: cloudevents-server
         run: |
-          skaffold build \
-            --profile local-docker \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Publish tibuild image
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish image - tibuild
         if: steps.changes.outputs.tibuild == 'true'
         working-directory: tibuild
         run: |
-          skaffold build \
-            --profile local-docker \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Publish dl image
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish image - dl
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl
         run: |
-          skaffold build \
-            --profile local-docker \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish image - tiup-publisher
+        if: steps.changes.outputs.tiup-publisher == 'true'
+        working-directory: tiup-publisher
+        run: |
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps

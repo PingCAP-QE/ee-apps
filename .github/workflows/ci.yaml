@@ -3,6 +3,11 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - .github/workflows/release.yml
+      - "**/Dockerfile"
+      - "**/*.go"
+      - "**/*.gomod"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,8 +30,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
         with: # we need it for skaffold build
-          fetch-depth: '0'
-          fetch-tags: 'true'
+          fetch-depth: "0"
+          fetch-tags: "true"
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -38,6 +43,8 @@ jobs:
               - 'tibuild/**'
             dl:
               - 'dl/**'
+            tiup-publisher:
+              - 'tiup-publisher/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -46,6 +53,9 @@ jobs:
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.4
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -59,40 +69,35 @@ jobs:
           curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.8.0/skaffold-linux-amd64 && \
           sudo install skaffold /usr/local/bin/
 
-      - name: Cache layers
-        uses: actions/cache@v4
-        with:
-          path: "${{ github.workspace }}/.skaffold/cache"
-          key: skaffold-${{ matrix.platform }}-${{ github.sha }}
-          restore-keys: |
-            skaffold-${{ matrix.platform }}-
-            skaffold-
-
-      - name: Build cloudevents-server image
+      - name: Build image - cloudevents-server 
         if: steps.changes.outputs.cloudevents-server == 'true'
         working-directory: cloudevents-server
         run: |
           skaffold build \
             --push=false \
             --platform ${{ matrix.platform }} \
-            --profile local-docker \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build tibuild image
+      - name: Build image - tibuild 
         if: steps.changes.outputs.tibuild == 'true'
         working-directory: tibuild
         run: |
           skaffold build \
             --push=false \
             --platform ${{ matrix.platform }} \
-            --profile local-docker \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-
-      - name: Build dl image
+      - name: Build image - dl 
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl
         run: |
           skaffold build \
             --push=false \
             --platform ${{ matrix.platform }} \
-            --profile local-docker \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - tiup-publisher
+        if: steps.changes.outputs.tiup-publisher == 'true'
+        working-directory: tiup-publisher
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps

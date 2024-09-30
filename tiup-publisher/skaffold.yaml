@@ -1,11 +1,11 @@
 apiVersion: skaffold/v4beta6
 kind: Config
 metadata:
-  name: tibuild
+  name: tiup-publisher
 build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
-    - image: tibuild
+    - image: dl
       docker:
         dockerfile: Dockerfile
   local:

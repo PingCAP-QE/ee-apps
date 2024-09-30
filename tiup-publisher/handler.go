@@ -48,7 +48,7 @@ func (h *Handler) Handle(event cloudevents.Event) cloudevents.Result {
 
 func (h *Handler) handleImpl(data *PublishRequestEvent) cloudevents.Result {
 	// 1. get the the tarball from data.From.
-	saveTo, err := h.downloadFile(data)
+	saveTo, err := downloadFile(data)
 	if err != nil {
 		return cloudevents.NewReceipt(true, "download file failed: %v", err)
 	}
@@ -67,7 +67,7 @@ func (h *Handler) handleImpl(data *PublishRequestEvent) cloudevents.Result {
 	return cloudevents.ResultACK
 }
 
-func (h *Handler) downloadFile(data *PublishRequestEvent) (string, error) {
+func downloadFile(data *PublishRequestEvent) (string, error) {
 	switch data.From.Type {
 	case FromTypeOci:
 		// save to file with `saveTo` param:

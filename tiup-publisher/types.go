@@ -2,8 +2,9 @@ package main
 
 const (
 	EventTypeTiupPublishRequest = "tiup-publish-request"
-	FromTypeOci    = "oci"
-	FromTypeHTTP   = "http"
+
+	FromTypeOci  = "oci"
+	FromTypeHTTP = "http"
 )
 
 type Config struct {
@@ -19,9 +20,8 @@ type Config struct {
 }
 
 type PublishRequestEvent struct {
-	MirrorName string      `json:"mirror_name,omitempty"` // staging or production.
-	From       From        `json:"from,omitempty"`
-	Publish    PublishInfo `json:"publish,omitempty"`
+	From    From        `json:"from,omitempty"`
+	Publish PublishInfo `json:"publish,omitempty"`
 }
 type From struct {
 	Type string    `json:"type,omitempty"`
