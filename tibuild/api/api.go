@@ -7,7 +7,7 @@ import (
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
-	swaggerfiles "github.com/swaggo/files"
+	swaggerfiles "github.com/swaggo/files/v2"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/controller"
