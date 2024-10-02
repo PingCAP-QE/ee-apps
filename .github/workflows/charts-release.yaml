@@ -13,7 +13,9 @@ jobs:
     # depending on default permission settings for your org (contents being read-only or read-write for workloads), you will have to add permissions
     # see: https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
     permissions:
-      contents: write
+      contents: read
+      packages: write
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,7 +31,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.8.1
+          version: v3.16.0
 
       - name: Release charts
         working-directory: charts
@@ -38,6 +40,10 @@ jobs:
 
           for chart in cloudevents-server dl tiup-publisher; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
-            helm package $chart
-            helm push $chart-${CHART_VERSION}.tgz oci://ghcr.io/pingcap-qe/ee-apps/charts
+            if helm show values oci://ghcr.io/pingcap-qe/ee-apps/charts/$chart --version $CHART_VERSION > /dev/null; then
+              echo "chart '$chart' has no new version, skip publish." 
+            else
+              helm package $chart
+              helm push $chart-${CHART_VERSION}.tgz oci://ghcr.io/pingcap-qe/ee-apps/charts
+            fi
           done
