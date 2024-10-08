@@ -1,4 +1,4 @@
-FROM golang:1.23.1 AS builder
+FROM golang:1.23.2 AS builder
 
 COPY . /app
 RUN --mount=type=cache,target=/go/pkg/mod cd /app && go build -o server ./cmd/server
