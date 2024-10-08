@@ -5,7 +5,7 @@ metadata:
 build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
-    - image: dl
+    - image: tiup-publisher
       docker:
         dockerfile: Dockerfile
   local:
