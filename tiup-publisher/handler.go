@@ -50,20 +50,26 @@ func (h *Handler) handleImpl(data *PublishRequestEvent) cloudevents.Result {
 	// 1. get the the tarball from data.From.
 	saveTo, err := downloadFile(data)
 	if err != nil {
+		log.Err(err).Msg("download file failed")
 		return cloudevents.NewReceipt(true, "download file failed: %v", err)
 	}
+	log.Info().Msg("download file success")
 
 	// 2. publish the tarball to the mirror.
 	if err := publish(saveTo, &data.Publish, h.mirrorsURL); err != nil {
+		log.Err(err).Msg("publish to mirror failed")
 		return cloudevents.NewReceipt(true, "publish to mirror failed: %v", err)
 	}
+	log.Info().Msg("publish to mirror success")
 
 	// 3. check the package is in the mirror.
 	//     printf 'post_check "$(tiup mirror show)/%s-%s-%s-%s.tar.gz" "%s"\n' \
 	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", h.mirrorsURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
 	if err := postCheck(saveTo, remoteURL); err != nil {
+		log.Err(err).Str("remote", remoteURL).Msg("post check failed")
 		return cloudevents.NewReceipt(true, "post check failed: %v", err)
 	}
+	log.Info().Str("remote", remoteURL).Msg("post check success")
 	return cloudevents.ResultACK
 }
 
