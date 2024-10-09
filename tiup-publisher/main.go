@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"strconv"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/rs/zerolog"
@@ -14,8 +15,16 @@ import (
 )
 
 func main() {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	logLevel, err := strconv.Atoi(os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		logLevel = int(zerolog.InfoLevel) // default to INFO
+	}
+	log.Logger = log.Level(zerolog.Level(logLevel))
+
+	if os.Getenv("APP_ENV") == "development" {
+		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
 
 	configFile := flag.String("config", "./config.yaml", "Path to config file")
 	flag.Parse()
