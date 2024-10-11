@@ -8,15 +8,16 @@ const (
 )
 
 type Config struct {
-	Brokers     []string `yaml:"brokers"`
-	Topic       string   `yaml:"topic"`
+	Brokers     []string `yaml:"brokers" json:"brokers,omitempty"`
+	Topic       string   `yaml:"topic" json:"topic,omitempty"`
 	Credentials struct {
-		Type     string `yaml:"type"`
-		Username string `yaml:"username"`
-		Password string `yaml:"password"`
-	} `yaml:"credentials"`
-	ConsumerGroup string `yaml:"consumerGroup"`
-	MirrorUrl     string `yaml:"mirrorUrl"`
+		Type     string `yaml:"type" json:"type,omitempty"`
+		Username string `yaml:"username" json:"username,omitempty"`
+		Password string `yaml:"password" json:"password,omitempty"`
+	} `yaml:"credentials" json:"credentials,omitempty"`
+	ConsumerGroup  string `yaml:"consumer_group" json:"consumer_group,omitempty"`
+	MirrorUrl      string `yaml:"mirror_url" json:"mirror_url,omitempty"`
+	LarkWebhookURL string `yaml:"lark_webhook_url" json:"lark_webhook_url,omitempty"`
 }
 
 type PublishRequestEvent struct {
@@ -47,15 +48,4 @@ type FromOci struct {
 
 type FromHTTP struct {
 	URL string `json:"url,omitempty"`
-}
-
-// 2024-09-23T20:02:29.932583969+08:00 tiup mirror publish ctl v8.4.0-alpha-nightly ctl-v8.4.0-alpha-41-gedb43c053-darwin-amd64.tar.gz ctl --os darwin --arch amd64 --desc "TiDB controller suite"
-
-type TiupMirror struct {
-	Name string `yaml:"name,omitempty" json:"name,omitempty"`
-	URL  string `yaml:"url,omitempty" json:"url,omitempty"`
-	Auth struct {
-		Username string `yaml:"username,omitempty" json:"username,omitempty"`
-		Password string `yaml:"password,omitempty" json:"password,omitempty"`
-	} `yaml:"auth,omitempty" json:"auth,omitempty"`
 }

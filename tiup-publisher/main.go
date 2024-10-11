@@ -38,7 +38,7 @@ func main() {
 	if err := yaml.Unmarshal(configData, &config); err != nil {
 		log.Fatal().Err(err).Msg("Error parsing config file")
 	}
-	handler, err := NewHandler(config.MirrorUrl)
+	handler, err := NewHandler(config.MirrorUrl, config.LarkWebhookURL, &log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error creating handler")
 	}

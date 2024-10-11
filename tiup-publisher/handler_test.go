@@ -11,7 +11,7 @@ import (
 const testMirrorURL = "http://tiup.pingcap.net:8988"
 
 func TestHandler_Handle(t *testing.T) {
-	t.Skip("manual test case")
+	// t.Skip("manual test case")
 
 	t.Run("Valid event data", func(tt *testing.T) {
 		event := event.New()
@@ -37,7 +37,7 @@ func TestHandler_Handle(t *testing.T) {
 			},
 		})
 
-		h := &Handler{testMirrorURL}
+		h, _ := NewHandler(testMirrorURL, "https://open.feishu.cn/open-apis/bot/v2/hook/<replace_me>", nil)
 		result := h.Handle(event)
 		assert.True(tt, cloudevents.IsACK(result))
 		tt.Fail()
