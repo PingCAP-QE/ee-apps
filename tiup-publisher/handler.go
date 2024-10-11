@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +14,7 @@ import (
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
@@ -21,11 +23,20 @@ import (
 )
 
 type Handler struct {
-	mirrorsURL string
+	mirrorURL      string
+	larkWebhookURL string
+	logger         zerolog.Logger
 }
 
-func NewHandler(mirror string) (*Handler, error) {
-	return &Handler{mirror}, nil
+func NewHandler(mirrorURL, larkWebhookURL string, logger *zerolog.Logger) (*Handler, error) {
+	handler := Handler{mirrorURL: mirrorURL, larkWebhookURL: larkWebhookURL}
+	if logger == nil {
+		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	} else {
+		handler.logger = *logger
+	}
+
+	return &handler, nil
 }
 
 func (h *Handler) SupportEventTypes() []string {
@@ -50,27 +61,66 @@ func (h *Handler) handleImpl(data *PublishRequestEvent) cloudevents.Result {
 	// 1. get the the tarball from data.From.
 	saveTo, err := downloadFile(data)
 	if err != nil {
-		log.Err(err).Msg("download file failed")
+		h.logger.Err(err).Msg("download file failed")
+		// h.notifyLark(&data.Publish, err)
 		return cloudevents.NewReceipt(true, "download file failed: %v", err)
 	}
-	log.Info().Msg("download file success")
+	h.logger.Info().Msg("download file success")
 
 	// 2. publish the tarball to the mirror.
-	if err := publish(saveTo, &data.Publish, h.mirrorsURL); err != nil {
-		log.Err(err).Msg("publish to mirror failed")
+	if err := h.publish(saveTo, &data.Publish); err != nil {
+		h.logger.Err(err).Msg("publish to mirror failed")
+		h.notifyLark(&data.Publish, err)
 		return cloudevents.NewReceipt(true, "publish to mirror failed: %v", err)
 	}
-	log.Info().Msg("publish to mirror success")
+	h.logger.Info().Msg("publish to mirror success")
 
 	// 3. check the package is in the mirror.
 	//     printf 'post_check "$(tiup mirror show)/%s-%s-%s-%s.tar.gz" "%s"\n' \
-	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", h.mirrorsURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
+	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", h.mirrorURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
 	if err := postCheck(saveTo, remoteURL); err != nil {
-		log.Err(err).Str("remote", remoteURL).Msg("post check failed")
+		h.logger.Err(err).Str("remote", remoteURL).Msg("post check failed")
 		return cloudevents.NewReceipt(true, "post check failed: %v", err)
 	}
-	log.Info().Str("remote", remoteURL).Msg("post check success")
+
+	h.logger.Info().Str("remote", remoteURL).Msg("post check success")
 	return cloudevents.ResultACK
+}
+
+func (h *Handler) notifyLark(publishInfo *PublishInfo, err error) {
+	if h.larkWebhookURL == "" {
+		return
+	}
+
+	message := fmt.Sprintf("Failed to publish %s-%s @%s/%s platform to mirror %s: %v",
+		publishInfo.Name,
+		publishInfo.Version,
+		publishInfo.OS,
+		publishInfo.Arch,
+		h.mirrorURL,
+		err)
+
+	payload := map[string]interface{}{
+		"msg_type": "text",
+		"content": map[string]string{
+			"text": message,
+		},
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		h.logger.Err(err).Msg("failed to marshal JSON payload")
+	}
+
+	resp, err := http.Post(h.larkWebhookURL, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		h.logger.Err(err).Msg("failed to send notification to Lark")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		h.logger.Error().Msgf("Lark API returned non-OK status: %d", resp.StatusCode)
+	}
 }
 
 func downloadFile(data *PublishRequestEvent) (string, error) {
@@ -81,26 +131,26 @@ func downloadFile(data *PublishRequestEvent) (string, error) {
 	case FromTypeHTTP:
 		return downloadHTTPFile(data.From.HTTP.URL)
 	default:
-		return "", nil
+		return "", fmt.Errorf("unknown from type: %v", data.From.Type)
 	}
 }
 
-func publish(file string, info *PublishInfo, to string) error {
+func (h *Handler) publish(file string, info *PublishInfo) error {
 	args := []string{"mirror", "publish", info.Name, info.Version, file, info.EntryPoint, "--os", info.OS, "--arch", info.Arch, "--desc", info.Description}
 	if info.Standalone {
 		args = append(args, "--standalone")
 	}
 	command := exec.Command("tiup", args...)
 	command.Env = os.Environ()
-	command.Env = append(command.Env, "TIUP_MIRRORS="+to)
-	log.Debug().Any("args", command.Args).Any("env", command.Args).Msg("will execute tiup command")
+	command.Env = append(command.Env, "TIUP_MIRRORS="+h.mirrorURL)
+	h.logger.Debug().Any("args", command.Args).Any("env", command.Args).Msg("will execute tiup command")
 	output, err := command.Output()
 	if err != nil {
-		log.Err(err).Msg("failed to execute tiup command")
+		h.logger.Err(err).Msg("failed to execute tiup command")
 		return err
 	}
-	log.Info().
-		Str("mirror", to).
+	h.logger.Info().
+		Str("mirror", h.mirrorURL).
 		Str("output", string(output)).
 		Msg("tiup package publish success")
 
