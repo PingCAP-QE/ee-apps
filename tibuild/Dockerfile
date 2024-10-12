@@ -14,7 +14,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod go build -o ./bin/tibuild ./cmd/tibuild
 
 # final image.
-FROM ghcr.io/pingcap-qe/bases/pingcap-base:v1.9.1
+FROM ghcr.io/pingcap-qe/bases/pingcap-base:v1.9.2
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/PingCAP-QE/ee-apps"
 
