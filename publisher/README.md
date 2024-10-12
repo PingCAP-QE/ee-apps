@@ -21,6 +21,8 @@ goa example github.com/PingCAP-QE/ee-apps/publisher/design
 
 ## How to run
 
+
+### Start the API server
 ```bash
-go run ./cmd/server
+go run ./cmd/service
 ```
