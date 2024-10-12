@@ -1,0 +1,93 @@
+swagger: "2.0"
+info:
+    title: Publish API
+    description: Publish API
+    contact:
+        name: WuHui Zuo
+        email: wuhui.zuo@pingcap.com
+        url: https://github.com/wuhuizuo
+    version: 1.0.0
+host: 0.0.0.0:80
+consumes:
+    - application/json
+    - application/xml
+    - application/gob
+produces:
+    - application/json
+    - application/xml
+    - application/gob
+paths:
+    /tiup/publish-request:
+        post:
+            tags:
+                - tiup
+            summary: request-to-publish tiup
+            operationId: tiup#request-to-publish
+            parameters:
+                - name: Request-To-PublishRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TiupRequestToPublishRequestBody'
+                    required:
+                        - artifact_url
+                        - tiup-mirror
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Sed illo harum quis voluptatem.
+            schemes:
+                - http
+    /tiup/publish-request/{request_id}:
+        get:
+            tags:
+                - tiup
+            summary: query-publishing-status tiup
+            operationId: tiup#query-publishing-status
+            parameters:
+                - name: request_id
+                  in: path
+                  description: request track id
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+            schemes:
+                - http
+definitions:
+    TiupRequestToPublishRequestBody:
+        title: TiupRequestToPublishRequestBody
+        type: object
+        properties:
+            artifact_url:
+                type: string
+                description: The full url of the pushed image, contain the tag part. It will parse the repo from it.
+                example: Et ullam.
+            request_id:
+                type: string
+                description: The request id
+                example: Assumenda tempora autem accusantium est.
+            tiup-mirror:
+                type: string
+                description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
+                default: http://tiup.pingcap.net:8988
+                example: Ab expedita repellendus.
+            version:
+                type: string
+                description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
+                example: Et suscipit et.
+        example:
+            artifact_url: Corrupti ut natus aut ipsam reprehenderit.
+            request_id: Rerum tempore voluptas.
+            tiup-mirror: Laboriosam optio omnis cupiditate magnam nisi.
+            version: Et eum odit eos ratione.
+        required:
+            - artifact_url
+            - tiup-mirror

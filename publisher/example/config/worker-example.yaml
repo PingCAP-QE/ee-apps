@@ -1,0 +1,7 @@
+kafka:
+  brokers:
+    - example-bootstrap.kafka:9092
+  topic: example-topic
+  consumer_group: example-group
+mirror_url: http://tiup.mirror.site
+lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.

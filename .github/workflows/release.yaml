@@ -41,8 +41,8 @@ jobs:
               - 'tibuild/**'
             dl:
               - 'dl/**'
-            tiup-publisher:
-              - 'tiup-publisher/**'
+            publisher:
+              - 'publisher/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -82,8 +82,8 @@ jobs:
         working-directory: dl
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Publish image - tiup-publisher
-        if: steps.changes.outputs.tiup-publisher == 'true'
-        working-directory: tiup-publisher
+      - name: Publish image - publisher
+        if: steps.changes.outputs.publisher == 'true'
+        working-directory: publisher
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps

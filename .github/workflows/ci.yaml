@@ -43,8 +43,8 @@ jobs:
               - 'tibuild/**'
             dl:
               - 'dl/**'
-            tiup-publisher:
-              - 'tiup-publisher/**'
+            publisher:
+              - 'publisher/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -93,9 +93,9 @@ jobs:
             --push=false \
             --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - tiup-publisher
-        if: steps.changes.outputs.tiup-publisher == 'true'
-        working-directory: tiup-publisher
+      - name: Build image - publisher
+        if: steps.changes.outputs.publisher == 'true'
+        working-directory: publisher
         run: |
           skaffold build \
             --push=false \
