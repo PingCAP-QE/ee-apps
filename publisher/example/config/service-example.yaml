@@ -1,0 +1,18 @@
+
+kafka:
+  brokers:
+    - "kafka-broker-1:9092"
+    - "kafka-broker-2:9092"
+  topic: "tiup-publish-events"
+  credentials:
+    type: "sasl_plaintext"
+    username: "kafka_user"
+    password: "kafka_password"
+
+redis:
+  addr: "redis-server:6379"
+  db: 0
+  username: "redis_user"
+  password: "redis_password"
+
+event_source: http://publisher.site/

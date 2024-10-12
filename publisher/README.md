@@ -1,0 +1,26 @@
+# TiPublisher server
+
+It provide the publisher functions:
+- Publish TiUP pacakge from OCI artifact or http file url.
+- Publish tarball to object storage from OCI artifact.
+
+## How to design
+
+go to [design/design.go](./design/design.go)
+
+## How to generate code from design
+
+> we need the goa tool
+
+run:
+```bash
+rm -rf gen cmd tiup.go
+goa gen github.com/PingCAP-QE/ee-apps/publisher/design
+goa example github.com/PingCAP-QE/ee-apps/publisher/design
+```
+
+## How to run
+
+```bash
+go run ./cmd/server
+```
