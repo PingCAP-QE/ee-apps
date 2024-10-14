@@ -104,4 +104,4 @@ components:
                 - tiup-mirror
 tags:
     - name: tiup
-      description: The TiPublisher service
+      description: TiUP Publisher service

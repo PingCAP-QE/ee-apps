@@ -11,7 +11,7 @@ import (
 	"context"
 )
 
-// The TiPublisher service
+// TiUP Publisher service
 type Service interface {
 	// RequestToPublish implements request-to-publish.
 	RequestToPublish(context.Context, *RequestToPublishPayload) (res []string, err error)
