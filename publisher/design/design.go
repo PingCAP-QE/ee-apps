@@ -24,7 +24,7 @@ var _ = API("publisher", func() {
 })
 
 var _ = Service("tiup", func() {
-	Description("The TiPublisher service")
+	Description("TiUP Publisher service")
 	HTTP(func() {
 		Path("/tiup")
 	})

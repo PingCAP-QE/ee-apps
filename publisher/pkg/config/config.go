@@ -4,7 +4,7 @@ type Worker struct {
 	Kafka struct {
 		KafkaBasic    `yaml:",inline" json:",inline"`
 		ConsumerGroup string `yaml:"consumer_group" json:"consumer_group,omitempty"`
-	} `yaml:"credentials" json:"credentials,omitempty"`
+	} `yaml:"kafka" json:"kafka,omitempty"`
 	MirrorUrl      string `yaml:"mirror_url" json:"mirror_url,omitempty"`
 	LarkWebhookURL string `yaml:"lark_webhook_url" json:"lark_webhook_url,omitempty"`
 }

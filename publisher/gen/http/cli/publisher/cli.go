@@ -142,7 +142,7 @@ func ParseEndpoint(
 
 // tiupUsage displays the usage of the tiup command and its subcommands.
 func tiupUsage() {
-	fmt.Fprintf(os.Stderr, `The TiPublisher service
+	fmt.Fprintf(os.Stderr, `TiUP Publisher service
 Usage:
     %[1]s [globalflags] tiup COMMAND [flags]
 

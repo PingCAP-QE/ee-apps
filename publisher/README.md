@@ -1,4 +1,4 @@
-# TiPublisher server
+# Publisher server
 
 It provide the publisher functions:
 - Publish TiUP pacakge from OCI artifact or http file url.
@@ -23,6 +23,13 @@ goa example github.com/PingCAP-QE/ee-apps/publisher/design
 
 
 ### Start the API server
+
 ```bash
-go run ./cmd/service
+go run ./cmd/publisher -config=config-publisher.yaml --debug --domain 0.0.0.0:8080
+```
+
+### Start the worker instance.
+
+```bash
+go run ./cmd/worker --config=config-worker.yaml --debug
 ```

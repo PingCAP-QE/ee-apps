@@ -18,7 +18,7 @@ import (
 	"goa.design/clue/log"
 	"gopkg.in/yaml.v3"
 
-	tipublisher "github.com/PingCAP-QE/ee-apps/publisher"
+	"github.com/PingCAP-QE/ee-apps/publisher"
 	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
@@ -159,5 +159,5 @@ func initService(configFile string) (tiup.Service, error) {
 		DB:       config.Redis.DB,
 	})
 
-	return tipublisher.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource), nil
+	return publisher.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource), nil
 }
