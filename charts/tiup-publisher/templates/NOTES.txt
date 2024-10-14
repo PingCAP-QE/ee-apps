@@ -1,1 +1,0 @@
-It is a consumer worker, no public serivce.
