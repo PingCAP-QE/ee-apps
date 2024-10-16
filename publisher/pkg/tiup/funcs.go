@@ -238,7 +238,7 @@ func AnalyzeFromOciArtifactUrl(url string) ([]PublishRequest, error) {
 
 func splitRepoAndTag(url string) (string, string, error) {
 	splitor := ":"
-	if !strings.Contains(url, "@sha256:") {
+	if strings.Contains(url, "@sha256:") {
 		splitor = "@"
 	}
 	parts := strings.SplitN(url, splitor, 2)
