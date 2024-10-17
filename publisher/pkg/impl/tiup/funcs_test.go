@@ -3,7 +3,26 @@ package tiup
 import (
 	"reflect"
 	"testing"
+
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
+
+func Test_xxx(t *testing.T) {
+	if !cloudevents.IsACK(nil) {
+		t.Errorf("IsACK(nil) = false, want true")
+	}
+
+	if !cloudevents.IsACK(cloudevents.NewReceipt(true, "xxxx")) {
+		t.Errorf("xxx")
+	}
+	if !cloudevents.IsNACK(cloudevents.NewReceipt(true, "xxxx")) {
+		t.Errorf("xxx")
+	}
+
+	if !cloudevents.IsNACK(cloudevents.NewReceipt(false, "xxxx")) {
+		t.Errorf("xxx")
+	}
+}
 
 func Test_fetchOCIArtifactConfig(t *testing.T) {
 	type args struct {

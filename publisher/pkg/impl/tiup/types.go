@@ -1,10 +1,20 @@
 package tiup
 
+import "time"
+
 const (
 	EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
 
 	FromTypeOci  = "oci"
 	FromTypeHTTP = "http"
+
+	PublishStateQueued     = "queued"
+	PublishStateProcessing = "processing"
+	PublishStateSuccess    = "success"
+	PublishStateFailed     = "failed"
+	PublishStateCanceled   = "canceled"
+
+	DefaultStateTTL = 12 * time.Hour
 )
 
 type PublishRequest struct {

@@ -29,10 +29,10 @@ func UsageCommands() string {
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` tiup request-to-publish --body '{
-      "artifact_url": "A facilis.",
-      "request_id": "Sequi placeat blanditiis est iusto quia eum.",
-      "tiup-mirror": "Sunt voluptates.",
-      "version": "Rerum consectetur deleniti."
+      "artifact_url": "Omnis expedita.",
+      "request_id": "Est sequi placeat.",
+      "tiup-mirror": "Pariatur rerum consectetur deleniti architecto sunt.",
+      "version": "Dicta id perferendis rem a."
    }'` + "\n" +
 		""
 }
@@ -162,10 +162,10 @@ RequestToPublish implements request-to-publish.
 
 Example:
     %[1]s tiup request-to-publish --body '{
-      "artifact_url": "A facilis.",
-      "request_id": "Sequi placeat blanditiis est iusto quia eum.",
-      "tiup-mirror": "Sunt voluptates.",
-      "version": "Rerum consectetur deleniti."
+      "artifact_url": "Omnis expedita.",
+      "request_id": "Est sequi placeat.",
+      "tiup-mirror": "Pariatur rerum consectetur deleniti architecto sunt.",
+      "version": "Dicta id perferendis rem a."
    }'
 `, os.Args[0])
 }
@@ -177,6 +177,6 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s tiup query-publishing-status --request-id "Necessitatibus quidem."
+    %[1]s tiup query-publishing-status --request-id "Aspernatur quis voluptas."
 `, os.Args[0])
 }

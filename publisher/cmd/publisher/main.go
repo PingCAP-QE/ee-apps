@@ -18,9 +18,9 @@ import (
 	"goa.design/clue/log"
 	"gopkg.in/yaml.v3"
 
-	"github.com/PingCAP-QE/ee-apps/publisher"
-	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
+	gentiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl/tiup"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 	zerolog.SetGlobalLevel(logLevel)
 
 	// Initialize the services.
-	tiupSvc, err := initService(*configFile)
+	tiupSvc, err := initTiupService(*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to initialize service")
 	}
@@ -64,10 +64,10 @@ func main() {
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	var (
-		tiupEndpoints *tiup.Endpoints
+		tiupEndpoints *gentiup.Endpoints
 	)
 	{
-		tiupEndpoints = tiup.NewEndpoints(tiupSvc)
+		tiupEndpoints = gentiup.NewEndpoints(tiupSvc)
 		tiupEndpoints.Use(debug.LogPayloads())
 		tiupEndpoints.Use(log.Endpoint)
 	}
@@ -128,20 +128,20 @@ func main() {
 	log.Printf(ctx, "exited")
 }
 
-func initService(configFile string) (tiup.Service, error) {
+func initTiupService(configFile string) (gentiup.Service, error) {
 	// Load and parse configuration
 	var config config.Service
 	{
 		configData, err := os.ReadFile(configFile)
 		if err != nil {
-			return nil, fmt.Errorf("Error reading config file: %v", err)
+			return nil, fmt.Errorf("error reading config file: %v", err)
 		}
 		if err := yaml.Unmarshal(configData, &config); err != nil {
-			return nil, fmt.Errorf("Error parsing config file: %v", err)
+			return nil, fmt.Errorf("error parsing config file: %v", err)
 		}
 	}
 
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tiup.ServiceName).Logger()
+	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", gentiup.ServiceName).Logger()
 
 	// Configure Kafka kafkaWriter
 	kafkaWriter := kafka.NewWriter(kafka.WriterConfig{
@@ -159,5 +159,5 @@ func initService(configFile string) (tiup.Service, error) {
 		DB:       config.Redis.DB,
 	})
 
-	return publisher.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource), nil
+	return tiup.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource), nil
 }

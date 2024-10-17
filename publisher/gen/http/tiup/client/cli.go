@@ -22,7 +22,7 @@ func BuildRequestToPublishPayload(tiupRequestToPublishBody string) (*tiup.Reques
 	{
 		err = json.Unmarshal([]byte(tiupRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"A facilis.\",\n      \"request_id\": \"Sequi placeat blanditiis est iusto quia eum.\",\n      \"tiup-mirror\": \"Sunt voluptates.\",\n      \"version\": \"Rerum consectetur deleniti.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Omnis expedita.\",\n      \"request_id\": \"Est sequi placeat.\",\n      \"tiup-mirror\": \"Pariatur rerum consectetur deleniti architecto sunt.\",\n      \"version\": \"Dicta id perferendis rem a.\"\n   }'")
 		}
 	}
 	v := &tiup.RequestToPublishPayload{

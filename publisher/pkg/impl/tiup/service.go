@@ -1,4 +1,4 @@
-package publisher
+package tiup
 
 import (
 	"context"
@@ -8,15 +8,10 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
-	gentiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/tiup"
-
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
-)
 
-const (
-	DefaultStateTTL = 12 * time.Hour
+	gentiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 )
 
 // tiup service example implementation.
@@ -44,7 +39,7 @@ func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient *red
 func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPublishPayload) (res []string, err error) {
 	s.logger.Info().Msgf("tiup.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := tiup.AnalyzeFromOciArtifactUrl(p.ArtifactURL)
+	publishRequests, err := AnalyzeFromOciArtifactUrl(p.ArtifactURL)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +74,7 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 
 	// 5. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.redisClient.SetXX(ctx, requestID, "pending", s.stateTTL).Err(); err != nil {
+		if err := s.redisClient.SetXX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
@@ -105,14 +100,14 @@ func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPu
 	return status, nil
 }
 
-func (s *tiupsrvc) composeEvents(requests []tiup.PublishRequest) []cloudevents.Event {
+func (s *tiupsrvc) composeEvents(requests []PublishRequest) []cloudevents.Event {
 	var ret []cloudevents.Event
 	for _, request := range requests {
 		event := cloudevents.NewEvent()
 		event.SetID(uuid.New().String())
-		event.SetType(tiup.EventTypeTiupPublishRequest)
+		event.SetType(EventTypeTiupPublishRequest)
 		event.SetSource(s.eventSource)
-		event.SetSubject(tiup.EventTypeTiupPublishRequest)
+		event.SetSubject(EventTypeTiupPublishRequest)
 		event.SetData(cloudevents.ApplicationJSON, request)
 		ret = append(ret, event)
 	}
