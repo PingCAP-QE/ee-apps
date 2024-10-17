@@ -39,7 +39,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Sed illo harum quis voluptatem.
+                            example: Cupiditate suscipit hic quidem voluptates nostrum necessitatibus.
             schemes:
                 - http
     /tiup/publish-request/{request_id}:
@@ -59,6 +59,11 @@ paths:
                     description: OK response.
                     schema:
                         type: string
+                        enum:
+                            - queued
+                            - processing
+                            - success
+                            - failed
             schemes:
                 - http
 definitions:
@@ -69,25 +74,25 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed image, contain the tag part. It will parse the repo from it.
-                example: Et ullam.
+                example: Optio necessitatibus ipsa incidunt.
             request_id:
                 type: string
                 description: The request id
-                example: Assumenda tempora autem accusantium est.
+                example: Et ullam.
             tiup-mirror:
                 type: string
                 description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                 default: http://tiup.pingcap.net:8988
-                example: Ab expedita repellendus.
+                example: Illo harum quis voluptatem.
             version:
                 type: string
                 description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
-                example: Et suscipit et.
+                example: Expedita et necessitatibus ut molestias.
         example:
-            artifact_url: Corrupti ut natus aut ipsam reprehenderit.
-            request_id: Rerum tempore voluptas.
-            tiup-mirror: Laboriosam optio omnis cupiditate magnam nisi.
-            version: Et eum odit eos ratione.
+            artifact_url: Et suscipit et.
+            request_id: Corrupti ut natus aut ipsam reprehenderit.
+            tiup-mirror: Assumenda tempora autem accusantium est.
+            version: Ab expedita repellendus.
         required:
             - artifact_url
             - tiup-mirror

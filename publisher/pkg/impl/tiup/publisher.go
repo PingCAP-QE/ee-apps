@@ -2,6 +2,7 @@ package tiup
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"slices"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 )
 
@@ -17,6 +19,7 @@ type Publisher struct {
 	mirrorURL      string
 	larkWebhookURL string
 	logger         zerolog.Logger
+	redisClient    *redis.Client
 }
 
 func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger) (*Publisher, error) {
@@ -39,13 +42,23 @@ func (p *Publisher) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
+	p.redisClient.Set(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
 
 	data := new(PublishRequest)
 	if err := event.DataAs(&data); err != nil {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
-	return p.handleImpl(data)
+	result := p.handleImpl(data)
+	switch {
+	case cloudevents.IsACK(result):
+		p.redisClient.Set(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
+	default:
+		p.redisClient.Set(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
+		p.notifyLark(&data.Publish, result)
+	}
+
+	return result
 }
 
 func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {
@@ -53,16 +66,14 @@ func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {
 	saveTo, err := downloadFile(data)
 	if err != nil {
 		p.logger.Err(err).Msg("download file failed")
-		// h.notifyLark(&data.Publish, err)
-		return cloudevents.NewReceipt(true, "download file failed: %v", err)
+		return cloudevents.NewReceipt(false, "download file failed: %v", err)
 	}
 	p.logger.Info().Msg("download file success")
 
 	// 2. publish the tarball to the mirror.
 	if err := p.publish(saveTo, &data.Publish); err != nil {
 		p.logger.Err(err).Msg("publish to mirror failed")
-		p.notifyLark(&data.Publish, err)
-		return cloudevents.NewReceipt(true, "publish to mirror failed: %v", err)
+		return cloudevents.NewReceipt(false, "publish to mirror failed: %v", err)
 	}
 	p.logger.Info().Msg("publish to mirror success")
 
@@ -71,7 +82,7 @@ func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {
 	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", p.mirrorURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
 	if err := postCheck(saveTo, remoteURL); err != nil {
 		p.logger.Err(err).Str("remote", remoteURL).Msg("post check failed")
-		return cloudevents.NewReceipt(true, "post check failed: %v", err)
+		return cloudevents.NewReceipt(false, "post check failed: %v", err)
 	}
 
 	p.logger.Info().Str("remote", remoteURL).Msg("post check success")

@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl/tiup"
 )
 
 func main() {

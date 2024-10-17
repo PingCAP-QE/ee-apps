@@ -56,7 +56,9 @@ var _ = Service("tiup", func() {
 			Attribute("request_id", String, "request track id")
 			Required("request_id")
 		})
-		Result(String, "request state")
+		Result(String, "request state", func() {
+			Enum("queued", "processing", "success", "failed")
+		})
 		HTTP(func() {
 			GET("/publish-request/{request_id}")
 			Response(StatusOK)

@@ -16,6 +16,7 @@ import (
 
 	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 	goahttp "goa.design/goa/v3/http"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildRequestToPublishRequest instantiates a HTTP request object with method
@@ -136,6 +137,12 @@ func DecodeQueryPublishingStatusResponse(decoder func(*http.Response) goahttp.De
 			err = decoder(resp).Decode(&body)
 			if err != nil {
 				return nil, goahttp.ErrDecodingError("tiup", "query-publishing-status", err)
+			}
+			if !(body == "queued" || body == "processing" || body == "success" || body == "failed") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("body", body, []any{"queued", "processing", "success", "failed"}))
+			}
+			if err != nil {
+				return nil, goahttp.ErrValidationError("tiup", "query-publishing-status", err)
 			}
 			return body, nil
 		default:

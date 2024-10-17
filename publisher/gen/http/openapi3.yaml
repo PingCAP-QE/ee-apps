@@ -23,10 +23,10 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestToPublishRequestBody'
                         example:
-                            artifact_url: A facilis.
-                            request_id: Sequi placeat blanditiis est iusto quia eum.
-                            tiup-mirror: Sunt voluptates.
-                            version: Rerum consectetur deleniti.
+                            artifact_url: Omnis expedita.
+                            request_id: Est sequi placeat.
+                            tiup-mirror: Pariatur rerum consectetur deleniti architecto sunt.
+                            version: Dicta id perferendis rem a.
             responses:
                 "200":
                     description: OK response.
@@ -36,16 +36,15 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Distinctio voluptates voluptatem accusamus nisi omnis quia.
+                                    example: Eum saepe nihil omnis dolorem eveniet.
                                 description: request track ids
                                 example:
-                                    - Voluptates possimus pariatur consequuntur itaque est dignissimos.
-                                    - Atque amet optio et aliquam ut.
-                                    - Nulla at error qui dolores et ipsa.
-                                    - Rem nisi non.
+                                    - Rerum voluptas dolore.
+                                    - Eveniet vero voluptas.
+                                    - Voluptates voluptatem accusamus nisi omnis quia molestias.
                             example:
-                                - Molestiae vitae ut commodi voluptatem consectetur.
-                                - Magnam aut et labore.
+                                - Pariatur consequuntur itaque est.
+                                - Exercitationem atque amet optio.
     /tiup/publish-request/{request_id}:
         get:
             tags:
@@ -60,8 +59,8 @@ paths:
                   schema:
                     type: string
                     description: request track id
-                    example: Facere maiores tenetur mollitia consequatur perferendis sint.
-                  example: Nisi earum earum pariatur et animi.
+                    example: Aliquam ut laborum nulla.
+                  example: Error qui dolores et.
             responses:
                 "200":
                     description: OK response.
@@ -70,8 +69,13 @@ paths:
                             schema:
                                 type: string
                                 description: request state
-                                example: Necessitatibus officia distinctio officia voluptas laudantium iure.
-                            example: Aperiam consequatur consequatur.
+                                example: queued
+                                enum:
+                                    - queued
+                                    - processing
+                                    - success
+                                    - failed
+                            example: failed
 components:
     schemas:
         RequestToPublishRequestBody:
@@ -80,25 +84,25 @@ components:
                 artifact_url:
                     type: string
                     description: The full url of the pushed image, contain the tag part. It will parse the repo from it.
-                    example: Voluptas ratione hic libero nisi.
+                    example: Et eum odit eos ratione.
                 request_id:
                     type: string
                     description: The request id
-                    example: Quibusdam nisi quam.
+                    example: Voluptas ratione hic libero nisi.
                 tiup-mirror:
                     type: string
                     description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                     default: http://tiup.pingcap.net:8988
-                    example: Magni quia adipisci excepturi.
+                    example: Rerum tempore voluptas.
                 version:
                     type: string
                     description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
-                    example: Rerum voluptate accusantium optio.
+                    example: Laboriosam optio omnis cupiditate magnam nisi.
             example:
-                artifact_url: Atque vero in molestiae odit consequatur.
-                request_id: Eos eveniet vero.
-                tiup-mirror: Nemo rerum voluptas.
-                version: Eum saepe nihil omnis dolorem eveniet.
+                artifact_url: Rerum voluptate accusantium optio.
+                request_id: Atque vero in molestiae odit consequatur.
+                tiup-mirror: Quibusdam nisi quam.
+                version: Magni quia adipisci excepturi.
             required:
                 - artifact_url
                 - tiup-mirror
