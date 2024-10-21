@@ -19,7 +19,7 @@ type Publisher struct {
 	mirrorURL      string
 	larkWebhookURL string
 	logger         zerolog.Logger
-	redisClient    *redis.Client
+	redisClient    redis.Cmdable
 }
 
 func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger) (*Publisher, error) {
@@ -42,7 +42,7 @@ func (p *Publisher) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
-	p.redisClient.Set(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
+	p.redisClient.SetXX(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
 
 	data := new(PublishRequest)
 	if err := event.DataAs(&data); err != nil {
@@ -52,9 +52,9 @@ func (p *Publisher) Handle(event cloudevents.Event) cloudevents.Result {
 	result := p.handleImpl(data)
 	switch {
 	case cloudevents.IsACK(result):
-		p.redisClient.Set(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
 	default:
-		p.redisClient.Set(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
 		p.notifyLark(&data.Publish, result)
 	}
 
