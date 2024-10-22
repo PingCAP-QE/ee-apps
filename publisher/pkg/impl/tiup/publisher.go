@@ -22,8 +22,8 @@ type Publisher struct {
 	redisClient    redis.Cmdable
 }
 
-func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger) (*Publisher, error) {
-	handler := Publisher{mirrorURL: mirrorURL, larkWebhookURL: larkWebhookURL}
+func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger, redisClient redis.Cmdable) (*Publisher, error) {
+	handler := Publisher{mirrorURL: mirrorURL, larkWebhookURL: larkWebhookURL, redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	} else {
