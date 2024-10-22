@@ -19,13 +19,13 @@ import (
 type tiupsrvc struct {
 	logger      *zerolog.Logger
 	kafkaWriter *kafka.Writer
-	redisClient *redis.Client
+	redisClient redis.Cmdable
 	eventSource string
 	stateTTL    time.Duration
 }
 
 // NewTiup returns the tiup service implementation.
-func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient *redis.Client, eventSrc string) gentiup.Service {
+func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
 	return &tiupsrvc{
 		logger:      logger,
 		kafkaWriter: kafkaWriter,
@@ -74,7 +74,7 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 
 	// 5. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.redisClient.SetXX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
+		if err := s.redisClient.SetNX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
@@ -48,12 +49,20 @@ func main() {
 		}
 	}
 
+	// Configure Redis client
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     config.Redis.Addr,
+		Password: config.Redis.Password,
+		Username: config.Redis.Username,
+		DB:       config.Redis.DB,
+	})
+
 	ctx := log.Logger.WithContext(context.Background())
 	// Create TiUP publisher
 	var handler *tiup.Publisher
 	{
 		var err error
-		handler, err = tiup.NewPublisher(config.MirrorUrl, config.LarkWebhookURL, &log.Logger)
+		handler, err = tiup.NewPublisher(config.MirrorUrl, config.LarkWebhookURL, &log.Logger, redisClient)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error creating handler")
 		}
