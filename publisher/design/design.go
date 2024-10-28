@@ -4,7 +4,7 @@ package design
 import (
 	_ "goa.design/plugins/v3/zerologger"
 
-	. "goa.design/goa/v3/dsl"
+	. "goa.design/goa/v3/dsl" //nolint
 )
 
 var _ = API("publisher", func() {
@@ -57,7 +57,7 @@ var _ = Service("tiup", func() {
 			Required("request_id")
 		})
 		Result(String, "request state", func() {
-			Enum("queued", "processing", "success", "failed")
+			Enum("queued", "processing", "success", "failed", "canceled")
 		})
 		HTTP(func() {
 			GET("/publish-request/{request_id}")

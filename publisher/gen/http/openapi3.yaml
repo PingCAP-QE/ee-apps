@@ -69,13 +69,14 @@ paths:
                             schema:
                                 type: string
                                 description: request state
-                                example: queued
+                                example: processing
                                 enum:
                                     - queued
                                     - processing
                                     - success
                                     - failed
-                            example: failed
+                                    - canceled
+                            example: queued
 components:
     schemas:
         RequestToPublishRequestBody:

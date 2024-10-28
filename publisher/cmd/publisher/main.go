@@ -16,10 +16,8 @@ import (
 	"github.com/segmentio/kafka-go"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
-	"gopkg.in/yaml.v3"
 
 	gentiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl/tiup"
 )
 
@@ -54,11 +52,36 @@ func main() {
 		logLevel = zerolog.DebugLevel
 	}
 	zerolog.SetGlobalLevel(logLevel)
+	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", gentiup.ServiceName).Logger()
+
+	// Load and parse configuration
+	config, err := loadConfig(*configFile)
+	if err != nil {
+		log.Fatalf(ctx, err, "failed to load configuration")
+	}
 
 	// Initialize the services.
-	tiupSvc, err := initTiupService(*configFile)
-	if err != nil {
-		log.Fatalf(ctx, err, "failed to initialize service")
+	var (
+		tiupSvc gentiup.Service
+	)
+	{
+		// Configure Kafka kafkaWriter
+		kafkaWriter := kafka.NewWriter(kafka.WriterConfig{
+			Brokers:  config.Kafka.Brokers,
+			Topic:    config.Kafka.Topic,
+			Balancer: &kafka.LeastBytes{},
+			Logger:   kafka.LoggerFunc(logger.Printf),
+		})
+
+		// Configure Redis client
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:     config.Redis.Addr,
+			Password: config.Redis.Password,
+			Username: config.Redis.Username,
+			DB:       config.Redis.DB,
+		})
+
+		tiupSvc = tiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -126,38 +149,4 @@ func main() {
 
 	wg.Wait()
 	log.Printf(ctx, "exited")
-}
-
-func initTiupService(configFile string) (gentiup.Service, error) {
-	// Load and parse configuration
-	var config config.Service
-	{
-		configData, err := os.ReadFile(configFile)
-		if err != nil {
-			return nil, fmt.Errorf("error reading config file: %v", err)
-		}
-		if err := yaml.Unmarshal(configData, &config); err != nil {
-			return nil, fmt.Errorf("error parsing config file: %v", err)
-		}
-	}
-
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", gentiup.ServiceName).Logger()
-
-	// Configure Kafka kafkaWriter
-	kafkaWriter := kafka.NewWriter(kafka.WriterConfig{
-		Brokers:  config.Kafka.Brokers,
-		Topic:    config.Kafka.Topic,
-		Balancer: &kafka.LeastBytes{},
-		Logger:   kafka.LoggerFunc(logger.Printf),
-	})
-
-	// Configure Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     config.Redis.Addr,
-		Password: config.Redis.Password,
-		Username: config.Redis.Username,
-		DB:       config.Redis.DB,
-	})
-
-	return tiup.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource), nil
 }
