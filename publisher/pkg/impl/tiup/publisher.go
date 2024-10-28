@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
@@ -18,6 +19,7 @@ import (
 type Publisher struct {
 	mirrorURL      string
 	larkWebhookURL string
+	nightlyTTL     time.Duration
 	logger         zerolog.Logger
 	redisClient    redis.Cmdable
 }
@@ -29,6 +31,8 @@ func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger, redi
 	} else {
 		handler.logger = *logger
 	}
+
+	handler.nightlyTTL = DefaultNightlyInternal
 
 	return &handler, nil
 }
@@ -49,16 +53,48 @@ func (p *Publisher) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
-	result := p.handleImpl(data)
+	result := p.rateLimit(data, p.nightlyTTL, p.handleImpl)
 	switch {
 	case cloudevents.IsACK(result):
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
-	default:
+	case cloudevents.IsNACK(result):
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
 		p.notifyLark(&data.Publish, result)
+	default:
+		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateCanceled, redis.KeepTTL)
 	}
 
 	return result
+}
+
+func (p *Publisher) rateLimit(data *PublishRequest, ttl time.Duration, run func(*PublishRequest) cloudevents.Result) cloudevents.Result {
+	//  Skip rate limiting for no nightly builds
+	if !data.Publish.IsNightly() || ttl <= 0 {
+		return run(data)
+	}
+
+	// Add rate limiting
+	rateLimitKey := fmt.Sprintf("ratelimit:tiup:%s:%s:%s:%s", p.mirrorURL, data.Publish.Name, data.Publish.OS, data.Publish.Arch)
+	count, err := p.redisClient.Incr(context.Background(), rateLimitKey).Result()
+	if err != nil {
+		p.logger.Err(err).Msg("rate limit check failed")
+		return cloudevents.NewReceipt(false, "rate limit check failed: %v", err)
+	}
+
+	// First request sets expiry
+	if count == 1 {
+		p.redisClient.Expire(context.Background(), rateLimitKey, ttl)
+		return run(data)
+	}
+
+	p.logger.Warn().
+		Str("mirror", p.mirrorURL).
+		Str("pkg", data.Publish.Name).
+		Str("os", data.Publish.OS).
+		Str("arch", data.Publish.Arch).
+		Msg("rate limit execeeded for package")
+
+	return fmt.Errorf("skip: rate limit exceeded for package %s", data.Publish.Name)
 }
 
 func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {

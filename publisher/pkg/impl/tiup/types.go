@@ -14,7 +14,8 @@ const (
 	PublishStateFailed     = "failed"
 	PublishStateCanceled   = "canceled"
 
-	DefaultStateTTL = 12 * time.Hour
+	DefaultStateTTL        = 12 * time.Hour
+	DefaultNightlyInternal = 12 * time.Hour
 )
 
 type PublishRequest struct {
@@ -36,6 +37,10 @@ type PublishInfo struct {
 	Description string `json:"description,omitempty"`
 	EntryPoint  string `json:"entry_point,omitempty"`
 	Standalone  bool   `json:"standalone,omitempty"`
+}
+
+func (p *PublishInfo) IsNightly() bool {
+	return tiupVersionRegex.MatchString(p.Version)
 }
 
 type FromOci struct {

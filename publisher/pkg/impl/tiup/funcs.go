@@ -29,6 +29,7 @@ var (
 	pkgVersionNightlyRegex = regexp.MustCompile(`(-\d+-g[0-9a-f]{7,})$`)
 	ociGATagRegex          = regexp.MustCompile(`^(v\d+\.\d+\.\d+)_(linux|darwin)_(amd64|arm64)$`)
 	ociNightlyTagRegex     = regexp.MustCompile(`^(master|main)_(linux|darwin)_(amd64|arm64)$`)
+	tiupVersionRegex       = regexp.MustCompile(`^v\d+\.\d+\.\d+.*(-nightly)$`)
 )
 
 // # GA case:
