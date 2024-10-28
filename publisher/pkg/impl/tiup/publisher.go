@@ -17,22 +17,24 @@ import (
 )
 
 type Publisher struct {
-	mirrorURL      string
-	larkWebhookURL string
-	nightlyTTL     time.Duration
-	logger         zerolog.Logger
-	redisClient    redis.Cmdable
+	logger      zerolog.Logger
+	redisClient redis.Cmdable
+	options     PublisherOptions
 }
 
-func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger, redisClient redis.Cmdable) (*Publisher, error) {
-	handler := Publisher{mirrorURL: mirrorURL, larkWebhookURL: larkWebhookURL, redisClient: redisClient}
+type PublisherOptions struct {
+	MirrorURL       string
+	LarkWebhookURL  string
+	NightlyInterval time.Duration
+}
+
+func NewPublisher(logger *zerolog.Logger, redisClient redis.Cmdable, options PublisherOptions) (*Publisher, error) {
+	handler := Publisher{options: options, redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	} else {
 		handler.logger = *logger
 	}
-
-	handler.nightlyTTL = DefaultNightlyInternal
 
 	return &handler, nil
 }
@@ -53,7 +55,7 @@ func (p *Publisher) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
-	result := p.rateLimit(data, p.nightlyTTL, p.handleImpl)
+	result := p.rateLimit(data, p.options.NightlyInterval, p.handleImpl)
 	switch {
 	case cloudevents.IsACK(result):
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
@@ -74,7 +76,7 @@ func (p *Publisher) rateLimit(data *PublishRequest, ttl time.Duration, run func(
 	}
 
 	// Add rate limiting
-	rateLimitKey := fmt.Sprintf("ratelimit:tiup:%s:%s:%s:%s", p.mirrorURL, data.Publish.Name, data.Publish.OS, data.Publish.Arch)
+	rateLimitKey := fmt.Sprintf("ratelimit:tiup:%s:%s:%s:%s", p.options.MirrorURL, data.Publish.Name, data.Publish.OS, data.Publish.Arch)
 	count, err := p.redisClient.Incr(context.Background(), rateLimitKey).Result()
 	if err != nil {
 		p.logger.Err(err).Msg("rate limit check failed")
@@ -86,12 +88,15 @@ func (p *Publisher) rateLimit(data *PublishRequest, ttl time.Duration, run func(
 		p.redisClient.Expire(context.Background(), rateLimitKey, ttl)
 		return run(data)
 	}
+	p.logger.Debug().Str("key", rateLimitKey).Msg("cache key")
 
 	p.logger.Warn().
-		Str("mirror", p.mirrorURL).
+		Str("mirror", p.options.MirrorURL).
 		Str("pkg", data.Publish.Name).
 		Str("os", data.Publish.OS).
 		Str("arch", data.Publish.Arch).
+		Dur("ttl", ttl).
+		Int64("count", count).
 		Msg("rate limit execeeded for package")
 
 	return fmt.Errorf("skip: rate limit exceeded for package %s", data.Publish.Name)
@@ -115,7 +120,7 @@ func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {
 
 	// 3. check the package is in the mirror.
 	//     printf 'post_check "$(tiup mirror show)/%s-%s-%s-%s.tar.gz" "%s"\n' \
-	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", p.mirrorURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
+	remoteURL := fmt.Sprintf("%s/%s-%s-%s-%s.tar.gz", p.options.MirrorURL, data.Publish.Name, data.Publish.Version, data.Publish.OS, data.Publish.Arch)
 	if err := postCheck(saveTo, remoteURL); err != nil {
 		p.logger.Err(err).Str("remote", remoteURL).Msg("post check failed")
 		return cloudevents.NewReceipt(false, "post check failed: %v", err)
@@ -126,7 +131,7 @@ func (p *Publisher) handleImpl(data *PublishRequest) cloudevents.Result {
 }
 
 func (p *Publisher) notifyLark(publishInfo *PublishInfo, err error) {
-	if p.larkWebhookURL == "" {
+	if p.options.LarkWebhookURL == "" {
 		return
 	}
 
@@ -135,7 +140,7 @@ func (p *Publisher) notifyLark(publishInfo *PublishInfo, err error) {
 		publishInfo.Version,
 		publishInfo.OS,
 		publishInfo.Arch,
-		p.mirrorURL,
+		p.options.MirrorURL,
 		err)
 
 	payload := map[string]interface{}{
@@ -150,7 +155,7 @@ func (p *Publisher) notifyLark(publishInfo *PublishInfo, err error) {
 		p.logger.Err(err).Msg("failed to marshal JSON payload")
 	}
 
-	resp, err := http.Post(p.larkWebhookURL, "application/json", bytes.NewBuffer(jsonPayload))
+	resp, err := http.Post(p.options.LarkWebhookURL, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		p.logger.Err(err).Msg("failed to send notification to Lark")
 	}
@@ -168,7 +173,7 @@ func (p *Publisher) publish(file string, info *PublishInfo) error {
 	}
 	command := exec.Command("tiup", args...)
 	command.Env = os.Environ()
-	command.Env = append(command.Env, "TIUP_MIRRORS="+p.mirrorURL)
+	command.Env = append(command.Env, "TIUP_MIRRORS="+p.options.MirrorURL)
 	p.logger.Debug().Any("args", command.Args).Any("env", command.Args).Msg("will execute tiup command")
 	output, err := command.Output()
 	if err != nil {
@@ -176,7 +181,7 @@ func (p *Publisher) publish(file string, info *PublishInfo) error {
 		return err
 	}
 	p.logger.Info().
-		Str("mirror", p.mirrorURL).
+		Str("mirror", p.options.MirrorURL).
 		Str("output", string(output)).
 		Msg("tiup package publish success")
 

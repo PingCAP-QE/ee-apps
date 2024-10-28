@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/go-redis/redis/v8"
@@ -62,7 +63,15 @@ func main() {
 	var handler *tiup.Publisher
 	{
 		var err error
-		handler, err = tiup.NewPublisher(config.MirrorUrl, config.LarkWebhookURL, &log.Logger, redisClient)
+		nigthlyInterval, err := time.ParseDuration(config.Options.NightlyInterval)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Error parsing nightly interval")
+		}
+		handler, err = tiup.NewPublisher(&log.Logger, redisClient, tiup.PublisherOptions{
+			MirrorURL:       config.Options.MirrorURL,
+			LarkWebhookURL:  config.Options.LarkWebhookURL,
+			NightlyInterval: nigthlyInterval,
+		})
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error creating handler")
 		}
