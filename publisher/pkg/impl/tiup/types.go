@@ -3,7 +3,7 @@ package tiup
 import "time"
 
 const (
-	EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
+	EventTypePublishRequest = "net.pingcap.tibuild.tiup-publish-request"
 
 	FromTypeOci  = "oci"
 	FromTypeHTTP = "http"

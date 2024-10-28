@@ -229,7 +229,7 @@ func AnalyzeFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 	return publishRequests, nil
 }
 
-func AnalyzeFromOciArtifactUrl(url string) ([]PublishRequest, error) {
+func analyzeFromOciArtifactUrl(url string) ([]PublishRequest, error) {
 	repo, tag, err := splitRepoAndTag(url)
 	if err != nil {
 		return nil, err

@@ -38,7 +38,7 @@ func NewPublisher(mirrorURL, larkWebhookURL string, logger *zerolog.Logger, redi
 }
 
 func (p *Publisher) SupportEventTypes() []string {
-	return []string{EventTypeTiupPublishRequest}
+	return []string{EventTypePublishRequest}
 }
 
 // Handle for test case run events

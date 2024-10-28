@@ -64,6 +64,7 @@ paths:
                             - processing
                             - success
                             - failed
+                            - canceled
             schemes:
                 - http
 definitions:

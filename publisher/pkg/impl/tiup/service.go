@@ -24,8 +24,8 @@ type tiupsrvc struct {
 	stateTTL    time.Duration
 }
 
-// NewTiup returns the tiup service implementation.
-func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
+// NewService returns the tiup service implementation.
+func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
 	return &tiupsrvc{
 		logger:      logger,
 		kafkaWriter: kafkaWriter,
@@ -39,7 +39,7 @@ func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redi
 func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPublishPayload) (res []string, err error) {
 	s.logger.Info().Msgf("tiup.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := AnalyzeFromOciArtifactUrl(p.ArtifactURL)
+	publishRequests, err := analyzeFromOciArtifactUrl(p.ArtifactURL)
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +49,10 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 		}
 	}
 
-	// 3. Compose cloud events with the analyzed results.
+	// 2. Compose cloud events with the analyzed results.
 	events := s.composeEvents(publishRequests)
 
-	// 4. Send it to kafka topic with the request id as key and the event as value.
+	// 3. Send it to kafka topic with the request id as key and the event as value.
 	var messages []kafka.Message
 	for _, event := range events {
 		bs, _ := event.MarshalJSON()
@@ -72,21 +72,20 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 		requestIDs = append(requestIDs, event.ID())
 	}
 
-	// 5. Init the request dealing status in redis with the request id.
+	// 4. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
 		if err := s.redisClient.SetNX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
 
-	// 6. Return the request id.
+	// 5. Return the request id.
 	return requestIDs, nil
 }
 
 // QueryPublishingStatus implements query-publishing-status.
 func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPublishingStatusPayload) (res string, err error) {
 	s.logger.Info().Msgf("tiup.query-publishing-status")
-
 	// 1. Get the request dealing status from redis with the request id.
 	status, err := s.redisClient.Get(ctx, p.RequestID).Result()
 	if err != nil {
@@ -105,9 +104,9 @@ func (s *tiupsrvc) composeEvents(requests []PublishRequest) []cloudevents.Event 
 	for _, request := range requests {
 		event := cloudevents.NewEvent()
 		event.SetID(uuid.New().String())
-		event.SetType(EventTypeTiupPublishRequest)
+		event.SetType(EventTypePublishRequest)
 		event.SetSource(s.eventSource)
-		event.SetSubject(EventTypeTiupPublishRequest)
+		event.SetSubject(EventTypePublishRequest)
 		event.SetData(cloudevents.ApplicationJSON, request)
 		ret = append(ret, event)
 	}

@@ -138,8 +138,8 @@ func DecodeQueryPublishingStatusResponse(decoder func(*http.Response) goahttp.De
 			if err != nil {
 				return nil, goahttp.ErrDecodingError("tiup", "query-publishing-status", err)
 			}
-			if !(body == "queued" || body == "processing" || body == "success" || body == "failed") {
-				err = goa.MergeErrors(err, goa.InvalidEnumValueError("body", body, []any{"queued", "processing", "success", "failed"}))
+			if !(body == "queued" || body == "processing" || body == "success" || body == "failed" || body == "canceled") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("body", body, []any{"queued", "processing", "success", "failed", "canceled"}))
 			}
 			if err != nil {
 				return nil, goahttp.ErrValidationError("tiup", "query-publishing-status", err)
