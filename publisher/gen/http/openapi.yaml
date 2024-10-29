@@ -17,6 +17,55 @@ produces:
     - application/xml
     - application/gob
 paths:
+    /fs/publish-request:
+        post:
+            tags:
+                - fileserver
+            summary: request-to-publish fileserver
+            operationId: fileserver#request-to-publish
+            parameters:
+                - name: Request-To-PublishRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/FileserverRequestToPublishRequestBody'
+                    required:
+                        - artifact_url
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Ut laborum nulla at error.
+            schemes:
+                - http
+    /fs/publish-request/{request_id}:
+        get:
+            tags:
+                - fileserver
+            summary: query-publishing-status fileserver
+            operationId: fileserver#query-publishing-status
+            parameters:
+                - name: request_id
+                  in: path
+                  description: request track id
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                        enum:
+                            - queued
+                            - processing
+                            - success
+                            - failed
+                            - canceled
+            schemes:
+                - http
     /tiup/publish-request:
         post:
             tags:
@@ -39,7 +88,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Cupiditate suscipit hic quidem voluptates nostrum necessitatibus.
+                            example: Accusantium optio distinctio magni quia adipisci excepturi.
             schemes:
                 - http
     /tiup/publish-request/{request_id}:
@@ -68,32 +117,44 @@ paths:
             schemes:
                 - http
 definitions:
+    FileserverRequestToPublishRequestBody:
+        title: FileserverRequestToPublishRequestBody
+        type: object
+        properties:
+            artifact_url:
+                type: string
+                description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
+                example: Dolores et ipsa molestiae rem nisi non.
+        example:
+            artifact_url: Necessitatibus officia distinctio officia voluptas laudantium iure.
+        required:
+            - artifact_url
     TiupRequestToPublishRequestBody:
         title: TiupRequestToPublishRequestBody
         type: object
         properties:
             artifact_url:
                 type: string
-                description: The full url of the pushed image, contain the tag part. It will parse the repo from it.
-                example: Optio necessitatibus ipsa incidunt.
+                description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
+                example: Quibusdam nisi quam.
             request_id:
                 type: string
                 description: The request id
-                example: Et ullam.
+                example: Nemo rerum voluptas.
             tiup-mirror:
                 type: string
                 description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                 default: http://tiup.pingcap.net:8988
-                example: Illo harum quis voluptatem.
+                example: Eum saepe nihil omnis dolorem eveniet.
             version:
                 type: string
                 description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
-                example: Expedita et necessitatibus ut molestias.
+                example: Atque vero in molestiae odit consequatur.
         example:
-            artifact_url: Et suscipit et.
-            request_id: Corrupti ut natus aut ipsam reprehenderit.
-            tiup-mirror: Assumenda tempora autem accusantium est.
-            version: Ab expedita repellendus.
+            artifact_url: Eos eveniet vero.
+            request_id: Est dignissimos exercitationem atque amet optio et.
+            tiup-mirror: Repellat voluptates possimus pariatur consequuntur.
+            version: Distinctio voluptates voluptatem accusamus nisi omnis quia.
         required:
             - artifact_url
             - tiup-mirror

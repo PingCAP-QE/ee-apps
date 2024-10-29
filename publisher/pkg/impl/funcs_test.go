@@ -1,4 +1,4 @@
-package tiup
+package impl
 
 import (
 	"reflect"

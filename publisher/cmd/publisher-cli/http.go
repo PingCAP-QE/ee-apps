@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	cli "github.com/PingCAP-QE/ee-apps/publisher/gen/http/cli/publisher"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
+
+	cli "github.com/PingCAP-QE/ee-apps/publisher/gen/http/cli/publisher"
 )
 
 func doHTTP(scheme, host string, timeout int, debug bool) (goa.Endpoint, any, error) {

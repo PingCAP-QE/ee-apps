@@ -14,8 +14,8 @@ import (
 // RequestToPublishRequestBody is the type of the "tiup" service
 // "request-to-publish" endpoint HTTP request body.
 type RequestToPublishRequestBody struct {
-	// The full url of the pushed image, contain the tag part. It will parse the
-	// repo from it.
+	// The full url of the pushed OCI artifact, contain the tag part. It will parse
+	// the repo from it.
 	ArtifactURL string `form:"artifact_url" json:"artifact_url" xml:"artifact_url"`
 	// Force set the version. Default is the artifact version read from
 	// `org.opencontainers.image.version` of the manifest config.

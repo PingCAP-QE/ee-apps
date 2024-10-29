@@ -31,7 +31,7 @@ var _ = Service("tiup", func() {
 	Method("request-to-publish", func() {
 		Payload(func() {
 			Attribute("artifact_url", String, func() {
-				Description("The full url of the pushed image, contain the tag part. It will parse the repo from it.")
+				Description("The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.")
 			})
 			Attribute("version", String, func() {
 				Description("Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.")
@@ -44,6 +44,39 @@ var _ = Service("tiup", func() {
 				Description("The request id")
 			})
 			Required("artifact_url", "tiup-mirror")
+		})
+		Result(ArrayOf(String), "request track ids")
+		HTTP(func() {
+			POST("/publish-request")
+			Response(StatusOK)
+		})
+	})
+	Method("query-publishing-status", func() {
+		Payload(func() {
+			Attribute("request_id", String, "request track id")
+			Required("request_id")
+		})
+		Result(String, "request state", func() {
+			Enum("queued", "processing", "success", "failed", "canceled")
+		})
+		HTTP(func() {
+			GET("/publish-request/{request_id}")
+			Response(StatusOK)
+		})
+	})
+})
+
+var _ = Service("fileserver", func() {
+	Description("Publisher service for static file server ")
+	HTTP(func() {
+		Path("/fs")
+	})
+	Method("request-to-publish", func() {
+		Payload(func() {
+			Attribute("artifact_url", String, func() {
+				Description("The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.")
+			})
+			Required("artifact_url")
 		})
 		Result(ArrayOf(String), "request track ids")
 		HTTP(func() {

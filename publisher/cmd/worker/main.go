@@ -19,7 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
 )
 
 func main() {
@@ -60,14 +60,14 @@ func main() {
 
 	ctx := log.Logger.WithContext(context.Background())
 	// Create TiUP publisher
-	var handler *tiup.Publisher
+	var handler *impl.Worker
 	{
 		var err error
 		nigthlyInterval, err := time.ParseDuration(config.Options.NightlyInterval)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error parsing nightly interval")
 		}
-		handler, err = tiup.NewPublisher(&log.Logger, redisClient, tiup.PublisherOptions{
+		handler, err = impl.NewWorker(&log.Logger, redisClient, impl.WorkerOptions{
 			MirrorURL:       config.Options.MirrorURL,
 			LarkWebhookURL:  config.Options.LarkWebhookURL,
 			NightlyInterval: nigthlyInterval,
@@ -106,7 +106,7 @@ func main() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 
-	Start(ctx, reader, handler, &wg, errc)
+	start(ctx, reader, handler, &wg, errc)
 
 	// Wait for signal.
 	log.Warn().Msgf("exiting (%v)", <-errc)
@@ -118,7 +118,7 @@ func main() {
 	log.Warn().Msg("exited")
 }
 
-func Start(ctx context.Context, reader *kafka.Reader, handler *tiup.Publisher, wg *sync.WaitGroup, errc chan error) {
+func start(ctx context.Context, reader *kafka.Reader, handler *impl.Worker, wg *sync.WaitGroup, errc chan error) {
 	(*wg).Add(1)
 	go func() {
 		defer (*wg).Done()

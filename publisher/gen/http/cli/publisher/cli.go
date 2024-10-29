@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 
+	fileserverc "github.com/PingCAP-QE/ee-apps/publisher/gen/http/fileserver/client"
 	tiupc "github.com/PingCAP-QE/ee-apps/publisher/gen/http/tiup/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -23,16 +24,20 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
 	return `tiup (request-to-publish|query-publishing-status)
+fileserver (request-to-publish|query-publishing-status)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` tiup request-to-publish --body '{
-      "artifact_url": "Omnis expedita.",
-      "request_id": "Est sequi placeat.",
-      "tiup-mirror": "Pariatur rerum consectetur deleniti architecto sunt.",
-      "version": "Dicta id perferendis rem a."
+      "artifact_url": "Placeat blanditiis est iusto.",
+      "request_id": "Quo ut dolor perspiciatis rem assumenda enim.",
+      "tiup-mirror": "Totam omnis sunt cum voluptatem amet.",
+      "version": "Eum eligendi."
+   }'` + "\n" +
+		os.Args[0] + ` fileserver request-to-publish --body '{
+      "artifact_url": "Quis voluptatem earum et ullam esse."
    }'` + "\n" +
 		""
 }
@@ -54,10 +59,22 @@ func ParseEndpoint(
 
 		tiupQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
 		tiupQueryPublishingStatusRequestIDFlag = tiupQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
+
+		fileserverFlags = flag.NewFlagSet("fileserver", flag.ContinueOnError)
+
+		fileserverRequestToPublishFlags    = flag.NewFlagSet("request-to-publish", flag.ExitOnError)
+		fileserverRequestToPublishBodyFlag = fileserverRequestToPublishFlags.String("body", "REQUIRED", "")
+
+		fileserverQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
+		fileserverQueryPublishingStatusRequestIDFlag = fileserverQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
 	tiupQueryPublishingStatusFlags.Usage = tiupQueryPublishingStatusUsage
+
+	fileserverFlags.Usage = fileserverUsage
+	fileserverRequestToPublishFlags.Usage = fileserverRequestToPublishUsage
+	fileserverQueryPublishingStatusFlags.Usage = fileserverQueryPublishingStatusUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -76,6 +93,8 @@ func ParseEndpoint(
 		switch svcn {
 		case "tiup":
 			svcf = tiupFlags
+		case "fileserver":
+			svcf = fileserverFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -98,6 +117,16 @@ func ParseEndpoint(
 
 			case "query-publishing-status":
 				epf = tiupQueryPublishingStatusFlags
+
+			}
+
+		case "fileserver":
+			switch epn {
+			case "request-to-publish":
+				epf = fileserverRequestToPublishFlags
+
+			case "query-publishing-status":
+				epf = fileserverQueryPublishingStatusFlags
 
 			}
 
@@ -131,6 +160,16 @@ func ParseEndpoint(
 				endpoint = c.QueryPublishingStatus()
 				data, err = tiupc.BuildQueryPublishingStatusPayload(*tiupQueryPublishingStatusRequestIDFlag)
 			}
+		case "fileserver":
+			c := fileserverc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "request-to-publish":
+				endpoint = c.RequestToPublish()
+				data, err = fileserverc.BuildRequestToPublishPayload(*fileserverRequestToPublishBodyFlag)
+			case "query-publishing-status":
+				endpoint = c.QueryPublishingStatus()
+				data, err = fileserverc.BuildQueryPublishingStatusPayload(*fileserverQueryPublishingStatusRequestIDFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -162,10 +201,10 @@ RequestToPublish implements request-to-publish.
 
 Example:
     %[1]s tiup request-to-publish --body '{
-      "artifact_url": "Omnis expedita.",
-      "request_id": "Est sequi placeat.",
-      "tiup-mirror": "Pariatur rerum consectetur deleniti architecto sunt.",
-      "version": "Dicta id perferendis rem a."
+      "artifact_url": "Placeat blanditiis est iusto.",
+      "request_id": "Quo ut dolor perspiciatis rem assumenda enim.",
+      "tiup-mirror": "Totam omnis sunt cum voluptatem amet.",
+      "version": "Eum eligendi."
    }'
 `, os.Args[0])
 }
@@ -177,6 +216,45 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s tiup query-publishing-status --request-id "Aspernatur quis voluptas."
+    %[1]s tiup query-publishing-status --request-id "Expedita et necessitatibus ut molestias."
+`, os.Args[0])
+}
+
+// fileserverUsage displays the usage of the fileserver command and its
+// subcommands.
+func fileserverUsage() {
+	fmt.Fprintf(os.Stderr, `Publisher service for static file server 
+Usage:
+    %[1]s [globalflags] fileserver COMMAND [flags]
+
+COMMAND:
+    request-to-publish: RequestToPublish implements request-to-publish.
+    query-publishing-status: QueryPublishingStatus implements query-publishing-status.
+
+Additional help:
+    %[1]s fileserver COMMAND --help
+`, os.Args[0])
+}
+func fileserverRequestToPublishUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] fileserver request-to-publish -body JSON
+
+RequestToPublish implements request-to-publish.
+    -body JSON: 
+
+Example:
+    %[1]s fileserver request-to-publish --body '{
+      "artifact_url": "Quis voluptatem earum et ullam esse."
+   }'
+`, os.Args[0])
+}
+
+func fileserverQueryPublishingStatusUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] fileserver query-publishing-status -request-id STRING
+
+QueryPublishingStatus implements query-publishing-status.
+    -request-id STRING: request track id
+
+Example:
+    %[1]s fileserver query-publishing-status --request-id "Voluptas ratione hic libero nisi."
 `, os.Args[0])
 }

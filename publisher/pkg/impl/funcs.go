@@ -1,4 +1,4 @@
-package tiup
+package impl
 
 import (
 	"context"
@@ -40,7 +40,7 @@ var (
 // 	#   - set the version to "vX.Y.Z"
 
 // check the remote file after published.
-func postCheck(localFile, remoteFileURL string) error {
+func postCheckTiupPkg(localFile, remoteFileURL string) error {
 	// 1. Calculate the sha256sum of the local file
 	localSum, err := calculateSHA256(localFile)
 	if err != nil {
