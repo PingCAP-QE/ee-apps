@@ -1,9 +1,10 @@
-package tiup
+package impl
 
 import "time"
 
 const (
-	EventTypePublishRequest = "net.pingcap.tibuild.tiup-publish-request"
+	EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
+	EventTypeFsPublishRequest   = "net.pingcap.tibuild.fs-publish-request"
 
 	FromTypeOci  = "oci"
 	FromTypeHTTP = "http"
@@ -14,8 +15,8 @@ const (
 	PublishStateFailed     = "failed"
 	PublishStateCanceled   = "canceled"
 
-	DefaultStateTTL        = 12 * time.Hour
-	DefaultNightlyInternal = 12 * time.Hour
+	DefaultStateTTL            = 12 * time.Hour
+	DefaultTiupNightlyInternal = 12 * time.Hour
 )
 
 type PublishRequest struct {
@@ -30,16 +31,16 @@ type From struct {
 }
 
 type PublishInfo struct {
-	Name        string `json:"name,omitempty"`
+	Name        string `json:"name,omitempty"` // tiup pkg name or component name for fileserver
 	OS          string `json:"os,omitempty"`
 	Arch        string `json:"arch,omitempty"`
 	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
-	EntryPoint  string `json:"entry_point,omitempty"`
-	Standalone  bool   `json:"standalone,omitempty"`
+	Description string `json:"description,omitempty"` // ignore for `EventTypeFsPublishRequest`
+	EntryPoint  string `json:"entry_point,omitempty"` // ignore for `EventTypeFsPublishRequest`
+	Standalone  bool   `json:"standalone,omitempty"`  // ignore for `EventTypeFsPublishRequest`
 }
 
-func (p *PublishInfo) IsNightly() bool {
+func (p *PublishInfo) IsNightlyTiup() bool {
 	return tiupVersionRegex.MatchString(p.Version)
 }
 

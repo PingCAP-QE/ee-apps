@@ -17,8 +17,9 @@ import (
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
-	gentiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/gen/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
 )
 
 func main() {
@@ -52,7 +53,7 @@ func main() {
 		logLevel = zerolog.DebugLevel
 	}
 	zerolog.SetGlobalLevel(logLevel)
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", gentiup.ServiceName).Logger()
+	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tiup.ServiceName).Logger()
 
 	// Load and parse configuration
 	config, err := loadConfig(*configFile)
@@ -62,7 +63,8 @@ func main() {
 
 	// Initialize the services.
 	var (
-		tiupSvc gentiup.Service
+		tiupSvc tiup.Service
+		fsSvc   fileserver.Service
 	)
 	{
 		// Configure Kafka kafkaWriter
@@ -81,18 +83,23 @@ func main() {
 			DB:       config.Redis.DB,
 		})
 
-		tiupSvc = tiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
+		tiupSvc = impl.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource)
+		fsSvc = impl.NewFileserver(&logger, kafkaWriter, redisClient, config.EventSource)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	var (
-		tiupEndpoints *gentiup.Endpoints
+		tiupEndpoints *tiup.Endpoints
+		fsEndpoints   *fileserver.Endpoints
 	)
 	{
-		tiupEndpoints = gentiup.NewEndpoints(tiupSvc)
+		tiupEndpoints = tiup.NewEndpoints(tiupSvc)
 		tiupEndpoints.Use(debug.LogPayloads())
 		tiupEndpoints.Use(log.Endpoint)
+		fsEndpoints = fileserver.NewEndpoints(fsSvc)
+		fsEndpoints.Use(debug.LogPayloads())
+		fsEndpoints.Use(log.Endpoint)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -134,7 +141,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, tiupEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

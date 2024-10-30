@@ -7,16 +7,19 @@ import (
 	"sync"
 	"time"
 
-	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/gen/http/tiup/server"
-	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 	goahttp "goa.design/goa/v3/http"
+
+	"github.com/PingCAP-QE/ee-apps/publisher/gen/fileserver"
+	fssvr "github.com/PingCAP-QE/ee-apps/publisher/gen/http/fileserver/server"
+	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/gen/http/tiup/server"
+	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpoints, fsEndpoints *fileserver.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -46,14 +49,17 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 	// responses.
 	var (
 		tiupServer *tiupsvr.Server
+		fsServer   *fssvr.Server
 	)
 	{
 		eh := errorHandler(ctx)
 		tiupServer = tiupsvr.New(tiupEndpoints, mux, dec, enc, eh, nil)
+		fsServer = fssvr.New(fsEndpoints, mux, dec, enc, eh, nil)
 	}
 
 	// Configure the mux.
 	tiupsvr.Mount(mux, tiupServer)
+	fssvr.Mount(mux, fsServer)
 
 	var handler http.Handler = mux
 	if dbg {

@@ -1,4 +1,4 @@
-package tiup
+package impl
 
 import (
 	"context"
@@ -40,7 +40,7 @@ var (
 // 	#   - set the version to "vX.Y.Z"
 
 // check the remote file after published.
-func postCheck(localFile, remoteFileURL string) error {
+func postCheckTiupPkg(localFile, remoteFileURL string) error {
 	// 1. Calculate the sha256sum of the local file
 	localSum, err := calculateSHA256(localFile)
 	if err != nil {
@@ -297,7 +297,7 @@ func transformVer(version, tag string) string {
 		return strings.TrimSuffix(version, "-pre")
 	case ociNightlyTagRegex.MatchString(tag): // Nightly case
 		// we replace the suffix part of version: '-[0-9]+-g[0-9a-f]+$' to "-nightly"
-		return pkgVersionNightlyRegex.ReplaceAllString(version, nightlyVerSuffix)
+		return pkgVersionNightlyRegex.ReplaceAllString(version, "") + "-nightly"
 	default:
 		return version
 	}
