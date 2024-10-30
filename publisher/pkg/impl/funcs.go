@@ -297,7 +297,7 @@ func transformVer(version, tag string) string {
 		return strings.TrimSuffix(version, "-pre")
 	case ociNightlyTagRegex.MatchString(tag): // Nightly case
 		// we replace the suffix part of version: '-[0-9]+-g[0-9a-f]+$' to "-nightly"
-		return pkgVersionNightlyRegex.ReplaceAllString(version, nightlyVerSuffix)
+		return pkgVersionNightlyRegex.ReplaceAllString(version, "") + "-nightly"
 	default:
 		return version
 	}
