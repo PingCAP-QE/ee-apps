@@ -5,6 +5,8 @@ go 1.23
 require (
 	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20240926143418-da3f56b05e46
 	github.com/cloudevents/sdk-go/v2 v2.15.2
+	github.com/go-redis/redis/v8 v8.11.5
+	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.33.0
 	github.com/segmentio/kafka-go v0.4.47
 	goa.design/clue v1.0.6
@@ -14,22 +16,20 @@ require (
 	oras.land/oras-go/v2 v2.5.0
 )
 
-require github.com/fsnotify/fsnotify v1.7.0 // indirect
-
 require (
 	github.com/aws/smithy-go v1.20.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dimfeld/httppath v0.0.0-20170720192232-ee938bf73598 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-chi/chi/v5 v5.1.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/go-redis/redis/v8 v8.11.5
-	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/manveru/faker v0.0.0-20171103152722-9fbc68a78c4d // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

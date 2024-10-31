@@ -5,12 +5,8 @@ type Worker struct {
 		KafkaBasic    `yaml:",inline" json:",inline"`
 		ConsumerGroup string `yaml:"consumer_group" json:"consumer_group,omitempty"`
 	} `yaml:"kafka" json:"kafka,omitempty"`
-	Redis   Redis `yaml:"redis" json:"redis,omitempty"`
-	Options struct {
-		MirrorURL       string `yaml:"mirror_url" json:"mirror_url,omitempty"`
-		LarkWebhookURL  string `yaml:"lark_webhook_url" json:"lark_webhook_url,omitempty"`
-		NightlyInterval string `yaml:"nightly_interval" json:"nightly_interval,omitempty"`
-	}
+	Redis   Redis             `yaml:"redis" json:"redis,omitempty"`
+	Options map[string]string `yaml:"options" json:"options,omitempty"`
 }
 
 type Service struct {

@@ -221,7 +221,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := AnalyzeFromOciArtifact(tt.args.repo, tt.args.tag)
+			got, err := analyzeTiupFromOciArtifact(tt.args.repo, tt.args.tag)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("analyzeFromOciArtifact() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -271,7 +271,7 @@ func Test_pkgName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := pkgName(tt.tarballPath); got != tt.want {
+			if got := tiupPkgName(tt.tarballPath); got != tt.want {
 				t.Errorf("pkgName() = %v, want %v", got, tt.want)
 			}
 		})
@@ -330,7 +330,7 @@ func Test_transformVer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := transformVer(tt.version, tt.tag)
+			got := transformTiupVer(tt.version, tt.tag)
 			if got != tt.want {
 				t.Errorf("transformVer() = %v, want %v", got, tt.want)
 			}
