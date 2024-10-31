@@ -39,7 +39,7 @@ func NewFileserver(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClien
 func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.RequestToPublishPayload) (res []string, err error) {
 	s.logger.Info().Msgf("fileserver.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := analyzeFromOciArtifactUrl(p.ArtifactURL)
+	publishRequests, err := analyzeFsFromOciArtifactUrl(p.ArtifactURL)
 	if err != nil {
 		return nil, err
 	}

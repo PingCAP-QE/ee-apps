@@ -9,24 +9,21 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
-	"gopkg.in/yaml.v3"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
 )
 
 func main() {
 	// Parse command-line flags
 	var (
-		configFile = flag.String("config", "config.yaml", "Path to config file")
-		dbgF       = flag.Bool("debug", false, "Enable debug mode")
+		tiupConfigFile = flag.String("tiup-config", "config.yaml", "Path to config file")
+		fsConfigFile   = flag.String("fs-config", "config.yaml", "Path to config file")
+		dbgF           = flag.Bool("debug", false, "Enable debug mode")
 	)
 	flag.Parse()
 
@@ -38,58 +35,8 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	// Load and parse configuration
-	var config config.Worker
-	{
-		configData, err := os.ReadFile(*configFile)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Error reading config file")
-		}
-		if err := yaml.Unmarshal(configData, &config); err != nil {
-			log.Fatal().Err(err).Msg("Error parsing config file")
-		}
-	}
-
-	// Configure Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     config.Redis.Addr,
-		Password: config.Redis.Password,
-		Username: config.Redis.Username,
-		DB:       config.Redis.DB,
-	})
-
-	ctx := log.Logger.WithContext(context.Background())
-	// Create TiUP publisher
-	var handler *impl.Worker
-	{
-		var err error
-		nigthlyInterval, err := time.ParseDuration(config.Options.NightlyInterval)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Error parsing nightly interval")
-		}
-		handler, err = impl.NewWorker(&log.Logger, redisClient, impl.WorkerOptions{
-			MirrorURL:       config.Options.MirrorURL,
-			LarkWebhookURL:  config.Options.LarkWebhookURL,
-			NightlyInterval: nigthlyInterval,
-		})
-		if err != nil {
-			log.Fatal().Err(err).Msg("Error creating handler")
-		}
-	}
-
-	// Configure Kafka reader
-	var reader *kafka.Reader
-	{
-		reader = kafka.NewReader(kafka.ReaderConfig{
-			Brokers:        config.Kafka.Brokers,
-			Topic:          config.Kafka.Topic,
-			GroupID:        config.Kafka.ConsumerGroup,
-			MinBytes:       10e3,
-			MaxBytes:       10e6,
-			CommitInterval: 5000,
-			Logger:         kafka.LoggerFunc(log.Printf),
-		})
-	}
+	tiupPublishRequestKafkaReader, tiupWorker := initFsWorkerFromConfig(*tiupConfigFile)
+	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(*fsConfigFile)
 
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.
@@ -103,22 +50,21 @@ func main() {
 		errc <- fmt.Errorf("%s", <-c)
 	}()
 
+	// Start workers.
 	var wg sync.WaitGroup
-	ctx, cancel := context.WithCancel(ctx)
-
-	start(ctx, reader, handler, &wg, errc)
+	ctx, cancel := context.WithCancel(context.Background())
+	startWorker(ctx, &wg, tiupPublishRequestKafkaReader, tiupWorker)
+	startWorker(ctx, &wg, fsPublishRequestKafkaReader, fsWorker)
 
 	// Wait for signal.
 	log.Warn().Msgf("exiting (%v)", <-errc)
-
 	// Send cancellation signal to the goroutines.
 	cancel()
-
 	wg.Wait()
 	log.Warn().Msg("exited")
 }
 
-func start(ctx context.Context, reader *kafka.Reader, handler *impl.Worker, wg *sync.WaitGroup, errc chan error) {
+func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, worker impl.Worker) {
 	(*wg).Add(1)
 	go func() {
 		defer (*wg).Done()
@@ -142,7 +88,7 @@ func start(ctx context.Context, reader *kafka.Reader, handler *impl.Worker, wg *
 				}
 
 				log.Debug().Str("ce-id", cloudEvent.ID()).Str("ce-type", cloudEvent.Type()).Msg("received cloud event")
-				handler.Handle(cloudEvent)
+				worker.Handle(cloudEvent)
 			}
 		}
 	}()

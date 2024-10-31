@@ -1,6 +1,10 @@
 package impl
 
-import "time"
+import (
+	"time"
+
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+)
 
 const (
 	EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
@@ -31,17 +35,13 @@ type From struct {
 }
 
 type PublishInfo struct {
-	Name        string `json:"name,omitempty"` // tiup pkg name or component name for fileserver
-	OS          string `json:"os,omitempty"`
-	Arch        string `json:"arch,omitempty"`
-	Version     string `json:"version,omitempty"`
+	Name        string `json:"name,omitempty"`        // tiup pkg name or component name for fileserver
+	OS          string `json:"os,omitempty"`          // ignore for `EventTypeFsPublishRequest`
+	Arch        string `json:"arch,omitempty"`        // ignore for `EventTypeFsPublishRequest`
+	Version     string `json:"version,omitempty"`     // SemVer format for `EventTypeTiupPublishRequest` and "<git-branch>#<git-commit-sha1>" for `EventTypeFsPublishRequest`
 	Description string `json:"description,omitempty"` // ignore for `EventTypeFsPublishRequest`
-	EntryPoint  string `json:"entry_point,omitempty"` // ignore for `EventTypeFsPublishRequest`
+	EntryPoint  string `json:"entry_point,omitempty"` // if event is `EventTypeFsPublishRequest`, the the value is the basename for store file, like tidb-server.tar.gz
 	Standalone  bool   `json:"standalone,omitempty"`  // ignore for `EventTypeFsPublishRequest`
-}
-
-func (p *PublishInfo) IsNightlyTiup() bool {
-	return tiupVersionRegex.MatchString(p.Version)
 }
 
 type FromOci struct {
@@ -52,4 +52,9 @@ type FromOci struct {
 
 type FromHTTP struct {
 	URL string `json:"url,omitempty"`
+}
+
+// Worker provides handling for cloud events.
+type Worker interface {
+	Handle(event cloudevents.Event) cloudevents.Result
 }

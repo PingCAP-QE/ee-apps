@@ -39,7 +39,7 @@ func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redi
 func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPublishPayload) (res []string, err error) {
 	s.logger.Info().Msgf("tiup.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := analyzeFromOciArtifactUrl(p.ArtifactURL)
+	publishRequests, err := analyzeTiupFromOciArtifactUrl(p.ArtifactURL)
 	if err != nil {
 		return nil, err
 	}

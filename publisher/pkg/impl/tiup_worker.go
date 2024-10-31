@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,35 +16,41 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type Worker struct {
+type tiupWorker struct {
 	logger      zerolog.Logger
 	redisClient redis.Cmdable
-	options     WorkerOptions
+	options     struct {
+		LarkWebhookURL  string
+		MirrorURL       string
+		NightlyInterval time.Duration
+	}
 }
 
-type WorkerOptions struct {
-	LarkWebhookURL  string
-	MirrorURL       string
-	NightlyInterval time.Duration
-}
-
-func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options WorkerOptions) (*Worker, error) {
-	handler := Worker{options: options, redisClient: redisClient}
+func NewTiupWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) (*tiupWorker, error) {
+	handler := tiupWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	} else {
 		handler.logger = *logger
 	}
 
+	nigthlyInterval, err := time.ParseDuration(options["nightly_interval"])
+	if err != nil {
+		return nil, fmt.Errorf("parsing nightly interval failed: %v", err)
+	}
+	handler.options.NightlyInterval = nigthlyInterval
+	handler.options.MirrorURL = options["mirror_url"]
+	handler.options.LarkWebhookURL = options["lark_webhook_url"]
+
 	return &handler, nil
 }
 
-func (p *Worker) SupportEventTypes() []string {
-	return []string{EventTypeTiupPublishRequest, EventTypeFsPublishRequest}
+func (p *tiupWorker) SupportEventTypes() []string {
+	return []string{EventTypeTiupPublishRequest}
 }
 
 // Handle for test case run events
-func (p *Worker) Handle(event cloudevents.Event) cloudevents.Result {
+func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
@@ -56,16 +61,7 @@ func (p *Worker) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
-	var result cloudevents.Result
-	switch event.Type() {
-	case EventTypeTiupPublishRequest:
-		result = p.rateLimitForTiup(data, p.options.NightlyInterval, p.handleTiup)
-	case EventTypeFsPublishRequest:
-		result = p.handleFs(data)
-	default:
-		result = fmt.Errorf("unsupported event type: %s", event.Type())
-	}
-
+	result := p.rateLimit(data, p.options.NightlyInterval, p.handle)
 	switch {
 	case cloudevents.IsACK(result):
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
@@ -79,9 +75,9 @@ func (p *Worker) Handle(event cloudevents.Event) cloudevents.Result {
 	return result
 }
 
-func (p *Worker) rateLimitForTiup(data *PublishRequest, ttl time.Duration, run func(*PublishRequest) cloudevents.Result) cloudevents.Result {
+func (p *tiupWorker) rateLimit(data *PublishRequest, ttl time.Duration, run func(*PublishRequest) cloudevents.Result) cloudevents.Result {
 	//  Skip rate limiting for no nightly builds
-	if !data.Publish.IsNightlyTiup() || ttl <= 0 {
+	if !isNightlyTiup(data.Publish) || ttl <= 0 {
 		return run(data)
 	}
 
@@ -112,7 +108,7 @@ func (p *Worker) rateLimitForTiup(data *PublishRequest, ttl time.Duration, run f
 	return fmt.Errorf("skip: rate limit exceeded for package %s", data.Publish.Name)
 }
 
-func (p *Worker) handleTiup(data *PublishRequest) cloudevents.Result {
+func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
 	// 1. get the the tarball from data.From.
 	saveTo, err := downloadFile(data)
 	if err != nil {
@@ -122,7 +118,7 @@ func (p *Worker) handleTiup(data *PublishRequest) cloudevents.Result {
 	p.logger.Info().Msg("download file success")
 
 	// 2. publish the tarball to the mirror.
-	if err := p.publishTiupPkg(saveTo, &data.Publish); err != nil {
+	if err := p.publish(saveTo, &data.Publish); err != nil {
 		p.logger.Err(err).Msg("publish to mirror failed")
 		return cloudevents.NewReceipt(false, "publish to mirror failed: %v", err)
 	}
@@ -140,26 +136,7 @@ func (p *Worker) handleTiup(data *PublishRequest) cloudevents.Result {
 	return cloudevents.ResultACK
 }
 
-func (p *Worker) handleFs(data *PublishRequest) cloudevents.Result {
-	// 1. get the the tarball from data.From.
-	saveTo, err := downloadFile(data)
-	if err != nil {
-		p.logger.Err(err).Msg("download file failed")
-		return cloudevents.NewReceipt(false, "download file failed: %v", err)
-	}
-	p.logger.Info().Msg("download file success")
-
-	// 2. publish the tarball to the mirror.
-	if err := p.publishFileserver(saveTo, &data.Publish); err != nil {
-		p.logger.Err(err).Msg("publish to fileserver failed")
-		return cloudevents.NewReceipt(false, "publish to fileserver failed: %v", err)
-	}
-	p.logger.Info().Msg("publish to fs success")
-
-	return cloudevents.ResultACK
-}
-
-func (p *Worker) notifyLark(publishInfo *PublishInfo, err error) {
+func (p *tiupWorker) notifyLark(publishInfo *PublishInfo, err error) {
 	if p.options.LarkWebhookURL == "" {
 		return
 	}
@@ -195,7 +172,7 @@ func (p *Worker) notifyLark(publishInfo *PublishInfo, err error) {
 	}
 }
 
-func (p *Worker) publishTiupPkg(file string, info *PublishInfo) error {
+func (p *tiupWorker) publish(file string, info *PublishInfo) error {
 	args := []string{"mirror", "publish", info.Name, info.Version, file, info.EntryPoint, "--os", info.OS, "--arch", info.Arch, "--desc", info.Description}
 	if info.Standalone {
 		args = append(args, "--standalone")
@@ -215,9 +192,4 @@ func (p *Worker) publishTiupPkg(file string, info *PublishInfo) error {
 		Msg("tiup package publish success")
 
 	return nil
-}
-
-func (p *Worker) publishFileserver(file string, info *PublishInfo) error {
-	// to implement
-	return errors.New("not implemented")
 }
