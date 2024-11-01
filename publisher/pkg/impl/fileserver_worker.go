@@ -13,11 +13,12 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/ks3sdklib/aws-sdk-go/aws"
-	"github.com/ks3sdklib/aws-sdk-go/aws/awsutil"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
 	"github.com/rs/zerolog"
 )
+
+const defaultMaxKS3Retries = 3
 
 type fsWorker struct {
 	logger      zerolog.Logger
@@ -41,14 +42,21 @@ func NewFsWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[
 	handler.options.LarkWebhookURL = options["lark_webhook_url"]
 	handler.options.S3.BucketName = options["s3.bucket_name"]
 
-	cre := credentials.NewStaticCredentials(options["s3_access_key_id"],
-		options["s3_secret_access_key"],
-		options["s3_session_token"])
+	cre := credentials.NewStaticCredentials(
+		options["s3.access_key"],
+		options["s3.secret_key"],
+		options["s3.session_token"])
 	handler.s3Client = s3.New(&aws.Config{
 		Credentials: cre,
-		Region:      options["s3.region"],
-		Endpoint:    options["s3.endpoint"],
+		Region:      options["s3.region"],   // Ref: https://docs.ksyun.com/documents/6761
+		Endpoint:    options["s3.endpoint"], // Ref: https://docs.ksyun.com/documents/6761
+		MaxRetries:  defaultMaxKS3Retries,
+		Logger:      logger,
 	})
+	// Enable KS3 log when debug mode is enabled.
+	if logger.GetLevel() <= zerolog.DebugLevel {
+		handler.s3Client.Config.LogLevel = aws.LogOn
+	}
 
 	return &handler, nil
 }
@@ -135,20 +143,45 @@ func (p *fsWorker) notifyLark(publishInfo *PublishInfo, err error) {
 }
 
 func (p *fsWorker) publish(content io.ReadSeeker, info *PublishInfo) error {
-	targetPath := targetFsFullPaths(info)
-	// upload file to the KingSoft cloud object bucket with the target path as key.
+	keys := targetFsFullPaths(info)
+	if len(keys) == 0 {
+		return nil
+	}
 
-	key := targetPath[0]
-	resp, err := p.s3Client.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String(p.options.S3.BucketName), // 存储空间名称，必填
-		Key:    aws.String(key),                     // 对象的key，必填
-		Body:   content,                             // 要上传的文件，必填
-		ACL:    aws.String("public-read"),           // 对象的访问权限，非必填
+	bucketName := p.options.S3.BucketName
+
+	// upload the artifact files to KS3 bucket.
+	for _, key := range keys {
+		_, err := p.s3Client.PutObject(&s3.PutObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(key),
+			Body:   content,
+		})
+		if err != nil {
+			p.logger.
+				Err(err).
+				Str("bucket", bucketName).
+				Str("key", key).
+				Msg("failed to upload file to KS3 bucket.")
+			return err
+		}
+	}
+
+	// update git ref sha: download/refs/pingcap/<comp>/<branch>/sha1
+	refKV := targetFsRefKeyValue(info)
+	_, err := p.s3Client.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(refKV[0]),
+		Body:   bytes.NewReader([]byte(refKV[1])),
 	})
 	if err != nil {
+		p.logger.
+			Err(err).
+			Str("bucket", bucketName).
+			Str("key", refKV[0]).
+			Msg("failed to upload content in KS3 bucket.")
 		return err
 	}
-	fmt.Println(awsutil.StringValue(resp))
-	return nil
 
+	return nil
 }

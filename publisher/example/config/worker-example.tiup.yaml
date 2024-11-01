@@ -3,6 +3,12 @@ kafka:
     - example-bootstrap.kafka:9092
   topic: example-topic
   consumer_group: example-group
+
+redis:
+  addr: "redis-server:6379"
+  db: 0
+  password: "redis_password"  
+
 options:
   mirror_url: http://tiup.mirror.site
   lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.

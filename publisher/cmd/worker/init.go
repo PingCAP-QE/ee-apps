@@ -29,10 +29,10 @@ func loadConfig(configFile string) (config.Worker, error) {
 	return config, nil
 }
 
-func initTiupWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker, error) {
+func initTiupWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
 	config, err := loadConfig(configFile)
 	if err != nil {
-		return nil, nil, err
+		log.Fatal().Err(err).Msg("load config failed")
 	}
 
 	// Configure Redis client.
@@ -58,7 +58,7 @@ func initTiupWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker, er
 		Logger:         kafka.LoggerFunc(log.Printf),
 	})
 
-	return kafkaReader, worker, nil
+	return kafkaReader, worker
 }
 
 func initFsWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
