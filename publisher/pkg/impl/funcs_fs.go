@@ -207,9 +207,23 @@ func targetFsFullPaths(p *PublishInfo) []string {
 	var ret []string
 
 	// the <branch>/<commit> path: pingcap/<comp>/<branch>/<commit>/<entrypoint>
-	ret = append(ret, filepath.Join("pingcap", p.Name, strings.ReplaceAll(p.Version, "#", "/"), p.EntryPoint))
+	ret = append(ret, filepath.Join("download/builds/pingcap", p.Name, strings.ReplaceAll(p.Version, "#", "/"), p.EntryPoint))
 	// the <branch>/<commit> path: pingcap/<comp>/<commit>/<entrypoint>
-	ret = append(ret, filepath.Join("pingcap", p.Name, filepath.Base(strings.ReplaceAll(p.Version, "#", "/")), p.EntryPoint))
+	ret = append(ret, filepath.Join("download/builds/pingcap", p.Name, filepath.Base(strings.ReplaceAll(p.Version, "#", "/")), p.EntryPoint))
+
+	return ret
+}
+
+func targetFsRefKeyValue(p *PublishInfo) [2]string {
+	var ret [2]string
+	verParts := strings.Split(p.Version, "#")
+	if len(verParts) > 1 {
+		ret[0] = fmt.Sprintf("download/refs/pingcap/%s/%s/sha1", p.Name, verParts[0])
+		ret[1] = verParts[1]
+	} else {
+		ret[0] = fmt.Sprintf("download/refs/pingcap/%s/%s/sha1", p.Name, "master")
+		ret[1] = verParts[0]
+	}
 
 	return ret
 }

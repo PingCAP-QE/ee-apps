@@ -1,4 +1,4 @@
-
+event_source: http://publisher.site/
 kafka:
   brokers:
     - "kafka-broker-1:9092"
@@ -12,7 +12,5 @@ kafka:
 redis:
   addr: "redis-server:6379"
   db: 0
-  username: "redis_user"
   password: "redis_password"
 
-event_source: http://publisher.site/

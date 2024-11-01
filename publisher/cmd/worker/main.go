@@ -35,7 +35,7 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	tiupPublishRequestKafkaReader, tiupWorker := initFsWorkerFromConfig(*tiupConfigFile)
+	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(*tiupConfigFile)
 	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(*fsConfigFile)
 
 	// Create channel used by both the signal handler and server goroutines
