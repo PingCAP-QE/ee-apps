@@ -1,5 +1,10 @@
 package config
 
+type Workers struct {
+	Tiup       *Worker `yaml:"tiup,omitempty" json:"tiup,omitempty"`
+	FileServer *Worker `yaml:"file_server,omitempty" json:"file_server,omitempty"`
+}
+
 type Worker struct {
 	Kafka struct {
 		KafkaBasic    `yaml:",inline" json:",inline"`

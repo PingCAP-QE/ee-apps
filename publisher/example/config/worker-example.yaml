@@ -1,0 +1,36 @@
+tiup:
+  kafka:
+    brokers:
+      - example-bootstrap.kafka:9092
+    topic: example-topic
+    consumer_group: example-group
+
+  redis:
+    addr: "redis-server:6379"
+    db: 0
+    password: "redis_password"  
+
+  options:
+    mirror_url: http://tiup.mirror.site
+    lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.
+    nightly_interval: 1h
+
+file_server:
+  kafka:
+    brokers:
+      - example-bootstrap.kafka:9092
+    topic: example-topic
+    consumer_group: example-group-fs
+
+  redis:
+    addr: "redis-server:6379"
+    db: 0
+    password: "redis_password"  
+
+  options:
+    lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.
+    s3.endpoint: <endpoint>
+    s3.region: BEIJING
+    s3.bucket_name: <bucket-name>
+    s3.access_key: <access-key>
+    s3.secret_key: <secret-key>
