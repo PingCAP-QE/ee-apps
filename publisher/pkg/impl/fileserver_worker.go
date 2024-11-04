@@ -152,6 +152,10 @@ func (p *fsWorker) publish(content io.ReadSeeker, info *PublishInfo) error {
 
 	// upload the artifact files to KS3 bucket.
 	for _, key := range keys {
+		if _, err := content.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+
 		_, err := p.s3Client.PutObject(&s3.PutObjectInput{
 			Bucket: aws.String(bucketName),
 			Key:    aws.String(key),
