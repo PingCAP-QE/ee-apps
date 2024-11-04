@@ -21,9 +21,8 @@ import (
 func main() {
 	// Parse command-line flags
 	var (
-		tiupConfigFile = flag.String("tiup-config", "config.yaml", "Path to config file")
-		fsConfigFile   = flag.String("fs-config", "config.yaml", "Path to config file")
-		dbgF           = flag.Bool("debug", false, "Enable debug mode")
+		configFile = flag.String("config", "config.yaml", "Path to config file")
+		dbgF       = flag.Bool("debug", false, "Enable debug mode")
 	)
 	flag.Parse()
 
@@ -35,8 +34,13 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(*tiupConfigFile)
-	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(*fsConfigFile)
+	config, err := loadConfig(*configFile)
+	if err != nil {
+		log.Fatal().Err(err).Msg("load config failed")
+	}
+
+	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(config.Tiup)
+	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(config.FileServer)
 
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.
@@ -65,6 +69,15 @@ func main() {
 }
 
 func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, worker impl.Worker) {
+	if reader == nil {
+		log.Warn().Msg("empty kafka reader, skip")
+		return
+	}
+	if worker == nil {
+		log.Warn().Msg("empty worker, skip")
+		return
+	}
+
 	(*wg).Add(1)
 	go func() {
 		defer (*wg).Done()

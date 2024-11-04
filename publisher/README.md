@@ -33,3 +33,10 @@ go run ./cmd/publisher -config=config-publisher.yaml --debug --domain 0.0.0.0:80
 ```bash
 go run ./cmd/worker --config=config-worker.yaml --debug
 ```
+
+### Test with the client CLI
+
+```bash
+go run ./cmd/publisher-cli -url=http://localhost:8080 tiup request-to-publish -body '{ "artifact_url": "hub.pingcap.net/pingcap/tidb/package:master_linux_amd64" }'
+go run ./cmd/publisher-cli -url=http://localhost:8080 fileserver request-to-publish -body '{ "artifact_url": "hub.pingcap.net/pingcap/tidb/package:master_linux_amd64" }'
+```

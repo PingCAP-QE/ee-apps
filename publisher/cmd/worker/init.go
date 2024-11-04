@@ -15,24 +15,23 @@ import (
 )
 
 // Load and parse configuration.
-func loadConfig(configFile string) (config.Worker, error) {
-	var config config.Worker
-	{
-		configData, err := os.ReadFile(configFile)
-		if err != nil {
-			return config, fmt.Errorf("error reading config file: %v", err)
-		}
-		if err := yaml.Unmarshal(configData, &config); err != nil {
-			return config, fmt.Errorf("error parsing config file: %v", err)
-		}
+func loadConfig(configFile string) (*config.Workers, error) {
+	configData, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("error reading config file: %v", err)
 	}
-	return config, nil
+
+	var config config.Workers
+	if err := yaml.Unmarshal(configData, &config); err != nil {
+		return nil, fmt.Errorf("error parsing config file: %v", err)
+	}
+
+	return &config, nil
 }
 
-func initTiupWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
-	config, err := loadConfig(configFile)
-	if err != nil {
-		log.Fatal().Err(err).Msg("load config failed")
+func initTiupWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) {
+	if config == nil {
+		return nil, nil
 	}
 
 	// Configure Redis client.
@@ -61,10 +60,9 @@ func initTiupWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
 	return kafkaReader, worker
 }
 
-func initFsWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
-	config, err := loadConfig(configFile)
-	if err != nil {
-		log.Fatal().Err(err).Msg("load config failed")
+func initFsWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) {
+	if config == nil {
+		return nil, nil
 	}
 
 	// Configure Redis client.
@@ -75,12 +73,9 @@ func initFsWorkerFromConfig(configFile string) (*kafka.Reader, impl.Worker) {
 		DB:       config.Redis.DB,
 	})
 
-	var worker impl.Worker
-	{
-		worker, err = impl.NewFsWorker(&log.Logger, redisClient, config.Options)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
-		}
+	worker, err := impl.NewFsWorker(&log.Logger, redisClient, config.Options)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
 	}
 
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
