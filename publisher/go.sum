@@ -1,5 +1,5 @@
-github.com/PingCAP-QE/ee-apps/dl v0.0.0-20240926143418-da3f56b05e46 h1:VsOcy58bTAFgXngZl2DgWyzLp22lPOFITGBl0Cpg/aU=
-github.com/PingCAP-QE/ee-apps/dl v0.0.0-20240926143418-da3f56b05e46/go.mod h1:SgEiJheCBFDHDeMSK5hB/xZtGAJBM/L6f6YU40Gg7wo=
+github.com/PingCAP-QE/ee-apps/dl v0.0.0-20241104081507-4ebce35328e3 h1:lB5LmXyMZObiuqS7Q0nFMva3Y/LKuOFX+3MHSWWJqLo=
+github.com/PingCAP-QE/ee-apps/dl v0.0.0-20241104081507-4ebce35328e3/go.mod h1:4Q9Ns8T4rU7dlZng4fLe9qwSWlB4rjFD7Egpip1kI38=
 github.com/aws/smithy-go v1.20.3 h1:ryHwveWzPV5BIof6fyDvor6V3iUL7nTfiTKXHiW05nE=
 github.com/aws/smithy-go v1.20.3/go.mod h1:krry+ya/rV9RDcV/Q16kpu6ypI4K2czasz0NC3qS14E=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

@@ -3,7 +3,7 @@ module github.com/PingCAP-QE/ee-apps/publisher
 go 1.23
 
 require (
-	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20240926143418-da3f56b05e46
+	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20241104081507-4ebce35328e3
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.6.0
