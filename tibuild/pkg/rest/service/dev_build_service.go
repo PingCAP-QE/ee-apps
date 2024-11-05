@@ -118,7 +118,8 @@ func validatePermission(ctx context.Context, req *DevBuild) error {
 
 func fillDetailInfoForTekton(ctx context.Context, client GHClient, req *DevBuild) error {
 	repo := GHRepoToStruct(req.Spec.GithubRepo)
-	if strings.HasPrefix(req.Spec.GitRef, "pull/") {
+	switch {
+	case strings.HasPrefix(req.Spec.GitRef, "pull/"):
 		prNumber, err := strconv.ParseInt(strings.Replace(req.Spec.GitRef, "pull/", "", 1), 10, 32)
 		if err != nil {
 			return err
@@ -133,19 +134,18 @@ func fillDetailInfoForTekton(ctx context.Context, client GHClient, req *DevBuild
 		req.Spec.prBaseRef = pr.Base.GetRef()
 
 		return nil
-	}
+	case strings.HasPrefix(req.Spec.GitRef, "tag/"),
+		strings.HasPrefix(req.Spec.GitRef, "branch/"):
+		commit, err := client.GetHash(ctx, repo.Owner, repo.Repo, req.Spec.GitRef)
+		if err != nil {
+			return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
+		}
+		req.Spec.GitHash = commit
 
-	if req.Spec.GitHash != "" {
+		return nil
+	default:
 		return nil
 	}
-
-	commit, err := client.GetHash(ctx, repo.Owner, repo.Repo, req.Spec.GitRef)
-	if err != nil {
-		return fmt.Errorf("get hash from github failed%s%w", err.Error(), ErrServerRefuse)
-	}
-	req.Spec.GitHash = commit
-
-	return nil
 }
 
 func fillWithDefaults(req *DevBuild) {

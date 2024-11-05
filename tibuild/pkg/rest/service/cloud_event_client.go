@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	ceTypeFakeGHPushDevBuild = "net.pingcap.tibuild.devbuild.push"
-	ceTypeFakeGHPRDevBuild   = "net.pingcap.tibuild.devbuild.pull_request"
+	ceTypeFakeGHPushDevBuild   = "net.pingcap.tibuild.devbuild.push"
+	ceTypeFakeGHPRDevBuild     = "net.pingcap.tibuild.devbuild.pull_request"
+	ceTypeFakeGHCreateDevBuild = "net.pingcap.tibuild.devbuild.create"
 )
 
 type BuildTrigger interface {
@@ -59,6 +60,10 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 		ref := strings.Replace(dev.Spec.GitRef, "branch/", "refs/heads/", 1)
 		eventType = ceTypeFakeGHPushDevBuild
 		eventData = newFakeGitHubPushEventPayload(repo.Owner, repo.Repo, ref, dev.Spec.GitHash)
+	case strings.HasPrefix(dev.Spec.GitRef, "tag/"):
+		ref := strings.Replace(dev.Spec.GitRef, "tag/", "refs/tags/", 1)
+		eventType = ceTypeFakeGHCreateDevBuild
+		eventData = newFakeGitHubTagCreateEventPayload(repo.Owner, repo.Repo, ref)
 	case strings.HasPrefix(dev.Spec.GitRef, "pull/"):
 		eventType = ceTypeFakeGHPRDevBuild
 		eventData = newFakeGitHubPullRequestPayload(repo.Owner, repo.Repo, dev.Spec.prBaseRef,
@@ -73,6 +78,9 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	event.SetSubject(fmt.Sprint(dev.ID))
 	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
 	event.SetExtension("user", dev.Meta.CreatedBy)
+	if dev.Spec.BuilderImg != "" {
+		event.SetExtension("param-builder-image", dev.Spec.BuilderImg)
+	}
 
 	return &event, nil
 }
@@ -83,6 +91,21 @@ func newFakeGitHubPushEventPayload(owner, repo, ref, sha string) *github.PushEve
 		After:  github.String(sha),
 		Before: github.String("00000000000000000000000000000000000000000"),
 		Repo: &github.PushEventRepository{
+			FullName: github.String(fmt.Sprintf("%s/%s", owner, repo)),
+			Name:     github.String(repo),
+			CloneURL: github.String(fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)),
+			Owner: &github.User{
+				Login: github.String(owner),
+			},
+		},
+	}
+}
+
+func newFakeGitHubTagCreateEventPayload(owner, repo, ref string) *github.CreateEvent {
+	return &github.CreateEvent{
+		Ref:     github.String(strings.Replace(ref, "refs/tags/", "", 1)),
+		RefType: github.String("tag"),
+		Repo: &github.Repository{
 			FullName: github.String(fmt.Sprintf("%s/%s", owner, repo)),
 			Name:     github.String(repo),
 			CloneURL: github.String(fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)),
