@@ -1,6 +1,12 @@
 config:
   wide_screen_mode: true
 elements:
+  {{- with .FailedMessage }}
+  - tag: markdown
+    content: |-
+      **Failed summary:** {{ . }}
+  - tag: hr
+  {{- end }}
   - tag: div
     fields:
       {{- with .StartTime }}

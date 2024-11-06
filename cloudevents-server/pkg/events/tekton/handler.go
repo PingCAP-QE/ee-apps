@@ -131,11 +131,8 @@ func fillInfosWithCustomRun(data *v1alpha1.Run, ret *cardMessageInfos) {
 		ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
 	}
 	if results := data.Status.Results; len(results) > 0 {
-		var parts []string
 		for _, r := range results {
-			parts = append(parts, fmt.Sprintf("**%s**:", r.Name), r.Value, "---")
 			ret.Results = append(ret.Results, [2]string{r.Name, r.Value})
-
 		}
 	}
 }
@@ -147,7 +144,9 @@ func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) {
 		v, _ := p.Value.MarshalJSON()
 		ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
 	}
-	if data.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
+	succeededCondition := data.Status.GetCondition(apis.ConditionSucceeded)
+	if succeededCondition.IsFalse() {
+		ret.FailedMessage = succeededCondition.Message
 		ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
 			data.Namespace, data.Spec.TaskRef.Name, data.Name)
 	}
@@ -166,7 +165,9 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 		v, _ := p.Value.MarshalJSON()
 		ret.Params = append(ret.Params, [2]string{p.Name, string(v)})
 	}
-	if data.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
+	succeededCondition := data.Status.GetCondition(apis.ConditionSucceeded)
+	if succeededCondition.IsFalse() {
+		ret.FailedMessage = succeededCondition.Message
 		ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
 			data.Namespace, data.Spec.PipelineRef.Name, data.Name)
 	}
@@ -175,7 +176,6 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 			ret.Results = append(ret.Results, [2]string{r.Name, r.Value.StringVal})
 		}
 	}
-
 }
 
 func getFailedTasks(data *v1beta1.PipelineRun, logGetter func(podName, containerName string) string) map[string][]stepInfo {
