@@ -3,7 +3,6 @@ package impl
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,9 +19,10 @@ type tiupWorker struct {
 	logger      zerolog.Logger
 	redisClient redis.Cmdable
 	options     struct {
-		LarkWebhookURL  string
-		MirrorURL       string
-		NightlyInterval time.Duration
+		LarkWebhookURL   string
+		MirrorURL        string
+		PublicServiceURL string
+		NightlyInterval  time.Duration
 	}
 }
 
@@ -41,6 +41,11 @@ func NewTiupWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options ma
 	handler.options.NightlyInterval = nigthlyInterval
 	handler.options.MirrorURL = options["mirror_url"]
 	handler.options.LarkWebhookURL = options["lark_webhook_url"]
+	if options["public_service_url"] != "" {
+		handler.options.PublicServiceURL = options["public_service_url"]
+	} else {
+		handler.options.PublicServiceURL = "http://publisher-<env>-mirror.<namespace>.svc"
+	}
 
 	return &handler, nil
 }
@@ -67,7 +72,7 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
 	case cloudevents.IsNACK(result):
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
-		p.notifyLark(&data.Publish, result)
+		p.notifyLark(data, result)
 	default:
 		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateCanceled, redis.KeepTTL)
 	}
@@ -136,34 +141,41 @@ func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
 	return cloudevents.ResultACK
 }
 
-func (p *tiupWorker) notifyLark(publishInfo *PublishInfo, err error) {
+func (p *tiupWorker) notifyLark(req *PublishRequest, err error) {
 	if p.options.LarkWebhookURL == "" {
 		return
 	}
 
-	message := fmt.Sprintf("Failed to publish %s-%s @%s/%s platform to mirror %s: %v",
-		publishInfo.Name,
-		publishInfo.Version,
-		publishInfo.OS,
-		publishInfo.Arch,
-		p.options.MirrorURL,
-		err)
+	rerunCmd := fmt.Sprintf(`go run %s --url %s tiup request-to-publish --body '{"artifact_url": "%s"}'`,
+		"github.com/PingCAP-QE/ee-apps/publisher/cmd/publisher-cli@main",
+		p.options.PublicServiceURL,
+		req.From.String(),
+	)
 
-	payload := map[string]interface{}{
-		"msg_type": "text",
-		"content": map[string]string{
-			"text": message,
+	info := failureNotifyInfo{
+		Title:         "TiUP Publish Failed",
+		FailedMessage: err.Error(),
+		RerunCommands: rerunCmd,
+		Params: [][2]string{
+			{"package", req.Publish.Name},
+			{"version", req.Publish.Version},
+			{"os", req.Publish.OS},
+			{"arch", req.Publish.Arch},
+			{"to-mirror", p.options.MirrorURL},
+			{"from", req.From.String()},
 		},
 	}
 
-	jsonPayload, err := json.Marshal(payload)
+	jsonPayload, err := newLarkCardWithGoTemplate(info)
 	if err != nil {
-		p.logger.Err(err).Msg("failed to marshal JSON payload")
+		p.logger.Err(err).Msg("failed to gen message payload")
+		return
 	}
 
-	resp, err := http.Post(p.options.LarkWebhookURL, "application/json", bytes.NewBuffer(jsonPayload))
+	resp, err := http.Post(p.options.LarkWebhookURL, "application/json", bytes.NewBufferString(jsonPayload))
 	if err != nil {
 		p.logger.Err(err).Msg("failed to send notification to Lark")
+		return
 	}
 	defer resp.Body.Close()
 

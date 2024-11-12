@@ -1,0 +1,39 @@
+msg_type: interactive
+card:
+  config:
+    wide_screen_mode: true
+  elements:
+    {{- with .FailedMessage }}
+    - tag: markdown
+      content: |-
+        **Failed summary:**
+        ```text
+{{ indent 8 . }}
+        ```
+    - tag: hr
+    {{- end }}
+    {{- with .Params }}
+    - tag: markdown
+      content: |-
+        **Params:**
+        {{- range . }}
+        - **{{ index . 0 }}:** {{ index . 1 }}
+        {{- end }}
+    {{- end }}
+
+    {{- with .RerunCommands }}
+    - tag: hr
+    - tag: markdown
+      content: |-
+        🔧 **Rerun:**
+
+        ```BASH
+        {{ . }}
+        ```
+    {{- end }}
+
+  header:
+    template: red # blue | wathet | turquoise | green | yellow | orange | red | carmine | violet | purple | indigo | grey
+    title:
+      content: {{ .Title }}
+      tag: plain_text
