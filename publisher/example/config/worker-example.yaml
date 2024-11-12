@@ -14,6 +14,7 @@ tiup:
     mirror_url: http://tiup.mirror.site
     lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.
     nightly_interval: 1h
+    public_service_url: http://publisher.ns.svc
 
 file_server:
   kafka:

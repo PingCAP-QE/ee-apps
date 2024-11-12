@@ -146,16 +146,9 @@ func (p *tiupWorker) notifyLark(req *PublishRequest, err error) {
 		return
 	}
 
-	rerunCmd := fmt.Sprintf(`go run %s --url %s tiup request-to-publish --body '{"artifact_url": "%s"}'`,
-		"github.com/PingCAP-QE/ee-apps/publisher/cmd/publisher-cli@main",
-		p.options.PublicServiceURL,
-		req.From.String(),
-	)
-
 	info := failureNotifyInfo{
 		Title:         "TiUP Publish Failed",
 		FailedMessage: err.Error(),
-		RerunCommands: rerunCmd,
 		Params: [][2]string{
 			{"package", req.Publish.Name},
 			{"version", req.Publish.Version},
@@ -195,8 +188,8 @@ func (p *tiupWorker) publish(file string, info *PublishInfo) error {
 	p.logger.Debug().Any("args", command.Args).Any("env", command.Args).Msg("will execute tiup command")
 	output, err := command.Output()
 	if err != nil {
-		p.logger.Err(err).Msg("failed to execute tiup command")
-		return err
+		p.logger.Err(err).Bytes("output", output).Msg("tiup command execute failed")
+		return fmt.Errorf("tiup command execute failed:\n%s", output)
 	}
 	p.logger.Info().
 		Str("mirror", p.options.MirrorURL).
