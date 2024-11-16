@@ -1,6 +1,6 @@
 FROM golang:1.23.3 AS builder
 COPY . /app
-RUN cd /app && go build -o server
+RUN cd /app && go build -o server ./cmd/server
 
 FROM debian:12
 LABEL org.opencontainers.image.licenses="MIT"

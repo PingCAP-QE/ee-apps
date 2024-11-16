@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 
+	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
@@ -60,7 +61,7 @@ func (pcrq *ProblemCaseRunQuery) Order(o ...problemcaserun.OrderOption) *Problem
 // First returns the first ProblemCaseRun entity from the query.
 // Returns a *NotFoundError when no ProblemCaseRun was found.
 func (pcrq *ProblemCaseRunQuery) First(ctx context.Context) (*ProblemCaseRun, error) {
-	nodes, err := pcrq.Limit(1).All(setContextOp(ctx, pcrq.ctx, "First"))
+	nodes, err := pcrq.Limit(1).All(setContextOp(ctx, pcrq.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (pcrq *ProblemCaseRunQuery) FirstX(ctx context.Context) *ProblemCaseRun {
 // Returns a *NotFoundError when no ProblemCaseRun ID was found.
 func (pcrq *ProblemCaseRunQuery) FirstID(ctx context.Context) (id int, err error) {
 	var ids []int
-	if ids, err = pcrq.Limit(1).IDs(setContextOp(ctx, pcrq.ctx, "FirstID")); err != nil {
+	if ids, err = pcrq.Limit(1).IDs(setContextOp(ctx, pcrq.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
@@ -106,7 +107,7 @@ func (pcrq *ProblemCaseRunQuery) FirstIDX(ctx context.Context) int {
 // Returns a *NotSingularError when more than one ProblemCaseRun entity is found.
 // Returns a *NotFoundError when no ProblemCaseRun entities are found.
 func (pcrq *ProblemCaseRunQuery) Only(ctx context.Context) (*ProblemCaseRun, error) {
-	nodes, err := pcrq.Limit(2).All(setContextOp(ctx, pcrq.ctx, "Only"))
+	nodes, err := pcrq.Limit(2).All(setContextOp(ctx, pcrq.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +135,7 @@ func (pcrq *ProblemCaseRunQuery) OnlyX(ctx context.Context) *ProblemCaseRun {
 // Returns a *NotFoundError when no entities are found.
 func (pcrq *ProblemCaseRunQuery) OnlyID(ctx context.Context) (id int, err error) {
 	var ids []int
-	if ids, err = pcrq.Limit(2).IDs(setContextOp(ctx, pcrq.ctx, "OnlyID")); err != nil {
+	if ids, err = pcrq.Limit(2).IDs(setContextOp(ctx, pcrq.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
 	}
 	switch len(ids) {
@@ -159,7 +160,7 @@ func (pcrq *ProblemCaseRunQuery) OnlyIDX(ctx context.Context) int {
 
 // All executes the query and returns a list of ProblemCaseRuns.
 func (pcrq *ProblemCaseRunQuery) All(ctx context.Context) ([]*ProblemCaseRun, error) {
-	ctx = setContextOp(ctx, pcrq.ctx, "All")
+	ctx = setContextOp(ctx, pcrq.ctx, ent.OpQueryAll)
 	if err := pcrq.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
@@ -181,7 +182,7 @@ func (pcrq *ProblemCaseRunQuery) IDs(ctx context.Context) (ids []int, err error)
 	if pcrq.ctx.Unique == nil && pcrq.path != nil {
 		pcrq.Unique(true)
 	}
-	ctx = setContextOp(ctx, pcrq.ctx, "IDs")
+	ctx = setContextOp(ctx, pcrq.ctx, ent.OpQueryIDs)
 	if err = pcrq.Select(problemcaserun.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
@@ -199,7 +200,7 @@ func (pcrq *ProblemCaseRunQuery) IDsX(ctx context.Context) []int {
 
 // Count returns the count of the given query.
 func (pcrq *ProblemCaseRunQuery) Count(ctx context.Context) (int, error) {
-	ctx = setContextOp(ctx, pcrq.ctx, "Count")
+	ctx = setContextOp(ctx, pcrq.ctx, ent.OpQueryCount)
 	if err := pcrq.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
@@ -217,7 +218,7 @@ func (pcrq *ProblemCaseRunQuery) CountX(ctx context.Context) int {
 
 // Exist returns true if the query has elements in the graph.
 func (pcrq *ProblemCaseRunQuery) Exist(ctx context.Context) (bool, error) {
-	ctx = setContextOp(ctx, pcrq.ctx, "Exist")
+	ctx = setContextOp(ctx, pcrq.ctx, ent.OpQueryExist)
 	switch _, err := pcrq.FirstID(ctx); {
 	case IsNotFound(err):
 		return false, nil
@@ -449,7 +450,7 @@ func (pcrgb *ProblemCaseRunGroupBy) Aggregate(fns ...AggregateFunc) *ProblemCase
 
 // Scan applies the selector query and scans the result into the given value.
 func (pcrgb *ProblemCaseRunGroupBy) Scan(ctx context.Context, v any) error {
-	ctx = setContextOp(ctx, pcrgb.build.ctx, "GroupBy")
+	ctx = setContextOp(ctx, pcrgb.build.ctx, ent.OpQueryGroupBy)
 	if err := pcrgb.build.prepareQuery(ctx); err != nil {
 		return err
 	}
@@ -497,7 +498,7 @@ func (pcrs *ProblemCaseRunSelect) Aggregate(fns ...AggregateFunc) *ProblemCaseRu
 
 // Scan applies the selector query and scans the result into the given value.
 func (pcrs *ProblemCaseRunSelect) Scan(ctx context.Context, v any) error {
-	ctx = setContextOp(ctx, pcrs.ctx, "Select")
+	ctx = setContextOp(ctx, pcrs.ctx, ent.OpQuerySelect)
 	if err := pcrs.prepareQuery(ctx); err != nil {
 		return err
 	}
