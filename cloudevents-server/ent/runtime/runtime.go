@@ -5,6 +5,6 @@ package runtime
 // The schema-stitching logic is generated in github.com/PingCAP-QE/ee-apps/cloudevents-server/ent/runtime.go
 
 const (
-	Version = "v0.12.5"                                         // Version of ent codegen.
-	Sum     = "h1:KREM5E4CSoej4zeGa88Ou/gfturAnpUv0mzAjch1sj4=" // Sum of ent codegen.
+	Version = "v0.14.2-0.20241102145616-365b49817603"           // Version of ent codegen.
+	Sum     = "h1:mdW4xCZP/KQOGI8xMn1+ARzlucpmG44ux9ZqwYbYpIg=" // Sum of ent codegen.
 )
