@@ -113,18 +113,12 @@ func (ecs EventConsumerGroup) Close() {
 // Start runs the EventConsumerGroup in parallel, starting each EventConsumer
 // in a separate goroutine. It waits for all EventConsumers to finish before
 // returning.
-func (ecs EventConsumerGroup) Start(ctx context.Context) {
-	wg := new(sync.WaitGroup)
+func (ecs EventConsumerGroup) Start(ctx context.Context, wg *sync.WaitGroup) {
 	for _, ec := range ecs {
 		if ec != nil {
-			wg.Add(1)
-			go func(c *EventConsumer) {
-				c.Start(ctx)
-				wg.Done()
-			}(ec)
+			ec.Start(ctx, wg)
 		}
 	}
-	wg.Wait()
 }
 
 type EventConsumer struct {
@@ -135,32 +129,43 @@ type EventConsumer struct {
 }
 
 // consumer workers
-func (ec *EventConsumer) Start(ctx context.Context) error {
+func (ec *EventConsumer) Start(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Add(1)
 	defer ec.Close()
+	go func() {
+		defer wg.Done()
+		defer ec.Close()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			m, err := ec.reader.ReadMessage(ctx)
-			if err != nil {
-				return err
-			}
+		log.Info().Msg("Kafka consumer started")
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				msg, err := ec.reader.ReadMessage(ctx)
+				if err != nil {
+					log.Err(err).Msg("Error reading message")
+					continue
+				}
 
-			var event cloudevents.Event
-			err = event.UnmarshalJSON(m.Value)
-			if err != nil {
-				return err
-			}
+				var event cloudevents.Event
+				if err := event.UnmarshalJSON(msg.Value); err != nil {
+					log.Err(err).Msg("Error unmarshaling CloudEvent")
+					continue
+				}
 
-			result := ec.handler.Handle(event)
-			if !cloudevents.IsACK(result) {
-				log.Error().Err(err).Msg("error handling event")
-				ec.writer.WriteMessages(ctx, kafka.Message{Topic: ec.faultTopic, Key: m.Key, Value: m.Value})
+				log.Debug().Str("ce-id", event.ID()).Str("ce-type", event.Type()).Msg("received cloud event")
+
+				result := ec.handler.Handle(event)
+				if !cloudevents.IsACK(result) {
+					log.Error().Err(err).Msg("error handling event")
+					ec.writer.WriteMessages(ctx, kafka.Message{Topic: ec.faultTopic, Key: msg.Key, Value: msg.Value})
+				}
 			}
 		}
-	}
+	}()
+
+	log.Info().Msg("Kafka consumer started")
 }
 
 func (ec *EventConsumer) Close() {

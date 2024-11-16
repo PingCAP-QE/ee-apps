@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -67,33 +68,44 @@ func main() {
 }
 
 func startServices(srv *http.Server, cg handler.EventConsumerGroup) {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Create channel used by both the signal handler and server goroutines
+	// to notify the main goroutine when to stop the server.
+	errc := make(chan error)
 
+	// Setup interrupt handler. This optional step configures the process so
+	// that SIGINT and SIGTERM signals cause the services to stop gracefully.
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		errc <- fmt.Errorf("%s", <-c)
+	}()
+
+	// Start http server
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("server error")
 		}
 	}()
 	log.Info().Str("address", srv.Addr).Msg("server started.")
+
+	// Start consumer workers
+	cgWg := new(sync.WaitGroup)
 	cgCtx, cgCancel := context.WithCancel(context.Background())
-	go cg.Start(cgCtx)
+	cg.Start(cgCtx, cgWg)
 
-	// Wait for interrupt signal to gracefully shutdown
-	sig := <-sigChan
-	log.Warn().Str("signal", sig.String()).Msg("signal received")
+	// Wait for signal.
+	log.Warn().Msgf("exiting (%v)", <-errc)
 
-	// shutdown consumer group.
+	// Send cancellation signal to the goroutines.
 	cgCancel()
+	cgWg.Wait()
+	log.Warn().Msg("Workers are gracefully stopped")
 
 	// shutdown http server.
-	shutdownSrvCtx, shutdownSrvCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownSrvCancel()
-	if err := srv.Shutdown(shutdownSrvCtx); err != nil {
+	if err := srv.Shutdown(context.Background()); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")
 	}
-
-	log.Info().Msg("server gracefully stopped")
+	log.Warn().Msg("server gracefully stopped")
 }
 
 func setRouters(r gin.IRoutes, cfg *config.Config) {
