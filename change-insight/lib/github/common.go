@@ -27,6 +27,8 @@ type labelInfo struct {
 	Description string `json:"description"`
 }
 
+var apiURL string = "https://api.github.com/repos/"
+
 func getGitHubToken() string
 	return os.Getenv("GITHUB_TOKEN")
 }
