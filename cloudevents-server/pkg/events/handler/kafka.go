@@ -131,7 +131,6 @@ type EventConsumer struct {
 // consumer workers
 func (ec *EventConsumer) Start(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
-	defer ec.Close()
 	go func() {
 		defer wg.Done()
 		defer ec.Close()
@@ -164,8 +163,6 @@ func (ec *EventConsumer) Start(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}
 	}()
-
-	log.Info().Msg("Kafka consumer started")
 }
 
 func (ec *EventConsumer) Close() {
