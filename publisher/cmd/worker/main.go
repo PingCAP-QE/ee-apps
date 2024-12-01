@@ -78,9 +78,9 @@ func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, 
 		return
 	}
 
-	(*wg).Add(1)
+	wg.Add(1)
 	go func() {
-		defer (*wg).Done()
+		defer wg.Done()
 		defer reader.Close()
 
 		for {
