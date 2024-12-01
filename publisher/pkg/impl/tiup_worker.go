@@ -12,12 +12,22 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
+	redsync "github.com/go-redsync/redsync/v4"
+	goredis "github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/rs/zerolog"
+)
+
+const (
+	tiupPublishingMutexName       = "global/mutex/tiup-publishing"
+	tiupPublishingMutexExpiry     = 10 * time.Minute
+	tiupPublishingMutexTries      = 32
+	tiupPublishingMutexRetryDelay = time.Second
 )
 
 type tiupWorker struct {
 	logger      zerolog.Logger
-	redisClient redis.Cmdable
+	redisClient *redis.Client
+	mutex       *redsync.Mutex
 	options     struct {
 		LarkWebhookURL   string
 		MirrorURL        string
@@ -26,7 +36,7 @@ type tiupWorker struct {
 	}
 }
 
-func NewTiupWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) (*tiupWorker, error) {
+func NewTiupWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[string]string) (*tiupWorker, error) {
 	handler := tiupWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -46,6 +56,17 @@ func NewTiupWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options ma
 	} else {
 		handler.options.PublicServiceURL = "http://publisher-<env>-mirror.<namespace>.svc"
 	}
+
+	pool := goredis.NewPool(redisClient)
+	rs := redsync.New(pool)
+
+	// Obtain a new mutex by using the same name for all instances wanting the
+	// same lock.
+	handler.mutex = rs.NewMutex(tiupPublishingMutexName,
+		redsync.WithExpiry(tiupPublishingMutexExpiry),
+		redsync.WithTries(tiupPublishingMutexTries),
+		redsync.WithRetryDelay(tiupPublishingMutexRetryDelay),
+	)
 
 	return &handler, nil
 }
@@ -178,6 +199,14 @@ func (p *tiupWorker) notifyLark(req *PublishRequest, err error) {
 }
 
 func (p *tiupWorker) publish(file string, info *PublishInfo) error {
+	// Obtain a lock for our given global TiUP mirrors mutex.
+	// After this is successful, no one else can obtain the same
+	// lock (the same mutex name) until we unlock it.
+	if err := p.mutex.Lock(); err != nil {
+		return fmt.Errorf("failed to obtain lock: %v", err)
+	}
+	defer p.mutex.Unlock()
+
 	args := []string{"mirror", "publish", info.Name, info.Version, file, info.EntryPoint, "--os", info.OS, "--arch", info.Arch, "--desc", info.Description}
 	if info.Standalone {
 		args = append(args, "--standalone")
