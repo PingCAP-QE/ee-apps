@@ -20,8 +20,11 @@ import (
 const (
 	tiupPublishingMutexName       = "global/mutex/tiup-publishing"
 	tiupPublishingMutexExpiry     = 10 * time.Minute
-	tiupPublishingMutexTries      = 32
+	tiupPublishingMutexTries      = 300
 	tiupPublishingMutexRetryDelay = time.Second
+
+	tiupUploadingMaxRetries = 3
+	tiupUploadingRetryDelay = time.Minute
 )
 
 type tiupWorker struct {
@@ -143,8 +146,23 @@ func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
 	}
 	p.logger.Info().Msg("download file success")
 
-	// 2. publish the tarball to the mirror.
-	if err := p.publish(saveTo, &data.Publish); err != nil {
+	// 2. publish the tarball to the mirror with retries.
+	for i := 0; i < tiupUploadingMaxRetries; i++ {
+		if err = p.publish(saveTo, &data.Publish); err == nil {
+			break
+		}
+
+		if i < tiupUploadingMaxRetries-1 {
+			p.logger.Warn().
+				Int("tried", i+1).
+				Int("max_retries", tiupUploadingMaxRetries).
+				Err(err).
+				Msgf("publish to mirror failed, i will retry after %s.")
+			time.Sleep(tiupUploadingRetryDelay)
+		}
+	}
+
+	if err != nil {
 		p.logger.Err(err).Msg("publish to mirror failed")
 		return cloudevents.NewReceipt(false, "publish to mirror failed: %v", err)
 	}
@@ -215,11 +233,12 @@ func (p *tiupWorker) publish(file string, info *PublishInfo) error {
 	command.Env = os.Environ()
 	command.Env = append(command.Env, "TIUP_MIRRORS="+p.options.MirrorURL)
 	p.logger.Debug().Any("args", command.Args).Any("env", command.Args).Msg("will execute tiup command")
-	output, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
 		p.logger.Err(err).Bytes("output", output).Msg("tiup command execute failed")
 		return fmt.Errorf("tiup command execute failed:\n%s", output)
 	}
+
 	p.logger.Info().
 		Str("mirror", p.options.MirrorURL).
 		Str("output", string(output)).
