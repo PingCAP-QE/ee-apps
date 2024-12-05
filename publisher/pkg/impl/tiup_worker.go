@@ -157,7 +157,7 @@ func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
 				Int("tried", i+1).
 				Int("max_retries", tiupUploadingMaxRetries).
 				Err(err).
-				Msgf("publish to mirror failed, i will retry after %s.")
+				Msgf("publish to mirror failed, i will retry after %s.", tiupUploadingRetryDelay)
 			time.Sleep(tiupUploadingRetryDelay)
 		}
 	}

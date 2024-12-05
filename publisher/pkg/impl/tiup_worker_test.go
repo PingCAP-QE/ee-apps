@@ -15,7 +15,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 
 	type fields struct {
 		logger      zerolog.Logger
-		redisClient redis.Cmdable
+		redisClient *redis.Client
 		options     struct {
 			LarkWebhookURL   string
 			MirrorURL        string

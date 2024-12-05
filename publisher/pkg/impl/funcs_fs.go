@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
+	"golang.org/x/mod/semver"
 )
 
 var reTagOsArchSuffix = regexp.MustCompile(`_(linux|darwin)_(amd64|arm64)$`)
@@ -208,6 +209,11 @@ func targetFsFullPaths(p *PublishInfo) []string {
 
 	// the <branch>/<commit> path: pingcap/<comp>/<branch>/<commit>/<entrypoint>
 	ret = append(ret, filepath.Join("download/builds/pingcap", p.Name, strings.ReplaceAll(p.Version, "#", "/"), p.EntryPoint))
+	// if the part before the '#' char in p.Version is semver git tag format, then we need only one path.
+	if semver.IsValid(strings.Split(p.Version, "#")[0]) {
+		return ret
+	}
+
 	// the <branch>/<commit> path: pingcap/<comp>/<commit>/<entrypoint>
 	ret = append(ret, filepath.Join("download/builds/pingcap", p.Name, filepath.Base(strings.ReplaceAll(p.Version, "#", "/")), p.EntryPoint))
 
