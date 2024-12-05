@@ -346,8 +346,8 @@ func Test_targetFsFullPaths(t *testing.T) {
 				EntryPoint: "bin/tidb-server",
 			},
 			want: []string{
-				"pingcap/tidb/master/abc123def/bin/tidb-server",
-				"pingcap/tidb/abc123def/bin/tidb-server",
+				"download/builds/pingcap/tidb/master/abc123def/bin/tidb-server",
+				"download/builds/pingcap/tidb/abc123def/bin/tidb-server",
 			},
 		},
 		{
@@ -358,8 +358,8 @@ func Test_targetFsFullPaths(t *testing.T) {
 				EntryPoint: "pd-server",
 			},
 			want: []string{
-				"pingcap/pd/release-5.0/abc/pd-server",
-				"pingcap/pd/abc/pd-server",
+				"download/builds/pingcap/pd/release-5.0/abc/pd-server",
+				"download/builds/pingcap/pd/abc/pd-server",
 			},
 		},
 		{
@@ -370,8 +370,19 @@ func Test_targetFsFullPaths(t *testing.T) {
 				EntryPoint: "opt/tiflash/bin/tiflash-server",
 			},
 			want: []string{
-				"pingcap/tiflash/nightly/xyz789/opt/tiflash/bin/tiflash-server",
-				"pingcap/tiflash/xyz789/opt/tiflash/bin/tiflash-server",
+				"download/builds/pingcap/tiflash/nightly/xyz789/opt/tiflash/bin/tiflash-server",
+				"download/builds/pingcap/tiflash/xyz789/opt/tiflash/bin/tiflash-server",
+			},
+		},
+		{
+			name: "tag",
+			p: &PublishInfo{
+				Name:       "tiflash",
+				Version:    "v7.1.1#abcdef",
+				EntryPoint: "opt/tiflash/bin/tiflash-server",
+			},
+			want: []string{
+				"download/builds/pingcap/tiflash/v7.1.1/abcdef/opt/tiflash/bin/tiflash-server",
 			},
 		},
 	}
