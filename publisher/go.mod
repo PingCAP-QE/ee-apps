@@ -1,6 +1,6 @@
 module github.com/PingCAP-QE/ee-apps/publisher
 
-go 1.23
+go 1.23.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -14,6 +14,7 @@ require (
 	goa.design/clue v1.0.7
 	goa.design/goa/v3 v3.19.1
 	goa.design/plugins/v3 v3.19.1
+	golang.org/x/mod v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.5.0
 )
@@ -56,7 +57,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
