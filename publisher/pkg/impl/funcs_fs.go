@@ -11,7 +11,7 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-var reTagOsArchSuffix = regexp.MustCompile(`_(linux|darwin)_(amd64|arm64)$`)
+var reTagOsArchSuffix = regexp.MustCompile(`_((linux|darwin)_(amd64|arm64))$`)
 
 // Anlyze the artifact config and return the publish requests.
 //
@@ -54,6 +54,8 @@ func analyzeFsFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 	version := transformFsVer(config["net.pingcap.tibuild.git-sha"].(string), tag)
 
 	// 3. Loop through TiUP packages
+	// TODO: set the prefix from the match group part with reTagOsArchSuffix from the `tag`:
+	entryPointPrefix := getFsEntryPointPrefix(tag)
 	var publishRequests []PublishRequest
 	for _, pkg := range tiupPackages {
 		pkgMap := pkg.(map[string]interface{})
@@ -75,7 +77,7 @@ func analyzeFsFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 			Name:    tiupPkgName(file),
 			Version: version,
 			// TODO: if the pkgName is "tidb",  then the entry point should be "tidb-server.tar.gz"
-			EntryPoint: transformFsEntryPoint(file),
+			EntryPoint: transformFsEntryPoint(entryPointPrefix, file),
 		}
 		publishRequests = append(publishRequests, PublishRequest{
 			From:    from,
@@ -128,7 +130,7 @@ func analyzeFsFromOciArtifactForTiDBTools(repo, tag string) ([]PublishRequest, e
 	publishInfo := PublishInfo{
 		Name:       "tidb-tools",
 		Version:    version,
-		EntryPoint: "centos7/tidb-tools.tar.gz",
+		EntryPoint: fmt.Sprintf("%s/tidb-tools.tar.gz", getFsEntryPointPrefix(tag)),
 	}
 	return []PublishRequest{{From: from, Publish: publishInfo}}, nil
 }
@@ -175,7 +177,7 @@ func analyzeFsFromOciArtifactForTiDBBinlog(repo, tag string) ([]PublishRequest, 
 	publishInfo := PublishInfo{
 		Name:       "tidb-binlog",
 		Version:    version,
-		EntryPoint: "centos7/tidb-binlog.tar.gz",
+		EntryPoint: fmt.Sprintf("%s/tidb-binlog.tar.gz", getFsEntryPointPrefix(tag)),
 	}
 	return []PublishRequest{{From: from, Publish: publishInfo}}, nil
 }
@@ -194,14 +196,22 @@ func transformFsVer(commitSHA1, tag string) string {
 	return fmt.Sprintf("%s#%s", branch, commitSHA1)
 }
 
-func transformFsEntryPoint(file string) string {
+func transformFsEntryPoint(prefix, file string) string {
 	base := tiupPkgName(file)
 	switch base {
 	case "tidb", "pd", "tikv":
-		return fmt.Sprintf("centos7/%s-server.tar.gz", base)
+		return fmt.Sprintf("%s/%s-server.tar.gz", prefix, base)
 	default:
-		return fmt.Sprintf("centos7/%s.tar.gz", base)
+		return fmt.Sprintf("%s/%s.tar.gz", prefix, base)
 	}
+}
+
+func getFsEntryPointPrefix(tag string) string {
+	if match := reTagOsArchSuffix.FindStringSubmatch(tag); len(match) > 1 {
+		return match[1]
+	}
+
+	return "centos7"
 }
 
 func targetFsFullPaths(p *PublishInfo) []string {
