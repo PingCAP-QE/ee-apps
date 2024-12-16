@@ -98,7 +98,7 @@ func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPu
 	return status, nil
 }
 
-func (s *tiupsrvc) composeEvents(requests []PublishRequest) []cloudevents.Event {
+func (s *tiupsrvc) composeEvents(requests []PublishRequestTiUP) []cloudevents.Event {
 	var ret []cloudevents.Event
 	for _, request := range requests {
 		event := cloudevents.NewEvent()

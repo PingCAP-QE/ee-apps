@@ -23,11 +23,6 @@ const (
 	DefaultTiupNightlyInternal = 12 * time.Hour
 )
 
-type PublishRequest struct {
-	From    From        `json:"from,omitempty"`
-	Publish PublishInfo `json:"publish,omitempty"`
-}
-
 type From struct {
 	Type string    `json:"type,omitempty"`
 	Oci  *FromOci  `json:"oci,omitempty"`
@@ -45,7 +40,26 @@ func (f From) String() string {
 	}
 }
 
-type PublishInfo struct {
+type FromOci struct {
+	Repo string `json:"repo,omitempty"`
+	Tag  string `json:"tag,omitempty"`
+	File string `json:"file,omitempty"`
+}
+
+func (f FromOci) String() string {
+	return f.Repo + ":" + f.Tag + "#" + f.File
+}
+
+type FromHTTP struct {
+	URL string `json:"url,omitempty"`
+}
+
+type PublishRequestTiUP struct {
+	From    From            `json:"from,omitempty"`
+	Publish PublishInfoTiUP `json:"publish,omitempty"`
+}
+
+type PublishInfoTiUP struct {
 	Name        string `json:"name,omitempty"`        // tiup pkg name or component name for fileserver
 	OS          string `json:"os,omitempty"`          // ignore for `EventTypeFsPublishRequest`
 	Arch        string `json:"arch,omitempty"`        // ignore for `EventTypeFsPublishRequest`
@@ -55,18 +69,16 @@ type PublishInfo struct {
 	Standalone  bool   `json:"standalone,omitempty"`  // ignore for `EventTypeFsPublishRequest`
 }
 
-type FromOci struct {
-	Repo string `json:"repo,omitempty"`
-	Tag  string `json:"tag,omitempty"`
-	File string `json:"file,omitempty"`
+type PublishRequestFS struct {
+	From    From          `json:"from,omitempty"`
+	Publish PublishInfoFS `json:"publish,omitempty"`
 }
 
-func (f FromOci) String() string {
-	return  f.Repo + ":" + f.Tag + "#" + f.File
-}
-
-type FromHTTP struct {
-	URL string `json:"url,omitempty"`
+type PublishInfoFS struct {
+	Repo            string            `json:"repo,omitempty"`
+	Branch          string            `json:"branch,omitempty"`
+	CommitSHA       string            `json:"commit_sha,omitempty"`
+	FileTransferMap map[string]string `json:"file_transfer_map,omitempty"`
 }
 
 // Worker provides handling for cloud events.
