@@ -64,6 +64,12 @@ var _ = Service("tiup", func() {
 			Response(StatusOK)
 		})
 	})
+	Method("reset-rate-limit", func() {	
+		HTTP(func() {
+			POST("/reset-rate-limit")
+			Response(StatusOK)
+		})
+	})
 })
 
 var _ = Service("fileserver", func() {

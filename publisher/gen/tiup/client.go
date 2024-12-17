@@ -17,13 +17,15 @@ import (
 type Client struct {
 	RequestToPublishEndpoint      goa.Endpoint
 	QueryPublishingStatusEndpoint goa.Endpoint
+	ResetRateLimitEndpoint        goa.Endpoint
 }
 
 // NewClient initializes a "tiup" service client given the endpoints.
-func NewClient(requestToPublish, queryPublishingStatus goa.Endpoint) *Client {
+func NewClient(requestToPublish, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
 	return &Client{
 		RequestToPublishEndpoint:      requestToPublish,
 		QueryPublishingStatusEndpoint: queryPublishingStatus,
+		ResetRateLimitEndpoint:        resetRateLimit,
 	}
 }
 
@@ -47,4 +49,10 @@ func (c *Client) QueryPublishingStatus(ctx context.Context, p *QueryPublishingSt
 		return
 	}
 	return ires.(string), nil
+}
+
+// ResetRateLimit calls the "reset-rate-limit" endpoint of the "tiup" service.
+func (c *Client) ResetRateLimit(ctx context.Context) (err error) {
+	_, err = c.ResetRateLimitEndpoint(ctx, nil)
+	return
 }

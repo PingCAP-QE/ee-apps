@@ -25,6 +25,10 @@ type Client struct {
 	// query-publishing-status endpoint.
 	QueryPublishingStatusDoer goahttp.Doer
 
+	// ResetRateLimit Doer is the HTTP client used to make requests to the
+	// reset-rate-limit endpoint.
+	ResetRateLimitDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -47,6 +51,7 @@ func NewClient(
 	return &Client{
 		RequestToPublishDoer:      doer,
 		QueryPublishingStatusDoer: doer,
+		ResetRateLimitDoer:        doer,
 		RestoreResponseBody:       restoreBody,
 		scheme:                    scheme,
 		host:                      host,
@@ -93,6 +98,25 @@ func (c *Client) QueryPublishingStatus() goa.Endpoint {
 		resp, err := c.QueryPublishingStatusDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("tiup", "query-publishing-status", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// ResetRateLimit returns an endpoint that makes HTTP requests to the tiup
+// service reset-rate-limit server.
+func (c *Client) ResetRateLimit() goa.Endpoint {
+	var (
+		decodeResponse = DecodeResetRateLimitResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildResetRateLimitRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.ResetRateLimitDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("tiup", "reset-rate-limit", err)
 		}
 		return decodeResponse(resp)
 	}

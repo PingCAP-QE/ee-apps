@@ -20,3 +20,8 @@ func RequestToPublishTiupPath() string {
 func QueryPublishingStatusTiupPath(requestID string) string {
 	return fmt.Sprintf("/tiup/publish-request/%v", requestID)
 }
+
+// ResetRateLimitTiupPath returns the URL path to the tiup service reset-rate-limit HTTP endpoint.
+func ResetRateLimitTiupPath() string {
+	return "/tiup/reset-rate-limit"
+}

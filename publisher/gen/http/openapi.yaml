@@ -116,6 +116,17 @@ paths:
                             - canceled
             schemes:
                 - http
+    /tiup/reset-rate-limit:
+        post:
+            tags:
+                - tiup
+            summary: reset-rate-limit tiup
+            operationId: tiup#reset-rate-limit
+            responses:
+                "200":
+                    description: OK response.
+            schemes:
+                - http
 definitions:
     FileserverRequestToPublishRequestBody:
         title: FileserverRequestToPublishRequestBody

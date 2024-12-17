@@ -98,6 +98,31 @@ func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPu
 	return status, nil
 }
 
+// ResetRateLimit implements tiup.Service.
+func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
+	// get the keys
+	iter := s.redisClient.Scan(ctx, 0, fmt.Sprintf("%s:*", redisKeyPrefixTiupRateLimit), 0).Iterator()
+	var keys []string
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("failed to scan keys: %v", err)
+	}
+
+	// delete the keys
+	if len(keys) == 0 {
+		return nil
+	}
+	if err := s.redisClient.Del(ctx, keys...).Err(); err != nil {
+		s.logger.Err(err).Any("keys", keys).Msg("failed to delete keys")
+		return fmt.Errorf("failed to delete keys: %v", err)
+	}
+	s.logger.Debug().Any("keys", keys).Msg("deleted redis keys.")
+
+	return nil
+}
+
 func (s *tiupsrvc) composeEvents(requests []PublishRequest) []cloudevents.Event {
 	var ret []cloudevents.Event
 	for _, request := range requests {
