@@ -23,7 +23,7 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `tiup (request-to-publish|query-publishing-status)
+	return `tiup (request-to-publish|query-publishing-status|reset-rate-limit)
 fileserver (request-to-publish|query-publishing-status)
 `
 }
@@ -60,6 +60,8 @@ func ParseEndpoint(
 		tiupQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
 		tiupQueryPublishingStatusRequestIDFlag = tiupQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
 
+		tiupResetRateLimitFlags = flag.NewFlagSet("reset-rate-limit", flag.ExitOnError)
+
 		fileserverFlags = flag.NewFlagSet("fileserver", flag.ContinueOnError)
 
 		fileserverRequestToPublishFlags    = flag.NewFlagSet("request-to-publish", flag.ExitOnError)
@@ -71,6 +73,7 @@ func ParseEndpoint(
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
 	tiupQueryPublishingStatusFlags.Usage = tiupQueryPublishingStatusUsage
+	tiupResetRateLimitFlags.Usage = tiupResetRateLimitUsage
 
 	fileserverFlags.Usage = fileserverUsage
 	fileserverRequestToPublishFlags.Usage = fileserverRequestToPublishUsage
@@ -118,6 +121,9 @@ func ParseEndpoint(
 			case "query-publishing-status":
 				epf = tiupQueryPublishingStatusFlags
 
+			case "reset-rate-limit":
+				epf = tiupResetRateLimitFlags
+
 			}
 
 		case "fileserver":
@@ -159,6 +165,8 @@ func ParseEndpoint(
 			case "query-publishing-status":
 				endpoint = c.QueryPublishingStatus()
 				data, err = tiupc.BuildQueryPublishingStatusPayload(*tiupQueryPublishingStatusRequestIDFlag)
+			case "reset-rate-limit":
+				endpoint = c.ResetRateLimit()
 			}
 		case "fileserver":
 			c := fileserverc.NewClient(scheme, host, doer, enc, dec, restore)
@@ -188,6 +196,7 @@ Usage:
 COMMAND:
     request-to-publish: RequestToPublish implements request-to-publish.
     query-publishing-status: QueryPublishingStatus implements query-publishing-status.
+    reset-rate-limit: ResetRateLimit implements reset-rate-limit.
 
 Additional help:
     %[1]s tiup COMMAND --help
@@ -217,6 +226,16 @@ QueryPublishingStatus implements query-publishing-status.
 
 Example:
     %[1]s tiup query-publishing-status --request-id "Expedita et necessitatibus ut molestias."
+`, os.Args[0])
+}
+
+func tiupResetRateLimitUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] tiup reset-rate-limit
+
+ResetRateLimit implements reset-rate-limit.
+
+Example:
+    %[1]s tiup reset-rate-limit
 `, os.Args[0])
 }
 

@@ -85,3 +85,12 @@ func DecodeQueryPublishingStatusRequest(mux goahttp.Muxer, decoder func(*http.Re
 		return payload, nil
 	}
 }
+
+// EncodeResetRateLimitResponse returns an encoder for responses returned by
+// the tiup reset-rate-limit endpoint.
+func EncodeResetRateLimitResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+}

@@ -17,6 +17,7 @@ import (
 type Endpoints struct {
 	RequestToPublish      goa.Endpoint
 	QueryPublishingStatus goa.Endpoint
+	ResetRateLimit        goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "tiup" service with endpoints.
@@ -24,6 +25,7 @@ func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		RequestToPublish:      NewRequestToPublishEndpoint(s),
 		QueryPublishingStatus: NewQueryPublishingStatusEndpoint(s),
+		ResetRateLimit:        NewResetRateLimitEndpoint(s),
 	}
 }
 
@@ -31,6 +33,7 @@ func NewEndpoints(s Service) *Endpoints {
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.RequestToPublish = m(e.RequestToPublish)
 	e.QueryPublishingStatus = m(e.QueryPublishingStatus)
+	e.ResetRateLimit = m(e.ResetRateLimit)
 }
 
 // NewRequestToPublishEndpoint returns an endpoint function that calls the
@@ -48,5 +51,13 @@ func NewQueryPublishingStatusEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*QueryPublishingStatusPayload)
 		return s.QueryPublishingStatus(ctx, p)
+	}
+}
+
+// NewResetRateLimitEndpoint returns an endpoint function that calls the method
+// "reset-rate-limit" of service "tiup".
+func NewResetRateLimitEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		return nil, s.ResetRateLimit(ctx)
 	}
 }

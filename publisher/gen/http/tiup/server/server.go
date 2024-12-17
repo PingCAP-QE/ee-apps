@@ -21,6 +21,7 @@ type Server struct {
 	Mounts                []*MountPoint
 	RequestToPublish      http.Handler
 	QueryPublishingStatus http.Handler
+	ResetRateLimit        http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -52,9 +53,11 @@ func New(
 		Mounts: []*MountPoint{
 			{"RequestToPublish", "POST", "/tiup/publish-request"},
 			{"QueryPublishingStatus", "GET", "/tiup/publish-request/{request_id}"},
+			{"ResetRateLimit", "POST", "/tiup/reset-rate-limit"},
 		},
 		RequestToPublish:      NewRequestToPublishHandler(e.RequestToPublish, mux, decoder, encoder, errhandler, formatter),
 		QueryPublishingStatus: NewQueryPublishingStatusHandler(e.QueryPublishingStatus, mux, decoder, encoder, errhandler, formatter),
+		ResetRateLimit:        NewResetRateLimitHandler(e.ResetRateLimit, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -65,6 +68,7 @@ func (s *Server) Service() string { return "tiup" }
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.RequestToPublish = m(s.RequestToPublish)
 	s.QueryPublishingStatus = m(s.QueryPublishingStatus)
+	s.ResetRateLimit = m(s.ResetRateLimit)
 }
 
 // MethodNames returns the methods served.
@@ -74,6 +78,7 @@ func (s *Server) MethodNames() []string { return tiup.MethodNames[:] }
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountRequestToPublishHandler(mux, h.RequestToPublish)
 	MountQueryPublishingStatusHandler(mux, h.QueryPublishingStatus)
+	MountResetRateLimitHandler(mux, h.ResetRateLimit)
 }
 
 // Mount configures the mux to serve the tiup endpoints.
@@ -171,6 +176,50 @@ func NewQueryPublishingStatusHandler(
 			return
 		}
 		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			errhandler(ctx, w, err)
+		}
+	})
+}
+
+// MountResetRateLimitHandler configures the mux to serve the "tiup" service
+// "reset-rate-limit" endpoint.
+func MountResetRateLimitHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/tiup/reset-rate-limit", f)
+}
+
+// NewResetRateLimitHandler creates a HTTP handler which loads the HTTP request
+// and calls the "tiup" service "reset-rate-limit" endpoint.
+func NewResetRateLimitHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		encodeResponse = EncodeResetRateLimitResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "reset-rate-limit")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "tiup")
+		var err error
+		res, err := endpoint(ctx, nil)
 		if err != nil {
 			if err := encodeError(ctx, w, err); err != nil {
 				errhandler(ctx, w, err)
