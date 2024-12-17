@@ -72,7 +72,7 @@ func (p *fsWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	}
 	p.redisClient.SetXX(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
 
-	data := new(PublishRequest)
+	data := new(PublishRequestFS)
 	if err := event.DataAs(&data); err != nil {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
@@ -91,32 +91,57 @@ func (p *fsWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	return result
 }
 
-func (p *fsWorker) handle(data *PublishRequest) cloudevents.Result {
-	// 1. get the the file content from data.From.
-	err := doWithOCIFile(data.From.Oci, func(input io.Reader) error {
-		return doWithTempFileFromReader(input, func(inputF *os.File) error {
-			// 2. publish the tarball.
-			return p.publish(inputF, &data.Publish)
+func (p *fsWorker) handle(data *PublishRequestFS) cloudevents.Result {
+	// 1. upload all the tarballs
+	for fromFile, targetKey := range targetFsFullPaths(&data.Publish) {
+		from := *data.From.Oci
+		from.File = fromFile
+		err := doWithOCIFile(&from, func(input io.Reader) error {
+			return doWithTempFileFromReader(input, func(inputF *os.File) error {
+				// 2. publish the tarball.
+				return p.publish(inputF, targetKey)
+			})
 		})
+		if err != nil {
+			p.logger.
+				Err(err).
+				Str("bucket", p.options.S3.BucketName).
+				Str("key", targetKey).
+				Msg("failed to upload file to KS3 bucket.")
+			return err
+		}
+	}
+
+	// 2. update git ref sha: download/refs/<repo>/<branch>/sha1
+	refKV := targetFsRefKeyValue(&data.Publish)
+	_, err := p.s3Client.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(p.options.S3.BucketName),
+		Key:    aws.String(refKV[0]),
+		Body:   bytes.NewReader([]byte(refKV[1])),
 	})
 	if err != nil {
-		p.logger.Err(err).Msg("publish to fileserver failed")
+		p.logger.
+			Err(err).
+			Str("bucket", p.options.S3.BucketName).
+			Str("key", refKV[0]).
+			Msg("failed to update content in KS3 bucket.")
 		return cloudevents.NewReceipt(false, "publish to fileserver failed: %v", err)
 	}
-	p.logger.Info().Msg("publish to fileserver success")
 
+	p.logger.Debug().Str("bucket", p.options.S3.BucketName).
+		Str("key", refKV[0]).Msg("publish success")
 	return cloudevents.ResultACK
 }
 
-func (p *fsWorker) notifyLark(publishInfo *PublishInfo, err error) {
+func (p *fsWorker) notifyLark(publishInfo *PublishInfoFS, err error) {
 	if p.options.LarkWebhookURL == "" {
 		return
 	}
 
 	message := fmt.Sprintf("Failed to publish %s/%s/%s file to fileserver: %v",
-		publishInfo.Name,
-		publishInfo.Version,
-		publishInfo.EntryPoint,
+		publishInfo.Repo,
+		publishInfo.CommitSHA,
+		"*",
 		err)
 
 	payload := map[string]interface{}{
@@ -142,50 +167,17 @@ func (p *fsWorker) notifyLark(publishInfo *PublishInfo, err error) {
 	}
 }
 
-func (p *fsWorker) publish(content io.ReadSeeker, info *PublishInfo) error {
-	keys := targetFsFullPaths(info)
-	if len(keys) == 0 {
-		return nil
-	}
-
+func (p *fsWorker) publish(content io.ReadSeeker, targetKey string) error {
 	bucketName := p.options.S3.BucketName
 
-	// upload the artifact files to KS3 bucket.
-	for _, key := range keys {
-		if _, err := content.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-
-		_, err := p.s3Client.PutObject(&s3.PutObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    aws.String(key),
-			Body:   content,
-		})
-		if err != nil {
-			p.logger.
-				Err(err).
-				Str("bucket", bucketName).
-				Str("key", key).
-				Msg("failed to upload file to KS3 bucket.")
-			return err
-		}
-	}
-
-	// update git ref sha: download/refs/pingcap/<comp>/<branch>/sha1
-	refKV := targetFsRefKeyValue(info)
-	_, err := p.s3Client.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(refKV[0]),
-		Body:   bytes.NewReader([]byte(refKV[1])),
-	})
-	if err != nil {
-		p.logger.
-			Err(err).
-			Str("bucket", bucketName).
-			Str("key", refKV[0]).
-			Msg("failed to upload content in KS3 bucket.")
+	if _, err := content.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 
-	return nil
+	_, err := p.s3Client.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(targetKey),
+		Body:   content,
+	})
+	return err
 }

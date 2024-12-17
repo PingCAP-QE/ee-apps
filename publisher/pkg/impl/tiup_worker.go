@@ -85,7 +85,7 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	}
 	p.redisClient.SetXX(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
 
-	data := new(PublishRequest)
+	data := new(PublishRequestTiUP)
 	if err := event.DataAs(&data); err != nil {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
@@ -104,7 +104,7 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	return result
 }
 
-func (p *tiupWorker) rateLimit(data *PublishRequest, ttl time.Duration, run func(*PublishRequest) cloudevents.Result) cloudevents.Result {
+func (p *tiupWorker) rateLimit(data *PublishRequestTiUP, ttl time.Duration, run func(*PublishRequestTiUP) cloudevents.Result) cloudevents.Result {
 	//  Skip rate limiting for no nightly builds
 	if !isNightlyTiup(data.Publish) || ttl <= 0 {
 		return run(data)
@@ -138,7 +138,7 @@ func (p *tiupWorker) rateLimit(data *PublishRequest, ttl time.Duration, run func
 	return fmt.Errorf("skip: rate limit exceeded for package %s", data.Publish.Name)
 }
 
-func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
+func (p *tiupWorker) handle(data *PublishRequestTiUP) cloudevents.Result {
 	// 1. get the the tarball from data.From.
 	saveTo, err := downloadFile(data)
 	if err != nil {
@@ -181,7 +181,7 @@ func (p *tiupWorker) handle(data *PublishRequest) cloudevents.Result {
 	return cloudevents.ResultACK
 }
 
-func (p *tiupWorker) notifyLark(req *PublishRequest, err error) {
+func (p *tiupWorker) notifyLark(req *PublishRequestTiUP, err error) {
 	if p.options.LarkWebhookURL == "" {
 		return
 	}
@@ -217,7 +217,7 @@ func (p *tiupWorker) notifyLark(req *PublishRequest, err error) {
 	}
 }
 
-func (p *tiupWorker) publish(file string, info *PublishInfo) error {
+func (p *tiupWorker) publish(file string, info *PublishInfoTiUP) error {
 	// Obtain a lock for our given global TiUP mirrors mutex.
 	// After this is successful, no one else can obtain the same
 	// lock (the same mutex name) until we unlock it.

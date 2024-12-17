@@ -39,13 +39,13 @@ func NewFileserver(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClien
 func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.RequestToPublishPayload) (res []string, err error) {
 	s.logger.Info().Msgf("fileserver.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := analyzeFsFromOciArtifactUrl(p.ArtifactURL)
+	publishRequest, err := analyzeFsFromOciArtifactUrl(p.ArtifactURL)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Compose cloud events with the analyzed results.
-	events := s.composeEvents(publishRequests)
+	events := s.composeEvents(publishRequest)
 
 	// 3. Send it to kafka topic with the request id as key and the event as value.
 	var messages []kafka.Message
@@ -93,17 +93,15 @@ func (s *fileserversrvc) QueryPublishingStatus(ctx context.Context, p *fileserve
 	return status, nil
 }
 
-func (s *fileserversrvc) composeEvents(requests []PublishRequest) []cloudevents.Event {
+func (s *fileserversrvc) composeEvents(request *PublishRequestFS) []cloudevents.Event {
 	var ret []cloudevents.Event
-	for _, request := range requests {
-		event := cloudevents.NewEvent()
-		event.SetID(uuid.New().String())
-		event.SetType(EventTypeFsPublishRequest)
-		event.SetSource(s.eventSource)
-		event.SetSubject(request.Publish.Name)
-		event.SetData(cloudevents.ApplicationJSON, request)
-		ret = append(ret, event)
-	}
+	event := cloudevents.NewEvent()
+	event.SetID(uuid.New().String())
+	event.SetType(EventTypeFsPublishRequest)
+	event.SetSource(s.eventSource)
+	event.SetSubject(request.Publish.Repo)
+	event.SetData(cloudevents.ApplicationJSON, request)
+	ret = append(ret, event)
 
 	return ret
 }

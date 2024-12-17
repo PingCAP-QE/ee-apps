@@ -134,7 +134,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []PublishRequest
+		want    []PublishRequestTiUP
 		wantErr bool
 	}{
 		{
@@ -143,7 +143,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 				repo: "hub.pingcap.net/pingcap/tidb/package",
 				tag:  "v8.3.0_linux_amd64",
 			},
-			want: []PublishRequest{
+			want: []PublishRequestTiUP{
 				{
 					From: From{
 						Type: FromTypeOci,
@@ -153,7 +153,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 							File: "tidb-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
-					Publish: PublishInfo{
+					Publish: PublishInfoTiUP{
 						Version:     "v8.3.0",
 						OS:          "linux",
 						Arch:        "amd64",
@@ -171,7 +171,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 							File: "br-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
-					Publish: PublishInfo{
+					Publish: PublishInfoTiUP{
 						Version:     "v8.3.0",
 						OS:          "linux",
 						Arch:        "amd64",
@@ -189,7 +189,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 							File: "dumpling-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
-					Publish: PublishInfo{
+					Publish: PublishInfoTiUP{
 						Version:     "v8.3.0",
 						OS:          "linux",
 						Arch:        "amd64",
@@ -207,7 +207,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 							File: "tidb-lightning-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
-					Publish: PublishInfo{
+					Publish: PublishInfoTiUP{
 						Version:     "v8.3.0",
 						OS:          "linux",
 						Arch:        "amd64",

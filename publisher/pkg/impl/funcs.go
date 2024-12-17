@@ -19,7 +19,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
 )
 
-func downloadFile(data *PublishRequest) (string, error) {
+func downloadFile(data *PublishRequestTiUP) (string, error) {
 	switch data.From.Type {
 	case FromTypeOci:
 		// save to file with `saveTo` param:
@@ -53,7 +53,7 @@ func downloadFileFromReader(input io.Reader) (ret string, err error) {
 		ret = input.Name()
 		return nil
 	})
-	
+
 	return
 }
 

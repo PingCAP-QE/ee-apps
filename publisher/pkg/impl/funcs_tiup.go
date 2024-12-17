@@ -87,7 +87,7 @@ func calculateSHA256(filePath string) (string, error) {
 //	    3.2.3 set the publish info arch with value of "net.pingcap.tibuild.architecture" key in top config.
 //	    3.2.4 set the publish info name with prefix part of the value of "file" key in the element, right trim from the "-vX.Y.Z" part.
 //	    3.2.5 set the publish info description, entrypoint with value of same key in the element.
-func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
+func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) {
 	// 1. Fetch the artifact config
 	config, ociDigest, err := fetchOCIArtifactConfig(repo, tag)
 	if err != nil {
@@ -106,7 +106,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 	version := transformTiupVer(config["org.opencontainers.image.version"].(string), tag)
 
 	// 3. Loop through TiUP packages
-	var publishRequests []PublishRequest
+	var publishRequests []PublishRequestTiUP
 	for _, pkg := range tiupPackages {
 		pkgMap := pkg.(map[string]interface{})
 		file := pkgMap["file"].(string)
@@ -123,7 +123,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 		}
 
 		// 3.2 Set the publish info
-		publishInfo := PublishInfo{
+		publishInfo := PublishInfoTiUP{
 			Name:        tiupPkgName(file),
 			Version:     version,
 			OS:          os,
@@ -131,7 +131,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 			Description: pkgMap["description"].(string),
 			EntryPoint:  pkgMap["entrypoint"].(string),
 		}
-		publishRequests = append(publishRequests, PublishRequest{
+		publishRequests = append(publishRequests, PublishRequestTiUP{
 			From:    from,
 			Publish: publishInfo,
 		})
@@ -140,7 +140,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequest, error) {
 	return publishRequests, nil
 }
 
-func analyzeTiupFromOciArtifactUrl(url string) ([]PublishRequest, error) {
+func analyzeTiupFromOciArtifactUrl(url string) ([]PublishRequestTiUP, error) {
 	repo, tag, err := splitRepoAndTag(url)
 	if err != nil {
 		return nil, err
@@ -169,6 +169,6 @@ func transformTiupVer(version, tag string) string {
 	}
 }
 
-func isNightlyTiup(p PublishInfo) bool {
+func isNightlyTiup(p PublishInfoTiUP) bool {
 	return tiupVersionRegex.MatchString(p.Version)
 }

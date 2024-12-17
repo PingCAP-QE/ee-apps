@@ -123,7 +123,7 @@ func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
 	return nil
 }
 
-func (s *tiupsrvc) composeEvents(requests []PublishRequest) []cloudevents.Event {
+func (s *tiupsrvc) composeEvents(requests []PublishRequestTiUP) []cloudevents.Event {
 	var ret []cloudevents.Event
 	for _, request := range requests {
 		event := cloudevents.NewEvent()

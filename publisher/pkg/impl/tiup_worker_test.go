@@ -24,7 +24,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 		}
 	}
 	type args struct {
-		req *PublishRequest
+		req *PublishRequestTiUP
 		err error
 	}
 	tests := []struct {
@@ -46,8 +46,8 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				},
 			},
 			args: args{
-				req: &PublishRequest{
-					Publish: PublishInfo{
+				req: &PublishRequestTiUP{
+					Publish: PublishInfoTiUP{
 						Name:    "test-package",
 						Version: "v1.0.0",
 					},
@@ -71,7 +71,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				},
 			},
 			args: args{
-				req: &PublishRequest{
+				req: &PublishRequestTiUP{
 					From: From{
 						Type: FromTypeOci,
 						Oci: &FromOci{
@@ -79,7 +79,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 							Tag:  "test-tag",
 						},
 					},
-					Publish: PublishInfo{
+					Publish: PublishInfoTiUP{
 						Name:    "test-package",
 						Version: "v1.0.0",
 						OS:      "linux",
@@ -103,8 +103,8 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				},
 			},
 			args: args{
-				req: &PublishRequest{
-					Publish: PublishInfo{
+				req: &PublishRequestTiUP{
+					Publish: PublishInfoTiUP{
 						Name:    "test-package",
 						Version: "v1.0.0",
 					},
@@ -126,7 +126,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				},
 			},
 			args: args{
-				req: &PublishRequest{},
+				req: &PublishRequestTiUP{},
 				err: errors.New("missing publish info"),
 			},
 		},
