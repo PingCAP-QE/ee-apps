@@ -145,6 +145,15 @@ paths:
                                     - failed
                                     - canceled
                             example: failed
+    /tiup/reset-rate-limit:
+        post:
+            tags:
+                - tiup
+            summary: reset-rate-limit tiup
+            operationId: tiup#reset-rate-limit
+            responses:
+                "200":
+                    description: OK response.
 components:
     schemas:
         RequestToPublishRequestBody:

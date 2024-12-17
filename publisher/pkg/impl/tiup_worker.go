@@ -111,7 +111,8 @@ func (p *tiupWorker) rateLimit(data *PublishRequest, ttl time.Duration, run func
 	}
 
 	// Add rate limiting
-	rateLimitKey := fmt.Sprintf("ratelimit:tiup:%s:%s:%s:%s", p.options.MirrorURL, data.Publish.Name, data.Publish.OS, data.Publish.Arch)
+	rateLimitKey := fmt.Sprintf("%s:%s:%s:%s:%s", redisKeyPrefixTiupRateLimit,
+		p.options.MirrorURL, data.Publish.Name, data.Publish.OS, data.Publish.Arch)
 	count, err := p.redisClient.Incr(context.Background(), rateLimitKey).Result()
 	if err != nil {
 		p.logger.Err(err).Msg("rate limit check failed")
@@ -119,7 +120,7 @@ func (p *tiupWorker) rateLimit(data *PublishRequest, ttl time.Duration, run func
 	}
 
 	// First request sets expiry
-	if count == 1 {
+	if count <= 1 {
 		p.redisClient.Expire(context.Background(), rateLimitKey, ttl)
 		return run(data)
 	}

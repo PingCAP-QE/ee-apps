@@ -17,6 +17,8 @@ type Service interface {
 	RequestToPublish(context.Context, *RequestToPublishPayload) (res []string, err error)
 	// QueryPublishingStatus implements query-publishing-status.
 	QueryPublishingStatus(context.Context, *QueryPublishingStatusPayload) (res string, err error)
+	// ResetRateLimit implements reset-rate-limit.
+	ResetRateLimit(context.Context) (err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -33,7 +35,7 @@ const ServiceName = "tiup"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [2]string{"request-to-publish", "query-publishing-status"}
+var MethodNames = [3]string{"request-to-publish", "query-publishing-status", "reset-rate-limit"}
 
 // QueryPublishingStatusPayload is the payload type of the tiup service
 // query-publishing-status method.
