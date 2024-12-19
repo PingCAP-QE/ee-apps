@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/justinas/nosurf"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -57,6 +60,12 @@ func main() {
 
 	cm.WorkSpace = viper.GetString("workspace.path")
 
+	fmt.Println(nosurf.CookieName)
+	response := backend.DataResponse{
+		Error: fmt.Errorf("example error"),
+	}
+
+	fmt.Println("Example response:", response)
 	r := gin.Default()
 	r.Static("/static/", "./static")
 	r.LoadHTMLGlob("template/*")
