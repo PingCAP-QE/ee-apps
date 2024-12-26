@@ -98,7 +98,10 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogL
 
 	switch {
 	case data.PipelineRun != nil:
-		fillInfosWithPipelineRun(data.PipelineRun, &ret)
+		if !fillInfosWithPipelineRun(data.PipelineRun, &ret) {
+			return nil, nil
+		}
+
 		if event.Type() == string(tektoncloudevent.PipelineRunFailedEventV1) {
 			namespace := data.PipelineRun.Namespace
 			ret.FailedTasks = getFailedTasks(data.PipelineRun, func(podName, containerName string) string {
@@ -107,7 +110,10 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogL
 			})
 		}
 	case data.TaskRun != nil:
-		fillInfosWithTaskRun(data.TaskRun, &ret)
+		if !fillInfosWithTaskRun(data.TaskRun, &ret) {
+			return nil, nil
+		}
+
 		if event.Type() == string(tektoncloudevent.TaskRunFailedEventV1) {
 			namespace := data.TaskRun.Namespace
 			ret.StepStatuses = getStepStatuses(&data.TaskRun.Status, func(podName, containerName string) string {
@@ -117,13 +123,15 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogL
 			})
 		}
 	case data.Run != nil:
-		fillInfosWithCustomRun(data.Run, &ret)
+		if !fillInfosWithCustomRun(data.Run, &ret) {
+			return nil, nil
+		}
 	}
 
 	return &ret, nil
 }
 
-func fillInfosWithCustomRun(data *v1alpha1.Run, ret *cardMessageInfos) {
+func fillInfosWithCustomRun(data *v1alpha1.Run, ret *cardMessageInfos) bool {
 	fillTimeFileds(ret, data.Status.StartTime, data.Status.CompletionTime)
 
 	for _, p := range data.Spec.Params {
@@ -135,9 +143,11 @@ func fillInfosWithCustomRun(data *v1alpha1.Run, ret *cardMessageInfos) {
 			ret.Results = append(ret.Results, [2]string{r.Name, r.Value})
 		}
 	}
+
+	return true
 }
 
-func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) {
+func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) bool {
 	fillTimeFileds(ret, data.Status.StartTime, data.Status.CompletionTime)
 
 	for _, p := range data.Spec.Params {
@@ -146,6 +156,10 @@ func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) {
 	}
 	succeededCondition := data.Status.GetCondition(apis.ConditionSucceeded)
 	if succeededCondition.IsFalse() {
+		if succeededCondition.GetReason() == "TaskRunCancelled" {
+			return false
+		}
+
 		ret.FailedMessage = succeededCondition.Message
 		ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
 			data.Namespace, data.Spec.TaskRef.Name, data.Name)
@@ -156,9 +170,11 @@ func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) {
 			ret.Results = append(ret.Results, [2]string{r.Name, string(v)})
 		}
 	}
+
+	return true
 }
 
-func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) {
+func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) bool {
 	fillTimeFileds(ret, data.Status.StartTime, data.Status.CompletionTime)
 
 	for _, p := range data.Spec.Params {
@@ -167,6 +183,10 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 	}
 	succeededCondition := data.Status.GetCondition(apis.ConditionSucceeded)
 	if succeededCondition.IsFalse() {
+		if succeededCondition.GetReason() == "Cancelled" {
+			return false
+		}
+
 		ret.FailedMessage = succeededCondition.Message
 		ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
 			data.Namespace, data.Spec.PipelineRef.Name, data.Name)
@@ -176,6 +196,8 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 			ret.Results = append(ret.Results, [2]string{r.Name, r.Value.StringVal})
 		}
 	}
+
+	return true
 }
 
 func getFailedTasks(data *v1beta1.PipelineRun, logGetter func(podName, containerName string) string) map[string][]stepInfo {

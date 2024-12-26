@@ -91,6 +91,10 @@ func sendLarkMessage(client *lark.Client, createMsgReq *larkim.CreateMessageReq)
 }
 
 func composeLarkMessages(receivers []string, infos *cardMessageInfos) ([]*larkim.CreateMessageReq, error) {
+	if infos == nil {
+		return nil, nil
+	}
+
 	messageRawStr, err := newLarkCardWithGoTemplate(infos)
 	if err != nil {
 		return nil, err
