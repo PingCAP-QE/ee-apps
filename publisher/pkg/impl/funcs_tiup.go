@@ -15,7 +15,7 @@ const nightlyVerSuffix = "-nightly"
 var (
 	pkgNameRegex           = regexp.MustCompile(`^(.+)-v\d+\.\d+\.\d+`)
 	pkgVersionNightlyRegex = regexp.MustCompile(`(-\d+-g[0-9a-f]{7,})$`)
-	ociGATagRegex          = regexp.MustCompile(`^(v\d+\.\d+\.\d+)_(linux|darwin)_(amd64|arm64)$`)
+	ociGATagRegex          = regexp.MustCompile(`^(v\d+\.\d+\.\d+)(-\w+-)?_(linux|darwin)_(amd64|arm64)$`)
 	ociNightlyTagRegex     = regexp.MustCompile(`^(master|main)_(linux|darwin)_(amd64|arm64)$`)
 	tiupVersionRegex       = regexp.MustCompile(`^v\d+\.\d+\.\d+.*(-nightly)$`)
 )
@@ -160,7 +160,9 @@ func tiupPkgName(tarballPath string) string {
 func transformTiupVer(version, tag string) string {
 	switch {
 	case ociGATagRegex.MatchString(tag): // GA case
-		return strings.TrimSuffix(version, "-pre")
+		// ociGATagRegex          = regexp.MustCompile(`^(v\d+\.\d+\.\d+)(-\w+)?_(linux|darwin)_(amd64|arm64)$`)
+		matches := ociGATagRegex.FindStringSubmatch(tag)
+		return strings.Join(matches[1:2], "")
 	case ociNightlyTagRegex.MatchString(tag): // Nightly case
 		// we replace the suffix part of version: '-[0-9]+-g[0-9a-f]+$' to "-nightly"
 		return pkgVersionNightlyRegex.ReplaceAllString(version, "") + nightlyVerSuffix
