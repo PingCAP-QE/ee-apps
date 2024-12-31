@@ -50,6 +50,19 @@ type branchesForCommitResponse struct {
 
 // GetBranchesForCommit implements GHClient.
 func (c GitHubClient) GetBranchesForCommit(ctx context.Context, owner string, repo string, commit string) ([]string, error) {
+	// check for github owner format with regexp, only support [a-zA-Z0-9_-]
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(owner) {
+		return nil, fmt.Errorf("owner %s is not a valid github owner", owner)
+	}
+	// check for github repo name format with regexp, only support [a-zA-Z0-9_-]
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(repo) {
+		return nil, fmt.Errorf("repo %s is not a valid github repo name", repo)
+	}
+	// check for commit format
+	if !sha1regex.MatchString(commit) {
+		return nil, fmt.Errorf("commit %s is not a valid sha1", commit)
+	}
+
 	rawURL, err := url.JoinPath("https://github.com", owner, repo, "branch_commits", commit)
 	if err != nil {
 		return nil, err
