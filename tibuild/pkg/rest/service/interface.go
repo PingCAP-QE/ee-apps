@@ -27,4 +27,5 @@ type ArtifactHelperService interface {
 type GHClient interface {
 	GetHash(ctx context.Context, owner, repo, ref string) (string, error)
 	GetPullRequestInfo(ctx context.Context, owner, repo string, prNum int) (*github.PullRequest, error)
+	GetBranchesForCommit(ctx context.Context, owner, repo, commit string) ([]string, error)
 }

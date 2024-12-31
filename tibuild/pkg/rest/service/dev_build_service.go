@@ -143,9 +143,32 @@ func fillDetailInfoForTekton(ctx context.Context, client GHClient, req *DevBuild
 		req.Spec.GitHash = commit
 
 		return nil
+	case strings.HasPrefix(req.Spec.GitRef, "commit/"):
+		commit := strings.Replace(req.Spec.GitRef, "commit/", "", 1)
+		req.Spec.GitHash = commit
+		branch, err := getBranchForCommit(ctx, client, repo.Owner, repo.Repo, commit)
+		if err != nil {
+			return err
+		}
+
+		req.Spec.GitRef = "branch/" + branch
+		return nil
 	default:
 		return nil
 	}
+}
+
+// get the branch name for the commit in github <owner>/<repo> repo.
+func getBranchForCommit(ctx context.Context, client GHClient, owner, repo, commit string) (string, error) {
+	branches, err := client.GetBranchesForCommit(ctx, owner, repo, commit)
+	if err != nil {
+		return "", err
+	}
+	if len(branches) == 0 {
+		return "", fmt.Errorf("no branch found for commit %s", commit)
+	}
+
+	return branches[0], nil
 }
 
 func fillWithDefaults(req *DevBuild) {
