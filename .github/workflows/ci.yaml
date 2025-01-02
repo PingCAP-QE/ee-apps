@@ -24,7 +24,7 @@ jobs:
 
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        platform: [linux/amd64]
 
     steps:
       - name: Checkout sources
@@ -69,7 +69,7 @@ jobs:
           curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.8.0/skaffold-linux-amd64 && \
           sudo install skaffold /usr/local/bin/
 
-      - name: Build image - cloudevents-server 
+      - name: Build image - cloudevents-server
         if: steps.changes.outputs.cloudevents-server == 'true'
         working-directory: cloudevents-server
         run: |
@@ -77,7 +77,7 @@ jobs:
             --push=false \
             --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - tibuild 
+      - name: Build image - tibuild
         if: steps.changes.outputs.tibuild == 'true'
         working-directory: tibuild
         run: |
@@ -85,7 +85,7 @@ jobs:
             --push=false \
             --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - dl 
+      - name: Build image - dl
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl
         run: |

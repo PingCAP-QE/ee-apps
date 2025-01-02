@@ -143,7 +143,7 @@ func fillDetailInfoForTekton(ctx context.Context, client GHClient, req *DevBuild
 		req.Spec.GitHash = commit
 
 		return nil
-	case strings.HasPrefix(req.Spec.GitRef, "commit/"):
+	case strings.HasPrefix(req.Spec.GitRef, "commit/") || regexp.MustCompile(`^[a-fA-F\d]+$`).MatchString(req.Spec.GitRef):
 		commit := strings.Replace(req.Spec.GitRef, "commit/", "", 1)
 		req.Spec.GitHash = commit
 		branch, err := getBranchForCommit(ctx, client, repo.Owner, repo.Repo, commit)
@@ -531,5 +531,5 @@ var _ DevBuildService = DevbuildServer{}
 
 var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$`)
 var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
-var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((v\d.*)|(pull/\d+)|([0-9a-fA-F]{40})|(release-.*)|master|main|(tag/.+)|(branch/.+))$`)
+var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((master|main|release-.*|v\d.*|[0-9a-fA-F]{40})|(tag/.+)|(branch/.+)|(pull/\d+)|(commit/[0-9a-fA-F]{40}))$`)
 var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
