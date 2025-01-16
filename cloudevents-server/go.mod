@@ -15,7 +15,7 @@ require (
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/tektoncd/pipeline v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.23.9
+	k8s.io/apimachinery v0.32.1
 	knative.dev/pkg v0.0.0-20220805012121-7b8b06028e4f
 )
 
