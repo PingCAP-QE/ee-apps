@@ -78,6 +78,7 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	event.SetSubject(fmt.Sprint(dev.ID))
 	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
 	event.SetExtension("user", dev.Meta.CreatedBy)
+	event.SetExtension("paramProfile", dev.Spec.Edition)
 	if dev.Spec.BuilderImg != "" {
 		event.SetExtension("paramBuilderImage", dev.Spec.BuilderImg)
 	}
