@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database"
 )
 
 type ParamsAvailableForPipelineStruct struct {

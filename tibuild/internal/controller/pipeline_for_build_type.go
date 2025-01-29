@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/database"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database"
 )
 
 type PipelineForBuildTypeStruct struct {
