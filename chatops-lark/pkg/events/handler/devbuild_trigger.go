@@ -30,7 +30,7 @@ type triggerParams struct {
 }
 
 type triggerResult struct {
-	ID string `json:"id"`
+	ID int `json:"id"`
 }
 
 type arrayFlags []string
@@ -86,9 +86,10 @@ func runCommandDevbuildTrigger(args []string, sender *CommandSender) (string, er
 	if !resp.IsSuccess() {
 		return "", fmt.Errorf("trigger devbuild failed: %s", resp.String())
 	}
+
 	result := resp.Result().(*triggerResult)
 
-	return fmt.Sprintf("build id is %s\npolling: %s/%s", result.ID, devBuildURL, result.ID), nil
+	return fmt.Sprintf("build id is %d\npolling: %s/%d", result.ID, devBuildURL, result.ID), nil
 }
 
 func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
@@ -96,20 +97,22 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	var buildEnv arrayFlags
 
 	fs := flag.NewFlagSet("trigger", flag.ContinueOnError)
-	fs.StringVar(&ret.edition, "edition", "community", "default is community")
-	fs.StringVar(&ret.pluginGitRef, "pluginGitRef", "", "only for build enterprise tidb, ignore if you dont know")
-	fs.BoolVar(&ret.pushGCR, "pushGCR", false, "whether to push GCR, default is no")
-	fs.BoolVar(&ret.hotfix, "hotfix", false, "")
-	fs.StringVar(&ret.githubRepo, "githubRepo", "", "only for the forked github repo")
-	fs.StringVar(&ret.features, "features", "", "build features, eg failpoint")
-	fs.BoolVar(&ret.dryRun, "dryrun", false, "dry run if you want to test")
-	fs.Var(&buildEnv, "buildEnv", "build environment")
-	fs.StringVar(&ret.productDockerfile, "productDockerfile", "", "dockerfile url for product")
-	fs.StringVar(&ret.productBaseImg, "productBaseImg", "", "product base image")
-	fs.StringVar(&ret.builderImg, "builderImg", "", "specify docker image for builder")
-	fs.StringVar(&ret.targetImg, "targetImg", "", "")
-	fs.StringVar(&ret.engine, "engine", "", "pipeline engine")
-
+	{
+		fs.StringVar(&ret.edition, "e", "community", "default is community")
+		fs.StringVar(&ret.edition, "edition", "community", "default is community")
+		fs.StringVar(&ret.pluginGitRef, "pluginGitRef", "", "only for build enterprise tidb, ignore if you dont know")
+		fs.BoolVar(&ret.pushGCR, "pushGCR", false, "whether to push GCR, default is no")
+		fs.BoolVar(&ret.hotfix, "hotfix", false, "")
+		fs.StringVar(&ret.githubRepo, "githubRepo", "", "only for the forked github repo")
+		fs.StringVar(&ret.features, "features", "", "build features, eg failpoint")
+		fs.BoolVar(&ret.dryRun, "dryrun", false, "dry run if you want to test")
+		fs.Var(&buildEnv, "buildEnv", "build environment")
+		fs.StringVar(&ret.productDockerfile, "productDockerfile", "", "dockerfile url for product")
+		fs.StringVar(&ret.productBaseImg, "productBaseImg", "", "product base image")
+		fs.StringVar(&ret.builderImg, "builderImg", "", "specify docker image for builder")
+		fs.StringVar(&ret.targetImg, "targetImg", "", "")
+		fs.StringVar(&ret.engine, "engine", "", "pipeline engine")
+	}
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

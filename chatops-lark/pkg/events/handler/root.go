@@ -9,6 +9,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog/log"
 )
@@ -79,6 +80,19 @@ func NewRootForMessage(respondCli *lark.Client) func(ctx context.Context, event 
 func rootForMessage(ctx context.Context, event *larkim.P2MessageReceiveV1, respondCli *lark.Client) error {
 	log.Debug().Msg("rootForMessage")
 	if command := shouldHandle(event); command != nil {
+		senderOpenID := *event.Event.Sender.SenderId.OpenId
+		res, err := respondCli.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
+			UserIdType(larkcontact.UserIdTypeOpenId).
+			UserId(senderOpenID).
+			Build(),
+		)
+		if err != nil {
+			log.Err(err).Msg("get user info failed.")
+			return err
+		}
+
+		command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
+
 		var status string
 		message, err := handleCommand(ctx, command)
 		if err != nil {
