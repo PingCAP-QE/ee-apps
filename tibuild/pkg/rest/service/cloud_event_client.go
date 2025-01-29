@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -38,10 +39,14 @@ type CloudEventClient struct {
 }
 
 func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
+	bs, _ := json.Marshal(dev)
+	slog.InfoContext(ctx, "trigger dev build", "dev", string(bs))
 	event, err := newDevBuildCloudEvent(dev)
 	if err != nil {
 		return err
 	}
+	eventBytes, _ := event.MarshalJSON()
+	slog.InfoContext(ctx, "trigger dev build event", "event", string(eventBytes))
 	c := cloudevents.ContextWithTarget(ctx, s.endpoint)
 	if result := s.client.Send(c, *event); !protocol.IsACK(result) {
 		slog.ErrorContext(ctx, "failed to send", "reason", result)
@@ -78,7 +83,7 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	event.SetSubject(fmt.Sprint(dev.ID))
 	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
 	event.SetExtension("user", dev.Meta.CreatedBy)
-	event.SetExtension("paramProfile", dev.Spec.Edition)
+	event.SetExtension("paramProfile", string(dev.Spec.Edition))
 	if dev.Spec.BuilderImg != "" {
 		event.SetExtension("paramBuilderImage", dev.Spec.BuilderImg)
 	}
