@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -39,19 +38,17 @@ type CloudEventClient struct {
 }
 
 func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
-	bs, _ := json.Marshal(dev)
-	slog.InfoContext(ctx, "trigger dev build", "dev", string(bs))
 	event, err := newDevBuildCloudEvent(dev)
 	if err != nil {
 		return err
 	}
-	eventBytes, _ := event.MarshalJSON()
-	slog.InfoContext(ctx, "trigger dev build event", "event", string(eventBytes))
+
 	c := cloudevents.ContextWithTarget(ctx, s.endpoint)
 	if result := s.client.Send(c, *event); !protocol.IsACK(result) {
 		slog.ErrorContext(ctx, "failed to send", "reason", result)
 		return fmt.Errorf("failed to send ce:%w", result)
 	}
+
 	return nil
 }
 
