@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,9 +16,10 @@ type pollParams struct {
 
 type pollResult struct {
 	Status struct {
-		Status          string `json:"status"`
-		PipelineViewUrl string `json:"pipelineViewURL"`
-		BuildReport     string `json:"buildReport"`
+		Status           string         `json:"status,omitempty"`
+		PipelineViewURL  string         `json:"pipelineViewURL,omitempty"`
+		PipelineViewURLs []string       `json:"pipelineViewURLs,omitempty"`
+		BuildReport      map[string]any `json:"buildReport,omitempty"`
 	}
 }
 
@@ -35,7 +37,7 @@ func parseCommandDevbuildPoll(args []string) (*pollParams, error) {
 	return &ret, nil
 }
 
-func runCommandDevbuildPoll(args []string) (string, error) {
+func runCommandDevbuildPoll(_ context.Context, args []string) (string, error) {
 	params, err := parseCommandDevbuildPoll(args)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse poll command: %v", err)
@@ -59,6 +61,6 @@ func runCommandDevbuildPoll(args []string) (string, error) {
 	}
 	result := resp.Result().(*pollResult)
 
-	resultBytes, _ := json.Marshal(result)
+	resultBytes, _ := json.Marshal(result.Status)
 	return fmt.Sprintf("build status is %s", resultBytes), nil
 }

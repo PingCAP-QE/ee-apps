@@ -6,6 +6,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/PingCAP-QE/ee-apps/tibuild v0.0.0-20250124071050-8a17a7b19353
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/google/go-github/v68 v68.0.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.4.7
 	github.com/rs/zerolog v1.33.0
 	gopkg.in/yaml.v3 v3.0.1

@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v3"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/events/handler"
 )
@@ -17,6 +19,7 @@ func main() {
 	var (
 		appID     = flag.String("app-id", "", "app id")
 		appSecret = flag.String("app-secret", "", "app secret")
+		config    = flag.String("config", "config.yaml", "config yaml file")
 		debugMode = flag.Bool("debug", false, "debug mode")
 	)
 	flag.Parse()
@@ -29,7 +32,7 @@ func main() {
 	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
 
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli))
+		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, loadConfig(*config)))
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if *debugMode {
 		consumerOpts = append(consumerOpts,
@@ -43,4 +46,19 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("run failed")
 	}
+}
+
+func loadConfig(file string) map[string]any {
+	f, err := os.Open(file)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to open config file")
+	}
+	defer f.Close()
+
+	var cfg map[string]any
+	err = yaml.NewDecoder(f).Decode(&cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to decode config file")
+	}
+	return cfg
 }

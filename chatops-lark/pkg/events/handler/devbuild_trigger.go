@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
@@ -44,7 +45,7 @@ func (i *arrayFlags) Set(value string) error {
 	return nil
 }
 
-func runCommandDevbuildTrigger(args []string, sender *CommandSender) (string, error) {
+func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, error) {
 	params, err := parseCommandDevbuildTrigger(args)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse trigger command: %v", err)
@@ -52,7 +53,7 @@ func runCommandDevbuildTrigger(args []string, sender *CommandSender) (string, er
 
 	triggerParams := service.DevBuild{
 		Meta: service.DevBuildMeta{
-			CreatedBy: sender.Email,
+			CreatedBy: ctx.Value(ctxKeyLarkSenderEmail).(string),
 		},
 		Spec: service.DevBuildSpec{
 			Product:           service.StringToProduct(params.product),
