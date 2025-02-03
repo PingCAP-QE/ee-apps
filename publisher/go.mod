@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20241104081507-4ebce35328e3
+	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250129171403-a0e6c34a18b9
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redsync/redsync/v4 v4.13.0
@@ -14,10 +14,11 @@ require (
 	goa.design/clue v1.0.7
 	goa.design/goa/v3 v3.19.1
 	goa.design/plugins/v3 v3.19.1
-	golang.org/x/mod v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.5.0
 )
+
+require golang.org/x/mod v0.21.0 // indirect
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
