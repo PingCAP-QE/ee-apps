@@ -45,6 +45,8 @@ jobs:
               - 'dl/**'
             publisher:
               - 'publisher/**'
+            chatops:
+              - 'chatops-lark/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -96,6 +98,14 @@ jobs:
       - name: Build image - publisher
         if: steps.changes.outputs.publisher == 'true'
         working-directory: publisher
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - chatops-lark
+        if: steps.changes.outputs.chatops == 'true'
+        working-directory: chatops-lark
         run: |
           skaffold build \
             --push=false \
