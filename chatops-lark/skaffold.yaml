@@ -1,0 +1,24 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: chatops-lark
+
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: chatops-lark
+      ko:
+        fromImage: gcr.io/distroless/static
+        main: ./cmd/server
+        dependencies:
+          paths:
+            - "**/*.go" # Go source files to watch
+            - "go.mod" # Include go.mod
+            - "go.sum" # Include go.sum
+        flags:
+          - -trimpath # Ko build flags (optional)
+          - -v
+        labels:
+          org.opencontainers.image.description: EE ChatOps Lark Bot Application
+          org.opencontainers.image.licenses: MIT License
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps

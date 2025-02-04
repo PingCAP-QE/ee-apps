@@ -1,0 +1,19 @@
+config:
+  wide_screen_mode: true
+elements:
+  - tag: markdown
+    content: |-
+      {{.UserEmail}} trigger command `{{.Command}}` with args:
+      {{ range .Args }}
+      - {{ . }}
+      {{ end }}
+  - tag: hr
+  - tag: note
+    elements:
+      - tag: plain_text
+        content: "EE ChatOps Bot developed by EE team"
+header:
+  template: turquoise
+  title:
+    content: chatbot audit message
+    tag: plain_text
