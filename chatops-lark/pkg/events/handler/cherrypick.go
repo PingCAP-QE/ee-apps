@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/go-github/v68/github"
+	"github.com/rs/zerolog/log"
 )
 
 func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
@@ -56,12 +57,13 @@ func cherryPickInvite(prUrl string, collaboratorUsername string, gc *github.Clie
 		return "", fmt.Errorf("Failed to invite collaborator: %v", err)
 	}
 	switch res.StatusCode {
-	case http.StatusOK:
+	case http.StatusOK, http.StatusCreated:
 		return fmt.Sprintf("Successfully invited collaborator %s into repo %s. Please click https://github.com/%s/invitations to accept the invitation.(Invitations expire after 7 days)",
 			collaboratorUsername, botForkRepoFullName, botForkRepoFullName), nil
 	case http.StatusNoContent:
 		return "", fmt.Errorf("User %s is already a collaborator of repo %s", collaboratorUsername, botForkRepoFullName)
 	default:
+		log.Error().Msgf("Failed to invite collaborator, status code: %d", res.StatusCode)
 		return "", fmt.Errorf("Fail to invite collaborator, Please contact the EE team members for feedback.")
 	}
 }

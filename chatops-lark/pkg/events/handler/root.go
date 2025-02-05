@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/audit"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
+	"github.com/allegro/bigcache/v3"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -79,52 +81,76 @@ type commandLarkMsgContent struct {
 
 type rootHandler struct {
 	*lark.Client
-	Config map[string]any `json:"config"` // key format: '<command-name>.<cfg-field-name>'
+	eventCache *bigcache.BigCache
+	Config     map[string]any
 }
 
 func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
-	h := &rootHandler{Client: respondCli, Config: cfg}
+	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
+	cacheCfg.Logger = &log.Logger
+	cache, _ := bigcache.New(context.Background(), cacheCfg)
+	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache}
 	return h.Handle
 }
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	eventID := event.EventV2Base.Header.EventID
+
+	// check if the event has been handled.
+	_, err := r.eventCache.Get(eventID)
+	if err == nil {
+		log.Debug().Str("eventId", eventID).Msg("event already handled")
+		return nil
+	} else if err == bigcache.ErrEntryNotFound {
+		r.eventCache.Set(eventID, []byte(eventID))
+	} else {
+		log.Err(err).Msg("unexpected error")
+		return err
+	}
+
+	hl := log.With().Str("eventId", eventID).Logger()
 	command := shouldHandle(event)
 	if command == nil {
-		log.Debug().Msg("none command received")
+		hl.Debug().Msg("none command received")
 		return nil
 	}
 
-	log.Debug().Str("name", command.Name).Any("args", command.Args).Msg("received command")
+	hl.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
+	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
+	if err != nil {
+		hl.Err(err).Msg("send heartbeat failed")
+		return err
+	}
+
 	senderOpenID := *event.Event.Sender.SenderId.OpenId
 	res, err := r.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
 		UserIdType(larkcontact.UserIdTypeOpenId).
 		UserId(senderOpenID).
-		Build(),
-	)
+		Build())
 	if err != nil {
-		log.Err(err).Msg("get user info failed.")
+		hl.Err(err).Msg("get user info failed.")
 		return err
 	}
 
+	if !res.Success() {
+		hl.Error().Bytes("body", res.RawBody).Msg("get user info failed")
+		return nil
+	}
+	hl.Debug().Bytes("body", res.RawBody).Msg("get user info success")
+
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
-	// send reaction to the message.
-	req := larkim.NewCreateMessageReactionReqBuilder().
-		MessageId(*event.Event.Message.MessageId).
-		Body(larkim.NewCreateMessageReactionReqBodyBuilder().
-			ReactionType(larkim.NewEmojiBuilder().EmojiType("OnIt").Build()).
-			Build()).
-		Build()
-	if _, err := r.Im.MessageReaction.Create(ctx, req); err != nil {
-		log.Err(err).Msg("send reaction failed.")
-	}
+	go func() {
+		defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
+		message, err := r.handleCommand(ctx, command)
+		if err != nil {
+			message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
+			r.sendResponse(*event.Event.Message.MessageId, "failed", message)
+		}
+		r.sendResponse(*event.Event.Message.MessageId, "success", message)
+	}()
 
-	message, err := r.handleCommand(ctx, command)
-	if err != nil {
-		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-		return r.sendResponse(*event.Event.Message.MessageId, "failed", message)
-	}
-	return r.sendResponse(*event.Event.Message.MessageId, "success", message)
+	return nil
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
@@ -178,6 +204,41 @@ func (r *rootHandler) sendResponse(reqMsgID string, status, message string) erro
 
 	if !res.Success() {
 		log.Error().Msg("response message sent failed")
+	}
+
+	return nil
+}
+
+func (r *rootHandler) addReaction(reqMsgID string) (string, error) {
+	req := larkim.NewCreateMessageReactionReqBuilder().
+		MessageId(reqMsgID).
+		Body(larkim.NewCreateMessageReactionReqBodyBuilder().
+			ReactionType(larkim.NewEmojiBuilder().EmojiType("OnIt").Build()).
+			Build()).
+		Build()
+
+	res, err := r.Im.MessageReaction.Create(context.Background(), req)
+	if err != nil {
+		log.Err(err).Msg("send reaction failed.")
+		return "", err
+	}
+	if !res.Success() {
+		log.Error().Msg("send reaction failed")
+		return "", nil
+	}
+
+	return *res.Data.ReactionId, nil
+}
+
+func (r *rootHandler) deleteReaction(reqMsgID, reactionID string) error {
+	req := larkim.NewDeleteMessageReactionReqBuilder().
+		MessageId(reqMsgID).
+		ReactionId(reactionID).
+		Build()
+
+	if _, err := r.Im.MessageReaction.Delete(context.Background(), req); err != nil {
+		log.Err(err).Msg("delete reaction failed.")
+		return err
 	}
 
 	return nil
