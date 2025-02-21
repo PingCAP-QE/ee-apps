@@ -89,7 +89,7 @@ var (
 	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
 	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
 	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
-	RepoTicdc        = GithubRepo{Owner: "pingcap", Repo: "ticdc"}
+	RepoTicdc         = GithubRepo{Owner: "pingcap", Repo: "ticdc"}
 	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
 	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
 	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
