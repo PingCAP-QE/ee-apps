@@ -31,6 +31,7 @@ var componentToRepoMap = map[string]string{
 	"dumpling":  "tidb",
 	"lightning": "tidb",
 	"br":        "tidb",
+	"ticdc-newarch": "ticdc",
 }
 
 type PipelineTriggerStruct struct {
