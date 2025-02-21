@@ -199,6 +199,7 @@ definitions:
     - dumpling
     - tidb-lightning
     - ticdc
+    - ticdc-newarch
     - dm
     - tidb-binlog
     - tidb-tools
@@ -218,6 +219,7 @@ definitions:
     - ProductDumpling
     - ProductTidbLightning
     - ProductTicdc
+    - ProductTicdcNewarch
     - ProductDm
     - ProductTidbBinlog
     - ProductTidbTools

@@ -25,6 +25,7 @@ const (
 	ProductDumpling         Product = "dumpling"
 	ProductTidbLightning    Product = "tidb-lightning"
 	ProductTicdc            Product = "ticdc"
+	ProductTicdcNewarch     Product = "ticdc-newarch"
 	ProductDm               Product = "dm"
 	ProductTidbBinlog       Product = "tidb-binlog"
 	ProductTidbTools        Product = "tidb-tools"
@@ -88,6 +89,7 @@ var (
 	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
 	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
 	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
+	RepoTicdc         = GithubRepo{Owner: "pingcap", Repo: "ticdc"}
 	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
 	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
 	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
@@ -96,7 +98,7 @@ var (
 
 var allProducts = [...]Product{ProductTidb, ProductTikv, ProductPd,
 	ProductTiflash, ProductBr, ProductTidbLightning, ProductDumpling,
-	ProductTicdc, ProductTidbBinlog, ProductDm, ProductTidbTools,
+	ProductTicdc, ProductTicdcNewarch, ProductDm, ProductTidbBinlog, ProductTidbTools,
 	ProductNgMonitoring, ProductTidbDashboard, ProductDrainer, ProductPump}
 
 func StringToProduct(s string) Product {
@@ -120,6 +122,8 @@ func ProdToRepo(prod Product) *GithubRepo {
 		return &RepoTiflash
 	case ProductTicdc, ProductDm:
 		return &RepoTiflow
+	case ProductTicdcNewarch:
+		return &RepoTicdc
 	case ProductDrainer, ProductPump:
 		fallthrough
 	case ProductTidbBinlog:
