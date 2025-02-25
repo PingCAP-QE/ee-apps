@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "chatops-lark.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "chatops-lark.fullname" . }}:{{ .Values.service.port }}/healthz']
   restartPolicy: Never
