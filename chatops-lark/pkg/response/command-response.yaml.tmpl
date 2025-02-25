@@ -10,7 +10,7 @@ elements:
       - tag: plain_text
         content: "EE ChatOps Bot developed by EE team"
 header:
-  template: '{{ if eq .Status "success" }}green{{ else }}red{{ end }}'
+  template: '{{ if eq .Status "success" }}green{{ else if eq .Status "skip" }}grey{{ else if eq .Status "info" }}blue{{ else }}red{{ end }}'
   title:
     content: "{{ .Status }}"
     tag: plain_text
