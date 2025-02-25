@@ -85,6 +85,21 @@ type rootHandler struct {
 	Config     map[string]any
 }
 
+// InformationError represents an information level error that occurred during command execution.
+// it will give some information but not error, such as help and skip reasons.
+type InformationError error
+
+// SkipError represents a skip level error that occurred during command execution.
+type SkipError error
+
+// Status enums
+const (
+	StatusSuccess = "success"
+	StatusFailure = "failure"
+	StatusSkip    = "skip"
+	StatusInfo    = "info"
+)
+
 func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
@@ -143,11 +158,23 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	go func() {
 		defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
 		message, err := r.handleCommand(ctx, command)
-		if err != nil {
-			message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-			r.sendResponse(*event.Event.Message.MessageId, "failed", message)
+		if err == nil {
+			r.sendResponse(*event.Event.Message.MessageId, StatusSuccess, message)
+			return
 		}
-		r.sendResponse(*event.Event.Message.MessageId, "success", message)
+
+		// send different level response for the error types.
+		switch e := err.(type) {
+		case SkipError:
+			message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
+			r.sendResponse(*event.Event.Message.MessageId, StatusSkip, message)
+		case InformationError:
+			message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
+			r.sendResponse(*event.Event.Message.MessageId, StatusInfo, message)
+		default:
+			message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
+			r.sendResponse(*event.Event.Message.MessageId, StatusFailure, message)
+		}
 	}()
 
 	return nil
