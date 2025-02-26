@@ -23,7 +23,7 @@ const (
 	ctxKeyGithubToken     = "github_token"
 	ctxKeyLarkSenderEmail = "lark.sender.email"
 
-	// 消息类型
+	// Message types
 	msgTypePrivate = "private"
 	msgTypeGroup   = "group"
 )
@@ -68,8 +68,8 @@ type Command struct {
 	Name    string
 	Args    []string
 	Sender  *CommandSender
-	MsgType string // 消息类型：private 或 group
-	ChatID  string // 群组ID，仅当MsgType为group时有效
+	MsgType string // Message type: private or group
+	ChatID  string // Group ID, only valid when MsgType is group
 }
 
 type CommandSender struct {
@@ -91,7 +91,7 @@ type rootHandler struct {
 	*lark.Client
 	eventCache *bigcache.BigCache
 	Config     map[string]any
-	botName    string // 机器人名称，仅用于文档和日志目的
+	botName    string // Bot name, only used for documentation and logging purposes
 	logger     zerolog.Logger
 }
 
@@ -115,8 +115,8 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
 
-	// 获取机器人名称，用于文档和日志等目的
-	// 注意：在飞书API中，@机器人会自动转换为@_user_X格式，不需要使用实际名称匹配
+	// Get bot name for detect mention bot in group chat
+	// Note: In Lark API, @bot will be automatically converted to @_user_X format in message content
 	botName := ""
 	if botNameVal, ok := cfg["bot_name"]; ok {
 		if botNameStr, ok := botNameVal.(string); ok {
@@ -124,7 +124,7 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 		}
 	}
 	if botName == "" {
-		botName = "机器人" // 默认名称
+		botName = "Bot" // Default name
 	}
 
 	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache, botName: botName}
@@ -135,30 +135,28 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	eventID := event.EventV2Base.Header.EventID
 	r.logger = log.With().Str("eventId", eventID).Logger()
 
-	// 检查事件是否已处理
+	// Check if the event has already been processed
 	if r.isEventAlreadyHandled(eventID) {
 		return nil
 	}
 
-	// 确定消息类型和是否提及机器人
+	// Determine message type and whether the bot was mentioned
 	msgType, chatID, isMentionBot := r.determineMessageType(event)
 
-	// 解析命令
 	command := r.parseCommand(event, msgType, isMentionBot)
 	if command == nil {
 		r.logger.Debug().Msg("none command received")
 		return nil
 	}
 
-	// 设置命令的消息类型和群组ID
 	command.MsgType = msgType
 	command.ChatID = chatID
 
-	// 获取发送者信息并处理命令
+	// Get sender information and process command
 	return r.processCommand(ctx, event, command)
 }
 
-// isEventAlreadyHandled 检查事件是否已经处理过
+// isEventAlreadyHandled checks if the event has already been processed
 func (r *rootHandler) isEventAlreadyHandled(eventID string) bool {
 	_, err := r.eventCache.Get(eventID)
 	if err == nil {
@@ -173,15 +171,15 @@ func (r *rootHandler) isEventAlreadyHandled(eventID string) bool {
 	}
 }
 
-// determineMessageType 确定消息类型并检查是否提及机器人
+// determineMessageType determines the message type and checks if the bot was mentioned
 func (r *rootHandler) determineMessageType(event *larkim.P2MessageReceiveV1) (msgType string, chatID string, isMentionBot bool) {
-	// 检查消息是否来自群聊
+	// Check if the message is from a group chat
 	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
 		msgType = msgTypeGroup
 		chatID = *event.Event.Message.ChatId
 		isMentionBot = r.checkIfBotMentioned(event)
 
-		// 打印 mention bot 信息
+		// Print mention bot information
 		if isMentionBot {
 			r.logger.Debug().Str("chatID", chatID).Msg("mention the bot from group chat")
 		} else {
@@ -195,41 +193,37 @@ func (r *rootHandler) determineMessageType(event *larkim.P2MessageReceiveV1) (ms
 	return msgType, chatID, isMentionBot
 }
 
-// checkIfBotMentioned 检查消息中是否提及了机器人
+// checkIfBotMentioned checks if the bot was mentioned in the message
 func (r *rootHandler) checkIfBotMentioned(event *larkim.P2MessageReceiveV1) bool {
-	isMentionBot := false
-
-	// 打印 mentions 信息
-	if event.Event.Message.Mentions != nil && len(event.Event.Message.Mentions) > 0 {
-		for i, mention := range event.Event.Message.Mentions {
-			if mention != nil {
-				mentionLog := r.logger.Debug().Int("index", i)
-				if mention.Name != nil {
-					mentionLog = mentionLog.Str("name", *mention.Name)
-					if *mention.Name == r.botName {
-						isMentionBot = true
-					}
-				}
-				if mention.Key != nil {
-					mentionLog = mentionLog.Str("key", *mention.Key)
-				}
-				if mention.Id != nil {
-					mentionLog = mentionLog.Interface("id", mention.Id)
-				}
-				if mention.TenantKey != nil {
-					mentionLog = mentionLog.Str("tenantKey", *mention.TenantKey)
-				}
-				mentionLog.Msg("mention info")
-			}
-		}
-	} else {
-		r.logger.Debug().Msg("no mentions or not mention the bot in the message")
+	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
+		r.logger.Debug().Msg("no mentions in the message")
+		return false
 	}
 
-	return isMentionBot
+	for i, mention := range event.Event.Message.Mentions {
+		if mention == nil {
+			continue
+		}
+
+		logger := r.logger.Debug().Int("index", i)
+
+		if mention.Name != nil {
+			logger = logger.Str("name", *mention.Name)
+			// check if the bot was mentioned
+			if *mention.Name == r.botName {
+				logger.Msg("bot mentioned")
+				return true
+			}
+		}
+
+		logger.Msg("mention info")
+	}
+
+	r.logger.Debug().Msg("bot not mentioned in the message")
+	return false
 }
 
-// parseCommand 根据消息类型解析命令
+// parseCommand parses the command based on message type
 func (r *rootHandler) parseCommand(event *larkim.P2MessageReceiveV1, msgType string, isMentionBot bool) *Command {
 	if msgType == msgTypeGroup && isMentionBot {
 		return r.parseGroupCommand(event)
@@ -239,18 +233,18 @@ func (r *rootHandler) parseCommand(event *larkim.P2MessageReceiveV1, msgType str
 	return nil
 }
 
-// processCommand 处理命令并发送响应
+// processCommand processes the command and sends a response
 func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command) error {
 	r.logger.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
 
-	// 添加反应表情
+	// Add reaction emoji
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
 		r.logger.Err(err).Msg("send heartbeat reaction failed")
 		return err
 	}
 
-	// 获取发送者信息
+	// Get sender information
 	senderOpenID := *event.Event.Sender.SenderId.OpenId
 	res, err := r.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
 		UserIdType(larkcontact.UserIdTypeOpenId).
@@ -269,13 +263,13 @@ func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2Messag
 
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
-	// 异步处理命令并发送响应
+	// Asynchronously process command and send response
 	go r.executeCommandAndSendResponse(ctx, event, command, refactionID)
 
 	return nil
 }
 
-// executeCommandAndSendResponse 执行命令并发送响应
+// executeCommandAndSendResponse executes the command and sends a response
 func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, refactionID string) {
 	defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
 
@@ -285,7 +279,7 @@ func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *
 		return
 	}
 
-	// 根据错误类型发送不同级别的响应
+	// Send different levels of response based on error type
 	switch e := err.(type) {
 	case SkipError:
 		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
@@ -299,7 +293,7 @@ func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *
 	}
 }
 
-// parsePrivateCommand 解析私聊消息中的命令
+// parsePrivateCommand parses commands from private messages
 func (r *rootHandler) parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 
@@ -316,8 +310,8 @@ func (r *rootHandler) parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Com
 	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }
 
-// parseGroupCommand 解析群聊消息中的命令
-// 支持格式：@机器人 /command arg1 arg2...
+// parseGroupCommand parses commands from group messages
+// Supported format: @bot /command arg1 arg2...
 func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 	r.logger.Debug().Str("messageContent", messageContent).Msg("parse group command")
@@ -327,8 +321,8 @@ func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Comma
 		return nil
 	}
 
-	// 在飞书消息中，提及会被转换为 @_user_X 格式
-	// 使用正则表达式匹配 @_user_X 后面的命令: /command arg1 arg2...
+	// In Lark messages, mentions are converted to @_user_X format
+	// Use regex to match commands after @_user_X: /command arg1 arg2...
 	re := regexp.MustCompile(`@_user_\d+\s+(/\S+)(.*)`)
 	matches := re.FindStringSubmatch(content.Text)
 
@@ -344,7 +338,7 @@ func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Comma
 		args = strings.Fields(argsStr)
 	}
 
-	// 检查是否是特权命令
+	// Check if it's a privileged command
 	if slices.Contains(privilegedCommandList, commandName) {
 		return nil
 	}
