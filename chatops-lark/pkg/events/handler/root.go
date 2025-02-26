@@ -15,6 +15,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -90,7 +91,7 @@ type rootHandler struct {
 	*lark.Client
 	eventCache *bigcache.BigCache
 	Config     map[string]any
-	botName    string // 机器人名称，用于匹配群聊中的@消息
+	botName    string // 机器人名称，仅用于文档和日志目的
 }
 
 // InformationError represents an information level error that occurred during command execution.
@@ -113,7 +114,8 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
 
-	// 获取机器人名称，用于匹配群聊中的@消息
+	// 获取机器人名称，用于文档和日志等目的
+	// 注意：在飞书API中，@机器人会自动转换为@_user_X格式，不需要使用实际名称匹配
 	botName := ""
 	if botNameVal, ok := cfg["bot_name"]; ok {
 		if botNameStr, ok := botNameVal.(string); ok {
@@ -130,43 +132,18 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	eventID := event.EventV2Base.Header.EventID
-
-	// check if the event has been handled.
-	_, err := r.eventCache.Get(eventID)
-	if err == nil {
-		log.Debug().Str("eventId", eventID).Msg("event already handled")
-		return nil
-	} else if err == bigcache.ErrEntryNotFound {
-		r.eventCache.Set(eventID, []byte(eventID))
-	} else {
-		log.Err(err).Msg("unexpected error")
-		return err
-	}
-
 	hl := log.With().Str("eventId", eventID).Logger()
 
-	// 判断消息类型（私聊或群聊）
-	var msgType string
-	var chatID string
-
-	// 检查消息是否来自群聊
-	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
-		msgType = msgTypeGroup
-		chatID = *event.Event.Message.ChatId
-		hl.Debug().Str("chatID", chatID).Msg("received message from group chat")
-	} else {
-		msgType = msgTypePrivate
-		hl.Debug().Msg("received message from private chat")
+	// 检查事件是否已处理
+	if r.isEventAlreadyHandled(eventID) {
+		return nil
 	}
 
-	// 根据消息类型解析命令
-	var command *Command
-	if msgType == msgTypeGroup {
-		command = r.parseGroupCommand(event)
-	} else {
-		command = r.parsePrivateCommand(event)
-	}
+	// 确定消息类型和是否提及机器人
+	msgType, chatID, isMentionBot := r.determineMessageType(event, hl)
 
+	// 解析命令
+	command := r.parseCommand(event, msgType, isMentionBot)
 	if command == nil {
 		hl.Debug().Msg("none command received")
 		return nil
@@ -176,13 +153,103 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	command.MsgType = msgType
 	command.ChatID = chatID
 
+	// 获取发送者信息并处理命令
+	return r.processCommand(ctx, event, command, hl)
+}
+
+// isEventAlreadyHandled 检查事件是否已经处理过
+func (r *rootHandler) isEventAlreadyHandled(eventID string) bool {
+	_, err := r.eventCache.Get(eventID)
+	if err == nil {
+		log.Debug().Str("eventId", eventID).Msg("event already handled")
+		return true
+	} else if err == bigcache.ErrEntryNotFound {
+		r.eventCache.Set(eventID, []byte(eventID))
+		return false
+	} else {
+		log.Err(err).Msg("unexpected error")
+		return true
+	}
+}
+
+// determineMessageType 确定消息类型并检查是否提及机器人
+func (r *rootHandler) determineMessageType(event *larkim.P2MessageReceiveV1, hl zerolog.Logger) (msgType string, chatID string, isMentionBot bool) {
+	// 检查消息是否来自群聊
+	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
+		msgType = msgTypeGroup
+		chatID = *event.Event.Message.ChatId
+		isMentionBot = r.checkIfBotMentioned(event, hl)
+
+		// 打印 mention bot 信息
+		if isMentionBot {
+			hl.Debug().Str("chatID", chatID).Msg("mention the bot from group chat")
+		} else {
+			hl.Debug().Str("chatID", chatID).Msg("not mention the bot from group chat, ignore...")
+		}
+	} else {
+		msgType = msgTypePrivate
+		hl.Debug().Msg("received message from private chat")
+	}
+
+	return msgType, chatID, isMentionBot
+}
+
+// checkIfBotMentioned 检查消息中是否提及了机器人
+func (r *rootHandler) checkIfBotMentioned(event *larkim.P2MessageReceiveV1, hl zerolog.Logger) bool {
+	isMentionBot := false
+
+	// 打印 mentions 信息
+	if event.Event.Message.Mentions != nil && len(event.Event.Message.Mentions) > 0 {
+		for i, mention := range event.Event.Message.Mentions {
+			if mention != nil {
+				mentionLog := hl.Debug().Int("index", i)
+				if mention.Name != nil {
+					mentionLog = mentionLog.Str("name", *mention.Name)
+					if *mention.Name == r.botName {
+						isMentionBot = true
+					}
+				}
+				if mention.Key != nil {
+					mentionLog = mentionLog.Str("key", *mention.Key)
+				}
+				if mention.Id != nil {
+					mentionLog = mentionLog.Interface("id", mention.Id)
+				}
+				if mention.TenantKey != nil {
+					mentionLog = mentionLog.Str("tenantKey", *mention.TenantKey)
+				}
+				mentionLog.Msg("mention info")
+			}
+		}
+	} else {
+		hl.Debug().Msg("no mentions or not mention the bot in the message")
+	}
+
+	return isMentionBot
+}
+
+// parseCommand 根据消息类型解析命令
+func (r *rootHandler) parseCommand(event *larkim.P2MessageReceiveV1, msgType string, isMentionBot bool) *Command {
+	if msgType == msgTypeGroup && isMentionBot {
+		return r.parseGroupCommand(event)
+	} else if msgType == msgTypePrivate {
+		return r.parsePrivateCommand(event)
+	}
+	return nil
+}
+
+// processCommand 处理命令并发送响应
+func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, hl zerolog.Logger) error {
 	hl.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
+
+	// 添加反应表情
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
 		return err
 	}
 
+	// 获取发送者信息
 	senderOpenID := *event.Event.Sender.SenderId.OpenId
 	res, err := r.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
 		UserIdType(larkcontact.UserIdTypeOpenId).
@@ -201,29 +268,34 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
-	go func() {
-		defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
-		message, err := r.handleCommand(ctx, command)
-		if err == nil {
-			r.sendResponse(*event.Event.Message.MessageId, StatusSuccess, message)
-			return
-		}
-
-		// send different level response for the error types.
-		switch e := err.(type) {
-		case SkipError:
-			message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
-			r.sendResponse(*event.Event.Message.MessageId, StatusSkip, message)
-		case InformationError:
-			message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
-			r.sendResponse(*event.Event.Message.MessageId, StatusInfo, message)
-		default:
-			message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-			r.sendResponse(*event.Event.Message.MessageId, StatusFailure, message)
-		}
-	}()
+	// 异步处理命令并发送响应
+	go r.executeCommandAndSendResponse(ctx, event, command, refactionID)
 
 	return nil
+}
+
+// executeCommandAndSendResponse 执行命令并发送响应
+func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, refactionID string) {
+	defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
+
+	message, err := r.handleCommand(ctx, command)
+	if err == nil {
+		r.sendResponse(*event.Event.Message.MessageId, StatusSuccess, message)
+		return
+	}
+
+	// 根据错误类型发送不同级别的响应
+	switch e := err.(type) {
+	case SkipError:
+		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
+		r.sendResponse(*event.Event.Message.MessageId, StatusSkip, message)
+	case InformationError:
+		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
+		r.sendResponse(*event.Event.Message.MessageId, StatusInfo, message)
+	default:
+		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
+		r.sendResponse(*event.Event.Message.MessageId, StatusFailure, message)
+	}
 }
 
 // parsePrivateCommand 解析私聊消息中的命令
@@ -255,12 +327,13 @@ func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Comma
 		return nil
 	}
 
-	// 匹配 @机器人 后面的命令
-	// 使用正则表达式匹配 @机器人 后面的内容
-	re := regexp.MustCompile(`@` + r.botName + `\s+(/\S+)(.*)`)
+	// 在飞书消息中，提及会被转换为 @_user_X 格式
+	// 使用正则表达式匹配 @_user_X 后面的命令: /command arg1 arg2...
+	re := regexp.MustCompile(`@_user_\d+\s+(/\S+)(.*)`)
 	matches := re.FindStringSubmatch(content.Text)
 
 	if len(matches) < 3 {
+		hl.Debug().Str("content", content.Text).Msg("no command match found")
 		return nil
 	}
 
