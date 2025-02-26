@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +21,10 @@ import (
 const (
 	ctxKeyGithubToken     = "github_token"
 	ctxKeyLarkSenderEmail = "lark.sender.email"
+
+	// 消息类型
+	msgTypePrivate = "private"
+	msgTypeGroup   = "group"
 )
 
 var (
@@ -59,9 +64,11 @@ var (
 )
 
 type Command struct {
-	Name   string
-	Args   []string
-	Sender *CommandSender
+	Name    string
+	Args    []string
+	Sender  *CommandSender
+	MsgType string // 消息类型：private 或 group
+	ChatID  string // 群组ID，仅当MsgType为group时有效
 }
 
 type CommandSender struct {
@@ -83,6 +90,7 @@ type rootHandler struct {
 	*lark.Client
 	eventCache *bigcache.BigCache
 	Config     map[string]any
+	botName    string // 机器人名称，用于匹配群聊中的@消息
 }
 
 // InformationError represents an information level error that occurred during command execution.
@@ -104,7 +112,19 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
-	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache}
+
+	// 获取机器人名称，用于匹配群聊中的@消息
+	botName := ""
+	if botNameVal, ok := cfg["bot_name"]; ok {
+		if botNameStr, ok := botNameVal.(string); ok {
+			botName = botNameStr
+		}
+	}
+	if botName == "" {
+		botName = "机器人" // 默认名称
+	}
+
+	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache, botName: botName}
 	return h.Handle
 }
 
@@ -124,11 +144,37 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	hl := log.With().Str("eventId", eventID).Logger()
-	command := shouldHandle(event)
+
+	// 判断消息类型（私聊或群聊）
+	var msgType string
+	var chatID string
+
+	// 检查消息是否来自群聊
+	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
+		msgType = msgTypeGroup
+		chatID = *event.Event.Message.ChatId
+		hl.Debug().Str("chatID", chatID).Msg("received message from group chat")
+	} else {
+		msgType = msgTypePrivate
+		hl.Debug().Msg("received message from private chat")
+	}
+
+	// 根据消息类型解析命令
+	var command *Command
+	if msgType == msgTypeGroup {
+		command = r.parseGroupCommand(event)
+	} else {
+		command = r.parsePrivateCommand(event)
+	}
+
 	if command == nil {
 		hl.Debug().Msg("none command received")
 		return nil
 	}
+
+	// 设置命令的消息类型和群组ID
+	command.MsgType = msgType
+	command.ChatID = chatID
 
 	hl.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
@@ -178,6 +224,59 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}()
 
 	return nil
+}
+
+// parsePrivateCommand 解析私聊消息中的命令
+func (r *rootHandler) parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
+	messageContent := strings.TrimSpace(*event.Event.Message.Content)
+
+	var content commandLarkMsgContent
+	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		return nil
+	}
+
+	messageParts := strings.Fields(content.Text)
+	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
+		return nil
+	}
+
+	return &Command{Name: messageParts[0], Args: messageParts[1:]}
+}
+
+// parseGroupCommand 解析群聊消息中的命令
+// 支持格式：@机器人 /command arg1 arg2...
+func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
+	messageContent := strings.TrimSpace(*event.Event.Message.Content)
+	hl := log.With().Str("eventId", *event.Event.Message.MessageId).Logger()
+	hl.Debug().Str("messageContent", messageContent).Msg("parse group command")
+
+	var content commandLarkMsgContent
+	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		return nil
+	}
+
+	// 匹配 @机器人 后面的命令
+	// 使用正则表达式匹配 @机器人 后面的内容
+	re := regexp.MustCompile(`@` + r.botName + `\s+(/\S+)(.*)`)
+	matches := re.FindStringSubmatch(content.Text)
+
+	if len(matches) < 3 {
+		return nil
+	}
+
+	commandName := matches[1]
+	argsStr := strings.TrimSpace(matches[2])
+	var args []string
+	if argsStr != "" {
+		args = strings.Fields(argsStr)
+	}
+
+	// 检查是否是特权命令
+	if slices.Contains(privilegedCommandList, commandName) {
+		return nil
+	}
+
+	return &Command{Name: commandName, Args: args}
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
@@ -269,20 +368,4 @@ func (r *rootHandler) deleteReaction(reqMsgID, reactionID string) error {
 	}
 
 	return nil
-}
-
-func shouldHandle(event *larkim.P2MessageReceiveV1) *Command {
-	messageContent := strings.TrimSpace(*event.Event.Message.Content)
-
-	var content commandLarkMsgContent
-	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		return nil
-	}
-
-	messageParts := strings.Fields(content.Text)
-	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
-		return nil
-	}
-
-	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }

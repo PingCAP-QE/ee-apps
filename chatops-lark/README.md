@@ -8,6 +8,7 @@ You can run it by following steps:
   ```yaml
   cherry-pick-invite.audit_webhook: <your_audit_lark_webhook>
   cherry-pick-invite.github_token: <your_github_token>
+  bot_name: <your_bot_name>  # 机器人名称，用于在群聊中匹配@消息，默认为"机器人"
   ```
 2. Run the lark bot app:
   ```bash
