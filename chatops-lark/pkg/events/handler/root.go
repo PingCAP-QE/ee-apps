@@ -124,7 +124,7 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	}
 
 	// Synchronously fetch bot information during initialization
-	if err := h.fetchBotInfo(context.Background()); err != nil {
+	if err := h.fetchBotInfo(); err != nil {
 		h.logger.Fatal().Err(err).Msg("failed to fetch bot info during initialization, exiting")
 		os.Exit(1)
 	}
@@ -132,26 +132,16 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	return h.Handle
 }
 
-// fetchBotInfo retrieves the bot information and sets the botName
-func (r *rootHandler) fetchBotInfo(ctx context.Context) error {
-	maxRetries := 3
-	retryInterval := 2 * time.Second
-
-	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			r.logger.Info().Int("retry", i).Msg("retrying to fetch bot info")
-			time.Sleep(retryInterval)
-		}
-		// Get bot name for detect mention bot in group chat
-		// Note: In Lark API, @bot will be automatically converted to @_user_X format in message content
-		if botName, ok := r.Config["bot_name"].(string); ok && botName != "" {
-			r.botName = botName
-			r.logger.Info().Str("botName", r.botName).Msg("successfully set bot name which is from API")
-			return nil
-		}
+// fetchBotInfo sets the botName from configuration or uses a default value
+func (r *rootHandler) fetchBotInfo() error {
+	// Try to get bot name from configuration
+	if botName, ok := r.Config["bot_name"].(string); ok && botName != "" {
+		r.botName = botName
+		r.logger.Info().Str("botName", r.botName).Msg("successfully set bot name from configuration")
+		return nil
 	}
 
-	return fmt.Errorf("failed to get bot name: bot_name not found in API")
+	return fmt.Errorf("failed to get bot name: bot_name not found in config")
 }
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
