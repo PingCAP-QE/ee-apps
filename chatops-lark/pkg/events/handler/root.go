@@ -156,19 +156,20 @@ func (r *rootHandler) fetchBotInfo(ctx context.Context) error {
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	eventID := event.EventV2Base.Header.EventID
-	r.logger = log.With().Str("eventId", eventID).Logger()
+
+	reqLogger := r.logger.With().Str("eventId", eventID).Logger()
 
 	// Check if the event has already been processed
-	if r.isEventAlreadyHandled(eventID) {
+	if r.isEventAlreadyHandled(eventID, &reqLogger) {
 		return nil
 	}
 
 	// Determine message type and whether the bot was mentioned
-	msgType, chatID, isMentionBot := r.determineMessageType(event)
+	msgType, chatID, isMentionBot := r.determineMessageType(event, &reqLogger)
 
-	command := r.parseCommand(event, msgType, isMentionBot)
+	command := r.parseCommand(event, msgType, isMentionBot, &reqLogger)
 	if command == nil {
-		r.logger.Debug().Msg("none command received")
+		reqLogger.Debug().Msg("no command received")
 		return nil
 	}
 
@@ -176,50 +177,50 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	command.ChatID = chatID
 
 	// Get sender information and process command
-	return r.processCommand(ctx, event, command)
+	return r.processCommand(ctx, event, command, &reqLogger)
 }
 
 // isEventAlreadyHandled checks if the event has already been processed
-func (r *rootHandler) isEventAlreadyHandled(eventID string) bool {
+func (r *rootHandler) isEventAlreadyHandled(eventID string, logger *zerolog.Logger) bool {
 	_, err := r.eventCache.Get(eventID)
 	if err == nil {
-		r.logger.Debug().Str("eventId", eventID).Msg("event already handled")
+		logger.Debug().Str("eventId", eventID).Msg("event already handled")
 		return true
 	} else if err == bigcache.ErrEntryNotFound {
 		r.eventCache.Set(eventID, []byte(eventID))
 		return false
 	} else {
-		log.Err(err).Msg("unexpected error")
+		logger.Error().Err(err).Msg("unexpected error")
 		return true
 	}
 }
 
 // determineMessageType determines the message type and checks if the bot was mentioned
-func (r *rootHandler) determineMessageType(event *larkim.P2MessageReceiveV1) (msgType string, chatID string, isMentionBot bool) {
+func (r *rootHandler) determineMessageType(event *larkim.P2MessageReceiveV1, logger *zerolog.Logger) (msgType string, chatID string, isMentionBot bool) {
 	// Check if the message is from a group chat
 	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
 		msgType = msgTypeGroup
 		chatID = *event.Event.Message.ChatId
-		isMentionBot = r.checkIfBotMentioned(event)
+		isMentionBot = r.checkIfBotMentioned(event, logger)
 
 		// Print mention bot information
 		if isMentionBot {
-			r.logger.Debug().Str("chatID", chatID).Msg("mention the bot from group chat")
+			logger.Debug().Str("chatID", chatID).Msg("mention the bot from group chat")
 		} else {
-			r.logger.Debug().Str("chatID", chatID).Msg("not mention the bot from group chat, ignore...")
+			logger.Debug().Str("chatID", chatID).Msg("not mention the bot from group chat, ignore...")
 		}
 	} else {
 		msgType = msgTypePrivate
-		r.logger.Debug().Msg("received message from private chat")
+		logger.Debug().Msg("received message from private chat")
 	}
 
 	return msgType, chatID, isMentionBot
 }
 
 // checkIfBotMentioned checks if the bot was mentioned in the message
-func (r *rootHandler) checkIfBotMentioned(event *larkim.P2MessageReceiveV1) bool {
+func (r *rootHandler) checkIfBotMentioned(event *larkim.P2MessageReceiveV1, logger *zerolog.Logger) bool {
 	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
-		r.logger.Debug().Msg("no mentions in the message")
+		logger.Debug().Msg("no mentions in the message")
 		return false
 	}
 
@@ -228,42 +229,42 @@ func (r *rootHandler) checkIfBotMentioned(event *larkim.P2MessageReceiveV1) bool
 			continue
 		}
 
-		logger := r.logger.Debug().Int("index", i)
+		logEntry := logger.Debug().Int("index", i)
 
 		if mention.Name != nil {
-			logger = logger.Str("name", *mention.Name)
+			logEntry = logEntry.Str("name", *mention.Name)
 			// check if the bot was mentioned
 			if *mention.Name == r.botName {
-				logger.Msg("bot mentioned")
+				logEntry.Msg("bot mentioned")
 				return true
 			}
 		}
 
-		logger.Msg("mention info")
+		logEntry.Msg("mention info")
 	}
 
-	r.logger.Debug().Msg("bot not mentioned in the message")
+	logger.Debug().Msg("bot not mentioned in the message")
 	return false
 }
 
 // parseCommand parses the command based on message type
-func (r *rootHandler) parseCommand(event *larkim.P2MessageReceiveV1, msgType string, isMentionBot bool) *Command {
+func (r *rootHandler) parseCommand(event *larkim.P2MessageReceiveV1, msgType string, isMentionBot bool, logger *zerolog.Logger) *Command {
 	if msgType == msgTypeGroup && isMentionBot {
-		return r.parseGroupCommand(event)
+		return r.parseGroupCommand(event, logger)
 	} else if msgType == msgTypePrivate {
-		return r.parsePrivateCommand(event)
+		return r.parsePrivateCommand(event, logger)
 	}
 	return nil
 }
 
 // processCommand processes the command and sends a response
-func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command) error {
-	r.logger.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
+func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, logger *zerolog.Logger) error {
+	logger.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
 
 	// Add reaction emoji
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
-		r.logger.Err(err).Msg("send heartbeat reaction failed")
+		logger.Err(err).Msg("send heartbeat reaction failed")
 		return err
 	}
 
@@ -274,26 +275,26 @@ func (r *rootHandler) processCommand(ctx context.Context, event *larkim.P2Messag
 		UserId(senderOpenID).
 		Build())
 	if err != nil {
-		r.logger.Err(err).Msg("get user info failed.")
+		logger.Err(err).Msg("get user info failed.")
 		return err
 	}
 
 	if !res.Success() {
-		r.logger.Error().Bytes("body", res.RawBody).Msg("get user info failed")
+		logger.Error().Bytes("body", res.RawBody).Msg("get user info failed")
 		return nil
 	}
-	r.logger.Debug().Bytes("body", res.RawBody).Msg("get user info success")
+	logger.Debug().Bytes("body", res.RawBody).Msg("get user info success")
 
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
 	// Asynchronously process command and send response
-	go r.executeCommandAndSendResponse(ctx, event, command, refactionID)
+	go r.executeCommandAndSendResponse(ctx, event, command, refactionID, logger)
 
 	return nil
 }
 
 // executeCommandAndSendResponse executes the command and sends a response
-func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, refactionID string) {
+func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *larkim.P2MessageReceiveV1, command *Command, refactionID string, logger *zerolog.Logger) {
 	defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
 
 	message, err := r.handleCommand(ctx, command)
@@ -316,28 +317,11 @@ func (r *rootHandler) executeCommandAndSendResponse(ctx context.Context, event *
 	}
 }
 
-// parsePrivateCommand parses commands from private messages
-func (r *rootHandler) parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
-	messageContent := strings.TrimSpace(*event.Event.Message.Content)
-
-	var content commandLarkMsgContent
-	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		return nil
-	}
-
-	messageParts := strings.Fields(content.Text)
-	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
-		return nil
-	}
-
-	return &Command{Name: messageParts[0], Args: messageParts[1:]}
-}
-
 // parseGroupCommand parses commands from group messages
 // Supported format: @bot /command arg1 arg2...
-func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
+func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1, logger *zerolog.Logger) *Command {
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
-	r.logger.Debug().Str("messageContent", messageContent).Msg("parse group command")
+	logger.Debug().Str("messageContent", messageContent).Msg("parse group command")
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
@@ -350,7 +334,7 @@ func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Comma
 	matches := re.FindStringSubmatch(content.Text)
 
 	if len(matches) < 3 {
-		r.logger.Debug().Str("content", content.Text).Msg("no command match found")
+		logger.Debug().Str("content", content.Text).Msg("no command match found")
 		return nil
 	}
 
@@ -367,6 +351,23 @@ func (r *rootHandler) parseGroupCommand(event *larkim.P2MessageReceiveV1) *Comma
 	}
 
 	return &Command{Name: commandName, Args: args}
+}
+
+// parsePrivateCommand parses commands from private messages
+func (r *rootHandler) parsePrivateCommand(event *larkim.P2MessageReceiveV1, logger *zerolog.Logger) *Command {
+	messageContent := strings.TrimSpace(*event.Event.Message.Content)
+
+	var content commandLarkMsgContent
+	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		return nil
+	}
+
+	messageParts := strings.Fields(content.Text)
+	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
+		return nil
+	}
+
+	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
