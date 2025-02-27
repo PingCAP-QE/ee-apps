@@ -51,16 +51,10 @@ func main() {
 	}
 	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
 
-	// 加载配置
 	cfg := loadConfig(*config)
 
-	// 创建事件处理器，同时注册私聊和群聊消息处理函数
 	eventHandler := dispatcher.NewEventDispatcher("", "").
 		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg))
-
-	// 注册群组消息处理函数，如果SDK支持的话
-	// 注意：目前的SDK版本可能不支持OnGroupMessageReceiveV1方法
-	// 如果不支持，可以通过修改OnP2MessageReceiveV1处理函数来同时处理私聊和群聊消息
 
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if *debugMode {
