@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -29,41 +28,32 @@ const (
 	msgTypeGroup   = "group"
 )
 
-var (
-	commandList = []string{
-		"/approve_pr",                   // rarely used
-		"/build_hotfix",                 // rarely used
-		"/check_docker_image_identical", // rarely used
-		"/check_pr_label",               // rarely used
-		"/cherry-pick-invite",
-		"/create_branch_from_tag",
-		"/create_hotfix_branch",
-		"/create_milestone",              // rarely used
-		"/create_new_branch_from_branch", // rarely used
-		"/create_product_release",        // rarely used
-		"/create_tag_from_branch",
-		"/devbuild",
-		"/label_pr",
-		"/merge_pr", // rarely used
-		"/sync_docker_image",
-		"/trigger_job", // rarely used
-	}
-	privilegedCommandList = []string{
-		// "/approve_pr",
-		// "/label_pr",
-		// "/check_pr_label",
-		// "/create_milestone",
-		// "/merge_pr",
-		// "/create_tag_from_branch",
-		// "/trigger_job",
-		// "/create_branch_from_tag",
-		// "/create_new_branch_from_branch",
-		// "/build_hotfix",
-		// "/sync_docker_image",
-		// "/create_product_release",
-		// "/create_hotfix_branch",
-	}
-)
+type CommandHandler func(context.Context, []string) (string, error)
+
+type CommandConfig struct {
+	Handler      CommandHandler
+	NeedsAudit   bool
+	AuditWebhook string
+	SetupContext func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context
+}
+
+// TODO: support command /sync_docker_image
+var commandConfigs = map[string]CommandConfig{
+	"/cherry-pick-invite": {
+		Handler:      runCommandCherryPickInvite,
+		NeedsAudit:   true,
+		AuditWebhook: "cherry-pick-invite.audit_webhook",
+		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
+			return context.WithValue(ctx, ctxKeyGithubToken, config["cherry-pick-invite.github_token"])
+		},
+	},
+	"/devbuild": {
+		Handler: runCommandDevbuild,
+		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
+			return context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
+		},
+	},
+}
 
 type Command struct {
 	Name   string
@@ -108,6 +98,33 @@ const (
 	StatusSkip    = "skip"
 	StatusInfo    = "info"
 )
+
+// Pre-computed help text for available commands
+var availableCommandsHelpText string
+
+func init() {
+	// Initialize the help text for available commands
+	var commandsList []string
+	for cmd := range commandConfigs {
+		commandsList = append(commandsList, cmd)
+	}
+
+	// Build the help text that will be reused
+	helpText := "Available commands:\n"
+	for _, cmd := range commandsList {
+		switch cmd {
+		case "/cherry-pick-invite":
+			helpText += fmt.Sprintf("• %s - Grant a collaborator permission to edit a cherry-pick PR\n", cmd)
+		case "/devbuild":
+			helpText += fmt.Sprintf("• %s - Trigger a devbuild or check build status\n", cmd)
+		default:
+			helpText += fmt.Sprintf("• %s\n", cmd)
+		}
+	}
+	helpText += "\nUse [command] --help for more information"
+
+	availableCommandsHelpText = helpText
+}
 
 func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
@@ -225,27 +242,25 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		Str("sender", command.Sender.Email).
 		Logger()
 
-	switch command.Name {
-	case "/devbuild":
-		runCtx := context.WithValue(ctx, ctxKeyLarkSenderEmail, command.Sender.Email)
-		return runCommandDevbuild(runCtx, command.Args)
-	case "/cherry-pick-invite":
-		runCtx := context.WithValue(ctx, ctxKeyGithubToken, r.Config["cherry-pick-invite.github_token"])
-
-		ret, err := runCommandCherryPickInvite(runCtx, command.Args)
-		if err == nil {
-			auditCtx := context.WithValue(ctx, "audit_webhook", r.Config["cherry-pick-invite.audit_webhook"])
-			if auditErr := r.audit(auditCtx, command); auditErr != nil {
-				cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
-			}
-		}
-		return ret, err
-	case "/create_hotfix_branch":
-		return runCommandHotfixCreateBranch(ctx, command.Args)
-	default:
+	cmdConfig, exists := commandConfigs[command.Name]
+	if !exists {
 		cmdLogger.Warn().Msg("Unsupported command")
-		return "", fmt.Errorf("not support command: %s", command.Name)
+
+		errorMsg := fmt.Sprintf("Unsupported command: %s\n\n%s", command.Name, availableCommandsHelpText)
+		return "", fmt.Errorf(errorMsg)
 	}
+
+	runCtx := cmdConfig.SetupContext(ctx, r.Config, command.Sender)
+	result, err := cmdConfig.Handler(runCtx, command.Args)
+
+	if cmdConfig.NeedsAudit && err == nil && cmdConfig.AuditWebhook != "" {
+		auditCtx := context.WithValue(ctx, "audit_webhook", r.Config[cmdConfig.AuditWebhook])
+		if auditErr := r.audit(auditCtx, command); auditErr != nil {
+			cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
+		}
+	}
+
+	return result, err
 }
 
 func (r *rootHandler) audit(ctx context.Context, command *Command) error {
@@ -378,11 +393,6 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 		args = strings.Fields(argsStr)
 	}
 
-	// Check if it's a privileged command
-	if slices.Contains(privilegedCommandList, commandName) {
-		return nil
-	}
-
 	return &Command{Name: commandName, Args: args}
 }
 
@@ -397,7 +407,7 @@ func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
 	}
 
 	messageParts := strings.Fields(content.Text)
-	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
+	if len(messageParts) < 1 {
 		return nil
 	}
 
