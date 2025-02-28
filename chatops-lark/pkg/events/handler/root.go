@@ -64,11 +64,9 @@ var (
 )
 
 type Command struct {
-	Name    string
-	Args    []string
-	Sender  *CommandSender
-	MsgType string // Message type: private or group
-	ChatID  string // Group ID, only valid when MsgType is group
+	Name   string
+	Args   []string
+	Sender *CommandSender
 }
 
 type CommandSender struct {
@@ -288,9 +286,11 @@ func (r *rootHandler) deleteReaction(reqMsgID, reactionID string) error {
 // determineMessageType determines the message type and checks if the bot was mentioned
 func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msgType string, chatID string, isMentionBot bool) {
 	// Check if the message is from a group chat
-	if event.Event.Message.ChatId != nil && event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
+	if event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
 		msgType = msgTypeGroup
-		chatID = *event.Event.Message.ChatId
+		if event.Event.Message.ChatId != nil {
+			chatID = *event.Event.Message.ChatId
+		}
 		isMentionBot = checkIfBotMentioned(event, botName)
 	} else {
 		msgType = msgTypePrivate
