@@ -27,7 +27,8 @@ Examples:
 For more details, use: /devbuild --help
 `
 
-	devBuildDetailedHelpText = `Usage: /devbuild <subcommand> [args...]
+	devBuildDetailedHelpText = `
+Usage: /devbuild <subcommand> [args...]
 
 Subcommands:
   trigger <product> <version> <gitRef> [options]  - Trigger a new dev build
