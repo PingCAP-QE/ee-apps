@@ -124,7 +124,6 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 		os.Exit(1)
 	}
 
-	log.Debug().Strs("supportedCommands", commandList).Msg("Supported commands")
 	baseLogger := log.With().Str("component", "rootHandler").Logger()
 
 	h := &rootHandler{
@@ -153,10 +152,8 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	// check if the event has been handled.
 	_, err := r.eventCache.Get(eventID)
 	if err == nil {
-		hl.Debug().Msg("Event already handled, skipping")
 		return nil
 	} else if err == bigcache.ErrEntryNotFound {
-		hl.Debug().Msg("New event received, processing")
 		r.eventCache.Set(eventID, []byte(eventID))
 	} else {
 		hl.Err(err).Msg("Unexpected error accessing event cache")
@@ -165,13 +162,13 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 	command := shouldHandle(event, r.botName)
 	if command == nil {
-		hl.Debug().Msg("No command recognized in message")
 		return nil
 	}
 
 	hl.Info().
 		Str("command", command.Name).
-		Interface("args", command.Args).
+		Str("sender", *event.Event.Sender.SenderId.OpenId).
+		Int("argsCount", len(command.Args)).
 		Msg("Processing command")
 
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
@@ -191,10 +188,9 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	if !res.Success() {
-		hl.Error().Bytes("body", res.RawBody).Msg("get user info failed")
+		hl.Error().Msg("get user info failed")
 		return nil
 	}
-	hl.Debug().Bytes("body", res.RawBody).Msg("get user info success")
 
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
@@ -229,15 +225,11 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		Str("sender", command.Sender.Email).
 		Logger()
 
-	cmdLogger.Debug().Msg("Handling command")
-
 	switch command.Name {
 	case "/devbuild":
-		cmdLogger.Debug().Interface("args", command.Args).Msg("Running devbuild command")
 		runCtx := context.WithValue(ctx, ctxKeyLarkSenderEmail, command.Sender.Email)
 		return runCommandDevbuild(runCtx, command.Args)
 	case "/cherry-pick-invite":
-		cmdLogger.Debug().Interface("args", command.Args).Msg("Running cherry-pick-invite command")
 		runCtx := context.WithValue(ctx, ctxKeyGithubToken, r.Config["cherry-pick-invite.github_token"])
 
 		ret, err := runCommandCherryPickInvite(runCtx, command.Args)
@@ -245,13 +237,10 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 			auditCtx := context.WithValue(ctx, "audit_webhook", r.Config["cherry-pick-invite.audit_webhook"])
 			if auditErr := r.audit(auditCtx, command); auditErr != nil {
 				cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
-			} else {
-				cmdLogger.Debug().Msg("Command audited successfully")
 			}
 		}
 		return ret, err
 	case "/create_hotfix_branch":
-		cmdLogger.Debug().Interface("args", command.Args).Msg("Running create_hotfix_branch command")
 		return runCommandHotfixCreateBranch(ctx, command.Args)
 	default:
 		cmdLogger.Warn().Msg("Unsupported command")
@@ -338,17 +327,8 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msg
 			chatID = *event.Event.Message.ChatId
 		}
 		isMentionBot = checkIfBotMentioned(event, botName)
-
-		log.Debug().
-			Str("msgType", msgType).
-			Str("chatID", chatID).
-			Bool("isMentionBot", isMentionBot).
-			Msg("Determined message is from group chat")
 	} else {
 		msgType = msgTypePrivate
-		log.Debug().
-			Str("msgType", msgType).
-			Msg("Determined message is from private chat")
 	}
 
 	return msgType, chatID, isMentionBot
@@ -356,40 +336,29 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msg
 
 // checkIfBotMentioned checks if the bot was mentioned in the message
 func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botName string) bool {
-	logger := log.With().Str("func", "checkIfBotMentioned").Logger()
-
 	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
-		logger.Debug().Msg("No mentions found in message")
 		return false
 	}
 
 	for _, mention := range event.Event.Message.Mentions {
 		if mention == nil {
-			logger.Debug().Msg("Skipping nil mention")
 			continue
 		}
-		if mention.Name != nil {
-			// check if the bot was mentioned
-			if *mention.Name == botName {
-				logger.Debug().Str("botName", botName).Msg("Bot was mentioned")
-				return true
-			}
+		if mention.Name != nil && *mention.Name == botName {
+			return true
 		}
 	}
-	logger.Debug().Str("botName", botName).Msg("Bot was not mentioned")
 	return false
 }
 
 // parseGroupCommand parses commands from group messages
 // Supported format: @bot /command arg1 arg2...
 func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
-	logger := log.With().Str("func", "parseGroupCommand").Logger()
-
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		logger.Debug().Err(err).Msg("Failed to unmarshal message content")
+		log.Error().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
@@ -399,7 +368,6 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 	matches := re.FindStringSubmatch(content.Text)
 
 	if len(matches) < 3 {
-		logger.Debug().Str("content", content.Text).Msg("No command pattern found in message")
 		return nil
 	}
 
@@ -412,53 +380,38 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 
 	// Check if it's a privileged command
 	if slices.Contains(privilegedCommandList, commandName) {
-		logger.Debug().Str("command", commandName).Msg("Privileged command not allowed")
 		return nil
 	}
 
-	logger.Debug().Str("command", commandName).Interface("args", args).Msg("Group command parsed successfully")
 	return &Command{Name: commandName, Args: args}
 }
 
 // parsePrivateCommand parses commands from private messages
 func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
-	logger := log.With().Str("func", "parsePrivateCommand").Logger()
-
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		logger.Debug().Err(err).Msg("Failed to unmarshal message content")
+		log.Error().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
 	messageParts := strings.Fields(content.Text)
 	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
-		if len(messageParts) < 1 {
-			logger.Debug().Msg("No command found in message")
-		} else {
-			logger.Debug().Str("command", messageParts[0]).Msg("Privileged command not allowed")
-		}
 		return nil
 	}
 
-	logger.Debug().Str("command", messageParts[0]).Interface("args", messageParts[1:]).Msg("Private command parsed successfully")
 	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }
 
 func shouldHandle(event *larkim.P2MessageReceiveV1, botName string) *Command {
-	logger := log.With().Str("func", "shouldHandle").Logger()
-
 	// Determine message type and whether the bot was mentioned
 	msgType, _, isMentionBot := determineMessageType(event, botName)
 
 	if msgType == msgTypeGroup && isMentionBot {
-		logger.Debug().Msg("Processing group message with bot mention")
 		return parseGroupCommand(event)
 	} else if msgType == msgTypePrivate {
-		logger.Debug().Msg("Processing private message")
 		return parsePrivateCommand(event)
 	}
-	logger.Debug().Str("msgType", msgType).Bool("isMentionBot", isMentionBot).Msg("Message should not be handled")
 	return nil
 }
