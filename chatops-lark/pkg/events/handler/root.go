@@ -116,7 +116,7 @@ func init() {
 		case "/cherry-pick-invite":
 			helpText += fmt.Sprintf("• %s - Grant a collaborator permission to edit a cherry-pick PR\n", cmd)
 		case "/devbuild":
-			helpText += fmt.Sprintf("• %s - Trigger a development build or check build status\n", cmd)
+			helpText += fmt.Sprintf("• %s - Trigger a devbuild or check build status\n", cmd)
 		default:
 			helpText += fmt.Sprintf("• %s\n", cmd)
 		}
