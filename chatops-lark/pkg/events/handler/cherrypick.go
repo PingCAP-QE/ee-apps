@@ -13,10 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
-	token := ctx.Value(ctxKeyGithubToken).(string)
-	if len(args) < 2 {
-		return "", fmt.Errorf(`missing required positional arguments: pr_url, collaborator_username
+const cherryPickInviteHelpText = `missing required positional arguments: pr_url, collaborator_username
 
 Usage: /cherry-pick-invite <pr_url> <collaborator_username>
 
@@ -30,7 +27,12 @@ Arguments:
 
 Examples:
   /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
-  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123`)
+  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123`
+
+func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
+	token := ctx.Value(ctxKeyGithubToken).(string)
+	if len(args) < 2 {
+		return "", fmt.Errorf(cherryPickInviteHelpText)
 	}
 	cherryPickPrUrl := args[0]
 	collaboratorGithubID := args[1]

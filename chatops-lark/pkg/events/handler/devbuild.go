@@ -8,9 +8,8 @@ import (
 // TODO: get it from cli args.
 const devBuildURL = "https://tibuild.pingcap.net/api/devbuilds"
 
-func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
-	if len(args) == 0 {
-		return "", fmt.Errorf(`missing subcommand
+const (
+	devBuildHelpText = `missing subcommand
 
 Usage: /devbuild <subcommand> [args...]
 
@@ -24,17 +23,9 @@ Examples:
   /devbuild trigger tiflash v6.5.0 master --pushGCR
   /devbuild poll 12345
 
-For more details, use: /devbuild --help`)
-	}
+For more details, use: /devbuild --help`
 
-	subCmd := args[0]
-	switch subCmd {
-	case "trigger":
-		return runCommandDevbuildTrigger(ctx, args[1:])
-	case "poll":
-		return runCommandDevbuildPoll(ctx, args[1:])
-	case "-h", "--help":
-		return `Usage: /devbuild <subcommand> [args...]
+	devBuildDetailedHelpText = `Usage: /devbuild <subcommand> [args...]
 
 Subcommands:
   trigger <product> <version> <gitRef> [options]  - Trigger a new dev build
@@ -58,7 +49,22 @@ Options for trigger:
   --productBaseImg string   Product base image
   --builderImg string       Docker image for builder
   --targetImg string        Target image
-  --engine string           Pipeline engine`, nil
+  --engine string           Pipeline engine`
+)
+
+func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
+	if len(args) == 0 {
+		return "", fmt.Errorf(devBuildHelpText)
+	}
+
+	subCmd := args[0]
+	switch subCmd {
+	case "trigger":
+		return runCommandDevbuildTrigger(ctx, args[1:])
+	case "poll":
+		return runCommandDevbuildPoll(ctx, args[1:])
+	case "-h", "--help":
+		return devBuildDetailedHelpText, nil
 	default:
 		return "", fmt.Errorf("unknown subcommand: %s", subCmd)
 	}
