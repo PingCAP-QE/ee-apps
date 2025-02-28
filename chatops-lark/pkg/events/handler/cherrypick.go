@@ -28,7 +28,8 @@ Arguments:
 
 Examples:
   /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
-  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123`
+  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123
+`
 
 func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
 	token := ctx.Value(ctxKeyGithubToken).(string)
