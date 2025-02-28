@@ -99,6 +99,33 @@ const (
 	StatusInfo    = "info"
 )
 
+// Pre-computed help text for available commands
+var availableCommandsHelpText string
+
+func init() {
+	// Initialize the help text for available commands
+	var commandsList []string
+	for cmd := range commandConfigs {
+		commandsList = append(commandsList, cmd)
+	}
+
+	// Build the help text that will be reused
+	helpText := "Available commands:\n"
+	for _, cmd := range commandsList {
+		switch cmd {
+		case "/cherry-pick-invite":
+			helpText += fmt.Sprintf("• %s - Grant a collaborator permission to edit a cherry-pick PR\n", cmd)
+		case "/devbuild":
+			helpText += fmt.Sprintf("• %s - Trigger a development build or check build status\n", cmd)
+		default:
+			helpText += fmt.Sprintf("• %s\n", cmd)
+		}
+	}
+	helpText += "\nUse [command] --help for more information"
+
+	availableCommandsHelpText = helpText
+}
+
 func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
@@ -218,7 +245,9 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 	cmdConfig, exists := commandConfigs[command.Name]
 	if !exists {
 		cmdLogger.Warn().Msg("Unsupported command")
-		return "", fmt.Errorf("not support command: %s", command.Name)
+
+		errorMsg := fmt.Sprintf("Unsupported command: %s\n\n%s", command.Name, availableCommandsHelpText)
+		return "", fmt.Errorf(errorMsg)
 	}
 
 	runCtx := cmdConfig.SetupContext(ctx, r.Config, command.Sender)
