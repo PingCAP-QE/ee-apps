@@ -13,8 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const cherryPickInviteHelpText = `
-missing required positional arguments: pr_url, collaborator_username
+const cherryPickInviteHelpText = `missing required positional arguments: pr_url, collaborator_username
 
 Usage: /cherry-pick-invite <pr_url> <collaborator_username>
 
