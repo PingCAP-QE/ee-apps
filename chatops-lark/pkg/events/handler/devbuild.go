@@ -23,7 +23,8 @@ Examples:
   /devbuild trigger tiflash v6.5.0 master --pushGCR
   /devbuild poll 12345
 
-For more details, use: /devbuild --help`
+For more details, use: /devbuild --help
+`
 
 	devBuildDetailedHelpText = `Usage: /devbuild <subcommand> [args...]
 
