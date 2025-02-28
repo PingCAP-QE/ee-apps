@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -88,6 +90,8 @@ type rootHandler struct {
 	*lark.Client
 	eventCache *bigcache.BigCache
 	Config     map[string]any
+	botName    string
+	logger     zerolog.Logger
 }
 
 // InformationError represents an information level error that occurred during command execution.
@@ -109,40 +113,64 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
-	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache}
+
+	// Get bot name from config with type assertion at startup
+	botName := ""
+	if name, ok := cfg["bot_name"].(string); ok {
+		botName = name
+		log.Info().Str("botName", botName).Msg("Bot initialized successfully")
+	} else {
+		log.Fatal().Msg("bot name not found in config")
+		os.Exit(1)
+	}
+
+	baseLogger := log.With().Str("component", "rootHandler").Logger()
+
+	h := &rootHandler{
+		Client:     respondCli,
+		Config:     cfg,
+		eventCache: cache,
+		botName:    botName,
+		logger:     baseLogger,
+	}
 	return h.Handle
 }
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	eventID := event.EventV2Base.Header.EventID
 
+	msgType := "unknown"
+	if event.Event.Message.ChatType != nil {
+		msgType = *event.Event.Message.ChatType
+	}
+
+	hl := r.logger.With().
+		Str("eventId", eventID).
+		Str("msgType", msgType).
+		Logger()
+
 	// check if the event has been handled.
 	_, err := r.eventCache.Get(eventID)
 	if err == nil {
-		log.Debug().Str("eventId", eventID).Msg("event already handled")
 		return nil
 	} else if err == bigcache.ErrEntryNotFound {
 		r.eventCache.Set(eventID, []byte(eventID))
 	} else {
-		log.Err(err).Msg("unexpected error")
+		hl.Err(err).Msg("Unexpected error accessing event cache")
 		return err
 	}
 
-	hl := log.With().Str("eventId", eventID).Logger()
-
-	// Get bot name from config with type assertion
-	botName := ""
-	if name, ok := r.Config["bot_name"].(string); ok {
-		botName = name
-	}
-
-	command := shouldHandle(event, botName)
+	command := shouldHandle(event, r.botName)
 	if command == nil {
-		hl.Debug().Msg("none command received")
 		return nil
 	}
 
-	hl.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
+	hl.Info().
+		Str("command", command.Name).
+		Str("sender", *event.Event.Sender.SenderId.OpenId).
+		Int("argsCount", len(command.Args)).
+		Msg("Processing command")
+
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
@@ -160,10 +188,9 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	if !res.Success() {
-		hl.Error().Bytes("body", res.RawBody).Msg("get user info failed")
+		hl.Error().Msg("get user info failed")
 		return nil
 	}
-	hl.Debug().Bytes("body", res.RawBody).Msg("get user info success")
 
 	command.Sender = &CommandSender{OpenID: senderOpenID, Email: *res.Data.User.Email}
 
@@ -193,6 +220,11 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
+	cmdLogger := r.logger.With().
+		Str("command", command.Name).
+		Str("sender", command.Sender.Email).
+		Logger()
+
 	switch command.Name {
 	case "/devbuild":
 		runCtx := context.WithValue(ctx, ctxKeyLarkSenderEmail, command.Sender.Email)
@@ -203,12 +235,15 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		ret, err := runCommandCherryPickInvite(runCtx, command.Args)
 		if err == nil {
 			auditCtx := context.WithValue(ctx, "audit_webhook", r.Config["cherry-pick-invite.audit_webhook"])
-			_ = r.audit(auditCtx, command)
+			if auditErr := r.audit(auditCtx, command); auditErr != nil {
+				cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
+			}
 		}
 		return ret, err
 	case "/create_hotfix_branch":
 		return runCommandHotfixCreateBranch(ctx, command.Args)
 	default:
+		cmdLogger.Warn().Msg("Unsupported command")
 		return "", fmt.Errorf("not support command: %s", command.Name)
 	}
 }
@@ -309,11 +344,8 @@ func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botName string) bool 
 		if mention == nil {
 			continue
 		}
-		if mention.Name != nil {
-			// check if the bot was mentioned
-			if *mention.Name == botName {
-				return true
-			}
+		if mention.Name != nil && *mention.Name == botName {
+			return true
 		}
 	}
 	return false
@@ -326,6 +358,7 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		log.Error().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
@@ -359,6 +392,7 @@ func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		log.Error().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
