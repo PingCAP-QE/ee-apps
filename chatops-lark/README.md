@@ -8,6 +8,7 @@ You can run it by following steps:
   ```yaml
   cherry-pick-invite.audit_webhook: <your_audit_lark_webhook>
   cherry-pick-invite.github_token: <your_github_token>
+  bot_name: <your_bot_name> # for @bot mention in group chat
   ```
 2. Run the lark bot app:
   ```bash
