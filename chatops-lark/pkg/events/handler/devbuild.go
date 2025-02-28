@@ -9,7 +9,8 @@ import (
 const devBuildURL = "https://tibuild.pingcap.net/api/devbuilds"
 
 const (
-	devBuildHelpText = `missing subcommand
+	devBuildHelpText = `
+missing subcommand
 
 Usage: /devbuild <subcommand> [args...]
 
