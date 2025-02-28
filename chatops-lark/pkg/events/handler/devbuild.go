@@ -50,7 +50,8 @@ Options for trigger:
   --productBaseImg string   Product base image
   --builderImg string       Docker image for builder
   --targetImg string        Target image
-  --engine string           Pipeline engine`
+  --engine string           Pipeline engine
+`
 )
 
 func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
