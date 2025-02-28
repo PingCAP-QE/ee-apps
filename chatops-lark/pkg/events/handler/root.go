@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -88,6 +90,8 @@ type rootHandler struct {
 	*lark.Client
 	eventCache *bigcache.BigCache
 	Config     map[string]any
+	botName    string
+	logger     zerolog.Logger
 }
 
 // InformationError represents an information level error that occurred during command execution.
@@ -109,40 +113,71 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
-	h := &rootHandler{Client: respondCli, Config: cfg, eventCache: cache}
+
+	// Get bot name from config with type assertion at startup
+	botName := ""
+	if name, ok := cfg["bot_name"].(string); ok {
+		botName = name
+		log.Info().Str("botName", botName).Msg("Bot initialized successfully")
+	} else {
+		log.Fatal().Msg("bot name not found in config")
+		os.Exit(1)
+	}
+
+	// 添加日志记录支持的命令
+	log.Debug().Strs("supportedCommands", commandList).Msg("Supported commands")
+
+	// 创建基础 logger
+	baseLogger := log.With().Str("component", "rootHandler").Logger()
+
+	h := &rootHandler{
+		Client:     respondCli,
+		Config:     cfg,
+		eventCache: cache,
+		botName:    botName,
+		logger:     baseLogger,
+	}
 	return h.Handle
 }
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	eventID := event.EventV2Base.Header.EventID
 
+	// 添加消息类型和内容的日志
+	msgType := "unknown"
+	if event.Event.Message.ChatType != nil {
+		msgType = *event.Event.Message.ChatType
+	}
+
+	hl := r.logger.With().
+		Str("eventId", eventID).
+		Str("msgType", msgType).
+		Logger()
+
 	// check if the event has been handled.
 	_, err := r.eventCache.Get(eventID)
 	if err == nil {
-		log.Debug().Str("eventId", eventID).Msg("event already handled")
+		hl.Debug().Msg("Event already handled, skipping")
 		return nil
 	} else if err == bigcache.ErrEntryNotFound {
+		hl.Debug().Msg("New event received, processing")
 		r.eventCache.Set(eventID, []byte(eventID))
 	} else {
-		log.Err(err).Msg("unexpected error")
+		hl.Err(err).Msg("Unexpected error accessing event cache")
 		return err
 	}
 
-	hl := log.With().Str("eventId", eventID).Logger()
-
-	// Get bot name from config with type assertion
-	botName := ""
-	if name, ok := r.Config["bot_name"].(string); ok {
-		botName = name
-	}
-
-	command := shouldHandle(event, botName)
+	command := shouldHandle(event, r.botName)
 	if command == nil {
-		hl.Debug().Msg("none command received")
+		hl.Debug().Msg("No command recognized in message")
 		return nil
 	}
 
-	hl.Debug().Str("command", command.Name).Any("args", command.Args).Msg("received command")
+	hl.Info().
+		Str("command", command.Name).
+		Interface("args", command.Args).
+		Msg("Processing command")
+
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
@@ -193,22 +228,38 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
+	// 使用已有的 logger，只添加当前命令的上下文
+	cmdLogger := r.logger.With().
+		Str("command", command.Name).
+		Str("sender", command.Sender.Email).
+		Logger()
+
+	cmdLogger.Debug().Msg("Handling command")
+
 	switch command.Name {
 	case "/devbuild":
+		cmdLogger.Debug().Interface("args", command.Args).Msg("Running devbuild command")
 		runCtx := context.WithValue(ctx, ctxKeyLarkSenderEmail, command.Sender.Email)
 		return runCommandDevbuild(runCtx, command.Args)
 	case "/cherry-pick-invite":
+		cmdLogger.Debug().Interface("args", command.Args).Msg("Running cherry-pick-invite command")
 		runCtx := context.WithValue(ctx, ctxKeyGithubToken, r.Config["cherry-pick-invite.github_token"])
 
 		ret, err := runCommandCherryPickInvite(runCtx, command.Args)
 		if err == nil {
 			auditCtx := context.WithValue(ctx, "audit_webhook", r.Config["cherry-pick-invite.audit_webhook"])
-			_ = r.audit(auditCtx, command)
+			if auditErr := r.audit(auditCtx, command); auditErr != nil {
+				cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
+			} else {
+				cmdLogger.Debug().Msg("Command audited successfully")
+			}
 		}
 		return ret, err
 	case "/create_hotfix_branch":
+		cmdLogger.Debug().Interface("args", command.Args).Msg("Running create_hotfix_branch command")
 		return runCommandHotfixCreateBranch(ctx, command.Args)
 	default:
+		cmdLogger.Warn().Msg("Unsupported command")
 		return "", fmt.Errorf("not support command: %s", command.Name)
 	}
 }
@@ -292,8 +343,17 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msg
 			chatID = *event.Event.Message.ChatId
 		}
 		isMentionBot = checkIfBotMentioned(event, botName)
+
+		log.Debug().
+			Str("msgType", msgType).
+			Str("chatID", chatID).
+			Bool("isMentionBot", isMentionBot).
+			Msg("Determined message is from group chat")
 	} else {
 		msgType = msgTypePrivate
+		log.Debug().
+			Str("msgType", msgType).
+			Msg("Determined message is from private chat")
 	}
 
 	return msgType, chatID, isMentionBot
@@ -301,31 +361,40 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msg
 
 // checkIfBotMentioned checks if the bot was mentioned in the message
 func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botName string) bool {
+	logger := log.With().Str("func", "checkIfBotMentioned").Logger()
+
 	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
+		logger.Debug().Msg("No mentions found in message")
 		return false
 	}
 
 	for _, mention := range event.Event.Message.Mentions {
 		if mention == nil {
+			logger.Debug().Msg("Skipping nil mention")
 			continue
 		}
 		if mention.Name != nil {
 			// check if the bot was mentioned
 			if *mention.Name == botName {
+				logger.Debug().Str("botName", botName).Msg("Bot was mentioned")
 				return true
 			}
 		}
 	}
+	logger.Debug().Str("botName", botName).Msg("Bot was not mentioned")
 	return false
 }
 
 // parseGroupCommand parses commands from group messages
 // Supported format: @bot /command arg1 arg2...
 func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
+	logger := log.With().Str("func", "parseGroupCommand").Logger()
+
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		logger.Debug().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
@@ -335,6 +404,7 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 	matches := re.FindStringSubmatch(content.Text)
 
 	if len(matches) < 3 {
+		logger.Debug().Str("content", content.Text).Msg("No command pattern found in message")
 		return nil
 	}
 
@@ -347,37 +417,53 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 
 	// Check if it's a privileged command
 	if slices.Contains(privilegedCommandList, commandName) {
+		logger.Debug().Str("command", commandName).Msg("Privileged command not allowed")
 		return nil
 	}
 
+	logger.Debug().Str("command", commandName).Interface("args", args).Msg("Group command parsed successfully")
 	return &Command{Name: commandName, Args: args}
 }
 
 // parsePrivateCommand parses commands from private messages
 func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
+	logger := log.With().Str("func", "parsePrivateCommand").Logger()
+
 	messageContent := strings.TrimSpace(*event.Event.Message.Content)
 
 	var content commandLarkMsgContent
 	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
+		logger.Debug().Err(err).Msg("Failed to unmarshal message content")
 		return nil
 	}
 
 	messageParts := strings.Fields(content.Text)
 	if len(messageParts) < 1 || slices.Contains(privilegedCommandList, messageParts[0]) {
+		if len(messageParts) < 1 {
+			logger.Debug().Msg("No command found in message")
+		} else {
+			logger.Debug().Str("command", messageParts[0]).Msg("Privileged command not allowed")
+		}
 		return nil
 	}
 
+	logger.Debug().Str("command", messageParts[0]).Interface("args", messageParts[1:]).Msg("Private command parsed successfully")
 	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }
 
 func shouldHandle(event *larkim.P2MessageReceiveV1, botName string) *Command {
+	logger := log.With().Str("func", "shouldHandle").Logger()
+
 	// Determine message type and whether the bot was mentioned
 	msgType, _, isMentionBot := determineMessageType(event, botName)
 
 	if msgType == msgTypeGroup && isMentionBot {
+		logger.Debug().Msg("Processing group message with bot mention")
 		return parseGroupCommand(event)
 	} else if msgType == msgTypePrivate {
+		logger.Debug().Msg("Processing private message")
 		return parsePrivateCommand(event)
 	}
+	logger.Debug().Str("msgType", msgType).Bool("isMentionBot", isMentionBot).Msg("Message should not be handled")
 	return nil
 }
