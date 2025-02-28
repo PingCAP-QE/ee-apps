@@ -124,10 +124,7 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 		os.Exit(1)
 	}
 
-	// 添加日志记录支持的命令
 	log.Debug().Strs("supportedCommands", commandList).Msg("Supported commands")
-
-	// 创建基础 logger
 	baseLogger := log.With().Str("component", "rootHandler").Logger()
 
 	h := &rootHandler{
@@ -143,7 +140,6 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	eventID := event.EventV2Base.Header.EventID
 
-	// 添加消息类型和内容的日志
 	msgType := "unknown"
 	if event.Event.Message.ChatType != nil {
 		msgType = *event.Event.Message.ChatType
@@ -228,7 +224,6 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 }
 
 func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (string, error) {
-	// 使用已有的 logger，只添加当前命令的上下文
 	cmdLogger := r.logger.With().
 		Str("command", command.Name).
 		Str("sender", command.Sender.Email).
