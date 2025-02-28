@@ -10,7 +10,9 @@ const devBuildURL = "https://tibuild.pingcap.net/api/devbuilds"
 
 func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	if len(args) == 0 {
-		return `Usage: /devbuild <subcommand> [args...]
+		return "", fmt.Errorf(`missing subcommand
+
+Usage: /devbuild <subcommand> [args...]
 
 Subcommands:
   trigger <product> <version> <gitRef> [options]  - Trigger a new dev build
@@ -22,7 +24,7 @@ Examples:
   /devbuild trigger tiflash v6.5.0 master --pushGCR
   /devbuild poll 12345
 
-For more details, use: /devbuild --help`, nil
+For more details, use: /devbuild --help`)
 	}
 
 	subCmd := args[0]
