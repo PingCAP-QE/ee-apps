@@ -1,0 +1,1735 @@
+swagger: "2.0"
+info:
+    title: TiBuild API
+    description: TiBuild API
+    contact:
+        name: Flare Zuo
+        email: wuhui.zuo@pingcap.com
+        url: https://github.com/wuhuizuo
+    version: 2.0.0
+host: localhost:8080
+consumes:
+    - application/json
+    - application/xml
+    - application/gob
+produces:
+    - application/json
+    - application/xml
+    - application/gob
+paths:
+    /api/artifact/sync-image:
+        post:
+            tags:
+                - artifact
+            summary: syncImage artifact
+            description: Sync hotfix image to dockerhub
+            operationId: artifact#syncImage
+            parameters:
+                - name: SyncImageRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/ArtifactSyncImageRequestBody'
+                    required:
+                        - ImageSyncRequest
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/ImageSyncRequest'
+                        required:
+                            - source
+                            - target
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+    /api/devbuilds:
+        get:
+            tags:
+                - devbuild
+            summary: list devbuild
+            description: List devbuild
+            operationId: devbuild#list
+            parameters:
+                - name: size
+                  in: query
+                  description: The size limit of items
+                  required: false
+                  type: integer
+                  default: 10
+                - name: offset
+                  in: query
+                  description: The start position of items
+                  required: false
+                  type: integer
+                  default: 0
+                - name: hotfix
+                  in: query
+                  description: Filter hotfix
+                  required: false
+                  type: boolean
+                - name: createdBy
+                  in: query
+                  description: Filter created by
+                  required: false
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            $ref: '#/definitions/DevBuild'
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+        post:
+            tags:
+                - devbuild
+            summary: create devbuild
+            description: Create and trigger devbuild
+            operationId: devbuild#create
+            parameters:
+                - name: dryrun
+                  in: query
+                  description: Dry run
+                  required: false
+                  type: boolean
+                  default: false
+                - name: CreateRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/DevbuildCreateRequestBody'
+                    required:
+                        - DevBuild
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/DevBuild'
+                        required:
+                            - id
+                            - meta
+                            - spec
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+    /api/devbuilds/{id}:
+        get:
+            tags:
+                - devbuild
+            summary: get devbuild
+            description: Get devbuild
+            operationId: devbuild#get
+            parameters:
+                - name: sync
+                  in: query
+                  description: Whether sync with jenkins
+                  required: false
+                  type: boolean
+                  default: false
+                - name: id
+                  in: path
+                  description: ID of build
+                  required: true
+                  type: integer
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/DevBuild'
+                        required:
+                            - id
+                            - meta
+                            - spec
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+        put:
+            tags:
+                - devbuild
+            summary: update devbuild
+            description: Update devbuild status
+            operationId: devbuild#update
+            parameters:
+                - name: dryrun
+                  in: query
+                  description: Dry run
+                  required: false
+                  type: boolean
+                  default: false
+                - name: id
+                  in: path
+                  description: ID of build
+                  required: true
+                  type: integer
+                - name: UpdateRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/DevbuildUpdateRequestBody'
+                    required:
+                        - DevBuild
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/DevBuild'
+                        required:
+                            - id
+                            - meta
+                            - spec
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+    /api/devbuilds/{id}/rerun:
+        post:
+            tags:
+                - devbuild
+            summary: rerun devbuild
+            description: Rerun devbuild
+            operationId: devbuild#rerun
+            parameters:
+                - name: dryrun
+                  in: query
+                  description: Dry run
+                  required: false
+                  type: boolean
+                  default: false
+                - name: id
+                  in: path
+                  description: ID of build
+                  required: true
+                  type: integer
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/DevBuild'
+                        required:
+                            - id
+                            - meta
+                            - spec
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+definitions:
+    ArtifactSyncImageRequestBody:
+        title: ArtifactSyncImageRequestBody
+        type: object
+        properties:
+            ImageSyncRequest:
+                $ref: '#/definitions/ImageSyncRequest'
+        example:
+            ImageSyncRequest:
+                source: Optio et ut dolorem ullam.
+                target: Vitae fugiat eligendi omnis.
+        required:
+            - ImageSyncRequest
+    BinArtifact:
+        title: BinArtifact
+        type: object
+        properties:
+            component:
+                type: string
+                example: Vero eveniet.
+            ociFile:
+                $ref: '#/definitions/OciFile'
+            platform:
+                type: string
+                example: Sit beatae saepe soluta.
+            sha256OciFile:
+                $ref: '#/definitions/OciFile'
+            sha256URL:
+                type: string
+                example: Omnis ullam blanditiis libero repellat.
+            url:
+                type: string
+                example: Aut quo ex ullam.
+        example:
+            component: Dolores voluptatem harum.
+            ociFile:
+                file: Veniam sint repellendus qui doloribus.
+                repo: Qui ut placeat ipsa animi.
+                tag: Qui eos accusamus nostrum ut est nihil.
+            platform: Nesciunt placeat mollitia est.
+            sha256OciFile:
+                file: Veniam sint repellendus qui doloribus.
+                repo: Qui ut placeat ipsa animi.
+                tag: Qui eos accusamus nostrum ut est nihil.
+            sha256URL: Sed laboriosam vero optio.
+            url: Tempore accusantium odio quibusdam maxime molestias est.
+        required:
+            - component
+            - ociFile
+            - platform
+            - sha256OciFile
+            - sha256URL
+            - url
+    BuildReport:
+        title: BuildReport
+        type: object
+        properties:
+            binaries:
+                type: array
+                items:
+                    $ref: '#/definitions/BinArtifact'
+                example:
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+            gitHash:
+                type: string
+                example: Doloremque nihil sapiente consequuntur consequuntur quam alias.
+            images:
+                type: array
+                items:
+                    $ref: '#/definitions/ImageArtifact'
+                example:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+            pluginGitHash:
+                type: string
+                example: Qui cumque.
+            printedVersion:
+                type: string
+                example: Veritatis voluptas unde maiores perspiciatis aperiam atque.
+        example:
+            binaries:
+                - component: Ipsam assumenda suscipit sint aut aut quia.
+                  ociFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  platform: Velit cum aperiam architecto voluptas.
+                  sha256OciFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                  url: Voluptatum voluptatum qui.
+                - component: Ipsam assumenda suscipit sint aut aut quia.
+                  ociFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  platform: Velit cum aperiam architecto voluptas.
+                  sha256OciFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                  url: Voluptatum voluptatum qui.
+                - component: Ipsam assumenda suscipit sint aut aut quia.
+                  ociFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  platform: Velit cum aperiam architecto voluptas.
+                  sha256OciFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                  url: Voluptatum voluptatum qui.
+                - component: Ipsam assumenda suscipit sint aut aut quia.
+                  ociFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  platform: Velit cum aperiam architecto voluptas.
+                  sha256OciFile:
+                    file: Veniam sint repellendus qui doloribus.
+                    repo: Qui ut placeat ipsa animi.
+                    tag: Qui eos accusamus nostrum ut est nihil.
+                  sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                  url: Voluptatum voluptatum qui.
+            gitHash: Praesentium accusantium neque rerum qui.
+            images:
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+            pluginGitHash: Explicabo libero dolorum est id non explicabo.
+            printedVersion: Quia fuga consectetur.
+        required:
+            - binaries
+            - gitHash
+            - images
+            - pluginGitHash
+            - printedVersion
+    DevBuild:
+        title: DevBuild
+        type: object
+        properties:
+            id:
+                type: integer
+                example: 7062492276524685071
+                format: int64
+            meta:
+                $ref: '#/definitions/DevBuildMeta'
+            spec:
+                $ref: '#/definitions/DevBuildSpec'
+            status:
+                $ref: '#/definitions/DevBuildStatus'
+        example:
+            id: 8216236832156384793
+            meta:
+                createdAt: Maiores itaque voluptatum est.
+                createdBy: Cupiditate enim aut non eum.
+                updatedAt: Voluptatum esse quidem.
+            spec:
+                buildEnv: Nam sed consequatur voluptatum possimus.
+                builderImg: Excepturi libero.
+                edition: community
+                features: Fugit in voluptates.
+                gitHash: Eveniet eaque repellendus omnis consequatur aspernatur.
+                gitRef: Et corrupti ipsum.
+                githubRepo: Eveniet inventore aliquam.
+                isHotfix: true
+                isPushGCR: false
+                pipelineEngine: tekton
+                pluginGitRef: Quibusdam aperiam quia id.
+                product: ticdc
+                productBaseImg: Asperiores nostrum tempore quo quaerat.
+                productDockerfile: Mollitia molestiae nihil odio et beatae.
+                targetImg: Omnis adipisci culpa.
+                version: Aut perferendis nisi non.
+            status:
+                buildReport:
+                    binaries:
+                        - component: Ipsam assumenda suscipit sint aut aut quia.
+                          ociFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          platform: Velit cum aperiam architecto voluptas.
+                          sha256OciFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                          url: Voluptatum voluptatum qui.
+                        - component: Ipsam assumenda suscipit sint aut aut quia.
+                          ociFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          platform: Velit cum aperiam architecto voluptas.
+                          sha256OciFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                          url: Voluptatum voluptatum qui.
+                        - component: Ipsam assumenda suscipit sint aut aut quia.
+                          ociFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          platform: Velit cum aperiam architecto voluptas.
+                          sha256OciFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                          url: Voluptatum voluptatum qui.
+                        - component: Ipsam assumenda suscipit sint aut aut quia.
+                          ociFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          platform: Velit cum aperiam architecto voluptas.
+                          sha256OciFile:
+                            file: Veniam sint repellendus qui doloribus.
+                            repo: Qui ut placeat ipsa animi.
+                            tag: Qui eos accusamus nostrum ut est nihil.
+                          sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                          url: Voluptatum voluptatum qui.
+                    gitHash: Eum sit doloremque et rem vel sunt.
+                    images:
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                    pluginGitHash: Minus itaque qui necessitatibus et voluptatum sint.
+                    printedVersion: Atque dolorem cupiditate aperiam ut.
+                errMsg: Eum animi eligendi inventore totam totam.
+                pipelineBuildID: 1118708605585496372
+                pipelineEndAt: Consectetur ea dolor expedita officia molestiae eos.
+                pipelineStartAt: Accusamus ea quia est et laborum.
+                pipelineViewURL: Est aspernatur et vel dignissimos non corrupti.
+                pipelineViewURLs:
+                    - Quod numquam ea cum enim velit tempora.
+                    - Asperiores id sunt deserunt ut quod ut.
+                    - Adipisci est consequatur quo voluptatem.
+                    - Et et quis.
+                status: ABORTED
+                tektonStatus:
+                    pipelines:
+                        - endAt: Consequuntur autem.
+                          gitHash: Temporibus eos eius voluptatem.
+                          images:
+                            - platform: Ex ipsam eveniet error.
+                              url: Dolorem suscipit ut.
+                            - platform: Ex ipsam eveniet error.
+                              url: Dolorem suscipit ut.
+                          name: Rerum dicta corporis totam harum corporis.
+                          ociArtifacts:
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                          platform: Enim dolorem voluptatem rem beatae.
+                          startAt: Quasi aut doloremque.
+                          status: SUCCESS
+                          url: Odio placeat asperiores dolorum recusandae.
+                        - endAt: Consequuntur autem.
+                          gitHash: Temporibus eos eius voluptatem.
+                          images:
+                            - platform: Ex ipsam eveniet error.
+                              url: Dolorem suscipit ut.
+                            - platform: Ex ipsam eveniet error.
+                              url: Dolorem suscipit ut.
+                          name: Rerum dicta corporis totam harum corporis.
+                          ociArtifacts:
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                            - files:
+                                - Sit provident quod provident.
+                                - Omnis eaque voluptatem ut excepturi aut.
+                              repo: Sed rerum.
+                              tag: Commodi esse temporibus.
+                          platform: Enim dolorem voluptatem rem beatae.
+                          startAt: Quasi aut doloremque.
+                          status: SUCCESS
+                          url: Odio placeat asperiores dolorum recusandae.
+        required:
+            - id
+            - meta
+            - spec
+            - status
+    DevBuildMeta:
+        title: DevBuildMeta
+        type: object
+        properties:
+            createdAt:
+                type: string
+                example: Rerum accusamus in consectetur et.
+            createdBy:
+                type: string
+                example: Necessitatibus et necessitatibus sint.
+            updatedAt:
+                type: string
+                example: Enim minima et vel qui nulla qui.
+        example:
+            createdAt: Maiores aut rerum.
+            createdBy: Similique nesciunt dolorum quisquam qui odio.
+            updatedAt: Praesentium facilis corrupti ullam impedit incidunt.
+        required:
+            - createdAt
+            - createdBy
+            - updatedAt
+    DevBuildSpec:
+        title: DevBuildSpec
+        type: object
+        properties:
+            buildEnv:
+                type: string
+                example: Aut quas pariatur qui.
+            builderImg:
+                type: string
+                example: Harum repellat qui eos est velit.
+            edition:
+                type: string
+                example: community
+                enum:
+                    - enterprise
+                    - community
+            features:
+                type: string
+                example: Ut rerum dolorum aspernatur necessitatibus.
+            gitHash:
+                type: string
+                example: Laborum iste nobis omnis quae.
+            gitRef:
+                type: string
+                example: Assumenda itaque necessitatibus eligendi qui qui illum.
+            githubRepo:
+                type: string
+                example: Aliquam quia eum quia id qui.
+            isHotfix:
+                type: boolean
+                example: false
+            isPushGCR:
+                type: boolean
+                example: false
+            pipelineEngine:
+                type: string
+                example: jenkins
+                enum:
+                    - jenkins
+                    - tekton
+            pluginGitRef:
+                type: string
+                example: Minus aperiam.
+            product:
+                type: string
+                example: pd
+                enum:
+                    - tidb
+                    - enterprise-plugin
+                    - tikv
+                    - pd
+                    - tiflash
+                    - br
+                    - dumpling
+                    - tidb-lightning
+                    - ticdc
+                    - ticdc-newarch
+                    - dm
+                    - tidb-binlog
+                    - tidb-tools
+                    - ng-monitoring
+                    - tidb-dashboard
+                    - drainer
+                    - pump
+                    - ""
+            productBaseImg:
+                type: string
+                example: Eum deleniti natus reprehenderit.
+            productDockerfile:
+                type: string
+                example: Animi hic fugiat et accusamus.
+            targetImg:
+                type: string
+                example: Ipsam voluptatum enim harum dolorum.
+            version:
+                type: string
+                example: Quia illo blanditiis totam in beatae.
+        example:
+            buildEnv: Tempore aut placeat rerum.
+            builderImg: Excepturi ipsa veniam aspernatur quae.
+            edition: enterprise
+            features: Enim aliquam ducimus neque dolores id.
+            gitHash: Impedit corrupti veritatis ut quisquam.
+            gitRef: Temporibus totam quae debitis odio hic.
+            githubRepo: Atque eos consequatur laudantium.
+            isHotfix: true
+            isPushGCR: true
+            pipelineEngine: jenkins
+            pluginGitRef: Odit blanditiis magni eaque quas eos voluptatem.
+            product: tidb-binlog
+            productBaseImg: Necessitatibus optio ipsam autem vel veniam et.
+            productDockerfile: Qui dolores.
+            targetImg: Quia vitae non ratione reiciendis minus sapiente.
+            version: Rerum quasi consequatur repellendus saepe rerum.
+        required:
+            - buildEnv
+            - builderImg
+            - edition
+            - features
+            - gitHash
+            - gitRef
+            - githubRepo
+            - isHotfix
+            - isPushGCR
+            - pipelineEngine
+            - pluginGitRef
+            - product
+            - productBaseImg
+            - productDockerfile
+            - targetImg
+            - version
+    DevBuildStatus:
+        title: DevBuildStatus
+        type: object
+        properties:
+            buildReport:
+                $ref: '#/definitions/BuildReport'
+            errMsg:
+                type: string
+                example: Ut sed corporis molestiae harum.
+            pipelineBuildID:
+                type: integer
+                example: 7140654385537622376
+                format: int64
+            pipelineEndAt:
+                type: string
+                example: Praesentium porro sed dolore velit voluptas.
+            pipelineStartAt:
+                type: string
+                example: Officiis sint quia omnis maxime.
+            pipelineViewURL:
+                type: string
+                example: Voluptas sunt suscipit et odit vel similique.
+            pipelineViewURLs:
+                type: array
+                items:
+                    type: string
+                    example: Iste ducimus voluptas possimus molestias.
+                example:
+                    - Dicta ut dolor.
+                    - Temporibus et cum qui.
+            status:
+                type: string
+                example: ABORTED
+                enum:
+                    - PENDING
+                    - PROCESSING
+                    - ABORTED
+                    - SUCCESS
+                    - FAILURE
+                    - ERROR
+            tektonStatus:
+                $ref: '#/definitions/TektonStatus'
+        example:
+            buildReport:
+                binaries:
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                    - component: Ipsam assumenda suscipit sint aut aut quia.
+                      ociFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      platform: Velit cum aperiam architecto voluptas.
+                      sha256OciFile:
+                        file: Veniam sint repellendus qui doloribus.
+                        repo: Qui ut placeat ipsa animi.
+                        tag: Qui eos accusamus nostrum ut est nihil.
+                      sha256URL: Voluptas rerum facilis fugiat voluptatibus quia tenetur.
+                      url: Voluptatum voluptatum qui.
+                gitHash: Eum sit doloremque et rem vel sunt.
+                images:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                pluginGitHash: Minus itaque qui necessitatibus et voluptatum sint.
+                printedVersion: Atque dolorem cupiditate aperiam ut.
+            errMsg: Magni soluta aut delectus.
+            pipelineBuildID: 2123281476444512204
+            pipelineEndAt: Reiciendis consectetur fuga sit quia.
+            pipelineStartAt: Quos sit.
+            pipelineViewURL: Aut corrupti a.
+            pipelineViewURLs:
+                - In consequuntur praesentium mollitia nam consequuntur.
+                - Perferendis ipsam dolorem vel laboriosam nam.
+                - Alias dolores praesentium quia hic.
+                - Adipisci nostrum blanditiis architecto libero est delectus.
+            status: SUCCESS
+            tektonStatus:
+                pipelines:
+                    - endAt: Consequuntur autem.
+                      gitHash: Temporibus eos eius voluptatem.
+                      images:
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                      name: Rerum dicta corporis totam harum corporis.
+                      ociArtifacts:
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                      platform: Enim dolorem voluptatem rem beatae.
+                      startAt: Quasi aut doloremque.
+                      status: SUCCESS
+                      url: Odio placeat asperiores dolorum recusandae.
+                    - endAt: Consequuntur autem.
+                      gitHash: Temporibus eos eius voluptatem.
+                      images:
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                      name: Rerum dicta corporis totam harum corporis.
+                      ociArtifacts:
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                      platform: Enim dolorem voluptatem rem beatae.
+                      startAt: Quasi aut doloremque.
+                      status: SUCCESS
+                      url: Odio placeat asperiores dolorum recusandae.
+        required:
+            - buildReport
+            - errMsg
+            - pipelineBuildID
+            - pipelineEndAt
+            - pipelineStartAt
+            - pipelineViewURL
+            - pipelineViewURLs
+            - status
+            - tektonStatus
+    DevbuildCreateRequestBody:
+        title: DevbuildCreateRequestBody
+        type: object
+        properties:
+            DevBuild:
+                $ref: '#/definitions/DevBuild'
+        example:
+            DevBuild:
+                id: 899349558497976516
+                meta:
+                    createdAt: Hic repellat magnam est ea et explicabo.
+                    createdBy: Autem porro explicabo quos assumenda et.
+                    updatedAt: Tempore voluptatibus atque et voluptas quibusdam.
+                spec:
+                    buildEnv: Et sit.
+                    builderImg: Voluptas molestiae ut.
+                    edition: enterprise
+                    features: Minima labore enim.
+                    gitHash: Ratione in dolor exercitationem fugit voluptatem quia.
+                    gitRef: Temporibus voluptatem.
+                    githubRepo: Sit omnis.
+                    isHotfix: true
+                    isPushGCR: true
+                    pipelineEngine: tekton
+                    pluginGitRef: Quis similique a ipsum.
+                    product: ticdc-newarch
+                    productBaseImg: Quisquam consequatur porro ipsa aliquam animi.
+                    productDockerfile: Dolorum aut qui.
+                    targetImg: Voluptatum perferendis.
+                    version: Temporibus dolores dignissimos quam.
+                status:
+                    buildReport:
+                        binaries:
+                            - component: Et quia.
+                              ociFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              platform: Voluptates numquam iste quia distinctio sint.
+                              sha256OciFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              sha256URL: Temporibus consequatur possimus sed.
+                              url: Eos et reiciendis iste tempore eum accusamus.
+                            - component: Et quia.
+                              ociFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              platform: Voluptates numquam iste quia distinctio sint.
+                              sha256OciFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              sha256URL: Temporibus consequatur possimus sed.
+                              url: Eos et reiciendis iste tempore eum accusamus.
+                        gitHash: Repellat earum assumenda dicta dolor.
+                        images:
+                            - platform: Delectus eius quia asperiores omnis deleniti.
+                              url: Tempora ea sunt unde.
+                            - platform: Delectus eius quia asperiores omnis deleniti.
+                              url: Tempora ea sunt unde.
+                        pluginGitHash: Odit et necessitatibus commodi suscipit ut rerum.
+                        printedVersion: Sunt nihil quia numquam suscipit corrupti qui.
+                    errMsg: Sint ut blanditiis.
+                    pipelineBuildID: 8077822157223026198
+                    pipelineEndAt: Aperiam natus in ut quae accusantium.
+                    pipelineStartAt: Numquam possimus possimus ipsum rerum unde.
+                    pipelineViewURL: Numquam neque reiciendis quaerat.
+                    pipelineViewURLs:
+                        - Ea est laboriosam esse dicta.
+                        - Quia tempore ut dolores minima.
+                        - Suscipit nihil.
+                    status: ABORTED
+                    tektonStatus:
+                        pipelines:
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+        required:
+            - DevBuild
+    DevbuildUpdateRequestBody:
+        title: DevbuildUpdateRequestBody
+        type: object
+        properties:
+            DevBuild:
+                $ref: '#/definitions/DevBuild'
+        example:
+            DevBuild:
+                id: 899349558497976516
+                meta:
+                    createdAt: Hic repellat magnam est ea et explicabo.
+                    createdBy: Autem porro explicabo quos assumenda et.
+                    updatedAt: Tempore voluptatibus atque et voluptas quibusdam.
+                spec:
+                    buildEnv: Et sit.
+                    builderImg: Voluptas molestiae ut.
+                    edition: enterprise
+                    features: Minima labore enim.
+                    gitHash: Ratione in dolor exercitationem fugit voluptatem quia.
+                    gitRef: Temporibus voluptatem.
+                    githubRepo: Sit omnis.
+                    isHotfix: true
+                    isPushGCR: true
+                    pipelineEngine: tekton
+                    pluginGitRef: Quis similique a ipsum.
+                    product: ticdc-newarch
+                    productBaseImg: Quisquam consequatur porro ipsa aliquam animi.
+                    productDockerfile: Dolorum aut qui.
+                    targetImg: Voluptatum perferendis.
+                    version: Temporibus dolores dignissimos quam.
+                status:
+                    buildReport:
+                        binaries:
+                            - component: Et quia.
+                              ociFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              platform: Voluptates numquam iste quia distinctio sint.
+                              sha256OciFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              sha256URL: Temporibus consequatur possimus sed.
+                              url: Eos et reiciendis iste tempore eum accusamus.
+                            - component: Et quia.
+                              ociFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              platform: Voluptates numquam iste quia distinctio sint.
+                              sha256OciFile:
+                                file: Et totam.
+                                repo: Eligendi ut omnis.
+                                tag: Consequuntur non similique voluptatibus enim vel.
+                              sha256URL: Temporibus consequatur possimus sed.
+                              url: Eos et reiciendis iste tempore eum accusamus.
+                        gitHash: Repellat earum assumenda dicta dolor.
+                        images:
+                            - platform: Delectus eius quia asperiores omnis deleniti.
+                              url: Tempora ea sunt unde.
+                            - platform: Delectus eius quia asperiores omnis deleniti.
+                              url: Tempora ea sunt unde.
+                        pluginGitHash: Odit et necessitatibus commodi suscipit ut rerum.
+                        printedVersion: Sunt nihil quia numquam suscipit corrupti qui.
+                    errMsg: Sint ut blanditiis.
+                    pipelineBuildID: 8077822157223026198
+                    pipelineEndAt: Aperiam natus in ut quae accusantium.
+                    pipelineStartAt: Numquam possimus possimus ipsum rerum unde.
+                    pipelineViewURL: Numquam neque reiciendis quaerat.
+                    pipelineViewURLs:
+                        - Ea est laboriosam esse dicta.
+                        - Quia tempore ut dolores minima.
+                        - Suscipit nihil.
+                    status: ABORTED
+                    tektonStatus:
+                        pipelines:
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+                            - endAt: Doloremque non itaque maiores.
+                              gitHash: Quia reprehenderit fugit.
+                              images:
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                                - platform: Delectus eius quia asperiores omnis deleniti.
+                                  url: Tempora ea sunt unde.
+                              name: Numquam consequuntur qui a voluptatem pariatur aspernatur.
+                              ociArtifacts:
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                                - files:
+                                    - Autem est.
+                                    - Consequatur dolores provident unde non est quo.
+                                    - Illum ex quia est autem est.
+                                  repo: Ratione consequatur quisquam et.
+                                  tag: Aut doloremque culpa.
+                              platform: Quia iure aut rerum velit fugit.
+                              startAt: Et quia.
+                              status: PROCESSING
+                              url: Similique quis.
+        required:
+            - DevBuild
+    HTTPError:
+        title: HTTPError
+        type: object
+        properties:
+            code:
+                type: integer
+                example: 5965041580021254686
+                format: int64
+            message:
+                type: string
+                example: Ut perspiciatis porro libero distinctio.
+        description: Bad Request
+        example:
+            code: 8480208103194062085
+            message: Sed reprehenderit neque velit.
+        required:
+            - code
+            - message
+    ImageArtifact:
+        title: ImageArtifact
+        type: object
+        properties:
+            platform:
+                type: string
+                example: Rerum rem.
+            url:
+                type: string
+                example: Earum libero sunt et.
+        example:
+            platform: Saepe dolores ullam.
+            url: Ut autem quas rerum in.
+        required:
+            - platform
+            - url
+    ImageSyncRequest:
+        title: ImageSyncRequest
+        type: object
+        properties:
+            source:
+                type: string
+                example: Qui voluptates velit ducimus in.
+            target:
+                type: string
+                example: At consequatur doloribus culpa velit et id.
+        example:
+            source: Voluptas hic.
+            target: Ut eum iusto id officiis.
+        required:
+            - source
+            - target
+    OciArtifact:
+        title: OciArtifact
+        type: object
+        properties:
+            files:
+                type: array
+                items:
+                    type: string
+                    example: Facere commodi qui soluta in.
+                example:
+                    - Dolor omnis deleniti.
+                    - Expedita porro molestiae inventore veniam.
+                    - Numquam autem non iure expedita aut.
+                    - Facilis laboriosam omnis sit consequuntur.
+            repo:
+                type: string
+                example: Saepe magnam voluptatem perspiciatis quia occaecati.
+            tag:
+                type: string
+                example: Modi animi ut ab facere.
+        example:
+            files:
+                - Adipisci voluptatum aut id sunt id libero.
+                - Sunt sit rerum qui qui soluta error.
+                - Consequatur cum.
+                - Culpa eos voluptas voluptas unde vero officiis.
+            repo: Non fuga vitae beatae.
+            tag: Ratione ab officiis consequatur nihil minus culpa.
+        required:
+            - files
+            - repo
+            - tag
+    OciFile:
+        title: OciFile
+        type: object
+        properties:
+            file:
+                type: string
+                example: Nulla et saepe ratione est ut.
+            repo:
+                type: string
+                example: Consectetur vitae sapiente nihil earum sint.
+            tag:
+                type: string
+                example: Incidunt id voluptates cumque laudantium molestiae et.
+        example:
+            file: Impedit dicta quos esse et maxime.
+            repo: Nesciunt in et ut quod.
+            tag: Ut sit reiciendis esse architecto.
+        required:
+            - file
+            - repo
+            - tag
+    TektonPipeline:
+        title: TektonPipeline
+        type: object
+        properties:
+            endAt:
+                type: string
+                example: Est molestias ipsum cum laborum enim.
+            gitHash:
+                type: string
+                example: Architecto dolorem quia.
+            images:
+                type: array
+                items:
+                    $ref: '#/definitions/ImageArtifact'
+                example:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+            name:
+                type: string
+                example: Accusamus iusto et omnis quae voluptatem repellat.
+            ociArtifacts:
+                type: array
+                items:
+                    $ref: '#/definitions/OciArtifact'
+                example:
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+            platform:
+                type: string
+                example: Aliquam incidunt.
+            startAt:
+                type: string
+                example: Aliquam odio sed officia cumque.
+            status:
+                type: string
+                example: FAILURE
+                enum:
+                    - PENDING
+                    - PROCESSING
+                    - ABORTED
+                    - SUCCESS
+                    - FAILURE
+                    - ERROR
+            url:
+                type: string
+                example: Repellat amet qui labore maxime.
+        example:
+            endAt: Asperiores provident quos et consectetur.
+            gitHash: Eos quia ad aut veritatis optio omnis.
+            images:
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+                - platform: Ex ipsam eveniet error.
+                  url: Dolorem suscipit ut.
+            name: Impedit quia fugiat quasi.
+            ociArtifacts:
+                - files:
+                    - Sit provident quod provident.
+                    - Omnis eaque voluptatem ut excepturi aut.
+                  repo: Sed rerum.
+                  tag: Commodi esse temporibus.
+                - files:
+                    - Sit provident quod provident.
+                    - Omnis eaque voluptatem ut excepturi aut.
+                  repo: Sed rerum.
+                  tag: Commodi esse temporibus.
+            platform: Consequuntur illum.
+            startAt: Reiciendis est consequatur consequatur sunt.
+            status: ERROR
+            url: Molestias voluptas eveniet aperiam aperiam.
+        required:
+            - endAt
+            - gitHash
+            - images
+            - name
+            - ociArtifacts
+            - platform
+            - startAt
+            - status
+            - url
+    TektonStatus:
+        title: TektonStatus
+        type: object
+        properties:
+            pipelines:
+                type: array
+                items:
+                    $ref: '#/definitions/TektonPipeline'
+                example:
+                    - endAt: Consequuntur autem.
+                      gitHash: Temporibus eos eius voluptatem.
+                      images:
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                      name: Rerum dicta corporis totam harum corporis.
+                      ociArtifacts:
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                      platform: Enim dolorem voluptatem rem beatae.
+                      startAt: Quasi aut doloremque.
+                      status: SUCCESS
+                      url: Odio placeat asperiores dolorum recusandae.
+                    - endAt: Consequuntur autem.
+                      gitHash: Temporibus eos eius voluptatem.
+                      images:
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                        - platform: Ex ipsam eveniet error.
+                          url: Dolorem suscipit ut.
+                      name: Rerum dicta corporis totam harum corporis.
+                      ociArtifacts:
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                        - files:
+                            - Sit provident quod provident.
+                            - Omnis eaque voluptatem ut excepturi aut.
+                          repo: Sed rerum.
+                          tag: Commodi esse temporibus.
+                      platform: Enim dolorem voluptatem rem beatae.
+                      startAt: Quasi aut doloremque.
+                      status: SUCCESS
+                      url: Odio placeat asperiores dolorum recusandae.
+        example:
+            pipelines:
+                - endAt: Consequuntur autem.
+                  gitHash: Temporibus eos eius voluptatem.
+                  images:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                  name: Rerum dicta corporis totam harum corporis.
+                  ociArtifacts:
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                  platform: Enim dolorem voluptatem rem beatae.
+                  startAt: Quasi aut doloremque.
+                  status: SUCCESS
+                  url: Odio placeat asperiores dolorum recusandae.
+                - endAt: Consequuntur autem.
+                  gitHash: Temporibus eos eius voluptatem.
+                  images:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                  name: Rerum dicta corporis totam harum corporis.
+                  ociArtifacts:
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                  platform: Enim dolorem voluptatem rem beatae.
+                  startAt: Quasi aut doloremque.
+                  status: SUCCESS
+                  url: Odio placeat asperiores dolorum recusandae.
+                - endAt: Consequuntur autem.
+                  gitHash: Temporibus eos eius voluptatem.
+                  images:
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                    - platform: Ex ipsam eveniet error.
+                      url: Dolorem suscipit ut.
+                  name: Rerum dicta corporis totam harum corporis.
+                  ociArtifacts:
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                    - files:
+                        - Sit provident quod provident.
+                        - Omnis eaque voluptatem ut excepturi aut.
+                      repo: Sed rerum.
+                      tag: Commodi esse temporibus.
+                  platform: Enim dolorem voluptatem rem beatae.
+                  startAt: Quasi aut doloremque.
+                  status: SUCCESS
+                  url: Odio placeat asperiores dolorum recusandae.
+        required:
+            - pipelines
