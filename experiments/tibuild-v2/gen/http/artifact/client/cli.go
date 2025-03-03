@@ -23,7 +23,7 @@ func BuildSyncImagePayload(artifactSyncImageBody string) (*artifact.SyncImagePay
 	{
 		err = json.Unmarshal([]byte(artifactSyncImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"ImageSyncRequest\": {\n         \"source\": \"Optio et ut dolorem ullam.\",\n         \"target\": \"Vitae fugiat eligendi omnis.\"\n      }\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"ImageSyncRequest\": {\n         \"source\": \"Culpa possimus.\",\n         \"target\": \"Perferendis nisi non quia debitis.\"\n      }\n   }'")
 		}
 		if body.ImageSyncRequest == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("ImageSyncRequest", "body"))

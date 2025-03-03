@@ -62,8 +62,10 @@ type BuildStatus string
 
 // CreatePayload is the payload type of the devbuild service create method.
 type CreatePayload struct {
+	// Creator of build
+	CreatedBy string
 	// Build to create, only spec field is required, others are ignored
-	DevBuild *DevBuild
+	Request *DevBuildRequest
 	// Dry run
 	Dryrun bool
 }
@@ -80,6 +82,24 @@ type DevBuildMeta struct {
 	CreatedAt string
 	CreatedBy string
 	UpdatedAt string
+}
+
+type DevBuildRequest struct {
+	BuildEnv          *string
+	BuilderImg        *string
+	Edition           ProductEdition
+	Features          *string
+	GitRef            string
+	GithubRepo        *string
+	IsHotfix          *bool
+	IsPushGCR         *bool
+	PipelineEngine    *PipelineEngine
+	PluginGitRef      *string
+	Product           Product
+	ProductBaseImg    *string
+	ProductDockerfile *string
+	TargetImg         *string
+	Version           string
 }
 
 type DevBuildSpec struct {

@@ -50,25 +50,37 @@ var _ = Service("devbuild", func() {
 	Error("BadRequest", HTTPError, "Bad Request")
 	Error("InternalServerError", HTTPError, "Internal Server Error")
 	Method("list", func() {
-		Description("List devbuild")
+		Description("List devbuild with pagination support")
 		Payload(func() {
-			Attribute("size", Int, "The size limit of items", func() {
+			Attribute("page", Int, "The page number of items", func() {
+				Default(1)
+			})
+			Attribute("per_page", Int, "The number of items per page", func() {
 				Default(10)
 			})
-			Attribute("offset", Int, "The start position of items", func() {
-				Default(0)
+			Attribute("sort", String, "What to sort results by", func() {
+				Enum("createdAt", "updatedAt")
+				Default("createdAt")
+			})
+			Attribute("direction", String, "The direction of the sort", func() {
+				Enum("asc", "desc")
+				Default("desc")
 			})
 			Attribute("hotfix", Boolean, "Filter hotfix")
 			Attribute("createdBy", String, "Filter created by")
 		})
-		Result(ArrayOf(DevBuild))
+		Result(ArrayOf(DevBuild), "List of dev builds")
 		HTTP(func() {
 			GET("/api/devbuilds")
-			Param("size")
-			Param("offset")
+			Param("page")
+			Param("pageSize")
 			Param("hotfix")
 			Param("createdBy")
-			Response(StatusOK)
+			Response(StatusOK, func() {
+				Header("X-Next-Page", Int, "The next page number")
+				Header("X-Total-Count", Int, "The total number of items")
+				Header("X-Total-Pages", Int, "The total number of pages")
+			})
 			Response("BadRequest", StatusBadRequest)
 		})
 	})
@@ -76,11 +88,14 @@ var _ = Service("devbuild", func() {
 	Method("create", func() {
 		Description("Create and trigger devbuild")
 		Payload(func() {
-			Attribute("DevBuild", DevBuild, "Build to create, only spec field is required, others are ignored")
+			Attribute("createdBy", String, "Creator of build", func() {
+				Format(FormatEmail)
+			})
+			Attribute("request", DevBuildRequest, "Build to create, only spec field is required, others are ignored")
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
-			Required("DevBuild")
+			Required("createdBy", "request")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -162,6 +177,26 @@ var ImageSyncRequest = Type("ImageSyncRequest", func() {
 	Attribute("source", String)
 	Attribute("target", String)
 	Required("source", "target")
+})
+
+var DevBuildRequest = Type("DevBuildRequest", func() {
+	Attribute("buildEnv", String)
+	Attribute("builderImg", String)
+	Attribute("edition", ProductEdition)
+	Attribute("features", String)
+	Attribute("gitRef", String)
+	Attribute("githubRepo", String)
+	Attribute("isHotfix", Boolean)
+	Attribute("isPushGCR", Boolean)
+	Attribute("pipelineEngine", PipelineEngine)
+	Attribute("pluginGitRef", String)
+	Attribute("product", Product)
+	Attribute("productBaseImg", String)
+	Attribute("productDockerfile", String)
+	Attribute("targetImg", String)
+	Attribute("version", String)
+
+	Required("edition", "gitRef", "product", "version")
 })
 
 var DevBuild = Type("DevBuild", func() {

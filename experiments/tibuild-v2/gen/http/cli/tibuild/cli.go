@@ -32,11 +32,11 @@ devbuild (list|create|get|update|rerun)
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
       "ImageSyncRequest": {
-         "source": "Optio et ut dolorem ullam.",
-         "target": "Vitae fugiat eligendi omnis."
+         "source": "Culpa possimus.",
+         "target": "Perferendis nisi non quia debitis."
       }
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --size 7432235772128196253 --offset 7919785405896114011 --hotfix false --created-by "Est nisi saepe enim ut eos."` + "\n" +
+		os.Args[0] + ` devbuild list --size 9048917590767144830 --offset 2393528839850969203 --hotfix false --created-by "Fugiat voluptatibus quia."` + "\n" +
 		""
 }
 
@@ -227,8 +227,8 @@ Sync hotfix image to dockerhub
 Example:
     %[1]s artifact sync-image --body '{
       "ImageSyncRequest": {
-         "source": "Optio et ut dolorem ullam.",
-         "target": "Vitae fugiat eligendi omnis."
+         "source": "Culpa possimus.",
+         "target": "Perferendis nisi non quia debitis."
       }
    }'
 `, os.Args[0])
@@ -261,7 +261,7 @@ List devbuild
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --size 7432235772128196253 --offset 7919785405896114011 --hotfix false --created-by "Est nisi saepe enim ut eos."
+    %[1]s devbuild list --size 9048917590767144830 --offset 2393528839850969203 --hotfix false --created-by "Fugiat voluptatibus quia."
 `, os.Args[0])
 }
 
@@ -274,265 +274,23 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "DevBuild": {
-         "id": 899349558497976516,
-         "meta": {
-            "createdAt": "Hic repellat magnam est ea et explicabo.",
-            "createdBy": "Autem porro explicabo quos assumenda et.",
-            "updatedAt": "Tempore voluptatibus atque et voluptas quibusdam."
-         },
-         "spec": {
-            "buildEnv": "Et sit.",
-            "builderImg": "Voluptas molestiae ut.",
-            "edition": "enterprise",
-            "features": "Minima labore enim.",
-            "gitHash": "Ratione in dolor exercitationem fugit voluptatem quia.",
-            "gitRef": "Temporibus voluptatem.",
-            "githubRepo": "Sit omnis.",
-            "isHotfix": true,
-            "isPushGCR": true,
-            "pipelineEngine": "tekton",
-            "pluginGitRef": "Quis similique a ipsum.",
-            "product": "ticdc-newarch",
-            "productBaseImg": "Quisquam consequatur porro ipsa aliquam animi.",
-            "productDockerfile": "Dolorum aut qui.",
-            "targetImg": "Voluptatum perferendis.",
-            "version": "Temporibus dolores dignissimos quam."
-         },
-         "status": {
-            "buildReport": {
-               "binaries": [
-                  {
-                     "component": "Et quia.",
-                     "ociFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
-                     },
-                     "platform": "Voluptates numquam iste quia distinctio sint.",
-                     "sha256OciFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
-                     },
-                     "sha256URL": "Temporibus consequatur possimus sed.",
-                     "url": "Eos et reiciendis iste tempore eum accusamus."
-                  },
-                  {
-                     "component": "Et quia.",
-                     "ociFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
-                     },
-                     "platform": "Voluptates numquam iste quia distinctio sint.",
-                     "sha256OciFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
-                     },
-                     "sha256URL": "Temporibus consequatur possimus sed.",
-                     "url": "Eos et reiciendis iste tempore eum accusamus."
-                  }
-               ],
-               "gitHash": "Repellat earum assumenda dicta dolor.",
-               "images": [
-                  {
-                     "platform": "Delectus eius quia asperiores omnis deleniti.",
-                     "url": "Tempora ea sunt unde."
-                  },
-                  {
-                     "platform": "Delectus eius quia asperiores omnis deleniti.",
-                     "url": "Tempora ea sunt unde."
-                  }
-               ],
-               "pluginGitHash": "Odit et necessitatibus commodi suscipit ut rerum.",
-               "printedVersion": "Sunt nihil quia numquam suscipit corrupti qui."
-            },
-            "errMsg": "Sint ut blanditiis.",
-            "pipelineBuildID": 8077822157223026198,
-            "pipelineEndAt": "Aperiam natus in ut quae accusantium.",
-            "pipelineStartAt": "Numquam possimus possimus ipsum rerum unde.",
-            "pipelineViewURL": "Numquam neque reiciendis quaerat.",
-            "pipelineViewURLs": [
-               "Ea est laboriosam esse dicta.",
-               "Quia tempore ut dolores minima.",
-               "Suscipit nihil."
-            ],
-            "status": "ABORTED",
-            "tektonStatus": {
-               "pipelines": [
-                  {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
-                     "images": [
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        }
-                     ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        }
-                     ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
-                     "status": "PROCESSING",
-                     "url": "Similique quis."
-                  },
-                  {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
-                     "images": [
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        }
-                     ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        }
-                     ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
-                     "status": "PROCESSING",
-                     "url": "Similique quis."
-                  },
-                  {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
-                     "images": [
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        },
-                        {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
-                        }
-                     ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        },
-                        {
-                           "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
-                           ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
-                        }
-                     ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
-                     "status": "PROCESSING",
-                     "url": "Similique quis."
-                  }
-               ]
-            }
-         }
+      "createdBy": "mortimer@herzogfranecki.biz",
+      "request": {
+         "buildEnv": "Sunt nihil quia numquam suscipit corrupti qui.",
+         "builderImg": "Sint ut blanditiis.",
+         "edition": "enterprise",
+         "features": "Aperiam natus in ut quae accusantium.",
+         "gitRef": "Numquam possimus possimus ipsum rerum unde.",
+         "githubRepo": "Numquam neque reiciendis quaerat.",
+         "isHotfix": true,
+         "isPushGCR": true,
+         "pipelineEngine": "tekton",
+         "pluginGitRef": "Laboriosam esse dicta.",
+         "product": "tidb",
+         "productBaseImg": "Tempore ut dolores.",
+         "productDockerfile": "Iusto suscipit.",
+         "targetImg": "Et aut error doloremque non itaque.",
+         "version": "Voluptas quia reprehenderit fugit quo debitis numquam."
       }
    }' --dryrun true
 `, os.Args[0])
@@ -546,7 +304,7 @@ Get devbuild
     -sync BOOL: 
 
 Example:
-    %[1]s devbuild get --id 1 --sync true
+    %[1]s devbuild get --id 1 --sync false
 `, os.Args[0])
 }
 
@@ -561,260 +319,276 @@ Update devbuild status
 Example:
     %[1]s devbuild update --body '{
       "DevBuild": {
-         "id": 899349558497976516,
+         "id": 8670468037696883245,
          "meta": {
-            "createdAt": "Hic repellat magnam est ea et explicabo.",
-            "createdBy": "Autem porro explicabo quos assumenda et.",
-            "updatedAt": "Tempore voluptatibus atque et voluptas quibusdam."
+            "createdAt": "Nihil soluta aut adipisci est.",
+            "createdBy": "Qui necessitatibus possimus ab quos facere.",
+            "updatedAt": "Repudiandae voluptatem rem earum aut at nulla."
          },
          "spec": {
-            "buildEnv": "Et sit.",
-            "builderImg": "Voluptas molestiae ut.",
-            "edition": "enterprise",
-            "features": "Minima labore enim.",
-            "gitHash": "Ratione in dolor exercitationem fugit voluptatem quia.",
-            "gitRef": "Temporibus voluptatem.",
-            "githubRepo": "Sit omnis.",
-            "isHotfix": true,
+            "buildEnv": "Natus totam esse maxime aliquid sunt.",
+            "builderImg": "At illo voluptas dolor.",
+            "edition": "community",
+            "features": "Beatae sunt nesciunt amet autem.",
+            "gitHash": "Sit accusamus aspernatur aut laboriosam.",
+            "gitRef": "Perspiciatis perspiciatis atque inventore id.",
+            "githubRepo": "Ut libero magnam sapiente dolores qui.",
+            "isHotfix": false,
             "isPushGCR": true,
-            "pipelineEngine": "tekton",
-            "pluginGitRef": "Quis similique a ipsum.",
-            "product": "ticdc-newarch",
-            "productBaseImg": "Quisquam consequatur porro ipsa aliquam animi.",
-            "productDockerfile": "Dolorum aut qui.",
-            "targetImg": "Voluptatum perferendis.",
-            "version": "Temporibus dolores dignissimos quam."
+            "pipelineEngine": "jenkins",
+            "pluginGitRef": "Deleniti at consequatur doloribus culpa velit et.",
+            "product": "pd",
+            "productBaseImg": "Voluptas hic.",
+            "productDockerfile": "Ut eum iusto id officiis.",
+            "targetImg": "Laboriosam ut perspiciatis porro.",
+            "version": "Distinctio aliquid eum."
          },
          "status": {
             "buildReport": {
                "binaries": [
                   {
-                     "component": "Et quia.",
+                     "component": "Neque velit maiores culpa rerum accusamus.",
                      "ociFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
+                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
+                        "repo": "Enim minima et vel qui nulla qui.",
+                        "tag": "Maiores aut rerum."
                      },
-                     "platform": "Voluptates numquam iste quia distinctio sint.",
+                     "platform": "Similique nesciunt dolorum quisquam qui odio.",
                      "sha256OciFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
+                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
+                        "repo": "Enim minima et vel qui nulla qui.",
+                        "tag": "Maiores aut rerum."
                      },
-                     "sha256URL": "Temporibus consequatur possimus sed.",
-                     "url": "Eos et reiciendis iste tempore eum accusamus."
+                     "sha256URL": "Praesentium facilis corrupti ullam impedit incidunt.",
+                     "url": "Aut quas pariatur qui."
                   },
                   {
-                     "component": "Et quia.",
+                     "component": "Neque velit maiores culpa rerum accusamus.",
                      "ociFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
+                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
+                        "repo": "Enim minima et vel qui nulla qui.",
+                        "tag": "Maiores aut rerum."
                      },
-                     "platform": "Voluptates numquam iste quia distinctio sint.",
+                     "platform": "Similique nesciunt dolorum quisquam qui odio.",
                      "sha256OciFile": {
-                        "file": "Et totam.",
-                        "repo": "Eligendi ut omnis.",
-                        "tag": "Consequuntur non similique voluptatibus enim vel."
+                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
+                        "repo": "Enim minima et vel qui nulla qui.",
+                        "tag": "Maiores aut rerum."
                      },
-                     "sha256URL": "Temporibus consequatur possimus sed.",
-                     "url": "Eos et reiciendis iste tempore eum accusamus."
+                     "sha256URL": "Praesentium facilis corrupti ullam impedit incidunt.",
+                     "url": "Aut quas pariatur qui."
                   }
                ],
-               "gitHash": "Repellat earum assumenda dicta dolor.",
+               "gitHash": "Harum repellat qui eos est velit.",
                "images": [
                   {
-                     "platform": "Delectus eius quia asperiores omnis deleniti.",
-                     "url": "Tempora ea sunt unde."
+                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                     "url": "Laborum iste nobis omnis quae."
                   },
                   {
-                     "platform": "Delectus eius quia asperiores omnis deleniti.",
-                     "url": "Tempora ea sunt unde."
+                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                     "url": "Laborum iste nobis omnis quae."
+                  },
+                  {
+                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                     "url": "Laborum iste nobis omnis quae."
+                  },
+                  {
+                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                     "url": "Laborum iste nobis omnis quae."
                   }
                ],
-               "pluginGitHash": "Odit et necessitatibus commodi suscipit ut rerum.",
-               "printedVersion": "Sunt nihil quia numquam suscipit corrupti qui."
+               "pluginGitHash": "Assumenda itaque necessitatibus eligendi qui qui illum.",
+               "printedVersion": "Aliquam quia eum quia id qui."
             },
-            "errMsg": "Sint ut blanditiis.",
-            "pipelineBuildID": 8077822157223026198,
-            "pipelineEndAt": "Aperiam natus in ut quae accusantium.",
-            "pipelineStartAt": "Numquam possimus possimus ipsum rerum unde.",
-            "pipelineViewURL": "Numquam neque reiciendis quaerat.",
+            "errMsg": "Fugiat sint aut minus aperiam quod.",
+            "pipelineBuildID": 6941289464511149,
+            "pipelineEndAt": "Deleniti natus reprehenderit nihil animi hic fugiat.",
+            "pipelineStartAt": "Accusamus velit ipsam.",
+            "pipelineViewURL": "Enim harum dolorum.",
             "pipelineViewURLs": [
-               "Ea est laboriosam esse dicta.",
-               "Quia tempore ut dolores minima.",
-               "Suscipit nihil."
+               "Illo blanditiis totam in.",
+               "Dignissimos tempore aut."
             ],
-            "status": "ABORTED",
+            "status": "PENDING",
             "tektonStatus": {
                "pipelines": [
                   {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
+                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
+                     "gitHash": "Voluptatem enim aliquam.",
                      "images": [
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         }
                      ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
+                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
                      "ociArtifacts": [
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         }
                      ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
+                     "platform": "Quis quia vitae non ratione.",
+                     "startAt": "Minus sapiente doloremque rerum quasi.",
                      "status": "PROCESSING",
-                     "url": "Similique quis."
+                     "url": "Saepe rerum tenetur vero eveniet."
                   },
                   {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
+                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
+                     "gitHash": "Voluptatem enim aliquam.",
                      "images": [
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         }
                      ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
+                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
                      "ociArtifacts": [
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         }
                      ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
+                     "platform": "Quis quia vitae non ratione.",
+                     "startAt": "Minus sapiente doloremque rerum quasi.",
                      "status": "PROCESSING",
-                     "url": "Similique quis."
+                     "url": "Saepe rerum tenetur vero eveniet."
                   },
                   {
-                     "endAt": "Doloremque non itaque maiores.",
-                     "gitHash": "Quia reprehenderit fugit.",
+                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
+                     "gitHash": "Voluptatem enim aliquam.",
                      "images": [
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         },
                         {
-                           "platform": "Delectus eius quia asperiores omnis deleniti.",
-                           "url": "Tempora ea sunt unde."
+                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
+                           "url": "Laborum iste nobis omnis quae."
                         }
                      ],
-                     "name": "Numquam consequuntur qui a voluptatem pariatur aspernatur.",
+                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
                      "ociArtifacts": [
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         },
                         {
                            "files": [
-                              "Autem est.",
-                              "Consequatur dolores provident unde non est quo.",
-                              "Illum ex quia est autem est."
+                              "Temporibus totam quae debitis odio hic.",
+                              "Atque eos consequatur laudantium.",
+                              "Vitae iste.",
+                              "Odit blanditiis magni eaque quas eos voluptatem."
                            ],
-                           "repo": "Ratione consequatur quisquam et.",
-                           "tag": "Aut doloremque culpa."
+                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
+                           "tag": "Provident qui."
                         }
                      ],
-                     "platform": "Quia iure aut rerum velit fugit.",
-                     "startAt": "Et quia.",
+                     "platform": "Quis quia vitae non ratione.",
+                     "startAt": "Minus sapiente doloremque rerum quasi.",
                      "status": "PROCESSING",
-                     "url": "Similique quis."
+                     "url": "Saepe rerum tenetur vero eveniet."
                   }
                ]
             }
@@ -832,6 +606,6 @@ Rerun devbuild
     -dryrun BOOL: 
 
 Example:
-    %[1]s devbuild rerun --id 1 --dryrun false
+    %[1]s devbuild rerun --id 1 --dryrun true
 `, os.Args[0])
 }

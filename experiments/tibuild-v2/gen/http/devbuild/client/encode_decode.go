@@ -746,6 +746,231 @@ func unmarshalOciArtifactResponseToDevbuildOciArtifact(v *OciArtifactResponse) *
 	return res
 }
 
+// marshalDevbuildDevBuildRequestToDevBuildRequestRequestBody builds a value of
+// type *DevBuildRequestRequestBody from a value of type
+// *devbuild.DevBuildRequest.
+func marshalDevbuildDevBuildRequestToDevBuildRequestRequestBody(v *devbuild.DevBuildRequest) *DevBuildRequestRequestBody {
+	res := &DevBuildRequestRequestBody{
+		BuildEnv:          v.BuildEnv,
+		BuilderImg:        v.BuilderImg,
+		Edition:           string(v.Edition),
+		Features:          v.Features,
+		GitRef:            v.GitRef,
+		GithubRepo:        v.GithubRepo,
+		IsHotfix:          v.IsHotfix,
+		IsPushGCR:         v.IsPushGCR,
+		PluginGitRef:      v.PluginGitRef,
+		Product:           string(v.Product),
+		ProductBaseImg:    v.ProductBaseImg,
+		ProductDockerfile: v.ProductDockerfile,
+		TargetImg:         v.TargetImg,
+		Version:           v.Version,
+	}
+	if v.PipelineEngine != nil {
+		pipelineEngine := string(*v.PipelineEngine)
+		res.PipelineEngine = &pipelineEngine
+	}
+
+	return res
+}
+
+// marshalDevBuildRequestRequestBodyToDevbuildDevBuildRequest builds a value of
+// type *devbuild.DevBuildRequest from a value of type
+// *DevBuildRequestRequestBody.
+func marshalDevBuildRequestRequestBodyToDevbuildDevBuildRequest(v *DevBuildRequestRequestBody) *devbuild.DevBuildRequest {
+	res := &devbuild.DevBuildRequest{
+		BuildEnv:          v.BuildEnv,
+		BuilderImg:        v.BuilderImg,
+		Edition:           devbuild.ProductEdition(v.Edition),
+		Features:          v.Features,
+		GitRef:            v.GitRef,
+		GithubRepo:        v.GithubRepo,
+		IsHotfix:          v.IsHotfix,
+		IsPushGCR:         v.IsPushGCR,
+		PluginGitRef:      v.PluginGitRef,
+		Product:           devbuild.Product(v.Product),
+		ProductBaseImg:    v.ProductBaseImg,
+		ProductDockerfile: v.ProductDockerfile,
+		TargetImg:         v.TargetImg,
+		Version:           v.Version,
+	}
+	if v.PipelineEngine != nil {
+		pipelineEngine := devbuild.PipelineEngine(*v.PipelineEngine)
+		res.PipelineEngine = &pipelineEngine
+	}
+
+	return res
+}
+
+// unmarshalDevBuildMetaResponseBodyToDevbuildDevBuildMeta builds a value of
+// type *devbuild.DevBuildMeta from a value of type *DevBuildMetaResponseBody.
+func unmarshalDevBuildMetaResponseBodyToDevbuildDevBuildMeta(v *DevBuildMetaResponseBody) *devbuild.DevBuildMeta {
+	res := &devbuild.DevBuildMeta{
+		CreatedAt: *v.CreatedAt,
+		CreatedBy: *v.CreatedBy,
+		UpdatedAt: *v.UpdatedAt,
+	}
+
+	return res
+}
+
+// unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec builds a value of
+// type *devbuild.DevBuildSpec from a value of type *DevBuildSpecResponseBody.
+func unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(v *DevBuildSpecResponseBody) *devbuild.DevBuildSpec {
+	res := &devbuild.DevBuildSpec{
+		BuildEnv:          *v.BuildEnv,
+		BuilderImg:        *v.BuilderImg,
+		Edition:           devbuild.ProductEdition(*v.Edition),
+		Features:          *v.Features,
+		GitHash:           *v.GitHash,
+		GitRef:            *v.GitRef,
+		GithubRepo:        *v.GithubRepo,
+		IsHotfix:          *v.IsHotfix,
+		IsPushGCR:         *v.IsPushGCR,
+		PipelineEngine:    devbuild.PipelineEngine(*v.PipelineEngine),
+		PluginGitRef:      *v.PluginGitRef,
+		Product:           devbuild.Product(*v.Product),
+		ProductBaseImg:    *v.ProductBaseImg,
+		ProductDockerfile: *v.ProductDockerfile,
+		TargetImg:         *v.TargetImg,
+		Version:           *v.Version,
+	}
+
+	return res
+}
+
+// unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus builds a value
+// of type *devbuild.DevBuildStatus from a value of type
+// *DevBuildStatusResponseBody.
+func unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus(v *DevBuildStatusResponseBody) *devbuild.DevBuildStatus {
+	res := &devbuild.DevBuildStatus{
+		ErrMsg:          *v.ErrMsg,
+		PipelineBuildID: *v.PipelineBuildID,
+		PipelineEndAt:   *v.PipelineEndAt,
+		PipelineStartAt: *v.PipelineStartAt,
+		PipelineViewURL: *v.PipelineViewURL,
+		Status:          devbuild.BuildStatus(*v.Status),
+	}
+	res.BuildReport = unmarshalBuildReportResponseBodyToDevbuildBuildReport(v.BuildReport)
+	res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
+	for i, val := range v.PipelineViewURLs {
+		res.PipelineViewURLs[i] = val
+	}
+	res.TektonStatus = unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v.TektonStatus)
+
+	return res
+}
+
+// unmarshalBuildReportResponseBodyToDevbuildBuildReport builds a value of type
+// *devbuild.BuildReport from a value of type *BuildReportResponseBody.
+func unmarshalBuildReportResponseBodyToDevbuildBuildReport(v *BuildReportResponseBody) *devbuild.BuildReport {
+	res := &devbuild.BuildReport{
+		GitHash:        *v.GitHash,
+		PluginGitHash:  *v.PluginGitHash,
+		PrintedVersion: *v.PrintedVersion,
+	}
+	res.Binaries = make([]*devbuild.BinArtifact, len(v.Binaries))
+	for i, val := range v.Binaries {
+		res.Binaries[i] = unmarshalBinArtifactResponseBodyToDevbuildBinArtifact(val)
+	}
+	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
+	for i, val := range v.Images {
+		res.Images[i] = unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(val)
+	}
+
+	return res
+}
+
+// unmarshalBinArtifactResponseBodyToDevbuildBinArtifact builds a value of type
+// *devbuild.BinArtifact from a value of type *BinArtifactResponseBody.
+func unmarshalBinArtifactResponseBodyToDevbuildBinArtifact(v *BinArtifactResponseBody) *devbuild.BinArtifact {
+	res := &devbuild.BinArtifact{
+		Component: *v.Component,
+		Platform:  *v.Platform,
+		Sha256URL: *v.Sha256URL,
+		URL:       *v.URL,
+	}
+	res.OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.OciFile)
+	res.Sha256OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.Sha256OciFile)
+
+	return res
+}
+
+// unmarshalOciFileResponseBodyToDevbuildOciFile builds a value of type
+// *devbuild.OciFile from a value of type *OciFileResponseBody.
+func unmarshalOciFileResponseBodyToDevbuildOciFile(v *OciFileResponseBody) *devbuild.OciFile {
+	res := &devbuild.OciFile{
+		File: *v.File,
+		Repo: *v.Repo,
+		Tag:  *v.Tag,
+	}
+
+	return res
+}
+
+// unmarshalImageArtifactResponseBodyToDevbuildImageArtifact builds a value of
+// type *devbuild.ImageArtifact from a value of type *ImageArtifactResponseBody.
+func unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(v *ImageArtifactResponseBody) *devbuild.ImageArtifact {
+	res := &devbuild.ImageArtifact{
+		Platform: *v.Platform,
+		URL:      *v.URL,
+	}
+
+	return res
+}
+
+// unmarshalTektonStatusResponseBodyToDevbuildTektonStatus builds a value of
+// type *devbuild.TektonStatus from a value of type *TektonStatusResponseBody.
+func unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v *TektonStatusResponseBody) *devbuild.TektonStatus {
+	res := &devbuild.TektonStatus{}
+	res.Pipelines = make([]*devbuild.TektonPipeline, len(v.Pipelines))
+	for i, val := range v.Pipelines {
+		res.Pipelines[i] = unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(val)
+	}
+
+	return res
+}
+
+// unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline builds a value
+// of type *devbuild.TektonPipeline from a value of type
+// *TektonPipelineResponseBody.
+func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipelineResponseBody) *devbuild.TektonPipeline {
+	res := &devbuild.TektonPipeline{
+		EndAt:    *v.EndAt,
+		GitHash:  *v.GitHash,
+		Name:     *v.Name,
+		Platform: *v.Platform,
+		StartAt:  *v.StartAt,
+		Status:   devbuild.BuildStatus(*v.Status),
+		URL:      *v.URL,
+	}
+	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
+	for i, val := range v.Images {
+		res.Images[i] = unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(val)
+	}
+	res.OciArtifacts = make([]*devbuild.OciArtifact, len(v.OciArtifacts))
+	for i, val := range v.OciArtifacts {
+		res.OciArtifacts[i] = unmarshalOciArtifactResponseBodyToDevbuildOciArtifact(val)
+	}
+
+	return res
+}
+
+// unmarshalOciArtifactResponseBodyToDevbuildOciArtifact builds a value of type
+// *devbuild.OciArtifact from a value of type *OciArtifactResponseBody.
+func unmarshalOciArtifactResponseBodyToDevbuildOciArtifact(v *OciArtifactResponseBody) *devbuild.OciArtifact {
+	res := &devbuild.OciArtifact{
+		Repo: *v.Repo,
+		Tag:  *v.Tag,
+	}
+	res.Files = make([]string, len(v.Files))
+	for i, val := range v.Files {
+		res.Files[i] = val
+	}
+
+	return res
+}
+
 // marshalDevbuildDevBuildToDevBuildRequestBody builds a value of type
 // *DevBuildRequestBody from a value of type *devbuild.DevBuild.
 func marshalDevbuildDevBuildToDevBuildRequestBody(v *devbuild.DevBuild) *DevBuildRequestBody {
@@ -1189,175 +1414,6 @@ func marshalOciArtifactRequestBodyToDevbuildOciArtifact(v *OciArtifactRequestBod
 		}
 	} else {
 		res.Files = []string{}
-	}
-
-	return res
-}
-
-// unmarshalDevBuildMetaResponseBodyToDevbuildDevBuildMeta builds a value of
-// type *devbuild.DevBuildMeta from a value of type *DevBuildMetaResponseBody.
-func unmarshalDevBuildMetaResponseBodyToDevbuildDevBuildMeta(v *DevBuildMetaResponseBody) *devbuild.DevBuildMeta {
-	res := &devbuild.DevBuildMeta{
-		CreatedAt: *v.CreatedAt,
-		CreatedBy: *v.CreatedBy,
-		UpdatedAt: *v.UpdatedAt,
-	}
-
-	return res
-}
-
-// unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec builds a value of
-// type *devbuild.DevBuildSpec from a value of type *DevBuildSpecResponseBody.
-func unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(v *DevBuildSpecResponseBody) *devbuild.DevBuildSpec {
-	res := &devbuild.DevBuildSpec{
-		BuildEnv:          *v.BuildEnv,
-		BuilderImg:        *v.BuilderImg,
-		Edition:           devbuild.ProductEdition(*v.Edition),
-		Features:          *v.Features,
-		GitHash:           *v.GitHash,
-		GitRef:            *v.GitRef,
-		GithubRepo:        *v.GithubRepo,
-		IsHotfix:          *v.IsHotfix,
-		IsPushGCR:         *v.IsPushGCR,
-		PipelineEngine:    devbuild.PipelineEngine(*v.PipelineEngine),
-		PluginGitRef:      *v.PluginGitRef,
-		Product:           devbuild.Product(*v.Product),
-		ProductBaseImg:    *v.ProductBaseImg,
-		ProductDockerfile: *v.ProductDockerfile,
-		TargetImg:         *v.TargetImg,
-		Version:           *v.Version,
-	}
-
-	return res
-}
-
-// unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus builds a value
-// of type *devbuild.DevBuildStatus from a value of type
-// *DevBuildStatusResponseBody.
-func unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus(v *DevBuildStatusResponseBody) *devbuild.DevBuildStatus {
-	res := &devbuild.DevBuildStatus{
-		ErrMsg:          *v.ErrMsg,
-		PipelineBuildID: *v.PipelineBuildID,
-		PipelineEndAt:   *v.PipelineEndAt,
-		PipelineStartAt: *v.PipelineStartAt,
-		PipelineViewURL: *v.PipelineViewURL,
-		Status:          devbuild.BuildStatus(*v.Status),
-	}
-	res.BuildReport = unmarshalBuildReportResponseBodyToDevbuildBuildReport(v.BuildReport)
-	res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
-	for i, val := range v.PipelineViewURLs {
-		res.PipelineViewURLs[i] = val
-	}
-	res.TektonStatus = unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v.TektonStatus)
-
-	return res
-}
-
-// unmarshalBuildReportResponseBodyToDevbuildBuildReport builds a value of type
-// *devbuild.BuildReport from a value of type *BuildReportResponseBody.
-func unmarshalBuildReportResponseBodyToDevbuildBuildReport(v *BuildReportResponseBody) *devbuild.BuildReport {
-	res := &devbuild.BuildReport{
-		GitHash:        *v.GitHash,
-		PluginGitHash:  *v.PluginGitHash,
-		PrintedVersion: *v.PrintedVersion,
-	}
-	res.Binaries = make([]*devbuild.BinArtifact, len(v.Binaries))
-	for i, val := range v.Binaries {
-		res.Binaries[i] = unmarshalBinArtifactResponseBodyToDevbuildBinArtifact(val)
-	}
-	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
-	for i, val := range v.Images {
-		res.Images[i] = unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(val)
-	}
-
-	return res
-}
-
-// unmarshalBinArtifactResponseBodyToDevbuildBinArtifact builds a value of type
-// *devbuild.BinArtifact from a value of type *BinArtifactResponseBody.
-func unmarshalBinArtifactResponseBodyToDevbuildBinArtifact(v *BinArtifactResponseBody) *devbuild.BinArtifact {
-	res := &devbuild.BinArtifact{
-		Component: *v.Component,
-		Platform:  *v.Platform,
-		Sha256URL: *v.Sha256URL,
-		URL:       *v.URL,
-	}
-	res.OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.OciFile)
-	res.Sha256OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.Sha256OciFile)
-
-	return res
-}
-
-// unmarshalOciFileResponseBodyToDevbuildOciFile builds a value of type
-// *devbuild.OciFile from a value of type *OciFileResponseBody.
-func unmarshalOciFileResponseBodyToDevbuildOciFile(v *OciFileResponseBody) *devbuild.OciFile {
-	res := &devbuild.OciFile{
-		File: *v.File,
-		Repo: *v.Repo,
-		Tag:  *v.Tag,
-	}
-
-	return res
-}
-
-// unmarshalImageArtifactResponseBodyToDevbuildImageArtifact builds a value of
-// type *devbuild.ImageArtifact from a value of type *ImageArtifactResponseBody.
-func unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(v *ImageArtifactResponseBody) *devbuild.ImageArtifact {
-	res := &devbuild.ImageArtifact{
-		Platform: *v.Platform,
-		URL:      *v.URL,
-	}
-
-	return res
-}
-
-// unmarshalTektonStatusResponseBodyToDevbuildTektonStatus builds a value of
-// type *devbuild.TektonStatus from a value of type *TektonStatusResponseBody.
-func unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v *TektonStatusResponseBody) *devbuild.TektonStatus {
-	res := &devbuild.TektonStatus{}
-	res.Pipelines = make([]*devbuild.TektonPipeline, len(v.Pipelines))
-	for i, val := range v.Pipelines {
-		res.Pipelines[i] = unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(val)
-	}
-
-	return res
-}
-
-// unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline builds a value
-// of type *devbuild.TektonPipeline from a value of type
-// *TektonPipelineResponseBody.
-func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipelineResponseBody) *devbuild.TektonPipeline {
-	res := &devbuild.TektonPipeline{
-		EndAt:    *v.EndAt,
-		GitHash:  *v.GitHash,
-		Name:     *v.Name,
-		Platform: *v.Platform,
-		StartAt:  *v.StartAt,
-		Status:   devbuild.BuildStatus(*v.Status),
-		URL:      *v.URL,
-	}
-	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
-	for i, val := range v.Images {
-		res.Images[i] = unmarshalImageArtifactResponseBodyToDevbuildImageArtifact(val)
-	}
-	res.OciArtifacts = make([]*devbuild.OciArtifact, len(v.OciArtifacts))
-	for i, val := range v.OciArtifacts {
-		res.OciArtifacts[i] = unmarshalOciArtifactResponseBodyToDevbuildOciArtifact(val)
-	}
-
-	return res
-}
-
-// unmarshalOciArtifactResponseBodyToDevbuildOciArtifact builds a value of type
-// *devbuild.OciArtifact from a value of type *OciArtifactResponseBody.
-func unmarshalOciArtifactResponseBodyToDevbuildOciArtifact(v *OciArtifactResponseBody) *devbuild.OciArtifact {
-	res := &devbuild.OciArtifact{
-		Repo: *v.Repo,
-		Tag:  *v.Tag,
-	}
-	res.Files = make([]string, len(v.Files))
-	for i, val := range v.Files {
-		res.Files[i] = val
 	}
 
 	return res

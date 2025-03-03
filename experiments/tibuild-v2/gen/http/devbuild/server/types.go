@@ -15,8 +15,10 @@ import (
 // CreateRequestBody is the type of the "devbuild" service "create" endpoint
 // HTTP request body.
 type CreateRequestBody struct {
+	// Creator of build
+	CreatedBy *string `form:"createdBy,omitempty" json:"createdBy,omitempty" xml:"createdBy,omitempty"`
 	// Build to create, only spec field is required, others are ignored
-	DevBuild *DevBuildRequestBody `form:"DevBuild,omitempty" json:"DevBuild,omitempty" xml:"DevBuild,omitempty"`
+	Request *DevBuildRequestRequestBody `form:"request,omitempty" json:"request,omitempty" xml:"request,omitempty"`
 }
 
 // UpdateRequestBody is the type of the "devbuild" service "update" endpoint
@@ -331,6 +333,25 @@ type OciArtifactResponseBody struct {
 	Tag   string   `form:"tag" json:"tag" xml:"tag"`
 }
 
+// DevBuildRequestRequestBody is used to define fields on request body types.
+type DevBuildRequestRequestBody struct {
+	BuildEnv          *string `form:"buildEnv,omitempty" json:"buildEnv,omitempty" xml:"buildEnv,omitempty"`
+	BuilderImg        *string `form:"builderImg,omitempty" json:"builderImg,omitempty" xml:"builderImg,omitempty"`
+	Edition           *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
+	GitRef            *string `form:"gitRef,omitempty" json:"gitRef,omitempty" xml:"gitRef,omitempty"`
+	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
+	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
+	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
+	PipelineEngine    *string `form:"pipelineEngine,omitempty" json:"pipelineEngine,omitempty" xml:"pipelineEngine,omitempty"`
+	PluginGitRef      *string `form:"pluginGitRef,omitempty" json:"pluginGitRef,omitempty" xml:"pluginGitRef,omitempty"`
+	Product           *string `form:"product,omitempty" json:"product,omitempty" xml:"product,omitempty"`
+	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
+	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
+	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
+	Version           *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+}
+
 // DevBuildRequestBody is used to define fields on request body types.
 type DevBuildRequestBody struct {
 	ID     *int                       `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
@@ -621,8 +642,10 @@ func NewListPayload(size int, offset int, hotfix *bool, createdBy *string) *devb
 
 // NewCreatePayload builds a devbuild service create endpoint payload.
 func NewCreatePayload(body *CreateRequestBody, dryrun bool) *devbuild.CreatePayload {
-	v := &devbuild.CreatePayload{}
-	v.DevBuild = unmarshalDevBuildRequestBodyToDevbuildDevBuild(body.DevBuild)
+	v := &devbuild.CreatePayload{
+		CreatedBy: *body.CreatedBy,
+	}
+	v.Request = unmarshalDevBuildRequestRequestBodyToDevbuildDevBuildRequest(body.Request)
 	v.Dryrun = dryrun
 
 	return v
@@ -658,11 +681,17 @@ func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 
 // ValidateCreateRequestBody runs the validations defined on CreateRequestBody
 func ValidateCreateRequestBody(body *CreateRequestBody) (err error) {
-	if body.DevBuild == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("DevBuild", "body"))
+	if body.CreatedBy == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("createdBy", "body"))
 	}
-	if body.DevBuild != nil {
-		if err2 := ValidateDevBuildRequestBody(body.DevBuild); err2 != nil {
+	if body.Request == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("request", "body"))
+	}
+	if body.CreatedBy != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdBy", *body.CreatedBy, goa.FormatEmail))
+	}
+	if body.Request != nil {
+		if err2 := ValidateDevBuildRequestRequestBody(body.Request); err2 != nil {
 			err = goa.MergeErrors(err, err2)
 		}
 	}
@@ -677,6 +706,39 @@ func ValidateUpdateRequestBody(body *UpdateRequestBody) (err error) {
 	if body.DevBuild != nil {
 		if err2 := ValidateDevBuildRequestBody(body.DevBuild); err2 != nil {
 			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// ValidateDevBuildRequestRequestBody runs the validations defined on
+// DevBuildRequestRequestBody
+func ValidateDevBuildRequestRequestBody(body *DevBuildRequestRequestBody) (err error) {
+	if body.Edition == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("edition", "body"))
+	}
+	if body.GitRef == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("gitRef", "body"))
+	}
+	if body.Product == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("product", "body"))
+	}
+	if body.Version == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("version", "body"))
+	}
+	if body.Edition != nil {
+		if !(*body.Edition == "enterprise" || *body.Edition == "community") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community"}))
+		}
+	}
+	if body.PipelineEngine != nil {
+		if !(*body.PipelineEngine == "jenkins" || *body.PipelineEngine == "tekton") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipelineEngine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
+		}
+	}
+	if body.Product != nil {
+		if !(*body.Product == "tidb" || *body.Product == "enterprise-plugin" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "tiflash" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "ticdc" || *body.Product == "ticdc-newarch" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "enterprise-plugin", "tikv", "pd", "tiflash", "br", "dumpling", "tidb-lightning", "ticdc", "ticdc-newarch", "dm", "tidb-binlog", "tidb-tools", "ng-monitoring", "tidb-dashboard", "drainer", "pump", ""}))
 		}
 	}
 	return
