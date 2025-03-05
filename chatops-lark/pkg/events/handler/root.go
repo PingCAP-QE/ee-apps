@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/audit"
-	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/botinfo"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 	"github.com/allegro/bigcache/v3"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -127,38 +126,21 @@ func init() {
 	availableCommandsHelpText = helpText
 }
 
-func NewRootForMessage(respondCli *lark.Client, cfg map[string]any, appID, appSecret string) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
 
 	baseLogger := log.With().Str("component", "rootHandler").Logger()
 
-	// Get bot name - try from API first, then fall back to config
-	botName := ""
-
-	// Try to get bot name from API if credentials are available
-	if appID != "" && appSecret != "" {
-		// Try to get bot name from API
-		apiName, err := botinfo.GetBotName(context.Background(), appID, appSecret)
-		if err != nil {
-			baseLogger.Warn().Err(err).Msg("Failed to get bot name from API, falling back to config")
-		} else if apiName != "" {
-			botName = apiName
-			baseLogger.Info().Str("botName", botName).Msg("Bot name retrieved from API successfully")
-		}
+	// Get bot name from config
+	botName, ok := cfg["bot_name"].(string)
+	if !ok {
+		baseLogger.Fatal().Msg("Bot name not found in config")
+		os.Exit(1)
 	}
 
-	// Fall back to config if API call failed or wasn't attempted
-	if botName == "" {
-		if name, ok := cfg["bot_name"].(string); ok {
-			botName = name
-			baseLogger.Info().Str("botName", botName).Msg("Bot name loaded from config successfully")
-		} else {
-			baseLogger.Fatal().Msg("Bot name not found in config and couldn't be retrieved from API")
-			os.Exit(1)
-		}
-	}
+	baseLogger.Info().Str("botName", botName).Msg("Using bot name from config")
 
 	h := &rootHandler{
 		Client:     respondCli,
