@@ -51,8 +51,11 @@ func main() {
 	}
 	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
 
+	// Load configuration and create event handler
+	cfg := loadConfig(*config)
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, loadConfig(*config)))
+		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg, *appID, *appSecret))
+
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if *debugMode {
 		consumerOpts = append(consumerOpts,
