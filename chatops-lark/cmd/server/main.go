@@ -58,7 +58,7 @@ func main() {
 	if _, ok := cfg["bot_name"].(string); !ok && *appID != "" && *appSecret != "" {
 		botName, err := botinfo.GetBotName(context.Background(), *appID, *appSecret)
 		if err != nil {
-log.Fatal().Err(err).Msg("Failed to get bot name from API. Please verify your App ID and App Secret, and ensure the bot is properly configured in the Lark platform. Alternatively, set a default bot name in the config.")
+			log.Fatal().Err(err).Msg("Failed to get bot name from API. Please verify your App ID and App Secret, and ensure the bot is properly configured in the Lark platform. Alternatively, set a default bot name in the config.")
 		} else if botName == "" {
 			log.Fatal().Msg("Retrieved empty bot name from API. Please check your app configuration.")
 		} else {
