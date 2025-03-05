@@ -68,7 +68,7 @@ func main() {
 
 	// Verify bot name is available either from API or config
 	if _, ok := cfg["bot_name"].(string); !ok {
-		log.Fatal().Msg("Bot name not found in config and couldn't be retrieved from API")
+		log.Fatal().Msg("Bot name not found in config and couldn't be retrieved from API. Please check the app ID, app secret, and API availability.")
 	}
 
 	eventHandler := dispatcher.NewEventDispatcher("", "").
