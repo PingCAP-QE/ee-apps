@@ -140,8 +140,6 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 		os.Exit(1)
 	}
 
-	baseLogger.Info().Str("botName", botName).Msg("Using bot name from config")
-
 	h := &rootHandler{
 		Client:     respondCli,
 		Config:     cfg,
