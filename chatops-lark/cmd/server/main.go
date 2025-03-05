@@ -52,7 +52,6 @@ func main() {
 	}
 	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
 
-	// Load configuration
 	cfg := loadConfig(*config)
 
 	// Get bot name at startup
@@ -72,7 +71,6 @@ func main() {
 		log.Fatal().Msg("Bot name not found in config and couldn't be retrieved from API")
 	}
 
-	// Create event handler
 	eventHandler := dispatcher.NewEventDispatcher("", "").
 		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg))
 
