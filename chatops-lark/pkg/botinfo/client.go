@@ -18,6 +18,19 @@ const (
 	botInfoURL           = "https://open.larksuite.com/open-apis/bot/v3/info"
 )
 
+// HTTPClient interface for easier testing
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// defaultHTTPClient is the default HTTP client
+var defaultHTTPClient HTTPClient = &http.Client{}
+
+// setHTTPClient allows setting a custom HTTP client (used for testing)
+func setHTTPClient(client HTTPClient) {
+	defaultHTTPClient = client
+}
+
 // TenantAccessTokenRequest represents the request body for getting a tenant access token
 type TenantAccessTokenRequest struct {
 	AppID     string `json:"app_id"`
@@ -90,8 +103,7 @@ func getTenantAccessToken(ctx context.Context, appID, appSecret string) (string,
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making request: %w", err)
 	}
@@ -116,7 +128,7 @@ func getTenantAccessToken(ctx context.Context, appID, appSecret string) (string,
 
 // getBotInfo gets information about the bot using the tenant access token
 func getBotInfo(ctx context.Context, token string) (*BotInfoResponse, error) {
-	// Create a new reques
+	// Create a new request
 	req, err := http.NewRequestWithContext(ctx, "GET", botInfoURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -125,8 +137,7 @@ func getBotInfo(ctx context.Context, token string) (*BotInfoResponse, error) {
 	req.Header.Add("Authorization", "Bearer "+token)
 	req.Header.Add("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
