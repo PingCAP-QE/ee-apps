@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/botinfo"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/events/handler"
 )
 
@@ -51,8 +52,25 @@ func main() {
 	}
 	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
 
+	cfg := loadConfig(*config)
+
+	// Get bot name at startup if not already in config
+	if _, ok := cfg["bot_name"].(string); !ok && *appID != "" && *appSecret != "" {
+		botName, err := botinfo.GetBotName(context.Background(), *appID, *appSecret)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to get bot name from API. Please verify your App ID and App Secret, and ensure the bot is properly configured in the Lark platform. Alternatively, set a default bot name in the config.")
+		} else if botName == "" {
+			log.Fatal().Msg("Retrieved empty bot name from API. Please check your app configuration.")
+		} else {
+			log.Info().Str("botName", botName).Msg("Bot name retrieved from API successfully")
+			// Store the bot name in the config for later use
+			cfg["bot_name"] = botName
+		}
+	}
+
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, loadConfig(*config)))
+		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg))
+
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if *debugMode {
 		consumerOpts = append(consumerOpts,

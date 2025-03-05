@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -131,17 +130,14 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
 
-	// Get bot name from config with type assertion at startup
-	botName := ""
-	if name, ok := cfg["bot_name"].(string); ok {
-		botName = name
-		log.Info().Str("botName", botName).Msg("Bot initialized successfully")
-	} else {
-		log.Fatal().Msg("bot name not found in config")
-		os.Exit(1)
-	}
-
 	baseLogger := log.With().Str("component", "rootHandler").Logger()
+
+	botName, ok := cfg["bot_name"].(string)
+	if !ok {
+		// This shouldn't happen because main.go already validates this
+		// We're keeping this check as a safeguard with a more specific error message
+		baseLogger.Fatal().Msg("Bot name was not provided in config. This should have been caught earlier.")
+	}
 
 	h := &rootHandler{
 		Client:     respondCli,
