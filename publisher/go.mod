@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250129171403-a0e6c34a18b9
+	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250305065239-f4cea34c2ddd
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redsync/redsync/v4 v4.13.0
