@@ -54,21 +54,18 @@ func main() {
 
 	cfg := loadConfig(*config)
 
-	// Get bot name at startup
-	if *appID != "" && *appSecret != "" {
+	// Get bot name at startup if not already in config
+	if _, ok := cfg["bot_name"].(string); !ok && *appID != "" && *appSecret != "" {
 		botName, err := botinfo.GetBotName(context.Background(), *appID, *appSecret)
 		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get bot name from API, will use from config if available")
-		} else if botName != "" {
+			log.Fatal().Err(err).Msg("Failed to get bot name from API and no bot_name in config. Please add bot_name to config or check API credentials.")
+		} else if botName == "" {
+			log.Fatal().Msg("Retrieved empty bot name from API. Please check your app configuration.")
+		} else {
 			log.Info().Str("botName", botName).Msg("Bot name retrieved from API successfully")
 			// Store the bot name in the config for later use
 			cfg["bot_name"] = botName
 		}
-	}
-
-	// Verify bot name is available either from API or config
-	if _, ok := cfg["bot_name"].(string); !ok {
-		log.Fatal().Msg("Bot name not found in config and couldn't be retrieved from API. Please check the app ID, app secret, and API availability.")
 	}
 
 	eventHandler := dispatcher.NewEventDispatcher("", "").
