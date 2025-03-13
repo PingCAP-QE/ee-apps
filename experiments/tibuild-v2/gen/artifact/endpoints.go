@@ -34,7 +34,7 @@ func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 // "syncImage" of service "artifact".
 func NewSyncImageEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
-		p := req.(*SyncImagePayload)
+		p := req.(*ImageSyncRequest)
 		return s.SyncImage(ctx, p)
 	}
 }

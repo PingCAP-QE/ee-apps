@@ -21,7 +21,7 @@ func NewArtifact(logger *zerolog.Logger) artifact.Service {
 }
 
 // Sync hotfix image to dockerhub
-func (s *artifactsrvc) SyncImage(ctx context.Context, p *artifact.SyncImagePayload) (res *artifact.ImageSyncRequest, err error) {
+func (s *artifactsrvc) SyncImage(ctx context.Context, p *artifact.ImageSyncRequest) (res *artifact.ImageSyncRequest, err error) {
 	res = &artifact.ImageSyncRequest{}
 	s.logger.Info().Msgf("artifact.syncImage")
 	return

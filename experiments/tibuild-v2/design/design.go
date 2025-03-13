@@ -22,22 +22,27 @@ var _ = API("tibuild", func() {
 			URI("http://0.0.0.0:8080")
 		})
 	})
+
+	HTTP(func() {
+		// Add prefix to all API paths
+		Path("/api/v2")
+	})
 })
 
 var _ = Service("artifact", func() {
 	Description("The artifact service provides operations to manage artifacts.")
 	Error("BadRequest", HTTPError, "Bad Request")
 	Error("InternalServerError", HTTPError, "Internal Server Error")
+	HTTP(func() {
+		Path("/artifact")
+	})
 	Method("syncImage", func() {
 		Description("Sync hotfix image to dockerhub")
-		Payload(func() {
-			Attribute("ImageSyncRequest", ImageSyncRequest, "Image sync to public, only hotfix is accepted right now")
-			Required("ImageSyncRequest")
-		})
+		Payload(ImageSyncRequest)
 		Result(ImageSyncRequest)
 
 		HTTP(func() {
-			POST("/api/artifact/sync-image")
+			POST("/sync-image")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)
@@ -49,6 +54,9 @@ var _ = Service("devbuild", func() {
 	Description("The devbuild service provides operations to manage dev builds.")
 	Error("BadRequest", HTTPError, "Bad Request")
 	Error("InternalServerError", HTTPError, "Internal Server Error")
+	HTTP(func() {
+		Path("/devbuilds")
+	})
 	Method("list", func() {
 		Description("List devbuild with pagination support")
 		Payload(func() {
@@ -67,20 +75,17 @@ var _ = Service("devbuild", func() {
 				Default("desc")
 			})
 			Attribute("hotfix", Boolean, "Filter hotfix")
+			Attribute("pageSize", Int32, "Page size")
 			Attribute("createdBy", String, "Filter created by")
 		})
 		Result(ArrayOf(DevBuild), "List of dev builds")
 		HTTP(func() {
-			GET("/api/devbuilds")
+			GET("/")
 			Param("page")
 			Param("pageSize")
 			Param("hotfix")
 			Param("createdBy")
-			Response(StatusOK, func() {
-				Header("X-Next-Page", Int, "The next page number")
-				Header("X-Total-Count", Int, "The total number of items")
-				Header("X-Total-Pages", Int, "The total number of pages")
-			})
+			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 		})
 	})
@@ -99,7 +104,7 @@ var _ = Service("devbuild", func() {
 		})
 		Result(DevBuild)
 		HTTP(func() {
-			POST("/api/devbuilds")
+			POST("/")
 			Param("dryrun")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
@@ -121,7 +126,7 @@ var _ = Service("devbuild", func() {
 		Result(DevBuild)
 		Error("http_error", HTTPError, "Bad Request")
 		HTTP(func() {
-			GET("/api/devbuilds/{id}")
+			GET("/{id}")
 			Param("sync")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
@@ -143,7 +148,7 @@ var _ = Service("devbuild", func() {
 		})
 		Result(DevBuild)
 		HTTP(func() {
-			PUT("/api/devbuilds/{id}")
+			PUT("/{id}")
 			Param("dryrun")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
@@ -164,7 +169,7 @@ var _ = Service("devbuild", func() {
 		})
 		Result(DevBuild)
 		HTTP(func() {
-			POST("/api/devbuilds/{id}/rerun")
+			POST("/{id}/rerun")
 			Param("dryrun")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)

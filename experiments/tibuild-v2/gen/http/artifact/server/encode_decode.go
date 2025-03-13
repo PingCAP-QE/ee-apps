@@ -53,7 +53,7 @@ func DecodeSyncImageRequest(mux goahttp.Muxer, decoder func(*http.Request) goaht
 		if err != nil {
 			return nil, err
 		}
-		payload := NewSyncImagePayload(&body)
+		payload := NewSyncImageImageSyncRequest(&body)
 
 		return payload, nil
 	}
@@ -99,16 +99,4 @@ func EncodeSyncImageError(encoder func(context.Context, http.ResponseWriter) goa
 			return encodeError(ctx, w, v)
 		}
 	}
-}
-
-// unmarshalImageSyncRequestRequestBodyToArtifactImageSyncRequest builds a
-// value of type *artifact.ImageSyncRequest from a value of type
-// *ImageSyncRequestRequestBody.
-func unmarshalImageSyncRequestRequestBodyToArtifactImageSyncRequest(v *ImageSyncRequestRequestBody) *artifact.ImageSyncRequest {
-	res := &artifact.ImageSyncRequest{
-		Source: *v.Source,
-		Target: *v.Target,
-	}
-
-	return res
 }

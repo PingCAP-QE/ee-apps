@@ -14,7 +14,7 @@ import (
 // The artifact service provides operations to manage artifacts.
 type Service interface {
 	// Sync hotfix image to dockerhub
-	SyncImage(context.Context, *SyncImagePayload) (res *ImageSyncRequest, err error)
+	SyncImage(context.Context, *ImageSyncRequest) (res *ImageSyncRequest, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -38,17 +38,11 @@ type HTTPError struct {
 	Message string
 }
 
-// ImageSyncRequest is the result type of the artifact service syncImage method.
+// ImageSyncRequest is the payload type of the artifact service syncImage
+// method.
 type ImageSyncRequest struct {
 	Source string
 	Target string
-}
-
-// SyncImagePayload is the payload type of the artifact service syncImage
-// method.
-type SyncImagePayload struct {
-	// Image sync to public, only hotfix is accepted right now
-	ImageSyncRequest *ImageSyncRequest
 }
 
 // Error returns an error description.

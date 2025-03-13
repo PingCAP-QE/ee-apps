@@ -30,7 +30,7 @@ func NewClient(syncImage goa.Endpoint) *Client {
 //   - "BadRequest" (type *HTTPError): Bad Request
 //   - "InternalServerError" (type *HTTPError): Internal Server Error
 //   - error: internal error
-func (c *Client) SyncImage(ctx context.Context, p *SyncImagePayload) (res *ImageSyncRequest, err error) {
+func (c *Client) SyncImage(ctx context.Context, p *ImageSyncRequest) (res *ImageSyncRequest, err error) {
 	var ires any
 	ires, err = c.SyncImageEndpoint(ctx, p)
 	if err != nil {

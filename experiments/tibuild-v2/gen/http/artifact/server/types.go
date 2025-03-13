@@ -15,8 +15,8 @@ import (
 // SyncImageRequestBody is the type of the "artifact" service "syncImage"
 // endpoint HTTP request body.
 type SyncImageRequestBody struct {
-	// Image sync to public, only hotfix is accepted right now
-	ImageSyncRequest *ImageSyncRequestRequestBody `form:"ImageSyncRequest,omitempty" json:"ImageSyncRequest,omitempty" xml:"ImageSyncRequest,omitempty"`
+	Source *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
+	Target *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
 }
 
 // SyncImageResponseBody is the type of the "artifact" service "syncImage"
@@ -39,12 +39,6 @@ type SyncImageBadRequestResponseBody struct {
 type SyncImageInternalServerErrorResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// ImageSyncRequestRequestBody is used to define fields on request body types.
-type ImageSyncRequestRequestBody struct {
-	Source *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
-	Target *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
 }
 
 // NewSyncImageResponseBody builds the HTTP response body from the result of
@@ -77,10 +71,13 @@ func NewSyncImageInternalServerErrorResponseBody(res *artifact.HTTPError) *SyncI
 	return body
 }
 
-// NewSyncImagePayload builds a artifact service syncImage endpoint payload.
-func NewSyncImagePayload(body *SyncImageRequestBody) *artifact.SyncImagePayload {
-	v := &artifact.SyncImagePayload{}
-	v.ImageSyncRequest = unmarshalImageSyncRequestRequestBodyToArtifactImageSyncRequest(body.ImageSyncRequest)
+// NewSyncImageImageSyncRequest builds a artifact service syncImage endpoint
+// payload.
+func NewSyncImageImageSyncRequest(body *SyncImageRequestBody) *artifact.ImageSyncRequest {
+	v := &artifact.ImageSyncRequest{
+		Source: *body.Source,
+		Target: *body.Target,
+	}
 
 	return v
 }
@@ -88,20 +85,6 @@ func NewSyncImagePayload(body *SyncImageRequestBody) *artifact.SyncImagePayload 
 // ValidateSyncImageRequestBody runs the validations defined on
 // SyncImageRequestBody
 func ValidateSyncImageRequestBody(body *SyncImageRequestBody) (err error) {
-	if body.ImageSyncRequest == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("ImageSyncRequest", "body"))
-	}
-	if body.ImageSyncRequest != nil {
-		if err2 := ValidateImageSyncRequestRequestBody(body.ImageSyncRequest); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	return
-}
-
-// ValidateImageSyncRequestRequestBody runs the validations defined on
-// ImageSyncRequestRequestBody
-func ValidateImageSyncRequestRequestBody(body *ImageSyncRequestRequestBody) (err error) {
 	if body.Source == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("source", "body"))
 	}

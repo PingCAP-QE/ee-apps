@@ -44,8 +44,10 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 			return goahttp.ErrInvalidType("devbuild", "list", "*devbuild.ListPayload", v)
 		}
 		values := req.URL.Query()
-		values.Add("size", fmt.Sprintf("%v", p.Size))
-		values.Add("offset", fmt.Sprintf("%v", p.Offset))
+		values.Add("page", fmt.Sprintf("%v", p.Page))
+		if p.PageSize != nil {
+			values.Add("pageSize", fmt.Sprintf("%v", *p.PageSize))
+		}
 		if p.Hotfix != nil {
 			values.Add("hotfix", fmt.Sprintf("%v", *p.Hotfix))
 		}
@@ -53,6 +55,10 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 			values.Add("createdBy", *p.CreatedBy)
 		}
 		req.URL.RawQuery = values.Encode()
+		body := NewListRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("devbuild", "list", err)
+		}
 		return nil
 	}
 }

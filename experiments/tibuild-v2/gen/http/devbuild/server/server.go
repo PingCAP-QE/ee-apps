@@ -53,11 +53,11 @@ func New(
 ) *Server {
 	return &Server{
 		Mounts: []*MountPoint{
-			{"List", "GET", "/api/devbuilds"},
-			{"Create", "POST", "/api/devbuilds"},
-			{"Get", "GET", "/api/devbuilds/{id}"},
-			{"Update", "PUT", "/api/devbuilds/{id}"},
-			{"Rerun", "POST", "/api/devbuilds/{id}/rerun"},
+			{"List", "GET", "/api/v2/devbuilds"},
+			{"Create", "POST", "/api/v2/devbuilds"},
+			{"Get", "GET", "/api/v2/devbuilds/{id}"},
+			{"Update", "PUT", "/api/v2/devbuilds/{id}"},
+			{"Rerun", "POST", "/api/v2/devbuilds/{id}/rerun"},
 		},
 		List:   NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
 		Create: NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
@@ -105,7 +105,7 @@ func MountListHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("GET", "/api/devbuilds", f)
+	mux.Handle("GET", "/api/v2/devbuilds", f)
 }
 
 // NewListHandler creates a HTTP handler which loads the HTTP request and calls
@@ -156,7 +156,7 @@ func MountCreateHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/devbuilds", f)
+	mux.Handle("POST", "/api/v2/devbuilds", f)
 }
 
 // NewCreateHandler creates a HTTP handler which loads the HTTP request and
@@ -207,7 +207,7 @@ func MountGetHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("GET", "/api/devbuilds/{id}", f)
+	mux.Handle("GET", "/api/v2/devbuilds/{id}", f)
 }
 
 // NewGetHandler creates a HTTP handler which loads the HTTP request and calls
@@ -258,7 +258,7 @@ func MountUpdateHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("PUT", "/api/devbuilds/{id}", f)
+	mux.Handle("PUT", "/api/v2/devbuilds/{id}", f)
 }
 
 // NewUpdateHandler creates a HTTP handler which loads the HTTP request and
@@ -309,7 +309,7 @@ func MountRerunHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/devbuilds/{id}/rerun", f)
+	mux.Handle("POST", "/api/v2/devbuilds/{id}/rerun", f)
 }
 
 // NewRerunHandler creates a HTTP handler which loads the HTTP request and

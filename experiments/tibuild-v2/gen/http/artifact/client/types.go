@@ -15,8 +15,8 @@ import (
 // SyncImageRequestBody is the type of the "artifact" service "syncImage"
 // endpoint HTTP request body.
 type SyncImageRequestBody struct {
-	// Image sync to public, only hotfix is accepted right now
-	ImageSyncRequest *ImageSyncRequestRequestBody `form:"ImageSyncRequest" json:"ImageSyncRequest" xml:"ImageSyncRequest"`
+	Source string `form:"source" json:"source" xml:"source"`
+	Target string `form:"target" json:"target" xml:"target"`
 }
 
 // SyncImageResponseBody is the type of the "artifact" service "syncImage"
@@ -41,18 +41,12 @@ type SyncImageInternalServerErrorResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
-// ImageSyncRequestRequestBody is used to define fields on request body types.
-type ImageSyncRequestRequestBody struct {
-	Source string `form:"source" json:"source" xml:"source"`
-	Target string `form:"target" json:"target" xml:"target"`
-}
-
 // NewSyncImageRequestBody builds the HTTP request body from the payload of the
 // "syncImage" endpoint of the "artifact" service.
-func NewSyncImageRequestBody(p *artifact.SyncImagePayload) *SyncImageRequestBody {
-	body := &SyncImageRequestBody{}
-	if p.ImageSyncRequest != nil {
-		body.ImageSyncRequest = marshalArtifactImageSyncRequestToImageSyncRequestRequestBody(p.ImageSyncRequest)
+func NewSyncImageRequestBody(p *artifact.ImageSyncRequest) *SyncImageRequestBody {
+	body := &SyncImageRequestBody{
+		Source: p.Source,
+		Target: p.Target,
 	}
 	return body
 }

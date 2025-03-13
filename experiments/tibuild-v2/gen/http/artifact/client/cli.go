@@ -12,29 +12,22 @@ import (
 	"fmt"
 
 	artifact "github.com/PingCAP-QE/ee-apps/tibuild/gen/artifact"
-	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildSyncImagePayload builds the payload for the artifact syncImage endpoint
 // from CLI flags.
-func BuildSyncImagePayload(artifactSyncImageBody string) (*artifact.SyncImagePayload, error) {
+func BuildSyncImagePayload(artifactSyncImageBody string) (*artifact.ImageSyncRequest, error) {
 	var err error
 	var body SyncImageRequestBody
 	{
 		err = json.Unmarshal([]byte(artifactSyncImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"ImageSyncRequest\": {\n         \"source\": \"Culpa possimus.\",\n         \"target\": \"Perferendis nisi non quia debitis.\"\n      }\n   }'")
-		}
-		if body.ImageSyncRequest == nil {
-			err = goa.MergeErrors(err, goa.MissingFieldError("ImageSyncRequest", "body"))
-		}
-		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"source\": \"Culpa possimus.\",\n      \"target\": \"Perferendis nisi non quia debitis.\"\n   }'")
 		}
 	}
-	v := &artifact.SyncImagePayload{}
-	if body.ImageSyncRequest != nil {
-		v.ImageSyncRequest = marshalImageSyncRequestRequestBodyToArtifactImageSyncRequest(body.ImageSyncRequest)
+	v := &artifact.ImageSyncRequest{
+		Source: body.Source,
+		Target: body.Target,
 	}
 
 	return v, nil

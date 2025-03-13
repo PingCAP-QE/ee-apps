@@ -37,9 +37,9 @@ func (c *Client) BuildSyncImageRequest(ctx context.Context, v any) (*http.Reques
 // syncImage server.
 func EncodeSyncImageRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
 	return func(req *http.Request, v any) error {
-		p, ok := v.(*artifact.SyncImagePayload)
+		p, ok := v.(*artifact.ImageSyncRequest)
 		if !ok {
-			return goahttp.ErrInvalidType("artifact", "syncImage", "*artifact.SyncImagePayload", v)
+			return goahttp.ErrInvalidType("artifact", "syncImage", "*artifact.ImageSyncRequest", v)
 		}
 		body := NewSyncImageRequestBody(p)
 		if err := encoder(req).Encode(&body); err != nil {
@@ -119,28 +119,4 @@ func DecodeSyncImageResponse(decoder func(*http.Response) goahttp.Decoder, resto
 			return nil, goahttp.ErrInvalidResponse("artifact", "syncImage", resp.StatusCode, string(body))
 		}
 	}
-}
-
-// marshalArtifactImageSyncRequestToImageSyncRequestRequestBody builds a value
-// of type *ImageSyncRequestRequestBody from a value of type
-// *artifact.ImageSyncRequest.
-func marshalArtifactImageSyncRequestToImageSyncRequestRequestBody(v *artifact.ImageSyncRequest) *ImageSyncRequestRequestBody {
-	res := &ImageSyncRequestRequestBody{
-		Source: v.Source,
-		Target: v.Target,
-	}
-
-	return res
-}
-
-// marshalImageSyncRequestRequestBodyToArtifactImageSyncRequest builds a value
-// of type *artifact.ImageSyncRequest from a value of type
-// *ImageSyncRequestRequestBody.
-func marshalImageSyncRequestRequestBodyToArtifactImageSyncRequest(v *ImageSyncRequestRequestBody) *artifact.ImageSyncRequest {
-	res := &artifact.ImageSyncRequest{
-		Source: v.Source,
-		Target: v.Target,
-	}
-
-	return res
 }

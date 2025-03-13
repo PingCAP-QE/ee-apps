@@ -36,33 +36,53 @@ func EncodeListResponse(encoder func(context.Context, http.ResponseWriter) goaht
 func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
 	return func(r *http.Request) (any, error) {
 		var (
-			size      int
-			offset    int
+			body ListRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if err == io.EOF {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateListRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+
+		var (
+			page      int
+			pageSize  *int32
 			hotfix    *bool
 			createdBy *string
-			err       error
 		)
 		qp := r.URL.Query()
 		{
-			sizeRaw := qp.Get("size")
-			if sizeRaw == "" {
-				size = 10
+			pageRaw := qp.Get("page")
+			if pageRaw == "" {
+				page = 1
 			} else {
-				v, err2 := strconv.ParseInt(sizeRaw, 10, strconv.IntSize)
+				v, err2 := strconv.ParseInt(pageRaw, 10, strconv.IntSize)
 				if err2 != nil {
-					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("size", sizeRaw, "integer"))
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("page", pageRaw, "integer"))
 				}
-				size = int(v)
+				page = int(v)
 			}
 		}
 		{
-			offsetRaw := qp.Get("offset")
-			if offsetRaw != "" {
-				v, err2 := strconv.ParseInt(offsetRaw, 10, strconv.IntSize)
+			pageSizeRaw := qp.Get("pageSize")
+			if pageSizeRaw != "" {
+				v, err2 := strconv.ParseInt(pageSizeRaw, 10, 32)
 				if err2 != nil {
-					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("offset", offsetRaw, "integer"))
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("pageSize", pageSizeRaw, "integer"))
 				}
-				offset = int(v)
+				pv := int32(v)
+				pageSize = &pv
 			}
 		}
 		{
@@ -82,7 +102,7 @@ func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.De
 		if err != nil {
 			return nil, err
 		}
-		payload := NewListPayload(size, offset, hotfix, createdBy)
+		payload := NewListPayload(&body, page, pageSize, hotfix, createdBy)
 
 		return payload, nil
 	}

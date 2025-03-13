@@ -20,7 +20,7 @@ func NewDevbuild(logger *zerolog.Logger) devbuild.Service {
 	}
 }
 
-// List devbuild
+// List devbuild with pagination support
 func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res []*devbuild.DevBuild, err error) {
 	s.logger.Info().Msgf("devbuild.list")
 	return

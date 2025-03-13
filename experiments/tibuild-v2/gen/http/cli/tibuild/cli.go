@@ -31,12 +31,14 @@ devbuild (list|create|get|update|rerun)
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "ImageSyncRequest": {
-         "source": "Culpa possimus.",
-         "target": "Perferendis nisi non quia debitis."
-      }
+      "source": "Culpa possimus.",
+      "target": "Perferendis nisi non quia debitis."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --size 9048917590767144830 --offset 2393528839850969203 --hotfix false --created-by "Fugiat voluptatibus quia."` + "\n" +
+		os.Args[0] + ` devbuild list --body '{
+      "direction": "desc",
+      "per_page": 9048917590767144830,
+      "sort": "updatedAt"
+   }' --page 3533556838530248095 --page-size 1911595617 --hotfix false --created-by "Tenetur qui voluptatum voluptatum qui."` + "\n" +
 		""
 }
 
@@ -58,8 +60,9 @@ func ParseEndpoint(
 		devbuildFlags = flag.NewFlagSet("devbuild", flag.ContinueOnError)
 
 		devbuildListFlags         = flag.NewFlagSet("list", flag.ExitOnError)
-		devbuildListSizeFlag      = devbuildListFlags.String("size", "10", "")
-		devbuildListOffsetFlag    = devbuildListFlags.String("offset", "", "")
+		devbuildListBodyFlag      = devbuildListFlags.String("body", "REQUIRED", "")
+		devbuildListPageFlag      = devbuildListFlags.String("page", "1", "")
+		devbuildListPageSizeFlag  = devbuildListFlags.String("page-size", "", "")
 		devbuildListHotfixFlag    = devbuildListFlags.String("hotfix", "", "")
 		devbuildListCreatedByFlag = devbuildListFlags.String("created-by", "", "")
 
@@ -182,7 +185,7 @@ func ParseEndpoint(
 			switch epn {
 			case "list":
 				endpoint = c.List()
-				data, err = devbuildc.BuildListPayload(*devbuildListSizeFlag, *devbuildListOffsetFlag, *devbuildListHotfixFlag, *devbuildListCreatedByFlag)
+				data, err = devbuildc.BuildListPayload(*devbuildListBodyFlag, *devbuildListPageFlag, *devbuildListPageSizeFlag, *devbuildListHotfixFlag, *devbuildListCreatedByFlag)
 			case "create":
 				endpoint = c.Create()
 				data, err = devbuildc.BuildCreatePayload(*devbuildCreateBodyFlag, *devbuildCreateDryrunFlag)
@@ -226,10 +229,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "ImageSyncRequest": {
-         "source": "Culpa possimus.",
-         "target": "Perferendis nisi non quia debitis."
-      }
+      "source": "Culpa possimus.",
+      "target": "Perferendis nisi non quia debitis."
    }'
 `, os.Args[0])
 }
@@ -241,7 +242,7 @@ Usage:
     %[1]s [globalflags] devbuild COMMAND [flags]
 
 COMMAND:
-    list: List devbuild
+    list: List devbuild with pagination support
     create: Create and trigger devbuild
     get: Get devbuild
     update: Update devbuild status
@@ -252,16 +253,21 @@ Additional help:
 `, os.Args[0])
 }
 func devbuildListUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -size INT -offset INT -hotfix BOOL -created-by STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -body JSON -page INT -page-size INT32 -hotfix BOOL -created-by STRING
 
-List devbuild
-    -size INT: 
-    -offset INT: 
+List devbuild with pagination support
+    -body JSON: 
+    -page INT: 
+    -page-size INT32: 
     -hotfix BOOL: 
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --size 9048917590767144830 --offset 2393528839850969203 --hotfix false --created-by "Fugiat voluptatibus quia."
+    %[1]s devbuild list --body '{
+      "direction": "desc",
+      "per_page": 9048917590767144830,
+      "sort": "updatedAt"
+   }' --page 3533556838530248095 --page-size 1911595617 --hotfix false --created-by "Tenetur qui voluptatum voluptatum qui."
 `, os.Args[0])
 }
 
@@ -274,25 +280,25 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "createdBy": "mortimer@herzogfranecki.biz",
+      "createdBy": "jordi@feest.name",
       "request": {
-         "buildEnv": "Sunt nihil quia numquam suscipit corrupti qui.",
-         "builderImg": "Sint ut blanditiis.",
+         "buildEnv": "Ad numquam neque reiciendis quaerat maiores.",
+         "builderImg": "Ea est laboriosam esse dicta.",
          "edition": "enterprise",
-         "features": "Aperiam natus in ut quae accusantium.",
-         "gitRef": "Numquam possimus possimus ipsum rerum unde.",
-         "githubRepo": "Numquam neque reiciendis quaerat.",
+         "features": "Tempore ut dolores.",
+         "gitRef": "Iusto suscipit.",
+         "githubRepo": "Et aut error doloremque non itaque.",
          "isHotfix": true,
-         "isPushGCR": true,
-         "pipelineEngine": "tekton",
-         "pluginGitRef": "Laboriosam esse dicta.",
-         "product": "tidb",
-         "productBaseImg": "Tempore ut dolores.",
-         "productDockerfile": "Iusto suscipit.",
-         "targetImg": "Et aut error doloremque non itaque.",
-         "version": "Voluptas quia reprehenderit fugit quo debitis numquam."
+         "isPushGCR": false,
+         "pipelineEngine": "jenkins",
+         "pluginGitRef": "Fugit quo debitis numquam consequuntur qui.",
+         "product": "tidb-binlog",
+         "productBaseImg": "Pariatur aspernatur sed.",
+         "productDockerfile": "Nostrum autem.",
+         "targetImg": "Odit consequatur dolores provident unde non.",
+         "version": "Quo omnis."
       }
-   }' --dryrun true
+   }' --dryrun false
 `, os.Args[0])
 }
 
@@ -319,282 +325,260 @@ Update devbuild status
 Example:
     %[1]s devbuild update --body '{
       "DevBuild": {
-         "id": 8670468037696883245,
+         "id": 3012638057134265735,
          "meta": {
-            "createdAt": "Nihil soluta aut adipisci est.",
-            "createdBy": "Qui necessitatibus possimus ab quos facere.",
-            "updatedAt": "Repudiandae voluptatem rem earum aut at nulla."
+            "createdAt": "Aut natus.",
+            "createdBy": "Esse maxime aliquid sunt numquam at illo.",
+            "updatedAt": "Dolor atque cum beatae sunt nesciunt amet."
          },
          "spec": {
-            "buildEnv": "Natus totam esse maxime aliquid sunt.",
-            "builderImg": "At illo voluptas dolor.",
+            "buildEnv": "Accusantium sit accusamus aspernatur aut laboriosam aspernatur.",
+            "builderImg": "Perspiciatis atque.",
             "edition": "community",
-            "features": "Beatae sunt nesciunt amet autem.",
-            "gitHash": "Sit accusamus aspernatur aut laboriosam.",
-            "gitRef": "Perspiciatis perspiciatis atque inventore id.",
-            "githubRepo": "Ut libero magnam sapiente dolores qui.",
+            "features": "Nemo ut libero magnam sapiente.",
+            "gitHash": "Qui voluptates velit ducimus in.",
+            "gitRef": "At consequatur doloribus culpa velit et id.",
+            "githubRepo": "Voluptas hic.",
             "isHotfix": false,
-            "isPushGCR": true,
+            "isPushGCR": false,
             "pipelineEngine": "jenkins",
-            "pluginGitRef": "Deleniti at consequatur doloribus culpa velit et.",
-            "product": "pd",
-            "productBaseImg": "Voluptas hic.",
-            "productDockerfile": "Ut eum iusto id officiis.",
-            "targetImg": "Laboriosam ut perspiciatis porro.",
-            "version": "Distinctio aliquid eum."
+            "pluginGitRef": "Id officiis quidem laboriosam ut.",
+            "product": "ticdc-newarch",
+            "productBaseImg": "Libero distinctio aliquid eum sed reprehenderit.",
+            "productDockerfile": "Velit maiores culpa.",
+            "targetImg": "Accusamus in consectetur.",
+            "version": "Officia necessitatibus et."
          },
          "status": {
             "buildReport": {
                "binaries": [
                   {
-                     "component": "Neque velit maiores culpa rerum accusamus.",
+                     "component": "Fuga enim minima et vel.",
                      "ociFile": {
-                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
-                        "repo": "Enim minima et vel qui nulla qui.",
-                        "tag": "Maiores aut rerum."
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
                      },
-                     "platform": "Similique nesciunt dolorum quisquam qui odio.",
+                     "platform": "Praesentium facilis corrupti ullam impedit incidunt.",
                      "sha256OciFile": {
-                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
-                        "repo": "Enim minima et vel qui nulla qui.",
-                        "tag": "Maiores aut rerum."
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
                      },
-                     "sha256URL": "Praesentium facilis corrupti ullam impedit incidunt.",
-                     "url": "Aut quas pariatur qui."
+                     "sha256URL": "Aut quas pariatur qui.",
+                     "url": "Harum repellat qui eos est velit."
                   },
                   {
-                     "component": "Neque velit maiores culpa rerum accusamus.",
+                     "component": "Fuga enim minima et vel.",
                      "ociFile": {
-                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
-                        "repo": "Enim minima et vel qui nulla qui.",
-                        "tag": "Maiores aut rerum."
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
                      },
-                     "platform": "Similique nesciunt dolorum quisquam qui odio.",
+                     "platform": "Praesentium facilis corrupti ullam impedit incidunt.",
                      "sha256OciFile": {
-                        "file": "Consectetur et officia necessitatibus et necessitatibus sint.",
-                        "repo": "Enim minima et vel qui nulla qui.",
-                        "tag": "Maiores aut rerum."
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
                      },
-                     "sha256URL": "Praesentium facilis corrupti ullam impedit incidunt.",
-                     "url": "Aut quas pariatur qui."
+                     "sha256URL": "Aut quas pariatur qui.",
+                     "url": "Harum repellat qui eos est velit."
+                  },
+                  {
+                     "component": "Fuga enim minima et vel.",
+                     "ociFile": {
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
+                     },
+                     "platform": "Praesentium facilis corrupti ullam impedit incidunt.",
+                     "sha256OciFile": {
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
+                     },
+                     "sha256URL": "Aut quas pariatur qui.",
+                     "url": "Harum repellat qui eos est velit."
+                  },
+                  {
+                     "component": "Fuga enim minima et vel.",
+                     "ociFile": {
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
+                     },
+                     "platform": "Praesentium facilis corrupti ullam impedit incidunt.",
+                     "sha256OciFile": {
+                        "file": "Nulla qui quod maiores.",
+                        "repo": "Rerum quod similique nesciunt.",
+                        "tag": "Quisquam qui odio."
+                     },
+                     "sha256URL": "Aut quas pariatur qui.",
+                     "url": "Harum repellat qui eos est velit."
                   }
                ],
-               "gitHash": "Harum repellat qui eos est velit.",
+               "gitHash": "Iusto ut rerum dolorum.",
                "images": [
                   {
-                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                     "url": "Laborum iste nobis omnis quae."
+                     "platform": "Molestias laborum iste nobis omnis quae qui.",
+                     "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                   },
                   {
-                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                     "url": "Laborum iste nobis omnis quae."
+                     "platform": "Molestias laborum iste nobis omnis quae qui.",
+                     "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                   },
                   {
-                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                     "url": "Laborum iste nobis omnis quae."
+                     "platform": "Molestias laborum iste nobis omnis quae qui.",
+                     "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                   },
                   {
-                     "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                     "url": "Laborum iste nobis omnis quae."
+                     "platform": "Molestias laborum iste nobis omnis quae qui.",
+                     "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                   }
                ],
-               "pluginGitHash": "Assumenda itaque necessitatibus eligendi qui qui illum.",
-               "printedVersion": "Aliquam quia eum quia id qui."
+               "pluginGitHash": "Quia eum quia id qui.",
+               "printedVersion": "Fugiat sint aut minus aperiam quod."
             },
-            "errMsg": "Fugiat sint aut minus aperiam quod.",
-            "pipelineBuildID": 6941289464511149,
-            "pipelineEndAt": "Deleniti natus reprehenderit nihil animi hic fugiat.",
-            "pipelineStartAt": "Accusamus velit ipsam.",
-            "pipelineViewURL": "Enim harum dolorum.",
+            "errMsg": "Eum deleniti natus reprehenderit.",
+            "pipelineBuildID": 4890831179185763276,
+            "pipelineEndAt": "Hic fugiat et accusamus velit ipsam voluptatum.",
+            "pipelineStartAt": "Harum dolorum natus quia illo blanditiis totam.",
+            "pipelineViewURL": "Beatae dignissimos tempore aut placeat rerum dicta.",
             "pipelineViewURLs": [
-               "Illo blanditiis totam in.",
-               "Dignissimos tempore aut."
+               "Veniam aspernatur quae.",
+               "Voluptatem enim aliquam.",
+               "Neque dolores."
             ],
-            "status": "PENDING",
+            "status": "ERROR",
             "tektonStatus": {
                "pipelines": [
                   {
-                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
-                     "gitHash": "Voluptatem enim aliquam.",
+                     "endAt": "Corrupti veritatis ut quisquam.",
+                     "gitHash": "Temporibus totam quae debitis odio hic.",
                      "images": [
                         {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
+                           "platform": "Molestias laborum iste nobis omnis quae qui.",
+                           "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                         },
                         {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
+                           "platform": "Molestias laborum iste nobis omnis quae qui.",
+                           "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                         }
                      ],
-                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
+                     "name": "Eos consequatur laudantium aut vitae.",
                      "ociArtifacts": [
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         },
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         },
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
+                        },
+                        {
+                           "files": [
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
+                           ],
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         }
                      ],
-                     "platform": "Quis quia vitae non ratione.",
-                     "startAt": "Minus sapiente doloremque rerum quasi.",
-                     "status": "PROCESSING",
-                     "url": "Saepe rerum tenetur vero eveniet."
+                     "platform": "Vero eveniet.",
+                     "startAt": "Nulla et saepe ratione est ut.",
+                     "status": "SUCCESS",
+                     "url": "Vitae sapiente nihil earum sint ad incidunt."
                   },
                   {
-                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
-                     "gitHash": "Voluptatem enim aliquam.",
+                     "endAt": "Corrupti veritatis ut quisquam.",
+                     "gitHash": "Temporibus totam quae debitis odio hic.",
                      "images": [
                         {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
+                           "platform": "Molestias laborum iste nobis omnis quae qui.",
+                           "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                         },
                         {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
+                           "platform": "Molestias laborum iste nobis omnis quae qui.",
+                           "url": "Itaque necessitatibus eligendi qui qui illum nemo."
                         }
                      ],
-                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
+                     "name": "Eos consequatur laudantium aut vitae.",
                      "ociArtifacts": [
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         },
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         },
                         {
                            "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
                            ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
+                        },
+                        {
+                           "files": [
+                              "Blanditiis magni eaque quas.",
+                              "Voluptatem quia quam.",
+                              "Optio ipsam autem vel veniam et provident.",
+                              "Dolores quis quia vitae non."
+                           ],
+                           "repo": "Reiciendis minus.",
+                           "tag": "Doloremque rerum quasi consequatur repellendus saepe rerum."
                         }
                      ],
-                     "platform": "Quis quia vitae non ratione.",
-                     "startAt": "Minus sapiente doloremque rerum quasi.",
-                     "status": "PROCESSING",
-                     "url": "Saepe rerum tenetur vero eveniet."
-                  },
-                  {
-                     "endAt": "Excepturi ipsa veniam aspernatur quae.",
-                     "gitHash": "Voluptatem enim aliquam.",
-                     "images": [
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        },
-                        {
-                           "platform": "Ut rerum dolorum aspernatur necessitatibus.",
-                           "url": "Laborum iste nobis omnis quae."
-                        }
-                     ],
-                     "name": "Dolores id quibusdam impedit corrupti veritatis.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
-                           ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
-                        },
-                        {
-                           "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
-                           ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
-                        },
-                        {
-                           "files": [
-                              "Temporibus totam quae debitis odio hic.",
-                              "Atque eos consequatur laudantium.",
-                              "Vitae iste.",
-                              "Odit blanditiis magni eaque quas eos voluptatem."
-                           ],
-                           "repo": "Quam necessitatibus optio ipsam autem vel veniam.",
-                           "tag": "Provident qui."
-                        }
-                     ],
-                     "platform": "Quis quia vitae non ratione.",
-                     "startAt": "Minus sapiente doloremque rerum quasi.",
-                     "status": "PROCESSING",
-                     "url": "Saepe rerum tenetur vero eveniet."
+                     "platform": "Vero eveniet.",
+                     "startAt": "Nulla et saepe ratione est ut.",
+                     "status": "SUCCESS",
+                     "url": "Vitae sapiente nihil earum sint ad incidunt."
                   }
                ]
             }
          }
       }
-   }' --id 1 --dryrun true
+   }' --id 1 --dryrun false
 `, os.Args[0])
 }
 

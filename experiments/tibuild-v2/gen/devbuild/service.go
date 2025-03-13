@@ -13,7 +13,7 @@ import (
 
 // The devbuild service provides operations to manage dev builds.
 type Service interface {
-	// List devbuild
+	// List devbuild with pagination support
 	List(context.Context, *ListPayload) (res []*DevBuild, err error)
 	// Create and trigger devbuild
 	Create(context.Context, *CreatePayload) (res *DevBuild, err error)
@@ -153,12 +153,18 @@ type ImageArtifact struct {
 
 // ListPayload is the payload type of the devbuild service list method.
 type ListPayload struct {
-	// The size limit of items
-	Size int
-	// The start position of items
-	Offset int
+	// The page number of items
+	Page int
+	// The number of items per page
+	PerPage int
+	// What to sort results by
+	Sort string
+	// The direction of the sort
+	Direction string
 	// Filter hotfix
 	Hotfix *bool
+	// Page size
+	PageSize *int32
 	// Filter created by
 	CreatedBy *string
 }

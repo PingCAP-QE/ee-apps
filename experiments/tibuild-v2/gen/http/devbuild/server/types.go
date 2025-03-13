@@ -12,6 +12,17 @@ import (
 	goa "goa.design/goa/v3/pkg"
 )
 
+// ListRequestBody is the type of the "devbuild" service "list" endpoint HTTP
+// request body.
+type ListRequestBody struct {
+	// The number of items per page
+	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty" xml:"per_page,omitempty"`
+	// What to sort results by
+	Sort *string `form:"sort,omitempty" json:"sort,omitempty" xml:"sort,omitempty"`
+	// The direction of the sort
+	Direction *string `form:"direction,omitempty" json:"direction,omitempty" xml:"direction,omitempty"`
+}
+
 // CreateRequestBody is the type of the "devbuild" service "create" endpoint
 // HTTP request body.
 type CreateRequestBody struct {
@@ -630,10 +641,28 @@ func NewRerunInternalServerErrorResponseBody(res *devbuild.HTTPError) *RerunInte
 }
 
 // NewListPayload builds a devbuild service list endpoint payload.
-func NewListPayload(size int, offset int, hotfix *bool, createdBy *string) *devbuild.ListPayload {
+func NewListPayload(body *ListRequestBody, page int, pageSize *int32, hotfix *bool, createdBy *string) *devbuild.ListPayload {
 	v := &devbuild.ListPayload{}
-	v.Size = size
-	v.Offset = offset
+	if body.PerPage != nil {
+		v.PerPage = *body.PerPage
+	}
+	if body.Sort != nil {
+		v.Sort = *body.Sort
+	}
+	if body.Direction != nil {
+		v.Direction = *body.Direction
+	}
+	if body.PerPage == nil {
+		v.PerPage = 10
+	}
+	if body.Sort == nil {
+		v.Sort = "createdAt"
+	}
+	if body.Direction == nil {
+		v.Direction = "desc"
+	}
+	v.Page = page
+	v.PageSize = pageSize
 	v.Hotfix = hotfix
 	v.CreatedBy = createdBy
 
@@ -677,6 +706,21 @@ func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 	v.Dryrun = dryrun
 
 	return v
+}
+
+// ValidateListRequestBody runs the validations defined on ListRequestBody
+func ValidateListRequestBody(body *ListRequestBody) (err error) {
+	if body.Sort != nil {
+		if !(*body.Sort == "createdAt" || *body.Sort == "updatedAt") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.sort", *body.Sort, []any{"createdAt", "updatedAt"}))
+		}
+	}
+	if body.Direction != nil {
+		if !(*body.Direction == "asc" || *body.Direction == "desc") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.direction", *body.Direction, []any{"asc", "desc"}))
+		}
+	}
+	return
 }
 
 // ValidateCreateRequestBody runs the validations defined on CreateRequestBody

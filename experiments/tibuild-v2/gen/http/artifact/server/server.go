@@ -49,7 +49,7 @@ func New(
 ) *Server {
 	return &Server{
 		Mounts: []*MountPoint{
-			{"SyncImage", "POST", "/api/artifact/sync-image"},
+			{"SyncImage", "POST", "/api/v2/artifact/sync-image"},
 		},
 		SyncImage: NewSyncImageHandler(e.SyncImage, mux, decoder, encoder, errhandler, formatter),
 	}
@@ -85,7 +85,7 @@ func MountSyncImageHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/artifact/sync-image", f)
+	mux.Handle("POST", "/api/v2/artifact/sync-image", f)
 }
 
 // NewSyncImageHandler creates a HTTP handler which loads the HTTP request and

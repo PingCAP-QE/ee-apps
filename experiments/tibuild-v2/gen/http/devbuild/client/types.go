@@ -12,6 +12,17 @@ import (
 	goa "goa.design/goa/v3/pkg"
 )
 
+// ListRequestBody is the type of the "devbuild" service "list" endpoint HTTP
+// request body.
+type ListRequestBody struct {
+	// The number of items per page
+	PerPage int `form:"per_page" json:"per_page" xml:"per_page"`
+	// What to sort results by
+	Sort string `form:"sort" json:"sort" xml:"sort"`
+	// The direction of the sort
+	Direction string `form:"direction" json:"direction" xml:"direction"`
+}
+
 // CreateRequestBody is the type of the "devbuild" service "create" endpoint
 // HTTP request body.
 type CreateRequestBody struct {
@@ -455,6 +466,35 @@ type OciArtifactRequestBody struct {
 	Files []string `form:"files" json:"files" xml:"files"`
 	Repo  string   `form:"repo" json:"repo" xml:"repo"`
 	Tag   string   `form:"tag" json:"tag" xml:"tag"`
+}
+
+// NewListRequestBody builds the HTTP request body from the payload of the
+// "list" endpoint of the "devbuild" service.
+func NewListRequestBody(p *devbuild.ListPayload) *ListRequestBody {
+	body := &ListRequestBody{
+		PerPage:   p.PerPage,
+		Sort:      p.Sort,
+		Direction: p.Direction,
+	}
+	{
+		var zero int
+		if body.PerPage == zero {
+			body.PerPage = 10
+		}
+	}
+	{
+		var zero string
+		if body.Sort == zero {
+			body.Sort = "createdAt"
+		}
+	}
+	{
+		var zero string
+		if body.Direction == zero {
+			body.Direction = "desc"
+		}
+	}
+	return body
 }
 
 // NewCreateRequestBody builds the HTTP request body from the payload of the

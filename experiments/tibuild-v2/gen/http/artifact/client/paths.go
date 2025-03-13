@@ -9,5 +9,5 @@ package client
 
 // SyncImageArtifactPath returns the URL path to the artifact service syncImage HTTP endpoint.
 func SyncImageArtifactPath() string {
-	return "/api/artifact/sync-image"
+	return "/api/v2/artifact/sync-image"
 }
