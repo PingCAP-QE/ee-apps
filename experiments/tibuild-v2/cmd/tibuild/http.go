@@ -7,13 +7,14 @@ import (
 	"sync"
 	"time"
 
-	artifact "github.com/PingCAP-QE/ee-apps/tibuild/gen/artifact"
-	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/gen/devbuild"
-	artifactsvr "github.com/PingCAP-QE/ee-apps/tibuild/gen/http/artifact/server"
-	devbuildsvr "github.com/PingCAP-QE/ee-apps/tibuild/gen/http/devbuild/server"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 	goahttp "goa.design/goa/v3/http"
+
+	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	artifactsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/server"
+	devbuildsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/server"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given

@@ -20,10 +20,13 @@ It provide the CD functions for PingCAP, Welcome bros!
 
 ## Quick Start
 
-
 ### Design the backend server
 
-go to [design/design.go](./design/design.go) and update it.
+go to [internal/service/design/design.go](./internal/service/design/design.go) and update it.
+
+### Design the database
+
+go to [internal/database/schema/](./internal/database/schema/) and update them.
 
 ### Generate code from design
 
@@ -31,9 +34,7 @@ go to [design/design.go](./design/design.go) and update it.
 
 run:
 ```bash
-rm -rf gen cmd oci.go
-goa gen github.com/PingCAP-QE/ee-apps/tibuild/design
-goa example github.com/PingCAP-QE/ee-apps/tibuild/design
+go generate -x ./...
 ```
 
 ### Run it

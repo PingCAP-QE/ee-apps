@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	cli "github.com/PingCAP-QE/ee-apps/tibuild/gen/http/cli/tibuild"
+	cli "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/cli/tibuild"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )

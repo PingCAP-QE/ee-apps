@@ -11,12 +11,13 @@ import (
 	"sync"
 	"syscall"
 
-	artifact "github.com/PingCAP-QE/ee-apps/tibuild/gen/artifact"
-	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/gen/devbuild"
-	tibuild "github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
 	"github.com/rs/zerolog"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
+
+	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	tibuild "github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
 )
 
 func main() {
@@ -67,7 +68,7 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = tibuild.NewDevbuild(&logger)
+			devbuildSvc = tibuild.NewDevbuild(&logger, nil /* TODO: add db client */)
 		}
 	}
 
