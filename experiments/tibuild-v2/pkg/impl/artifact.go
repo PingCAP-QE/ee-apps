@@ -8,7 +8,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/rs/zerolog"
 
-	artifact "github.com/PingCAP-QE/ee-apps/tibuild/gen/artifact"
+	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 )
 
 // artifact service example implementation.

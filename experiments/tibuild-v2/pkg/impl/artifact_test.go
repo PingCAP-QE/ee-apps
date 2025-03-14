@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/gen/artifact"
-	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
 )
 
 func TestSyncImage_Integration(t *testing.T) {
