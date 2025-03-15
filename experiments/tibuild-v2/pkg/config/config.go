@@ -1,8 +1,9 @@
 package config
 
 type Service struct {
-	MysqlDSN string `yaml:"mysql_dsn,omitempty" json:"mysql_dsn,omitempty"`
-	Jenkins  struct {
+	Driver  string `yaml:"driver,omitempty" json:"driver,omitempty"`
+	DSN     string `yaml:"dsn,omitempty" json:"dsn,omitempty"`
+	Jenkins struct {
 		UserName string `yaml:"username,omitempty" json:"username,omitempty"`
 		PassWord string `yaml:"password,omitempty" json:"password,omitempty"`
 	} `yaml:"jenkins" json:"jenkins"`

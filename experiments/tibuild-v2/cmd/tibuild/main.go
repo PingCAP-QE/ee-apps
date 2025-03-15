@@ -46,7 +46,7 @@ func main() {
 	log.Print(ctx, log.KV{K: "http-port", V: *httpPortF})
 
 	// Load and parse configuration
-	_, err := loadConfig(*configFile)
+	cfg, err := loadConfig(*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
 	}
@@ -67,8 +67,12 @@ func main() {
 			artifactSvc = tibuild.NewArtifact(&logger)
 		}
 		{
+			dbClient, err := newStoreClient(cfg)
+			if err != nil {
+				log.Fatalf(ctx, err, "failed to create store client")
+			}
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = tibuild.NewDevbuild(&logger, nil /* TODO: add db client */)
+			devbuildSvc = tibuild.NewDevbuild(&logger, dbClient)
 		}
 	}
 
