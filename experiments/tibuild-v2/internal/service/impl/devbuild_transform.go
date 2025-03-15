@@ -17,29 +17,29 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			UpdatedAt: build.UpdatedAt.UTC().Format(time.DateTime),
 		},
 		Spec: &devbuild.DevBuildSpec{
-			BuildEnv:          build.BuildEnv,
-			BuilderImg:        build.BuilderImg,
-			Edition:           devbuild.ProductEdition(build.Edition),
-			Features:          build.Features,
-			GitHash:           build.GitHash,
+			BuildEnv:          &build.BuildEnv,
+			BuilderImg:        &build.BuilderImg,
+			Edition:           build.Edition,
+			Features:          &build.Features,
+			GitSha:            &build.GitSha,
 			GitRef:            build.GitRef,
-			GithubRepo:        build.GithubRepo,
-			IsHotfix:          build.IsHotfix,
-			IsPushGcr:         build.IsPushGcr,
-			PipelineEngine:    devbuild.PipelineEngine(build.PipelineEngine),
-			PluginGitRef:      build.PluginGitRef,
-			Product:           devbuild.Product(build.Product),
-			ProductBaseImg:    build.ProductBaseImg,
-			ProductDockerfile: build.ProductDockerfile,
-			TargetImg:         build.TargetImg,
+			GithubRepo:        &build.GithubRepo,
+			IsHotfix:          &build.IsHotfix,
+			IsPushGcr:         &build.IsPushGcr,
+			PipelineEngine:    &build.PipelineEngine,
+			PluginGitRef:      &build.PluginGitRef,
+			Product:           build.Product,
+			ProductBaseImg:    &build.ProductBaseImg,
+			ProductDockerfile: &build.ProductDockerfile,
+			TargetImg:         &build.TargetImg,
 			Version:           build.Version,
 		},
 		Status: &devbuild.DevBuildStatus{
 			BuildReport:     transformBuildReport(build.BuildReport),
-			ErrMsg:          build.ErrMsg,
-			PipelineBuildID: int(build.PipelineBuildID),
-			PipelineStartAt: build.PipelineStartAt.UTC().Format(time.DateTime),
-			PipelineEndAt:   build.PipelineEndAt.UTC().Format(time.DateTime),
+			ErrMsg:          &build.ErrMsg,
+			PipelineBuildID: &build.PipelineBuildID,
+			PipelineStartAt: ptr(build.PipelineStartAt.UTC().Format(time.DateTime)),
+			PipelineEndAt:   ptr(build.PipelineEndAt.UTC().Format(time.DateTime)),
 			Status:          devbuild.BuildStatus(build.Status),
 			TektonStatus:    transformTektonStatus(build.TektonStatus),
 		},
@@ -54,59 +54,18 @@ func transformBuildReport(report map[string]any) *devbuild.BuildReport {
 
 	buildReport := &devbuild.BuildReport{}
 
-	if gitHash, ok := report["gitHash"].(string); ok {
-		buildReport.GitHash = gitHash
+	if gitSha, ok := report["gitSha"].(string); ok {
+		buildReport.GitSha = &gitSha
 	}
-	if pluginGitHash, ok := report["pluginGitHash"].(string); ok {
-		buildReport.PluginGitHash = pluginGitHash
+	if pluginGitSha, ok := report["pluginGitSha"].(string); ok {
+		buildReport.PluginGitSha = &pluginGitSha
 	}
 	if printedVersion, ok := report["printedVersion"].(string); ok {
-		buildReport.PrintedVersion = printedVersion
+		buildReport.PrintedVersion = &printedVersion
 	}
 
 	// Transform binaries
-	if binariesRaw, ok := report["binaries"].([]any); ok {
-		binaries := make([]*devbuild.BinArtifact, 0, len(binariesRaw))
-		for _, binRaw := range binariesRaw {
-			if bin, ok := binRaw.(map[string]any); ok {
-				artifact := &devbuild.BinArtifact{}
-
-				if component, ok := bin["component"].(string); ok {
-					artifact.Component = component
-				}
-				if platform, ok := bin["platform"].(string); ok {
-					artifact.Platform = platform
-				}
-				if url, ok := bin["url"].(string); ok {
-					artifact.URL = url
-				}
-				if sha256URL, ok := bin["sha256URL"].(string); ok {
-					artifact.Sha256URL = sha256URL
-				}
-
-				// Transform OciFile
-				if ociFileRaw, ok := bin["ociFile"].(map[string]any); ok {
-					artifact.OciFile = &devbuild.OciFile{
-						File: getString(ociFileRaw, "file"),
-						Repo: getString(ociFileRaw, "repo"),
-						Tag:  getString(ociFileRaw, "tag"),
-					}
-				}
-
-				// Transform Sha256OciFile
-				if sha256OciFileRaw, ok := bin["sha256OciFile"].(map[string]any); ok {
-					artifact.Sha256OciFile = &devbuild.OciFile{
-						File: getString(sha256OciFileRaw, "file"),
-						Repo: getString(sha256OciFileRaw, "repo"),
-						Tag:  getString(sha256OciFileRaw, "tag"),
-					}
-				}
-
-				binaries = append(binaries, artifact)
-			}
-		}
-		buildReport.Binaries = binaries
-	}
+	// Add your transformation logic here.
 
 	// Transform images
 	if imagesRaw, ok := report["images"].([]any); ok {
@@ -134,68 +93,7 @@ func transformTektonStatus(status map[string]any) *devbuild.TektonStatus {
 
 	tektonStatus := &devbuild.TektonStatus{}
 
-	// Transform pipelines
-	if pipelinesRaw, ok := status["pipelines"].([]any); ok {
-		pipelines := make([]*devbuild.TektonPipeline, 0, len(pipelinesRaw))
-		for _, pipeRaw := range pipelinesRaw {
-			if pipe, ok := pipeRaw.(map[string]any); ok {
-				pipeline := &devbuild.TektonPipeline{
-					EndAt:    getString(pipe, "endAt"),
-					GitHash:  getString(pipe, "gitHash"),
-					Name:     getString(pipe, "name"),
-					Platform: getString(pipe, "platform"),
-					StartAt:  getString(pipe, "startAt"),
-					Status:   devbuild.BuildStatus(getString(pipe, "status")),
-					URL:      getString(pipe, "url"),
-				}
-
-				// Transform images
-				if imagesRaw, ok := pipe["images"].([]any); ok {
-					images := make([]*devbuild.ImageArtifact, 0, len(imagesRaw))
-					for _, imgRaw := range imagesRaw {
-						if img, ok := imgRaw.(map[string]any); ok {
-							image := &devbuild.ImageArtifact{
-								Platform: getString(img, "platform"),
-								URL:      getString(img, "url"),
-							}
-							images = append(images, image)
-						}
-					}
-					pipeline.Images = images
-				}
-
-				// Transform OciArtifacts
-				if ociArtifactsRaw, ok := pipe["ociArtifacts"].([]any); ok {
-					ociArtifacts := make([]*devbuild.OciArtifact, 0, len(ociArtifactsRaw))
-					for _, artifactRaw := range ociArtifactsRaw {
-						if artifact, ok := artifactRaw.(map[string]any); ok {
-							ociArtifact := &devbuild.OciArtifact{
-								Repo: getString(artifact, "repo"),
-								Tag:  getString(artifact, "tag"),
-							}
-
-							// Handle files array
-							if filesRaw, ok := artifact["files"].([]any); ok {
-								files := make([]string, 0, len(filesRaw))
-								for _, fileRaw := range filesRaw {
-									if file, ok := fileRaw.(string); ok {
-										files = append(files, file)
-									}
-								}
-								ociArtifact.Files = files
-							}
-
-							ociArtifacts = append(ociArtifacts, ociArtifact)
-						}
-					}
-					pipeline.OciArtifacts = ociArtifacts
-				}
-
-				pipelines = append(pipelines, pipeline)
-			}
-		}
-		tektonStatus.Pipelines = pipelines
-	}
+	// Add your transformation logic here.
 
 	return tektonStatus
 }
@@ -206,4 +104,10 @@ func getString(m map[string]any, key string) string {
 		return val
 	}
 	return ""
+}
+
+// ptr is a helper routine that allocates a new T value
+// to store v and returns a pointer to it.
+func ptr[T any](v T) *T {
+	return &v
 }
