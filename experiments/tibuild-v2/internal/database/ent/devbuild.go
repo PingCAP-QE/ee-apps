@@ -35,7 +35,7 @@ type DevBuild struct {
 	// Git reference of the build
 	GitRef string `json:"git_ref,omitempty"`
 	// Git commit SHA
-	GitHash string `json:"git_hash,omitempty"`
+	GitSha string `json:"git_sha,omitempty"`
 	// Git reference of the plugin
 	PluginGitRef string `json:"plugin_git_ref,omitempty"`
 	// Whether the build is a hotfix
@@ -61,7 +61,7 @@ type DevBuild struct {
 	// Build status message
 	ErrMsg string `json:"err_msg,omitempty"`
 	// ID of the pipeline build
-	PipelineBuildID int64 `json:"pipeline_build_id,omitempty"`
+	PipelineBuildID int `json:"pipeline_build_id,omitempty"`
 	// Build pipeline started time
 	PipelineStartAt time.Time `json:"pipeline_start_at,omitempty"`
 	// Build pipeline completed time
@@ -84,7 +84,7 @@ func (*DevBuild) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case devbuild.FieldID, devbuild.FieldPipelineBuildID:
 			values[i] = new(sql.NullInt64)
-		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitHash, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
+		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitSha, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
 			values[i] = new(sql.NullString)
 		case devbuild.FieldCreatedAt, devbuild.FieldUpdatedAt, devbuild.FieldPipelineStartAt, devbuild.FieldPipelineEndAt:
 			values[i] = new(sql.NullTime)
@@ -157,11 +157,11 @@ func (db *DevBuild) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				db.GitRef = value.String
 			}
-		case devbuild.FieldGitHash:
+		case devbuild.FieldGitSha:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field git_hash", values[i])
+				return fmt.Errorf("unexpected type %T for field git_sha", values[i])
 			} else if value.Valid {
-				db.GitHash = value.String
+				db.GitSha = value.String
 			}
 		case devbuild.FieldPluginGitRef:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -239,7 +239,7 @@ func (db *DevBuild) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field pipeline_build_id", values[i])
 			} else if value.Valid {
-				db.PipelineBuildID = value.Int64
+				db.PipelineBuildID = int(value.Int64)
 			}
 		case devbuild.FieldPipelineStartAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -329,8 +329,8 @@ func (db *DevBuild) String() string {
 	builder.WriteString("git_ref=")
 	builder.WriteString(db.GitRef)
 	builder.WriteString(", ")
-	builder.WriteString("git_hash=")
-	builder.WriteString(db.GitHash)
+	builder.WriteString("git_sha=")
+	builder.WriteString(db.GitSha)
 	builder.WriteString(", ")
 	builder.WriteString("plugin_git_ref=")
 	builder.WriteString(db.PluginGitRef)

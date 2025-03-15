@@ -29,8 +29,8 @@ const (
 	FieldGithubRepo = "github_repo"
 	// FieldGitRef holds the string denoting the git_ref field in the database.
 	FieldGitRef = "git_ref"
-	// FieldGitHash holds the string denoting the git_hash field in the database.
-	FieldGitHash = "git_hash"
+	// FieldGitSha holds the string denoting the git_sha field in the database.
+	FieldGitSha = "git_sha"
 	// FieldPluginGitRef holds the string denoting the plugin_git_ref field in the database.
 	FieldPluginGitRef = "plugin_git_ref"
 	// FieldIsHotfix holds the string denoting the is_hotfix field in the database.
@@ -80,7 +80,7 @@ var Columns = []string{
 	FieldVersion,
 	FieldGithubRepo,
 	FieldGitRef,
-	FieldGitHash,
+	FieldGitSha,
 	FieldPluginGitRef,
 	FieldIsHotfix,
 	FieldIsPushGcr,
@@ -129,8 +129,8 @@ var (
 	GithubRepoValidator func(string) error
 	// GitRefValidator is a validator for the "git_ref" field. It is called by the builders before save.
 	GitRefValidator func(string) error
-	// GitHashValidator is a validator for the "git_hash" field. It is called by the builders before save.
-	GitHashValidator func(string) error
+	// GitShaValidator is a validator for the "git_sha" field. It is called by the builders before save.
+	GitShaValidator func(string) error
 	// PluginGitRefValidator is a validator for the "plugin_git_ref" field. It is called by the builders before save.
 	PluginGitRefValidator func(string) error
 	// DefaultIsHotfix holds the default value on creation for the "is_hotfix" field.
@@ -207,9 +207,9 @@ func ByGitRef(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGitRef, opts...).ToFunc()
 }
 
-// ByGitHash orders the results by the git_hash field.
-func ByGitHash(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGitHash, opts...).ToFunc()
+// ByGitSha orders the results by the git_sha field.
+func ByGitSha(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGitSha, opts...).ToFunc()
 }
 
 // ByPluginGitRef orders the results by the plugin_git_ref field.

@@ -43,20 +43,20 @@ const ServiceName = "devbuild"
 var MethodNames = [5]string{"list", "create", "get", "update", "rerun"}
 
 type BinArtifact struct {
-	Component     string
+	Component     *string
 	OciFile       *OciFile
-	Platform      string
+	Platform      *string
 	Sha256OciFile *OciFile
-	Sha256URL     string
-	URL           string
+	Sha256URL     *string
+	URL           *string
 }
 
 type BuildReport struct {
 	Binaries       []*BinArtifact
-	GitHash        string
+	GitSha         *string
 	Images         []*ImageArtifact
-	PluginGitHash  string
-	PrintedVersion string
+	PluginGitSha   *string
+	PrintedVersion *string
 }
 
 type BuildStatus string
@@ -85,51 +85,35 @@ type DevBuildMeta struct {
 	UpdatedAt string
 }
 
-type DevBuildRequest struct {
+type DevBuildRequest DevBuildSpec
+
+type DevBuildSpec struct {
 	BuildEnv          *string
 	BuilderImg        *string
-	Edition           ProductEdition
+	Edition           string
 	Features          *string
 	GitRef            string
+	GitSha            *string
 	GithubRepo        *string
 	IsHotfix          *bool
 	IsPushGcr         *bool
-	PipelineEngine    *PipelineEngine
+	PipelineEngine    *string
 	PluginGitRef      *string
-	Product           Product
+	Product           string
 	ProductBaseImg    *string
 	ProductDockerfile *string
 	TargetImg         *string
 	Version           string
 }
 
-type DevBuildSpec struct {
-	BuildEnv          string
-	BuilderImg        string
-	Edition           ProductEdition
-	Features          string
-	GitHash           string
-	GitRef            string
-	GithubRepo        string
-	IsHotfix          bool
-	IsPushGcr         bool
-	PipelineEngine    PipelineEngine
-	PluginGitRef      string
-	Product           Product
-	ProductBaseImg    string
-	ProductDockerfile string
-	TargetImg         string
-	Version           string
-}
-
 type DevBuildStatus struct {
 	BuildReport      *BuildReport
-	ErrMsg           string
-	PipelineBuildID  int
-	PipelineEndAt    string
-	PipelineStartAt  string
-	PipelineViewURL  string
-	PipelineViewURLs []string
+	ErrMsg           *string
+	PipelineBuildID  *int
+	PipelineStartAt  *string
+	PipelineEndAt    *string
+	PipelineViewURL  *string
+	PipelineViewUrls []string
 	Status           BuildStatus
 	TektonStatus     *TektonStatus
 }
@@ -180,12 +164,6 @@ type OciFile struct {
 	Tag  string
 }
 
-type PipelineEngine string
-
-type Product string
-
-type ProductEdition string
-
 // RerunPayload is the payload type of the devbuild service rerun method.
 type RerunPayload struct {
 	// ID of build
@@ -195,15 +173,15 @@ type RerunPayload struct {
 }
 
 type TektonPipeline struct {
-	EndAt        string
-	GitHash      string
-	Images       []*ImageArtifact
 	Name         string
-	OciArtifacts []*OciArtifact
-	Platform     string
-	StartAt      string
 	Status       BuildStatus
-	URL          string
+	StartAt      *string
+	EndAt        *string
+	GitSha       *string
+	Images       []*ImageArtifact
+	OciArtifacts []*OciArtifact
+	Platform     *string
+	URL          *string
 }
 
 type TektonStatus struct {
@@ -215,7 +193,7 @@ type UpdatePayload struct {
 	// ID of build
 	ID int
 	// Build to update
-	DevBuild *DevBuild
+	Build *DevBuild
 	// Dry run
 	Dryrun bool
 }

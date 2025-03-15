@@ -235,7 +235,7 @@ paths:
                   schema:
                     $ref: '#/definitions/DevbuildUpdateRequestBody'
                     required:
-                        - DevBuild
+                        - build
             responses:
                 "200":
                     description: OK response.
@@ -314,40 +314,35 @@ definitions:
         properties:
             component:
                 type: string
-                example: Sed cupiditate possimus qui.
-            ociFile:
+                example: Enim qui vel.
+            oci_file:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Animi nobis.
-            sha256OciFile:
+                example: Ut quaerat.
+            sha256_oci_file:
                 $ref: '#/definitions/OciFile'
-            sha256URL:
+            sha256_url:
                 type: string
-                example: Esse consequatur eaque corrupti qui consequatur quos.
+                example: http://gusikowski.net/kelton
+                format: uri
             url:
                 type: string
-                example: Aliquid non earum.
+                example: http://veumlarson.biz/nina
+                format: uri
         example:
-            component: Molestiae dolorum aut magnam ipsam maiores et.
-            ociFile:
-                file: Illum ex quia est autem est.
-                repo: Ratione consequatur quisquam et.
-                tag: Aut doloremque culpa.
-            platform: Adipisci ducimus aut harum quia ipsa perferendis.
-            sha256OciFile:
-                file: Illum ex quia est autem est.
-                repo: Ratione consequatur quisquam et.
-                tag: Aut doloremque culpa.
-            sha256URL: Pariatur enim voluptate autem provident magnam.
-            url: Voluptas ut fugiat illo voluptas.
-        required:
-            - component
-            - ociFile
-            - platform
-            - sha256OciFile
-            - sha256URL
-            - url
+            component: Vel quam aut.
+            oci_file:
+                file: Quisquam modi temporibus totam quae debitis.
+                repo: Hic ullam atque.
+                tag: Consequatur laudantium aut vitae iste ut.
+            platform: Et placeat voluptatum soluta.
+            sha256_oci_file:
+                file: Quisquam modi temporibus totam quae debitis.
+                repo: Hic ullam atque.
+                tag: Consequatur laudantium aut vitae iste ut.
+            sha256_url: http://bergnaumzemlak.net/lorenzo_murphy
+            url: http://runte.biz/marisa_white
     BuildReport:
         title: BuildReport
         type: object
@@ -357,121 +352,117 @@ definitions:
                 items:
                     $ref: '#/definitions/BinArtifact'
                 example:
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-            gitHash:
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+            git_sha:
                 type: string
-                example: Veniam quis itaque in dignissimos et.
+                example: jc0
+                maxLength: 40
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-            pluginGitHash:
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+            plugin_git_sha:
                 type: string
-                example: Asperiores neque aut velit.
-            printedVersion:
+                example: pbl
+                maxLength: 40
+            printed_version:
                 type: string
-                example: Ullam quis.
+                example: Eum et non tenetur.
         example:
             binaries:
-                - component: Consequatur dolores provident unde non est quo.
-                  ociFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  platform: Quia iure aut rerum velit fugit.
-                  sha256OciFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  sha256URL: Et quia.
-                  url: Perspiciatis similique quis.
-                - component: Consequatur dolores provident unde non est quo.
-                  ociFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  platform: Quia iure aut rerum velit fugit.
-                  sha256OciFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  sha256URL: Et quia.
-                  url: Perspiciatis similique quis.
-                - component: Consequatur dolores provident unde non est quo.
-                  ociFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  platform: Quia iure aut rerum velit fugit.
-                  sha256OciFile:
-                    file: Illum ex quia est autem est.
-                    repo: Ratione consequatur quisquam et.
-                    tag: Aut doloremque culpa.
-                  sha256URL: Et quia.
-                  url: Perspiciatis similique quis.
-            gitHash: At ut quia placeat.
+                - component: Dolores id quibusdam impedit corrupti veritatis.
+                  oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  platform: Blanditiis magni eaque quas.
+                  sha256_oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  sha256_url: http://ziemeabbott.name/elwin
+                  url: http://heathcote.info/devonte
+                - component: Dolores id quibusdam impedit corrupti veritatis.
+                  oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  platform: Blanditiis magni eaque quas.
+                  sha256_oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  sha256_url: http://ziemeabbott.name/elwin
+                  url: http://heathcote.info/devonte
+                - component: Dolores id quibusdam impedit corrupti veritatis.
+                  oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  platform: Blanditiis magni eaque quas.
+                  sha256_oci_file:
+                    file: Quisquam modi temporibus totam quae debitis.
+                    repo: Hic ullam atque.
+                    tag: Consequatur laudantium aut vitae iste ut.
+                  sha256_url: http://ziemeabbott.name/elwin
+                  url: http://heathcote.info/devonte
+            git_sha: byu
             images:
-                - platform: Quaerat quis.
-                  url: Molestias ut molestiae.
-                - platform: Quaerat quis.
-                  url: Molestias ut molestiae.
-            pluginGitHash: Minima qui modi.
-            printedVersion: Impedit ut et vel natus et quidem.
-        required:
-            - binaries
-            - gitHash
-            - images
-            - pluginGitHash
-            - printedVersion
+                - platform: Quam earum libero sunt et.
+                  url: http://prohaska.name/fannie_schulist
+                - platform: Quam earum libero sunt et.
+                  url: http://prohaska.name/fannie_schulist
+            plugin_git_sha: gfx
+            printed_version: Reprehenderit voluptas sunt necessitatibus est dolor.
     DevBuild:
         title: DevBuild
         type: object
         properties:
             id:
                 type: integer
-                example: 7476388818621186205
+                example: 8110464159652204014
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -480,169 +471,154 @@ definitions:
             status:
                 $ref: '#/definitions/DevBuildStatus'
         example:
-            id: 4085216939080665207
+            id: 8460784300929094346
             meta:
-                created_at: "1992-07-10T12:26:40Z"
-                created_by: maurine_nikolaus@nitzsche.biz
-                updated_at: "2009-08-03T00:19:43Z"
+                created_at: "2005-02-16T13:19:48Z"
+                created_by: berneice@prohaska.name
+                updated_at: "1989-02-25T23:34:09Z"
             spec:
-                build_env: Quia numquam suscipit corrupti qui.
-                builder_img: Sint ut blanditiis.
+                build_env: Ut rerum dolorum aspernatur necessitatibus.
+                builder_img: Laborum iste nobis omnis quae.
                 edition: enterprise
-                features: Aperiam natus in ut quae accusantium.
-                gitHash: Numquam possimus possimus ipsum rerum unde.
-                gitRef: Numquam neque reiciendis quaerat.
-                githubRepo: Cumque ea est laboriosam esse dicta architecto.
+                features: Itaque necessitatibus eligendi qui qui illum nemo.
+                git_ref: Quia eum quia id qui.
+                git_sha: Fugiat sint aut minus aperiam quod.
+                github_repo: Eum deleniti natus reprehenderit.
                 is_hotfix: true
-                is_push_gcr: false
+                is_push_gcr: true
                 pipeline_engine: jenkins
-                plugin_git_ref: Minima iusto.
-                product: tidb-dashboard
-                productBaseImg: Et aut error doloremque non itaque.
-                productDockerfile: Voluptas quia reprehenderit fugit quo debitis numquam.
-                targetImg: Qui a voluptatem pariatur aspernatur sed.
-                version: Nostrum autem.
+                plugin_git_ref: Et accusamus velit ipsam voluptatum.
+                product: ticdc-newarch
+                product_base_img: Dolorum natus quia illo blanditiis totam.
+                product_dockerfile: Beatae dignissimos tempore aut placeat rerum dicta.
+                target_img: Ipsa veniam aspernatur.
+                version: Harum voluptatem enim aliquam.
             status:
-                buildReport:
+                build_report:
                     binaries:
-                        - component: Consequatur dolores provident unde non est quo.
-                          ociFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          platform: Quia iure aut rerum velit fugit.
-                          sha256OciFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          sha256URL: Et quia.
-                          url: Perspiciatis similique quis.
-                        - component: Consequatur dolores provident unde non est quo.
-                          ociFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          platform: Quia iure aut rerum velit fugit.
-                          sha256OciFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          sha256URL: Et quia.
-                          url: Perspiciatis similique quis.
-                        - component: Consequatur dolores provident unde non est quo.
-                          ociFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          platform: Quia iure aut rerum velit fugit.
-                          sha256OciFile:
-                            file: Illum ex quia est autem est.
-                            repo: Ratione consequatur quisquam et.
-                            tag: Aut doloremque culpa.
-                          sha256URL: Et quia.
-                          url: Perspiciatis similique quis.
-                    gitHash: Possimus maxime et qui eius unde eos.
+                        - component: Dolores id quibusdam impedit corrupti veritatis.
+                          oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          platform: Blanditiis magni eaque quas.
+                          sha256_oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          sha256_url: http://ziemeabbott.name/elwin
+                          url: http://heathcote.info/devonte
+                        - component: Dolores id quibusdam impedit corrupti veritatis.
+                          oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          platform: Blanditiis magni eaque quas.
+                          sha256_oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          sha256_url: http://ziemeabbott.name/elwin
+                          url: http://heathcote.info/devonte
+                        - component: Dolores id quibusdam impedit corrupti veritatis.
+                          oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          platform: Blanditiis magni eaque quas.
+                          sha256_oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          sha256_url: http://ziemeabbott.name/elwin
+                          url: http://heathcote.info/devonte
+                        - component: Dolores id quibusdam impedit corrupti veritatis.
+                          oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          platform: Blanditiis magni eaque quas.
+                          sha256_oci_file:
+                            file: Quisquam modi temporibus totam quae debitis.
+                            repo: Hic ullam atque.
+                            tag: Consequatur laudantium aut vitae iste ut.
+                          sha256_url: http://ziemeabbott.name/elwin
+                          url: http://heathcote.info/devonte
+                    git_sha: ett
                     images:
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                    pluginGitHash: Id molestiae ea.
-                    printedVersion: Assumenda ducimus ut architecto architecto quos.
-                errMsg: Non ut vel deserunt officiis quia et.
-                pipelineBuildID: 7552297125772394623
-                pipelineEndAt: Blanditiis aperiam eaque eos nostrum dolore nulla.
-                pipelineStartAt: Eos molestiae provident omnis neque.
-                pipelineViewURL: Illum possimus provident quisquam illum sed ea.
-                pipelineViewURLs:
-                    - Velit explicabo a qui pariatur.
-                    - Dolorem velit dolor.
-                    - Qui earum omnis.
-                status: SUCCESS
-                tektonStatus:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                    plugin_git_sha: vbb
+                    printed_version: Voluptas sunt suscipit et odit vel similique.
+                err_msg: Iste ducimus voluptas possimus molestias.
+                pipeline_build_id: 1363226041782208146
+                pipeline_end_at: "1974-12-16T10:41:19Z"
+                pipeline_start_at: "1973-06-12T21:10:21Z"
+                pipeline_view_url: http://goldnerbreitenberg.name/alford_lowe
+                pipeline_view_urls:
+                    - http://harber.org/junius
+                    - http://swaniawski.info/kenneth
+                    - http://thielziemann.com/keshaun.wiegand
+                    - http://mante.org/mafalda
+                status: FAILURE
+                tekton_status:
                     pipelines:
-                        - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                          gitHash: Asperiores aperiam consequatur perferendis delectus.
+                        - end_at: "1975-05-22T10:40:28Z"
+                          git_sha: zpk
                           images:
-                            - platform: Quaerat quis.
-                              url: Molestias ut molestiae.
-                            - platform: Quaerat quis.
-                              url: Molestias ut molestiae.
-                          name: Nulla ratione ex.
-                          ociArtifacts:
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                          name: Consequatur corrupti autem iste nam voluptate.
+                          oci_artifacts:
                             - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
+                                - Fuga qui aliquam et velit voluptatum rerum.
+                                - Qui ex sed culpa quaerat earum.
+                              repo: Est labore deleniti sint nesciunt ducimus non.
+                              tag: Labore et.
                             - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                            - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                            - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                          platform: Quia quia.
-                          startAt: Sed ut.
-                          status: FAILURE
-                          url: Quibusdam possimus officiis et qui suscipit.
-                        - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                          gitHash: Asperiores aperiam consequatur perferendis delectus.
+                                - Fuga qui aliquam et velit voluptatum rerum.
+                                - Qui ex sed culpa quaerat earum.
+                              repo: Est labore deleniti sint nesciunt ducimus non.
+                              tag: Labore et.
+                          platform: Quia similique voluptatem esse facere.
+                          start_at: "1998-04-09T10:23:35Z"
+                          status: ERROR
+                          url: http://kiehn.net/makenna.dooley
+                        - end_at: "1975-05-22T10:40:28Z"
+                          git_sha: zpk
                           images:
-                            - platform: Quaerat quis.
-                              url: Molestias ut molestiae.
-                            - platform: Quaerat quis.
-                              url: Molestias ut molestiae.
-                          name: Nulla ratione ex.
-                          ociArtifacts:
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                            - platform: Quam earum libero sunt et.
+                              url: http://prohaska.name/fannie_schulist
+                          name: Consequatur corrupti autem iste nam voluptate.
+                          oci_artifacts:
                             - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
+                                - Fuga qui aliquam et velit voluptatum rerum.
+                                - Qui ex sed culpa quaerat earum.
+                              repo: Est labore deleniti sint nesciunt ducimus non.
+                              tag: Labore et.
                             - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                            - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                            - files:
-                                - Debitis dolor nihil aperiam magnam adipisci ut.
-                                - Illo enim ut itaque.
-                                - Tenetur recusandae corporis occaecati dolor voluptatum.
-                                - A aut tenetur corrupti et voluptatem voluptas.
-                              repo: Qui ea non et vel.
-                              tag: Labore ut tempora amet dicta rerum a.
-                          platform: Quia quia.
-                          startAt: Sed ut.
-                          status: FAILURE
-                          url: Quibusdam possimus officiis et qui suscipit.
+                                - Fuga qui aliquam et velit voluptatum rerum.
+                                - Qui ex sed culpa quaerat earum.
+                              repo: Est labore deleniti sint nesciunt ducimus non.
+                              tag: Labore et.
+                          platform: Quia similique voluptatem esse facere.
+                          start_at: "1998-04-09T10:23:35Z"
+                          status: ERROR
+                          url: http://kiehn.net/makenna.dooley
         required:
             - id
             - meta
@@ -654,34 +630,37 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: "1999-09-05T19:26:09Z"
+                example: "1993-12-29T17:32:23Z"
                 format: date-time
             created_by:
                 type: string
-                example: lane@pouros.com
+                example: cynthia_ullrich@durgan.com
                 format: email
             updated_at:
                 type: string
-                example: "2008-08-30T10:49:02Z"
+                example: "1996-06-28T07:10:10Z"
                 format: date-time
         example:
-            created_at: "1978-01-05T03:36:29Z"
-            created_by: patricia.dach@reynoldsyundt.biz
-            updated_at: "1999-03-11T03:51:40Z"
+            created_at: "1987-01-11T05:37:05Z"
+            created_by: britney.lesch@lubowitz.net
+            updated_at: "1976-06-20T19:50:00Z"
         required:
             - created_at
             - created_by
             - updated_at
     DevBuildRequest:
         title: DevBuildRequest
+        $ref: '#/definitions/DevBuildSpec'
+    DevBuildSpec:
+        title: DevBuildSpec
         type: object
         properties:
             build_env:
                 type: string
-                example: Vel suscipit aut aut aut aliquid.
+                example: Facilis voluptatum soluta nulla et quam.
             builder_img:
                 type: string
-                example: Sequi minima eos sed ut.
+                example: Et aperiam ad aut iure autem dolores.
             edition:
                 type: string
                 example: enterprise
@@ -690,227 +669,123 @@ definitions:
                     - community
             features:
                 type: string
-                example: Quos odio fuga culpa voluptatem tempora explicabo.
-            gitRef:
+                example: Sed doloremque eligendi impedit totam.
+            git_ref:
                 type: string
-                example: A quis autem.
-            githubRepo:
+                example: Et ad ipsam ut doloremque eum sit.
+            git_sha:
                 type: string
-                example: Sint nesciunt nemo reiciendis.
-            is_hotfix:
-                type: boolean
-                example: false
-            is_push_gcr:
-                type: boolean
-                example: false
-            pipeline_engine:
+                example: Cupiditate laboriosam aut expedita.
+            github_repo:
                 type: string
-                example: tekton
-                enum:
-                    - jenkins
-                    - tekton
-            plugin_git_ref:
-                type: string
-                example: Natus voluptas fuga ut ut distinctio.
-            product:
-                type: string
-                example: dumpling
-                enum:
-                    - tidb
-                    - enterprise-plugin
-                    - tikv
-                    - pd
-                    - tiflash
-                    - br
-                    - dumpling
-                    - tidb-lightning
-                    - ticdc
-                    - ticdc-newarch
-                    - dm
-                    - tidb-binlog
-                    - tidb-tools
-                    - ng-monitoring
-                    - tidb-dashboard
-                    - drainer
-                    - pump
-                    - ""
-            productBaseImg:
-                type: string
-                example: Vel et.
-            productDockerfile:
-                type: string
-                example: Est beatae ad itaque possimus impedit rerum.
-            targetImg:
-                type: string
-                example: Sunt ut voluptates.
-            version:
-                type: string
-                example: Eveniet ratione quia delectus voluptas nam.
-        example:
-            build_env: Consequatur atque ut fugit consectetur explicabo.
-            builder_img: Cumque fugiat minus quas ut voluptatibus.
-            edition: community
-            features: Aut facere accusantium nobis distinctio.
-            gitRef: Non ut et asperiores non accusantium ex.
-            githubRepo: Quod nihil sint unde sint veniam sequi.
-            is_hotfix: false
-            is_push_gcr: false
-            pipeline_engine: tekton
-            plugin_git_ref: Delectus provident omnis.
-            product: tidb-dashboard
-            productBaseImg: Sunt ut est illum laudantium qui.
-            productDockerfile: Commodi nisi id qui voluptates et rem.
-            targetImg: Voluptas nisi esse accusantium molestiae nihil.
-            version: Vitae ipsa.
-        required:
-            - edition
-            - gitRef
-            - product
-            - version
-    DevBuildSpec:
-        title: DevBuildSpec
-        type: object
-        properties:
-            build_env:
-                type: string
-                example: Sunt esse et impedit voluptatem.
-            builder_img:
-                type: string
-                example: Recusandae ullam neque autem.
-            edition:
-                type: string
-                example: community
-                enum:
-                    - enterprise
-                    - community
-            features:
-                type: string
-                example: Totam vel sint explicabo.
-            gitHash:
-                type: string
-                example: Dolor dolor accusantium explicabo.
-            gitRef:
-                type: string
-                example: Praesentium et dicta.
-            githubRepo:
-                type: string
-                example: Sed qui.
+                example: In totam dignissimos odio enim ab.
             is_hotfix:
                 type: boolean
                 example: true
             is_push_gcr:
                 type: boolean
-                example: true
+                example: false
             pipeline_engine:
                 type: string
-                example: tekton
+                example: jenkins
                 enum:
                     - jenkins
                     - tekton
             plugin_git_ref:
                 type: string
-                example: Dolores fuga quae.
+                example: Sed vero deleniti delectus.
             product:
                 type: string
-                example: tidb-dashboard
+                example: tidb
                 enum:
                     - tidb
-                    - enterprise-plugin
-                    - tikv
-                    - pd
-                    - tiflash
                     - br
                     - dumpling
                     - tidb-lightning
+                    - tikv
+                    - pd
+                    - enterprise-plugin
+                    - tiflash
                     - ticdc
-                    - ticdc-newarch
                     - dm
                     - tidb-binlog
+                    - drainer
+                    - pump
                     - tidb-tools
                     - ng-monitoring
                     - tidb-dashboard
-                    - drainer
-                    - pump
-                    - ""
-            productBaseImg:
+                    - ticdc-newarch
+            product_base_img:
                 type: string
-                example: Eius enim quia.
-            productDockerfile:
+                example: Autem error non eum.
+            product_dockerfile:
                 type: string
-                example: Delectus voluptas accusantium quis.
-            targetImg:
+                example: Repudiandae quo hic commodi blanditiis et natus.
+            target_img:
                 type: string
-                example: Perferendis eveniet.
+                example: Vitae molestias officiis laudantium illum voluptates.
             version:
                 type: string
-                example: Accusantium voluptatem.
+                example: Voluptatem facilis.
         example:
-            build_env: Consectetur omnis at doloribus non eos unde.
-            builder_img: Quibusdam sunt voluptatem eveniet impedit enim.
+            build_env: Molestias eligendi veniam voluptas et et fuga.
+            builder_img: Id magni ut ea consequatur sint et.
             edition: enterprise
-            features: Vero eligendi ex quibusdam aut voluptas.
-            gitHash: Asperiores repellendus omnis itaque dicta.
-            gitRef: Sit deleniti illo.
-            githubRepo: Optio ut cum minima labore omnis.
+            features: Ea inventore nihil culpa quis.
+            git_ref: Soluta cumque commodi est dolores.
+            git_sha: Eos ut.
+            github_repo: Eius minus iure qui officiis eius cum.
             is_hotfix: false
             is_push_gcr: false
             pipeline_engine: jenkins
-            plugin_git_ref: Eaque quia et.
-            product: tiflash
-            productBaseImg: Reiciendis doloribus velit distinctio.
-            productDockerfile: Illum in maxime nisi et fugit inventore.
-            targetImg: Dolores qui assumenda amet est distinctio.
-            version: Placeat consequatur repellendus voluptatibus.
+            plugin_git_ref: Vero eos.
+            product: pd
+            product_base_img: Perspiciatis sed itaque beatae soluta numquam.
+            product_dockerfile: Minima tenetur ut pariatur consequatur perferendis.
+            target_img: Et eius omnis suscipit consequatur ut nostrum.
+            version: Deserunt quia ducimus molestias dolores.
         required:
-            - build_env
-            - builder_img
-            - edition
-            - features
-            - gitHash
-            - gitRef
-            - githubRepo
-            - is_hotfix
-            - is_push_gcr
-            - pipeline_engine
-            - plugin_git_ref
             - product
-            - productBaseImg
-            - productDockerfile
-            - targetImg
             - version
+            - edition
+            - git_ref
     DevBuildStatus:
         title: DevBuildStatus
         type: object
         properties:
-            buildReport:
+            build_report:
                 $ref: '#/definitions/BuildReport'
-            errMsg:
+            err_msg:
                 type: string
-                example: Non quas et ex reprehenderit ipsum.
-            pipelineBuildID:
+                example: Vel nemo.
+            pipeline_build_id:
                 type: integer
-                example: 7153683753120193758
+                example: 8779671170364405165
                 format: int64
-            pipelineEndAt:
+            pipeline_end_at:
                 type: string
-                example: Sit fuga magnam rerum architecto.
-            pipelineStartAt:
+                example: "2005-11-07T21:42:03Z"
+                format: date-time
+            pipeline_start_at:
                 type: string
-                example: Qui unde.
-            pipelineViewURL:
+                example: "1977-11-28T22:53:00Z"
+                format: date-time
+            pipeline_view_url:
                 type: string
-                example: Autem praesentium reprehenderit quisquam et velit.
-            pipelineViewURLs:
+                example: http://mcculloughbraun.org/alanis
+                format: uri
+            pipeline_view_urls:
                 type: array
                 items:
                     type: string
-                    example: Sequi ea incidunt magni ut laborum nihil.
+                    example: http://powlowski.org/lou_nicolas
+                    format: uri
                 example:
-                    - Impedit et quibusdam et consectetur nihil.
-                    - Nihil ad aspernatur.
+                    - http://kuhn.com/jayce
+                    - http://stantonfeil.name/abigayle
             status:
                 type: string
-                example: FAILURE
+                example: SUCCESS
                 enum:
                     - PENDING
                     - PROCESSING
@@ -918,160 +793,134 @@ definitions:
                     - SUCCESS
                     - FAILURE
                     - ERROR
-            tektonStatus:
+            tekton_status:
                 $ref: '#/definitions/TektonStatus'
         example:
-            buildReport:
+            build_report:
                 binaries:
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-                    - component: Consequatur dolores provident unde non est quo.
-                      ociFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      platform: Quia iure aut rerum velit fugit.
-                      sha256OciFile:
-                        file: Illum ex quia est autem est.
-                        repo: Ratione consequatur quisquam et.
-                        tag: Aut doloremque culpa.
-                      sha256URL: Et quia.
-                      url: Perspiciatis similique quis.
-                gitHash: Possimus maxime et qui eius unde eos.
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                    - component: Dolores id quibusdam impedit corrupti veritatis.
+                      oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      platform: Blanditiis magni eaque quas.
+                      sha256_oci_file:
+                        file: Quisquam modi temporibus totam quae debitis.
+                        repo: Hic ullam atque.
+                        tag: Consequatur laudantium aut vitae iste ut.
+                      sha256_url: http://ziemeabbott.name/elwin
+                      url: http://heathcote.info/devonte
+                git_sha: ett
                 images:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                pluginGitHash: Id molestiae ea.
-                printedVersion: Assumenda ducimus ut architecto architecto quos.
-            errMsg: Rerum aperiam vel quae recusandae neque dolorum.
-            pipelineBuildID: 3764516161818136705
-            pipelineEndAt: Ea repellat quasi sequi vitae.
-            pipelineStartAt: Non velit fugit nihil temporibus.
-            pipelineViewURL: Optio mollitia minus quos est.
-            pipelineViewURLs:
-                - Aut et.
-                - Id assumenda.
-                - Officiis sit delectus commodi voluptatem enim.
-                - Quo quo vel.
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                plugin_git_sha: vbb
+                printed_version: Voluptas sunt suscipit et odit vel similique.
+            err_msg: Est enim modi doloribus.
+            pipeline_build_id: 2606275492248754310
+            pipeline_end_at: "1986-04-01T04:16:31Z"
+            pipeline_start_at: "1987-10-30T14:46:36Z"
+            pipeline_view_url: http://bashirianmiller.info/aidan_lehner
+            pipeline_view_urls:
+                - http://lynch.name/korbin
+                - http://herzogmurazik.com/destiney
             status: ABORTED
-            tektonStatus:
+            tekton_status:
                 pipelines:
-                    - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                      gitHash: Asperiores aperiam consequatur perferendis delectus.
+                    - end_at: "1975-05-22T10:40:28Z"
+                      git_sha: zpk
                       images:
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                      name: Nulla ratione ex.
-                      ociArtifacts:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                      name: Consequatur corrupti autem iste nam voluptate.
+                      oci_artifacts:
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                      platform: Quia quia.
-                      startAt: Sed ut.
-                      status: FAILURE
-                      url: Quibusdam possimus officiis et qui suscipit.
-                    - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                      gitHash: Asperiores aperiam consequatur perferendis delectus.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
+                      platform: Quia similique voluptatem esse facere.
+                      start_at: "1998-04-09T10:23:35Z"
+                      status: ERROR
+                      url: http://kiehn.net/makenna.dooley
+                    - end_at: "1975-05-22T10:40:28Z"
+                      git_sha: zpk
                       images:
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                      name: Nulla ratione ex.
-                      ociArtifacts:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                      name: Consequatur corrupti autem iste nam voluptate.
+                      oci_artifacts:
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                      platform: Quia quia.
-                      startAt: Sed ut.
-                      status: FAILURE
-                      url: Quibusdam possimus officiis et qui suscipit.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
+                      platform: Quia similique voluptatem esse facere.
+                      start_at: "1998-04-09T10:23:35Z"
+                      status: ERROR
+                      url: http://kiehn.net/makenna.dooley
         required:
-            - buildReport
-            - errMsg
-            - pipelineBuildID
-            - pipelineEndAt
-            - pipelineStartAt
-            - pipelineViewURL
-            - pipelineViewURLs
             - status
-            - tektonStatus
     DevbuildCreateRequestBody:
         title: DevbuildCreateRequestBody
         type: object
@@ -1079,28 +928,29 @@ definitions:
             created_by:
                 type: string
                 description: Creator of build
-                example: litzy@howe.net
+                example: brenna_pagac@thompson.org
                 format: email
             request:
                 $ref: '#/definitions/DevBuildRequest'
         example:
-            created_by: mark@koss.name
+            created_by: vickie.shanahan@conn.com
             request:
-                build_env: Voluptate doloribus architecto numquam est.
-                builder_img: Neque doloremque.
-                edition: enterprise
-                features: Commodi dolorum.
-                gitRef: Et facere magnam velit optio est.
-                githubRepo: Doloribus nisi corporis nihil soluta.
+                build_env: Sunt consequatur veniam rerum quae voluptas consequuntur.
+                builder_img: Voluptatibus illo est sed qui dolorem.
+                edition: community
+                features: Magni dolor.
+                git_ref: Eligendi qui culpa libero dignissimos occaecati enim.
+                git_sha: Et quaerat odio.
+                github_repo: Suscipit nesciunt et porro aliquid.
                 is_hotfix: true
-                is_push_gcr: false
-                pipeline_engine: tekton
-                plugin_git_ref: Qui necessitatibus possimus ab quos facere.
-                product: tidb
-                productBaseImg: Voluptatem rem earum aut.
-                productDockerfile: Nulla aut natus totam esse maxime aliquid.
-                targetImg: Numquam at illo voluptas dolor atque.
-                version: Beatae sunt nesciunt amet autem.
+                is_push_gcr: true
+                pipeline_engine: jenkins
+                plugin_git_ref: Et eum voluptas enim molestiae.
+                product: br
+                product_base_img: Ut voluptatum quis aut placeat laborum.
+                product_dockerfile: Eaque ullam quia vel.
+                target_img: Sit consequuntur dolores.
+                version: Optio possimus et distinctio nihil cum asperiores.
         required:
             - created_by
             - request
@@ -1112,7 +962,7 @@ definitions:
                 type: string
                 description: The direction of the sort
                 default: desc
-                example: desc
+                example: asc
                 enum:
                     - asc
                     - desc
@@ -1122,249 +972,233 @@ definitions:
         title: DevbuildUpdateRequestBody
         type: object
         properties:
-            DevBuild:
+            build:
                 $ref: '#/definitions/DevBuild'
         example:
-            DevBuild:
-                id: 8425332152695240675
+            build:
+                id: 6792677507012432024
                 meta:
-                    created_at: "1982-06-14T15:45:52Z"
-                    created_by: khalil_steuber@rippin.org
-                    updated_at: "1994-05-27T04:49:34Z"
+                    created_at: "1996-12-24T11:37:23Z"
+                    created_by: rose.ebert@witting.info
+                    updated_at: "2000-10-19T19:54:20Z"
                 spec:
-                    build_env: Eum sit.
-                    builder_img: Suscipit et.
-                    edition: enterprise
-                    features: Magni suscipit eum vel officiis quasi sit.
-                    gitHash: Ex amet est nemo harum voluptas.
-                    gitRef: Eaque exercitationem et.
-                    githubRepo: Blanditiis velit voluptatem exercitationem.
+                    build_env: Sunt consequatur veniam rerum quae voluptas consequuntur.
+                    builder_img: Voluptatibus illo est sed qui dolorem.
+                    edition: community
+                    features: Magni dolor.
+                    git_ref: Eligendi qui culpa libero dignissimos occaecati enim.
+                    git_sha: Et quaerat odio.
+                    github_repo: Suscipit nesciunt et porro aliquid.
                     is_hotfix: true
                     is_push_gcr: true
-                    pipeline_engine: tekton
-                    plugin_git_ref: Error officiis impedit quaerat consectetur voluptas ea.
+                    pipeline_engine: jenkins
+                    plugin_git_ref: Et eum voluptas enim molestiae.
                     product: br
-                    productBaseImg: Numquam explicabo quod quidem perspiciatis.
-                    productDockerfile: Dolor laudantium dolores saepe nihil voluptas id.
-                    targetImg: Quasi quasi error laboriosam qui.
-                    version: Dolorum est nisi voluptatem et harum quae.
+                    product_base_img: Ut voluptatum quis aut placeat laborum.
+                    product_dockerfile: Eaque ullam quia vel.
+                    target_img: Sit consequuntur dolores.
+                    version: Optio possimus et distinctio nihil cum asperiores.
                 status:
-                    buildReport:
+                    build_report:
                         binaries:
-                            - component: Qui tempora quos quae velit sint quia.
-                              ociFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              platform: Ab quos esse delectus ea rem.
-                              sha256OciFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              sha256URL: Voluptatem ratione hic quae tempora ratione.
-                              url: Quos eaque rerum expedita perspiciatis.
-                            - component: Qui tempora quos quae velit sint quia.
-                              ociFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              platform: Ab quos esse delectus ea rem.
-                              sha256OciFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              sha256URL: Voluptatem ratione hic quae tempora ratione.
-                              url: Quos eaque rerum expedita perspiciatis.
-                            - component: Qui tempora quos quae velit sint quia.
-                              ociFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              platform: Ab quos esse delectus ea rem.
-                              sha256OciFile:
-                                file: Commodi eius et ad ut.
-                                repo: Dolor deserunt atque exercitationem non placeat.
-                                tag: Possimus libero.
-                              sha256URL: Voluptatem ratione hic quae tempora ratione.
-                              url: Quos eaque rerum expedita perspiciatis.
-                        gitHash: Dolore ipsam non.
+                            - component: Nulla perferendis.
+                              oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              platform: Labore adipisci aut dolorum omnis voluptatum.
+                              sha256_oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              sha256_url: http://wehnercruickshank.net/claudie
+                              url: http://marks.biz/delfina
+                            - component: Nulla perferendis.
+                              oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              platform: Labore adipisci aut dolorum omnis voluptatum.
+                              sha256_oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              sha256_url: http://wehnercruickshank.net/claudie
+                              url: http://marks.biz/delfina
+                            - component: Nulla perferendis.
+                              oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              platform: Labore adipisci aut dolorum omnis voluptatum.
+                              sha256_oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              sha256_url: http://wehnercruickshank.net/claudie
+                              url: http://marks.biz/delfina
+                            - component: Nulla perferendis.
+                              oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              platform: Labore adipisci aut dolorum omnis voluptatum.
+                              sha256_oci_file:
+                                file: Ullam quod nobis quidem.
+                                repo: Delectus et quia dolor perspiciatis animi minus.
+                                tag: Nisi ad dignissimos rerum nulla.
+                              sha256_url: http://wehnercruickshank.net/claudie
+                              url: http://marks.biz/delfina
+                        git_sha: u24
                         images:
-                            - platform: Suscipit exercitationem assumenda.
-                              url: In voluptas omnis.
-                            - platform: Suscipit exercitationem assumenda.
-                              url: In voluptas omnis.
-                        pluginGitHash: Non eligendi eum.
-                        printedVersion: Asperiores sit consequatur repudiandae voluptas sit.
-                    errMsg: Illum perferendis.
-                    pipelineBuildID: 7878572798948134575
-                    pipelineEndAt: Distinctio minima molestiae quis.
-                    pipelineStartAt: Tempora earum quam est architecto.
-                    pipelineViewURL: Quia delectus qui minima.
-                    pipelineViewURLs:
-                        - Aut modi voluptas aut eveniet.
-                        - Esse aut.
-                        - Delectus dolore libero aut.
-                        - Corrupti autem iste.
-                    status: FAILURE
-                    tektonStatus:
+                            - platform: Dolor eaque harum minima.
+                              url: http://ebertzieme.net/d'angelo
+                            - platform: Dolor eaque harum minima.
+                              url: http://ebertzieme.net/d'angelo
+                            - platform: Dolor eaque harum minima.
+                              url: http://ebertzieme.net/d'angelo
+                        plugin_git_sha: qpk
+                        printed_version: Et in dolorem incidunt ut unde natus.
+                    err_msg: Nesciunt fugit qui eos quae.
+                    pipeline_build_id: 8884006432911966874
+                    pipeline_end_at: "2001-10-18T06:28:10Z"
+                    pipeline_start_at: "1970-05-26T03:25:48Z"
+                    pipeline_view_url: http://pagac.biz/jessyca
+                    pipeline_view_urls:
+                        - http://mannwalsh.org/shaniya
+                        - http://upton.com/jordan.cremin
+                        - http://mrazstehr.info/abner.windler
+                    status: PENDING
+                    tekton_status:
                         pipelines:
-                            - endAt: Animi at sequi error.
-                              gitHash: Aut molestiae.
+                            - end_at: "1981-09-04T21:02:25Z"
+                              git_sha: jxx
                               images:
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                              name: Occaecati omnis sunt a perspiciatis ratione.
-                              ociArtifacts:
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                              name: Commodi et.
+                              oci_artifacts:
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                              platform: Explicabo id eum quae illum vitae necessitatibus.
-                              startAt: Accusantium nostrum quaerat necessitatibus distinctio nobis.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
+                              platform: Quisquam saepe saepe error consequatur et facilis.
+                              start_at: "2003-01-02T20:40:11Z"
                               status: PROCESSING
-                              url: Vero sunt culpa molestiae sint ut.
-                            - endAt: Animi at sequi error.
-                              gitHash: Aut molestiae.
+                              url: http://priceernser.info/carolyne
+                            - end_at: "1981-09-04T21:02:25Z"
+                              git_sha: jxx
                               images:
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                              name: Occaecati omnis sunt a perspiciatis ratione.
-                              ociArtifacts:
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                              name: Commodi et.
+                              oci_artifacts:
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                              platform: Explicabo id eum quae illum vitae necessitatibus.
-                              startAt: Accusantium nostrum quaerat necessitatibus distinctio nobis.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
+                              platform: Quisquam saepe saepe error consequatur et facilis.
+                              start_at: "2003-01-02T20:40:11Z"
                               status: PROCESSING
-                              url: Vero sunt culpa molestiae sint ut.
-                            - endAt: Animi at sequi error.
-                              gitHash: Aut molestiae.
+                              url: http://priceernser.info/carolyne
+                            - end_at: "1981-09-04T21:02:25Z"
+                              git_sha: jxx
                               images:
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                              name: Occaecati omnis sunt a perspiciatis ratione.
-                              ociArtifacts:
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                                - platform: Dolor eaque harum minima.
+                                  url: http://ebertzieme.net/d'angelo
+                              name: Commodi et.
+                              oci_artifacts:
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
                                 - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                              platform: Explicabo id eum quae illum vitae necessitatibus.
-                              startAt: Accusantium nostrum quaerat necessitatibus distinctio nobis.
+                                    - Quia asperiores.
+                                    - Omnis soluta et explicabo nisi.
+                                  repo: Rem possimus perferendis est velit pariatur.
+                                  tag: Doloribus voluptas totam.
+                              platform: Quisquam saepe saepe error consequatur et facilis.
+                              start_at: "2003-01-02T20:40:11Z"
                               status: PROCESSING
-                              url: Vero sunt culpa molestiae sint ut.
-                            - endAt: Animi at sequi error.
-                              gitHash: Aut molestiae.
-                              images:
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                                - platform: Suscipit exercitationem assumenda.
-                                  url: In voluptas omnis.
-                              name: Occaecati omnis sunt a perspiciatis ratione.
-                              ociArtifacts:
-                                - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                                - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                                - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                                - files:
-                                    - Eius quae quisquam itaque.
-                                    - Debitis dolore explicabo repellendus et error provident.
-                                  repo: Quo dolor consequatur est incidunt labore non.
-                                  tag: Minus quis qui magnam.
-                              platform: Explicabo id eum quae illum vitae necessitatibus.
-                              startAt: Accusantium nostrum quaerat necessitatibus distinctio nobis.
-                              status: PROCESSING
-                              url: Vero sunt culpa molestiae sint ut.
+                              url: http://priceernser.info/carolyne
         required:
-            - DevBuild
+            - build
     HTTPError:
         title: HTTPError
         type: object
         properties:
             code:
                 type: integer
-                example: 8243505271085084803
+                example: 8414570314532284399
                 format: int64
             message:
                 type: string
-                example: Accusamus a a exercitationem.
+                example: Dolor quas velit enim.
         description: Bad Request
         example:
-            code: 6397685005227921493
-            message: Modi aut beatae quasi fuga qui.
+            code: 4489673504578821716
+            message: Sit ut necessitatibus quis.
         required:
             - code
             - message
@@ -1374,13 +1208,14 @@ definitions:
         properties:
             platform:
                 type: string
-                example: Molestiae id magni esse consectetur saepe recusandae.
+                example: Adipisci consequatur perferendis et exercitationem hic.
             url:
                 type: string
-                example: Impedit occaecati.
+                example: http://larkinortiz.biz/myra
+                format: uri
         example:
-            platform: Et ad earum possimus accusamus.
-            url: Et dolorum natus.
+            platform: Doloribus eum nostrum qui nam esse.
+            url: http://frami.name/antonina_lind
         required:
             - platform
             - url
@@ -1390,13 +1225,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Laudantium itaque dolor recusandae.
+                example: Ut officiis omnis odit quaerat quia.
             target:
                 type: string
-                example: Deleniti eum.
+                example: Enim totam.
         example:
-            source: Eligendi dolorem autem ullam.
-            target: Quaerat repellendus similique expedita quia.
+            source: Est laborum est.
+            target: Velit velit id omnis aut.
         required:
             - source
             - target
@@ -1408,22 +1243,25 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Doloribus dolor officiis nihil rerum.
+                    example: Reiciendis voluptatem ipsam repellat.
                 example:
-                    - Veniam voluptates nisi ex repellat.
-                    - Nihil eos et ab.
+                    - Excepturi doloribus.
+                    - Saepe nemo ea et molestiae.
+                    - Quis dolorem at et.
+                    - Est quo magnam dolorem sunt at qui.
             repo:
                 type: string
-                example: Sed pariatur.
+                example: Eum aut veniam velit ea.
             tag:
                 type: string
-                example: Quo nulla.
+                example: Cum et a qui quia.
         example:
             files:
-                - Quas non omnis.
-                - Quo laboriosam reprehenderit et repellendus qui.
-            repo: Nostrum et officiis incidunt et.
-            tag: Consequatur recusandae voluptatibus qui.
+                - Molestiae accusamus corporis.
+                - Et dolorum vitae perspiciatis saepe.
+                - Error cum.
+            repo: Ut sequi atque voluptas consequatur animi.
+            tag: Ipsum tempora non consequatur aut accusantium quaerat.
         required:
             - files
             - repo
@@ -1434,17 +1272,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Asperiores alias sapiente ratione dolor eum.
+                example: Vel magnam maiores dolore.
             repo:
                 type: string
-                example: Rem enim.
+                example: Vitae nobis labore labore nemo.
             tag:
                 type: string
-                example: Cum rerum aut aut blanditiis.
+                example: Ut quasi corrupti.
         example:
-            file: Rem beatae recusandae in et.
-            repo: Iusto laudantium similique occaecati dignissimos accusantium.
-            tag: Quia aut tempore dolores.
+            file: Eius blanditiis qui sit facere.
+            repo: Esse quod amet nesciunt saepe.
+            tag: Harum voluptate.
         required:
             - file
             - repo
@@ -1453,66 +1291,60 @@ definitions:
         title: TektonPipeline
         type: object
         properties:
-            endAt:
+            end_at:
                 type: string
-                example: Explicabo nemo consequatur est inventore rerum veniam.
-            gitHash:
+                example: "2010-12-01T17:00:38Z"
+                format: date-time
+            git_sha:
                 type: string
-                example: Est quod.
+                example: 42y
+                maxLength: 40
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
             name:
                 type: string
-                example: Dicta officiis magni enim qui.
-            ociArtifacts:
+                example: Non et doloribus occaecati.
+            oci_artifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                    - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
             platform:
                 type: string
-                example: Autem omnis qui autem aliquid voluptas magni.
-            startAt:
+                example: Magni deleniti consectetur.
+            start_at:
                 type: string
-                example: Voluptates sed minima maiores rem aliquid aut.
+                example: "1987-04-19T18:25:09Z"
+                format: date-time
             status:
                 type: string
-                example: FAILURE
+                example: PENDING
                 enum:
                     - PENDING
                     - PROCESSING
@@ -1522,52 +1354,35 @@ definitions:
                     - ERROR
             url:
                 type: string
-                example: Quisquam voluptatem doloribus necessitatibus.
+                example: http://larkin.info/devin.nader
+                format: uri
         example:
-            endAt: Quo voluptatem.
-            gitHash: Itaque et.
+            end_at: "2004-01-12T22:13:15Z"
+            git_sha: bwb
             images:
-                - platform: Quaerat quis.
-                  url: Molestias ut molestiae.
-                - platform: Quaerat quis.
-                  url: Molestias ut molestiae.
-            name: Quas earum qui ea commodi.
-            ociArtifacts:
+                - platform: Quam earum libero sunt et.
+                  url: http://prohaska.name/fannie_schulist
+                - platform: Quam earum libero sunt et.
+                  url: http://prohaska.name/fannie_schulist
+            name: Sed expedita voluptatibus.
+            oci_artifacts:
                 - files:
-                    - Debitis dolor nihil aperiam magnam adipisci ut.
-                    - Illo enim ut itaque.
-                    - Tenetur recusandae corporis occaecati dolor voluptatum.
-                    - A aut tenetur corrupti et voluptatem voluptas.
-                  repo: Qui ea non et vel.
-                  tag: Labore ut tempora amet dicta rerum a.
+                    - Fuga qui aliquam et velit voluptatum rerum.
+                    - Qui ex sed culpa quaerat earum.
+                  repo: Est labore deleniti sint nesciunt ducimus non.
+                  tag: Labore et.
                 - files:
-                    - Debitis dolor nihil aperiam magnam adipisci ut.
-                    - Illo enim ut itaque.
-                    - Tenetur recusandae corporis occaecati dolor voluptatum.
-                    - A aut tenetur corrupti et voluptatem voluptas.
-                  repo: Qui ea non et vel.
-                  tag: Labore ut tempora amet dicta rerum a.
-                - files:
-                    - Debitis dolor nihil aperiam magnam adipisci ut.
-                    - Illo enim ut itaque.
-                    - Tenetur recusandae corporis occaecati dolor voluptatum.
-                    - A aut tenetur corrupti et voluptatem voluptas.
-                  repo: Qui ea non et vel.
-                  tag: Labore ut tempora amet dicta rerum a.
-            platform: Et assumenda.
-            startAt: Qui saepe quas in.
-            status: PENDING
-            url: Mollitia qui ex fuga sit harum.
+                    - Fuga qui aliquam et velit voluptatum rerum.
+                    - Qui ex sed culpa quaerat earum.
+                  repo: Est labore deleniti sint nesciunt ducimus non.
+                  tag: Labore et.
+            platform: Ut dolores consequuntur nemo atque.
+            start_at: "2013-12-27T10:21:02Z"
+            status: SUCCESS
+            url: http://conn.biz/lisette.kling
         required:
-            - endAt
-            - gitHash
-            - images
             - name
-            - ociArtifacts
-            - platform
-            - startAt
             - status
-            - url
     TektonStatus:
         title: TektonStatus
         type: object
@@ -1577,212 +1392,182 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                      gitHash: Asperiores aperiam consequatur perferendis delectus.
+                    - end_at: "1975-05-22T10:40:28Z"
+                      git_sha: zpk
                       images:
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                      name: Nulla ratione ex.
-                      ociArtifacts:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                      name: Consequatur corrupti autem iste nam voluptate.
+                      oci_artifacts:
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                        - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                      platform: Quia quia.
-                      startAt: Sed ut.
-                      status: FAILURE
-                      url: Quibusdam possimus officiis et qui suscipit.
-                    - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                      gitHash: Asperiores aperiam consequatur perferendis delectus.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
+                      platform: Quia similique voluptatem esse facere.
+                      start_at: "1998-04-09T10:23:35Z"
+                      status: ERROR
+                      url: http://kiehn.net/makenna.dooley
+                    - end_at: "1975-05-22T10:40:28Z"
+                      git_sha: zpk
                       images:
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                        - platform: Quaerat quis.
-                          url: Molestias ut molestiae.
-                      name: Nulla ratione ex.
-                      ociArtifacts:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                      name: Consequatur corrupti autem iste nam voluptate.
+                      oci_artifacts:
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
+                      platform: Quia similique voluptatem esse facere.
+                      start_at: "1998-04-09T10:23:35Z"
+                      status: ERROR
+                      url: http://kiehn.net/makenna.dooley
+                    - end_at: "1975-05-22T10:40:28Z"
+                      git_sha: zpk
+                      images:
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                        - platform: Quam earum libero sunt et.
+                          url: http://prohaska.name/fannie_schulist
+                      name: Consequatur corrupti autem iste nam voluptate.
+                      oci_artifacts:
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
                         - files:
-                            - Debitis dolor nihil aperiam magnam adipisci ut.
-                            - Illo enim ut itaque.
-                            - Tenetur recusandae corporis occaecati dolor voluptatum.
-                            - A aut tenetur corrupti et voluptatem voluptas.
-                          repo: Qui ea non et vel.
-                          tag: Labore ut tempora amet dicta rerum a.
-                      platform: Quia quia.
-                      startAt: Sed ut.
-                      status: FAILURE
-                      url: Quibusdam possimus officiis et qui suscipit.
+                            - Fuga qui aliquam et velit voluptatum rerum.
+                            - Qui ex sed culpa quaerat earum.
+                          repo: Est labore deleniti sint nesciunt ducimus non.
+                          tag: Labore et.
+                      platform: Quia similique voluptatem esse facere.
+                      start_at: "1998-04-09T10:23:35Z"
+                      status: ERROR
+                      url: http://kiehn.net/makenna.dooley
         example:
             pipelines:
-                - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                  gitHash: Asperiores aperiam consequatur perferendis delectus.
+                - end_at: "1975-05-22T10:40:28Z"
+                  git_sha: zpk
                   images:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                  name: Nulla ratione ex.
-                  ociArtifacts:
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                  name: Consequatur corrupti autem iste nam voluptate.
+                  oci_artifacts:
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                    - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                    - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                  platform: Quia quia.
-                  startAt: Sed ut.
-                  status: FAILURE
-                  url: Quibusdam possimus officiis et qui suscipit.
-                - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                  gitHash: Asperiores aperiam consequatur perferendis delectus.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
+                  platform: Quia similique voluptatem esse facere.
+                  start_at: "1998-04-09T10:23:35Z"
+                  status: ERROR
+                  url: http://kiehn.net/makenna.dooley
+                - end_at: "1975-05-22T10:40:28Z"
+                  git_sha: zpk
                   images:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                  name: Nulla ratione ex.
-                  ociArtifacts:
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                  name: Consequatur corrupti autem iste nam voluptate.
+                  oci_artifacts:
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                    - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                    - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                  platform: Quia quia.
-                  startAt: Sed ut.
-                  status: FAILURE
-                  url: Quibusdam possimus officiis et qui suscipit.
-                - endAt: Nesciunt suscipit aperiam dignissimos illo.
-                  gitHash: Asperiores aperiam consequatur perferendis delectus.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
+                  platform: Quia similique voluptatem esse facere.
+                  start_at: "1998-04-09T10:23:35Z"
+                  status: ERROR
+                  url: http://kiehn.net/makenna.dooley
+                - end_at: "1975-05-22T10:40:28Z"
+                  git_sha: zpk
                   images:
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                    - platform: Quaerat quis.
-                      url: Molestias ut molestiae.
-                  name: Nulla ratione ex.
-                  ociArtifacts:
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                  name: Consequatur corrupti autem iste nam voluptate.
+                  oci_artifacts:
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
+                  platform: Quia similique voluptatem esse facere.
+                  start_at: "1998-04-09T10:23:35Z"
+                  status: ERROR
+                  url: http://kiehn.net/makenna.dooley
+                - end_at: "1975-05-22T10:40:28Z"
+                  git_sha: zpk
+                  images:
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                    - platform: Quam earum libero sunt et.
+                      url: http://prohaska.name/fannie_schulist
+                  name: Consequatur corrupti autem iste nam voluptate.
+                  oci_artifacts:
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
                     - files:
-                        - Debitis dolor nihil aperiam magnam adipisci ut.
-                        - Illo enim ut itaque.
-                        - Tenetur recusandae corporis occaecati dolor voluptatum.
-                        - A aut tenetur corrupti et voluptatem voluptas.
-                      repo: Qui ea non et vel.
-                      tag: Labore ut tempora amet dicta rerum a.
-                  platform: Quia quia.
-                  startAt: Sed ut.
-                  status: FAILURE
-                  url: Quibusdam possimus officiis et qui suscipit.
+                        - Fuga qui aliquam et velit voluptatum rerum.
+                        - Qui ex sed culpa quaerat earum.
+                      repo: Est labore deleniti sint nesciunt ducimus non.
+                      tag: Labore et.
+                  platform: Quia similique voluptatem esse facere.
+                  start_at: "1998-04-09T10:23:35Z"
+                  status: ERROR
+                  url: http://kiehn.net/makenna.dooley
         required:
             - pipelines

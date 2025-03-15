@@ -101,7 +101,7 @@ func (DevBuildSpec) Fields() []ent.Field {
 			MaxLen(64).
 			Comment("Git reference of the build"),
 
-		field.String("git_hash").
+		field.String("git_sha").
 			Optional().
 			MaxLen(40).
 			Comment("Git commit SHA"),
@@ -178,7 +178,7 @@ func (DevBuildStatus) Fields() []ent.Field {
 			MaxLen(256).
 			Comment("Build status message"),
 
-		field.Int64("pipeline_build_id").
+		field.Int("pipeline_build_id").
 			Optional().
 			Comment("ID of the pipeline build"),
 

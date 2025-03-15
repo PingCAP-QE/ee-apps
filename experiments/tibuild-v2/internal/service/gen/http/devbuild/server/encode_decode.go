@@ -581,16 +581,16 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 	res := &DevBuildSpecResponse{
 		BuildEnv:          v.BuildEnv,
 		BuilderImg:        v.BuilderImg,
-		Edition:           string(v.Edition),
+		Edition:           v.Edition,
 		Features:          v.Features,
-		GitHash:           v.GitHash,
 		GitRef:            v.GitRef,
+		GitSha:            v.GitSha,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGcr:         v.IsPushGcr,
-		PipelineEngine:    string(v.PipelineEngine),
+		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
-		Product:           string(v.Product),
+		Product:           v.Product,
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
@@ -606,21 +606,19 @@ func marshalDevbuildDevBuildStatusToDevBuildStatusResponse(v *devbuild.DevBuildS
 	res := &DevBuildStatusResponse{
 		ErrMsg:          v.ErrMsg,
 		PipelineBuildID: v.PipelineBuildID,
-		PipelineEndAt:   v.PipelineEndAt,
 		PipelineStartAt: v.PipelineStartAt,
+		PipelineEndAt:   v.PipelineEndAt,
 		PipelineViewURL: v.PipelineViewURL,
 		Status:          string(v.Status),
 	}
 	if v.BuildReport != nil {
 		res.BuildReport = marshalDevbuildBuildReportToBuildReportResponse(v.BuildReport)
 	}
-	if v.PipelineViewURLs != nil {
-		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
-		for i, val := range v.PipelineViewURLs {
-			res.PipelineViewURLs[i] = val
+	if v.PipelineViewUrls != nil {
+		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
+		for i, val := range v.PipelineViewUrls {
+			res.PipelineViewUrls[i] = val
 		}
-	} else {
-		res.PipelineViewURLs = []string{}
 	}
 	if v.TektonStatus != nil {
 		res.TektonStatus = marshalDevbuildTektonStatusToTektonStatusResponse(v.TektonStatus)
@@ -632,9 +630,12 @@ func marshalDevbuildDevBuildStatusToDevBuildStatusResponse(v *devbuild.DevBuildS
 // marshalDevbuildBuildReportToBuildReportResponse builds a value of type
 // *BuildReportResponse from a value of type *devbuild.BuildReport.
 func marshalDevbuildBuildReportToBuildReportResponse(v *devbuild.BuildReport) *BuildReportResponse {
+	if v == nil {
+		return nil
+	}
 	res := &BuildReportResponse{
-		GitHash:        v.GitHash,
-		PluginGitHash:  v.PluginGitHash,
+		GitSha:         v.GitSha,
+		PluginGitSha:   v.PluginGitSha,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -642,16 +643,12 @@ func marshalDevbuildBuildReportToBuildReportResponse(v *devbuild.BuildReport) *B
 		for i, val := range v.Binaries {
 			res.Binaries[i] = marshalDevbuildBinArtifactToBinArtifactResponse(val)
 		}
-	} else {
-		res.Binaries = []*BinArtifactResponse{}
 	}
 	if v.Images != nil {
 		res.Images = make([]*ImageArtifactResponse, len(v.Images))
 		for i, val := range v.Images {
 			res.Images[i] = marshalDevbuildImageArtifactToImageArtifactResponse(val)
 		}
-	} else {
-		res.Images = []*ImageArtifactResponse{}
 	}
 
 	return res
@@ -660,6 +657,9 @@ func marshalDevbuildBuildReportToBuildReportResponse(v *devbuild.BuildReport) *B
 // marshalDevbuildBinArtifactToBinArtifactResponse builds a value of type
 // *BinArtifactResponse from a value of type *devbuild.BinArtifact.
 func marshalDevbuildBinArtifactToBinArtifactResponse(v *devbuild.BinArtifact) *BinArtifactResponse {
+	if v == nil {
+		return nil
+	}
 	res := &BinArtifactResponse{
 		Component: v.Component,
 		Platform:  v.Platform,
@@ -679,6 +679,9 @@ func marshalDevbuildBinArtifactToBinArtifactResponse(v *devbuild.BinArtifact) *B
 // marshalDevbuildOciFileToOciFileResponse builds a value of type
 // *OciFileResponse from a value of type *devbuild.OciFile.
 func marshalDevbuildOciFileToOciFileResponse(v *devbuild.OciFile) *OciFileResponse {
+	if v == nil {
+		return nil
+	}
 	res := &OciFileResponse{
 		File: v.File,
 		Repo: v.Repo,
@@ -691,6 +694,9 @@ func marshalDevbuildOciFileToOciFileResponse(v *devbuild.OciFile) *OciFileRespon
 // marshalDevbuildImageArtifactToImageArtifactResponse builds a value of type
 // *ImageArtifactResponse from a value of type *devbuild.ImageArtifact.
 func marshalDevbuildImageArtifactToImageArtifactResponse(v *devbuild.ImageArtifact) *ImageArtifactResponse {
+	if v == nil {
+		return nil
+	}
 	res := &ImageArtifactResponse{
 		Platform: v.Platform,
 		URL:      v.URL,
@@ -702,6 +708,9 @@ func marshalDevbuildImageArtifactToImageArtifactResponse(v *devbuild.ImageArtifa
 // marshalDevbuildTektonStatusToTektonStatusResponse builds a value of type
 // *TektonStatusResponse from a value of type *devbuild.TektonStatus.
 func marshalDevbuildTektonStatusToTektonStatusResponse(v *devbuild.TektonStatus) *TektonStatusResponse {
+	if v == nil {
+		return nil
+	}
 	res := &TektonStatusResponse{}
 	if v.Pipelines != nil {
 		res.Pipelines = make([]*TektonPipelineResponse, len(v.Pipelines))
@@ -719,12 +728,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponse(v *devbuild.TektonStatus)
 // *TektonPipelineResponse from a value of type *devbuild.TektonPipeline.
 func marshalDevbuildTektonPipelineToTektonPipelineResponse(v *devbuild.TektonPipeline) *TektonPipelineResponse {
 	res := &TektonPipelineResponse{
-		EndAt:    v.EndAt,
-		GitHash:  v.GitHash,
 		Name:     v.Name,
-		Platform: v.Platform,
-		StartAt:  v.StartAt,
 		Status:   string(v.Status),
+		StartAt:  v.StartAt,
+		EndAt:    v.EndAt,
+		GitSha:   v.GitSha,
+		Platform: v.Platform,
 		URL:      v.URL,
 	}
 	if v.Images != nil {
@@ -732,16 +741,12 @@ func marshalDevbuildTektonPipelineToTektonPipelineResponse(v *devbuild.TektonPip
 		for i, val := range v.Images {
 			res.Images[i] = marshalDevbuildImageArtifactToImageArtifactResponse(val)
 		}
-	} else {
-		res.Images = []*ImageArtifactResponse{}
 	}
 	if v.OciArtifacts != nil {
 		res.OciArtifacts = make([]*OciArtifactResponse, len(v.OciArtifacts))
 		for i, val := range v.OciArtifacts {
 			res.OciArtifacts[i] = marshalDevbuildOciArtifactToOciArtifactResponse(val)
 		}
-	} else {
-		res.OciArtifacts = []*OciArtifactResponse{}
 	}
 
 	return res
@@ -750,6 +755,9 @@ func marshalDevbuildTektonPipelineToTektonPipelineResponse(v *devbuild.TektonPip
 // marshalDevbuildOciArtifactToOciArtifactResponse builds a value of type
 // *OciArtifactResponse from a value of type *devbuild.OciArtifact.
 func marshalDevbuildOciArtifactToOciArtifactResponse(v *devbuild.OciArtifact) *OciArtifactResponse {
+	if v == nil {
+		return nil
+	}
 	res := &OciArtifactResponse{
 		Repo: v.Repo,
 		Tag:  v.Tag,
@@ -773,22 +781,20 @@ func unmarshalDevBuildRequestRequestBodyToDevbuildDevBuildRequest(v *DevBuildReq
 	res := &devbuild.DevBuildRequest{
 		BuildEnv:          v.BuildEnv,
 		BuilderImg:        v.BuilderImg,
-		Edition:           devbuild.ProductEdition(*v.Edition),
+		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
+		GitSha:            v.GitSha,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGcr:         v.IsPushGcr,
+		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
-		Product:           devbuild.Product(*v.Product),
+		Product:           *v.Product,
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
 		Version:           *v.Version,
-	}
-	if v.PipelineEngine != nil {
-		pipelineEngine := devbuild.PipelineEngine(*v.PipelineEngine)
-		res.PipelineEngine = &pipelineEngine
 	}
 
 	return res
@@ -812,16 +818,16 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 	res := &DevBuildSpecResponseBody{
 		BuildEnv:          v.BuildEnv,
 		BuilderImg:        v.BuilderImg,
-		Edition:           string(v.Edition),
+		Edition:           v.Edition,
 		Features:          v.Features,
-		GitHash:           v.GitHash,
 		GitRef:            v.GitRef,
+		GitSha:            v.GitSha,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGcr:         v.IsPushGcr,
-		PipelineEngine:    string(v.PipelineEngine),
+		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
-		Product:           string(v.Product),
+		Product:           v.Product,
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
@@ -838,21 +844,19 @@ func marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(v *devbuild.DevBu
 	res := &DevBuildStatusResponseBody{
 		ErrMsg:          v.ErrMsg,
 		PipelineBuildID: v.PipelineBuildID,
-		PipelineEndAt:   v.PipelineEndAt,
 		PipelineStartAt: v.PipelineStartAt,
+		PipelineEndAt:   v.PipelineEndAt,
 		PipelineViewURL: v.PipelineViewURL,
 		Status:          string(v.Status),
 	}
 	if v.BuildReport != nil {
 		res.BuildReport = marshalDevbuildBuildReportToBuildReportResponseBody(v.BuildReport)
 	}
-	if v.PipelineViewURLs != nil {
-		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
-		for i, val := range v.PipelineViewURLs {
-			res.PipelineViewURLs[i] = val
+	if v.PipelineViewUrls != nil {
+		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
+		for i, val := range v.PipelineViewUrls {
+			res.PipelineViewUrls[i] = val
 		}
-	} else {
-		res.PipelineViewURLs = []string{}
 	}
 	if v.TektonStatus != nil {
 		res.TektonStatus = marshalDevbuildTektonStatusToTektonStatusResponseBody(v.TektonStatus)
@@ -864,9 +868,12 @@ func marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(v *devbuild.DevBu
 // marshalDevbuildBuildReportToBuildReportResponseBody builds a value of type
 // *BuildReportResponseBody from a value of type *devbuild.BuildReport.
 func marshalDevbuildBuildReportToBuildReportResponseBody(v *devbuild.BuildReport) *BuildReportResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &BuildReportResponseBody{
-		GitHash:        v.GitHash,
-		PluginGitHash:  v.PluginGitHash,
+		GitSha:         v.GitSha,
+		PluginGitSha:   v.PluginGitSha,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -874,16 +881,12 @@ func marshalDevbuildBuildReportToBuildReportResponseBody(v *devbuild.BuildReport
 		for i, val := range v.Binaries {
 			res.Binaries[i] = marshalDevbuildBinArtifactToBinArtifactResponseBody(val)
 		}
-	} else {
-		res.Binaries = []*BinArtifactResponseBody{}
 	}
 	if v.Images != nil {
 		res.Images = make([]*ImageArtifactResponseBody, len(v.Images))
 		for i, val := range v.Images {
 			res.Images[i] = marshalDevbuildImageArtifactToImageArtifactResponseBody(val)
 		}
-	} else {
-		res.Images = []*ImageArtifactResponseBody{}
 	}
 
 	return res
@@ -892,6 +895,9 @@ func marshalDevbuildBuildReportToBuildReportResponseBody(v *devbuild.BuildReport
 // marshalDevbuildBinArtifactToBinArtifactResponseBody builds a value of type
 // *BinArtifactResponseBody from a value of type *devbuild.BinArtifact.
 func marshalDevbuildBinArtifactToBinArtifactResponseBody(v *devbuild.BinArtifact) *BinArtifactResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &BinArtifactResponseBody{
 		Component: v.Component,
 		Platform:  v.Platform,
@@ -911,6 +917,9 @@ func marshalDevbuildBinArtifactToBinArtifactResponseBody(v *devbuild.BinArtifact
 // marshalDevbuildOciFileToOciFileResponseBody builds a value of type
 // *OciFileResponseBody from a value of type *devbuild.OciFile.
 func marshalDevbuildOciFileToOciFileResponseBody(v *devbuild.OciFile) *OciFileResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &OciFileResponseBody{
 		File: v.File,
 		Repo: v.Repo,
@@ -923,6 +932,9 @@ func marshalDevbuildOciFileToOciFileResponseBody(v *devbuild.OciFile) *OciFileRe
 // marshalDevbuildImageArtifactToImageArtifactResponseBody builds a value of
 // type *ImageArtifactResponseBody from a value of type *devbuild.ImageArtifact.
 func marshalDevbuildImageArtifactToImageArtifactResponseBody(v *devbuild.ImageArtifact) *ImageArtifactResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &ImageArtifactResponseBody{
 		Platform: v.Platform,
 		URL:      v.URL,
@@ -934,6 +946,9 @@ func marshalDevbuildImageArtifactToImageArtifactResponseBody(v *devbuild.ImageAr
 // marshalDevbuildTektonStatusToTektonStatusResponseBody builds a value of type
 // *TektonStatusResponseBody from a value of type *devbuild.TektonStatus.
 func marshalDevbuildTektonStatusToTektonStatusResponseBody(v *devbuild.TektonStatus) *TektonStatusResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &TektonStatusResponseBody{}
 	if v.Pipelines != nil {
 		res.Pipelines = make([]*TektonPipelineResponseBody, len(v.Pipelines))
@@ -952,12 +967,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponseBody(v *devbuild.TektonSta
 // *devbuild.TektonPipeline.
 func marshalDevbuildTektonPipelineToTektonPipelineResponseBody(v *devbuild.TektonPipeline) *TektonPipelineResponseBody {
 	res := &TektonPipelineResponseBody{
-		EndAt:    v.EndAt,
-		GitHash:  v.GitHash,
 		Name:     v.Name,
-		Platform: v.Platform,
-		StartAt:  v.StartAt,
 		Status:   string(v.Status),
+		StartAt:  v.StartAt,
+		EndAt:    v.EndAt,
+		GitSha:   v.GitSha,
+		Platform: v.Platform,
 		URL:      v.URL,
 	}
 	if v.Images != nil {
@@ -965,16 +980,12 @@ func marshalDevbuildTektonPipelineToTektonPipelineResponseBody(v *devbuild.Tekto
 		for i, val := range v.Images {
 			res.Images[i] = marshalDevbuildImageArtifactToImageArtifactResponseBody(val)
 		}
-	} else {
-		res.Images = []*ImageArtifactResponseBody{}
 	}
 	if v.OciArtifacts != nil {
 		res.OciArtifacts = make([]*OciArtifactResponseBody, len(v.OciArtifacts))
 		for i, val := range v.OciArtifacts {
 			res.OciArtifacts[i] = marshalDevbuildOciArtifactToOciArtifactResponseBody(val)
 		}
-	} else {
-		res.OciArtifacts = []*OciArtifactResponseBody{}
 	}
 
 	return res
@@ -983,6 +994,9 @@ func marshalDevbuildTektonPipelineToTektonPipelineResponseBody(v *devbuild.Tekto
 // marshalDevbuildOciArtifactToOciArtifactResponseBody builds a value of type
 // *OciArtifactResponseBody from a value of type *devbuild.OciArtifact.
 func marshalDevbuildOciArtifactToOciArtifactResponseBody(v *devbuild.OciArtifact) *OciArtifactResponseBody {
+	if v == nil {
+		return nil
+	}
 	res := &OciArtifactResponseBody{
 		Repo: v.Repo,
 		Tag:  v.Tag,
@@ -1028,21 +1042,21 @@ func unmarshalDevBuildMetaRequestBodyToDevbuildDevBuildMeta(v *DevBuildMetaReque
 // type *devbuild.DevBuildSpec from a value of type *DevBuildSpecRequestBody.
 func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecRequestBody) *devbuild.DevBuildSpec {
 	res := &devbuild.DevBuildSpec{
-		BuildEnv:          *v.BuildEnv,
-		BuilderImg:        *v.BuilderImg,
-		Edition:           devbuild.ProductEdition(*v.Edition),
-		Features:          *v.Features,
-		GitHash:           *v.GitHash,
+		BuildEnv:          v.BuildEnv,
+		BuilderImg:        v.BuilderImg,
+		Edition:           *v.Edition,
+		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GithubRepo:        *v.GithubRepo,
-		IsHotfix:          *v.IsHotfix,
-		IsPushGcr:         *v.IsPushGcr,
-		PipelineEngine:    devbuild.PipelineEngine(*v.PipelineEngine),
-		PluginGitRef:      *v.PluginGitRef,
-		Product:           devbuild.Product(*v.Product),
-		ProductBaseImg:    *v.ProductBaseImg,
-		ProductDockerfile: *v.ProductDockerfile,
-		TargetImg:         *v.TargetImg,
+		GitSha:            v.GitSha,
+		GithubRepo:        v.GithubRepo,
+		IsHotfix:          v.IsHotfix,
+		IsPushGcr:         v.IsPushGcr,
+		PipelineEngine:    v.PipelineEngine,
+		PluginGitRef:      v.PluginGitRef,
+		Product:           *v.Product,
+		ProductBaseImg:    v.ProductBaseImg,
+		ProductDockerfile: v.ProductDockerfile,
+		TargetImg:         v.TargetImg,
 		Version:           *v.Version,
 	}
 
@@ -1054,19 +1068,25 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 // *DevBuildStatusRequestBody.
 func unmarshalDevBuildStatusRequestBodyToDevbuildDevBuildStatus(v *DevBuildStatusRequestBody) *devbuild.DevBuildStatus {
 	res := &devbuild.DevBuildStatus{
-		ErrMsg:          *v.ErrMsg,
-		PipelineBuildID: *v.PipelineBuildID,
-		PipelineEndAt:   *v.PipelineEndAt,
-		PipelineStartAt: *v.PipelineStartAt,
-		PipelineViewURL: *v.PipelineViewURL,
+		ErrMsg:          v.ErrMsg,
+		PipelineBuildID: v.PipelineBuildID,
+		PipelineStartAt: v.PipelineStartAt,
+		PipelineEndAt:   v.PipelineEndAt,
+		PipelineViewURL: v.PipelineViewURL,
 		Status:          devbuild.BuildStatus(*v.Status),
 	}
-	res.BuildReport = unmarshalBuildReportRequestBodyToDevbuildBuildReport(v.BuildReport)
-	res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
-	for i, val := range v.PipelineViewURLs {
-		res.PipelineViewURLs[i] = val
+	if v.BuildReport != nil {
+		res.BuildReport = unmarshalBuildReportRequestBodyToDevbuildBuildReport(v.BuildReport)
 	}
-	res.TektonStatus = unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v.TektonStatus)
+	if v.PipelineViewUrls != nil {
+		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
+		for i, val := range v.PipelineViewUrls {
+			res.PipelineViewUrls[i] = val
+		}
+	}
+	if v.TektonStatus != nil {
+		res.TektonStatus = unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v.TektonStatus)
+	}
 
 	return res
 }
@@ -1074,18 +1094,25 @@ func unmarshalDevBuildStatusRequestBodyToDevbuildDevBuildStatus(v *DevBuildStatu
 // unmarshalBuildReportRequestBodyToDevbuildBuildReport builds a value of type
 // *devbuild.BuildReport from a value of type *BuildReportRequestBody.
 func unmarshalBuildReportRequestBodyToDevbuildBuildReport(v *BuildReportRequestBody) *devbuild.BuildReport {
+	if v == nil {
+		return nil
+	}
 	res := &devbuild.BuildReport{
-		GitHash:        *v.GitHash,
-		PluginGitHash:  *v.PluginGitHash,
-		PrintedVersion: *v.PrintedVersion,
+		GitSha:         v.GitSha,
+		PluginGitSha:   v.PluginGitSha,
+		PrintedVersion: v.PrintedVersion,
 	}
-	res.Binaries = make([]*devbuild.BinArtifact, len(v.Binaries))
-	for i, val := range v.Binaries {
-		res.Binaries[i] = unmarshalBinArtifactRequestBodyToDevbuildBinArtifact(val)
+	if v.Binaries != nil {
+		res.Binaries = make([]*devbuild.BinArtifact, len(v.Binaries))
+		for i, val := range v.Binaries {
+			res.Binaries[i] = unmarshalBinArtifactRequestBodyToDevbuildBinArtifact(val)
+		}
 	}
-	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
-	for i, val := range v.Images {
-		res.Images[i] = unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(val)
+	if v.Images != nil {
+		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
+		for i, val := range v.Images {
+			res.Images[i] = unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(val)
+		}
 	}
 
 	return res
@@ -1094,14 +1121,21 @@ func unmarshalBuildReportRequestBodyToDevbuildBuildReport(v *BuildReportRequestB
 // unmarshalBinArtifactRequestBodyToDevbuildBinArtifact builds a value of type
 // *devbuild.BinArtifact from a value of type *BinArtifactRequestBody.
 func unmarshalBinArtifactRequestBodyToDevbuildBinArtifact(v *BinArtifactRequestBody) *devbuild.BinArtifact {
-	res := &devbuild.BinArtifact{
-		Component: *v.Component,
-		Platform:  *v.Platform,
-		Sha256URL: *v.Sha256URL,
-		URL:       *v.URL,
+	if v == nil {
+		return nil
 	}
-	res.OciFile = unmarshalOciFileRequestBodyToDevbuildOciFile(v.OciFile)
-	res.Sha256OciFile = unmarshalOciFileRequestBodyToDevbuildOciFile(v.Sha256OciFile)
+	res := &devbuild.BinArtifact{
+		Component: v.Component,
+		Platform:  v.Platform,
+		Sha256URL: v.Sha256URL,
+		URL:       v.URL,
+	}
+	if v.OciFile != nil {
+		res.OciFile = unmarshalOciFileRequestBodyToDevbuildOciFile(v.OciFile)
+	}
+	if v.Sha256OciFile != nil {
+		res.Sha256OciFile = unmarshalOciFileRequestBodyToDevbuildOciFile(v.Sha256OciFile)
+	}
 
 	return res
 }
@@ -1109,6 +1143,9 @@ func unmarshalBinArtifactRequestBodyToDevbuildBinArtifact(v *BinArtifactRequestB
 // unmarshalOciFileRequestBodyToDevbuildOciFile builds a value of type
 // *devbuild.OciFile from a value of type *OciFileRequestBody.
 func unmarshalOciFileRequestBodyToDevbuildOciFile(v *OciFileRequestBody) *devbuild.OciFile {
+	if v == nil {
+		return nil
+	}
 	res := &devbuild.OciFile{
 		File: *v.File,
 		Repo: *v.Repo,
@@ -1121,6 +1158,9 @@ func unmarshalOciFileRequestBodyToDevbuildOciFile(v *OciFileRequestBody) *devbui
 // unmarshalImageArtifactRequestBodyToDevbuildImageArtifact builds a value of
 // type *devbuild.ImageArtifact from a value of type *ImageArtifactRequestBody.
 func unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(v *ImageArtifactRequestBody) *devbuild.ImageArtifact {
+	if v == nil {
+		return nil
+	}
 	res := &devbuild.ImageArtifact{
 		Platform: *v.Platform,
 		URL:      *v.URL,
@@ -1132,6 +1172,9 @@ func unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(v *ImageArtifactRe
 // unmarshalTektonStatusRequestBodyToDevbuildTektonStatus builds a value of
 // type *devbuild.TektonStatus from a value of type *TektonStatusRequestBody.
 func unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusRequestBody) *devbuild.TektonStatus {
+	if v == nil {
+		return nil
+	}
 	res := &devbuild.TektonStatus{}
 	res.Pipelines = make([]*devbuild.TektonPipeline, len(v.Pipelines))
 	for i, val := range v.Pipelines {
@@ -1146,21 +1189,25 @@ func unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusReque
 // *TektonPipelineRequestBody.
 func unmarshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineRequestBody) *devbuild.TektonPipeline {
 	res := &devbuild.TektonPipeline{
-		EndAt:    *v.EndAt,
-		GitHash:  *v.GitHash,
 		Name:     *v.Name,
-		Platform: *v.Platform,
-		StartAt:  *v.StartAt,
 		Status:   devbuild.BuildStatus(*v.Status),
-		URL:      *v.URL,
+		StartAt:  v.StartAt,
+		EndAt:    v.EndAt,
+		GitSha:   v.GitSha,
+		Platform: v.Platform,
+		URL:      v.URL,
 	}
-	res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
-	for i, val := range v.Images {
-		res.Images[i] = unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(val)
+	if v.Images != nil {
+		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
+		for i, val := range v.Images {
+			res.Images[i] = unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(val)
+		}
 	}
-	res.OciArtifacts = make([]*devbuild.OciArtifact, len(v.OciArtifacts))
-	for i, val := range v.OciArtifacts {
-		res.OciArtifacts[i] = unmarshalOciArtifactRequestBodyToDevbuildOciArtifact(val)
+	if v.OciArtifacts != nil {
+		res.OciArtifacts = make([]*devbuild.OciArtifact, len(v.OciArtifacts))
+		for i, val := range v.OciArtifacts {
+			res.OciArtifacts[i] = unmarshalOciArtifactRequestBodyToDevbuildOciArtifact(val)
+		}
 	}
 
 	return res
@@ -1169,6 +1216,9 @@ func unmarshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelin
 // unmarshalOciArtifactRequestBodyToDevbuildOciArtifact builds a value of type
 // *devbuild.OciArtifact from a value of type *OciArtifactRequestBody.
 func unmarshalOciArtifactRequestBodyToDevbuildOciArtifact(v *OciArtifactRequestBody) *devbuild.OciArtifact {
+	if v == nil {
+		return nil
+	}
 	res := &devbuild.OciArtifact{
 		Repo: *v.Repo,
 		Tag:  *v.Tag,
