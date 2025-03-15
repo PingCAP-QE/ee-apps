@@ -15,9 +15,9 @@ import (
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
-	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
-	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
-	tibuild "github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 		zerolog.SetGlobalLevel(logLevel)
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", artifact.ServiceName).Logger()
-			artifactSvc = tibuild.NewArtifact(&logger)
+			artifactSvc = impl.NewArtifact(&logger)
 		}
 		{
 			dbClient, err := newStoreClient(cfg)
@@ -72,7 +72,7 @@ func main() {
 				log.Fatalf(ctx, err, "failed to create store client")
 			}
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = tibuild.NewDevbuild(&logger, dbClient)
+			devbuildSvc = impl.NewDevbuild(&logger, dbClient)
 		}
 	}
 

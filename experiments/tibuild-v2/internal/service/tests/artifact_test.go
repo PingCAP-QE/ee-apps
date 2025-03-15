@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
-	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
 
 func TestSyncImage_Integration(t *testing.T) {
