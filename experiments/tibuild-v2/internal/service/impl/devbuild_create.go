@@ -3,7 +3,14 @@ package impl
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
 	"time"
+
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
@@ -41,7 +48,60 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	return create.Save(ctx)
 }
 
-func (s *devbuildsrvc) triggerBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
+func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
 	// TODO: trigger the actual build process according to the record.
+	//
+	//
+	// 1. Compose a cloud event from the record.
+	event, err := newDevBuildCloudEvent(record)
+	if err != nil {
+		return nil, err
+	}
+	// 2. Send the cloud event to tekton listener that serves for tibuild.
+
+	c := cloudevents.ContextWithTarget(ctx, s.tektonClient.listenerURL)
+	if result := s.tektonClient.client.Send(c, *event); !protocol.IsACK(result) {
+		slog.ErrorContext(ctx, "failed to send", "reason", result)
+		return nil, fmt.Errorf("failed to send ce:%w", result)
+	}
+
 	return nil, nil
+}
+
+func newDevBuildCloudEvent(record *ent.DevBuild) (*cloudevents.Event, error) {
+	event := cloudevents.NewEvent()
+
+	var eventData any
+	switch {
+	case strings.HasPrefix(record.GitRef, "branch/"):
+		ref := strings.Replace(record.GitRef, "branch/", "refs/heads/", 1)
+		event.SetType(ceTypeFakeGHPushDevBuild)
+		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, record.GitSha)
+	case strings.HasPrefix(record.GitRef, "tag/"):
+		ref := strings.Replace(record.GitRef, "tag/", "refs/tags/", 1)
+		event.SetType(ceTypeFakeGHCreateDevBuild)
+		eventData = newFakeGitHubTagCreateEventPayload(record.GithubRepo, ref)
+	case strings.HasPrefix(record.GitRef, "pull/"):
+		event.SetType(ceTypeFakeGHPRDevBuild)
+		prNumberStr := strings.TrimPrefix(record.GitRef, "pull/")
+		prNumber, err := strconv.Atoi(prNumberStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PR number: %s", prNumberStr)
+		}
+		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, record.GitRef,
+			record.GitSha, prNumber)
+	default:
+		return nil, fmt.Errorf("unkown git ref format")
+	}
+
+	event.SetData(cloudevents.ApplicationJSON, eventData)
+	event.SetSubject(fmt.Sprint(record.ID))
+	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(record.ID))
+	event.SetExtension("user", record.CreatedBy)
+	event.SetExtension("paramProfile", string(record.Edition))
+	if record.BuilderImg != "" {
+		event.SetExtension("paramBuilderImage", record.BuilderImg)
+	}
+
+	return &event, nil
 }

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/bndr/gojenkins"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/go-github/v69/github"
 	"github.com/rs/zerolog"
 
@@ -21,6 +23,14 @@ type devbuildsrvc struct {
 	dbClient       *ent.Client
 	productRepoMap map[string]string
 	ghClient       *github.Client
+	tektonClient   tektonClient
+	jenkinsClient  *gojenkins.Jenkins
+	tknListenerURL string
+}
+
+type tektonClient struct {
+	client      cloudevents.Client
+	listenerURL string
 }
 
 func NewDevbuild(logger *zerolog.Logger, client *ent.Client) devbuild.Service {
@@ -70,7 +80,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (r
 	}
 
 	// 2. trigger the actual build process according to the record.
-	record, err = s.triggerBuild(ctx, record)
+	record, err = s.triggerTknBuild(ctx, record)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +168,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, err
 	}
 
-	if _, err := s.triggerBuild(ctx, newBuild); err != nil {
+	if _, err := s.triggerTknBuild(ctx, newBuild); err != nil {
 		return nil, err
 	}
 
