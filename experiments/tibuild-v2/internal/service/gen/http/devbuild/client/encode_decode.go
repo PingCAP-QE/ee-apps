@@ -49,14 +49,11 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 		values.Add("page_size", fmt.Sprintf("%v", p.PageSize))
 		values.Add("hotfix", fmt.Sprintf("%v", p.Hotfix))
 		values.Add("sort", p.Sort)
+		values.Add("direction", p.Direction)
 		if p.CreatedBy != nil {
 			values.Add("created_by", *p.CreatedBy)
 		}
 		req.URL.RawQuery = values.Encode()
-		body := NewListRequestBody(p)
-		if err := encoder(req).Encode(&body); err != nil {
-			return goahttp.ErrEncodingError("devbuild", "list", err)
-		}
 		return nil
 	}
 }

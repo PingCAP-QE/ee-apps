@@ -19,15 +19,8 @@ import (
 
 // BuildListPayload builds the payload for the devbuild list endpoint from CLI
 // flags.
-func BuildListPayload(devbuildListBody string, devbuildListPage string, devbuildListPageSize string, devbuildListHotfix string, devbuildListSort string, devbuildListCreatedBy string) (*devbuild.ListPayload, error) {
+func BuildListPayload(devbuildListPage string, devbuildListPageSize string, devbuildListHotfix string, devbuildListSort string, devbuildListDirection string, devbuildListCreatedBy string) (*devbuild.ListPayload, error) {
 	var err error
-	var body ListRequestBody
-	{
-		err = json.Unmarshal([]byte(devbuildListBody), &body)
-		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"direction\": \"asc\"\n   }'")
-		}
-	}
 	var page int
 	{
 		if devbuildListPage != "" {
@@ -71,25 +64,30 @@ func BuildListPayload(devbuildListBody string, devbuildListPage string, devbuild
 			}
 		}
 	}
+	var direction string
+	{
+		if devbuildListDirection != "" {
+			direction = devbuildListDirection
+			if !(direction == "asc" || direction == "desc") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("direction", direction, []any{"asc", "desc"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var createdBy *string
 	{
 		if devbuildListCreatedBy != "" {
 			createdBy = &devbuildListCreatedBy
 		}
 	}
-	v := &devbuild.ListPayload{
-		Direction: body.Direction,
-	}
-	{
-		var zero string
-		if v.Direction == zero {
-			v.Direction = "desc"
-		}
-	}
+	v := &devbuild.ListPayload{}
 	v.Page = page
 	v.PageSize = pageSize
 	v.Hotfix = hotfix
 	v.Sort = sort
+	v.Direction = direction
 	v.CreatedBy = createdBy
 
 	return v, nil

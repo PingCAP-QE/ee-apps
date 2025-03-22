@@ -66,7 +66,7 @@ const (
 	// FieldTektonStatus holds the string denoting the tekton_status field in the database.
 	FieldTektonStatus = "tekton_status"
 	// Table holds the table name of the devbuild in the database.
-	Table = "dev_builds"
+	Table = "dev_builds_v2"
 )
 
 // Columns holds all SQL columns for devbuild fields.

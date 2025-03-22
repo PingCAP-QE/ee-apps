@@ -10,6 +10,8 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // Load and parse configuration
@@ -27,7 +29,7 @@ func loadConfig(configFile string) (config.Service, error) {
 	return config, nil
 }
 
-func newStoreClient(cfg config.Service) (*ent.Client, error) {
+func newStoreClient(cfg config.Store) (*ent.Client, error) {
 	db, err := ent.Open(cfg.Driver, cfg.DSN)
 	if err != nil {
 		log.Err(err).Msgf("failed opening connection to %s", cfg.Driver)

@@ -37,31 +37,13 @@ func EncodeListResponse(encoder func(context.Context, http.ResponseWriter) goaht
 func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
 	return func(r *http.Request) (any, error) {
 		var (
-			body ListRequestBody
-			err  error
-		)
-		err = decoder(r).Decode(&body)
-		if err != nil {
-			if err == io.EOF {
-				return nil, goa.MissingPayloadError()
-			}
-			var gerr *goa.ServiceError
-			if errors.As(err, &gerr) {
-				return nil, gerr
-			}
-			return nil, goa.DecodePayloadError(err.Error())
-		}
-		err = ValidateListRequestBody(&body)
-		if err != nil {
-			return nil, err
-		}
-
-		var (
 			page      int
 			pageSize  int
 			hotfix    bool
 			sort      string
+			direction string
 			createdBy *string
+			err       error
 		)
 		qp := r.URL.Query()
 		{
@@ -107,6 +89,15 @@ func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.De
 		if !(sort == "created_at" || sort == "updated_at") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"created_at", "updated_at"}))
 		}
+		directionRaw := qp.Get("direction")
+		if directionRaw != "" {
+			direction = directionRaw
+		} else {
+			direction = "desc"
+		}
+		if !(direction == "asc" || direction == "desc") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("direction", direction, []any{"asc", "desc"}))
+		}
 		createdByRaw := qp.Get("created_by")
 		if createdByRaw != "" {
 			createdBy = &createdByRaw
@@ -114,7 +105,7 @@ func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.De
 		if err != nil {
 			return nil, err
 		}
-		payload := NewListPayload(&body, page, pageSize, hotfix, sort, createdBy)
+		payload := NewListPayload(page, pageSize, hotfix, sort, direction, createdBy)
 
 		return payload, nil
 	}

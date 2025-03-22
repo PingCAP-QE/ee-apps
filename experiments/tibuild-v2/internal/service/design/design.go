@@ -86,6 +86,7 @@ var _ = Service("devbuild", func() {
 			Param("page_size")
 			Param("hotfix")
 			Param("sort")
+			Param("direction")
 			Param("created_by")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)

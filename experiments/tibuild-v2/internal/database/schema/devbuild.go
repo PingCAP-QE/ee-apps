@@ -36,7 +36,7 @@ func (DevBuild) Edges() []ent.Edge {
 // Annotations of the DevBuild.
 func (DevBuild) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "dev_builds"},
+		entsql.Annotation{Table: "dev_builds_v2"},
 	}
 }
 

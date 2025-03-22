@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	// DevBuildsColumns holds the columns for the "dev_builds" table.
-	DevBuildsColumns = []*schema.Column{
+	// DevBuildsV2Columns holds the columns for the "dev_builds_v2" table.
+	DevBuildsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "created_by", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "created_at", Type: field.TypeTime},
@@ -39,20 +39,20 @@ var (
 		{Name: "build_report", Type: field.TypeJSON, Nullable: true},
 		{Name: "tekton_status", Type: field.TypeJSON, Nullable: true},
 	}
-	// DevBuildsTable holds the schema information for the "dev_builds" table.
-	DevBuildsTable = &schema.Table{
-		Name:       "dev_builds",
-		Columns:    DevBuildsColumns,
-		PrimaryKey: []*schema.Column{DevBuildsColumns[0]},
+	// DevBuildsV2Table holds the schema information for the "dev_builds_v2" table.
+	DevBuildsV2Table = &schema.Table{
+		Name:       "dev_builds_v2",
+		Columns:    DevBuildsV2Columns,
+		PrimaryKey: []*schema.Column{DevBuildsV2Columns[0]},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
-		DevBuildsTable,
+		DevBuildsV2Table,
 	}
 )
 
 func init() {
-	DevBuildsTable.Annotation = &entsql.Annotation{
-		Table: "dev_builds",
+	DevBuildsV2Table.Annotation = &entsql.Annotation{
+		Table: "dev_builds_v2",
 	}
 }

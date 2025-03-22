@@ -35,9 +35,7 @@ func UsageExamples() string {
       "source": "Ea ducimus eius et.",
       "target": "Praesentium sed illum esse sint."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --body '{
-      "direction": "asc"
-   }' --page 550924776103210289 --page-size 6959421263285168214 --hotfix false --sort "created_at" --created-by "Occaecati facilis consequatur temporibus sit id."` + "\n" +
+		os.Args[0] + ` devbuild list --page 6473384119965130440 --page-size 550924776103210289 --hotfix true --sort "updated_at" --direction "asc" --created-by "Occaecati facilis consequatur temporibus sit id."` + "\n" +
 		""
 }
 
@@ -59,11 +57,11 @@ func ParseEndpoint(
 		devbuildFlags = flag.NewFlagSet("devbuild", flag.ContinueOnError)
 
 		devbuildListFlags         = flag.NewFlagSet("list", flag.ExitOnError)
-		devbuildListBodyFlag      = devbuildListFlags.String("body", "REQUIRED", "")
 		devbuildListPageFlag      = devbuildListFlags.String("page", "1", "")
 		devbuildListPageSizeFlag  = devbuildListFlags.String("page-size", "30", "")
 		devbuildListHotfixFlag    = devbuildListFlags.String("hotfix", "", "")
 		devbuildListSortFlag      = devbuildListFlags.String("sort", "created_at", "")
+		devbuildListDirectionFlag = devbuildListFlags.String("direction", "desc", "")
 		devbuildListCreatedByFlag = devbuildListFlags.String("created-by", "", "")
 
 		devbuildCreateFlags      = flag.NewFlagSet("create", flag.ExitOnError)
@@ -185,7 +183,7 @@ func ParseEndpoint(
 			switch epn {
 			case "list":
 				endpoint = c.List()
-				data, err = devbuildc.BuildListPayload(*devbuildListBodyFlag, *devbuildListPageFlag, *devbuildListPageSizeFlag, *devbuildListHotfixFlag, *devbuildListSortFlag, *devbuildListCreatedByFlag)
+				data, err = devbuildc.BuildListPayload(*devbuildListPageFlag, *devbuildListPageSizeFlag, *devbuildListHotfixFlag, *devbuildListSortFlag, *devbuildListDirectionFlag, *devbuildListCreatedByFlag)
 			case "create":
 				endpoint = c.Create()
 				data, err = devbuildc.BuildCreatePayload(*devbuildCreateBodyFlag, *devbuildCreateDryrunFlag)
@@ -253,20 +251,18 @@ Additional help:
 `, os.Args[0])
 }
 func devbuildListUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -body JSON -page INT -page-size INT -hotfix BOOL -sort STRING -created-by STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -body JSON: 
     -page INT: 
     -page-size INT: 
     -hotfix BOOL: 
     -sort STRING: 
+    -direction STRING: 
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --body '{
-      "direction": "asc"
-   }' --page 550924776103210289 --page-size 6959421263285168214 --hotfix false --sort "created_at" --created-by "Occaecati facilis consequatur temporibus sit id."
+    %[1]s devbuild list --page 6473384119965130440 --page-size 550924776103210289 --hotfix true --sort "updated_at" --direction "asc" --created-by "Occaecati facilis consequatur temporibus sit id."
 `, os.Args[0])
 }
 

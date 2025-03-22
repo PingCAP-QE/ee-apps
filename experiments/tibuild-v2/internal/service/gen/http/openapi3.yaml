@@ -71,9 +71,9 @@ paths:
                     type: integer
                     description: The page number of items
                     default: 1
-                    example: 8119777025863730008
+                    example: 7392851911381184858
                     format: int64
-                  example: 3591371089149186212
+                  example: 4708885537605503558
                 - name: page_size
                   in: query
                   description: Page size
@@ -82,9 +82,9 @@ paths:
                     type: integer
                     description: Page size
                     default: 30
-                    example: 675120873833389227
+                    example: 5260051643074490718
                     format: int64
-                  example: 6956552483333718477
+                  example: 5701619051687215803
                 - name: hotfix
                   in: query
                   description: Filter hotfix
@@ -108,6 +108,19 @@ paths:
                         - created_at
                         - updated_at
                   example: updated_at
+                - name: direction
+                  in: query
+                  description: The direction of the sort
+                  allowEmptyValue: true
+                  schema:
+                    type: string
+                    description: The direction of the sort
+                    default: desc
+                    example: asc
+                    enum:
+                        - asc
+                        - desc
+                  example: asc
                 - name: created_by
                   in: query
                   description: Filter created by
@@ -115,16 +128,8 @@ paths:
                   schema:
                     type: string
                     description: Filter created by
-                    example: Sunt accusantium aut debitis.
-                  example: Omnis odit.
-            requestBody:
-                required: true
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListRequestBody'
-                        example:
-                            direction: asc
+                    example: Reiciendis itaque sunt.
+                  example: Aut debitis.
             responses:
                 "200":
                     description: OK response.
@@ -877,6 +882,302 @@ paths:
                                               start_at: "1998-04-09T10:23:35Z"
                                               status: ERROR
                                               url: http://kiehn.net/makenna.dooley
+                                - id: 72546087042811667
+                                  meta:
+                                    created_at: "2005-02-16T13:19:48Z"
+                                    created_by: berneice@prohaska.name
+                                    updated_at: "1989-02-25T23:34:09Z"
+                                  spec:
+                                    build_env: Ut rerum dolorum aspernatur necessitatibus.
+                                    builder_img: Laborum iste nobis omnis quae.
+                                    edition: enterprise
+                                    features: Itaque necessitatibus eligendi qui qui illum nemo.
+                                    git_ref: Quia eum quia id qui.
+                                    git_sha: Fugiat sint aut minus aperiam quod.
+                                    github_repo: Eum deleniti natus reprehenderit.
+                                    is_hotfix: true
+                                    is_push_gcr: true
+                                    pipeline_engine: jenkins
+                                    plugin_git_ref: Et accusamus velit ipsam voluptatum.
+                                    product: ticdc-newarch
+                                    product_base_img: Dolorum natus quia illo blanditiis totam.
+                                    product_dockerfile: Beatae dignissimos tempore aut placeat rerum dicta.
+                                    target_img: Ipsa veniam aspernatur.
+                                    version: Harum voluptatem enim aliquam.
+                                  status:
+                                    build_report:
+                                        binaries:
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                        git_sha: ett
+                                        images:
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                        plugin_git_sha: vbb
+                                        printed_version: Voluptas sunt suscipit et odit vel similique.
+                                    err_msg: Iste ducimus voluptas possimus molestias.
+                                    pipeline_build_id: 1363226041782208146
+                                    pipeline_end_at: "1974-12-16T10:41:19Z"
+                                    pipeline_start_at: "1973-06-12T21:10:21Z"
+                                    pipeline_view_url: http://goldnerbreitenberg.name/alford_lowe
+                                    pipeline_view_urls:
+                                        - http://harber.org/junius
+                                        - http://swaniawski.info/kenneth
+                                        - http://thielziemann.com/keshaun.wiegand
+                                        - http://mante.org/mafalda
+                                    status: FAILURE
+                                    tekton_status:
+                                        pipelines:
+                                            - end_at: "1975-05-22T10:40:28Z"
+                                              git_sha: zpk
+                                              images:
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                              name: Consequatur corrupti autem iste nam voluptate.
+                                              oci_artifacts:
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                              platform: Quia similique voluptatem esse facere.
+                                              start_at: "1998-04-09T10:23:35Z"
+                                              status: ERROR
+                                              url: http://kiehn.net/makenna.dooley
+                                            - end_at: "1975-05-22T10:40:28Z"
+                                              git_sha: zpk
+                                              images:
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                              name: Consequatur corrupti autem iste nam voluptate.
+                                              oci_artifacts:
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                              platform: Quia similique voluptatem esse facere.
+                                              start_at: "1998-04-09T10:23:35Z"
+                                              status: ERROR
+                                              url: http://kiehn.net/makenna.dooley
+                                - id: 72546087042811667
+                                  meta:
+                                    created_at: "2005-02-16T13:19:48Z"
+                                    created_by: berneice@prohaska.name
+                                    updated_at: "1989-02-25T23:34:09Z"
+                                  spec:
+                                    build_env: Ut rerum dolorum aspernatur necessitatibus.
+                                    builder_img: Laborum iste nobis omnis quae.
+                                    edition: enterprise
+                                    features: Itaque necessitatibus eligendi qui qui illum nemo.
+                                    git_ref: Quia eum quia id qui.
+                                    git_sha: Fugiat sint aut minus aperiam quod.
+                                    github_repo: Eum deleniti natus reprehenderit.
+                                    is_hotfix: true
+                                    is_push_gcr: true
+                                    pipeline_engine: jenkins
+                                    plugin_git_ref: Et accusamus velit ipsam voluptatum.
+                                    product: ticdc-newarch
+                                    product_base_img: Dolorum natus quia illo blanditiis totam.
+                                    product_dockerfile: Beatae dignissimos tempore aut placeat rerum dicta.
+                                    target_img: Ipsa veniam aspernatur.
+                                    version: Harum voluptatem enim aliquam.
+                                  status:
+                                    build_report:
+                                        binaries:
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                            - component: Dolores id quibusdam impedit corrupti veritatis.
+                                              oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              platform: Blanditiis magni eaque quas.
+                                              sha256_oci_file:
+                                                file: Quisquam modi temporibus totam quae debitis.
+                                                repo: Hic ullam atque.
+                                                tag: Consequatur laudantium aut vitae iste ut.
+                                              sha256_url: http://ziemeabbott.name/elwin
+                                              url: http://heathcote.info/devonte
+                                        git_sha: ett
+                                        images:
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                            - platform: Quam earum libero sunt et.
+                                              url: http://prohaska.name/fannie_schulist
+                                        plugin_git_sha: vbb
+                                        printed_version: Voluptas sunt suscipit et odit vel similique.
+                                    err_msg: Iste ducimus voluptas possimus molestias.
+                                    pipeline_build_id: 1363226041782208146
+                                    pipeline_end_at: "1974-12-16T10:41:19Z"
+                                    pipeline_start_at: "1973-06-12T21:10:21Z"
+                                    pipeline_view_url: http://goldnerbreitenberg.name/alford_lowe
+                                    pipeline_view_urls:
+                                        - http://harber.org/junius
+                                        - http://swaniawski.info/kenneth
+                                        - http://thielziemann.com/keshaun.wiegand
+                                        - http://mante.org/mafalda
+                                    status: FAILURE
+                                    tekton_status:
+                                        pipelines:
+                                            - end_at: "1975-05-22T10:40:28Z"
+                                              git_sha: zpk
+                                              images:
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                              name: Consequatur corrupti autem iste nam voluptate.
+                                              oci_artifacts:
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                              platform: Quia similique voluptatem esse facere.
+                                              start_at: "1998-04-09T10:23:35Z"
+                                              status: ERROR
+                                              url: http://kiehn.net/makenna.dooley
+                                            - end_at: "1975-05-22T10:40:28Z"
+                                              git_sha: zpk
+                                              images:
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                                - platform: Quam earum libero sunt et.
+                                                  url: http://prohaska.name/fannie_schulist
+                                              name: Consequatur corrupti autem iste nam voluptate.
+                                              oci_artifacts:
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                                - files:
+                                                    - Fuga qui aliquam et velit voluptatum rerum.
+                                                    - Qui ex sed culpa quaerat earum.
+                                                  repo: Est labore deleniti sint nesciunt ducimus non.
+                                                  tag: Labore et.
+                                              platform: Quia similique voluptatem esse facere.
+                                              start_at: "1998-04-09T10:23:35Z"
+                                              status: ERROR
+                                              url: http://kiehn.net/makenna.dooley
                 "400":
                     description: 'BadRequest: Bad Request'
                     content:
@@ -901,7 +1202,7 @@ paths:
                     type: boolean
                     description: Dry run
                     default: false
-                    example: true
+                    example: false
                   example: false
             requestBody:
                 required: true
@@ -1154,8 +1455,8 @@ paths:
                     type: boolean
                     description: Whether sync with jenkins
                     default: false
-                    example: true
-                  example: false
+                    example: false
+                  example: true
                 - name: id
                   in: path
                   description: ID of build
@@ -1392,7 +1693,7 @@ paths:
                     description: Dry run
                     default: false
                     example: false
-                  example: false
+                  example: true
                 - name: id
                   in: path
                   description: ID of build
@@ -2233,12 +2534,12 @@ components:
                 created_by:
                     type: string
                     description: Creator of build
-                    example: gabriel@kuphal.info
+                    example: eulalia@rogahn.name
                     format: email
                 request:
                     $ref: '#/components/schemas/DevBuildRequest'
             example:
-                created_by: kimberly_hills@denesik.name
+                created_by: susie_jast@hills.name
                 request:
                     build_env: Sunt consequatur veniam rerum quae voluptas consequuntur.
                     builder_img: Voluptatibus illo est sed qui dolorem.
@@ -2463,20 +2764,20 @@ components:
             properties:
                 created_at:
                     type: string
-                    example: "1985-06-17T03:19:41Z"
+                    example: "2002-04-26T22:15:11Z"
                     format: date-time
                 created_by:
                     type: string
-                    example: kathryne@ondricka.net
+                    example: carroll.dickinson@wilkinsoncronin.com
                     format: email
                 updated_at:
                     type: string
-                    example: "1997-11-21T01:13:04Z"
+                    example: "1972-03-22T07:15:27Z"
                     format: date-time
             example:
-                created_at: "1981-11-03T12:39:13Z"
-                created_by: kylee@goyette.name
-                updated_at: "1978-08-26T22:49:30Z"
+                created_at: "1973-04-11T08:10:54Z"
+                created_by: zander@huel.name
+                updated_at: "1991-12-13T09:30:02Z"
             required:
                 - created_at
                 - created_by
@@ -2488,125 +2789,28 @@ components:
             properties:
                 build_env:
                     type: string
-                    example: Tempore ut officia qui.
+                    example: Nemo qui.
                 builder_img:
                     type: string
-                    example: Qui beatae quisquam voluptatem sint quaerat.
+                    example: Voluptas sapiente et a consectetur.
                 edition:
                     type: string
-                    example: community
+                    example: enterprise
                     enum:
                         - enterprise
                         - community
                 features:
                     type: string
-                    example: Ut architecto.
+                    example: Officia qui beatae qui.
                 git_ref:
                     type: string
-                    example: Laboriosam odit quas tenetur accusantium et unde.
+                    example: Quisquam voluptatem sint quaerat eveniet est.
                 git_sha:
                     type: string
-                    example: Et ea qui voluptatem.
+                    example: Architecto error laboriosam.
                 github_repo:
                     type: string
-                    example: Veritatis harum sit ut voluptatem.
-                is_hotfix:
-                    type: boolean
-                    example: false
-                is_push_gcr:
-                    type: boolean
-                    example: true
-                pipeline_engine:
-                    type: string
-                    example: jenkins
-                    enum:
-                        - jenkins
-                        - tekton
-                plugin_git_ref:
-                    type: string
-                    example: Molestiae unde est ut nesciunt veniam et.
-                product:
-                    type: string
-                    example: tidb-lightning
-                    enum:
-                        - tidb
-                        - br
-                        - dumpling
-                        - tidb-lightning
-                        - tikv
-                        - pd
-                        - enterprise-plugin
-                        - tiflash
-                        - ticdc
-                        - dm
-                        - tidb-binlog
-                        - drainer
-                        - pump
-                        - tidb-tools
-                        - ng-monitoring
-                        - tidb-dashboard
-                        - ticdc-newarch
-                product_base_img:
-                    type: string
-                    example: Blanditiis architecto.
-                product_dockerfile:
-                    type: string
-                    example: Id ut numquam vel commodi aliquid.
-                target_img:
-                    type: string
-                    example: Veritatis voluptatibus quia voluptas ut.
-                version:
-                    type: string
-                    example: Laudantium aspernatur voluptatibus nam voluptatem sit eius.
-            example:
-                build_env: Sed aliquam molestiae ipsum saepe aperiam fuga.
-                builder_img: Temporibus inventore.
-                edition: community
-                features: Reiciendis nihil.
-                git_ref: Aut debitis est enim.
-                git_sha: Asperiores consequatur a.
-                github_repo: Ratione autem sunt aliquid sit.
-                is_hotfix: false
-                is_push_gcr: true
-                pipeline_engine: tekton
-                plugin_git_ref: Odit reiciendis.
-                product: tiflash
-                product_base_img: Non aliquam quo fugiat ut quia.
-                product_dockerfile: Aut ratione.
-                target_img: Repudiandae omnis in sed occaecati est.
-                version: Molestias ducimus sequi inventore quasi nemo officiis.
-            required:
-                - product
-                - version
-                - edition
-                - git_ref
-        DevBuildSpec2:
-            type: object
-            properties:
-                build_env:
-                    type: string
-                    example: Ut sunt rerum.
-                builder_img:
-                    type: string
-                    example: Cumque qui.
-                edition:
-                    type: string
-                    example: community
-                    enum:
-                        - enterprise
-                        - community
-                features:
-                    type: string
-                    example: Quos nemo est.
-                git_ref:
-                    type: string
-                    example: Est ut cumque.
-                git_sha:
-                    type: string
-                    example: Reiciendis ipsam nesciunt.
-                github_repo:
-                    type: string
-                    example: Ducimus ipsam.
+                    example: Quas tenetur accusantium et unde animi et.
                 is_hotfix:
                     type: boolean
                     example: true
@@ -2621,10 +2825,10 @@ components:
                         - tekton
                 plugin_git_ref:
                     type: string
-                    example: Veniam quo molestiae voluptatem perferendis.
+                    example: Veritatis harum sit ut voluptatem.
                 product:
                     type: string
-                    example: dm
+                    example: pump
                     enum:
                         - tidb
                         - br
@@ -2645,22 +2849,119 @@ components:
                         - ticdc-newarch
                 product_base_img:
                     type: string
-                    example: Porro molestias aliquam fugit sed quos nemo.
+                    example: Non in molestiae unde est.
                 product_dockerfile:
                     type: string
-                    example: Sit officiis ea impedit voluptatem non.
+                    example: Nesciunt veniam et est.
                 target_img:
                     type: string
-                    example: Placeat tenetur et aut veniam soluta.
+                    example: Blanditiis architecto.
                 version:
                     type: string
-                    example: Inventore voluptatem est fuga quia.
+                    example: Id ut numquam vel commodi aliquid.
             example:
-                build_env: Natus culpa reprehenderit commodi consectetur voluptas ut.
-                builder_img: Sequi enim non vero id.
+                build_env: Veritatis voluptatibus quia voluptas ut.
+                builder_img: Laudantium aspernatur voluptatibus nam voluptatem sit eius.
+                edition: community
+                features: Aliquam molestiae ipsum saepe aperiam fuga.
+                git_ref: Temporibus inventore.
+                git_sha: Eius reiciendis nihil itaque.
+                github_repo: Debitis est enim.
+                is_hotfix: true
+                is_push_gcr: false
+                pipeline_engine: tekton
+                plugin_git_ref: Autem ratione autem sunt aliquid sit.
+                product: tikv
+                product_base_img: Facilis occaecati odit reiciendis.
+                product_dockerfile: Voluptates non aliquam quo.
+                target_img: Ut quia quia aut ratione.
+                version: Repudiandae omnis in sed occaecati est.
+            required:
+                - product
+                - version
+                - edition
+                - git_ref
+        DevBuildSpec2:
+            type: object
+            properties:
+                build_env:
+                    type: string
+                    example: Molestias ducimus sequi inventore quasi nemo officiis.
+                builder_img:
+                    type: string
+                    example: Ut sunt rerum.
+                edition:
+                    type: string
+                    example: community
+                    enum:
+                        - enterprise
+                        - community
+                features:
+                    type: string
+                    example: Qui atque consequatur quos nemo.
+                git_ref:
+                    type: string
+                    example: Soluta est.
+                git_sha:
+                    type: string
+                    example: Cumque odio reiciendis.
+                github_repo:
+                    type: string
+                    example: Nesciunt rem.
+                is_hotfix:
+                    type: boolean
+                    example: false
+                is_push_gcr:
+                    type: boolean
+                    example: false
+                pipeline_engine:
+                    type: string
+                    example: jenkins
+                    enum:
+                        - jenkins
+                        - tekton
+                plugin_git_ref:
+                    type: string
+                    example: Dolores aliquam veniam quo.
+                product:
+                    type: string
+                    example: ticdc-newarch
+                    enum:
+                        - tidb
+                        - br
+                        - dumpling
+                        - tidb-lightning
+                        - tikv
+                        - pd
+                        - enterprise-plugin
+                        - tiflash
+                        - ticdc
+                        - dm
+                        - tidb-binlog
+                        - drainer
+                        - pump
+                        - tidb-tools
+                        - ng-monitoring
+                        - tidb-dashboard
+                        - ticdc-newarch
+                product_base_img:
+                    type: string
+                    example: Perferendis sint quidem porro molestias aliquam fugit.
+                product_dockerfile:
+                    type: string
+                    example: Quos nemo consequatur sit.
+                target_img:
+                    type: string
+                    example: Ea impedit voluptatem non et placeat.
+                version:
+                    type: string
+                    example: Et aut veniam soluta veritatis.
+            example:
+                build_env: Voluptatem est fuga quia.
+                builder_img: Natus culpa reprehenderit commodi consectetur voluptas ut.
                 edition: enterprise
-                features: Nemo qui dolor et.
-                git_ref: Laudantium id eum.
+                features: Enim non vero id qui ullam nemo.
+                git_ref: Dolor et consequatur laudantium id eum.
                 git_sha: Odio reiciendis consectetur facilis.
                 github_repo: Ipsam et cupiditate eum et magnam.
                 is_hotfix: true
@@ -2919,29 +3220,16 @@ components:
             properties:
                 source:
                     type: string
-                    example: Quidem est eos laboriosam facilis.
+                    example: Debitis consequatur.
                 target:
                     type: string
-                    example: Minus quidem eos et reiciendis.
+                    example: Consequatur quidem est eos.
             example:
-                source: Quibusdam dignissimos ipsum recusandae.
-                target: Autem consequatur laudantium.
+                source: Facilis similique minus quidem eos.
+                target: Reiciendis numquam quibusdam dignissimos ipsum recusandae.
             required:
                 - source
                 - target
-        ListRequestBody:
-            type: object
-            properties:
-                direction:
-                    type: string
-                    description: The direction of the sort
-                    default: desc
-                    example: desc
-                    enum:
-                        - asc
-                        - desc
-            example:
-                direction: desc
         OciArtifact:
             type: object
             properties:

@@ -67,7 +67,7 @@ func main() {
 			artifactSvc = impl.NewArtifact(&logger)
 		}
 		{
-			dbClient, err := newStoreClient(cfg)
+			dbClient, err := newStoreClient(cfg.Store)
 			if err != nil {
 				log.Fatalf(ctx, err, "failed to create store client")
 			}

@@ -93,16 +93,20 @@ paths:
                   enum:
                     - created_at
                     - updated_at
+                - name: direction
+                  in: query
+                  description: The direction of the sort
+                  required: false
+                  type: string
+                  default: desc
+                  enum:
+                    - asc
+                    - desc
                 - name: created_by
                   in: query
                   description: Filter created by
                   required: false
                   type: string
-                - name: ListRequestBody
-                  in: body
-                  required: true
-                  schema:
-                    $ref: '#/definitions/DevbuildListRequestBody'
             responses:
                 "200":
                     description: OK response.
@@ -928,12 +932,12 @@ definitions:
             created_by:
                 type: string
                 description: Creator of build
-                example: brenna_pagac@thompson.org
+                example: gregoria.hane@christiansen.name
                 format: email
             request:
                 $ref: '#/definitions/DevBuildRequest'
         example:
-            created_by: vickie.shanahan@conn.com
+            created_by: nathanial@ritchie.name
             request:
                 build_env: Sunt consequatur veniam rerum quae voluptas consequuntur.
                 builder_img: Voluptatibus illo est sed qui dolorem.
@@ -954,20 +958,6 @@ definitions:
         required:
             - created_by
             - request
-    DevbuildListRequestBody:
-        title: DevbuildListRequestBody
-        type: object
-        properties:
-            direction:
-                type: string
-                description: The direction of the sort
-                default: desc
-                example: asc
-                enum:
-                    - asc
-                    - desc
-        example:
-            direction: desc
     DevbuildUpdateRequestBody:
         title: DevbuildUpdateRequestBody
         type: object

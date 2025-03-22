@@ -6,6 +6,7 @@ require (
 	entgo.io/ent v0.14.3
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.15.2
+	github.com/go-sql-driver/mysql v1.9.1
 	github.com/google/go-containerregistry v0.20.3
 	github.com/google/go-github/v69 v69.2.0
 	github.com/rs/zerolog v1.33.0
@@ -18,6 +19,7 @@ require (
 
 require (
 	ariga.io/atlas v0.31.1-0.20250212144724-069be8033e83 // indirect
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
@@ -31,6 +33,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-openapi/inflect v0.21.0 // indirect
+	github.com/gohugoio/hashstructure v0.5.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

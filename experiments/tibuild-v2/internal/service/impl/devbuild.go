@@ -55,7 +55,10 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 
 	builds, err := query.All(ctx)
 	if err != nil {
-		return nil, err
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, &devbuild.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
 
 	for _, build := range builds {
