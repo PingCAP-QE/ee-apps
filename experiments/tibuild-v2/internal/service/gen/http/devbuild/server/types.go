@@ -815,10 +815,10 @@ func ValidateDevBuildMetaRequestBody(body *DevBuildMetaRequestBody) (err error) 
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.CreatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_at", *body.CreatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.created_at", *body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.UpdatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.updated_at", *body.UpdatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.updated_at", *body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	return
 }
@@ -835,10 +835,10 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_start_at", *body.PipelineStartAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_start_at", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_end_at", *body.PipelineEndAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_end_at", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_url", *body.PipelineViewURL, goa.FormatURI))
@@ -847,8 +847,8 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_urls[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.TektonStatus != nil {
@@ -966,8 +966,8 @@ func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err err
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.StartAt != nil {

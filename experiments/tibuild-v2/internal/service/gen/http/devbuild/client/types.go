@@ -909,10 +909,10 @@ func ValidateDevBuildMetaResponse(body *DevBuildMetaResponse) (err error) {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.CreatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_at", *body.CreatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.created_at", *body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.UpdatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.updated_at", *body.UpdatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.updated_at", *body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	return
 }
@@ -962,10 +962,10 @@ func ValidateDevBuildStatusResponse(body *DevBuildStatusResponse) (err error) {
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_start_at", *body.PipelineStartAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_start_at", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_end_at", *body.PipelineEndAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_end_at", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_url", *body.PipelineViewURL, goa.FormatURI))
@@ -974,8 +974,8 @@ func ValidateDevBuildStatusResponse(body *DevBuildStatusResponse) (err error) {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_urls[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.TektonStatus != nil {
@@ -1093,8 +1093,8 @@ func ValidateTektonPipelineResponse(body *TektonPipelineResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1193,10 +1193,10 @@ func ValidateDevBuildMetaResponseBody(body *DevBuildMetaResponseBody) (err error
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.CreatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_at", *body.CreatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.created_at", *body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.UpdatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.updated_at", *body.UpdatedAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.updated_at", *body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	return
 }
@@ -1246,10 +1246,10 @@ func ValidateDevBuildStatusResponseBody(body *DevBuildStatusResponseBody) (err e
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_start_at", *body.PipelineStartAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_start_at", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_end_at", *body.PipelineEndAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_end_at", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_url", *body.PipelineViewURL, goa.FormatURI))
@@ -1258,8 +1258,8 @@ func ValidateDevBuildStatusResponseBody(body *DevBuildStatusResponseBody) (err e
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_urls[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.TektonStatus != nil {
@@ -1378,8 +1378,8 @@ func ValidateTektonPipelineResponseBody(body *TektonPipelineResponseBody) (err e
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1462,8 +1462,8 @@ func ValidateDevBuildRequestBody(body *DevBuildRequestBody) (err error) {
 // DevBuildMetaRequestBody
 func ValidateDevBuildMetaRequestBody(body *DevBuildMetaRequestBody) (err error) {
 	err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", body.CreatedBy, goa.FormatEmail))
-	err = goa.MergeErrors(err, goa.ValidateFormat("body.created_at", body.CreatedAt, goa.FormatDateTime))
-	err = goa.MergeErrors(err, goa.ValidateFormat("body.updated_at", body.UpdatedAt, goa.FormatDateTime))
+	err = goa.MergeErrors(err, goa.ValidatePattern("body.created_at", body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+	err = goa.MergeErrors(err, goa.ValidatePattern("body.updated_at", body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	return
 }
 
@@ -1476,10 +1476,10 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_start_at", *body.PipelineStartAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_start_at", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_end_at", *body.PipelineEndAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_end_at", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_url", *body.PipelineViewURL, goa.FormatURI))
@@ -1487,8 +1487,8 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 	for _, e := range body.PipelineViewUrls {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_urls[*]", e, goa.FormatURI))
 	}
-	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+	if !(body.Status == "pending" || body.Status == "processing" || body.Status == "aborted" || body.Status == "success" || body.Status == "failure" || body.Status == "error") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 	}
 	if body.TektonStatus != nil {
 		if err2 := ValidateTektonStatusRequestBody(body.TektonStatus); err2 != nil {
@@ -1566,8 +1566,8 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 // ValidateTektonPipelineRequestBody runs the validations defined on
 // TektonPipelineRequestBody
 func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err error) {
-	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+	if !(body.Status == "pending" || body.Status == "processing" || body.Status == "aborted" || body.Status == "success" || body.Status == "failure" || body.Status == "error") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
 	}
 	if body.StartAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.start_at", *body.StartAt, goa.FormatDateTime))

@@ -204,10 +204,10 @@ var DevBuildMeta = Type("DevBuildMeta", func() {
 		Format(FormatEmail)
 	})
 	Attribute("created_at", String, func() {
-		Format(FormatDateTime)
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
 	Attribute("updated_at", String, func() {
-		Format(FormatDateTime)
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
 	Required("created_at", "created_by", "updated_at")
 })
@@ -253,8 +253,12 @@ var DevBuildStatus = Type("DevBuildStatus", func() {
 	Attribute("build_report", BuildReport)
 	Attribute("err_msg", String)
 	Attribute("pipeline_build_id", Int)
-	Attribute("pipeline_start_at", String, func() { Format(FormatDateTime) })
-	Attribute("pipeline_end_at", String, func() { Format(FormatDateTime) })
+	Attribute("pipeline_start_at", String, func() {
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	})
+	Attribute("pipeline_end_at", String, func() {
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	})
 	Attribute("pipeline_view_url", String, func() { Format(FormatURI) })
 	Attribute("pipeline_view_urls", ArrayOf(String, func() { Format(FormatURI) }))
 	Attribute("status", BuildStatus)
@@ -320,7 +324,7 @@ var OciArtifact = Type("OciArtifact", func() {
 })
 
 var BuildStatus = Type("BuildStatus", String, func() {
-	Enum("PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR")
+	Enum("pending", "processing", "aborted", "success", "failure", "error")
 })
 
 var HTTPError = Type("HTTPError", func() {

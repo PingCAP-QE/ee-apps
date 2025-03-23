@@ -32,10 +32,10 @@ devbuild (list|create|get|update|rerun)
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Ea ducimus eius et.",
-      "target": "Praesentium sed illum esse sint."
+      "source": "Quisquam et dolorum aut doloremque culpa.",
+      "target": "Quia iure aut rerum velit fugit."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --page 6473384119965130440 --page-size 550924776103210289 --hotfix true --sort "updated_at" --direction "asc" --created-by "Occaecati facilis consequatur temporibus sit id."` + "\n" +
+		os.Args[0] + ` devbuild list --page 4736864558225078405 --page-size 5061670302995125047 --hotfix true --sort "created_at" --direction "asc" --created-by "Ducimus ut architecto architecto."` + "\n" +
 		""
 }
 
@@ -227,8 +227,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Ea ducimus eius et.",
-      "target": "Praesentium sed illum esse sint."
+      "source": "Quisquam et dolorum aut doloremque culpa.",
+      "target": "Quia iure aut rerum velit fugit."
    }'
 `, os.Args[0])
 }
@@ -262,7 +262,7 @@ List devbuild with pagination support
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --page 6473384119965130440 --page-size 550924776103210289 --hotfix true --sort "updated_at" --direction "asc" --created-by "Occaecati facilis consequatur temporibus sit id."
+    %[1]s devbuild list --page 4736864558225078405 --page-size 5061670302995125047 --hotfix true --sort "created_at" --direction "asc" --created-by "Ducimus ut architecto architecto."
 `, os.Args[0])
 }
 
@@ -275,26 +275,26 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "marietta@ernser.com",
+      "created_by": "alford_lowe@dubuque.net",
       "request": {
-         "build_env": "Sunt consequatur veniam rerum quae voluptas consequuntur.",
-         "builder_img": "Voluptatibus illo est sed qui dolorem.",
+         "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
+         "builder_img": "Harum magni est ipsa et.",
          "edition": "community",
-         "features": "Magni dolor.",
-         "git_ref": "Eligendi qui culpa libero dignissimos occaecati enim.",
-         "git_sha": "Et quaerat odio.",
-         "github_repo": "Suscipit nesciunt et porro aliquid.",
+         "features": "Et ipsa.",
+         "git_ref": "Sed veniam eaque.",
+         "git_sha": "Facilis aut adipisci.",
+         "github_repo": "Velit eum sit.",
          "is_hotfix": true,
          "is_push_gcr": true,
-         "pipeline_engine": "jenkins",
-         "plugin_git_ref": "Et eum voluptas enim molestiae.",
-         "product": "br",
-         "product_base_img": "Ut voluptatum quis aut placeat laborum.",
-         "product_dockerfile": "Eaque ullam quia vel.",
-         "target_img": "Sit consequuntur dolores.",
-         "version": "Optio possimus et distinctio nihil cum asperiores."
+         "pipeline_engine": "tekton",
+         "plugin_git_ref": "Ut magni suscipit eum vel officiis quasi.",
+         "product": "tiflash",
+         "product_base_img": "Ex amet est nemo harum voluptas.",
+         "product_dockerfile": "Eaque exercitationem et.",
+         "target_img": "Blanditiis velit voluptatem exercitationem.",
+         "version": "Est cumque magnam error."
       }
-   }' --dryrun true
+   }' --dryrun false
 `, os.Args[0])
 }
 
@@ -321,311 +321,261 @@ Update devbuild status
 Example:
     %[1]s devbuild update --body '{
       "build": {
-         "id": 6792677507012432024,
+         "id": 6768229537905997887,
          "meta": {
-            "created_at": "1996-12-24T11:37:23Z",
-            "created_by": "rose.ebert@witting.info",
-            "updated_at": "2000-10-19T19:54:20Z"
+            "created_at": "2769-76-81 76:71:23",
+            "created_by": "hilbert.kunze@hessel.biz",
+            "updated_at": "2588-93-63 54:89:92"
          },
          "spec": {
-            "build_env": "Sunt consequatur veniam rerum quae voluptas consequuntur.",
-            "builder_img": "Voluptatibus illo est sed qui dolorem.",
+            "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
+            "builder_img": "Harum magni est ipsa et.",
             "edition": "community",
-            "features": "Magni dolor.",
-            "git_ref": "Eligendi qui culpa libero dignissimos occaecati enim.",
-            "git_sha": "Et quaerat odio.",
-            "github_repo": "Suscipit nesciunt et porro aliquid.",
+            "features": "Et ipsa.",
+            "git_ref": "Sed veniam eaque.",
+            "git_sha": "Facilis aut adipisci.",
+            "github_repo": "Velit eum sit.",
             "is_hotfix": true,
             "is_push_gcr": true,
-            "pipeline_engine": "jenkins",
-            "plugin_git_ref": "Et eum voluptas enim molestiae.",
-            "product": "br",
-            "product_base_img": "Ut voluptatum quis aut placeat laborum.",
-            "product_dockerfile": "Eaque ullam quia vel.",
-            "target_img": "Sit consequuntur dolores.",
-            "version": "Optio possimus et distinctio nihil cum asperiores."
+            "pipeline_engine": "tekton",
+            "plugin_git_ref": "Ut magni suscipit eum vel officiis quasi.",
+            "product": "tiflash",
+            "product_base_img": "Ex amet est nemo harum voluptas.",
+            "product_dockerfile": "Eaque exercitationem et.",
+            "target_img": "Blanditiis velit voluptatem exercitationem.",
+            "version": "Est cumque magnam error."
          },
          "status": {
             "build_report": {
                "binaries": [
                   {
-                     "component": "Nulla perferendis.",
+                     "component": "Commodi et aut.",
                      "oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "platform": "Labore adipisci aut dolorum omnis voluptatum.",
+                     "platform": "Laboriosam magnam rerum.",
                      "sha256_oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "sha256_url": "http://wehnercruickshank.net/claudie",
-                     "url": "http://marks.biz/delfina"
+                     "sha256_url": "http://beier.com/marielle",
+                     "url": "http://shields.org/madie"
                   },
                   {
-                     "component": "Nulla perferendis.",
+                     "component": "Commodi et aut.",
                      "oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "platform": "Labore adipisci aut dolorum omnis voluptatum.",
+                     "platform": "Laboriosam magnam rerum.",
                      "sha256_oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "sha256_url": "http://wehnercruickshank.net/claudie",
-                     "url": "http://marks.biz/delfina"
+                     "sha256_url": "http://beier.com/marielle",
+                     "url": "http://shields.org/madie"
                   },
                   {
-                     "component": "Nulla perferendis.",
+                     "component": "Commodi et aut.",
                      "oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "platform": "Labore adipisci aut dolorum omnis voluptatum.",
+                     "platform": "Laboriosam magnam rerum.",
                      "sha256_oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "sha256_url": "http://wehnercruickshank.net/claudie",
-                     "url": "http://marks.biz/delfina"
+                     "sha256_url": "http://beier.com/marielle",
+                     "url": "http://shields.org/madie"
                   },
                   {
-                     "component": "Nulla perferendis.",
+                     "component": "Commodi et aut.",
                      "oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "platform": "Labore adipisci aut dolorum omnis voluptatum.",
+                     "platform": "Laboriosam magnam rerum.",
                      "sha256_oci_file": {
-                        "file": "Ullam quod nobis quidem.",
-                        "repo": "Delectus et quia dolor perspiciatis animi minus.",
-                        "tag": "Nisi ad dignissimos rerum nulla."
+                        "file": "Assumenda quia.",
+                        "repo": "Saepe quas in animi.",
+                        "tag": "Mollitia qui ex fuga sit harum."
                      },
-                     "sha256_url": "http://wehnercruickshank.net/claudie",
-                     "url": "http://marks.biz/delfina"
+                     "sha256_url": "http://beier.com/marielle",
+                     "url": "http://shields.org/madie"
                   }
                ],
-               "git_sha": "u24",
+               "git_sha": "8ef",
                "images": [
                   {
-                     "platform": "Dolor eaque harum minima.",
-                     "url": "http://ebertzieme.net/d\'angelo"
+                     "platform": "Culpa voluptatem tempora explicabo.",
+                     "url": "http://kundebeatty.net/toy.lueilwitz"
                   },
                   {
-                     "platform": "Dolor eaque harum minima.",
-                     "url": "http://ebertzieme.net/d\'angelo"
+                     "platform": "Culpa voluptatem tempora explicabo.",
+                     "url": "http://kundebeatty.net/toy.lueilwitz"
                   },
                   {
-                     "platform": "Dolor eaque harum minima.",
-                     "url": "http://ebertzieme.net/d\'angelo"
+                     "platform": "Culpa voluptatem tempora explicabo.",
+                     "url": "http://kundebeatty.net/toy.lueilwitz"
+                  },
+                  {
+                     "platform": "Culpa voluptatem tempora explicabo.",
+                     "url": "http://kundebeatty.net/toy.lueilwitz"
                   }
                ],
-               "plugin_git_sha": "qpk",
-               "printed_version": "Et in dolorem incidunt ut unde natus."
+               "plugin_git_sha": "xc0",
+               "printed_version": "Debitis non ut et asperiores non accusantium."
             },
-            "err_msg": "Nesciunt fugit qui eos quae.",
-            "pipeline_build_id": 8884006432911966874,
-            "pipeline_end_at": "2001-10-18T06:28:10Z",
-            "pipeline_start_at": "1970-05-26T03:25:48Z",
-            "pipeline_view_url": "http://pagac.biz/jessyca",
+            "err_msg": "Labore quod nihil sint unde sint.",
+            "pipeline_build_id": 5577746371005261499,
+            "pipeline_end_at": "8505-06-94 49:95:70",
+            "pipeline_start_at": "7373-05-24 20:11:71",
+            "pipeline_view_url": "http://grimes.biz/ethel.stiedemann",
             "pipeline_view_urls": [
-               "http://mannwalsh.org/shaniya",
-               "http://upton.com/jordan.cremin",
-               "http://mrazstehr.info/abner.windler"
+               "http://halvorson.org/melissa_konopelski",
+               "http://carroll.org/keanu.wuckert",
+               "http://kirlin.org/anastasia_pouros"
             ],
-            "status": "PENDING",
+            "status": "error",
             "tekton_status": {
                "pipelines": [
                   {
-                     "end_at": "1981-09-04T21:02:25Z",
-                     "git_sha": "jxx",
+                     "end_at": "1979-06-21T08:02:19Z",
+                     "git_sha": "ip6",
                      "images": [
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
-                        },
-                        {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         }
                      ],
-                     "name": "Commodi et.",
+                     "name": "Laboriosam neque aut nemo.",
                      "oci_artifacts": [
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         },
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         }
                      ],
-                     "platform": "Quisquam saepe saepe error consequatur et facilis.",
-                     "start_at": "2003-01-02T20:40:11Z",
-                     "status": "PROCESSING",
-                     "url": "http://priceernser.info/carolyne"
+                     "platform": "Iure voluptatibus et qui dignissimos.",
+                     "start_at": "1984-05-21T11:11:58Z",
+                     "status": "error",
+                     "url": "http://ondricka.name/tate"
                   },
                   {
-                     "end_at": "1981-09-04T21:02:25Z",
-                     "git_sha": "jxx",
+                     "end_at": "1979-06-21T08:02:19Z",
+                     "git_sha": "ip6",
                      "images": [
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
-                        },
-                        {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         }
                      ],
-                     "name": "Commodi et.",
+                     "name": "Laboriosam neque aut nemo.",
                      "oci_artifacts": [
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         },
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         }
                      ],
-                     "platform": "Quisquam saepe saepe error consequatur et facilis.",
-                     "start_at": "2003-01-02T20:40:11Z",
-                     "status": "PROCESSING",
-                     "url": "http://priceernser.info/carolyne"
+                     "platform": "Iure voluptatibus et qui dignissimos.",
+                     "start_at": "1984-05-21T11:11:58Z",
+                     "status": "error",
+                     "url": "http://ondricka.name/tate"
                   },
                   {
-                     "end_at": "1981-09-04T21:02:25Z",
-                     "git_sha": "jxx",
+                     "end_at": "1979-06-21T08:02:19Z",
+                     "git_sha": "ip6",
                      "images": [
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         },
                         {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
-                        },
-                        {
-                           "platform": "Dolor eaque harum minima.",
-                           "url": "http://ebertzieme.net/d\'angelo"
+                           "platform": "Culpa voluptatem tempora explicabo.",
+                           "url": "http://kundebeatty.net/toy.lueilwitz"
                         }
                      ],
-                     "name": "Commodi et.",
+                     "name": "Laboriosam neque aut nemo.",
                      "oci_artifacts": [
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         },
                         {
                            "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
+                              "Animi odit.",
+                              "Et vel vero.",
+                              "Totam aut."
                            ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
-                        },
-                        {
-                           "files": [
-                              "Quia asperiores.",
-                              "Omnis soluta et explicabo nisi."
-                           ],
-                           "repo": "Rem possimus perferendis est velit pariatur.",
-                           "tag": "Doloribus voluptas totam."
+                           "repo": "Ducimus omnis deserunt.",
+                           "tag": "Commodi dicta qui explicabo occaecati."
                         }
                      ],
-                     "platform": "Quisquam saepe saepe error consequatur et facilis.",
-                     "start_at": "2003-01-02T20:40:11Z",
-                     "status": "PROCESSING",
-                     "url": "http://priceernser.info/carolyne"
+                     "platform": "Iure voluptatibus et qui dignissimos.",
+                     "start_at": "1984-05-21T11:11:58Z",
+                     "status": "error",
+                     "url": "http://ondricka.name/tate"
                   }
                ]
             }
@@ -643,6 +593,6 @@ Rerun devbuild
     -dryrun BOOL: 
 
 Example:
-    %[1]s devbuild rerun --id 1 --dryrun false
+    %[1]s devbuild rerun --id 1 --dryrun true
 `, os.Args[0])
 }
