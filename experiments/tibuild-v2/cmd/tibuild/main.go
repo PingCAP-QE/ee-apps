@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -67,12 +68,11 @@ func main() {
 			artifactSvc = impl.NewArtifact(&logger)
 		}
 		{
-			dbClient, err := newStoreClient(cfg.Store)
-			if err != nil {
-				log.Fatalf(ctx, err, "failed to create store client")
-			}
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = impl.NewDevbuild(&logger, dbClient)
+			devbuildSvc = impl.NewDevbuild(&logger, cfg)
+			if devbuildSvc == nil {
+				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
+			}
 		}
 	}
 

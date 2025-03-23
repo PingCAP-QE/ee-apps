@@ -9,6 +9,10 @@ import (
 )
 
 func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, ref string) string {
+	if ghClient == nil {
+		return ""
+	}
+
 	parts := strings.SplitN(fullRepo, "/", 2)
 	if len(parts) != 2 {
 		return ""

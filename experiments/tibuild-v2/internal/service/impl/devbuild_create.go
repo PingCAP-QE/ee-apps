@@ -2,9 +2,8 @@ package impl
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +23,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	// 1. get the github full repo by product.
 	githubFullRepo := s.productRepoMap[p.Request.Product]
 	if githubFullRepo == "" {
-		return nil, errors.New("github full repo not found")
+		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "github full repo not found"}
 	}
 
 	// 2. get the commit sha
@@ -49,20 +48,17 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 }
 
 func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
-	// TODO: trigger the actual build process according to the record.
-	//
-	//
 	// 1. Compose a cloud event from the record.
 	event, err := newDevBuildCloudEvent(record)
 	if err != nil {
+		s.logger.Err(err).Msg("failed to create cloud event")
 		return nil, err
 	}
-	// 2. Send the cloud event to tekton listener that serves for tibuild.
 
-	c := cloudevents.ContextWithTarget(ctx, s.tektonClient.listenerURL)
-	if result := s.tektonClient.client.Send(c, *event); !protocol.IsACK(result) {
-		slog.ErrorContext(ctx, "failed to send", "reason", result)
-		return nil, fmt.Errorf("failed to send ce:%w", result)
+	// 2. Send the cloud event to tekton listener that serves for tibuild.
+	if result := s.tektonCloudEventClient.Send(ctx, *event); !protocol.IsACK(result) {
+		s.logger.Err(result).Msg("failed to send cloud event")
+		return nil, fmt.Errorf("failed to send cloud event: %w", result)
 	}
 
 	return nil, nil

@@ -23,9 +23,9 @@ type Jenkins struct {
 }
 
 type Tekton struct {
-	Cloudevent_Endpoint string `yaml:"cloudevent_endpoint,omitempty" json:"cloudevent_endpoint,omitempty"`
-	ViewURL             string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
-	OciFileDownloadURL  string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
+	CloudeventEndpoint string `yaml:"cloudevent_endpoint,omitempty" json:"cloudevent_endpoint,omitempty"`
+	ViewURL            string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
+	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
 }
 
 type RestApiSecret struct {

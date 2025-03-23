@@ -14,29 +14,39 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // devbuild service example implementation.
 // The example methods log the requests and return zero values.
 type devbuildsrvc struct {
-	logger         *zerolog.Logger
-	dbClient       *ent.Client
-	productRepoMap map[string]string
-	ghClient       *github.Client
-	tektonClient   tektonClient
-	jenkinsClient  *gojenkins.Jenkins
-	tknListenerURL string
+	logger                 *zerolog.Logger
+	dbClient               *ent.Client
+	productRepoMap         map[string]string
+	ghClient               *github.Client
+	tektonCloudEventClient cloudevents.Client
+	jenkinsClient          *gojenkins.Jenkins
 }
 
-type tektonClient struct {
-	client      cloudevents.Client
-	listenerURL string
-}
+func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
+	dbClient, err := newStoreClient(cfg.Store)
+	if err != nil {
+		logger.Err(err).Msg("failed to create store client")
+		return nil
+	}
 
-func NewDevbuild(logger *zerolog.Logger, client *ent.Client) devbuild.Service {
+	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
+	if err != nil {
+		logger.Err(err).Msg("failed to create cloud event client")
+		return nil
+	}
+
 	return &devbuildsrvc{
-		logger:   logger,
-		dbClient: client,
+		logger:                 logger,
+		dbClient:               dbClient,
+		productRepoMap:         map[string]string{"pd": "tikv/pd"},
+		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
+		tektonCloudEventClient: client,
 	}
 }
 
@@ -176,4 +186,18 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	}
 
 	return transformDevBuild(newBuild), nil
+}
+
+func newStoreClient(cfg config.Store) (*ent.Client, error) {
+	db, err := ent.Open(cfg.Driver, cfg.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run the auto migration tool.
+	if err := db.Schema.Create(context.Background()); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
