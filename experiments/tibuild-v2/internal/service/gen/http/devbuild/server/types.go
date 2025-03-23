@@ -31,6 +31,17 @@ type UpdateRequestBody struct {
 	Build *DevBuildRequestBody `form:"build,omitempty" json:"build,omitempty" xml:"build,omitempty"`
 }
 
+// IngestEventRequestBody is the type of the "devbuild" service "ingestEvent"
+// endpoint HTTP request body.
+type IngestEventRequestBody struct {
+	// Identifies the schema that data adheres to
+	Dataschema *string `form:"dataschema,omitempty" json:"dataschema,omitempty" xml:"dataschema,omitempty"`
+	// Describes the subject of the event in the context of the event producer
+	Subject *string `form:"subject,omitempty" json:"subject,omitempty" xml:"subject,omitempty"`
+	// Event payload
+	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
+}
+
 // ListResponseBody is the type of the "devbuild" service "list" endpoint HTTP
 // response body.
 type ListResponseBody []*DevBuildResponse
@@ -69,6 +80,17 @@ type RerunResponseBody struct {
 	Meta   *DevBuildMetaResponseBody   `form:"meta" json:"meta" xml:"meta"`
 	Spec   *DevBuildSpecResponseBody   `form:"spec" json:"spec" xml:"spec"`
 	Status *DevBuildStatusResponseBody `form:"status" json:"status" xml:"status"`
+}
+
+// IngestEventResponseBody is the type of the "devbuild" service "ingestEvent"
+// endpoint HTTP response body.
+type IngestEventResponseBody struct {
+	// The ID of the processed CloudEvent
+	ID string `form:"id" json:"id" xml:"id"`
+	// Processing status
+	Status string `form:"status" json:"status" xml:"status"`
+	// Additional information about processing result
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
 // ListBadRequestResponseBody is the type of the "devbuild" service "list"
@@ -130,6 +152,21 @@ type RerunBadRequestResponseBody struct {
 // RerunInternalServerErrorResponseBody is the type of the "devbuild" service
 // "rerun" endpoint HTTP response body for the "InternalServerError" error.
 type RerunInternalServerErrorResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// IngestEventBadRequestResponseBody is the type of the "devbuild" service
+// "ingestEvent" endpoint HTTP response body for the "BadRequest" error.
+type IngestEventBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// IngestEventInternalServerErrorResponseBody is the type of the "devbuild"
+// service "ingestEvent" endpoint HTTP response body for the
+// "InternalServerError" error.
+type IngestEventInternalServerErrorResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -526,6 +563,17 @@ func NewRerunResponseBody(res *devbuild.DevBuild) *RerunResponseBody {
 	return body
 }
 
+// NewIngestEventResponseBody builds the HTTP response body from the result of
+// the "ingestEvent" endpoint of the "devbuild" service.
+func NewIngestEventResponseBody(res *devbuild.CloudEventResponse) *IngestEventResponseBody {
+	body := &IngestEventResponseBody{
+		ID:      res.ID,
+		Status:  res.Status,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewListBadRequestResponseBody builds the HTTP response body from the result
 // of the "list" endpoint of the "devbuild" service.
 func NewListBadRequestResponseBody(res *devbuild.HTTPError) *ListBadRequestResponseBody {
@@ -616,6 +664,26 @@ func NewRerunInternalServerErrorResponseBody(res *devbuild.HTTPError) *RerunInte
 	return body
 }
 
+// NewIngestEventBadRequestResponseBody builds the HTTP response body from the
+// result of the "ingestEvent" endpoint of the "devbuild" service.
+func NewIngestEventBadRequestResponseBody(res *devbuild.HTTPError) *IngestEventBadRequestResponseBody {
+	body := &IngestEventBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewIngestEventInternalServerErrorResponseBody builds the HTTP response body
+// from the result of the "ingestEvent" endpoint of the "devbuild" service.
+func NewIngestEventInternalServerErrorResponseBody(res *devbuild.HTTPError) *IngestEventInternalServerErrorResponseBody {
+	body := &IngestEventInternalServerErrorResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewListPayload builds a devbuild service list endpoint payload.
 func NewListPayload(page int, pageSize int, hotfix bool, sort string, direction string, createdBy *string) *devbuild.ListPayload {
 	v := &devbuild.ListPayload{}
@@ -668,6 +736,24 @@ func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 	return v
 }
 
+// NewIngestEventCloudEventIngestEventPayload builds a devbuild service
+// ingestEvent endpoint payload.
+func NewIngestEventCloudEventIngestEventPayload(body *IngestEventRequestBody, datacontenttype *string, id string, source string, type_ string, specversion string, time_ string) *devbuild.CloudEventIngestEventPayload {
+	v := &devbuild.CloudEventIngestEventPayload{
+		Dataschema: body.Dataschema,
+		Subject:    body.Subject,
+		Data:       body.Data,
+	}
+	v.Datacontenttype = datacontenttype
+	v.ID = id
+	v.Source = source
+	v.Type = type_
+	v.Specversion = specversion
+	v.Time = time_
+
+	return v
+}
+
 // ValidateCreateRequestBody runs the validations defined on CreateRequestBody
 func ValidateCreateRequestBody(body *CreateRequestBody) (err error) {
 	if body.CreatedBy == nil {
@@ -696,6 +782,15 @@ func ValidateUpdateRequestBody(body *UpdateRequestBody) (err error) {
 		if err2 := ValidateDevBuildRequestBody(body.Build); err2 != nil {
 			err = goa.MergeErrors(err, err2)
 		}
+	}
+	return
+}
+
+// ValidateIngestEventRequestBody runs the validations defined on
+// IngestEventRequestBody
+func ValidateIngestEventRequestBody(body *IngestEventRequestBody) (err error) {
+	if body.Data == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("data", "body"))
 	}
 	return
 }

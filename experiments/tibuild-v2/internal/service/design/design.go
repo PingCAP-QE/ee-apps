@@ -179,6 +179,27 @@ var _ = Service("devbuild", func() {
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
+
+	Method("ingestEvent", func() {
+		Description("Ingest a CloudEvent for build events")
+		Payload(CloudEvent, func() {
+			Required("id", "source", "type", "specversion", "time", "data")
+		})
+		Result(CloudEventResponse)
+		HTTP(func() {
+			POST("/events")
+			PUT("/events")
+			Header("datacontenttype:Content-Type")
+			Header("id:ce-id")
+			Header("source:ce-source")
+			Header("type:ce-type")
+			Header("specversion:ce-specversion")
+			Header("time:ce-time")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
 })
 
 var ImageSyncRequest = Type("ImageSyncRequest", func() {
@@ -331,4 +352,53 @@ var HTTPError = Type("HTTPError", func() {
 	Attribute("code", Int)
 	Attribute("message", String)
 	Required("code", "message")
+})
+
+var CloudEvent = Type("CloudEvent", func() {
+	Attribute("id", String, "Unique identifier for the event", func() {
+		Example("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+	})
+	Attribute("source", String, "Identifies the context in which an event happened", func() {
+		Example("/jenkins/build")
+	})
+	Attribute("type", String, "Describes the type of event related to the originating occurrence", func() {
+		Example("com.pingcap.build.complete")
+	})
+	Attribute("datacontenttype", String, "Content type of the data value")
+	Attribute("specversion", String, "The version of the CloudEvents specification which the event uses", func() {
+		Example("1.0")
+	})
+	Attribute("dataschema", String, "Identifies the schema that data adheres to", func() {
+		Example("https://example.com/registry/schemas/build-event.json")
+	})
+	Attribute("subject", String, "Describes the subject of the event in the context of the event producer", func() {
+		Example("tidb-build-123")
+	})
+	Attribute("time", String, "Timestamp of when the occurrence happened", func() {
+		Format(FormatDateTime)
+		Example("2022-10-01T12:00:00Z")
+	})
+	Attribute("data", Any, "Event payload", func() {
+		Example(map[string]any{
+			"buildId":  "123",
+			"status":   "success",
+			"version":  "v6.1.0",
+			"duration": 3600,
+		})
+	})
+})
+
+var CloudEventResponse = Type("CloudEventResponse", func() {
+	Attribute("id", String, "The ID of the processed CloudEvent", func() {
+		Example("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+	})
+	Attribute("status", String, "Processing status", func() {
+		Enum("accepted", "processing", "error")
+		Example("accepted")
+	})
+	Attribute("message", String, "Additional information about processing result", func() {
+		Example("Event successfully queued for processing")
+	})
+
+	Required("id", "status")
 })

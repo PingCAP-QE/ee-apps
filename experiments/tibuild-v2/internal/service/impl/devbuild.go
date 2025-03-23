@@ -188,6 +188,11 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	return transformDevBuild(newBuild), nil
 }
 
+func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
+	s.logger.Info().Msgf("devbuild.ingestEvent")
+	return nil, nil
+}
+
 func newStoreClient(cfg config.Store) (*ent.Client, error) {
 	db, err := ent.Open(cfg.Driver, cfg.DSN)
 	if err != nil {

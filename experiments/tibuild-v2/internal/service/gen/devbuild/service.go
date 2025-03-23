@@ -24,6 +24,8 @@ type Service interface {
 	Update(context.Context, *UpdatePayload) (res *DevBuild, err error)
 	// Rerun devbuild
 	Rerun(context.Context, *RerunPayload) (res *DevBuild, err error)
+	// Ingest a CloudEvent for build events
+	IngestEvent(context.Context, *CloudEventIngestEventPayload) (res *CloudEventResponse, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -40,7 +42,7 @@ const ServiceName = "devbuild"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [5]string{"list", "create", "get", "update", "rerun"}
+var MethodNames = [6]string{"list", "create", "get", "update", "rerun", "ingestEvent"}
 
 type BinArtifact struct {
 	Component     *string
@@ -60,6 +62,40 @@ type BuildReport struct {
 }
 
 type BuildStatus string
+
+// CloudEventIngestEventPayload is the payload type of the devbuild service
+// ingestEvent method.
+type CloudEventIngestEventPayload struct {
+	// Unique identifier for the event
+	ID string
+	// Identifies the context in which an event happened
+	Source string
+	// Describes the type of event related to the originating occurrence
+	Type string
+	// Content type of the data value
+	Datacontenttype *string
+	// The version of the CloudEvents specification which the event uses
+	Specversion string
+	// Identifies the schema that data adheres to
+	Dataschema *string
+	// Describes the subject of the event in the context of the event producer
+	Subject *string
+	// Timestamp of when the occurrence happened
+	Time string
+	// Event payload
+	Data any
+}
+
+// CloudEventResponse is the result type of the devbuild service ingestEvent
+// method.
+type CloudEventResponse struct {
+	// The ID of the processed CloudEvent
+	ID string
+	// Processing status
+	Status string
+	// Additional information about processing result
+	Message *string
+}
 
 // CreatePayload is the payload type of the devbuild service create method.
 type CreatePayload struct {

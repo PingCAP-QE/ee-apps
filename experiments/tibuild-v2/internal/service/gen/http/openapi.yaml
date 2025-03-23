@@ -311,6 +311,145 @@ paths:
                             - message
             schemes:
                 - http
+    /devbuilds/events:
+        put:
+            tags:
+                - devbuild
+            summary: ingestEvent devbuild
+            description: Ingest a CloudEvent for build events
+            operationId: devbuild#ingestEvent#1
+            parameters:
+                - name: Content-Type
+                  in: header
+                  description: Content type of the data value
+                  required: false
+                  type: string
+                - name: ce-id
+                  in: header
+                  description: Unique identifier for the event
+                  required: true
+                  type: string
+                - name: ce-source
+                  in: header
+                  description: Identifies the context in which an event happened
+                  required: true
+                  type: string
+                - name: ce-type
+                  in: header
+                  description: Describes the type of event related to the originating occurrence
+                  required: true
+                  type: string
+                - name: ce-specversion
+                  in: header
+                  description: The version of the CloudEvents specification which the event uses
+                  required: true
+                  type: string
+                - name: ce-time
+                  in: header
+                  description: Timestamp of when the occurrence happened
+                  required: true
+                  type: string
+                  format: date-time
+                - name: IngestEventRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/CloudEvent'
+                    required:
+                        - data
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/CloudEventResponse'
+                        required:
+                            - id
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+        post:
+            tags:
+                - devbuild
+            summary: ingestEvent devbuild
+            description: Ingest a CloudEvent for build events
+            operationId: devbuild#ingestEvent
+            parameters:
+                - name: Content-Type
+                  in: header
+                  description: Content type of the data value
+                  required: false
+                  type: string
+                - name: ce-id
+                  in: header
+                  description: Unique identifier for the event
+                  required: true
+                  type: string
+                - name: ce-source
+                  in: header
+                  description: Identifies the context in which an event happened
+                  required: true
+                  type: string
+                - name: ce-type
+                  in: header
+                  description: Describes the type of event related to the originating occurrence
+                  required: true
+                  type: string
+                - name: ce-specversion
+                  in: header
+                  description: The version of the CloudEvents specification which the event uses
+                  required: true
+                  type: string
+                - name: ce-time
+                  in: header
+                  description: Timestamp of when the occurrence happened
+                  required: true
+                  type: string
+                  format: date-time
+                - name: IngestEventRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/CloudEvent'
+                    required:
+                        - data
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/CloudEventResponse'
+                        required:
+                            - id
+                            - status
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
 definitions:
     BinArtifact:
         title: BinArtifact
@@ -337,14 +476,14 @@ definitions:
         example:
             component: Maiores quod vitae asperiores officiis.
             oci_file:
-                file: Fugit ut cupiditate necessitatibus.
-                repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                tag: At eos fugit pariatur.
+                file: At eos fugit pariatur.
+                repo: Fugit distinctio.
+                tag: Illo occaecati facilis consequatur temporibus sit.
             platform: Cumque iste illum a consequatur consequuntur excepturi.
             sha256_oci_file:
-                file: Fugit ut cupiditate necessitatibus.
-                repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                tag: At eos fugit pariatur.
+                file: At eos fugit pariatur.
+                repo: Fugit distinctio.
+                tag: Illo occaecati facilis consequatur temporibus sit.
             sha256_url: http://lemke.org/callie
             url: http://nolan.com/vito.watsica
     BuildReport:
@@ -356,30 +495,30 @@ definitions:
                 items:
                     $ref: '#/definitions/BinArtifact'
                 example:
-                    - component: Enim molestiae dolorem est molestiae.
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
                       oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      platform: Fugit distinctio.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
                       sha256_oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      sha256_url: http://jewesskutch.org/lola
-                      url: http://torphy.org/kyleigh_reilly
-                    - component: Enim molestiae dolorem est molestiae.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
                       oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      platform: Fugit distinctio.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
                       sha256_oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      sha256_url: http://jewesskutch.org/lola
-                      url: http://torphy.org/kyleigh_reilly
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
             git_sha:
                 type: string
                 example: cdu
@@ -389,12 +528,12 @@ definitions:
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
             plugin_git_sha:
                 type: string
                 example: phm
@@ -404,49 +543,105 @@ definitions:
                 example: Tempore debitis vero ratione.
         example:
             binaries:
-                - component: Enim molestiae dolorem est molestiae.
+                - component: Veniam consectetur temporibus debitis ab recusandae iure.
                   oci_file:
-                    file: Fugit ut cupiditate necessitatibus.
-                    repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                    tag: At eos fugit pariatur.
-                  platform: Fugit distinctio.
+                    file: At eos fugit pariatur.
+                    repo: Fugit distinctio.
+                    tag: Illo occaecati facilis consequatur temporibus sit.
+                  platform: Voluptatem asperiores.
                   sha256_oci_file:
-                    file: Fugit ut cupiditate necessitatibus.
-                    repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                    tag: At eos fugit pariatur.
-                  sha256_url: http://jewesskutch.org/lola
-                  url: http://torphy.org/kyleigh_reilly
-                - component: Enim molestiae dolorem est molestiae.
+                    file: At eos fugit pariatur.
+                    repo: Fugit distinctio.
+                    tag: Illo occaecati facilis consequatur temporibus sit.
+                  sha256_url: http://cummingssmith.name/jedediah_hudson
+                  url: http://westledner.name/josefa_wehner
+                - component: Veniam consectetur temporibus debitis ab recusandae iure.
                   oci_file:
-                    file: Fugit ut cupiditate necessitatibus.
-                    repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                    tag: At eos fugit pariatur.
-                  platform: Fugit distinctio.
+                    file: At eos fugit pariatur.
+                    repo: Fugit distinctio.
+                    tag: Illo occaecati facilis consequatur temporibus sit.
+                  platform: Voluptatem asperiores.
                   sha256_oci_file:
-                    file: Fugit ut cupiditate necessitatibus.
-                    repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                    tag: At eos fugit pariatur.
-                  sha256_url: http://jewesskutch.org/lola
-                  url: http://torphy.org/kyleigh_reilly
+                    file: At eos fugit pariatur.
+                    repo: Fugit distinctio.
+                    tag: Illo occaecati facilis consequatur temporibus sit.
+                  sha256_url: http://cummingssmith.name/jedediah_hudson
+                  url: http://westledner.name/josefa_wehner
             git_sha: rhd
             images:
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
             plugin_git_sha: pyp
             printed_version: Reprehenderit nostrum.
+    CloudEvent:
+        title: CloudEvent
+        type: object
+        properties:
+            data:
+                description: Event payload
+                example:
+                    buildId: "123"
+                    duration: 3600
+                    status: success
+                    version: v6.1.0
+            dataschema:
+                type: string
+                description: Identifies the schema that data adheres to
+                example: https://example.com/registry/schemas/build-event.json
+            subject:
+                type: string
+                description: Describes the subject of the event in the context of the event producer
+                example: tidb-build-123
+        example:
+            data:
+                buildId: "123"
+                duration: 3600
+                status: success
+                version: v6.1.0
+            dataschema: https://example.com/registry/schemas/build-event.json
+            subject: tidb-build-123
+        required:
+            - data
+    CloudEventResponse:
+        title: CloudEventResponse
+        type: object
+        properties:
+            id:
+                type: string
+                description: The ID of the processed CloudEvent
+                example: f81d4fae-7dec-11d0-a765-00a0c91e6bf6
+            message:
+                type: string
+                description: Additional information about processing result
+                example: Event successfully queued for processing
+            status:
+                type: string
+                description: Processing status
+                example: accepted
+                enum:
+                    - accepted
+                    - processing
+                    - error
+        example:
+            id: f81d4fae-7dec-11d0-a765-00a0c91e6bf6
+            message: Event successfully queued for processing
+            status: accepted
+        required:
+            - id
+            - status
     DevBuild:
         title: DevBuild
         type: object
         properties:
             id:
                 type: integer
-                example: 8222303723975212619
+                example: 7386066288638736580
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -457,222 +652,198 @@ definitions:
         example:
             id: 7360206773051284491
             meta:
-                created_at: 6412-12-54 31:10:79
-                created_by: ethan.pacocha@harveynitzsche.com
-                updated_at: 0177-88-69 63:61:25
+                created_at: 1212-54-31 10:79:01
+                created_by: stanley_crist@reichertdouglas.org
+                updated_at: 7788-69-63 61:25:75
             spec:
-                build_env: Maiores a aut.
-                builder_img: Corrupti et voluptatem voluptas provident.
-                edition: enterprise
-                features: Non et vel debitis labore ut.
-                git_ref: Amet dicta rerum a nihil quia quia.
-                git_sha: Sed ut.
-                github_repo: Neque quibusdam possimus.
+                build_env: Aut tenetur corrupti et voluptatem voluptas.
+                builder_img: Qui ea non et vel.
+                edition: community
+                features: Ut tempora amet dicta rerum a nihil.
+                git_ref: Quia fugiat sed ut.
+                git_sha: Neque quibusdam possimus.
+                github_repo: Et qui suscipit aliquid sint voluptate.
                 is_hotfix: true
                 is_push_gcr: true
-                pipeline_engine: jenkins
-                plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                product: tidb-lightning
-                product_base_img: Et sit.
-                product_dockerfile: Sed illum.
-                target_img: Sint ea debitis.
-                version: Quia enim sint aut asperiores.
+                pipeline_engine: tekton
+                plugin_git_ref: Ducimus eius et sit praesentium sed illum.
+                product: drainer
+                product_base_img: Ea debitis.
+                product_dockerfile: Quia enim sint aut asperiores.
+                target_img: Architecto enim molestiae dolorem est.
+                version: Eum fugit ut cupiditate.
             status:
                 build_report:
                     binaries:
-                        - component: Enim molestiae dolorem est molestiae.
+                        - component: Veniam consectetur temporibus debitis ab recusandae iure.
                           oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          platform: Fugit distinctio.
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          platform: Voluptatem asperiores.
                           sha256_oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          sha256_url: http://jewesskutch.org/lola
-                          url: http://torphy.org/kyleigh_reilly
-                        - component: Enim molestiae dolorem est molestiae.
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          sha256_url: http://cummingssmith.name/jedediah_hudson
+                          url: http://westledner.name/josefa_wehner
+                        - component: Veniam consectetur temporibus debitis ab recusandae iure.
                           oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          platform: Fugit distinctio.
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          platform: Voluptatem asperiores.
                           sha256_oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          sha256_url: http://jewesskutch.org/lola
-                          url: http://torphy.org/kyleigh_reilly
-                        - component: Enim molestiae dolorem est molestiae.
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          sha256_url: http://cummingssmith.name/jedediah_hudson
+                          url: http://westledner.name/josefa_wehner
+                        - component: Veniam consectetur temporibus debitis ab recusandae iure.
                           oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          platform: Fugit distinctio.
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          platform: Voluptatem asperiores.
                           sha256_oci_file:
-                            file: Fugit ut cupiditate necessitatibus.
-                            repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                            tag: At eos fugit pariatur.
-                          sha256_url: http://jewesskutch.org/lola
-                          url: http://torphy.org/kyleigh_reilly
-                    git_sha: 98s
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          sha256_url: http://cummingssmith.name/jedediah_hudson
+                          url: http://westledner.name/josefa_wehner
+                        - component: Veniam consectetur temporibus debitis ab recusandae iure.
+                          oci_file:
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          platform: Voluptatem asperiores.
+                          sha256_oci_file:
+                            file: At eos fugit pariatur.
+                            repo: Fugit distinctio.
+                            tag: Illo occaecati facilis consequatur temporibus sit.
+                          sha256_url: http://cummingssmith.name/jedediah_hudson
+                          url: http://westledner.name/josefa_wehner
+                    git_sha: 3xz
                     images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                    plugin_git_sha: acs
-                    printed_version: Necessitatibus molestias laborum iste nobis.
-                err_msg: Quae qui assumenda itaque necessitatibus.
-                pipeline_build_id: 6076713282431822031
-                pipeline_end_at: 8699-30-64 62:00:87
-                pipeline_start_at: 7302-68-88 70:99:07
-                pipeline_view_url: http://stroman.biz/demetrius_nitzsche
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                    plugin_git_sha: 8s3
+                    printed_version: Qui illum nemo.
+                err_msg: Quia eum quia id qui.
+                pipeline_build_id: 7352032469857292519
+                pipeline_end_at: 0871-26-47 18:88:28
+                pipeline_start_at: 9078-69-93 06:46:20
+                pipeline_view_url: http://stokes.info/elyssa
                 pipeline_view_urls:
-                    - http://ziemeabbott.name/elwin
-                    - http://heathcote.info/devonte
-                status: aborted
+                    - http://heaney.org/nils
+                    - http://waters.org/neoma.farrell
+                status: failure
                 tekton_status:
                     pipelines:
-                        - end_at: "1985-06-07T08:21:35Z"
-                          git_sha: 5nq
+                        - end_at: "1983-11-04T02:38:04Z"
+                          git_sha: k43
                           images:
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                          name: Rerum rem.
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                          name: Ullam iure.
                           oci_artifacts:
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                          platform: Libero labore.
-                          start_at: "2007-10-11T09:57:25Z"
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
+                          platform: Consequatur cum.
+                          start_at: "2000-06-15T06:19:16Z"
                           status: error
-                          url: http://kemmer.name/evans_murphy
-                        - end_at: "1985-06-07T08:21:35Z"
-                          git_sha: 5nq
+                          url: http://lednerwuckert.biz/deshawn_aufderhar
+                        - end_at: "1983-11-04T02:38:04Z"
+                          git_sha: k43
                           images:
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                          name: Rerum rem.
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                          name: Ullam iure.
                           oci_artifacts:
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                          platform: Libero labore.
-                          start_at: "2007-10-11T09:57:25Z"
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
+                          platform: Consequatur cum.
+                          start_at: "2000-06-15T06:19:16Z"
                           status: error
-                          url: http://kemmer.name/evans_murphy
-                        - end_at: "1985-06-07T08:21:35Z"
-                          git_sha: 5nq
+                          url: http://lednerwuckert.biz/deshawn_aufderhar
+                        - end_at: "1983-11-04T02:38:04Z"
+                          git_sha: k43
                           images:
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                          name: Rerum rem.
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                            - platform: Neque velit maiores culpa rerum accusamus.
+                              url: http://kub.info/ricardo_jacobs
+                          name: Ullam iure.
                           oci_artifacts:
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
                             - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                          platform: Libero labore.
-                          start_at: "2007-10-11T09:57:25Z"
+                                - Expedita aut aspernatur facilis laboriosam.
+                                - Sit consequuntur qui saepe magnam.
+                                - Perspiciatis quia occaecati quia modi animi ut.
+                                - Facere quo sint adipisci voluptatum.
+                              repo: Id sunt id libero labore.
+                              tag: Sit rerum qui qui soluta error.
+                          platform: Consequatur cum.
+                          start_at: "2000-06-15T06:19:16Z"
                           status: error
-                          url: http://kemmer.name/evans_murphy
-                        - end_at: "1985-06-07T08:21:35Z"
-                          git_sha: 5nq
-                          images:
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                            - platform: Quidem laboriosam ut perspiciatis porro libero.
-                              url: http://runtelangosh.name/destini
-                          name: Rerum rem.
-                          oci_artifacts:
-                            - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                            - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                            - files:
-                                - Expedita porro molestiae inventore veniam.
-                                - Numquam autem non iure expedita aut.
-                                - Facilis laboriosam omnis sit consequuntur.
-                                - Saepe magnam voluptatem perspiciatis quia occaecati.
-                              repo: Modi animi ut ab facere.
-                              tag: Sint adipisci voluptatum aut id sunt.
-                          platform: Libero labore.
-                          start_at: "2007-10-11T09:57:25Z"
-                          status: error
-                          url: http://kemmer.name/evans_murphy
+                          url: http://lednerwuckert.biz/deshawn_aufderhar
         required:
             - id
             - meta
@@ -684,20 +855,20 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: 2532-60-69 65:38:63
+                example: 8637-65-10 08:42:39
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             created_by:
                 type: string
-                example: coby_reichert@durgan.net
+                example: jeff@bernhard.name
                 format: email
             updated_at:
                 type: string
-                example: 7651-00-84 23:94:49
+                example: 4491-03-87 20:47:01
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 1427-19-13 91:56:80
-            created_by: valentin_yundt@kling.info
-            updated_at: 3198-19-38 78:27:44
+            created_at: 6803-19-81 93:87:82
+            created_by: jeromy_wiegand@kirlinebert.com
+            updated_at: 7444-68-83 88:42:45
         required:
             - created_at
             - created_by
@@ -711,10 +882,10 @@ definitions:
         properties:
             build_env:
                 type: string
-                example: Ea aperiam voluptates consequatur pariatur id tenetur.
+                example: Illum quidem pariatur voluptatibus est architecto.
             builder_img:
                 type: string
-                example: Temporibus aut nemo illum quidem.
+                example: Ipsam omnis cumque accusamus autem nostrum.
             edition:
                 type: string
                 example: community
@@ -723,34 +894,34 @@ definitions:
                     - community
             features:
                 type: string
-                example: Est architecto officiis.
+                example: Veritatis et molestiae est dolor.
             git_ref:
                 type: string
-                example: Omnis cumque accusamus autem nostrum.
+                example: In exercitationem aperiam eveniet corrupti.
             git_sha:
                 type: string
-                example: Veritatis veritatis et molestiae est dolor.
+                example: Et corporis vero iure minima.
             github_repo:
                 type: string
-                example: In exercitationem aperiam eveniet corrupti.
+                example: Fugit rem atque veritatis voluptatibus.
             is_hotfix:
                 type: boolean
-                example: true
+                example: false
             is_push_gcr:
                 type: boolean
-                example: true
+                example: false
             pipeline_engine:
                 type: string
-                example: tekton
+                example: jenkins
                 enum:
                     - jenkins
                     - tekton
             plugin_git_ref:
                 type: string
-                example: Iure minima qui fugit rem.
+                example: Magni aut qui sint eveniet.
             product:
                 type: string
-                example: dm
+                example: tikv
                 enum:
                     - tidb
                     - br
@@ -771,28 +942,28 @@ definitions:
                     - ticdc-newarch
             product_base_img:
                 type: string
-                example: Voluptatibus ab tempora autem minima.
+                example: Velit eius aliquam maxime.
             product_dockerfile:
                 type: string
-                example: Aut qui sint eveniet temporibus quasi velit.
+                example: Ipsum sunt sint eveniet tenetur.
             target_img:
                 type: string
-                example: Aliquam maxime quo ipsum sunt.
+                example: Aspernatur et quo aut.
             version:
                 type: string
-                example: Eveniet tenetur.
+                example: Quisquam reiciendis at et fuga.
         example:
-            build_env: Aspernatur et quo aut.
-            builder_img: Quisquam reiciendis at et fuga.
+            build_env: Exercitationem quaerat quam.
+            builder_img: Vitae omnis est.
             edition: community
-            features: Quaerat quam laudantium vitae omnis est.
-            git_ref: Consequatur quidem libero nihil ipsum id.
-            git_sha: Et dolorem delectus quisquam et deleniti.
-            github_repo: Magni non neque qui autem qui.
-            is_hotfix: false
-            is_push_gcr: false
-            pipeline_engine: jenkins
-            plugin_git_ref: Inventore sed.
+            features: Quidem libero nihil.
+            git_ref: Id ut.
+            git_sha: Dolorem delectus.
+            github_repo: Et deleniti quia magni non neque qui.
+            is_hotfix: true
+            is_push_gcr: true
+            pipeline_engine: tekton
+            plugin_git_ref: Commodi sint inventore sed.
             product: tidb-lightning
             product_base_img: Fugiat eius maxime eum.
             product_dockerfile: Numquam aut ratione.
@@ -854,52 +1025,62 @@ definitions:
         example:
             build_report:
                 binaries:
-                    - component: Enim molestiae dolorem est molestiae.
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
                       oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      platform: Fugit distinctio.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
                       sha256_oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      sha256_url: http://jewesskutch.org/lola
-                      url: http://torphy.org/kyleigh_reilly
-                    - component: Enim molestiae dolorem est molestiae.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
                       oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      platform: Fugit distinctio.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
                       sha256_oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      sha256_url: http://jewesskutch.org/lola
-                      url: http://torphy.org/kyleigh_reilly
-                    - component: Enim molestiae dolorem est molestiae.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
                       oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      platform: Fugit distinctio.
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
                       sha256_oci_file:
-                        file: Fugit ut cupiditate necessitatibus.
-                        repo: Veniam consectetur temporibus debitis ab recusandae iure.
-                        tag: At eos fugit pariatur.
-                      sha256_url: http://jewesskutch.org/lola
-                      url: http://torphy.org/kyleigh_reilly
-                git_sha: 98s
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
+                    - component: Veniam consectetur temporibus debitis ab recusandae iure.
+                      oci_file:
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      platform: Voluptatem asperiores.
+                      sha256_oci_file:
+                        file: At eos fugit pariatur.
+                        repo: Fugit distinctio.
+                        tag: Illo occaecati facilis consequatur temporibus sit.
+                      sha256_url: http://cummingssmith.name/jedediah_hudson
+                      url: http://westledner.name/josefa_wehner
+                git_sha: 3xz
                 images:
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                plugin_git_sha: acs
-                printed_version: Necessitatibus molestias laborum iste nobis.
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                plugin_git_sha: 8s3
+                printed_version: Qui illum nemo.
             err_msg: Voluptates necessitatibus harum dolore rerum.
             pipeline_build_id: 1395007364599719829
             pipeline_end_at: 0565-90-37 80:09:60
@@ -913,142 +1094,108 @@ definitions:
             status: failure
             tekton_status:
                 pipelines:
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
+                    - end_at: "1983-11-04T02:38:04Z"
+                      git_sha: k43
                       images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                      name: Ullam iure.
                       oci_artifacts:
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
+                      platform: Consequatur cum.
+                      start_at: "2000-06-15T06:19:16Z"
                       status: error
-                      url: http://kemmer.name/evans_murphy
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
+                      url: http://lednerwuckert.biz/deshawn_aufderhar
+                    - end_at: "1983-11-04T02:38:04Z"
+                      git_sha: k43
                       images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                      name: Ullam iure.
                       oci_artifacts:
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
+                      platform: Consequatur cum.
+                      start_at: "2000-06-15T06:19:16Z"
                       status: error
-                      url: http://kemmer.name/evans_murphy
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
+                      url: http://lednerwuckert.biz/deshawn_aufderhar
+                    - end_at: "1983-11-04T02:38:04Z"
+                      git_sha: k43
                       images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                      name: Ullam iure.
                       oci_artifacts:
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
+                      platform: Consequatur cum.
+                      start_at: "2000-06-15T06:19:16Z"
                       status: error
-                      url: http://kemmer.name/evans_murphy
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
-                      images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
-                      oci_artifacts:
-                        - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                        - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                        - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
-                      status: error
-                      url: http://kemmer.name/evans_murphy
+                      url: http://lednerwuckert.biz/deshawn_aufderhar
         required:
             - status
     DevbuildCreateRequestBody:
@@ -1065,22 +1212,22 @@ definitions:
         example:
             created_by: myrtie.larkin@bauch.info
             request:
-                build_env: Adipisci nostrum blanditiis architecto libero est delectus.
-                builder_img: Harum magni est ipsa et.
-                edition: community
-                features: Et ipsa.
-                git_ref: Sed veniam eaque.
-                git_sha: Facilis aut adipisci.
-                github_repo: Velit eum sit.
+                build_env: Ipsa et alias.
+                builder_img: Et ipsa.
+                edition: enterprise
+                features: Veniam eaque nisi.
+                git_ref: Aut adipisci sed.
+                git_sha: Eum sit.
+                github_repo: Suscipit et.
                 is_hotfix: true
                 is_push_gcr: true
                 pipeline_engine: tekton
-                plugin_git_ref: Ut magni suscipit eum vel officiis quasi.
-                product: tiflash
-                product_base_img: Ex amet est nemo harum voluptas.
-                product_dockerfile: Eaque exercitationem et.
-                target_img: Blanditiis velit voluptatem exercitationem.
-                version: Est cumque magnam error.
+                plugin_git_ref: Eum vel officiis quasi sit a ex.
+                product: pd
+                product_base_img: Nemo harum.
+                product_dockerfile: Reprehenderit eaque exercitationem.
+                target_img: Dolorem blanditiis velit voluptatem exercitationem et.
+                version: Cumque magnam error officiis impedit quaerat consectetur.
         required:
             - created_by
             - request
@@ -1098,22 +1245,22 @@ definitions:
                     created_by: hilbert.kunze@hessel.biz
                     updated_at: 2588-93-63 54:89:92
                 spec:
-                    build_env: Adipisci nostrum blanditiis architecto libero est delectus.
-                    builder_img: Harum magni est ipsa et.
-                    edition: community
-                    features: Et ipsa.
-                    git_ref: Sed veniam eaque.
-                    git_sha: Facilis aut adipisci.
-                    github_repo: Velit eum sit.
+                    build_env: Ipsa et alias.
+                    builder_img: Et ipsa.
+                    edition: enterprise
+                    features: Veniam eaque nisi.
+                    git_ref: Aut adipisci sed.
+                    git_sha: Eum sit.
+                    github_repo: Suscipit et.
                     is_hotfix: true
                     is_push_gcr: true
                     pipeline_engine: tekton
-                    plugin_git_ref: Ut magni suscipit eum vel officiis quasi.
-                    product: tiflash
-                    product_base_img: Ex amet est nemo harum voluptas.
-                    product_dockerfile: Eaque exercitationem et.
-                    target_img: Blanditiis velit voluptatem exercitationem.
-                    version: Est cumque magnam error.
+                    plugin_git_ref: Eum vel officiis quasi sit a ex.
+                    product: pd
+                    product_base_img: Nemo harum.
+                    product_dockerfile: Reprehenderit eaque exercitationem.
+                    target_img: Dolorem blanditiis velit voluptatem exercitationem et.
+                    version: Cumque magnam error officiis impedit quaerat consectetur.
                 status:
                     build_report:
                         binaries:
@@ -1278,15 +1425,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 8257764500864309409
+                example: 1068612744691042798
                 format: int64
             message:
                 type: string
-                example: Et laudantium et alias nostrum.
+                example: Alias facere voluptas.
         description: Bad Request
         example:
-            code: 5241166608570417554
-            message: Voluptatem accusamus libero praesentium dolore consequatur incidunt.
+            code: 1427692702019236599
+            message: Odio qui repellendus.
         required:
             - code
             - message
@@ -1313,13 +1460,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Assumenda praesentium est necessitatibus hic eius nam.
+                example: Sit veritatis quia doloremque iure.
             target:
                 type: string
-                example: Ducimus et labore vero totam ullam.
+                example: Est velit et laudantium et alias.
         example:
-            source: Consectetur eveniet voluptates quisquam soluta est.
-            target: Veritatis quia doloremque iure voluptas.
+            source: Inventore dolorem voluptatem accusamus libero.
+            target: Dolore consequatur incidunt iste ex.
         required:
             - source
             - target
@@ -1391,14 +1538,14 @@ definitions:
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
             name:
                 type: string
                 example: Eum sequi repudiandae quo.
@@ -1408,26 +1555,26 @@ definitions:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
             platform:
                 type: string
                 example: Consectetur et quidem quibusdam.
@@ -1453,44 +1600,44 @@ definitions:
             end_at: "2009-04-03T23:14:14Z"
             git_sha: egq
             images:
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
-                - platform: Quidem laboriosam ut perspiciatis porro libero.
-                  url: http://runtelangosh.name/destini
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
+                - platform: Neque velit maiores culpa rerum accusamus.
+                  url: http://kub.info/ricardo_jacobs
             name: Qui et.
             oci_artifacts:
                 - files:
-                    - Expedita porro molestiae inventore veniam.
-                    - Numquam autem non iure expedita aut.
-                    - Facilis laboriosam omnis sit consequuntur.
-                    - Saepe magnam voluptatem perspiciatis quia occaecati.
-                  repo: Modi animi ut ab facere.
-                  tag: Sint adipisci voluptatum aut id sunt.
+                    - Expedita aut aspernatur facilis laboriosam.
+                    - Sit consequuntur qui saepe magnam.
+                    - Perspiciatis quia occaecati quia modi animi ut.
+                    - Facere quo sint adipisci voluptatum.
+                  repo: Id sunt id libero labore.
+                  tag: Sit rerum qui qui soluta error.
                 - files:
-                    - Expedita porro molestiae inventore veniam.
-                    - Numquam autem non iure expedita aut.
-                    - Facilis laboriosam omnis sit consequuntur.
-                    - Saepe magnam voluptatem perspiciatis quia occaecati.
-                  repo: Modi animi ut ab facere.
-                  tag: Sint adipisci voluptatum aut id sunt.
+                    - Expedita aut aspernatur facilis laboriosam.
+                    - Sit consequuntur qui saepe magnam.
+                    - Perspiciatis quia occaecati quia modi animi ut.
+                    - Facere quo sint adipisci voluptatum.
+                  repo: Id sunt id libero labore.
+                  tag: Sit rerum qui qui soluta error.
                 - files:
-                    - Expedita porro molestiae inventore veniam.
-                    - Numquam autem non iure expedita aut.
-                    - Facilis laboriosam omnis sit consequuntur.
-                    - Saepe magnam voluptatem perspiciatis quia occaecati.
-                  repo: Modi animi ut ab facere.
-                  tag: Sint adipisci voluptatum aut id sunt.
+                    - Expedita aut aspernatur facilis laboriosam.
+                    - Sit consequuntur qui saepe magnam.
+                    - Perspiciatis quia occaecati quia modi animi ut.
+                    - Facere quo sint adipisci voluptatum.
+                  repo: Id sunt id libero labore.
+                  tag: Sit rerum qui qui soluta error.
                 - files:
-                    - Expedita porro molestiae inventore veniam.
-                    - Numquam autem non iure expedita aut.
-                    - Facilis laboriosam omnis sit consequuntur.
-                    - Saepe magnam voluptatem perspiciatis quia occaecati.
-                  repo: Modi animi ut ab facere.
-                  tag: Sint adipisci voluptatum aut id sunt.
+                    - Expedita aut aspernatur facilis laboriosam.
+                    - Sit consequuntur qui saepe magnam.
+                    - Perspiciatis quia occaecati quia modi animi ut.
+                    - Facere quo sint adipisci voluptatum.
+                  repo: Id sunt id libero labore.
+                  tag: Sit rerum qui qui soluta error.
             platform: Autem maxime pariatur ut quas laborum pariatur.
             start_at: "2011-10-14T21:45:05Z"
             status: error
@@ -1507,143 +1654,143 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
+                    - end_at: "1983-11-04T02:38:04Z"
+                      git_sha: k43
                       images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                      name: Ullam iure.
                       oci_artifacts:
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
+                      platform: Consequatur cum.
+                      start_at: "2000-06-15T06:19:16Z"
                       status: error
-                      url: http://kemmer.name/evans_murphy
-                    - end_at: "1985-06-07T08:21:35Z"
-                      git_sha: 5nq
+                      url: http://lednerwuckert.biz/deshawn_aufderhar
+                    - end_at: "1983-11-04T02:38:04Z"
+                      git_sha: k43
                       images:
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                        - platform: Quidem laboriosam ut perspiciatis porro libero.
-                          url: http://runtelangosh.name/destini
-                      name: Rerum rem.
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                        - platform: Neque velit maiores culpa rerum accusamus.
+                          url: http://kub.info/ricardo_jacobs
+                      name: Ullam iure.
                       oci_artifacts:
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
                         - files:
-                            - Expedita porro molestiae inventore veniam.
-                            - Numquam autem non iure expedita aut.
-                            - Facilis laboriosam omnis sit consequuntur.
-                            - Saepe magnam voluptatem perspiciatis quia occaecati.
-                          repo: Modi animi ut ab facere.
-                          tag: Sint adipisci voluptatum aut id sunt.
-                      platform: Libero labore.
-                      start_at: "2007-10-11T09:57:25Z"
+                            - Expedita aut aspernatur facilis laboriosam.
+                            - Sit consequuntur qui saepe magnam.
+                            - Perspiciatis quia occaecati quia modi animi ut.
+                            - Facere quo sint adipisci voluptatum.
+                          repo: Id sunt id libero labore.
+                          tag: Sit rerum qui qui soluta error.
+                      platform: Consequatur cum.
+                      start_at: "2000-06-15T06:19:16Z"
                       status: error
-                      url: http://kemmer.name/evans_murphy
+                      url: http://lednerwuckert.biz/deshawn_aufderhar
         example:
             pipelines:
-                - end_at: "1985-06-07T08:21:35Z"
-                  git_sha: 5nq
+                - end_at: "1983-11-04T02:38:04Z"
+                  git_sha: k43
                   images:
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                  name: Rerum rem.
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                  name: Ullam iure.
                   oci_artifacts:
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
-                  platform: Libero labore.
-                  start_at: "2007-10-11T09:57:25Z"
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
+                  platform: Consequatur cum.
+                  start_at: "2000-06-15T06:19:16Z"
                   status: error
-                  url: http://kemmer.name/evans_murphy
-                - end_at: "1985-06-07T08:21:35Z"
-                  git_sha: 5nq
+                  url: http://lednerwuckert.biz/deshawn_aufderhar
+                - end_at: "1983-11-04T02:38:04Z"
+                  git_sha: k43
                   images:
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                    - platform: Quidem laboriosam ut perspiciatis porro libero.
-                      url: http://runtelangosh.name/destini
-                  name: Rerum rem.
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                    - platform: Neque velit maiores culpa rerum accusamus.
+                      url: http://kub.info/ricardo_jacobs
+                  name: Ullam iure.
                   oci_artifacts:
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
                     - files:
-                        - Expedita porro molestiae inventore veniam.
-                        - Numquam autem non iure expedita aut.
-                        - Facilis laboriosam omnis sit consequuntur.
-                        - Saepe magnam voluptatem perspiciatis quia occaecati.
-                      repo: Modi animi ut ab facere.
-                      tag: Sint adipisci voluptatum aut id sunt.
-                  platform: Libero labore.
-                  start_at: "2007-10-11T09:57:25Z"
+                        - Expedita aut aspernatur facilis laboriosam.
+                        - Sit consequuntur qui saepe magnam.
+                        - Perspiciatis quia occaecati quia modi animi ut.
+                        - Facere quo sint adipisci voluptatum.
+                      repo: Id sunt id libero labore.
+                      tag: Sit rerum qui qui soluta error.
+                  platform: Consequatur cum.
+                  start_at: "2000-06-15T06:19:16Z"
                   status: error
-                  url: http://kemmer.name/evans_murphy
+                  url: http://lednerwuckert.biz/deshawn_aufderhar
         required:
             - pipelines

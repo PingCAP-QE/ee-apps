@@ -535,6 +535,126 @@ func EncodeRerunError(encoder func(context.Context, http.ResponseWriter) goahttp
 	}
 }
 
+// EncodeIngestEventResponse returns an encoder for responses returned by the
+// devbuild ingestEvent endpoint.
+func EncodeIngestEventResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*devbuild.CloudEventResponse)
+		enc := encoder(ctx, w)
+		body := NewIngestEventResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeIngestEventRequest returns a decoder for requests sent to the devbuild
+// ingestEvent endpoint.
+func DecodeIngestEventRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			body IngestEventRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if err == io.EOF {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateIngestEventRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+
+		var (
+			datacontenttype *string
+			id              string
+			source          string
+			type_           string
+			specversion     string
+			time_           string
+		)
+		datacontenttypeRaw := r.Header.Get("Content-Type")
+		if datacontenttypeRaw != "" {
+			datacontenttype = &datacontenttypeRaw
+		}
+		id = r.Header.Get("ce-id")
+		if id == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("id", "header"))
+		}
+		source = r.Header.Get("ce-source")
+		if source == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("source", "header"))
+		}
+		type_ = r.Header.Get("ce-type")
+		if type_ == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("type", "header"))
+		}
+		specversion = r.Header.Get("ce-specversion")
+		if specversion == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("specversion", "header"))
+		}
+		time_ = r.Header.Get("ce-time")
+		if time_ == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("time", "header"))
+		}
+		err = goa.MergeErrors(err, goa.ValidateFormat("time", time_, goa.FormatDateTime))
+		if err != nil {
+			return nil, err
+		}
+		payload := NewIngestEventCloudEventIngestEventPayload(&body, datacontenttype, id, source, type_, specversion, time_)
+
+		return payload, nil
+	}
+}
+
+// EncodeIngestEventError returns an encoder for errors returned by the
+// ingestEvent devbuild endpoint.
+func EncodeIngestEventError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *devbuild.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewIngestEventBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *devbuild.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewIngestEventInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
 // marshalDevbuildDevBuildToDevBuildResponse builds a value of type
 // *DevBuildResponse from a value of type *devbuild.DevBuild.
 func marshalDevbuildDevBuildToDevBuildResponse(v *devbuild.DevBuild) *DevBuildResponse {

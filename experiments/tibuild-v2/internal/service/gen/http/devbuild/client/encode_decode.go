@@ -567,6 +567,133 @@ func DecodeRerunResponse(decoder func(*http.Response) goahttp.Decoder, restoreBo
 	}
 }
 
+// BuildIngestEventRequest instantiates a HTTP request object with method and
+// path set to call the "devbuild" service "ingestEvent" endpoint
+func (c *Client) BuildIngestEventRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: IngestEventDevbuildPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("devbuild", "ingestEvent", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeIngestEventRequest returns an encoder for requests sent to the
+// devbuild ingestEvent server.
+func EncodeIngestEventRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*devbuild.CloudEventIngestEventPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("devbuild", "ingestEvent", "*devbuild.CloudEventIngestEventPayload", v)
+		}
+		if p.Datacontenttype != nil {
+			head := *p.Datacontenttype
+			req.Header.Set("Content-Type", head)
+		}
+		{
+			head := p.ID
+			req.Header.Set("ce-id", head)
+		}
+		{
+			head := p.Source
+			req.Header.Set("ce-source", head)
+		}
+		{
+			head := p.Type
+			req.Header.Set("ce-type", head)
+		}
+		{
+			head := p.Specversion
+			req.Header.Set("ce-specversion", head)
+		}
+		{
+			head := p.Time
+			req.Header.Set("ce-time", head)
+		}
+		body := NewIngestEventRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("devbuild", "ingestEvent", err)
+		}
+		return nil
+	}
+}
+
+// DecodeIngestEventResponse returns a decoder for responses returned by the
+// devbuild ingestEvent endpoint. restoreBody controls whether the response
+// body should be restored after having been read.
+// DecodeIngestEventResponse may return the following errors:
+//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
+//   - "InternalServerError" (type *devbuild.HTTPError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeIngestEventResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body IngestEventResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "ingestEvent", err)
+			}
+			err = ValidateIngestEventResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "ingestEvent", err)
+			}
+			res := NewIngestEventCloudEventResponseOK(&body)
+			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body IngestEventBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "ingestEvent", err)
+			}
+			err = ValidateIngestEventBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "ingestEvent", err)
+			}
+			return nil, NewIngestEventBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body IngestEventInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "ingestEvent", err)
+			}
+			err = ValidateIngestEventInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "ingestEvent", err)
+			}
+			return nil, NewIngestEventInternalServerError(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("devbuild", "ingestEvent", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // unmarshalDevBuildResponseToDevbuildDevBuild builds a value of type
 // *devbuild.DevBuild from a value of type *DevBuildResponse.
 func unmarshalDevBuildResponseToDevbuildDevBuild(v *DevBuildResponse) *devbuild.DevBuild {

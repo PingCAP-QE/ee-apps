@@ -25,17 +25,17 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
 	return `artifact sync-image
-devbuild (list|create|get|update|rerun)
+devbuild (list|create|get|update|rerun|ingest-event)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Quisquam et dolorum aut doloremque culpa.",
-      "target": "Quia iure aut rerum velit fugit."
+      "source": "Quia iure aut rerum velit fugit.",
+      "target": "Et quia."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --page 4736864558225078405 --page-size 5061670302995125047 --hotfix true --sort "created_at" --direction "asc" --created-by "Ducimus ut architecto architecto."` + "\n" +
+		os.Args[0] + ` devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."` + "\n" +
 		""
 }
 
@@ -80,6 +80,15 @@ func ParseEndpoint(
 		devbuildRerunFlags      = flag.NewFlagSet("rerun", flag.ExitOnError)
 		devbuildRerunIDFlag     = devbuildRerunFlags.String("id", "REQUIRED", "ID of build")
 		devbuildRerunDryrunFlag = devbuildRerunFlags.String("dryrun", "", "")
+
+		devbuildIngestEventFlags               = flag.NewFlagSet("ingest-event", flag.ExitOnError)
+		devbuildIngestEventBodyFlag            = devbuildIngestEventFlags.String("body", "REQUIRED", "")
+		devbuildIngestEventDatacontenttypeFlag = devbuildIngestEventFlags.String("datacontenttype", "", "")
+		devbuildIngestEventIDFlag              = devbuildIngestEventFlags.String("id", "REQUIRED", "")
+		devbuildIngestEventSourceFlag          = devbuildIngestEventFlags.String("source", "REQUIRED", "")
+		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
+		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
+		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -90,6 +99,7 @@ func ParseEndpoint(
 	devbuildGetFlags.Usage = devbuildGetUsage
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
+	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -149,6 +159,9 @@ func ParseEndpoint(
 			case "rerun":
 				epf = devbuildRerunFlags
 
+			case "ingest-event":
+				epf = devbuildIngestEventFlags
+
 			}
 
 		}
@@ -196,6 +209,9 @@ func ParseEndpoint(
 			case "rerun":
 				endpoint = c.Rerun()
 				data, err = devbuildc.BuildRerunPayload(*devbuildRerunIDFlag, *devbuildRerunDryrunFlag)
+			case "ingest-event":
+				endpoint = c.IngestEvent()
+				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
 			}
 		}
 	}
@@ -227,8 +243,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Quisquam et dolorum aut doloremque culpa.",
-      "target": "Quia iure aut rerum velit fugit."
+      "source": "Quia iure aut rerum velit fugit.",
+      "target": "Et quia."
    }'
 `, os.Args[0])
 }
@@ -245,6 +261,7 @@ COMMAND:
     get: Get devbuild
     update: Update devbuild status
     rerun: Rerun devbuild
+    ingest-event: Ingest a CloudEvent for build events
 
 Additional help:
     %[1]s devbuild COMMAND --help
@@ -262,7 +279,7 @@ List devbuild with pagination support
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --page 4736864558225078405 --page-size 5061670302995125047 --hotfix true --sort "created_at" --direction "asc" --created-by "Ducimus ut architecto architecto."
+    %[1]s devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."
 `, os.Args[0])
 }
 
@@ -275,24 +292,24 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "alford_lowe@dubuque.net",
+      "created_by": "audrey.paucek@ratke.info",
       "request": {
-         "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
-         "builder_img": "Harum magni est ipsa et.",
-         "edition": "community",
-         "features": "Et ipsa.",
-         "git_ref": "Sed veniam eaque.",
-         "git_sha": "Facilis aut adipisci.",
-         "github_repo": "Velit eum sit.",
+         "build_env": "Ipsa et alias.",
+         "builder_img": "Et ipsa.",
+         "edition": "enterprise",
+         "features": "Veniam eaque nisi.",
+         "git_ref": "Aut adipisci sed.",
+         "git_sha": "Eum sit.",
+         "github_repo": "Suscipit et.",
          "is_hotfix": true,
          "is_push_gcr": true,
          "pipeline_engine": "tekton",
-         "plugin_git_ref": "Ut magni suscipit eum vel officiis quasi.",
-         "product": "tiflash",
-         "product_base_img": "Ex amet est nemo harum voluptas.",
-         "product_dockerfile": "Eaque exercitationem et.",
-         "target_img": "Blanditiis velit voluptatem exercitationem.",
-         "version": "Est cumque magnam error."
+         "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
+         "product": "pd",
+         "product_base_img": "Nemo harum.",
+         "product_dockerfile": "Reprehenderit eaque exercitationem.",
+         "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
+         "version": "Cumque magnam error officiis impedit quaerat consectetur."
       }
    }' --dryrun false
 `, os.Args[0])
@@ -328,22 +345,22 @@ Example:
             "updated_at": "2588-93-63 54:89:92"
          },
          "spec": {
-            "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
-            "builder_img": "Harum magni est ipsa et.",
-            "edition": "community",
-            "features": "Et ipsa.",
-            "git_ref": "Sed veniam eaque.",
-            "git_sha": "Facilis aut adipisci.",
-            "github_repo": "Velit eum sit.",
+            "build_env": "Ipsa et alias.",
+            "builder_img": "Et ipsa.",
+            "edition": "enterprise",
+            "features": "Veniam eaque nisi.",
+            "git_ref": "Aut adipisci sed.",
+            "git_sha": "Eum sit.",
+            "github_repo": "Suscipit et.",
             "is_hotfix": true,
             "is_push_gcr": true,
             "pipeline_engine": "tekton",
-            "plugin_git_ref": "Ut magni suscipit eum vel officiis quasi.",
-            "product": "tiflash",
-            "product_base_img": "Ex amet est nemo harum voluptas.",
-            "product_dockerfile": "Eaque exercitationem et.",
-            "target_img": "Blanditiis velit voluptatem exercitationem.",
-            "version": "Est cumque magnam error."
+            "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
+            "product": "pd",
+            "product_base_img": "Nemo harum.",
+            "product_dockerfile": "Reprehenderit eaque exercitationem.",
+            "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
+            "version": "Cumque magnam error officiis impedit quaerat consectetur."
          },
          "status": {
             "build_report": {
@@ -594,5 +611,31 @@ Rerun devbuild
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun true
+`, os.Args[0])
+}
+
+func devbuildIngestEventUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
+
+Ingest a CloudEvent for build events
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
+
+Example:
+    %[1]s devbuild ingest-event --body '{
+      "data": {
+         "buildId": "123",
+         "duration": 3600,
+         "status": "success",
+         "version": "v6.1.0"
+      },
+      "dataschema": "https://example.com/registry/schemas/build-event.json",
+      "subject": "tidb-build-123"
+   }' --datacontenttype "Assumenda praesentium est necessitatibus hic eius nam." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
 `, os.Args[0])
 }
