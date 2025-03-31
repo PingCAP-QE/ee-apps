@@ -25,7 +25,12 @@ type devbuildsrvc struct {
 	productRepoMap         map[string]string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
-	jenkinsClient          *gojenkins.Jenkins
+	jenkins                *jenkins
+}
+
+type jenkins struct {
+	Client  *gojenkins.Jenkins
+	JobName string
 }
 
 func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
@@ -43,10 +48,14 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 
 	return &devbuildsrvc{
 		logger:                 logger,
-		dbClient:               dbClient,
+		dbClient:               dbClient.Debug(),
 		productRepoMap:         map[string]string{"pd": "tikv/pd"},
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
+		jenkins: &jenkins{
+			Client:  gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL),
+			JobName: cfg.Jenkins.JobName,
+		},
 	}
 }
 
@@ -93,7 +102,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (r
 	}
 
 	// 2. trigger the actual build process according to the record.
-	record, err = s.triggerTknBuild(ctx, record)
+	record, err = s.triggerBuild(ctx, record)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +138,11 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 	s.logger.Info().Msgf("devbuild.update")
 
 	updater := s.dbClient.DevBuild.UpdateOneID(p.ID)
-	if p.Build.Status != nil {
-		updater.SetStatus(string(p.Build.Status.Status))
+	if p.Status != nil {
+		updater.SetStatus(string(p.Status.Status))
 	}
-	if p.Build.Status.TektonStatus != nil {
-		updater.SetTektonStatus(map[string]any{"pipelines": p.Build.Status.TektonStatus.Pipelines})
+	if p.Status.TektonStatus != nil {
+		updater.SetTektonStatus(map[string]any{"pipelines": p.Status.TektonStatus.Pipelines})
 	}
 	updater.SetUpdatedAt(time.Now())
 

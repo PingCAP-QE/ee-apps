@@ -9,6 +9,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.1
 	github.com/google/go-containerregistry v0.20.3
 	github.com/google/go-github/v69 v69.2.0
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.10.0
 	goa.design/clue v1.0.7
@@ -33,7 +34,6 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-openapi/inflect v0.21.0 // indirect
-	github.com/gohugoio/hashstructure v0.5.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

@@ -99,7 +99,9 @@ var _ = Service("devbuild", func() {
 			Attribute("created_by", String, "Creator of build", func() {
 				Format(FormatEmail)
 			})
-			Attribute("request", DevBuildRequest, "Build to create, only spec field is required, others are ignored")
+			Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
+				Required("product", "version", "edition", "git_ref")
+			})
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
@@ -143,11 +145,11 @@ var _ = Service("devbuild", func() {
 			Attribute("id", Int, "ID of build", func() {
 				Example(1)
 			})
-			Attribute("build", DevBuild, "Build to update")
+			Attribute("status", DevBuildStatus, "status update")
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
-			Required("id", "build")
+			Required("id", "status")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -206,10 +208,6 @@ var ImageSyncRequest = Type("ImageSyncRequest", func() {
 	Attribute("source", String)
 	Attribute("target", String)
 	Required("source", "target")
-})
-
-var DevBuildRequest = Type("DevBuildRequest", DevBuildSpec, func() {
-	Required("product", "version", "edition", "git_ref")
 })
 
 var DevBuild = Type("DevBuild", func() {

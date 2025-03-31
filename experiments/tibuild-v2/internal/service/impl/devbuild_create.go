@@ -15,6 +15,11 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 )
 
+const (
+	PipelineEngineJenkins = "jenkins"
+	PipelineEngineTekton  = "tekton"
+)
+
 func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, error) {
 	// NoNeed: guess enterprise plugin ref.
 	// fill for fips
@@ -31,20 +36,32 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 3. create the entity
 	create := s.dbClient.DevBuild.Create().
-		SetProduct(string(p.Request.Product)).
+		SetProduct(p.Request.Product).
+		SetEdition(p.Request.Edition).
+		SetVersion(p.Request.Version).
 		SetGithubRepo(githubFullRepo).
 		SetGitRef(p.Request.GitRef).
 		SetGitSha(commitSha).
-		SetEdition(string(p.Request.Edition)).
 		SetNillableIsHotfix(p.Request.IsHotfix).
 		SetCreatedAt(time.Now()).
 		SetCreatedBy(p.CreatedBy).
 		SetNillablePluginGitRef(p.Request.PluginGitRef).
-		SetNillablePipelineEngine((*string)(p.Request.PipelineEngine)).
+		SetNillablePipelineEngine(p.Request.PipelineEngine).
 		SetStatus("pending")
 
 	// TODO: get the commit sha and set it in `create`.
 	return create.Save(ctx)
+}
+
+func (s *devbuildsrvc) triggerBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
+	switch record.PipelineEngine {
+	case PipelineEngineJenkins:
+		return s.triggerJenkinsBuild(ctx, record)
+	case PipelineEngineTekton:
+		return s.triggerTknBuild(ctx, record)
+	default:
+		return record, fmt.Errorf("unsupported pipeline engine: %s", record.PipelineEngine)
+	}
 }
 
 func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
@@ -61,7 +78,7 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 		return nil, fmt.Errorf("failed to send cloud event: %w", result)
 	}
 
-	return nil, nil
+	return record, nil
 }
 
 func newDevBuildCloudEvent(record *ent.DevBuild) (*cloudevents.Event, error) {
