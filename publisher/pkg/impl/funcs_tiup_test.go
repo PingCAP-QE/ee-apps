@@ -20,6 +20,14 @@ func Test_transformTiupVer(t *testing.T) {
 			},
 			want: "v8.5.0-centos7",
 		},
+		{
+			name: "test2",
+			args: args{
+				version: "v9.0.0-beta.1.pre",
+				tag:     "v9.0.0-beta.1_linux_amd64",
+			},
+			want: "v9.0.0-beta.1",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
