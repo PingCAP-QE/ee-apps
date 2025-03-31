@@ -6,8 +6,8 @@ github.com/Masterminds/semver/v3 v3.3.0 h1:B8LGeaivUe71a5qox1ICM/JLl0NqZSW5CHyL+
 github.com/Masterminds/semver/v3 v3.3.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Masterminds/sprig/v3 v3.3.0 h1:mQh0Yrg1XPo6vjYXgtf5OtijNAKJRNcTdOOGZe3tPhs=
 github.com/Masterminds/sprig/v3 v3.3.0/go.mod h1:Zy1iXRYNqNLUolqCpL4uhk6SHUMAOSCzdgBfDb35Lz0=
-github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250129171403-a0e6c34a18b9 h1:zocD1EOx5lMCgNuiqtgGXJjLK4iCEXiVjcbf/08dxKg=
-github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250129171403-a0e6c34a18b9/go.mod h1:4Q9Ns8T4rU7dlZng4fLe9qwSWlB4rjFD7Egpip1kI38=
+github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250331160635-f5ea9ba03507 h1:SrJkHa5dyivJRogCj6AFIfkCFn6uWe5vHWz3lwSF8nc=
+github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250331160635-f5ea9ba03507/go.mod h1:4Q9Ns8T4rU7dlZng4fLe9qwSWlB4rjFD7Egpip1kI38=
 github.com/aws/smithy-go v1.22.0 h1:uunKnWlcoL3zO7q+gG2Pk53joueEOsnNB28QdMsmiMM=
 github.com/aws/smithy-go v1.22.0/go.mod h1:irrKGvNn1InZwb2d7fkIRNucdfwR8R+Ts3wxYa/cJHg=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
