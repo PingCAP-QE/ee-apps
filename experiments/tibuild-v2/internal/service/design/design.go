@@ -86,6 +86,7 @@ var _ = Service("devbuild", func() {
 			Param("page_size")
 			Param("hotfix")
 			Param("sort")
+			Param("direction")
 			Param("created_by")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
@@ -98,7 +99,9 @@ var _ = Service("devbuild", func() {
 			Attribute("created_by", String, "Creator of build", func() {
 				Format(FormatEmail)
 			})
-			Attribute("request", DevBuildRequest, "Build to create, only spec field is required, others are ignored")
+			Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
+				Required("product", "version", "edition", "git_ref")
+			})
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
@@ -142,11 +145,11 @@ var _ = Service("devbuild", func() {
 			Attribute("id", Int, "ID of build", func() {
 				Example(1)
 			})
-			Attribute("DevBuild", DevBuild, "Build to update")
+			Attribute("status", DevBuildStatus, "status update")
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
-			Required("id", "DevBuild")
+			Required("id", "status")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -178,32 +181,33 @@ var _ = Service("devbuild", func() {
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
+
+	Method("ingestEvent", func() {
+		Description("Ingest a CloudEvent for build events")
+		Payload(CloudEvent, func() {
+			Required("id", "source", "type", "specversion", "time", "data")
+		})
+		Result(CloudEventResponse)
+		HTTP(func() {
+			POST("/events")
+			PUT("/events")
+			Header("datacontenttype:Content-Type")
+			Header("id:ce-id")
+			Header("source:ce-source")
+			Header("type:ce-type")
+			Header("specversion:ce-specversion")
+			Header("time:ce-time")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
 })
 
 var ImageSyncRequest = Type("ImageSyncRequest", func() {
 	Attribute("source", String)
 	Attribute("target", String)
 	Required("source", "target")
-})
-
-var DevBuildRequest = Type("DevBuildRequest", func() {
-	Attribute("build_env", String)
-	Attribute("builder_img", String)
-	Attribute("edition", ProductEdition)
-	Attribute("features", String)
-	Attribute("gitRef", String)
-	Attribute("githubRepo", String)
-	Attribute("is_hotfix", Boolean)
-	Attribute("is_push_gcr", Boolean)
-	Attribute("pipeline_engine", PipelineEngine)
-	Attribute("plugin_git_ref", String)
-	Attribute("product", Product)
-	Attribute("productBaseImg", String)
-	Attribute("productDockerfile", String)
-	Attribute("targetImg", String)
-	Attribute("version", String)
-
-	Required("edition", "gitRef", "product", "version")
 })
 
 var DevBuild = Type("DevBuild", func() {
@@ -219,10 +223,10 @@ var DevBuildMeta = Type("DevBuildMeta", func() {
 		Format(FormatEmail)
 	})
 	Attribute("created_at", String, func() {
-		Format(FormatDateTime)
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
 	Attribute("updated_at", String, func() {
-		Format(FormatDateTime)
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
 	Required("created_at", "created_by", "updated_at")
 })
@@ -230,53 +234,73 @@ var DevBuildMeta = Type("DevBuildMeta", func() {
 var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("build_env", String)
 	Attribute("builder_img", String)
-	Attribute("edition", ProductEdition)
+	Attribute("edition", String, func() {
+		Enum("enterprise", "community")
+	})
 	Attribute("features", String)
-	Attribute("gitHash", String)
-	Attribute("gitRef", String)
-	Attribute("githubRepo", String)
+	Attribute("git_ref", String)
+	Attribute("git_sha", String)
+	Attribute("github_repo", String)
 	Attribute("is_hotfix", Boolean)
 	Attribute("is_push_gcr", Boolean)
-	Attribute("pipeline_engine", PipelineEngine)
+	Attribute("pipeline_engine", String, func() {
+		Enum("jenkins", "tekton")
+	})
 	Attribute("plugin_git_ref", String)
-	Attribute("product", Product)
-	Attribute("productBaseImg", String)
-	Attribute("productDockerfile", String)
-	Attribute("targetImg", String)
+	Attribute("product", String, func() {
+		Enum(
+			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
+			"tikv",              // from tikv/tikv repo.
+			"pd",                // from tikv/pd repo.
+			"enterprise-plugin", // from pingcap-inc/enterprise-plugin repo.
+			"tiflash",           // from pingcap/tiflash repo.
+			"ticdc", "dm",       // from pingcap/tiflow repo.
+			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
+			"tidb-tools",     // from pingcap/tidb-tools repo.
+			"ng-monitoring",  // from pingcap/ng-monitoring repo.
+			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
+			"ticdc-newarch",  // from pingcap/ticdc repo.
+		)
+	})
+	Attribute("product_base_img", String)
+	Attribute("product_dockerfile", String)
+	Attribute("target_img", String)
 	Attribute("version", String)
-	Required("build_env", "builder_img", "edition", "features", "gitHash", "gitRef", "githubRepo", "is_hotfix", "is_push_gcr", "pipeline_engine", "plugin_git_ref", "product", "productBaseImg", "productDockerfile", "targetImg", "version")
 })
 
 var DevBuildStatus = Type("DevBuildStatus", func() {
-	Attribute("buildReport", BuildReport)
-	Attribute("errMsg", String)
-	Attribute("pipelineBuildID", Int)
-	Attribute("pipelineEndAt", String)
-	Attribute("pipelineStartAt", String)
-	Attribute("pipelineViewURL", String)
-	Attribute("pipelineViewURLs", ArrayOf(String))
+	Attribute("build_report", BuildReport)
+	Attribute("err_msg", String)
+	Attribute("pipeline_build_id", Int)
+	Attribute("pipeline_start_at", String, func() {
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	})
+	Attribute("pipeline_end_at", String, func() {
+		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	})
+	Attribute("pipeline_view_url", String, func() { Format(FormatURI) })
+	Attribute("pipeline_view_urls", ArrayOf(String, func() { Format(FormatURI) }))
 	Attribute("status", BuildStatus)
-	Attribute("tektonStatus", TektonStatus)
-	Required("buildReport", "errMsg", "pipelineBuildID", "pipelineEndAt", "pipelineStartAt", "pipelineViewURL", "pipelineViewURLs", "status", "tektonStatus")
+	Attribute("tekton_status", TektonStatus)
+
+	Required("status")
 })
 
 var BuildReport = Type("BuildReport", func() {
 	Attribute("binaries", ArrayOf(BinArtifact))
-	Attribute("gitHash", String)
+	Attribute("git_sha", String, func() { MaxLength(40) })
 	Attribute("images", ArrayOf(ImageArtifact))
-	Attribute("pluginGitHash", String)
-	Attribute("printedVersion", String)
-	Required("binaries", "gitHash", "images", "pluginGitHash", "printedVersion")
+	Attribute("plugin_git_sha", String, func() { MaxLength(40) })
+	Attribute("printed_version", String)
 })
 
 var BinArtifact = Type("BinArtifact", func() {
 	Attribute("component", String)
-	Attribute("ociFile", OciFile)
+	Attribute("oci_file", OciFile)
 	Attribute("platform", String)
-	Attribute("sha256OciFile", OciFile)
-	Attribute("sha256URL", String)
-	Attribute("url", String)
-	Required("component", "ociFile", "platform", "sha256OciFile", "sha256URL", "url")
+	Attribute("sha256_oci_file", OciFile)
+	Attribute("sha256_url", String, func() { Format(FormatURI) })
+	Attribute("url", String, func() { Format(FormatURI) })
 })
 
 var OciFile = Type("OciFile", func() {
@@ -288,7 +312,7 @@ var OciFile = Type("OciFile", func() {
 
 var ImageArtifact = Type("ImageArtifact", func() {
 	Attribute("platform", String)
-	Attribute("url", String)
+	Attribute("url", String, func() { Format(FormatURI) })
 	Required("platform", "url")
 })
 
@@ -298,16 +322,17 @@ var TektonStatus = Type("TektonStatus", func() {
 })
 
 var TektonPipeline = Type("TektonPipeline", func() {
-	Attribute("endAt", String)
-	Attribute("gitHash", String)
-	Attribute("images", ArrayOf(ImageArtifact))
 	Attribute("name", String)
-	Attribute("ociArtifacts", ArrayOf(OciArtifact))
-	Attribute("platform", String)
-	Attribute("startAt", String)
 	Attribute("status", BuildStatus)
-	Attribute("url", String)
-	Required("endAt", "gitHash", "images", "name", "ociArtifacts", "platform", "startAt", "status", "url")
+	Attribute("start_at", String, func() { Format(FormatDateTime) })
+	Attribute("end_at", String, func() { Format(FormatDateTime) })
+	Attribute("git_sha", String, func() { MaxLength(40) })
+	Attribute("images", ArrayOf(ImageArtifact))
+	Attribute("oci_artifacts", ArrayOf(OciArtifact))
+	Attribute("platform", String)
+	Attribute("url", String, func() { Format(FormatURI) })
+
+	Required("name", "status")
 })
 
 var OciArtifact = Type("OciArtifact", func() {
@@ -318,23 +343,60 @@ var OciArtifact = Type("OciArtifact", func() {
 })
 
 var BuildStatus = Type("BuildStatus", String, func() {
-	Enum("PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR")
-})
-
-var PipelineEngine = Type("PipelineEngine", String, func() {
-	Enum("jenkins", "tekton")
-})
-
-var Product = Type("Product", String, func() {
-	Enum("tidb", "enterprise-plugin", "tikv", "pd", "tiflash", "br", "dumpling", "tidb-lightning", "ticdc", "ticdc-newarch", "dm", "tidb-binlog", "tidb-tools", "ng-monitoring", "tidb-dashboard", "drainer", "pump", "")
-})
-
-var ProductEdition = Type("ProductEdition", String, func() {
-	Enum("enterprise", "community")
+	Enum("pending", "processing", "aborted", "success", "failure", "error")
 })
 
 var HTTPError = Type("HTTPError", func() {
 	Attribute("code", Int)
 	Attribute("message", String)
 	Required("code", "message")
+})
+
+var CloudEvent = Type("CloudEvent", func() {
+	Attribute("id", String, "Unique identifier for the event", func() {
+		Example("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+	})
+	Attribute("source", String, "Identifies the context in which an event happened", func() {
+		Example("/jenkins/build")
+	})
+	Attribute("type", String, "Describes the type of event related to the originating occurrence", func() {
+		Example("com.pingcap.build.complete")
+	})
+	Attribute("datacontenttype", String, "Content type of the data value")
+	Attribute("specversion", String, "The version of the CloudEvents specification which the event uses", func() {
+		Example("1.0")
+	})
+	Attribute("dataschema", String, "Identifies the schema that data adheres to", func() {
+		Example("https://example.com/registry/schemas/build-event.json")
+	})
+	Attribute("subject", String, "Describes the subject of the event in the context of the event producer", func() {
+		Example("tidb-build-123")
+	})
+	Attribute("time", String, "Timestamp of when the occurrence happened", func() {
+		Format(FormatDateTime)
+		Example("2022-10-01T12:00:00Z")
+	})
+	Attribute("data", Any, "Event payload", func() {
+		Example(map[string]any{
+			"buildId":  "123",
+			"status":   "success",
+			"version":  "v6.1.0",
+			"duration": 3600,
+		})
+	})
+})
+
+var CloudEventResponse = Type("CloudEventResponse", func() {
+	Attribute("id", String, "The ID of the processed CloudEvent", func() {
+		Example("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+	})
+	Attribute("status", String, "Processing status", func() {
+		Enum("accepted", "processing", "error")
+		Example("accepted")
+	})
+	Attribute("message", String, "Additional information about processing result", func() {
+		Example("Event successfully queued for processing")
+	})
+
+	Required("id", "status")
 })

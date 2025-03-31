@@ -94,9 +94,9 @@ func GitRef(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldGitRef, v))
 }
 
-// GitHash applies equality check predicate on the "git_hash" field. It's identical to GitHashEQ.
-func GitHash(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldGitHash, v))
+// GitSha applies equality check predicate on the "git_sha" field. It's identical to GitShaEQ.
+func GitSha(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldGitSha, v))
 }
 
 // PluginGitRef applies equality check predicate on the "plugin_git_ref" field. It's identical to PluginGitRefEQ.
@@ -160,7 +160,7 @@ func ErrMsg(v string) predicate.DevBuild {
 }
 
 // PipelineBuildID applies equality check predicate on the "pipeline_build_id" field. It's identical to PipelineBuildIDEQ.
-func PipelineBuildID(v int64) predicate.DevBuild {
+func PipelineBuildID(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineBuildID, v))
 }
 
@@ -704,79 +704,79 @@ func GitRefContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldGitRef, v))
 }
 
-// GitHashEQ applies the EQ predicate on the "git_hash" field.
-func GitHashEQ(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldGitHash, v))
+// GitShaEQ applies the EQ predicate on the "git_sha" field.
+func GitShaEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldGitSha, v))
 }
 
-// GitHashNEQ applies the NEQ predicate on the "git_hash" field.
-func GitHashNEQ(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNEQ(FieldGitHash, v))
+// GitShaNEQ applies the NEQ predicate on the "git_sha" field.
+func GitShaNEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNEQ(FieldGitSha, v))
 }
 
-// GitHashIn applies the In predicate on the "git_hash" field.
-func GitHashIn(vs ...string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldIn(FieldGitHash, vs...))
+// GitShaIn applies the In predicate on the "git_sha" field.
+func GitShaIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIn(FieldGitSha, vs...))
 }
 
-// GitHashNotIn applies the NotIn predicate on the "git_hash" field.
-func GitHashNotIn(vs ...string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNotIn(FieldGitHash, vs...))
+// GitShaNotIn applies the NotIn predicate on the "git_sha" field.
+func GitShaNotIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotIn(FieldGitSha, vs...))
 }
 
-// GitHashGT applies the GT predicate on the "git_hash" field.
-func GitHashGT(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldGT(FieldGitHash, v))
+// GitShaGT applies the GT predicate on the "git_sha" field.
+func GitShaGT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGT(FieldGitSha, v))
 }
 
-// GitHashGTE applies the GTE predicate on the "git_hash" field.
-func GitHashGTE(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldGTE(FieldGitHash, v))
+// GitShaGTE applies the GTE predicate on the "git_sha" field.
+func GitShaGTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGTE(FieldGitSha, v))
 }
 
-// GitHashLT applies the LT predicate on the "git_hash" field.
-func GitHashLT(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldLT(FieldGitHash, v))
+// GitShaLT applies the LT predicate on the "git_sha" field.
+func GitShaLT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLT(FieldGitSha, v))
 }
 
-// GitHashLTE applies the LTE predicate on the "git_hash" field.
-func GitHashLTE(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldLTE(FieldGitHash, v))
+// GitShaLTE applies the LTE predicate on the "git_sha" field.
+func GitShaLTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLTE(FieldGitSha, v))
 }
 
-// GitHashContains applies the Contains predicate on the "git_hash" field.
-func GitHashContains(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldContains(FieldGitHash, v))
+// GitShaContains applies the Contains predicate on the "git_sha" field.
+func GitShaContains(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContains(FieldGitSha, v))
 }
 
-// GitHashHasPrefix applies the HasPrefix predicate on the "git_hash" field.
-func GitHashHasPrefix(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldHasPrefix(FieldGitHash, v))
+// GitShaHasPrefix applies the HasPrefix predicate on the "git_sha" field.
+func GitShaHasPrefix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasPrefix(FieldGitSha, v))
 }
 
-// GitHashHasSuffix applies the HasSuffix predicate on the "git_hash" field.
-func GitHashHasSuffix(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldHasSuffix(FieldGitHash, v))
+// GitShaHasSuffix applies the HasSuffix predicate on the "git_sha" field.
+func GitShaHasSuffix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasSuffix(FieldGitSha, v))
 }
 
-// GitHashIsNil applies the IsNil predicate on the "git_hash" field.
-func GitHashIsNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldIsNull(FieldGitHash))
+// GitShaIsNil applies the IsNil predicate on the "git_sha" field.
+func GitShaIsNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIsNull(FieldGitSha))
 }
 
-// GitHashNotNil applies the NotNil predicate on the "git_hash" field.
-func GitHashNotNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNotNull(FieldGitHash))
+// GitShaNotNil applies the NotNil predicate on the "git_sha" field.
+func GitShaNotNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotNull(FieldGitSha))
 }
 
-// GitHashEqualFold applies the EqualFold predicate on the "git_hash" field.
-func GitHashEqualFold(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEqualFold(FieldGitHash, v))
+// GitShaEqualFold applies the EqualFold predicate on the "git_sha" field.
+func GitShaEqualFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEqualFold(FieldGitSha, v))
 }
 
-// GitHashContainsFold applies the ContainsFold predicate on the "git_hash" field.
-func GitHashContainsFold(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldContainsFold(FieldGitHash, v))
+// GitShaContainsFold applies the ContainsFold predicate on the "git_sha" field.
+func GitShaContainsFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContainsFold(FieldGitSha, v))
 }
 
 // PluginGitRefEQ applies the EQ predicate on the "plugin_git_ref" field.
@@ -1560,42 +1560,42 @@ func ErrMsgContainsFold(v string) predicate.DevBuild {
 }
 
 // PipelineBuildIDEQ applies the EQ predicate on the "pipeline_build_id" field.
-func PipelineBuildIDEQ(v int64) predicate.DevBuild {
+func PipelineBuildIDEQ(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineBuildID, v))
 }
 
 // PipelineBuildIDNEQ applies the NEQ predicate on the "pipeline_build_id" field.
-func PipelineBuildIDNEQ(v int64) predicate.DevBuild {
+func PipelineBuildIDNEQ(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPipelineBuildID, v))
 }
 
 // PipelineBuildIDIn applies the In predicate on the "pipeline_build_id" field.
-func PipelineBuildIDIn(vs ...int64) predicate.DevBuild {
+func PipelineBuildIDIn(vs ...int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPipelineBuildID, vs...))
 }
 
 // PipelineBuildIDNotIn applies the NotIn predicate on the "pipeline_build_id" field.
-func PipelineBuildIDNotIn(vs ...int64) predicate.DevBuild {
+func PipelineBuildIDNotIn(vs ...int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPipelineBuildID, vs...))
 }
 
 // PipelineBuildIDGT applies the GT predicate on the "pipeline_build_id" field.
-func PipelineBuildIDGT(v int64) predicate.DevBuild {
+func PipelineBuildIDGT(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPipelineBuildID, v))
 }
 
 // PipelineBuildIDGTE applies the GTE predicate on the "pipeline_build_id" field.
-func PipelineBuildIDGTE(v int64) predicate.DevBuild {
+func PipelineBuildIDGTE(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPipelineBuildID, v))
 }
 
 // PipelineBuildIDLT applies the LT predicate on the "pipeline_build_id" field.
-func PipelineBuildIDLT(v int64) predicate.DevBuild {
+func PipelineBuildIDLT(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPipelineBuildID, v))
 }
 
 // PipelineBuildIDLTE applies the LTE predicate on the "pipeline_build_id" field.
-func PipelineBuildIDLTE(v int64) predicate.DevBuild {
+func PipelineBuildIDLTE(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPipelineBuildID, v))
 }
 

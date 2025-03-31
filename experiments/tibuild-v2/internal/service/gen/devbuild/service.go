@@ -24,6 +24,8 @@ type Service interface {
 	Update(context.Context, *UpdatePayload) (res *DevBuild, err error)
 	// Rerun devbuild
 	Rerun(context.Context, *RerunPayload) (res *DevBuild, err error)
+	// Ingest a CloudEvent for build events
+	IngestEvent(context.Context, *CloudEventIngestEventPayload) (res *CloudEventResponse, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -40,33 +42,67 @@ const ServiceName = "devbuild"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [5]string{"list", "create", "get", "update", "rerun"}
+var MethodNames = [6]string{"list", "create", "get", "update", "rerun", "ingestEvent"}
 
 type BinArtifact struct {
-	Component     string
+	Component     *string
 	OciFile       *OciFile
-	Platform      string
+	Platform      *string
 	Sha256OciFile *OciFile
-	Sha256URL     string
-	URL           string
+	Sha256URL     *string
+	URL           *string
 }
 
 type BuildReport struct {
 	Binaries       []*BinArtifact
-	GitHash        string
+	GitSha         *string
 	Images         []*ImageArtifact
-	PluginGitHash  string
-	PrintedVersion string
+	PluginGitSha   *string
+	PrintedVersion *string
 }
 
 type BuildStatus string
+
+// CloudEventIngestEventPayload is the payload type of the devbuild service
+// ingestEvent method.
+type CloudEventIngestEventPayload struct {
+	// Unique identifier for the event
+	ID string
+	// Identifies the context in which an event happened
+	Source string
+	// Describes the type of event related to the originating occurrence
+	Type string
+	// Content type of the data value
+	Datacontenttype *string
+	// The version of the CloudEvents specification which the event uses
+	Specversion string
+	// Identifies the schema that data adheres to
+	Dataschema *string
+	// Describes the subject of the event in the context of the event producer
+	Subject *string
+	// Timestamp of when the occurrence happened
+	Time string
+	// Event payload
+	Data any
+}
+
+// CloudEventResponse is the result type of the devbuild service ingestEvent
+// method.
+type CloudEventResponse struct {
+	// The ID of the processed CloudEvent
+	ID string
+	// Processing status
+	Status string
+	// Additional information about processing result
+	Message *string
+}
 
 // CreatePayload is the payload type of the devbuild service create method.
 type CreatePayload struct {
 	// Creator of build
 	CreatedBy string
 	// Build to create, only spec field is required, others are ignored
-	Request *DevBuildRequest
+	Request *DevBuildSpec
 	// Dry run
 	Dryrun bool
 }
@@ -85,51 +121,33 @@ type DevBuildMeta struct {
 	UpdatedAt string
 }
 
-type DevBuildRequest struct {
+type DevBuildSpec struct {
 	BuildEnv          *string
 	BuilderImg        *string
-	Edition           ProductEdition
+	Edition           string
 	Features          *string
 	GitRef            string
+	GitSha            *string
 	GithubRepo        *string
 	IsHotfix          *bool
 	IsPushGcr         *bool
-	PipelineEngine    *PipelineEngine
+	PipelineEngine    *string
 	PluginGitRef      *string
-	Product           Product
+	Product           string
 	ProductBaseImg    *string
 	ProductDockerfile *string
 	TargetImg         *string
 	Version           string
 }
 
-type DevBuildSpec struct {
-	BuildEnv          string
-	BuilderImg        string
-	Edition           ProductEdition
-	Features          string
-	GitHash           string
-	GitRef            string
-	GithubRepo        string
-	IsHotfix          bool
-	IsPushGcr         bool
-	PipelineEngine    PipelineEngine
-	PluginGitRef      string
-	Product           Product
-	ProductBaseImg    string
-	ProductDockerfile string
-	TargetImg         string
-	Version           string
-}
-
 type DevBuildStatus struct {
 	BuildReport      *BuildReport
-	ErrMsg           string
-	PipelineBuildID  int
-	PipelineEndAt    string
-	PipelineStartAt  string
-	PipelineViewURL  string
-	PipelineViewURLs []string
+	ErrMsg           *string
+	PipelineBuildID  *int
+	PipelineStartAt  *string
+	PipelineEndAt    *string
+	PipelineViewURL  *string
+	PipelineViewUrls []string
 	Status           BuildStatus
 	TektonStatus     *TektonStatus
 }
@@ -180,12 +198,6 @@ type OciFile struct {
 	Tag  string
 }
 
-type PipelineEngine string
-
-type Product string
-
-type ProductEdition string
-
 // RerunPayload is the payload type of the devbuild service rerun method.
 type RerunPayload struct {
 	// ID of build
@@ -195,15 +207,15 @@ type RerunPayload struct {
 }
 
 type TektonPipeline struct {
-	EndAt        string
-	GitHash      string
-	Images       []*ImageArtifact
 	Name         string
-	OciArtifacts []*OciArtifact
-	Platform     string
-	StartAt      string
 	Status       BuildStatus
-	URL          string
+	StartAt      *string
+	EndAt        *string
+	GitSha       *string
+	Images       []*ImageArtifact
+	OciArtifacts []*OciArtifact
+	Platform     *string
+	URL          *string
 }
 
 type TektonStatus struct {
@@ -214,8 +226,8 @@ type TektonStatus struct {
 type UpdatePayload struct {
 	// ID of build
 	ID int
-	// Build to update
-	DevBuild *DevBuild
+	// status update
+	Status *DevBuildStatus
 	// Dry run
 	Dryrun bool
 }

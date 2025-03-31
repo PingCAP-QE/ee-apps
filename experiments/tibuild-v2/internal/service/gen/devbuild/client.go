@@ -16,21 +16,23 @@ import (
 
 // Client is the "devbuild" service client.
 type Client struct {
-	ListEndpoint   goa.Endpoint
-	CreateEndpoint goa.Endpoint
-	GetEndpoint    goa.Endpoint
-	UpdateEndpoint goa.Endpoint
-	RerunEndpoint  goa.Endpoint
+	ListEndpoint        goa.Endpoint
+	CreateEndpoint      goa.Endpoint
+	GetEndpoint         goa.Endpoint
+	UpdateEndpoint      goa.Endpoint
+	RerunEndpoint       goa.Endpoint
+	IngestEventEndpoint goa.Endpoint
 }
 
 // NewClient initializes a "devbuild" service client given the endpoints.
-func NewClient(list, create, get, update, rerun goa.Endpoint) *Client {
+func NewClient(list, create, get, update, rerun, ingestEvent goa.Endpoint) *Client {
 	return &Client{
-		ListEndpoint:   list,
-		CreateEndpoint: create,
-		GetEndpoint:    get,
-		UpdateEndpoint: update,
-		RerunEndpoint:  rerun,
+		ListEndpoint:        list,
+		CreateEndpoint:      create,
+		GetEndpoint:         get,
+		UpdateEndpoint:      update,
+		RerunEndpoint:       rerun,
+		IngestEventEndpoint: ingestEvent,
 	}
 }
 
@@ -103,4 +105,18 @@ func (c *Client) Rerun(ctx context.Context, p *RerunPayload) (res *DevBuild, err
 		return
 	}
 	return ires.(*DevBuild), nil
+}
+
+// IngestEvent calls the "ingestEvent" endpoint of the "devbuild" service.
+// IngestEvent may return the following errors:
+//   - "BadRequest" (type *HTTPError): Bad Request
+//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - error: internal error
+func (c *Client) IngestEvent(ctx context.Context, p *CloudEventIngestEventPayload) (res *CloudEventResponse, err error) {
+	var ires any
+	ires, err = c.IngestEventEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*CloudEventResponse), nil
 }

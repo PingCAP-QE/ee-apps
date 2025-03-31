@@ -132,16 +132,16 @@ func (dbc *DevBuildCreate) SetNillableGitRef(s *string) *DevBuildCreate {
 	return dbc
 }
 
-// SetGitHash sets the "git_hash" field.
-func (dbc *DevBuildCreate) SetGitHash(s string) *DevBuildCreate {
-	dbc.mutation.SetGitHash(s)
+// SetGitSha sets the "git_sha" field.
+func (dbc *DevBuildCreate) SetGitSha(s string) *DevBuildCreate {
+	dbc.mutation.SetGitSha(s)
 	return dbc
 }
 
-// SetNillableGitHash sets the "git_hash" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableGitHash(s *string) *DevBuildCreate {
+// SetNillableGitSha sets the "git_sha" field if the given value is not nil.
+func (dbc *DevBuildCreate) SetNillableGitSha(s *string) *DevBuildCreate {
 	if s != nil {
-		dbc.SetGitHash(*s)
+		dbc.SetGitSha(*s)
 	}
 	return dbc
 }
@@ -315,13 +315,13 @@ func (dbc *DevBuildCreate) SetNillableErrMsg(s *string) *DevBuildCreate {
 }
 
 // SetPipelineBuildID sets the "pipeline_build_id" field.
-func (dbc *DevBuildCreate) SetPipelineBuildID(i int64) *DevBuildCreate {
+func (dbc *DevBuildCreate) SetPipelineBuildID(i int) *DevBuildCreate {
 	dbc.mutation.SetPipelineBuildID(i)
 	return dbc
 }
 
 // SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePipelineBuildID(i *int64) *DevBuildCreate {
+func (dbc *DevBuildCreate) SetNillablePipelineBuildID(i *int) *DevBuildCreate {
 	if i != nil {
 		dbc.SetPipelineBuildID(*i)
 	}
@@ -463,9 +463,9 @@ func (dbc *DevBuildCreate) check() error {
 			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.GitHash(); ok {
-		if err := devbuild.GitHashValidator(v); err != nil {
-			return &ValidationError{Name: "git_hash", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_hash": %w`, err)}
+	if v, ok := dbc.mutation.GitSha(); ok {
+		if err := devbuild.GitShaValidator(v); err != nil {
+			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
 		}
 	}
 	if v, ok := dbc.mutation.PluginGitRef(); ok {
@@ -579,9 +579,9 @@ func (dbc *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
 		_spec.SetField(devbuild.FieldGitRef, field.TypeString, value)
 		_node.GitRef = value
 	}
-	if value, ok := dbc.mutation.GitHash(); ok {
-		_spec.SetField(devbuild.FieldGitHash, field.TypeString, value)
-		_node.GitHash = value
+	if value, ok := dbc.mutation.GitSha(); ok {
+		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
+		_node.GitSha = value
 	}
 	if value, ok := dbc.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
@@ -632,7 +632,7 @@ func (dbc *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
 		_node.ErrMsg = value
 	}
 	if value, ok := dbc.mutation.PipelineBuildID(); ok {
-		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt64, value)
+		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 		_node.PipelineBuildID = value
 	}
 	if value, ok := dbc.mutation.PipelineStartAt(); ok {

@@ -36,3 +36,13 @@ func UpdateDevbuildPath(id int) string {
 func RerunDevbuildPath(id int) string {
 	return fmt.Sprintf("/api/v2/devbuilds/%v/rerun", id)
 }
+
+// IngestEventDevbuildPath returns the URL path to the devbuild service ingestEvent HTTP endpoint.
+func IngestEventDevbuildPath() string {
+	return "/api/v2/devbuilds/events"
+}
+
+// IngestEventDevbuildPath2 returns the URL path to the devbuild service ingestEvent HTTP endpoint.
+func IngestEventDevbuildPath2() string {
+	return "/api/v2/devbuilds/events"
+}

@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	// DevBuildsColumns holds the columns for the "dev_builds" table.
-	DevBuildsColumns = []*schema.Column{
+	// DevBuildsV2Columns holds the columns for the "dev_builds_v2" table.
+	DevBuildsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "created_by", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "created_at", Type: field.TypeTime},
@@ -20,7 +20,7 @@ var (
 		{Name: "version", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "github_repo", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "git_ref", Type: field.TypeString, Nullable: true, Size: 64},
-		{Name: "git_hash", Type: field.TypeString, Nullable: true, Size: 40},
+		{Name: "git_sha", Type: field.TypeString, Nullable: true, Size: 40},
 		{Name: "plugin_git_ref", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "is_hotfix", Type: field.TypeBool, Default: false},
 		{Name: "is_push_gcr", Type: field.TypeBool, Nullable: true},
@@ -33,26 +33,26 @@ var (
 		{Name: "product_dockerfile", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "status", Type: field.TypeString, Nullable: true, Size: 16, Default: "pending"},
 		{Name: "err_msg", Type: field.TypeString, Nullable: true, Size: 256},
-		{Name: "pipeline_build_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "pipeline_build_id", Type: field.TypeInt, Nullable: true},
 		{Name: "pipeline_start_at", Type: field.TypeTime, Nullable: true},
 		{Name: "pipeline_end_at", Type: field.TypeTime, Nullable: true},
 		{Name: "build_report", Type: field.TypeJSON, Nullable: true},
 		{Name: "tekton_status", Type: field.TypeJSON, Nullable: true},
 	}
-	// DevBuildsTable holds the schema information for the "dev_builds" table.
-	DevBuildsTable = &schema.Table{
-		Name:       "dev_builds",
-		Columns:    DevBuildsColumns,
-		PrimaryKey: []*schema.Column{DevBuildsColumns[0]},
+	// DevBuildsV2Table holds the schema information for the "dev_builds_v2" table.
+	DevBuildsV2Table = &schema.Table{
+		Name:       "dev_builds_v2",
+		Columns:    DevBuildsV2Columns,
+		PrimaryKey: []*schema.Column{DevBuildsV2Columns[0]},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
-		DevBuildsTable,
+		DevBuildsV2Table,
 	}
 )
 
 func init() {
-	DevBuildsTable.Annotation = &entsql.Annotation{
-		Table: "dev_builds",
+	DevBuildsV2Table.Annotation = &entsql.Annotation{
+		Table: "dev_builds_v2",
 	}
 }

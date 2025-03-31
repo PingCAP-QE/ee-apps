@@ -168,23 +168,23 @@ func (dbu *DevBuildUpdate) ClearGitRef() *DevBuildUpdate {
 	return dbu
 }
 
-// SetGitHash sets the "git_hash" field.
-func (dbu *DevBuildUpdate) SetGitHash(s string) *DevBuildUpdate {
-	dbu.mutation.SetGitHash(s)
+// SetGitSha sets the "git_sha" field.
+func (dbu *DevBuildUpdate) SetGitSha(s string) *DevBuildUpdate {
+	dbu.mutation.SetGitSha(s)
 	return dbu
 }
 
-// SetNillableGitHash sets the "git_hash" field if the given value is not nil.
-func (dbu *DevBuildUpdate) SetNillableGitHash(s *string) *DevBuildUpdate {
+// SetNillableGitSha sets the "git_sha" field if the given value is not nil.
+func (dbu *DevBuildUpdate) SetNillableGitSha(s *string) *DevBuildUpdate {
 	if s != nil {
-		dbu.SetGitHash(*s)
+		dbu.SetGitSha(*s)
 	}
 	return dbu
 }
 
-// ClearGitHash clears the value of the "git_hash" field.
-func (dbu *DevBuildUpdate) ClearGitHash() *DevBuildUpdate {
-	dbu.mutation.ClearGitHash()
+// ClearGitSha clears the value of the "git_sha" field.
+func (dbu *DevBuildUpdate) ClearGitSha() *DevBuildUpdate {
+	dbu.mutation.ClearGitSha()
 	return dbu
 }
 
@@ -423,14 +423,14 @@ func (dbu *DevBuildUpdate) ClearErrMsg() *DevBuildUpdate {
 }
 
 // SetPipelineBuildID sets the "pipeline_build_id" field.
-func (dbu *DevBuildUpdate) SetPipelineBuildID(i int64) *DevBuildUpdate {
+func (dbu *DevBuildUpdate) SetPipelineBuildID(i int) *DevBuildUpdate {
 	dbu.mutation.ResetPipelineBuildID()
 	dbu.mutation.SetPipelineBuildID(i)
 	return dbu
 }
 
 // SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
-func (dbu *DevBuildUpdate) SetNillablePipelineBuildID(i *int64) *DevBuildUpdate {
+func (dbu *DevBuildUpdate) SetNillablePipelineBuildID(i *int) *DevBuildUpdate {
 	if i != nil {
 		dbu.SetPipelineBuildID(*i)
 	}
@@ -438,7 +438,7 @@ func (dbu *DevBuildUpdate) SetNillablePipelineBuildID(i *int64) *DevBuildUpdate 
 }
 
 // AddPipelineBuildID adds i to the "pipeline_build_id" field.
-func (dbu *DevBuildUpdate) AddPipelineBuildID(i int64) *DevBuildUpdate {
+func (dbu *DevBuildUpdate) AddPipelineBuildID(i int) *DevBuildUpdate {
 	dbu.mutation.AddPipelineBuildID(i)
 	return dbu
 }
@@ -586,9 +586,9 @@ func (dbu *DevBuildUpdate) check() error {
 			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
 		}
 	}
-	if v, ok := dbu.mutation.GitHash(); ok {
-		if err := devbuild.GitHashValidator(v); err != nil {
-			return &ValidationError{Name: "git_hash", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_hash": %w`, err)}
+	if v, ok := dbu.mutation.GitSha(); ok {
+		if err := devbuild.GitShaValidator(v); err != nil {
+			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
 		}
 	}
 	if v, ok := dbu.mutation.PluginGitRef(); ok {
@@ -698,11 +698,11 @@ func (dbu *DevBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if dbu.mutation.GitRefCleared() {
 		_spec.ClearField(devbuild.FieldGitRef, field.TypeString)
 	}
-	if value, ok := dbu.mutation.GitHash(); ok {
-		_spec.SetField(devbuild.FieldGitHash, field.TypeString, value)
+	if value, ok := dbu.mutation.GitSha(); ok {
+		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
 	}
-	if dbu.mutation.GitHashCleared() {
-		_spec.ClearField(devbuild.FieldGitHash, field.TypeString)
+	if dbu.mutation.GitShaCleared() {
+		_spec.ClearField(devbuild.FieldGitSha, field.TypeString)
 	}
 	if value, ok := dbu.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
@@ -774,13 +774,13 @@ func (dbu *DevBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		_spec.ClearField(devbuild.FieldErrMsg, field.TypeString)
 	}
 	if value, ok := dbu.mutation.PipelineBuildID(); ok {
-		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt64, value)
+		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 	}
 	if value, ok := dbu.mutation.AddedPipelineBuildID(); ok {
-		_spec.AddField(devbuild.FieldPipelineBuildID, field.TypeInt64, value)
+		_spec.AddField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 	}
 	if dbu.mutation.PipelineBuildIDCleared() {
-		_spec.ClearField(devbuild.FieldPipelineBuildID, field.TypeInt64)
+		_spec.ClearField(devbuild.FieldPipelineBuildID, field.TypeInt)
 	}
 	if value, ok := dbu.mutation.PipelineStartAt(); ok {
 		_spec.SetField(devbuild.FieldPipelineStartAt, field.TypeTime, value)
@@ -966,23 +966,23 @@ func (dbuo *DevBuildUpdateOne) ClearGitRef() *DevBuildUpdateOne {
 	return dbuo
 }
 
-// SetGitHash sets the "git_hash" field.
-func (dbuo *DevBuildUpdateOne) SetGitHash(s string) *DevBuildUpdateOne {
-	dbuo.mutation.SetGitHash(s)
+// SetGitSha sets the "git_sha" field.
+func (dbuo *DevBuildUpdateOne) SetGitSha(s string) *DevBuildUpdateOne {
+	dbuo.mutation.SetGitSha(s)
 	return dbuo
 }
 
-// SetNillableGitHash sets the "git_hash" field if the given value is not nil.
-func (dbuo *DevBuildUpdateOne) SetNillableGitHash(s *string) *DevBuildUpdateOne {
+// SetNillableGitSha sets the "git_sha" field if the given value is not nil.
+func (dbuo *DevBuildUpdateOne) SetNillableGitSha(s *string) *DevBuildUpdateOne {
 	if s != nil {
-		dbuo.SetGitHash(*s)
+		dbuo.SetGitSha(*s)
 	}
 	return dbuo
 }
 
-// ClearGitHash clears the value of the "git_hash" field.
-func (dbuo *DevBuildUpdateOne) ClearGitHash() *DevBuildUpdateOne {
-	dbuo.mutation.ClearGitHash()
+// ClearGitSha clears the value of the "git_sha" field.
+func (dbuo *DevBuildUpdateOne) ClearGitSha() *DevBuildUpdateOne {
+	dbuo.mutation.ClearGitSha()
 	return dbuo
 }
 
@@ -1221,14 +1221,14 @@ func (dbuo *DevBuildUpdateOne) ClearErrMsg() *DevBuildUpdateOne {
 }
 
 // SetPipelineBuildID sets the "pipeline_build_id" field.
-func (dbuo *DevBuildUpdateOne) SetPipelineBuildID(i int64) *DevBuildUpdateOne {
+func (dbuo *DevBuildUpdateOne) SetPipelineBuildID(i int) *DevBuildUpdateOne {
 	dbuo.mutation.ResetPipelineBuildID()
 	dbuo.mutation.SetPipelineBuildID(i)
 	return dbuo
 }
 
 // SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
-func (dbuo *DevBuildUpdateOne) SetNillablePipelineBuildID(i *int64) *DevBuildUpdateOne {
+func (dbuo *DevBuildUpdateOne) SetNillablePipelineBuildID(i *int) *DevBuildUpdateOne {
 	if i != nil {
 		dbuo.SetPipelineBuildID(*i)
 	}
@@ -1236,7 +1236,7 @@ func (dbuo *DevBuildUpdateOne) SetNillablePipelineBuildID(i *int64) *DevBuildUpd
 }
 
 // AddPipelineBuildID adds i to the "pipeline_build_id" field.
-func (dbuo *DevBuildUpdateOne) AddPipelineBuildID(i int64) *DevBuildUpdateOne {
+func (dbuo *DevBuildUpdateOne) AddPipelineBuildID(i int) *DevBuildUpdateOne {
 	dbuo.mutation.AddPipelineBuildID(i)
 	return dbuo
 }
@@ -1397,9 +1397,9 @@ func (dbuo *DevBuildUpdateOne) check() error {
 			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
 		}
 	}
-	if v, ok := dbuo.mutation.GitHash(); ok {
-		if err := devbuild.GitHashValidator(v); err != nil {
-			return &ValidationError{Name: "git_hash", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_hash": %w`, err)}
+	if v, ok := dbuo.mutation.GitSha(); ok {
+		if err := devbuild.GitShaValidator(v); err != nil {
+			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
 		}
 	}
 	if v, ok := dbuo.mutation.PluginGitRef(); ok {
@@ -1526,11 +1526,11 @@ func (dbuo *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, er
 	if dbuo.mutation.GitRefCleared() {
 		_spec.ClearField(devbuild.FieldGitRef, field.TypeString)
 	}
-	if value, ok := dbuo.mutation.GitHash(); ok {
-		_spec.SetField(devbuild.FieldGitHash, field.TypeString, value)
+	if value, ok := dbuo.mutation.GitSha(); ok {
+		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
 	}
-	if dbuo.mutation.GitHashCleared() {
-		_spec.ClearField(devbuild.FieldGitHash, field.TypeString)
+	if dbuo.mutation.GitShaCleared() {
+		_spec.ClearField(devbuild.FieldGitSha, field.TypeString)
 	}
 	if value, ok := dbuo.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
@@ -1602,13 +1602,13 @@ func (dbuo *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, er
 		_spec.ClearField(devbuild.FieldErrMsg, field.TypeString)
 	}
 	if value, ok := dbuo.mutation.PipelineBuildID(); ok {
-		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt64, value)
+		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 	}
 	if value, ok := dbuo.mutation.AddedPipelineBuildID(); ok {
-		_spec.AddField(devbuild.FieldPipelineBuildID, field.TypeInt64, value)
+		_spec.AddField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 	}
 	if dbuo.mutation.PipelineBuildIDCleared() {
-		_spec.ClearField(devbuild.FieldPipelineBuildID, field.TypeInt64)
+		_spec.ClearField(devbuild.FieldPipelineBuildID, field.TypeInt)
 	}
 	if value, ok := dbuo.mutation.PipelineStartAt(); ok {
 		_spec.SetField(devbuild.FieldPipelineStartAt, field.TypeTime, value)

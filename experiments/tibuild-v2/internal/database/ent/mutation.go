@@ -41,7 +41,7 @@ type DevBuildMutation struct {
 	version              *string
 	github_repo          *string
 	git_ref              *string
-	git_hash             *string
+	git_sha              *string
 	plugin_git_ref       *string
 	is_hotfix            *bool
 	is_push_gcr          *bool
@@ -54,8 +54,8 @@ type DevBuildMutation struct {
 	product_dockerfile   *string
 	status               *string
 	err_msg              *string
-	pipeline_build_id    *int64
-	addpipeline_build_id *int64
+	pipeline_build_id    *int
+	addpipeline_build_id *int
 	pipeline_start_at    *time.Time
 	pipeline_end_at      *time.Time
 	build_report         *map[string]interface{}
@@ -530,53 +530,53 @@ func (m *DevBuildMutation) ResetGitRef() {
 	delete(m.clearedFields, devbuild.FieldGitRef)
 }
 
-// SetGitHash sets the "git_hash" field.
-func (m *DevBuildMutation) SetGitHash(s string) {
-	m.git_hash = &s
+// SetGitSha sets the "git_sha" field.
+func (m *DevBuildMutation) SetGitSha(s string) {
+	m.git_sha = &s
 }
 
-// GitHash returns the value of the "git_hash" field in the mutation.
-func (m *DevBuildMutation) GitHash() (r string, exists bool) {
-	v := m.git_hash
+// GitSha returns the value of the "git_sha" field in the mutation.
+func (m *DevBuildMutation) GitSha() (r string, exists bool) {
+	v := m.git_sha
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGitHash returns the old "git_hash" field's value of the DevBuild entity.
+// OldGitSha returns the old "git_sha" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldGitHash(ctx context.Context) (v string, err error) {
+func (m *DevBuildMutation) OldGitSha(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGitHash is only allowed on UpdateOne operations")
+		return v, errors.New("OldGitSha is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGitHash requires an ID field in the mutation")
+		return v, errors.New("OldGitSha requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGitHash: %w", err)
+		return v, fmt.Errorf("querying old value for OldGitSha: %w", err)
 	}
-	return oldValue.GitHash, nil
+	return oldValue.GitSha, nil
 }
 
-// ClearGitHash clears the value of the "git_hash" field.
-func (m *DevBuildMutation) ClearGitHash() {
-	m.git_hash = nil
-	m.clearedFields[devbuild.FieldGitHash] = struct{}{}
+// ClearGitSha clears the value of the "git_sha" field.
+func (m *DevBuildMutation) ClearGitSha() {
+	m.git_sha = nil
+	m.clearedFields[devbuild.FieldGitSha] = struct{}{}
 }
 
-// GitHashCleared returns if the "git_hash" field was cleared in this mutation.
-func (m *DevBuildMutation) GitHashCleared() bool {
-	_, ok := m.clearedFields[devbuild.FieldGitHash]
+// GitShaCleared returns if the "git_sha" field was cleared in this mutation.
+func (m *DevBuildMutation) GitShaCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldGitSha]
 	return ok
 }
 
-// ResetGitHash resets all changes to the "git_hash" field.
-func (m *DevBuildMutation) ResetGitHash() {
-	m.git_hash = nil
-	delete(m.clearedFields, devbuild.FieldGitHash)
+// ResetGitSha resets all changes to the "git_sha" field.
+func (m *DevBuildMutation) ResetGitSha() {
+	m.git_sha = nil
+	delete(m.clearedFields, devbuild.FieldGitSha)
 }
 
 // SetPluginGitRef sets the "plugin_git_ref" field.
@@ -1155,13 +1155,13 @@ func (m *DevBuildMutation) ResetErrMsg() {
 }
 
 // SetPipelineBuildID sets the "pipeline_build_id" field.
-func (m *DevBuildMutation) SetPipelineBuildID(i int64) {
+func (m *DevBuildMutation) SetPipelineBuildID(i int) {
 	m.pipeline_build_id = &i
 	m.addpipeline_build_id = nil
 }
 
 // PipelineBuildID returns the value of the "pipeline_build_id" field in the mutation.
-func (m *DevBuildMutation) PipelineBuildID() (r int64, exists bool) {
+func (m *DevBuildMutation) PipelineBuildID() (r int, exists bool) {
 	v := m.pipeline_build_id
 	if v == nil {
 		return
@@ -1172,7 +1172,7 @@ func (m *DevBuildMutation) PipelineBuildID() (r int64, exists bool) {
 // OldPipelineBuildID returns the old "pipeline_build_id" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldPipelineBuildID(ctx context.Context) (v int64, err error) {
+func (m *DevBuildMutation) OldPipelineBuildID(ctx context.Context) (v int, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldPipelineBuildID is only allowed on UpdateOne operations")
 	}
@@ -1187,7 +1187,7 @@ func (m *DevBuildMutation) OldPipelineBuildID(ctx context.Context) (v int64, err
 }
 
 // AddPipelineBuildID adds i to the "pipeline_build_id" field.
-func (m *DevBuildMutation) AddPipelineBuildID(i int64) {
+func (m *DevBuildMutation) AddPipelineBuildID(i int) {
 	if m.addpipeline_build_id != nil {
 		*m.addpipeline_build_id += i
 	} else {
@@ -1196,7 +1196,7 @@ func (m *DevBuildMutation) AddPipelineBuildID(i int64) {
 }
 
 // AddedPipelineBuildID returns the value that was added to the "pipeline_build_id" field in this mutation.
-func (m *DevBuildMutation) AddedPipelineBuildID() (r int64, exists bool) {
+func (m *DevBuildMutation) AddedPipelineBuildID() (r int, exists bool) {
 	v := m.addpipeline_build_id
 	if v == nil {
 		return
@@ -1479,8 +1479,8 @@ func (m *DevBuildMutation) Fields() []string {
 	if m.git_ref != nil {
 		fields = append(fields, devbuild.FieldGitRef)
 	}
-	if m.git_hash != nil {
-		fields = append(fields, devbuild.FieldGitHash)
+	if m.git_sha != nil {
+		fields = append(fields, devbuild.FieldGitSha)
 	}
 	if m.plugin_git_ref != nil {
 		fields = append(fields, devbuild.FieldPluginGitRef)
@@ -1557,8 +1557,8 @@ func (m *DevBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.GithubRepo()
 	case devbuild.FieldGitRef:
 		return m.GitRef()
-	case devbuild.FieldGitHash:
-		return m.GitHash()
+	case devbuild.FieldGitSha:
+		return m.GitSha()
 	case devbuild.FieldPluginGitRef:
 		return m.PluginGitRef()
 	case devbuild.FieldIsHotfix:
@@ -1618,8 +1618,8 @@ func (m *DevBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldGithubRepo(ctx)
 	case devbuild.FieldGitRef:
 		return m.OldGitRef(ctx)
-	case devbuild.FieldGitHash:
-		return m.OldGitHash(ctx)
+	case devbuild.FieldGitSha:
+		return m.OldGitSha(ctx)
 	case devbuild.FieldPluginGitRef:
 		return m.OldPluginGitRef(ctx)
 	case devbuild.FieldIsHotfix:
@@ -1719,12 +1719,12 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetGitRef(v)
 		return nil
-	case devbuild.FieldGitHash:
+	case devbuild.FieldGitSha:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetGitHash(v)
+		m.SetGitSha(v)
 		return nil
 	case devbuild.FieldPluginGitRef:
 		v, ok := value.(string)
@@ -1811,7 +1811,7 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetErrMsg(v)
 		return nil
 	case devbuild.FieldPipelineBuildID:
-		v, ok := value.(int64)
+		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -1876,7 +1876,7 @@ func (m *DevBuildMutation) AddedField(name string) (ent.Value, bool) {
 func (m *DevBuildMutation) AddField(name string, value ent.Value) error {
 	switch name {
 	case devbuild.FieldPipelineBuildID:
-		v, ok := value.(int64)
+		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -1908,8 +1908,8 @@ func (m *DevBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(devbuild.FieldGitRef) {
 		fields = append(fields, devbuild.FieldGitRef)
 	}
-	if m.FieldCleared(devbuild.FieldGitHash) {
-		fields = append(fields, devbuild.FieldGitHash)
+	if m.FieldCleared(devbuild.FieldGitSha) {
+		fields = append(fields, devbuild.FieldGitSha)
 	}
 	if m.FieldCleared(devbuild.FieldPluginGitRef) {
 		fields = append(fields, devbuild.FieldPluginGitRef)
@@ -1991,8 +1991,8 @@ func (m *DevBuildMutation) ClearField(name string) error {
 	case devbuild.FieldGitRef:
 		m.ClearGitRef()
 		return nil
-	case devbuild.FieldGitHash:
-		m.ClearGitHash()
+	case devbuild.FieldGitSha:
+		m.ClearGitSha()
 		return nil
 	case devbuild.FieldPluginGitRef:
 		m.ClearPluginGitRef()
@@ -2074,8 +2074,8 @@ func (m *DevBuildMutation) ResetField(name string) error {
 	case devbuild.FieldGitRef:
 		m.ResetGitRef()
 		return nil
-	case devbuild.FieldGitHash:
-		m.ResetGitHash()
+	case devbuild.FieldGitSha:
+		m.ResetGitSha()
 		return nil
 	case devbuild.FieldPluginGitRef:
 		m.ResetPluginGitRef()

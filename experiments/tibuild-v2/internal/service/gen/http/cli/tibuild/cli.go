@@ -25,19 +25,17 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
 	return `artifact sync-image
-devbuild (list|create|get|update|rerun)
+devbuild (list|create|get|update|rerun|ingest-event)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Ut alias adipisci est consequatur quo.",
-      "target": "Dolore et et quis."
+      "source": "Quia iure aut rerum velit fugit.",
+      "target": "Et quia."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --body '{
-      "direction": "asc"
-   }' --page 5781465023224679501 --page-size 6693278566002394271 --hotfix true --sort "updated_at" --created-by "Sed rerum."` + "\n" +
+		os.Args[0] + ` devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."` + "\n" +
 		""
 }
 
@@ -59,11 +57,11 @@ func ParseEndpoint(
 		devbuildFlags = flag.NewFlagSet("devbuild", flag.ContinueOnError)
 
 		devbuildListFlags         = flag.NewFlagSet("list", flag.ExitOnError)
-		devbuildListBodyFlag      = devbuildListFlags.String("body", "REQUIRED", "")
 		devbuildListPageFlag      = devbuildListFlags.String("page", "1", "")
 		devbuildListPageSizeFlag  = devbuildListFlags.String("page-size", "30", "")
 		devbuildListHotfixFlag    = devbuildListFlags.String("hotfix", "", "")
 		devbuildListSortFlag      = devbuildListFlags.String("sort", "created_at", "")
+		devbuildListDirectionFlag = devbuildListFlags.String("direction", "desc", "")
 		devbuildListCreatedByFlag = devbuildListFlags.String("created-by", "", "")
 
 		devbuildCreateFlags      = flag.NewFlagSet("create", flag.ExitOnError)
@@ -82,6 +80,15 @@ func ParseEndpoint(
 		devbuildRerunFlags      = flag.NewFlagSet("rerun", flag.ExitOnError)
 		devbuildRerunIDFlag     = devbuildRerunFlags.String("id", "REQUIRED", "ID of build")
 		devbuildRerunDryrunFlag = devbuildRerunFlags.String("dryrun", "", "")
+
+		devbuildIngestEventFlags               = flag.NewFlagSet("ingest-event", flag.ExitOnError)
+		devbuildIngestEventBodyFlag            = devbuildIngestEventFlags.String("body", "REQUIRED", "")
+		devbuildIngestEventDatacontenttypeFlag = devbuildIngestEventFlags.String("datacontenttype", "", "")
+		devbuildIngestEventIDFlag              = devbuildIngestEventFlags.String("id", "REQUIRED", "")
+		devbuildIngestEventSourceFlag          = devbuildIngestEventFlags.String("source", "REQUIRED", "")
+		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
+		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
+		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -92,6 +99,7 @@ func ParseEndpoint(
 	devbuildGetFlags.Usage = devbuildGetUsage
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
+	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -151,6 +159,9 @@ func ParseEndpoint(
 			case "rerun":
 				epf = devbuildRerunFlags
 
+			case "ingest-event":
+				epf = devbuildIngestEventFlags
+
 			}
 
 		}
@@ -185,7 +196,7 @@ func ParseEndpoint(
 			switch epn {
 			case "list":
 				endpoint = c.List()
-				data, err = devbuildc.BuildListPayload(*devbuildListBodyFlag, *devbuildListPageFlag, *devbuildListPageSizeFlag, *devbuildListHotfixFlag, *devbuildListSortFlag, *devbuildListCreatedByFlag)
+				data, err = devbuildc.BuildListPayload(*devbuildListPageFlag, *devbuildListPageSizeFlag, *devbuildListHotfixFlag, *devbuildListSortFlag, *devbuildListDirectionFlag, *devbuildListCreatedByFlag)
 			case "create":
 				endpoint = c.Create()
 				data, err = devbuildc.BuildCreatePayload(*devbuildCreateBodyFlag, *devbuildCreateDryrunFlag)
@@ -198,6 +209,9 @@ func ParseEndpoint(
 			case "rerun":
 				endpoint = c.Rerun()
 				data, err = devbuildc.BuildRerunPayload(*devbuildRerunIDFlag, *devbuildRerunDryrunFlag)
+			case "ingest-event":
+				endpoint = c.IngestEvent()
+				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
 			}
 		}
 	}
@@ -229,8 +243,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Ut alias adipisci est consequatur quo.",
-      "target": "Dolore et et quis."
+      "source": "Quia iure aut rerum velit fugit.",
+      "target": "Et quia."
    }'
 `, os.Args[0])
 }
@@ -247,26 +261,25 @@ COMMAND:
     get: Get devbuild
     update: Update devbuild status
     rerun: Rerun devbuild
+    ingest-event: Ingest a CloudEvent for build events
 
 Additional help:
     %[1]s devbuild COMMAND --help
 `, os.Args[0])
 }
 func devbuildListUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -body JSON -page INT -page-size INT -hotfix BOOL -sort STRING -created-by STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -body JSON: 
     -page INT: 
     -page-size INT: 
     -hotfix BOOL: 
     -sort STRING: 
+    -direction STRING: 
     -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --body '{
-      "direction": "asc"
-   }' --page 5781465023224679501 --page-size 6693278566002394271 --hotfix true --sort "updated_at" --created-by "Sed rerum."
+    %[1]s devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."
 `, os.Args[0])
 }
 
@@ -279,25 +292,26 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "david_stehr@koch.name",
+      "created_by": "audrey.paucek@ratke.info",
       "request": {
-         "build_env": "Voluptate doloribus architecto numquam est.",
-         "builder_img": "Neque doloremque.",
+         "build_env": "Ipsa et alias.",
+         "builder_img": "Et ipsa.",
          "edition": "enterprise",
-         "features": "Commodi dolorum.",
-         "gitRef": "Et facere magnam velit optio est.",
-         "githubRepo": "Doloribus nisi corporis nihil soluta.",
+         "features": "Veniam eaque nisi.",
+         "git_ref": "Aut adipisci sed.",
+         "git_sha": "Eum sit.",
+         "github_repo": "Suscipit et.",
          "is_hotfix": true,
-         "is_push_gcr": false,
+         "is_push_gcr": true,
          "pipeline_engine": "tekton",
-         "plugin_git_ref": "Qui necessitatibus possimus ab quos facere.",
-         "product": "tidb",
-         "productBaseImg": "Voluptatem rem earum aut.",
-         "productDockerfile": "Nulla aut natus totam esse maxime aliquid.",
-         "targetImg": "Numquam at illo voluptas dolor atque.",
-         "version": "Beatae sunt nesciunt amet autem."
+         "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
+         "product": "pd",
+         "product_base_img": "Nemo harum.",
+         "product_dockerfile": "Reprehenderit eaque exercitationem.",
+         "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
+         "version": "Cumque magnam error officiis impedit quaerat consectetur."
       }
-   }' --dryrun true
+   }' --dryrun false
 `, os.Args[0])
 }
 
@@ -323,344 +337,170 @@ Update devbuild status
 
 Example:
     %[1]s devbuild update --body '{
-      "DevBuild": {
-         "id": 8425332152695240675,
-         "meta": {
-            "created_at": "1982-06-14T15:45:52Z",
-            "created_by": "khalil_steuber@rippin.org",
-            "updated_at": "1994-05-27T04:49:34Z"
-         },
-         "spec": {
-            "build_env": "Eum sit.",
-            "builder_img": "Suscipit et.",
-            "edition": "enterprise",
-            "features": "Magni suscipit eum vel officiis quasi sit.",
-            "gitHash": "Ex amet est nemo harum voluptas.",
-            "gitRef": "Eaque exercitationem et.",
-            "githubRepo": "Blanditiis velit voluptatem exercitationem.",
-            "is_hotfix": true,
-            "is_push_gcr": true,
-            "pipeline_engine": "tekton",
-            "plugin_git_ref": "Error officiis impedit quaerat consectetur voluptas ea.",
-            "product": "br",
-            "productBaseImg": "Numquam explicabo quod quidem perspiciatis.",
-            "productDockerfile": "Dolor laudantium dolores saepe nihil voluptas id.",
-            "targetImg": "Quasi quasi error laboriosam qui.",
-            "version": "Dolorum est nisi voluptatem et harum quae."
-         },
-         "status": {
-            "buildReport": {
-               "binaries": [
-                  {
-                     "component": "Qui tempora quos quae velit sint quia.",
-                     "ociFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "platform": "Ab quos esse delectus ea rem.",
-                     "sha256OciFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "sha256URL": "Voluptatem ratione hic quae tempora ratione.",
-                     "url": "Quos eaque rerum expedita perspiciatis."
+      "status": {
+         "build_report": {
+            "binaries": [
+               {
+                  "component": "Dicta officiis magni enim qui.",
+                  "oci_file": {
+                     "file": "Doloribus dolor officiis nihil rerum.",
+                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
+                     "tag": "Eos et ab et sed pariatur."
                   },
-                  {
-                     "component": "Qui tempora quos quae velit sint quia.",
-                     "ociFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "platform": "Ab quos esse delectus ea rem.",
-                     "sha256OciFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "sha256URL": "Voluptatem ratione hic quae tempora ratione.",
-                     "url": "Quos eaque rerum expedita perspiciatis."
+                  "platform": "Quo nulla.",
+                  "sha256_oci_file": {
+                     "file": "Doloribus dolor officiis nihil rerum.",
+                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
+                     "tag": "Eos et ab et sed pariatur."
                   },
-                  {
-                     "component": "Qui tempora quos quae velit sint quia.",
-                     "ociFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "platform": "Ab quos esse delectus ea rem.",
-                     "sha256OciFile": {
-                        "file": "Commodi eius et ad ut.",
-                        "repo": "Dolor deserunt atque exercitationem non placeat.",
-                        "tag": "Possimus libero."
-                     },
-                     "sha256URL": "Voluptatem ratione hic quae tempora ratione.",
-                     "url": "Quos eaque rerum expedita perspiciatis."
-                  }
-               ],
-               "gitHash": "Dolore ipsam non.",
-               "images": [
-                  {
-                     "platform": "Suscipit exercitationem assumenda.",
-                     "url": "In voluptas omnis."
+                  "sha256_url": "http://legros.com/bernita",
+                  "url": "http://cassin.info/bertram_cummings"
+               },
+               {
+                  "component": "Dicta officiis magni enim qui.",
+                  "oci_file": {
+                     "file": "Doloribus dolor officiis nihil rerum.",
+                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
+                     "tag": "Eos et ab et sed pariatur."
                   },
-                  {
-                     "platform": "Suscipit exercitationem assumenda.",
-                     "url": "In voluptas omnis."
-                  }
-               ],
-               "pluginGitHash": "Non eligendi eum.",
-               "printedVersion": "Asperiores sit consequatur repudiandae voluptas sit."
-            },
-            "errMsg": "Illum perferendis.",
-            "pipelineBuildID": 7878572798948134575,
-            "pipelineEndAt": "Distinctio minima molestiae quis.",
-            "pipelineStartAt": "Tempora earum quam est architecto.",
-            "pipelineViewURL": "Quia delectus qui minima.",
-            "pipelineViewURLs": [
-               "Aut modi voluptas aut eveniet.",
-               "Esse aut.",
-               "Delectus dolore libero aut.",
-               "Corrupti autem iste."
+                  "platform": "Quo nulla.",
+                  "sha256_oci_file": {
+                     "file": "Doloribus dolor officiis nihil rerum.",
+                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
+                     "tag": "Eos et ab et sed pariatur."
+                  },
+                  "sha256_url": "http://legros.com/bernita",
+                  "url": "http://cassin.info/bertram_cummings"
+               }
             ],
-            "status": "FAILURE",
-            "tektonStatus": {
-               "pipelines": [
-                  {
-                     "endAt": "Animi at sequi error.",
-                     "gitHash": "Aut molestiae.",
-                     "images": [
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        }
-                     ],
-                     "name": "Occaecati omnis sunt a perspiciatis ratione.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        }
-                     ],
-                     "platform": "Explicabo id eum quae illum vitae necessitatibus.",
-                     "startAt": "Accusantium nostrum quaerat necessitatibus distinctio nobis.",
-                     "status": "PROCESSING",
-                     "url": "Vero sunt culpa molestiae sint ut."
-                  },
-                  {
-                     "endAt": "Animi at sequi error.",
-                     "gitHash": "Aut molestiae.",
-                     "images": [
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        }
-                     ],
-                     "name": "Occaecati omnis sunt a perspiciatis ratione.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        }
-                     ],
-                     "platform": "Explicabo id eum quae illum vitae necessitatibus.",
-                     "startAt": "Accusantium nostrum quaerat necessitatibus distinctio nobis.",
-                     "status": "PROCESSING",
-                     "url": "Vero sunt culpa molestiae sint ut."
-                  },
-                  {
-                     "endAt": "Animi at sequi error.",
-                     "gitHash": "Aut molestiae.",
-                     "images": [
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        }
-                     ],
-                     "name": "Occaecati omnis sunt a perspiciatis ratione.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        }
-                     ],
-                     "platform": "Explicabo id eum quae illum vitae necessitatibus.",
-                     "startAt": "Accusantium nostrum quaerat necessitatibus distinctio nobis.",
-                     "status": "PROCESSING",
-                     "url": "Vero sunt culpa molestiae sint ut."
-                  },
-                  {
-                     "endAt": "Animi at sequi error.",
-                     "gitHash": "Aut molestiae.",
-                     "images": [
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        },
-                        {
-                           "platform": "Suscipit exercitationem assumenda.",
-                           "url": "In voluptas omnis."
-                        }
-                     ],
-                     "name": "Occaecati omnis sunt a perspiciatis ratione.",
-                     "ociArtifacts": [
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        },
-                        {
-                           "files": [
-                              "Eius quae quisquam itaque.",
-                              "Debitis dolore explicabo repellendus et error provident."
-                           ],
-                           "repo": "Quo dolor consequatur est incidunt labore non.",
-                           "tag": "Minus quis qui magnam."
-                        }
-                     ],
-                     "platform": "Explicabo id eum quae illum vitae necessitatibus.",
-                     "startAt": "Accusantium nostrum quaerat necessitatibus distinctio nobis.",
-                     "status": "PROCESSING",
-                     "url": "Vero sunt culpa molestiae sint ut."
-                  }
-               ]
-            }
+            "git_sha": "xn9",
+            "images": [
+               {
+                  "platform": "Facilis ut libero doloribus beatae.",
+                  "url": "http://simoniscruickshank.org/myrtie"
+               },
+               {
+                  "platform": "Facilis ut libero doloribus beatae.",
+                  "url": "http://simoniscruickshank.org/myrtie"
+               },
+               {
+                  "platform": "Facilis ut libero doloribus beatae.",
+                  "url": "http://simoniscruickshank.org/myrtie"
+               },
+               {
+                  "platform": "Facilis ut libero doloribus beatae.",
+                  "url": "http://simoniscruickshank.org/myrtie"
+               }
+            ],
+            "plugin_git_sha": "efi",
+            "printed_version": "Dolores sequi minima eos sed."
+         },
+         "err_msg": "Tempore consectetur quos odio.",
+         "pipeline_build_id": 1290727841481834534,
+         "pipeline_end_at": "5101-41-98 76:32:32",
+         "pipeline_start_at": "1610-85-81 04:74:79",
+         "pipeline_view_url": "http://carterthompson.org/german.blanda",
+         "pipeline_view_urls": [
+            "http://lueilwitz.info/floyd.robel",
+            "http://ebert.com/bernita_keebler"
+         ],
+         "status": "processing",
+         "tekton_status": {
+            "pipelines": [
+               {
+                  "end_at": "2000-06-19T13:02:59Z",
+                  "git_sha": "wa6",
+                  "images": [
+                     {
+                        "platform": "Facilis ut libero doloribus beatae.",
+                        "url": "http://simoniscruickshank.org/myrtie"
+                     },
+                     {
+                        "platform": "Facilis ut libero doloribus beatae.",
+                        "url": "http://simoniscruickshank.org/myrtie"
+                     }
+                  ],
+                  "name": "Ut quibusdam.",
+                  "oci_artifacts": [
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     },
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     },
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     }
+                  ],
+                  "platform": "Aut nemo blanditiis.",
+                  "start_at": "2013-03-07T11:30:03Z",
+                  "status": "aborted",
+                  "url": "http://paucek.net/annamarie.senger"
+               },
+               {
+                  "end_at": "2000-06-19T13:02:59Z",
+                  "git_sha": "wa6",
+                  "images": [
+                     {
+                        "platform": "Facilis ut libero doloribus beatae.",
+                        "url": "http://simoniscruickshank.org/myrtie"
+                     },
+                     {
+                        "platform": "Facilis ut libero doloribus beatae.",
+                        "url": "http://simoniscruickshank.org/myrtie"
+                     }
+                  ],
+                  "name": "Ut quibusdam.",
+                  "oci_artifacts": [
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     },
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     },
+                     {
+                        "files": [
+                           "Incidunt rerum.",
+                           "Non quam."
+                        ],
+                        "repo": "Tenetur facere quia aspernatur voluptatem.",
+                        "tag": "Sit ab est laboriosam."
+                     }
+                  ],
+                  "platform": "Aut nemo blanditiis.",
+                  "start_at": "2013-03-07T11:30:03Z",
+                  "status": "aborted",
+                  "url": "http://paucek.net/annamarie.senger"
+               }
+            ]
          }
       }
-   }' --id 1 --dryrun false
+   }' --id 1 --dryrun true
 `, os.Args[0])
 }
 
@@ -672,6 +512,32 @@ Rerun devbuild
     -dryrun BOOL: 
 
 Example:
-    %[1]s devbuild rerun --id 1 --dryrun true
+    %[1]s devbuild rerun --id 1 --dryrun false
+`, os.Args[0])
+}
+
+func devbuildIngestEventUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
+
+Ingest a CloudEvent for build events
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
+
+Example:
+    %[1]s devbuild ingest-event --body '{
+      "data": {
+         "buildId": "123",
+         "duration": 3600,
+         "status": "success",
+         "version": "v6.1.0"
+      },
+      "dataschema": "https://example.com/registry/schemas/build-event.json",
+      "subject": "tidb-build-123"
+   }' --datacontenttype "Quia quas impedit cumque unde quam." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
 `, os.Args[0])
 }

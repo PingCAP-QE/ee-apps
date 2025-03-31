@@ -6,24 +6,56 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/bndr/gojenkins"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/google/go-github/v69/github"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // devbuild service example implementation.
 // The example methods log the requests and return zero values.
 type devbuildsrvc struct {
-	logger   *zerolog.Logger
-	dbClient *ent.Client
+	logger                 *zerolog.Logger
+	dbClient               *ent.Client
+	productRepoMap         map[string]string
+	ghClient               *github.Client
+	tektonCloudEventClient cloudevents.Client
+	jenkins                *jenkins
 }
 
-func NewDevbuild(logger *zerolog.Logger, client *ent.Client) devbuild.Service {
+type jenkins struct {
+	Client  *gojenkins.Jenkins
+	JobName string
+}
+
+func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
+	dbClient, err := newStoreClient(cfg.Store)
+	if err != nil {
+		logger.Err(err).Msg("failed to create store client")
+		return nil
+	}
+
+	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
+	if err != nil {
+		logger.Err(err).Msg("failed to create cloud event client")
+		return nil
+	}
+
 	return &devbuildsrvc{
-		logger:   logger,
-		dbClient: client,
+		logger:                 logger,
+		dbClient:               dbClient.Debug(),
+		productRepoMap:         map[string]string{"pd": "tikv/pd"},
+		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
+		tektonCloudEventClient: client,
+		jenkins: &jenkins{
+			Client:  gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL),
+			JobName: cfg.Jenkins.JobName,
+		},
 	}
 }
 
@@ -42,7 +74,10 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 
 	builds, err := query.All(ctx)
 	if err != nil {
-		return nil, err
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, &devbuild.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
 
 	for _, build := range builds {
@@ -56,26 +91,24 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (res *devbuild.DevBuild, err error) {
 	s.logger.Info().Msgf("devbuild.create")
 
-	create := s.dbClient.DevBuild.Create().
-		SetCreatedBy(p.CreatedBy).
-		SetGitRef(p.Request.GitRef).
-		SetEdition(string(p.Request.Edition)).
-		SetNillableIsHotfix(p.Request.IsHotfix).
-		SetCreatedAt(time.Now()).
-		SetCreatedBy(p.CreatedBy).
-		SetStatus("pending")
+	// 1. insert a new record into the database
+	record, err := s.newBuildEntity(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	// 1.1 fast return when it is a dry run.
+	if p.Dryrun {
+		return transformDevBuild(record), nil
+	}
 
-	// TODO: get the commit sha and set it in `create`.
-
-	build, err := create.Save(ctx)
+	// 2. trigger the actual build process according to the record.
+	record, err = s.triggerBuild(ctx, record)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: trigger the actual build process
-	// This could involve calling a CI system or other build service
-
-	return transformDevBuild(build), nil
+	// 3. fast feedback without waiting for the build to complete.
+	return transformDevBuild(record), nil
 }
 
 // Get devbuild
@@ -90,6 +123,13 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (res *de
 		return nil, err
 	}
 
+	// When user requests sync the build status.
+	if p.Sync {
+		if _, err := s.syncBuildStatus(ctx, build); err != nil {
+			return nil, err
+		}
+	}
+
 	return transformDevBuild(build), nil
 }
 
@@ -98,8 +138,11 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 	s.logger.Info().Msgf("devbuild.update")
 
 	updater := s.dbClient.DevBuild.UpdateOneID(p.ID)
-	if p.DevBuild.Status != nil {
-		updater.SetStatus(string(p.DevBuild.Status.Status))
+	if p.Status != nil {
+		updater.SetStatus(string(p.Status.Status))
+	}
+	if p.Status.TektonStatus != nil {
+		updater.SetTektonStatus(map[string]any{"pipelines": p.Status.TektonStatus.Pipelines})
 	}
 	updater.SetUpdatedAt(time.Now())
 
@@ -136,7 +179,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetVersion(existingBuild.Version).
 		SetGithubRepo(existingBuild.GithubRepo).
 		SetGitRef(existingBuild.GitRef).
-		SetGitHash(existingBuild.GitHash).
+		SetGitSha(existingBuild.GitSha).
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
 		SetIsPushGcr(existingBuild.IsPushGcr).
@@ -147,7 +190,28 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, err
 	}
 
-	// TODO: trigger the actual build process again
+	if _, err := s.triggerTknBuild(ctx, newBuild); err != nil {
+		return nil, err
+	}
 
 	return transformDevBuild(newBuild), nil
+}
+
+func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
+	s.logger.Info().Msgf("devbuild.ingestEvent")
+	return nil, nil
+}
+
+func newStoreClient(cfg config.Store) (*ent.Client, error) {
+	db, err := ent.Open(cfg.Driver, cfg.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run the auto migration tool.
+	if err := db.Schema.Create(context.Background()); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }

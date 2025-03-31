@@ -19,12 +19,13 @@ import (
 
 // Server lists the devbuild service endpoint HTTP handlers.
 type Server struct {
-	Mounts []*MountPoint
-	List   http.Handler
-	Create http.Handler
-	Get    http.Handler
-	Update http.Handler
-	Rerun  http.Handler
+	Mounts      []*MountPoint
+	List        http.Handler
+	Create      http.Handler
+	Get         http.Handler
+	Update      http.Handler
+	Rerun       http.Handler
+	IngestEvent http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -59,12 +60,15 @@ func New(
 			{"Get", "GET", "/api/v2/devbuilds/{id}"},
 			{"Update", "PUT", "/api/v2/devbuilds/{id}"},
 			{"Rerun", "POST", "/api/v2/devbuilds/{id}/rerun"},
+			{"IngestEvent", "POST", "/api/v2/devbuilds/events"},
+			{"IngestEvent", "PUT", "/api/v2/devbuilds/events"},
 		},
-		List:   NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
-		Create: NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
-		Get:    NewGetHandler(e.Get, mux, decoder, encoder, errhandler, formatter),
-		Update: NewUpdateHandler(e.Update, mux, decoder, encoder, errhandler, formatter),
-		Rerun:  NewRerunHandler(e.Rerun, mux, decoder, encoder, errhandler, formatter),
+		List:        NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
+		Create:      NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
+		Get:         NewGetHandler(e.Get, mux, decoder, encoder, errhandler, formatter),
+		Update:      NewUpdateHandler(e.Update, mux, decoder, encoder, errhandler, formatter),
+		Rerun:       NewRerunHandler(e.Rerun, mux, decoder, encoder, errhandler, formatter),
+		IngestEvent: NewIngestEventHandler(e.IngestEvent, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -78,6 +82,7 @@ func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.Get = m(s.Get)
 	s.Update = m(s.Update)
 	s.Rerun = m(s.Rerun)
+	s.IngestEvent = m(s.IngestEvent)
 }
 
 // MethodNames returns the methods served.
@@ -90,6 +95,7 @@ func Mount(mux goahttp.Muxer, h *Server) {
 	MountGetHandler(mux, h.Get)
 	MountUpdateHandler(mux, h.Update)
 	MountRerunHandler(mux, h.Rerun)
+	MountIngestEventHandler(mux, h.IngestEvent)
 }
 
 // Mount configures the mux to serve the devbuild endpoints.
@@ -331,6 +337,58 @@ func NewRerunHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "rerun")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "devbuild")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			errhandler(ctx, w, err)
+		}
+	})
+}
+
+// MountIngestEventHandler configures the mux to serve the "devbuild" service
+// "ingestEvent" endpoint.
+func MountIngestEventHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/devbuilds/events", f)
+	mux.Handle("PUT", "/api/v2/devbuilds/events", f)
+}
+
+// NewIngestEventHandler creates a HTTP handler which loads the HTTP request
+// and calls the "devbuild" service "ingestEvent" endpoint.
+func NewIngestEventHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeIngestEventRequest(mux, decoder)
+		encodeResponse = EncodeIngestEventResponse(encoder)
+		encodeError    = EncodeIngestEventError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "ingestEvent")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "devbuild")
 		payload, err := decodeRequest(r)
 		if err != nil {

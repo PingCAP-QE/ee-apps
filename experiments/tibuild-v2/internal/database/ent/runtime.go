@@ -56,10 +56,10 @@ func init() {
 	devbuildDescGitRef := devbuildMixinFields1[4].Descriptor()
 	// devbuild.GitRefValidator is a validator for the "git_ref" field. It is called by the builders before save.
 	devbuild.GitRefValidator = devbuildDescGitRef.Validators[0].(func(string) error)
-	// devbuildDescGitHash is the schema descriptor for git_hash field.
-	devbuildDescGitHash := devbuildMixinFields1[5].Descriptor()
-	// devbuild.GitHashValidator is a validator for the "git_hash" field. It is called by the builders before save.
-	devbuild.GitHashValidator = devbuildDescGitHash.Validators[0].(func(string) error)
+	// devbuildDescGitSha is the schema descriptor for git_sha field.
+	devbuildDescGitSha := devbuildMixinFields1[5].Descriptor()
+	// devbuild.GitShaValidator is a validator for the "git_sha" field. It is called by the builders before save.
+	devbuild.GitShaValidator = devbuildDescGitSha.Validators[0].(func(string) error)
 	// devbuildDescPluginGitRef is the schema descriptor for plugin_git_ref field.
 	devbuildDescPluginGitRef := devbuildMixinFields1[6].Descriptor()
 	// devbuild.PluginGitRefValidator is a validator for the "plugin_git_ref" field. It is called by the builders before save.

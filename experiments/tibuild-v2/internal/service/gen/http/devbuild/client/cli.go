@@ -19,15 +19,8 @@ import (
 
 // BuildListPayload builds the payload for the devbuild list endpoint from CLI
 // flags.
-func BuildListPayload(devbuildListBody string, devbuildListPage string, devbuildListPageSize string, devbuildListHotfix string, devbuildListSort string, devbuildListCreatedBy string) (*devbuild.ListPayload, error) {
+func BuildListPayload(devbuildListPage string, devbuildListPageSize string, devbuildListHotfix string, devbuildListSort string, devbuildListDirection string, devbuildListCreatedBy string) (*devbuild.ListPayload, error) {
 	var err error
-	var body ListRequestBody
-	{
-		err = json.Unmarshal([]byte(devbuildListBody), &body)
-		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"direction\": \"asc\"\n   }'")
-		}
-	}
 	var page int
 	{
 		if devbuildListPage != "" {
@@ -71,25 +64,30 @@ func BuildListPayload(devbuildListBody string, devbuildListPage string, devbuild
 			}
 		}
 	}
+	var direction string
+	{
+		if devbuildListDirection != "" {
+			direction = devbuildListDirection
+			if !(direction == "asc" || direction == "desc") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("direction", direction, []any{"asc", "desc"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var createdBy *string
 	{
 		if devbuildListCreatedBy != "" {
 			createdBy = &devbuildListCreatedBy
 		}
 	}
-	v := &devbuild.ListPayload{
-		Direction: body.Direction,
-	}
-	{
-		var zero string
-		if v.Direction == zero {
-			v.Direction = "desc"
-		}
-	}
+	v := &devbuild.ListPayload{}
 	v.Page = page
 	v.PageSize = pageSize
 	v.Hotfix = hotfix
 	v.Sort = sort
+	v.Direction = direction
 	v.CreatedBy = createdBy
 
 	return v, nil
@@ -103,14 +101,14 @@ func BuildCreatePayload(devbuildCreateBody string, devbuildCreateDryrun string) 
 	{
 		err = json.Unmarshal([]byte(devbuildCreateBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"created_by\": \"david_stehr@koch.name\",\n      \"request\": {\n         \"build_env\": \"Voluptate doloribus architecto numquam est.\",\n         \"builder_img\": \"Neque doloremque.\",\n         \"edition\": \"enterprise\",\n         \"features\": \"Commodi dolorum.\",\n         \"gitRef\": \"Et facere magnam velit optio est.\",\n         \"githubRepo\": \"Doloribus nisi corporis nihil soluta.\",\n         \"is_hotfix\": true,\n         \"is_push_gcr\": false,\n         \"pipeline_engine\": \"tekton\",\n         \"plugin_git_ref\": \"Qui necessitatibus possimus ab quos facere.\",\n         \"product\": \"tidb\",\n         \"productBaseImg\": \"Voluptatem rem earum aut.\",\n         \"productDockerfile\": \"Nulla aut natus totam esse maxime aliquid.\",\n         \"targetImg\": \"Numquam at illo voluptas dolor atque.\",\n         \"version\": \"Beatae sunt nesciunt amet autem.\"\n      }\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"created_by\": \"audrey.paucek@ratke.info\",\n      \"request\": {\n         \"build_env\": \"Ipsa et alias.\",\n         \"builder_img\": \"Et ipsa.\",\n         \"edition\": \"enterprise\",\n         \"features\": \"Veniam eaque nisi.\",\n         \"git_ref\": \"Aut adipisci sed.\",\n         \"git_sha\": \"Eum sit.\",\n         \"github_repo\": \"Suscipit et.\",\n         \"is_hotfix\": true,\n         \"is_push_gcr\": true,\n         \"pipeline_engine\": \"tekton\",\n         \"plugin_git_ref\": \"Eum vel officiis quasi sit a ex.\",\n         \"product\": \"pd\",\n         \"product_base_img\": \"Nemo harum.\",\n         \"product_dockerfile\": \"Reprehenderit eaque exercitationem.\",\n         \"target_img\": \"Dolorem blanditiis velit voluptatem exercitationem et.\",\n         \"version\": \"Cumque magnam error officiis impedit quaerat consectetur.\"\n      }\n   }'")
 		}
 		if body.Request == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("request", "body"))
 		}
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", body.CreatedBy, goa.FormatEmail))
 		if body.Request != nil {
-			if err2 := ValidateDevBuildRequestRequestBody(body.Request); err2 != nil {
+			if err2 := ValidateDevBuildSpecRequestBody(body.Request); err2 != nil {
 				err = goa.MergeErrors(err, err2)
 			}
 		}
@@ -131,7 +129,7 @@ func BuildCreatePayload(devbuildCreateBody string, devbuildCreateDryrun string) 
 		CreatedBy: body.CreatedBy,
 	}
 	if body.Request != nil {
-		v.Request = marshalDevBuildRequestRequestBodyToDevbuildDevBuildRequest(body.Request)
+		v.Request = marshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(body.Request)
 	}
 	v.Dryrun = dryrun
 
@@ -175,13 +173,13 @@ func BuildUpdatePayload(devbuildUpdateBody string, devbuildUpdateID string, devb
 	{
 		err = json.Unmarshal([]byte(devbuildUpdateBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"DevBuild\": {\n         \"id\": 8425332152695240675,\n         \"meta\": {\n            \"created_at\": \"1982-06-14T15:45:52Z\",\n            \"created_by\": \"khalil_steuber@rippin.org\",\n            \"updated_at\": \"1994-05-27T04:49:34Z\"\n         },\n         \"spec\": {\n            \"build_env\": \"Eum sit.\",\n            \"builder_img\": \"Suscipit et.\",\n            \"edition\": \"enterprise\",\n            \"features\": \"Magni suscipit eum vel officiis quasi sit.\",\n            \"gitHash\": \"Ex amet est nemo harum voluptas.\",\n            \"gitRef\": \"Eaque exercitationem et.\",\n            \"githubRepo\": \"Blanditiis velit voluptatem exercitationem.\",\n            \"is_hotfix\": true,\n            \"is_push_gcr\": true,\n            \"pipeline_engine\": \"tekton\",\n            \"plugin_git_ref\": \"Error officiis impedit quaerat consectetur voluptas ea.\",\n            \"product\": \"br\",\n            \"productBaseImg\": \"Numquam explicabo quod quidem perspiciatis.\",\n            \"productDockerfile\": \"Dolor laudantium dolores saepe nihil voluptas id.\",\n            \"targetImg\": \"Quasi quasi error laboriosam qui.\",\n            \"version\": \"Dolorum est nisi voluptatem et harum quae.\"\n         },\n         \"status\": {\n            \"buildReport\": {\n               \"binaries\": [\n                  {\n                     \"component\": \"Qui tempora quos quae velit sint quia.\",\n                     \"ociFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"platform\": \"Ab quos esse delectus ea rem.\",\n                     \"sha256OciFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"sha256URL\": \"Voluptatem ratione hic quae tempora ratione.\",\n                     \"url\": \"Quos eaque rerum expedita perspiciatis.\"\n                  },\n                  {\n                     \"component\": \"Qui tempora quos quae velit sint quia.\",\n                     \"ociFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"platform\": \"Ab quos esse delectus ea rem.\",\n                     \"sha256OciFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"sha256URL\": \"Voluptatem ratione hic quae tempora ratione.\",\n                     \"url\": \"Quos eaque rerum expedita perspiciatis.\"\n                  },\n                  {\n                     \"component\": \"Qui tempora quos quae velit sint quia.\",\n                     \"ociFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"platform\": \"Ab quos esse delectus ea rem.\",\n                     \"sha256OciFile\": {\n                        \"file\": \"Commodi eius et ad ut.\",\n                        \"repo\": \"Dolor deserunt atque exercitationem non placeat.\",\n                        \"tag\": \"Possimus libero.\"\n                     },\n                     \"sha256URL\": \"Voluptatem ratione hic quae tempora ratione.\",\n                     \"url\": \"Quos eaque rerum expedita perspiciatis.\"\n                  }\n               ],\n               \"gitHash\": \"Dolore ipsam non.\",\n               \"images\": [\n                  {\n                     \"platform\": \"Suscipit exercitationem assumenda.\",\n                     \"url\": \"In voluptas omnis.\"\n                  },\n                  {\n                     \"platform\": \"Suscipit exercitationem assumenda.\",\n                     \"url\": \"In voluptas omnis.\"\n                  }\n               ],\n               \"pluginGitHash\": \"Non eligendi eum.\",\n               \"printedVersion\": \"Asperiores sit consequatur repudiandae voluptas sit.\"\n            },\n            \"errMsg\": \"Illum perferendis.\",\n            \"pipelineBuildID\": 7878572798948134575,\n            \"pipelineEndAt\": \"Distinctio minima molestiae quis.\",\n            \"pipelineStartAt\": \"Tempora earum quam est architecto.\",\n            \"pipelineViewURL\": \"Quia delectus qui minima.\",\n            \"pipelineViewURLs\": [\n               \"Aut modi voluptas aut eveniet.\",\n               \"Esse aut.\",\n               \"Delectus dolore libero aut.\",\n               \"Corrupti autem iste.\"\n            ],\n            \"status\": \"FAILURE\",\n            \"tektonStatus\": {\n               \"pipelines\": [\n                  {\n                     \"endAt\": \"Animi at sequi error.\",\n                     \"gitHash\": \"Aut molestiae.\",\n                     \"images\": [\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        }\n                     ],\n                     \"name\": \"Occaecati omnis sunt a perspiciatis ratione.\",\n                     \"ociArtifacts\": [\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        }\n                     ],\n                     \"platform\": \"Explicabo id eum quae illum vitae necessitatibus.\",\n                     \"startAt\": \"Accusantium nostrum quaerat necessitatibus distinctio nobis.\",\n                     \"status\": \"PROCESSING\",\n                     \"url\": \"Vero sunt culpa molestiae sint ut.\"\n                  },\n                  {\n                     \"endAt\": \"Animi at sequi error.\",\n                     \"gitHash\": \"Aut molestiae.\",\n                     \"images\": [\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        }\n                     ],\n                     \"name\": \"Occaecati omnis sunt a perspiciatis ratione.\",\n                     \"ociArtifacts\": [\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        }\n                     ],\n                     \"platform\": \"Explicabo id eum quae illum vitae necessitatibus.\",\n                     \"startAt\": \"Accusantium nostrum quaerat necessitatibus distinctio nobis.\",\n                     \"status\": \"PROCESSING\",\n                     \"url\": \"Vero sunt culpa molestiae sint ut.\"\n                  },\n                  {\n                     \"endAt\": \"Animi at sequi error.\",\n                     \"gitHash\": \"Aut molestiae.\",\n                     \"images\": [\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        }\n                     ],\n                     \"name\": \"Occaecati omnis sunt a perspiciatis ratione.\",\n                     \"ociArtifacts\": [\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        }\n                     ],\n                     \"platform\": \"Explicabo id eum quae illum vitae necessitatibus.\",\n                     \"startAt\": \"Accusantium nostrum quaerat necessitatibus distinctio nobis.\",\n                     \"status\": \"PROCESSING\",\n                     \"url\": \"Vero sunt culpa molestiae sint ut.\"\n                  },\n                  {\n                     \"endAt\": \"Animi at sequi error.\",\n                     \"gitHash\": \"Aut molestiae.\",\n                     \"images\": [\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        },\n                        {\n                           \"platform\": \"Suscipit exercitationem assumenda.\",\n                           \"url\": \"In voluptas omnis.\"\n                        }\n                     ],\n                     \"name\": \"Occaecati omnis sunt a perspiciatis ratione.\",\n                     \"ociArtifacts\": [\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        },\n                        {\n                           \"files\": [\n                              \"Eius quae quisquam itaque.\",\n                              \"Debitis dolore explicabo repellendus et error provident.\"\n                           ],\n                           \"repo\": \"Quo dolor consequatur est incidunt labore non.\",\n                           \"tag\": \"Minus quis qui magnam.\"\n                        }\n                     ],\n                     \"platform\": \"Explicabo id eum quae illum vitae necessitatibus.\",\n                     \"startAt\": \"Accusantium nostrum quaerat necessitatibus distinctio nobis.\",\n                     \"status\": \"PROCESSING\",\n                     \"url\": \"Vero sunt culpa molestiae sint ut.\"\n                  }\n               ]\n            }\n         }\n      }\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"status\": {\n         \"build_report\": {\n            \"binaries\": [\n               {\n                  \"component\": \"Dicta officiis magni enim qui.\",\n                  \"oci_file\": {\n                     \"file\": \"Doloribus dolor officiis nihil rerum.\",\n                     \"repo\": \"Qui veniam voluptates nisi ex repellat quae.\",\n                     \"tag\": \"Eos et ab et sed pariatur.\"\n                  },\n                  \"platform\": \"Quo nulla.\",\n                  \"sha256_oci_file\": {\n                     \"file\": \"Doloribus dolor officiis nihil rerum.\",\n                     \"repo\": \"Qui veniam voluptates nisi ex repellat quae.\",\n                     \"tag\": \"Eos et ab et sed pariatur.\"\n                  },\n                  \"sha256_url\": \"http://legros.com/bernita\",\n                  \"url\": \"http://cassin.info/bertram_cummings\"\n               },\n               {\n                  \"component\": \"Dicta officiis magni enim qui.\",\n                  \"oci_file\": {\n                     \"file\": \"Doloribus dolor officiis nihil rerum.\",\n                     \"repo\": \"Qui veniam voluptates nisi ex repellat quae.\",\n                     \"tag\": \"Eos et ab et sed pariatur.\"\n                  },\n                  \"platform\": \"Quo nulla.\",\n                  \"sha256_oci_file\": {\n                     \"file\": \"Doloribus dolor officiis nihil rerum.\",\n                     \"repo\": \"Qui veniam voluptates nisi ex repellat quae.\",\n                     \"tag\": \"Eos et ab et sed pariatur.\"\n                  },\n                  \"sha256_url\": \"http://legros.com/bernita\",\n                  \"url\": \"http://cassin.info/bertram_cummings\"\n               }\n            ],\n            \"git_sha\": \"xn9\",\n            \"images\": [\n               {\n                  \"platform\": \"Facilis ut libero doloribus beatae.\",\n                  \"url\": \"http://simoniscruickshank.org/myrtie\"\n               },\n               {\n                  \"platform\": \"Facilis ut libero doloribus beatae.\",\n                  \"url\": \"http://simoniscruickshank.org/myrtie\"\n               },\n               {\n                  \"platform\": \"Facilis ut libero doloribus beatae.\",\n                  \"url\": \"http://simoniscruickshank.org/myrtie\"\n               },\n               {\n                  \"platform\": \"Facilis ut libero doloribus beatae.\",\n                  \"url\": \"http://simoniscruickshank.org/myrtie\"\n               }\n            ],\n            \"plugin_git_sha\": \"efi\",\n            \"printed_version\": \"Dolores sequi minima eos sed.\"\n         },\n         \"err_msg\": \"Tempore consectetur quos odio.\",\n         \"pipeline_build_id\": 1290727841481834534,\n         \"pipeline_end_at\": \"5101-41-98 76:32:32\",\n         \"pipeline_start_at\": \"1610-85-81 04:74:79\",\n         \"pipeline_view_url\": \"http://carterthompson.org/german.blanda\",\n         \"pipeline_view_urls\": [\n            \"http://lueilwitz.info/floyd.robel\",\n            \"http://ebert.com/bernita_keebler\"\n         ],\n         \"status\": \"processing\",\n         \"tekton_status\": {\n            \"pipelines\": [\n               {\n                  \"end_at\": \"2000-06-19T13:02:59Z\",\n                  \"git_sha\": \"wa6\",\n                  \"images\": [\n                     {\n                        \"platform\": \"Facilis ut libero doloribus beatae.\",\n                        \"url\": \"http://simoniscruickshank.org/myrtie\"\n                     },\n                     {\n                        \"platform\": \"Facilis ut libero doloribus beatae.\",\n                        \"url\": \"http://simoniscruickshank.org/myrtie\"\n                     }\n                  ],\n                  \"name\": \"Ut quibusdam.\",\n                  \"oci_artifacts\": [\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     }\n                  ],\n                  \"platform\": \"Aut nemo blanditiis.\",\n                  \"start_at\": \"2013-03-07T11:30:03Z\",\n                  \"status\": \"aborted\",\n                  \"url\": \"http://paucek.net/annamarie.senger\"\n               },\n               {\n                  \"end_at\": \"2000-06-19T13:02:59Z\",\n                  \"git_sha\": \"wa6\",\n                  \"images\": [\n                     {\n                        \"platform\": \"Facilis ut libero doloribus beatae.\",\n                        \"url\": \"http://simoniscruickshank.org/myrtie\"\n                     },\n                     {\n                        \"platform\": \"Facilis ut libero doloribus beatae.\",\n                        \"url\": \"http://simoniscruickshank.org/myrtie\"\n                     }\n                  ],\n                  \"name\": \"Ut quibusdam.\",\n                  \"oci_artifacts\": [\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Incidunt rerum.\",\n                           \"Non quam.\"\n                        ],\n                        \"repo\": \"Tenetur facere quia aspernatur voluptatem.\",\n                        \"tag\": \"Sit ab est laboriosam.\"\n                     }\n                  ],\n                  \"platform\": \"Aut nemo blanditiis.\",\n                  \"start_at\": \"2013-03-07T11:30:03Z\",\n                  \"status\": \"aborted\",\n                  \"url\": \"http://paucek.net/annamarie.senger\"\n               }\n            ]\n         }\n      }\n   }'")
 		}
-		if body.DevBuild == nil {
-			err = goa.MergeErrors(err, goa.MissingFieldError("DevBuild", "body"))
+		if body.Status == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 		}
-		if body.DevBuild != nil {
-			if err2 := ValidateDevBuildRequestBody(body.DevBuild); err2 != nil {
+		if body.Status != nil {
+			if err2 := ValidateDevBuildStatusRequestBody(body.Status); err2 != nil {
 				err = goa.MergeErrors(err, err2)
 			}
 		}
@@ -208,8 +206,8 @@ func BuildUpdatePayload(devbuildUpdateBody string, devbuildUpdateID string, devb
 		}
 	}
 	v := &devbuild.UpdatePayload{}
-	if body.DevBuild != nil {
-		v.DevBuild = marshalDevBuildRequestBodyToDevbuildDevBuild(body.DevBuild)
+	if body.Status != nil {
+		v.Status = marshalDevBuildStatusRequestBodyToDevbuildDevBuildStatus(body.Status)
 	}
 	v.ID = id
 	v.Dryrun = dryrun
@@ -242,6 +240,68 @@ func BuildRerunPayload(devbuildRerunID string, devbuildRerunDryrun string) (*dev
 	v := &devbuild.RerunPayload{}
 	v.ID = id
 	v.Dryrun = dryrun
+
+	return v, nil
+}
+
+// BuildIngestEventPayload builds the payload for the devbuild ingestEvent
+// endpoint from CLI flags.
+func BuildIngestEventPayload(devbuildIngestEventBody string, devbuildIngestEventDatacontenttype string, devbuildIngestEventID string, devbuildIngestEventSource string, devbuildIngestEventType string, devbuildIngestEventSpecversion string, devbuildIngestEventTime string) (*devbuild.CloudEventIngestEventPayload, error) {
+	var err error
+	var body IngestEventRequestBody
+	{
+		err = json.Unmarshal([]byte(devbuildIngestEventBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"data\": {\n         \"buildId\": \"123\",\n         \"duration\": 3600,\n         \"status\": \"success\",\n         \"version\": \"v6.1.0\"\n      },\n      \"dataschema\": \"https://example.com/registry/schemas/build-event.json\",\n      \"subject\": \"tidb-build-123\"\n   }'")
+		}
+		if body.Data == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("data", "body"))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	var datacontenttype *string
+	{
+		if devbuildIngestEventDatacontenttype != "" {
+			datacontenttype = &devbuildIngestEventDatacontenttype
+		}
+	}
+	var id string
+	{
+		id = devbuildIngestEventID
+	}
+	var source string
+	{
+		source = devbuildIngestEventSource
+	}
+	var type_ string
+	{
+		type_ = devbuildIngestEventType
+	}
+	var specversion string
+	{
+		specversion = devbuildIngestEventSpecversion
+	}
+	var time_ string
+	{
+		time_ = devbuildIngestEventTime
+		err = goa.MergeErrors(err, goa.ValidateFormat("time", time_, goa.FormatDateTime))
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &devbuild.CloudEventIngestEventPayload{
+		Dataschema: body.Dataschema,
+		Subject:    body.Subject,
+		Data:       body.Data,
+	}
+	v.Datacontenttype = datacontenttype
+	v.ID = id
+	v.Source = source
+	v.Type = type_
+	v.Specversion = specversion
+	v.Time = time_
 
 	return v, nil
 }

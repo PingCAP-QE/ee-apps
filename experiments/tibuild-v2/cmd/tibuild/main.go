@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -15,9 +16,9 @@ import (
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
-	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
-	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
-	tibuild "github.com/PingCAP-QE/ee-apps/tibuild/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 	log.Print(ctx, log.KV{K: "http-port", V: *httpPortF})
 
 	// Load and parse configuration
-	_, err := loadConfig(*configFile)
+	cfg, err := loadConfig(*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
 	}
@@ -64,11 +65,14 @@ func main() {
 		zerolog.SetGlobalLevel(logLevel)
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", artifact.ServiceName).Logger()
-			artifactSvc = tibuild.NewArtifact(&logger)
+			artifactSvc = impl.NewArtifact(&logger)
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = tibuild.NewDevbuild(&logger, nil /* TODO: add db client */)
+			devbuildSvc = impl.NewDevbuild(&logger, cfg)
+			if devbuildSvc == nil {
+				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
+			}
 		}
 	}
 
