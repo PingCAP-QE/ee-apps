@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -131,4 +134,14 @@ func processAskRequest(ctx context.Context, question string) (string, error) {
 	// }
 
 	return response, nil
+}
+
+func listMcpTools(ctx context.Context, mcpClient *client.SSEMCPClient, _ string) (string, error) {
+	ret, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		return "", err
+	}
+	bytes, _ := yaml.Marshal(ret)
+
+	return string(bytes), nil
 }
