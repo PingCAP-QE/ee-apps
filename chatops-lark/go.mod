@@ -10,6 +10,7 @@ require (
 	github.com/google/go-github/v68 v68.0.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.4.7
 	github.com/rs/zerolog v1.33.0
+	github.com/sashabaranov/go-openai v1.9.3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
