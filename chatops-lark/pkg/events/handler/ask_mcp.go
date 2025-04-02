@@ -102,7 +102,6 @@ func callMcpTool(ctx context.Context, client client.MCPClient, name string, args
 func initializeMCPClient(ctx context.Context, name, url string) (client.MCPClient, []openai.ChatCompletionToolParam, error) {
 	// Create a logger with the provided name and URL
 	logger := log.With().Str("name", name).Str("url", url).Logger()
-	logger.Debug().Msg("start to initialize MCP client")
 
 	// Create a new SSE MCP client
 	c, err := newSSEMcpClient(ctx, url)
@@ -149,7 +148,6 @@ func initializeMCPClient(ctx context.Context, name, url string) (client.MCPClien
 		llmToolDeclaration = append(llmToolDeclaration, toolParam)
 	}
 
-	logger.Debug().Msg("done initializing MCP client")
 	return c, llmToolDeclaration, nil
 }
 
