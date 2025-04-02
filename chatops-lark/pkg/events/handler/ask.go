@@ -88,7 +88,6 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to process ask request: %w", err)
 	}
-	// --- End Placeholder ---
 
 	return result, nil
 }
