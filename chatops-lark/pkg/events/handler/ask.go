@@ -5,11 +5,23 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/azure"
 	"github.com/rs/zerolog/log"
-	"github.com/sashabaranov/go-openai"
-	"gopkg.in/yaml.v3"
+)
+
+const (
+	cfgKeyAskLlmCfg          = "ask.llm.azure_config"
+	cfgKeyAskLlmModel        = "ask.llm.model"
+	cfgKeyAskLlmSystemPrompt = "ask.llm.system_prompt"
+	cfgKeyAskLlmMcpServers   = "ask.llm.mcp_servers"
+
+	ctxKeyLlmClient       = "llm.client"
+	ctxKeyLlmModel        = "llm.model"
+	ctxKeyLlmSystemPrompt = "llm.system_prompt"
+	ctxKeyLLmTools        = "llm.tools"
+	ctxKeyMcpClients      = "llm.mcp_clients"
 )
 
 const (
@@ -64,7 +76,7 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	// The entire argument list forms the question
 	question := strings.Join(args, " ")
 
-	// --- Placeholder for actual AI/Tool interaction ---
+	// AI/Tool interaction
 	// Here you would:
 	// 1. Parse the question for intent or specific tool requests (if applicable).
 	// 2. Potentially query MCP tools based on the question to gather context.
@@ -81,67 +93,102 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	return result, nil
 }
 
-// processAskRequest is a placeholder for the core logic interacting with the LLM and tools.
-// TODO: Implement the actual interaction with the AI model and MCP tools.
+// processAskRequest will interact with the LLM and tools.
 func processAskRequest(ctx context.Context, question string) (string, error) {
-	// Simulate processing and generating a response
-	// In a real implementation, this would involve API calls to an LLM service
-	// and potentially calls to internal "MCP tools" APIs.
-	fmt.Printf("Processing ask request for question: %q\n", question) // Log for debugging
+	client := ctx.Value(ctxKeyLlmClient).(*openai.Client)
+	// openaiModel := ctx.Value(ctxKeyLlmModel).(shared.ChatModel)
+	systemPrompt := ctx.Value(ctxKeyLlmSystemPrompt).(string)
+	tools := ctx.Value(ctxKeyLLmTools).([]openai.ChatCompletionToolParam)
 
-	openaiCfg := ctx.Value(ctxKeyOpenAIConfig)
-	openaiModel := ctx.Value(ctxKeyOpenAIModel)
-	systemPrompt := ctx.Value(ctxKeyOpenAISystemPrompt)
-	log.Debug().
-		Any("base_url", openaiCfg.(openai.ClientConfig).BaseURL).
-		Any("systemPrompt", systemPrompt).
-		Msg("debug vars")
-	client := openai.NewClientWithConfig(openaiCfg.(openai.ClientConfig))
-
-	resp, err := client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: openaiModel.(string),
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt.(string),
-				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: question,
-				},
-			},
+	llmParams := openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(systemPrompt),
+			openai.UserMessage(question),
 		},
-	)
-
-	if err != nil {
-		log.Err(err).Msg("failed to create chat completion")
-		return "", fmt.Errorf("failed to create chat completion: %w", err)
+		Tools: tools,
+		Model: openai.ChatModelGPT4o,
+		Seed:  openai.Int(1),
 	}
-	response := resp.Choices[0].Message.Content
 
-	// // Example of how context *could* be added (replace with actual tool calls)
-	// if strings.Contains(strings.ToLower(question), "status") && strings.Contains(strings.ToLower(question), "production") {
-	// 	// Pretend we called an MCP tool for cluster status
-	// 	mcpContext := "\n[MCP Tool Context: Production cluster status is currently nominal.]"
-	// 	response += mcpContext
-	// }
+	clients := ctx.Value(ctxKeyMcpClients).([]mcpclient.MCPClient)
+	mcpToolMap := getFunctionMCPClientMap(ctx, clients)
 
-	// // Simulate potential error
-	// if strings.Contains(strings.ToLower(question), "error simulation") {
-	// 	return "", fmt.Errorf("simulated error during AI processing")
-	// }
+	for {
+		completion, err := client.Chat.Completions.New(ctx, llmParams)
+		if err != nil {
+			log.Err(err).Msg("failed to create chat completion")
+			return "", fmt.Errorf("failed to create chat completion: %w", err)
+		}
 
-	return response, nil
+		toolCalls := completion.Choices[0].Message.ToolCalls
+		if len(toolCalls) == 0 {
+			return completion.Choices[0].Message.Content, nil
+		}
+
+		// If there is a was a function call, continue the conversation
+		llmParams.Messages = append(llmParams.Messages, completion.Choices[0].Message.ToParam())
+		for _, toolCall := range toolCalls {
+			if client, ok := mcpToolMap[toolCall.Function.Name]; ok {
+				toolResData, err := processMcpToolCall(ctx, client, toolCall)
+				if err != nil {
+					log.Err(err).Msg("failed to process tool call")
+					return "", fmt.Errorf("failed to process tool call: %w", err)
+				}
+
+				llmParams.Messages = append(llmParams.Messages, openai.ToolMessage(toolResData, toolCall.ID))
+				log.Debug().Any("message", llmParams.Messages[len(llmParams.Messages)-1]).Msg("message")
+			}
+		}
+	}
 }
 
-func listMcpTools(ctx context.Context, mcpClient *client.SSEMCPClient, _ string) (string, error) {
-	ret, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
-	if err != nil {
-		return "", err
+func setupAskCtx(ctx context.Context, config map[string]any, _ *CommandSender) context.Context {
+	log.Info().Msg("debug")
+	// Initialize LLM client
+	var client openai.Client
+	{
+		llmCfg := config[cfgKeyAskLlmCfg]
+		switch v := llmCfg.(type) {
+		case map[string]any:
+			apiKey := v["api_key"].(string)
+			endpointURL := v["base_url"].(string)
+			apiVesion := v["api_version"].(string)
+			client = openai.NewClient(
+				azure.WithAPIKey(apiKey),
+				azure.WithEndpoint(endpointURL, apiVesion),
+			)
+		default:
+			client = openai.NewClient()
+		}
 	}
-	bytes, _ := yaml.Marshal(ret)
 
-	return string(bytes), nil
+	// Initialize LLM tools
+	var mcpClients []mcpclient.MCPClient
+	var toolDeclarations []openai.ChatCompletionToolParam
+	{
+		mcpCfg := config[cfgKeyAskLlmMcpServers]
+		log.Info().Any("mcpCfg", mcpCfg).Msg("start to initialize MCP client")
+		switch v := mcpCfg.(type) {
+		case map[string]any:
+			for name, cfg := range v {
+				url := cfg.(map[string]any)["base_url"].(string)
+				client, declarations, err := initializeMCPClient(ctx, name, url)
+				if err != nil {
+					log.Err(err).Str("name", name).Str("url", url).Msg("failed to initialize MCP SSE client")
+					continue
+				}
+				mcpClients = append(mcpClients, client)
+				toolDeclarations = append(toolDeclarations, declarations...)
+			}
+		}
+	}
+
+	// Setup context
+	newCtx := context.WithValue(ctx, ctxKeyLlmClient, &client)
+	newCtx = context.WithValue(newCtx, ctxKeyLlmModel, config[cfgKeyAskLlmModel])
+	newCtx = context.WithValue(newCtx, ctxKeyLlmSystemPrompt, config[cfgKeyAskLlmSystemPrompt])
+	newCtx = context.WithValue(newCtx, ctxKeyLLmTools, toolDeclarations)
+	newCtx = context.WithValue(newCtx, ctxKeyMcpClients, mcpClients)
+
+	return newCtx
 }

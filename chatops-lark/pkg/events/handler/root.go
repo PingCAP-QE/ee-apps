@@ -16,15 +16,11 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sashabaranov/go-openai"
 )
 
 const (
-	ctxKeyGithubToken        = "github_token"
-	ctxKeyLarkSenderEmail    = "lark.sender.email"
-	ctxKeyOpenAIConfig       = "openai.config"
-	ctxKeyOpenAIModel        = "openai.model"
-	ctxKeyOpenAISystemPrompt = "openai.system_prompt"
+	ctxKeyGithubToken     = "github_token"
+	ctxKeyLarkSenderEmail = "lark.sender.email"
 
 	// Message types
 	msgTypePrivate = "private"
@@ -46,37 +42,15 @@ var commandConfigs = map[string]CommandConfig{
 		Handler:      runCommandCherryPickInvite,
 		NeedsAudit:   true,
 		AuditWebhook: "cherry-pick-invite.audit_webhook",
-		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
-			return context.WithValue(ctx, ctxKeyGithubToken, config["cherry-pick-invite.github_token"])
-		},
+		SetupContext: setupCtxCherryPickInvite,
 	},
 	"/devbuild": {
-		Handler: runCommandDevbuild,
-		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
-			return context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
-		},
+		Handler:      runCommandDevbuild,
+		SetupContext: setupCtxDevbuild,
 	},
 	"/ask": {
-		Handler: runCommandAsk,
-		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
-			cfg := config["openai.config"]
-			var openaiCfg openai.ClientConfig
-			switch v := cfg.(type) {
-			case map[string]any:
-				openaiCfg = openai.DefaultConfig(v["api_key"].(string))
-				openaiCfg.BaseURL = v["base_url"].(string)
-				openaiCfg.APIType = openai.APIType(v["api_type"].(string))
-				openaiCfg.APIVersion = v["api_version"].(string)
-				openaiCfg.Engine = v["engine"].(string)
-			default:
-				openaiCfg = openai.DefaultConfig("")
-			}
-
-			newCtx := context.WithValue(ctx, ctxKeyOpenAIConfig, openaiCfg)
-			newCtx = context.WithValue(newCtx, ctxKeyOpenAIModel, config["openai.model"])
-			newCtx = context.WithValue(newCtx, ctxKeyOpenAISystemPrompt, config["openai.system_prompt"])
-			return newCtx
-		},
+		Handler:      runCommandAsk,
+		SetupContext: setupAskCtx,
 	},
 }
 
