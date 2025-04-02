@@ -3,7 +3,7 @@ module github.com/PingCAP-QE/ee-apps/tibuild
 go 1.24.0
 
 require (
-	entgo.io/ent v0.14.3
+	entgo.io/ent v0.14.4
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-sql-driver/mysql v1.9.1
