@@ -42,15 +42,15 @@ var commandConfigs = map[string]CommandConfig{
 		Handler:      runCommandCherryPickInvite,
 		NeedsAudit:   true,
 		AuditWebhook: "cherry-pick-invite.audit_webhook",
-		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
-			return context.WithValue(ctx, ctxKeyGithubToken, config["cherry-pick-invite.github_token"])
-		},
+		SetupContext: setupCtxCherryPickInvite,
 	},
 	"/devbuild": {
-		Handler: runCommandDevbuild,
-		SetupContext: func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context {
-			return context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
-		},
+		Handler:      runCommandDevbuild,
+		SetupContext: setupCtxDevbuild,
+	},
+	"/ask": {
+		Handler:      runCommandAsk,
+		SetupContext: setupAskCtx,
 	},
 }
 

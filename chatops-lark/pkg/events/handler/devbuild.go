@@ -71,3 +71,7 @@ func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("unknown subcommand: %s", subCmd)
 	}
 }
+
+func setupCtxDevbuild(ctx context.Context, _ map[string]any, sender *CommandSender) context.Context {
+	return context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
+}
