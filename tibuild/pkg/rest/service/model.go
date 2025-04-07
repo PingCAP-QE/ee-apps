@@ -173,6 +173,7 @@ type DevBuildSpec struct {
 	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 	Version           string         `json:"version"`
 	Edition           ProductEdition `json:"edition"`
+	Platform          string         `json:"platform,omitempty"` // "linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64" or empty for all.
 	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
 	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(128)"`
 	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(128)"`

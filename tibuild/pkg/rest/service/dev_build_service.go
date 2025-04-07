@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -241,13 +242,7 @@ func fillForFIPS(spec *DevBuildSpec) {
 
 func hasFIPS(feature string) bool {
 	features := strings.Split(feature, " ")
-	for _, f := range features {
-		if f == FIPS_FEATURE {
-			return true
-		}
-	}
-	return false
-
+	return slices.Contains(features, FIPS_FEATURE)
 }
 
 func validateReq(req DevBuild) error {
@@ -279,6 +274,9 @@ func validateReq(req DevBuild) error {
 		if spec.TargetImg != "" {
 			return fmt.Errorf("target image shall be empty for hotfix")
 		}
+	}
+	if spec.PipelineEngine == JenkinsEngine && spec.Platform != "" {
+		return fmt.Errorf("platform %s is not supported in %s engine", spec.Platform, spec.PipelineEngine)
 	}
 	return nil
 }
