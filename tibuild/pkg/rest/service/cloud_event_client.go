@@ -84,6 +84,9 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	if dev.Spec.BuilderImg != "" {
 		event.SetExtension("paramBuilderImage", dev.Spec.BuilderImg)
 	}
+	if dev.Spec.Platform != "" {
+		event.SetExtension("paramPlatform", dev.Spec.Platform)
+	}
 
 	return &event, nil
 }
