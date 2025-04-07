@@ -175,15 +175,15 @@ type DevBuildSpec struct {
 	Edition           ProductEdition `json:"edition"`
 	Platform          string         `json:"platform,omitempty"` // "linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64" or empty for all.
 	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
-	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(128)"`
-	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(128)"`
-	ProductBaseImg    string         `json:"productBaseImg,omitempty" gorm:"type:varchar(128)"`
-	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(128)"`
-	GithubRepo        string         `json:"githubRepo,omitempty" gorm:"type:varchar(64)"`
+	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(256)"`
+	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(256)"`
+	ProductBaseImg    string         `json:"productBaseImg,omitempty" gorm:"type:varchar(256)"`
+	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(256)"`
+	GithubRepo        string         `json:"githubRepo,omitempty" gorm:"type:varchar(128)"`
 	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
 	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
 	IsHotfix          bool           `json:"isHotfix,omitempty"`
-	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(128)"`
+	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(256)"`
 	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
 	prNumber          int
 	prBaseRef         string
