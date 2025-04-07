@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -276,7 +277,7 @@ func validateReq(req DevBuild) error {
 		}
 	}
 	if spec.PipelineEngine == JenkinsEngine && spec.Platform != "" {
-		return fmt.Errorf("can not set platform in %s engine", spec.Platform, spec.PipelineEngine)
+		return errors.New("cannot set platform when pipeline engine is Jenkins")
 	}
 	return nil
 }
