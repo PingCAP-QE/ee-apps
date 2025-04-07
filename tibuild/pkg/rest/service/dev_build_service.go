@@ -276,7 +276,7 @@ func validateReq(req DevBuild) error {
 		}
 	}
 	if spec.PipelineEngine == JenkinsEngine && spec.Platform != "" {
-		return fmt.Errorf("platform %s is not supported in %s engine", spec.Platform, spec.PipelineEngine)
+		return fmt.Errorf("can not set platform in %s engine", spec.Platform, spec.PipelineEngine)
 	}
 	return nil
 }
