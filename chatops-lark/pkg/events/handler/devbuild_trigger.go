@@ -15,6 +15,7 @@ type triggerParams struct {
 	product           string
 	edition           string
 	version           string
+	platform          string
 	gitRef            string
 	pluginGitRef      string
 	githubRepo        string
@@ -59,6 +60,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 			Product:           service.StringToProduct(params.product),
 			Edition:           service.ProductEdition(params.edition),
 			Version:           params.version,
+			Platform:          params.platform,
 			GitRef:            params.gitRef,
 			PluginGitRef:      params.pluginGitRef,
 			GithubRepo:        params.githubRepo,
