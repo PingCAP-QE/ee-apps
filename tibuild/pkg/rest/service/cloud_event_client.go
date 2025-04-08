@@ -56,7 +56,7 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 	repo := GHRepoToStruct(dev.Spec.GithubRepo)
 
 	var eventType string
-	var eventData interface{}
+	var eventData any
 	switch {
 	case strings.HasPrefix(dev.Spec.GitRef, "branch/"):
 		ref := strings.Replace(dev.Spec.GitRef, "branch/", "refs/heads/", 1)
