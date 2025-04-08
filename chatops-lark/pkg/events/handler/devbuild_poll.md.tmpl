@@ -1,0 +1,18 @@
+**Build Status: {{.Status.Status}}**
+
+{{- if .Status.PipelineViewURLs }}
+**Pipeline View Links:** {{ range $index, $url := .Status.PipelineViewURLs }}[Run {{$index | add 1}}]({{$url}}) {{ end }}
+{{- else if .Status.PipelineViewURL }}
+**Pipeline View Link:**
+[Run]({{.Status.PipelineViewURL}})
+{{- end }}
+
+{{- if .Status.BuildReport }}
+**Build Report:**
+{{ range $key, $value := .Status.BuildReport }}
+- **{{ $key }}:**
+```yaml
+{{ toYaml $value }}
+```
+{{ end }}
+{{- end }}
