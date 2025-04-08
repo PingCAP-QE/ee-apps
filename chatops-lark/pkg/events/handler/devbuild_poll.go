@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/go-resty/resty/v2"
@@ -17,6 +19,8 @@ import (
 
 //go:embed devbuild_poll.md.tmpl
 var devBuildPollResponseTmpl string
+
+const loopPollInterval = 10 * time.Second
 
 type pollParams struct {
 	buildID string
@@ -51,25 +55,15 @@ func runCommandDevbuildPoll(_ context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("failed to parse poll command: %v", err)
 	}
 
-	client := resty.New()
-	reqUrl, err := url.JoinPath(devBuildURL, params.buildID)
+	result, err := pollDevbuildStatus(params.buildID)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := client.R().
-		SetResult(pollResult{}).
-		// TODO: add auth in header.
-		Get(reqUrl)
-	if err != nil {
-		return "", err
-	}
-	if !resp.IsSuccess() {
-		return "", fmt.Errorf("poll devbuild failed: %s", resp.String())
-	}
-	result := resp.Result().(*pollResult)
+	return renderDevbuildStatusForLark(result)
+}
 
-	// Create a new template and add a custom function to format JSON
+func renderDevbuildStatusForLark(result *pollResult) (string, error) {
 	t := template.Must(template.New("markdown").
 		Funcs(sprig.FuncMap()).
 		Funcs(template.FuncMap{"toYaml": func(v any) string {
@@ -88,4 +82,38 @@ func runCommandDevbuildPoll(_ context.Context, args []string) (string, error) {
 	}
 
 	return sb.String(), nil
+}
+
+func loopPollDevbuildStatus(buildID string) (*pollResult, error) {
+	for {
+		result, err := pollDevbuildStatus(buildID)
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains([]string{"ABORTED", "SUCCESS", "FAILURE", "ERROR"}, result.Status.Status) {
+			return result, nil
+		}
+		time.Sleep(loopPollInterval)
+	}
+}
+
+func pollDevbuildStatus(buildID string) (*pollResult, error) {
+	client := resty.New()
+	reqUrl, err := url.JoinPath(devBuildURL, buildID)
+	if err != nil {
+		return nil, err
+	}
+
+	req := client.R().
+		SetResult(pollResult{})
+
+	resp, err := req.Get(reqUrl)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("poll devbuild failed: %s", resp.String())
+	}
+	result := resp.Result().(*pollResult)
+	return result, nil
 }
