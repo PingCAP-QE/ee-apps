@@ -9,6 +9,11 @@ import (
 const devBuildURL = "https://tibuild.pingcap.net/api/devbuilds"
 
 const (
+	ctxKeyDevbuildPollScheduler = "devbuild.poll.scheduler"
+	ctxKeyDevbuildPollTask      = "devbuild.poll.task"
+)
+
+const (
 	devBuildHelpText = `missing subcommand
 
 Usage: /devbuild <subcommand> [args...]

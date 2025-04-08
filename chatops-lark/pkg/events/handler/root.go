@@ -11,6 +11,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/audit"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 	"github.com/allegro/bigcache/v3"
+	"github.com/jasonlvhit/gocron"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -30,10 +31,11 @@ const (
 type CommandHandler func(context.Context, []string) (string, error)
 
 type CommandConfig struct {
-	Handler      CommandHandler
-	NeedsAudit   bool
-	AuditWebhook string
-	SetupContext func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context
+	Handler            CommandHandler
+	AsyncNotifyHandler CommandHandler
+	NeedsAudit         bool
+	AuditWebhook       string
+	SetupContext       func(ctx context.Context, config map[string]any, sender *CommandSender) context.Context
 }
 
 // TODO: support command /sync_docker_image
@@ -77,10 +79,11 @@ type commandLarkMsgContent struct {
 
 type rootHandler struct {
 	*lark.Client
-	eventCache *bigcache.BigCache
-	Config     map[string]any
-	botName    string
-	logger     zerolog.Logger
+	eventCache    *bigcache.BigCache
+	Config        map[string]any
+	botName       string
+	logger        zerolog.Logger
+	cronScheduler *gocron.Scheduler
 }
 
 // InformationError represents an information level error that occurred during command execution.
@@ -125,7 +128,7 @@ func init() {
 	availableCommandsHelpText = helpText
 }
 
-func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+func NewRootForMessage(respondCli *lark.Client, cfg map[string]any, cronScheduler *gocron.Scheduler) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
 	cacheCfg.Logger = &log.Logger
 	cache, _ := bigcache.New(context.Background(), cacheCfg)
@@ -140,11 +143,12 @@ func NewRootForMessage(respondCli *lark.Client, cfg map[string]any) func(ctx con
 	}
 
 	h := &rootHandler{
-		Client:     respondCli,
-		Config:     cfg,
-		eventCache: cache,
-		botName:    botName,
-		logger:     baseLogger,
+		Client:        respondCli,
+		Config:        cfg,
+		eventCache:    cache,
+		botName:       botName,
+		logger:        baseLogger,
+		cronScheduler: cronScheduler,
 	}
 	return h.Handle
 }

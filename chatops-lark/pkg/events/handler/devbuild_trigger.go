@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/jasonlvhit/gocron"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
@@ -91,6 +92,10 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 	}
 
 	result := resp.Result().(*triggerResult)
+
+	pollScheduler := ctx.Value("").(*gocron.Scheduler)
+	pollFunc := ctx.Value("").(func(string))
+	pollScheduler.Every(1).Minute().Do(pollFunc, result.ID)
 
 	return fmt.Sprintf("build id is %d\npolling: %s/%d", result.ID, devBuildURL, result.ID), nil
 }

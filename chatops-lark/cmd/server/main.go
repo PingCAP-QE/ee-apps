@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jasonlvhit/gocron"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
@@ -68,8 +69,9 @@ func main() {
 		}
 	}
 
+	cronScheduler := gocron.NewScheduler()
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg))
+		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg, cronScheduler))
 
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if *debugMode {
@@ -78,11 +80,12 @@ func main() {
 			larkws.WithAutoReconnect(true))
 	}
 	consumerOpts = append(consumerOpts, larkws.WithLogLevel(larkcore.LogLevelInfo))
-
 	consumerCli := larkws.NewClient(*appID, *appSecret, consumerOpts...)
+	csStop := cronScheduler.Start()
+
 	// Now start the WebSocket client (blocking call)
-	err := consumerCli.Start(context.Background())
-	if err != nil {
+	if err := consumerCli.Start(context.Background()); err != nil {
+		csStop <- true
 		log.Fatal().Err(err).Msg("run failed for Lark WebSocket client")
 	}
 }
