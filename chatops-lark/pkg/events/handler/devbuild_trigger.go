@@ -103,6 +103,8 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	{
 		fs.StringVar(&ret.edition, "e", "community", "default is community")
 		fs.StringVar(&ret.edition, "edition", "community", "default is community")
+		fs.StringVar(&ret.platform, "p", "", "platform to build, default is for all")
+		fs.StringVar(&ret.platform, "platform", "", "platform to build, default is for all")
 		fs.StringVar(&ret.pluginGitRef, "pluginGitRef", "", "only for build enterprise tidb, ignore if you dont know")
 		fs.BoolVar(&ret.pushGCR, "pushGCR", false, "whether to push GCR, default is no")
 		fs.BoolVar(&ret.hotfix, "hotfix", false, "")
