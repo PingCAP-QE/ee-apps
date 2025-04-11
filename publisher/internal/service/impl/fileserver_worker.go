@@ -144,7 +144,7 @@ func (p *fsWorker) notifyLark(publishInfo *PublishInfoFS, err error) {
 		"*",
 		err)
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"msg_type": "text",
 		"content": map[string]string{
 			"text": message,

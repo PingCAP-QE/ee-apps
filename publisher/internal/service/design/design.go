@@ -64,7 +64,7 @@ var _ = Service("tiup", func() {
 			Response(StatusOK)
 		})
 	})
-	Method("reset-rate-limit", func() {	
+	Method("reset-rate-limit", func() {
 		HTTP(func() {
 			POST("/reset-rate-limit")
 			Response(StatusOK)
@@ -100,6 +100,43 @@ var _ = Service("fileserver", func() {
 		})
 		HTTP(func() {
 			GET("/publish-request/{request_id}")
+			Response(StatusOK)
+		})
+	})
+})
+
+var _ = Service("image", func() {
+	Description("Publisher service for container image")
+	HTTP(func() {
+		Path("/image")
+	})
+
+	Method("request-to-copy", func() {
+		Payload(func() {
+			Attribute("source", String, "source image url")
+			Attribute("destination", String, "destination image url")
+			Required("source", "destination")
+		})
+		Result(String, "request id", func() {
+			Format(FormatUUID)
+		})
+		HTTP(func() {
+			POST("/copy")
+			Response(StatusOK)
+		})
+	})
+	Method("query-copying-status", func() {
+		Payload(func() {
+			Attribute("request_id", String, "request track id", func() {
+				Format(FormatUUID)
+			})
+			Required("request_id")
+		})
+		Result(String, "request state", func() {
+			Enum("queued", "processing", "success", "failed", "canceled")
+		})
+		HTTP(func() {
+			GET("/copy/{request_id}")
 			Response(StatusOK)
 		})
 	})

@@ -15,6 +15,7 @@ import (
 	"os"
 
 	fileserverc "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/client"
+	imagec "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/image/client"
 	tiupc "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tiup/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -26,19 +27,24 @@ import (
 func UsageCommands() string {
 	return `tiup (request-to-publish|query-publishing-status|reset-rate-limit)
 fileserver (request-to-publish|query-publishing-status)
+image (request-to-copy|query-copying-status)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` tiup request-to-publish --body '{
-      "artifact_url": "Placeat blanditiis est iusto.",
-      "request_id": "Quo ut dolor perspiciatis rem assumenda enim.",
-      "tiup-mirror": "Totam omnis sunt cum voluptatem amet.",
-      "version": "Eum eligendi."
+      "artifact_url": "Consequatur ea eum saepe.",
+      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
+      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
+      "version": "Omnis dolorem eveniet fugit nemo."
    }'` + "\n" +
 		os.Args[0] + ` fileserver request-to-publish --body '{
-      "artifact_url": "Quis voluptatem earum et ullam esse."
+      "artifact_url": "Tenetur mollitia consequatur perferendis."
+   }'` + "\n" +
+		os.Args[0] + ` image request-to-copy --body '{
+      "destination": "Quia sed sunt vero.",
+      "source": "Iusto ut et deserunt nisi voluptates."
    }'` + "\n" +
 		""
 }
@@ -70,6 +76,14 @@ func ParseEndpoint(
 
 		fileserverQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
 		fileserverQueryPublishingStatusRequestIDFlag = fileserverQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
+
+		imageFlags = flag.NewFlagSet("image", flag.ContinueOnError)
+
+		imageRequestToCopyFlags    = flag.NewFlagSet("request-to-copy", flag.ExitOnError)
+		imageRequestToCopyBodyFlag = imageRequestToCopyFlags.String("body", "REQUIRED", "")
+
+		imageQueryCopyingStatusFlags         = flag.NewFlagSet("query-copying-status", flag.ExitOnError)
+		imageQueryCopyingStatusRequestIDFlag = imageQueryCopyingStatusFlags.String("request-id", "REQUIRED", "request track id")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
@@ -79,6 +93,10 @@ func ParseEndpoint(
 	fileserverFlags.Usage = fileserverUsage
 	fileserverRequestToPublishFlags.Usage = fileserverRequestToPublishUsage
 	fileserverQueryPublishingStatusFlags.Usage = fileserverQueryPublishingStatusUsage
+
+	imageFlags.Usage = imageUsage
+	imageRequestToCopyFlags.Usage = imageRequestToCopyUsage
+	imageQueryCopyingStatusFlags.Usage = imageQueryCopyingStatusUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -99,6 +117,8 @@ func ParseEndpoint(
 			svcf = tiupFlags
 		case "fileserver":
 			svcf = fileserverFlags
+		case "image":
+			svcf = imageFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -134,6 +154,16 @@ func ParseEndpoint(
 
 			case "query-publishing-status":
 				epf = fileserverQueryPublishingStatusFlags
+
+			}
+
+		case "image":
+			switch epn {
+			case "request-to-copy":
+				epf = imageRequestToCopyFlags
+
+			case "query-copying-status":
+				epf = imageQueryCopyingStatusFlags
 
 			}
 
@@ -179,6 +209,16 @@ func ParseEndpoint(
 				endpoint = c.QueryPublishingStatus()
 				data, err = fileserverc.BuildQueryPublishingStatusPayload(*fileserverQueryPublishingStatusRequestIDFlag)
 			}
+		case "image":
+			c := imagec.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "request-to-copy":
+				endpoint = c.RequestToCopy()
+				data, err = imagec.BuildRequestToCopyPayload(*imageRequestToCopyBodyFlag)
+			case "query-copying-status":
+				endpoint = c.QueryCopyingStatus()
+				data, err = imagec.BuildQueryCopyingStatusPayload(*imageQueryCopyingStatusRequestIDFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -211,10 +251,10 @@ RequestToPublish implements request-to-publish.
 
 Example:
     %[1]s tiup request-to-publish --body '{
-      "artifact_url": "Placeat blanditiis est iusto.",
-      "request_id": "Quo ut dolor perspiciatis rem assumenda enim.",
-      "tiup-mirror": "Totam omnis sunt cum voluptatem amet.",
-      "version": "Eum eligendi."
+      "artifact_url": "Consequatur ea eum saepe.",
+      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
+      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
+      "version": "Omnis dolorem eveniet fugit nemo."
    }'
 `, os.Args[0])
 }
@@ -226,7 +266,7 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s tiup query-publishing-status --request-id "Expedita et necessitatibus ut molestias."
+    %[1]s tiup query-publishing-status --request-id "Consectetur dolor magnam aut et labore."
 `, os.Args[0])
 }
 
@@ -263,7 +303,7 @@ RequestToPublish implements request-to-publish.
 
 Example:
     %[1]s fileserver request-to-publish --body '{
-      "artifact_url": "Quis voluptatem earum et ullam esse."
+      "artifact_url": "Tenetur mollitia consequatur perferendis."
    }'
 `, os.Args[0])
 }
@@ -275,6 +315,45 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s fileserver query-publishing-status --request-id "Voluptas ratione hic libero nisi."
+    %[1]s fileserver query-publishing-status --request-id "Adipisci pariatur maiores neque enim perferendis."
+`, os.Args[0])
+}
+
+// imageUsage displays the usage of the image command and its subcommands.
+func imageUsage() {
+	fmt.Fprintf(os.Stderr, `Publisher service for container image
+Usage:
+    %[1]s [globalflags] image COMMAND [flags]
+
+COMMAND:
+    request-to-copy: RequestToCopy implements request-to-copy.
+    query-copying-status: QueryCopyingStatus implements query-copying-status.
+
+Additional help:
+    %[1]s image COMMAND --help
+`, os.Args[0])
+}
+func imageRequestToCopyUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] image request-to-copy -body JSON
+
+RequestToCopy implements request-to-copy.
+    -body JSON: 
+
+Example:
+    %[1]s image request-to-copy --body '{
+      "destination": "Quia sed sunt vero.",
+      "source": "Iusto ut et deserunt nisi voluptates."
+   }'
+`, os.Args[0])
+}
+
+func imageQueryCopyingStatusUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] image query-copying-status -request-id STRING
+
+QueryCopyingStatus implements query-copying-status.
+    -request-id STRING: request track id
+
+Example:
+    %[1]s image query-copying-status --request-id "b950a88c-f01c-4fe7-bd5e-218a50d70137"
 `, os.Args[0])
 }

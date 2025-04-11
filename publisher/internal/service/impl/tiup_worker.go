@@ -148,7 +148,7 @@ func (p *tiupWorker) handle(data *PublishRequestTiUP) cloudevents.Result {
 	p.logger.Info().Msg("download file success")
 
 	// 2. publish the tarball to the mirror with retries.
-	for i := 0; i < tiupUploadingMaxRetries; i++ {
+	for i := range tiupUploadingMaxRetries {
 		if err = p.publish(saveTo, &data.Publish); err == nil {
 			break
 		}
