@@ -84,3 +84,7 @@ func cherryPickInvite(prUrl string, collaboratorUsername string, gc *github.Clie
 		return "", fmt.Errorf("Fail to invite collaborator, Please contact the EE team members for feedback.")
 	}
 }
+
+func setupCtxCherryPickInvite(ctx context.Context, config map[string]any, _ *CommandSender) context.Context {
+	return context.WithValue(ctx, ctxKeyGithubToken, config["cherry-pick-invite.github_token"])
+}
