@@ -17,9 +17,9 @@ import (
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/gen/fileserver"
-	"github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
 )
 
 func main() {

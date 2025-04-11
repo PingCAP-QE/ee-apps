@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
 )
 
 func main() {
