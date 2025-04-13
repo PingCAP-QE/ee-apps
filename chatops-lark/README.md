@@ -8,6 +8,15 @@ You can run it by following steps:
   ```yaml
   cherry-pick-invite.audit_webhook: <your_audit_lark_webhook>
   cherry-pick-invite.github_token: <your_github_token>
+  ask.llm.system_prompt: <your_system_prompt>
+  ask.llm.model: <your_model>
+  ask.llm.azure_config:
+    api_key: <your_azure_api_key>
+    base_url: <your_azure_base_url>
+    api_version: <your_azure_api_version>
+  ask.llm.mcp_servers:
+    <a-mcp-tool-name>:
+      base_url: <your_mcp_server_base_url(without /sse path)>
   ```
 2. Run the lark bot app:
   ```bash
