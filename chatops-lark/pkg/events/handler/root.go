@@ -178,12 +178,6 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		return nil
 	}
 
-	hl.Info().
-		Str("command", command.Name).
-		Str("sender", *event.Event.Sender.SenderId.OpenId).
-		Int("argsCount", len(command.Args)).
-		Msg("Processing command")
-
 	refactionID, err := r.addReaction(*event.Event.Message.MessageId)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
@@ -209,8 +203,15 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 	go func() {
 		defer r.deleteReaction(*event.Event.Message.MessageId, refactionID)
+		asyncLog := hl.With().Str("command", command.Name).
+			Any("args", command.Args).
+			Str("sender", *event.Event.Sender.SenderId.OpenId).
+			Logger()
+
+		asyncLog.Info().Msg("Processing command")
 		message, err := r.handleCommand(ctx, command)
 		if err == nil {
+			asyncLog.Info().Msg("Command processed successfully")
 			r.sendResponse(*event.Event.Message.MessageId, StatusSuccess, message)
 			return
 		}
@@ -218,12 +219,15 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		// send different level response for the error types.
 		switch e := err.(type) {
 		case SkipError:
+			asyncLog.Info().Msg("Command was skipped")
 			message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
 			r.sendResponse(*event.Event.Message.MessageId, StatusSkip, message)
 		case InformationError:
+			asyncLog.Info().Msg("Command was handled but just feedback information")
 			message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
 			r.sendResponse(*event.Event.Message.MessageId, StatusInfo, message)
 		default:
+			asyncLog.Err(err).Msg("Command processing failed")
 			message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
 			r.sendResponse(*event.Event.Message.MessageId, StatusFailure, message)
 		}

@@ -40,6 +40,7 @@ Examples:
 
 Options for trigger:
   -e, --edition string      Product edition (community or enterprise, default: community)
+  -p, --platform string		Build for platform (linux/amd64, linux/arm64, darwin/amd64 or darwin/arm64, default: all), only support when the engine is tekton.
   --pluginGitRef string     Git reference for plugins (only for enterprise tidb)
   --pushGCR                 Whether to push to GCR (default: false)
   --githubRepo string       GitHub repository (for forked repos)
@@ -50,7 +51,7 @@ Options for trigger:
   --productBaseImg string   Product base image
   --builderImg string       Docker image for builder
   --targetImg string        Target image
-  --engine string           Pipeline engine
+  --engine string           Pipeline engine (jenkins or tekton, default: jenkins)
 `
 )
 

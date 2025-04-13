@@ -14,8 +14,8 @@ github.com/Masterminds/semver/v3 v3.3.0 h1:B8LGeaivUe71a5qox1ICM/JLl0NqZSW5CHyL+
 github.com/Masterminds/semver/v3 v3.3.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Masterminds/sprig/v3 v3.3.0 h1:mQh0Yrg1XPo6vjYXgtf5OtijNAKJRNcTdOOGZe3tPhs=
 github.com/Masterminds/sprig/v3 v3.3.0/go.mod h1:Zy1iXRYNqNLUolqCpL4uhk6SHUMAOSCzdgBfDb35Lz0=
-github.com/PingCAP-QE/ee-apps/tibuild v0.0.0-20250124071050-8a17a7b19353 h1:g9a3BYfZoveY7ZLIggj+3Hbf2gqS7ydq7s2a3gT6I4M=
-github.com/PingCAP-QE/ee-apps/tibuild v0.0.0-20250124071050-8a17a7b19353/go.mod h1:hByrZUdMe1lJVhyk29FYNCM2tT4lo4O/z0HCS6+2J6g=
+github.com/PingCAP-QE/ee-apps/tibuild v0.0.0-20250407162642-72bb5281570a h1:NxNTh2t51HP13rqLcFp4AIjWbQN4U9fvVB4R3v1VkGA=
+github.com/PingCAP-QE/ee-apps/tibuild v0.0.0-20250407162642-72bb5281570a/go.mod h1:hByrZUdMe1lJVhyk29FYNCM2tT4lo4O/z0HCS6+2J6g=
 github.com/allegro/bigcache/v3 v3.1.0 h1:H2Vp8VOvxcrB91o86fUSVJFqeuz8kpyyB02eH3bSzwk=
 github.com/allegro/bigcache/v3 v3.1.0/go.mod h1:aPyh7jEvrog9zAwx5N7+JUQX5dZTSGpxF1LAR4dr35I=
 github.com/bndr/gojenkins v1.1.0 h1:TWyJI6ST1qDAfH33DQb3G4mD8KkrBfyfSUoZBHQAvPI=

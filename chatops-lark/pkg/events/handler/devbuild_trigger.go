@@ -15,6 +15,7 @@ type triggerParams struct {
 	product           string
 	edition           string
 	version           string
+	platform          string
 	gitRef            string
 	pluginGitRef      string
 	githubRepo        string
@@ -59,6 +60,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 			Product:           service.StringToProduct(params.product),
 			Edition:           service.ProductEdition(params.edition),
 			Version:           params.version,
+			Platform:          params.platform,
 			GitRef:            params.gitRef,
 			PluginGitRef:      params.pluginGitRef,
 			GithubRepo:        params.githubRepo,
@@ -101,6 +103,8 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	{
 		fs.StringVar(&ret.edition, "e", "community", "default is community")
 		fs.StringVar(&ret.edition, "edition", "community", "default is community")
+		fs.StringVar(&ret.platform, "p", "", "platform to build, default is for all")
+		fs.StringVar(&ret.platform, "platform", "", "platform to build, default is for all")
 		fs.StringVar(&ret.pluginGitRef, "pluginGitRef", "", "only for build enterprise tidb, ignore if you dont know")
 		fs.BoolVar(&ret.pushGCR, "pushGCR", false, "whether to push GCR, default is no")
 		fs.BoolVar(&ret.hotfix, "hotfix", false, "")

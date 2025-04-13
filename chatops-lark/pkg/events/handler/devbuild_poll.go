@@ -2,13 +2,21 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"net/url"
+	"strings"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/go-resty/resty/v2"
+	"gopkg.in/yaml.v3"
+
+	_ "embed"
 )
+
+//go:embed devbuild_poll.md.tmpl
+var devBuildPollResponseTmpl string
 
 type pollParams struct {
 	buildID string
@@ -61,6 +69,23 @@ func runCommandDevbuildPoll(_ context.Context, args []string) (string, error) {
 	}
 	result := resp.Result().(*pollResult)
 
-	resultBytes, _ := json.Marshal(result.Status)
-	return fmt.Sprintf("build status is %s", resultBytes), nil
+	// Create a new template and add a custom function to format JSON
+	t := template.Must(template.New("markdown").
+		Funcs(sprig.FuncMap()).
+		Funcs(template.FuncMap{"toYaml": func(v any) string {
+			yamlBytes, err := yaml.Marshal(v)
+			if err != nil {
+				return fmt.Sprintf("failed to marshal to YAML: %v", err)
+			}
+			return strings.TrimSuffix(string(yamlBytes), "\n")
+		}}).
+		Parse(devBuildPollResponseTmpl))
+
+	// Execute the template with the result data
+	var sb strings.Builder
+	if err := t.Execute(&sb, result); err != nil {
+		return "", fmt.Errorf("failed to execute template: %v", err)
+	}
+
+	return sb.String(), nil
 }
