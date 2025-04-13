@@ -1,4 +1,4 @@
-FROM golang:1.23.4-alpine AS builder
+FROM golang:1.24.2-alpine AS builder
 
 COPY . /app
 RUN --mount=type=cache,target=/go/pkg/mod cd /app && \

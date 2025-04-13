@@ -11,10 +11,10 @@ import (
 	"goa.design/clue/log"
 	goahttp "goa.design/goa/v3/http"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/gen/fileserver"
-	fssvr "github.com/PingCAP-QE/ee-apps/publisher/gen/http/fileserver/server"
-	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/gen/http/tiup/server"
-	tiup "github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	fssvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/server"
+	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tiup/server"
+	tiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
