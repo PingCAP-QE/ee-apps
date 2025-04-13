@@ -10,14 +10,15 @@ cherry_pick_invite:
 
 # Ask command configuration
 ask:
+  # audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   llm:
     azure_config:
       api_key: "your-api-key"
       base_url: "https://your-deployment.openai.azure.com"
-      api_version: "2023-05-15" 
+      api_version: "2023-05-15"
     model: "gpt-4"
     system_prompt: |
-      You are a helpful assistant for PingCAP employees. 
+      You are a helpful assistant for PingCAP employees.
       You have access to various tools that can help answer questions about our infrastructure and services.
       Always respond with accurate and helpful information.
     mcp_servers:
@@ -28,6 +29,7 @@ ask:
 
 # DevBuild configuration
 devbuild:
+  # audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
 # Debug mode

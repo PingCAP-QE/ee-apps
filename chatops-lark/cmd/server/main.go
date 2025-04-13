@@ -5,13 +5,11 @@ import (
 	"flag"
 	"net/http"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/botinfo"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/events/handler"
 )
@@ -30,6 +28,14 @@ func main() {
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load configuration")
+	}
+
+	// The priority of the CLI options is higher than the configuration file.
+	if *appID != "" {
+		cfg.AppID = *appID
+	}
+	if *appSecret != "" {
+		cfg.AppSecret = *appSecret
 	}
 
 	// Set default values and validate
@@ -59,31 +65,8 @@ func main() {
 		}
 	}()
 
-	// Set up Lark (Feishu) WebSocket client
-	producerOpts := []lark.ClientOptionFunc{}
-	if cfg.Debug {
-		producerOpts = append(producerOpts, lark.WithLogLevel(larkcore.LogLevelDebug), lark.WithLogReqAtDebug(true))
-	} else {
-		producerOpts = append(producerOpts, lark.WithLogLevel(larkcore.LogLevelInfo))
-	}
-	producerCli := lark.NewClient(*appID, *appSecret, producerOpts...)
-
-	// Get bot name at startup if not already in config
-	if cfg.BotName == "" && *appID != "" && *appSecret != "" {
-		botName, err := botinfo.GetBotName(context.Background(), *appID, *appSecret)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get bot name from API. Please verify your App ID and App Secret, and ensure the bot is properly configured in the Lark platform. Alternatively, set a default bot name in the config.")
-		} else if botName == "" {
-			log.Fatal().Msg("Retrieved empty bot name from API. Please check your app configuration.")
-		} else {
-			log.Info().Str("botName", botName).Msg("Bot name retrieved from API successfully")
-			// Store the bot name in the config
-			cfg.BotName = botName
-		}
-	}
-
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(handler.NewRootForMessage(producerCli, cfg))
+		OnP2MessageReceiveV1(handler.NewRootForMessage(cfg))
 
 	consumerOpts := []larkws.ClientOption{larkws.WithEventHandler(eventHandler)}
 	if cfg.Debug {
@@ -93,7 +76,7 @@ func main() {
 	}
 	consumerOpts = append(consumerOpts, larkws.WithLogLevel(larkcore.LogLevelInfo))
 
-	consumerCli := larkws.NewClient(*appID, *appSecret, consumerOpts...)
+	consumerCli := larkws.NewClient(cfg.AppID, cfg.AppSecret, consumerOpts...)
 	// Now start the WebSocket client (blocking call)
 	err = consumerCli.Start(context.Background())
 	if err != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -10,7 +11,8 @@ import (
 // Config represents the application configuration
 type Config struct {
 	// Bot configuration
-	BotName string `yaml:"bot_name" json:"bot_name"`
+	AppID     string `yaml:"app_id" json:"app_id"`
+	AppSecret string `yaml:"app_secret" json:"app_secret"`
 
 	// Cherry pick configuration
 	CherryPickInvite struct {
@@ -49,7 +51,7 @@ type Config struct {
 }
 
 type BaseCmdConfig struct {
-	AuditWebhook string `yaml:"audit_webhook" json:"audit_webhook"`
+	AuditWebhook string `yaml:"audit_webhook" json:"audit_webhook"` // if empty, disable audit.
 }
 
 // LoadConfig loads the configuration from the specified YAML file
@@ -72,6 +74,12 @@ func LoadConfig(path string) (*Config, error) {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	// Add validation logic as needed
+	if c.AppID == "" {
+		return errors.New("app_id is required")
+	}
+	if c.AppSecret == "" {
+		return errors.New("app_secret is required")
+	}
 	return nil
 }
 

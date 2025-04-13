@@ -2,127 +2,59 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/audit"
-	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 	"github.com/allegro/bigcache/v3"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-)
 
-const (
-	ctxKeyGithubToken     = "github_token"
-	ctxKeyLarkSenderEmail = "lark.sender.email"
-
-	// Message types
-	msgTypePrivate = "private"
-	msgTypeGroup   = "group"
-
-	// Status enums
-	StatusSuccess = "success"
-	StatusFailure = "failure"
-	StatusSkip    = "skip"
-	StatusInfo    = "info"
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/audit"
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/botinfo"
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 )
 
 // TODO: support command /sync_docker_image
-var commandConfigs = map[string]CommandConfig{
-	"/cherry-pick-invite": {
-		Handler:      runCommandCherryPickInvite,
-		NeedsAudit:   true,
-		AuditWebhook: "cherry-pick-invite.audit_webhook",
-		SetupContext: setupCtxCherryPickInvite,
-	},
-	"/devbuild": {
-		Handler:      runCommandDevbuild,
-		SetupContext: setupCtxDevbuild,
-	},
-	"/ask": {
-		Handler:      runCommandAsk,
-		SetupContext: setupAskCtx,
-	},
-}
+var commandConfigs = map[string]CommandConfig{}
 
-type CommandHandler func(context.Context, []string) (string, error)
-
-type CommandConfig struct {
-	Handler      CommandHandler
-	NeedsAudit   bool
-	AuditWebhook string
-	SetupContext func(ctx context.Context, cfg config.Config, sender *CommandActor) context.Context
-}
-
-type Command struct {
-	Name   string
-	Args   []string
-	Sender *CommandActor
-}
-
-type CommandActor struct {
-	OpenID string
-	Email  string
-}
-
-type CommandResponse struct {
-	Status  string
-	Message string
-	Error   string
-}
-
-type (
-	// InformationError represents an information level error that occurred during command execution.
-	// it will give some information but not error, such as help and skip reasons.
-	InformationError error
-
-	// SkipError represents a skip level error that occurred during command execution.
-	SkipError error
-)
-
-func NewRootForMessage(respondCli *lark.Client, cfg *config.Config) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
-	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
-	cacheCfg.Logger = &log.Logger
-	cache, _ := bigcache.New(context.Background(), cacheCfg)
-
-	baseLogger := log.With().Str("component", "rootHandler").Logger()
-
-	if cfg.BotName == "" {
-		// This shouldn't happen because main.go already validates this
-		// We're keeping this check as a safeguard with a more specific error message
-		baseLogger.Fatal().Msg("Bot name was not provided in config. This should have been caught earlier.")
-	}
-
-	h := &rootHandler{
-		Client:     respondCli,
-		Config:     *cfg,
-		eventCache: cache,
-		logger:     baseLogger,
-	}
+func NewRootForMessage(cfg *config.Config, clientOpts ...lark.ClientOptionFunc) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	h := &rootHandler{Config: *cfg}
 	return h.Handle
-}
-
-type commandLarkMsgContent struct {
-	Text string `json:"text"`
 }
 
 type rootHandler struct {
 	*lark.Client
+
 	Config config.Config
 
-	eventCache *bigcache.BigCache
-	logger     zerolog.Logger
+	botName         string
+	commandRegistry map[string]CommandConfig
+	eventCache      *bigcache.BigCache
+	logger          zerolog.Logger
+
+	initOnce sync.Once
+	initErr  error
 }
 
 func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	// Ensure initialization is done only once
+	r.initOnce.Do(func() {
+		r.initErr = r.initialize()
+	})
+
+	// If initialization failed, return the error
+	if r.initErr != nil {
+		return r.initErr
+	}
+
 	eventID := event.EventV2Base.Header.EventID
 
 	msgType := "unknown"
@@ -146,7 +78,7 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		return err
 	}
 
-	command := shouldHandle(event, r.Config.BotName)
+	command := shouldHandle(event, r.botName)
 	if command == nil {
 		return nil
 	}
@@ -190,6 +122,59 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	return nil
 }
 
+func (r *rootHandler) initialize() error {
+	// initialize logger
+	r.logger = log.With().Str("component", "rootHandler").Logger()
+
+	// initialize event cache
+	cacheCfg := bigcache.DefaultConfig(10 * time.Minute)
+	cacheCfg.Logger = &r.logger
+	r.eventCache, _ = bigcache.New(context.Background(), cacheCfg)
+
+	// initialize Lark client
+	producerOpts := []lark.ClientOptionFunc{}
+	if r.Config.Debug {
+		producerOpts = append(producerOpts, lark.WithLogLevel(larkcore.LogLevelDebug), lark.WithLogReqAtDebug(true))
+	} else {
+		producerOpts = append(producerOpts, lark.WithLogLevel(larkcore.LogLevelInfo))
+	}
+	r.Client = lark.NewClient(r.Config.AppID, r.Config.AppSecret, producerOpts...)
+
+	// fetch and set the bot name.
+	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	name, err := botinfo.GetBotName(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
+	if err != nil {
+		r.logger.Err(err).Msg("failed to get bot name")
+		return err
+	}
+	r.botName = name
+
+	// initialize command registry
+	r.commandRegistry = map[string]CommandConfig{
+		"/cherry-pick-invite": CommandConfig{
+			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
+			Handler:      runCommandCherryPickInvite,
+			AuditWebhook: r.Config.CherryPickInvite.AuditWebhook,
+			SetupContext: setupCtxCherryPickInvite,
+		},
+		"/devbuild": CommandConfig{
+			Description:  "Trigger a devbuild or check build status",
+			Handler:      runCommandDevbuild,
+			AuditWebhook: r.Config.DevBuild.AuditWebhook,
+			SetupContext: setupCtxDevbuild,
+		},
+		"/ask": CommandConfig{
+			Description:  "Ask a question with LLM",
+			Handler:      runCommandAsk,
+			AuditWebhook: r.Config.Ask.AuditWebhook,
+			SetupContext: setupAskCtx,
+		},
+	}
+
+	return nil
+}
+
 func (r *rootHandler) feedbackCommandResult(messageID string, message string, err error, asyncLog zerolog.Logger) {
 	if err == nil {
 		asyncLog.Info().Msg("Command processed successfully")
@@ -220,12 +205,9 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		Str("sender", command.Sender.Email).
 		Logger()
 
-	cmdConfig, exists := commandConfigs[command.Name]
-	if !exists {
-		cmdLogger.Warn().Msg("Unsupported command")
-
-		errorMsg := fmt.Sprintf("Unsupported command: %s\n\n%s", command.Name, availableCommandsHelp(commandConfigs))
-		return "", fmt.Errorf(errorMsg)
+	cmdConfig, err := r.getCommandConfig(command, cmdLogger)
+	if err != nil {
+		return "", err
 	}
 
 	runCtx := cmdConfig.SetupContext(ctx, r.Config, command.Sender)
@@ -234,13 +216,23 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		return result, err
 	}
 
-	if cmdConfig.NeedsAudit && cmdConfig.AuditWebhook != "" {
+	if cmdConfig.AuditWebhook != "" {
 		if auditErr := r.audit(cmdConfig.AuditWebhook, command); auditErr != nil {
 			cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
 		}
 	}
 
 	return result, nil
+}
+
+func (r *rootHandler) getCommandConfig(command *Command, cmdLogger zerolog.Logger) (*CommandConfig, error) {
+	cmdConfig, ok := commandConfigs[command.Name]
+	if !ok {
+		cmdLogger.Warn().Msg("Unsupported command")
+
+		return nil, fmt.Errorf("Unsupported command: %s\n\n%s", command.Name, r.availableCommandsHelp())
+	}
+	return &cmdConfig, nil
 }
 
 func (r *rootHandler) audit(auditWebhook string, command *Command) error {
@@ -308,120 +300,20 @@ func (r *rootHandler) deleteReaction(reqMsgID, reactionID string) error {
 	return nil
 }
 
-func availableCommandsHelp(cmdCfgs map[string]CommandConfig) string {
+func (r *rootHandler) availableCommandsHelp() string {
 	// Initialize the help text for available commands
-	commandsList := make([]string, 0, len(cmdCfgs))
-	for k := range cmdCfgs {
+	commandsList := make([]string, 0, len(r.commandRegistry))
+	for k := range r.commandRegistry {
 		commandsList = append(commandsList, k)
 	}
 	slices.Sort(commandsList)
 
 	// Build the help text that will be reused
-	helpText := "Available commands:\n"
+	helpTexts := []string{"Available commands:", ""}
 	for _, cmd := range commandsList {
-		switch cmd {
-		case "/cherry-pick-invite":
-			helpText += fmt.Sprintf("• %s - Grant a collaborator permission to edit a cherry-pick PR\n", cmd)
-		case "/devbuild":
-			helpText += fmt.Sprintf("• %s - Trigger a devbuild or check build status\n", cmd)
-		default:
-			helpText += fmt.Sprintf("• %s\n", cmd)
-		}
+		helpTexts = append(helpTexts, strings.Join([]string{fmt.Sprintf("• %s", cmd), r.commandRegistry[cmd].Description}, " - "))
 	}
-	helpText += "\nUse [command] --help for more information"
+	helpTexts = append(helpTexts, "", "Use [command] --help for more information")
 
-	return helpText
-}
-
-// determineMessageType determines the message type and checks if the bot was mentioned
-func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msgType string, chatID string, isMentionBot bool) {
-	// Check if the message is from a group chat
-	if event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
-		msgType = msgTypeGroup
-		if event.Event.Message.ChatId != nil {
-			chatID = *event.Event.Message.ChatId
-		}
-		isMentionBot = checkIfBotMentioned(event, botName)
-	} else {
-		msgType = msgTypePrivate
-	}
-
-	return msgType, chatID, isMentionBot
-}
-
-// checkIfBotMentioned checks if the bot was mentioned in the message
-func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botName string) bool {
-	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
-		return false
-	}
-
-	for _, mention := range event.Event.Message.Mentions {
-		if mention == nil {
-			continue
-		}
-		if mention.Name != nil && *mention.Name == botName {
-			return true
-		}
-	}
-	return false
-}
-
-// parseGroupCommand parses commands from group messages
-// Supported format: @bot /command arg1 arg2...
-func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
-	messageContent := strings.TrimSpace(*event.Event.Message.Content)
-
-	var content commandLarkMsgContent
-	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal message content")
-		return nil
-	}
-
-	// In Lark messages, mentions are converted to @_user_X format
-	// Use regex to match commands after @_user_X: /command arg1 arg2...
-	re := regexp.MustCompile(`@_user_\d+\s+(/\S+)(.*)`)
-	matches := re.FindStringSubmatch(content.Text)
-
-	if len(matches) < 3 {
-		return nil
-	}
-
-	commandName := matches[1]
-	argsStr := strings.TrimSpace(matches[2])
-	var args []string
-	if argsStr != "" {
-		args = strings.Fields(argsStr)
-	}
-
-	return &Command{Name: commandName, Args: args}
-}
-
-// parsePrivateCommand parses commands from private messages
-func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
-	messageContent := strings.TrimSpace(*event.Event.Message.Content)
-
-	var content commandLarkMsgContent
-	if err := json.Unmarshal([]byte(messageContent), &content); err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal message content")
-		return nil
-	}
-
-	messageParts := strings.Fields(content.Text)
-	if len(messageParts) < 1 {
-		return nil
-	}
-
-	return &Command{Name: messageParts[0], Args: messageParts[1:]}
-}
-
-func shouldHandle(event *larkim.P2MessageReceiveV1, botName string) *Command {
-	// Determine message type and whether the bot was mentioned
-	msgType, _, isMentionBot := determineMessageType(event, botName)
-
-	if msgType == msgTypeGroup && isMentionBot {
-		return parseGroupCommand(event)
-	} else if msgType == msgTypePrivate {
-		return parsePrivateCommand(event)
-	}
-	return nil
+	return strings.Join(helpTexts, "\n")
 }
