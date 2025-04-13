@@ -54,7 +54,7 @@ func newLarkCardWithGoTemplate(i *AuditInfo) (string, error) {
 		return "", err
 	}
 
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
 		return "", err
 	}

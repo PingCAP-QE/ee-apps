@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/azure"
@@ -141,23 +142,19 @@ func processAskRequest(ctx context.Context, question string) (string, error) {
 	}
 }
 
-func setupAskCtx(ctx context.Context, config map[string]any, _ *CommandSender) context.Context {
+func setupAskCtx(ctx context.Context, cfg config.Config, _ *CommandActor) context.Context {
 	// Initialize LLM client
 	var client openai.Client
 	{
 		log.Debug().Msg("initializing LLM client")
-		llmCfg := config[cfgKeyAskLlmCfg]
-		switch v := llmCfg.(type) {
-		case map[string]any:
-			apiKey := v["api_key"].(string)
-			endpointURL := v["base_url"].(string)
-			apiVesion := v["api_version"].(string)
-			client = openai.NewClient(
-				azure.WithAPIKey(apiKey),
-				azure.WithEndpoint(endpointURL, apiVesion),
-			)
-		default:
+		llmCfg := cfg.Ask.LLM
+		if llmCfg.AzureConfig == nil {
 			client = openai.NewClient()
+		} else {
+			client = openai.NewClient(
+				azure.WithAPIKey(llmCfg.AzureConfig.APIKey),
+				azure.WithEndpoint(llmCfg.AzureConfig.BaseURL, llmCfg.AzureConfig.APIVersion),
+			)
 		}
 
 		log.Debug().Msg("initialized LLM client")
@@ -167,28 +164,24 @@ func setupAskCtx(ctx context.Context, config map[string]any, _ *CommandSender) c
 	var mcpClients []mcpclient.MCPClient
 	var toolDeclarations []openai.ChatCompletionToolParam
 	{
-		mcpCfg := config[cfgKeyAskLlmMcpServers]
-		switch v := mcpCfg.(type) {
-		case map[string]any:
-			for name, cfg := range v {
-				url := cfg.(map[string]any)["base_url"].(string)
-				log.Debug().Str("name", name).Str("url", url).Msg("initializing MCP SSE client")
-				client, declarations, err := initializeMCPClient(ctx, name, url)
-				if err != nil {
-					log.Err(err).Str("name", name).Str("url", url).Msg("failed to initialize MCP SSE client")
-					continue
-				}
-				mcpClients = append(mcpClients, client)
-				toolDeclarations = append(toolDeclarations, declarations...)
-				log.Debug().Str("name", name).Str("url", url).Msg("initialized MCP SSE client")
+		for name, cfg := range cfg.Ask.LLM.MCPServers {
+			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initializing MCP SSE client")
+			client, declarations, err := initializeMCPClient(ctx, name, cfg.BaseURL)
+			if err != nil {
+				log.Err(err).Str("name", name).Str("url", cfg.BaseURL).Msg("failed to initialize MCP SSE client")
+				continue
 			}
+
+			mcpClients = append(mcpClients, client)
+			toolDeclarations = append(toolDeclarations, declarations...)
+			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initialized MCP SSE client")
 		}
 	}
 
 	// Setup context
 	newCtx := context.WithValue(ctx, ctxKeyLlmClient, &client)
-	newCtx = context.WithValue(newCtx, ctxKeyLlmModel, config[cfgKeyAskLlmModel])
-	newCtx = context.WithValue(newCtx, ctxKeyLlmSystemPrompt, config[cfgKeyAskLlmSystemPrompt])
+	newCtx = context.WithValue(newCtx, ctxKeyLlmModel, cfg.Ask.LLM.Model)
+	newCtx = context.WithValue(newCtx, ctxKeyLlmSystemPrompt, cfg.Ask.LLM.SystemPrompt)
 	newCtx = context.WithValue(newCtx, ctxKeyLLmTools, toolDeclarations)
 	newCtx = context.WithValue(newCtx, ctxKeyMcpClients, mcpClients)
 

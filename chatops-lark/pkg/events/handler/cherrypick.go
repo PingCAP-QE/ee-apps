@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
 	"github.com/google/go-github/v68/github"
 	"github.com/rs/zerolog/log"
 )
@@ -85,6 +86,6 @@ func cherryPickInvite(prUrl string, collaboratorUsername string, gc *github.Clie
 	}
 }
 
-func setupCtxCherryPickInvite(ctx context.Context, config map[string]any, _ *CommandSender) context.Context {
-	return context.WithValue(ctx, ctxKeyGithubToken, config["cherry-pick-invite.github_token"])
+func setupCtxCherryPickInvite(ctx context.Context, config config.Config, _ *CommandActor) context.Context {
+	return context.WithValue(ctx, ctxKeyGithubToken, config.CherryPickInvite.GithubToken)
 }
