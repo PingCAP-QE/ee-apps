@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/bndr/gojenkins"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/go-github/v69/github"
@@ -25,12 +24,10 @@ type devbuildsrvc struct {
 	productRepoMap         map[string]string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
-	jenkins                *jenkins
-}
-
-type jenkins struct {
-	Client  *gojenkins.Jenkins
-	JobName string
+	jenkins                struct {
+		client  *gojenkins.Jenkins
+		jobName string
+	}
 }
 
 func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
@@ -39,6 +36,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		logger.Err(err).Msg("failed to create store client")
 		return nil
 	}
+	dbClient = dbClient.Debug()
 
 	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
 	if err != nil {
@@ -46,17 +44,16 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		return nil
 	}
 
-	return &devbuildsrvc{
+	srvc := devbuildsrvc{
 		logger:                 logger,
 		dbClient:               dbClient.Debug(),
 		productRepoMap:         map[string]string{"pd": "tikv/pd"},
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
-		jenkins: &jenkins{
-			Client:  gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL),
-			JobName: cfg.Jenkins.JobName,
-		},
 	}
+	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
+	srvc.jenkins.jobName = cfg.Jenkins.JobName
+	return &srvc
 }
 
 // List devbuild with pagination support
@@ -65,18 +62,23 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 	query := s.dbClient.DevBuild.Query().
 		Where(entdevbuild.IsHotfix(p.Hotfix)).
 		Offset(p.PageSize * (p.Page - 1)).
-		Limit(p.PageSize).
-		Order(sql.OrderByField(p.Sort).ToFunc())
-
+		Limit(p.PageSize)
 	if p.CreatedBy != nil {
 		query.Where(entdevbuild.CreatedBy(*p.CreatedBy))
+	}
+	if p.Direction == "desc" {
+		query.Order(ent.Desc(p.Sort))
+	} else {
+		query.Order(ent.Asc(p.Sort))
 	}
 
 	builds, err := query.All(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
+			s.logger.Debug().Msg("no builds found.")
 			return nil, nil
 		}
+		s.logger.Err(err).Msg("internal error happened!")
 		return nil, &devbuild.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
 
@@ -96,6 +98,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (r
 	if err != nil {
 		return nil, err
 	}
+	s.logger.Debug().Any("record", record).Msg("record saved")
 	// 1.1 fast return when it is a dry run.
 	if p.Dryrun {
 		return transformDevBuild(record), nil
@@ -106,6 +109,8 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (r
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Debug().Any("record", record).Msg("record saved")
 
 	// 3. fast feedback without waiting for the build to complete.
 	return transformDevBuild(record), nil

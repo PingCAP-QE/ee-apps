@@ -18,9 +18,9 @@ type Store struct {
 
 type Jenkins struct {
 	URL      string `yaml:"url,omitempty" json:"url,omitempty"`
-	JobName  string `yaml:"job_name,omitempty" json:"job_name,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+	JobName  string `yaml:"job_name,omitempty" json:"job_name,omitempty"`
 }
 
 type Tekton struct {

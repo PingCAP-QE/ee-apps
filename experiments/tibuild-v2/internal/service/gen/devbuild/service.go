@@ -226,7 +226,7 @@ type TektonStatus struct {
 type UpdatePayload struct {
 	// ID of build
 	ID int
-	// status update
+	// Status to update
 	Status *DevBuildStatus
 	// Dry run
 	Dryrun bool

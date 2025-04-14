@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	PipelineEngineJenkins = "jenkins"
-	PipelineEngineTekton  = "tekton"
+	tektonEngine  = "tekton"
+	jenkinsEngine = "jenkins"
 )
 
 func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, error) {
@@ -55,12 +55,12 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 func (s *devbuildsrvc) triggerBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
 	switch record.PipelineEngine {
-	case PipelineEngineJenkins:
-		return s.triggerJenkinsBuild(ctx, record)
-	case PipelineEngineTekton:
+	case tektonEngine:
 		return s.triggerTknBuild(ctx, record)
+	case jenkinsEngine:
+		return s.triggerJenkinsBuild(ctx, record)
 	default:
-		return record, fmt.Errorf("unsupported pipeline engine: %s", record.PipelineEngine)
+		return nil, fmt.Errorf("unsupported pipeline engine: %s", record.PipelineEngine)
 	}
 }
 

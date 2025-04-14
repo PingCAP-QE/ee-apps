@@ -27,7 +27,7 @@ type CreateRequestBody struct {
 // UpdateRequestBody is the type of the "devbuild" service "update" endpoint
 // HTTP request body.
 type UpdateRequestBody struct {
-	// status update
+	// Status to update
 	Status *DevBuildStatusRequestBody `form:"status" json:"status" xml:"status"`
 }
 

@@ -145,7 +145,7 @@ var _ = Service("devbuild", func() {
 			Attribute("id", Int, "ID of build", func() {
 				Example(1)
 			})
-			Attribute("status", DevBuildStatus, "status update")
+			Attribute("status", DevBuildStatus, "Status to update")
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
