@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -47,9 +48,15 @@ func (i *arrayFlags) Set(value string) error {
 }
 
 func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, error) {
+	// Get API URL from context
+	apiURL := ctx.Value(cfgKeyDevBuildURL).(string)
+	if apiURL == "" {
+		return "", fmt.Errorf("API URL not found in context")
+	}
+
 	params, err := parseCommandDevbuildTrigger(args)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse trigger command: %v", err)
+		return "", err
 	}
 
 	triggerParams := service.DevBuild{
@@ -82,9 +89,9 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 		SetBody(triggerParams).
 		SetQueryParam("dryrun", fmt.Sprint(params.dryRun)).
 		// TODO: add auth in header.
-		Post(devBuildURL)
+		Post(apiURL)
 	if err != nil {
-		return "", err
+		return "", SkipError(err)
 	}
 	if !resp.IsSuccess() {
 		return "", fmt.Errorf("trigger devbuild failed: %s", resp.String())
@@ -92,7 +99,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 
 	result := resp.Result().(*triggerResult)
 
-	return fmt.Sprintf("build id is %d\npolling: %s/%d", result.ID, devBuildURL, result.ID), nil
+	return fmt.Sprintf("build id is %d\npolling: %s/%d", result.ID, apiURL, result.ID), nil
 }
 
 func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
@@ -118,8 +125,9 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 		fs.StringVar(&ret.targetImg, "targetImg", "", "")
 		fs.StringVar(&ret.engine, "engine", "", "pipeline engine")
 	}
+
 	if err := fs.Parse(args); err != nil {
-		return nil, err
+		return nil, InformationError(errors.New(devBuildDetailedHelpText))
 	}
 
 	if fs.NArg() < 3 {
