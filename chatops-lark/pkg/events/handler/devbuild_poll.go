@@ -45,14 +45,17 @@ func parseCommandDevbuildPoll(args []string) (*pollParams, error) {
 	return &ret, nil
 }
 
-func runCommandDevbuildPoll(_ context.Context, args []string) (string, error) {
+func runCommandDevbuildPoll(ctx context.Context, args []string) (string, error) {
 	params, err := parseCommandDevbuildPoll(args)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse poll command: %v", err)
 	}
 
+	// Get API URL from context
+	apiURL := ctx.Value(cfgKeyDevBuildURL).(string)
+
 	client := resty.New()
-	reqUrl, err := url.JoinPath(devBuildURL, params.buildID)
+	reqUrl, err := url.JoinPath(apiURL, params.buildID)
 	if err != nil {
 		return "", err
 	}

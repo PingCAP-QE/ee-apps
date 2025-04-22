@@ -3,10 +3,12 @@ package handler
 import (
 	"context"
 	"fmt"
+
+	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
 )
 
-// TODO: get it from cli args.
-const devBuildURL = "https://tibuild.pingcap.net/api/devbuilds"
+// Configuration key for DevBuild URL in the config map
+const cfgKeyDevBuildURL = "devbuild.api_url"
 
 const (
 	devBuildHelpText = `missing subcommand
@@ -73,6 +75,9 @@ func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	}
 }
 
-func setupCtxDevbuild(ctx context.Context, _ map[string]any, sender *CommandSender) context.Context {
-	return context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
+func setupCtxDevbuild(ctx context.Context, config config.Config, sender *CommandActor) context.Context {
+	newCtx := context.WithValue(ctx, ctxKeyLarkSenderEmail, sender.Email)
+	newCtx = context.WithValue(newCtx, cfgKeyDevBuildURL, config.DevBuild.ApiURL)
+
+	return newCtx
 }

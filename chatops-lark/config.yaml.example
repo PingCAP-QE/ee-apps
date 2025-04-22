@@ -1,0 +1,36 @@
+# Example configuration file for chatops-lark
+
+# Bot configuration
+bot_name: "ChatOps Bot" # Optional: will be automatically fetched from API if not provided
+
+# Cherry pick configuration
+cherry_pick_invite:
+  audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  github_token: "ghp_xxx"
+
+# Ask command configuration
+ask:
+  # audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  llm:
+    azure_config:
+      api_key: "your-api-key"
+      base_url: "https://your-deployment.openai.azure.com"
+      api_version: "2023-05-15"
+    model: "gpt-4"
+    system_prompt: |
+      You are a helpful assistant for PingCAP employees.
+      You have access to various tools that can help answer questions about our infrastructure and services.
+      Always respond with accurate and helpful information.
+    mcp_servers:
+      tidb_server:
+        base_url: "https://mcp-server.example.com"
+      monitoring_server:
+        base_url: "https://monitoring-mcp.example.com"
+
+# DevBuild configuration
+devbuild:
+  # audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  api_url: "https://tibuild.pingcap.net/api/devbuilds"
+
+# Debug mode
+debug: false
