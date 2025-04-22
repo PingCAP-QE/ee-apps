@@ -13,11 +13,6 @@ import (
 )
 
 const (
-	cfgKeyAskLlmCfg          = "ask.llm.azure_config"
-	cfgKeyAskLlmModel        = "ask.llm.model"
-	cfgKeyAskLlmSystemPrompt = "ask.llm.system_prompt"
-	cfgKeyAskLlmMcpServers   = "ask.llm.mcp_servers"
-
 	ctxKeyLlmClient       = "llm.client"
 	ctxKeyLlmModel        = "llm.model"
 	ctxKeyLlmSystemPrompt = "llm.system_prompt"

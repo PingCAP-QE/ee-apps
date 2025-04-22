@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the application configuration
+// Config represents the overall application configuration, including all subcommands.
 type Config struct {
 	// Bot configuration
 	AppID     string `yaml:"app_id" json:"app_id"`
