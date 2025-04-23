@@ -68,14 +68,10 @@ func GetBotOpenID(ctx context.Context, appID, appSecret string) (string, error) 
 			return "", fmt.Errorf("API error: %s (code: %d)", botResp.Msg, botResp.Code)
 		}
 
-		// Remove AppName check
-		// if botResp.Bot.AppName == "" {
-		// 	return "", "", fmt.Errorf("bot name is empty in API response")
-		// }
 		if botResp.Bot.OpenID == "" {
 			return "", fmt.Errorf("bot openID is empty in API response")
 		}
 	}
-	// Return only OpenID
+
 	return botResp.Bot.OpenID, nil
 }
