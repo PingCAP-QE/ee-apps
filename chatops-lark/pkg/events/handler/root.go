@@ -54,10 +54,12 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 	eventID := event.EventV2Base.Header.EventID
 
-	msgType := "unknown"
+	chatType := "unknown"
 	if event.Event.Message.ChatType != nil {
-		msgType = *event.Event.Message.ChatType
+		chatType = *event.Event.Message.ChatType
 	}
+
+	msgType := chatType
 
 	hl := r.logger.With().
 		Str("eventId", eventID).
@@ -113,7 +115,7 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 		asyncLog.Info().Msg("Processing command")
 		message, err := r.handleCommand(ctx, command)
-		r.feedbackCommandResult(messageID, message, err, asyncLog)
+		r.feedbackCommandResult(messageID, chatType, message, err, asyncLog)
 	}()
 
 	return nil
@@ -172,10 +174,10 @@ func (r *rootHandler) initialize() error {
 	return nil
 }
 
-func (r *rootHandler) feedbackCommandResult(messageID string, message string, err error, asyncLog zerolog.Logger) {
+func (r *rootHandler) feedbackCommandResult(messageID, chatType string, message string, err error, asyncLog zerolog.Logger) {
 	if err == nil {
 		asyncLog.Info().Msg("Command processed successfully")
-		r.sendResponse(messageID, StatusSuccess, message)
+		r.sendResponse(messageID, chatType, StatusSuccess, message)
 		return
 	}
 
@@ -184,15 +186,15 @@ func (r *rootHandler) feedbackCommandResult(messageID string, message string, er
 	case SkipError:
 		asyncLog.Info().Msg("Command was skipped")
 		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
-		r.sendResponse(messageID, StatusSkip, message)
+		r.sendResponse(messageID, chatType, StatusSkip, message)
 	case InformationError:
 		asyncLog.Info().Msg("Command was handled but just feedback information")
 		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
-		r.sendResponse(messageID, StatusInfo, message)
+		r.sendResponse(messageID, chatType, StatusInfo, message)
 	default:
 		asyncLog.Err(err).Msg("Command processing failed")
 		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-		r.sendResponse(messageID, StatusFailure, message)
+		r.sendResponse(messageID, chatType, StatusFailure, message)
 	}
 }
 
@@ -242,23 +244,27 @@ func (r *rootHandler) audit(auditWebhook string, command *Command) error {
 	return audit.RecordAuditMessage(auditInfo, auditWebhook)
 }
 
-func (r *rootHandler) sendResponse(reqMsgID string, status, message string) error {
-	replyMsg, err := response.NewReplyMessageReq(reqMsgID, status, message)
+func (r *rootHandler) sendResponse(reqMsgID, chatType string, status, message string) error {
+	replyInThread := (chatType == "group")
+
+	replyMsg, err := response.NewReplyMessageReq(reqMsgID, replyInThread, status, message)
 	if err != nil {
-		log.Err(err).Msg("render msg faled.")
+		log.Err(err).Msg("Failed to build reply message request.")
 		return err
 	}
 
 	res, err := r.Im.Message.Reply(context.Background(), replyMsg)
 	if err != nil {
-		log.Err(err).Msg("send msg error.")
+		log.Err(err).Msg("Failed to send reply message.")
 		return err
 	}
 
 	if !res.Success() {
-		log.Error().Msg("response message sent failed")
+		log.Error().Str("code", fmt.Sprintf("%d", res.Code)).Str("msg", res.Msg).Msg("Failed to send reply, API error.")
+		return fmt.Errorf("Lark API error sending reply: %s (code: %d)", res.Msg, res.Code)
 	}
 
+	log.Info().Bool("repliedInThread", replyInThread).Msg("Reply message sent successfully.")
 	return nil
 }
 
