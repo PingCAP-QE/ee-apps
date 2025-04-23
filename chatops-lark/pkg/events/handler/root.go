@@ -32,7 +32,6 @@ type rootHandler struct {
 
 	Config config.Config
 
-	botName         string
 	botOpenID       string
 	commandRegistry map[string]CommandConfig
 	eventCache      *bigcache.BigCache
@@ -91,7 +90,7 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		return err
 	}
 
-	command := shouldHandle(event, r.botName)
+	command := shouldHandle(event, r.botOpenID)
 	if command == nil {
 		return nil
 	}
@@ -152,19 +151,18 @@ func (r *rootHandler) initialize() error {
 	}
 	r.Client = lark.NewClient(r.Config.AppID, r.Config.AppSecret, producerOpts...)
 
-	// fetch and set the bot name and OpenID using the botinfo package.
+	// fetch and set the bot OpenID using the botinfo package.
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	name, openID, err := botinfo.GetBotInfo(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
+	openID, err := botinfo.GetBotOpenID(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
 	if err != nil {
-		r.logger.Err(err).Msg("failed to get bot info (name and openID) from botinfo package")
+		r.logger.Err(err).Msg("failed to get bot openID from botinfo package")
 		return err
 	}
 
-	r.botName = name
 	r.botOpenID = openID
-	r.logger.Info().Str("botName", r.botName).Str("botOpenID", r.botOpenID).Msg("Bot info initialized via botinfo package")
+	r.logger.Info().Str("botOpenID", r.botOpenID).Msg("Bot OpenID initialized via botinfo package")
 
 	r.commandRegistry = map[string]CommandConfig{
 		"/cherry-pick-invite": CommandConfig{
