@@ -33,6 +33,7 @@ type rootHandler struct {
 	Config config.Config
 
 	botName         string
+	botOpenID       string
 	commandRegistry map[string]CommandConfig
 	eventCache      *bigcache.BigCache
 	logger          zerolog.Logger
@@ -53,10 +54,23 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	eventID := event.EventV2Base.Header.EventID
+	messageID := *event.Event.Message.MessageId
 
 	chatType := "unknown"
 	if event.Event.Message.ChatType != nil {
 		chatType = *event.Event.Message.ChatType
+	}
+
+	if chatType == "p2p" && event.Event.Message.Mentions != nil {
+		for _, mention := range event.Event.Message.Mentions {
+			if mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == r.botOpenID {
+				log.Info().Str("eventId", eventID).Msg("Bot mentioned in P2P chat, sending reminder.")
+				hintMessage := "Hi there! In private chats, you don't need to @ me. Just type your command directly (e.g., `/help`). You only need to @ mention me in group chats."
+				_ = r.sendResponse(messageID, chatType, StatusInfo, hintMessage)
+				// Stop processing this event further
+				return nil
+			}
+		}
 	}
 
 	msgType := chatType
@@ -82,7 +96,6 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		return nil
 	}
 
-	messageID := *event.Event.Message.MessageId
 	refactionID, err := r.addReaction(messageID)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
@@ -139,17 +152,20 @@ func (r *rootHandler) initialize() error {
 	}
 	r.Client = lark.NewClient(r.Config.AppID, r.Config.AppSecret, producerOpts...)
 
-	// fetch and set the bot name.
+	// fetch and set the bot name and OpenID using the botinfo package.
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	name, err := botinfo.GetBotName(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
+
+	name, openID, err := botinfo.GetBotInfo(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
 	if err != nil {
-		r.logger.Err(err).Msg("failed to get bot name")
+		r.logger.Err(err).Msg("failed to get bot info (name and openID) from botinfo package")
 		return err
 	}
-	r.botName = name
 
-	// initialize command registry
+	r.botName = name
+	r.botOpenID = openID
+	r.logger.Info().Str("botName", r.botName).Str("botOpenID", r.botOpenID).Msg("Bot info initialized via botinfo package")
+
 	r.commandRegistry = map[string]CommandConfig{
 		"/cherry-pick-invite": CommandConfig{
 			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
