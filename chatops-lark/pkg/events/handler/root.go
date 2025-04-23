@@ -65,8 +65,8 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 			if mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == r.botOpenID {
 				log.Info().Str("eventId", eventID).Msg("Bot mentioned in P2P chat, sending reminder.")
 				hintMessage := "Hi there! In private chats, you don't need to @ me. Just type your command directly (e.g., `/help`). You only need to @ mention me in group chats."
-				_ = r.sendResponse(messageID, chatType, StatusInfo, hintMessage)
-				// Stop processing this event further
+				_ = r.sendResponse(messageID, false, StatusInfo, hintMessage)
+				// Stop processing this event further, because it's a private chat.
 				return nil
 			}
 		}
@@ -127,7 +127,8 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 		asyncLog.Info().Msg("Processing command")
 		message, err := r.handleCommand(ctx, command)
-		r.feedbackCommandResult(messageID, chatType, message, err, asyncLog)
+		replyInThread := (chatType == "group")
+		r.feedbackCommandResult(messageID, replyInThread, message, err, asyncLog)
 	}()
 
 	return nil
@@ -188,10 +189,10 @@ func (r *rootHandler) initialize() error {
 	return nil
 }
 
-func (r *rootHandler) feedbackCommandResult(messageID, chatType string, message string, err error, asyncLog zerolog.Logger) {
+func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool, message string, err error, asyncLog zerolog.Logger) {
 	if err == nil {
 		asyncLog.Info().Msg("Command processed successfully")
-		r.sendResponse(messageID, chatType, StatusSuccess, message)
+		r.sendResponse(messageID, replyInThread, StatusSuccess, message)
 		return
 	}
 
@@ -200,15 +201,15 @@ func (r *rootHandler) feedbackCommandResult(messageID, chatType string, message 
 	case SkipError:
 		asyncLog.Info().Msg("Command was skipped")
 		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
-		r.sendResponse(messageID, chatType, StatusSkip, message)
+		r.sendResponse(messageID, replyInThread, StatusSkip, message)
 	case InformationError:
 		asyncLog.Info().Msg("Command was handled but just feedback information")
 		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
-		r.sendResponse(messageID, chatType, StatusInfo, message)
+		r.sendResponse(messageID, replyInThread, StatusInfo, message)
 	default:
 		asyncLog.Err(err).Msg("Command processing failed")
 		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-		r.sendResponse(messageID, chatType, StatusFailure, message)
+		r.sendResponse(messageID, replyInThread, StatusFailure, message)
 	}
 }
 
@@ -258,9 +259,7 @@ func (r *rootHandler) audit(auditWebhook string, command *Command) error {
 	return audit.RecordAuditMessage(auditInfo, auditWebhook)
 }
 
-func (r *rootHandler) sendResponse(reqMsgID, chatType string, status, message string) error {
-	replyInThread := (chatType == "group")
-
+func (r *rootHandler) sendResponse(reqMsgID string, replyInThread bool, status, message string) error {
 	replyMsg, err := response.NewReplyMessageReq(reqMsgID, replyInThread, status, message)
 	if err != nil {
 		log.Err(err).Msg("Failed to build reply message request.")
