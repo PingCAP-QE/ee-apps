@@ -21,8 +21,8 @@ var (
 // 	os.Exit(m.Run())
 // }
 
-func TestGetBotName(t *testing.T) {
-	// You should run it with: go test -run=TestGetBotName/real_test ./pkg/botinfo -app-id <app-id> -app-secret <app-secret>
+func TestGetBotInfo(t *testing.T) {
+	// You should run it with: go test -run=TestGetBotInfo/real_test ./pkg/botinfo -app-id <app-id> -app-secret <app-secret>
 	t.Run("real test", func(tt *testing.T) {
 		flag.Parse()
 
@@ -34,14 +34,17 @@ func TestGetBotName(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		name, err := GetBotName(ctx, *testAppID, *testAppSecret)
+		name, openID, err := GetBotInfo(ctx, *testAppID, *testAppSecret)
 		if err != nil {
 			tt.Fatal(err)
 		}
 
-		tt.Log(name)
+		tt.Logf("Name: %s, OpenID: %s", name, openID)
 		if name == "" {
 			tt.Fatal("Expected non-empty bot name")
+		}
+		if openID == "" {
+			tt.Fatal("Expected non-empty bot openID")
 		}
 	})
 }
