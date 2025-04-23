@@ -108,6 +108,12 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 
 	fs := flag.NewFlagSet("trigger", flag.ContinueOnError)
 	{
+		// Required flags (previously positional arguments)
+		fs.StringVar(&ret.product, "product", "", "product to build (required)")
+		fs.StringVar(&ret.version, "version", "", "version to build (required)")
+		fs.StringVar(&ret.gitRef, "gitRef", "", "git reference to build from (required)")
+
+		// Optional flags
 		fs.StringVar(&ret.edition, "e", "community", "default is community")
 		fs.StringVar(&ret.edition, "edition", "community", "default is community")
 		fs.StringVar(&ret.platform, "p", "", "platform to build, default is for all")
@@ -130,13 +136,17 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 		return nil, InformationError(errors.New(devBuildDetailedHelpText))
 	}
 
-	if fs.NArg() < 3 {
-		return nil, fmt.Errorf("missing required positional arguments: product, version, gitRef")
+	// Check required flags
+	if ret.product == "" {
+		return nil, fmt.Errorf("required flag -product is missing")
+	}
+	if ret.version == "" {
+		return nil, fmt.Errorf("required flag -version is missing")
+	}
+	if ret.gitRef == "" {
+		return nil, fmt.Errorf("required flag -gitRef is missing")
 	}
 
-	ret.product = fs.Arg(0)
-	ret.version = fs.Arg(1)
-	ret.gitRef = fs.Arg(2)
 	ret.buildEnvs = buildEnv
 
 	return &ret, nil
