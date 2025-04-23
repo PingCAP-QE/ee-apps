@@ -69,7 +69,7 @@ func GetBotOpenID(ctx context.Context, appID, appSecret string) (string, error) 
 		}
 
 		if botResp.Bot.OpenID == "" {
-			return "", fmt.Errorf("bot openID is empty in API response")
+			return "", fmt.Errorf("bot openID is empty in API response from %s", botInfoPathURL)
 		}
 	}
 
