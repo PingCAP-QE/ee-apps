@@ -10,14 +10,14 @@ import (
 )
 
 // determineMessageType determines the message type and checks if the bot was mentioned
-func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msgType string, chatID string, isMentionBot bool) {
+func determineMessageType(event *larkim.P2MessageReceiveV1, botOpenID string) (msgType string, chatID string, isMentionBot bool) {
 	// Check if the message is from a group chat
 	if event.Event.Message.ChatType != nil && *event.Event.Message.ChatType == "group" {
 		msgType = msgTypeGroup
 		if event.Event.Message.ChatId != nil {
 			chatID = *event.Event.Message.ChatId
 		}
-		isMentionBot = checkIfBotMentioned(event, botName)
+		isMentionBot = checkIfBotMentioned(event, botOpenID)
 	} else {
 		msgType = msgTypePrivate
 	}
@@ -25,17 +25,15 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botName string) (msg
 	return msgType, chatID, isMentionBot
 }
 
-// checkIfBotMentioned checks if the bot was mentioned in the message
-func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botName string) bool {
+// checkIfBotMentioned checks if the bot was mentioned in the message using OpenID
+func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botOpenID string) bool {
 	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
 		return false
 	}
 
 	for _, mention := range event.Event.Message.Mentions {
-		if mention == nil {
-			continue
-		}
-		if mention.Name != nil && *mention.Name == botName {
+		log.Info().Interface("mention", mention).Msg("mention")
+		if mention != nil && mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == botOpenID {
 			return true
 		}
 	}
@@ -90,9 +88,9 @@ func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
 	return &Command{Name: messageParts[0], Args: messageParts[1:]}
 }
 
-func shouldHandle(event *larkim.P2MessageReceiveV1, botName string) *Command {
+func shouldHandle(event *larkim.P2MessageReceiveV1, botOpenID string) *Command {
 	// Determine message type and whether the bot was mentioned
-	msgType, _, isMentionBot := determineMessageType(event, botName)
+	msgType, _, isMentionBot := determineMessageType(event, botOpenID)
 
 	if msgType == msgTypeGroup && isMentionBot {
 		return parseGroupCommand(event)

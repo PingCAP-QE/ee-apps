@@ -32,7 +32,7 @@ type rootHandler struct {
 
 	Config config.Config
 
-	botName         string
+	botOpenID       string
 	commandRegistry map[string]CommandConfig
 	eventCache      *bigcache.BigCache
 	logger          zerolog.Logger
@@ -53,11 +53,26 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	eventID := event.EventV2Base.Header.EventID
+	messageID := *event.Event.Message.MessageId
 
-	msgType := "unknown"
+	chatType := "unknown"
 	if event.Event.Message.ChatType != nil {
-		msgType = *event.Event.Message.ChatType
+		chatType = *event.Event.Message.ChatType
 	}
+
+	if chatType == "p2p" && event.Event.Message.Mentions != nil {
+		for _, mention := range event.Event.Message.Mentions {
+			if mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == r.botOpenID {
+				log.Info().Str("eventId", eventID).Msg("Bot mentioned in P2P chat, sending reminder.")
+				hintMessage := "Hi there! In private chats, you don't need to @ me. Just type your command directly (e.g., `/help`). You only need to @ mention me in group chats."
+				_ = r.sendResponse(messageID, false, StatusInfo, hintMessage)
+				// Stop processing this event further, because it's a private chat.
+				return nil
+			}
+		}
+	}
+
+	msgType := chatType
 
 	hl := r.logger.With().
 		Str("eventId", eventID).
@@ -75,12 +90,11 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 		return err
 	}
 
-	command := shouldHandle(event, r.botName)
+	command := shouldHandle(event, r.botOpenID)
 	if command == nil {
 		return nil
 	}
 
-	messageID := *event.Event.Message.MessageId
 	refactionID, err := r.addReaction(messageID)
 	if err != nil {
 		hl.Err(err).Msg("send heartbeat failed")
@@ -113,7 +127,8 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 		asyncLog.Info().Msg("Processing command")
 		message, err := r.handleCommand(ctx, command)
-		r.feedbackCommandResult(messageID, message, err, asyncLog)
+		replyInThread := (chatType == "group")
+		r.feedbackCommandResult(messageID, replyInThread, message, err, asyncLog)
 	}()
 
 	return nil
@@ -137,17 +152,19 @@ func (r *rootHandler) initialize() error {
 	}
 	r.Client = lark.NewClient(r.Config.AppID, r.Config.AppSecret, producerOpts...)
 
-	// fetch and set the bot name.
+	// fetch and set the bot OpenID using the botinfo package.
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	name, err := botinfo.GetBotName(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
+
+	openID, err := botinfo.GetBotOpenID(ctxWithTimeout, r.Config.AppID, r.Config.AppSecret)
 	if err != nil {
-		r.logger.Err(err).Msg("failed to get bot name")
+		r.logger.Err(err).Msg("failed to get bot openID from botinfo package")
 		return err
 	}
-	r.botName = name
 
-	// initialize command registry
+	r.botOpenID = openID
+	r.logger.Info().Str("botOpenID", r.botOpenID).Msg("Bot OpenID initialized via botinfo package")
+
 	r.commandRegistry = map[string]CommandConfig{
 		"/cherry-pick-invite": CommandConfig{
 			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
@@ -172,10 +189,10 @@ func (r *rootHandler) initialize() error {
 	return nil
 }
 
-func (r *rootHandler) feedbackCommandResult(messageID string, message string, err error, asyncLog zerolog.Logger) {
+func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool, message string, err error, asyncLog zerolog.Logger) {
 	if err == nil {
 		asyncLog.Info().Msg("Command processed successfully")
-		r.sendResponse(messageID, StatusSuccess, message)
+		r.sendResponse(messageID, replyInThread, StatusSuccess, message)
 		return
 	}
 
@@ -184,15 +201,15 @@ func (r *rootHandler) feedbackCommandResult(messageID string, message string, er
 	case SkipError:
 		asyncLog.Info().Msg("Command was skipped")
 		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
-		r.sendResponse(messageID, StatusSkip, message)
+		r.sendResponse(messageID, replyInThread, StatusSkip, message)
 	case InformationError:
 		asyncLog.Info().Msg("Command was handled but just feedback information")
 		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
-		r.sendResponse(messageID, StatusInfo, message)
+		r.sendResponse(messageID, replyInThread, StatusInfo, message)
 	default:
 		asyncLog.Err(err).Msg("Command processing failed")
 		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-		r.sendResponse(messageID, StatusFailure, message)
+		r.sendResponse(messageID, replyInThread, StatusFailure, message)
 	}
 }
 
@@ -242,23 +259,25 @@ func (r *rootHandler) audit(auditWebhook string, command *Command) error {
 	return audit.RecordAuditMessage(auditInfo, auditWebhook)
 }
 
-func (r *rootHandler) sendResponse(reqMsgID string, status, message string) error {
-	replyMsg, err := response.NewReplyMessageReq(reqMsgID, status, message)
+func (r *rootHandler) sendResponse(reqMsgID string, replyInThread bool, status, message string) error {
+	replyMsg, err := response.NewReplyMessageReq(reqMsgID, replyInThread, status, message)
 	if err != nil {
-		log.Err(err).Msg("render msg faled.")
+		log.Err(err).Msg("Failed to build reply message request.")
 		return err
 	}
 
 	res, err := r.Im.Message.Reply(context.Background(), replyMsg)
 	if err != nil {
-		log.Err(err).Msg("send msg error.")
+		log.Err(err).Msg("Failed to send reply message.")
 		return err
 	}
 
 	if !res.Success() {
-		log.Error().Msg("response message sent failed")
+		log.Error().Str("code", fmt.Sprintf("%d", res.Code)).Str("msg", res.Msg).Msg("Failed to send reply, API error.")
+		return fmt.Errorf("Lark API error sending reply: %s (code: %d)", res.Msg, res.Code)
 	}
 
+	log.Info().Bool("repliedInThread", replyInThread).Msg("Reply message sent successfully.")
 	return nil
 }
 
