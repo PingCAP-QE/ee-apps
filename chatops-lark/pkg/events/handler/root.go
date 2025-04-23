@@ -22,9 +22,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/response"
 )
 
-// TODO: support command /sync_docker_image
-var commandConfigs = map[string]CommandConfig{}
-
 func NewRootForMessage(cfg *config.Config, clientOpts ...lark.ClientOptionFunc) func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 	h := &rootHandler{Config: *cfg}
 	return h.Handle
@@ -226,7 +223,7 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 }
 
 func (r *rootHandler) getCommandConfig(command *Command, cmdLogger zerolog.Logger) (*CommandConfig, error) {
-	cmdConfig, ok := commandConfigs[command.Name]
+	cmdConfig, ok := r.commandRegistry[command.Name]
 	if !ok {
 		cmdLogger.Warn().Msg("Unsupported command")
 

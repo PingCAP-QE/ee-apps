@@ -1,7 +1,8 @@
 # Example configuration file for chatops-lark
 
 # Bot configuration
-bot_name: "ChatOps Bot" # Optional: will be automatically fetched from API if not provided
+app_id: <app_id> # or set it from cli options `--app-id`
+app_secret: <app_secret> # or set it from cli options `--app-secret`
 
 # Cherry pick configuration
 cherry_pick_invite:

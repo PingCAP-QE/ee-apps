@@ -7,7 +7,8 @@ You can run it by following steps:
 1. Prepare the configuration file `config.yaml`. An example configuration file is provided at `config.yaml.example`:
   ```yaml
   # Bot configuration
-  bot_name: "ChatOps Bot"  # Optional: will be automatically fetched from API if not provided
+  app_id: <app_id> # or set it from cli options `--app-id`
+  app_secret: <app_secret> # or set it from cli options `--app-secret`
 
   # Cherry pick configuration
   cherry_pick_invite:
@@ -34,7 +35,7 @@ You can run it by following steps:
 
 2. Run the lark bot app:
   ```bash
-  go run ./cmd/server -app-id=<your_app_id> -app-secret=<your_app_secret>
+  go run ./cmd/server [-app-id=<your_app_id>] [-app-secret=<your_app_secret>]
   ```
 
 ## Deployment
