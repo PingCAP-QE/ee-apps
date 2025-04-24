@@ -200,16 +200,16 @@ type GitRef string
 
 // Edition constants define the valid values for DevBuildSpec.Edition
 const (
-	EditionEnterprise   = "enterprise"
-	EditionCommunity    = "community"
-	EditionFailPoint    = "failpoint"
-	EditionFips         = "fips"
-	EditionExperimental = "experimental"
+	EditionEnterprise = "enterprise"
+	EditionCommunity  = "community"
+	EditionFailPoint  = "failpoint"
+	EditionFips       = "fips"
+	EditionExperiment = "experiment"
 )
 
 var (
 	InvalidEditionForJenkins = []string{EditionEnterprise, EditionCommunity}
-	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperimental}
+	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment}
 )
 
 type BuildStatus string
