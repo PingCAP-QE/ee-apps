@@ -493,7 +493,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        EditionExperimental, // Not in InvalidEditionForJenkins
+					Edition:        EditionExperiment, // Not in InvalidEditionForJenkins
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
