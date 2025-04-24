@@ -23,7 +23,7 @@ func TestDevBuildCreate(t *testing.T) {
 	repo := DevBuildRepo{Db: odb}
 	mock.ExpectBegin()
 	now := time.Unix(1, 0)
-	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "", "v6.7.0", CommunityEdition, "",
+	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "", "v6.7.0", EditionCommunity, "",
 		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "", /* target_img */
 		JenkinsEngine, "PENDING", 0, "", nil, nil,
 		json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -31,7 +31,7 @@ func TestDevBuildCreate(t *testing.T) {
 	mock.ExpectCommit()
 	entity, err := repo.Create(context.TODO(), DevBuild{
 		Meta: DevBuildMeta{CreatedAt: now, UpdatedAt: now},
-		Spec: DevBuildSpec{Product: ProductBr, Version: "v6.7.0", Edition: CommunityEdition,
+		Spec: DevBuildSpec{Product: ProductBr, Version: "v6.7.0", Edition: EditionCommunity,
 			BuildEnv: "AA=BB", ProductDockerfile: "https://raw.example.com/Dockerfile",
 			BuilderImg:     "pingcap/builder",
 			PipelineEngine: JenkinsEngine},

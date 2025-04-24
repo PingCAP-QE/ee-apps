@@ -184,7 +184,7 @@ func fillWithDefaults(req *DevBuild) {
 }
 
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
-	if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition && spec.PluginGitRef == "" {
+	if spec.Product == ProductTidb && spec.Edition == EditionEnterprise && spec.PluginGitRef == "" {
 		groups := versionValidator.FindStringSubmatch(spec.Version)
 		if len(groups) == 3 {
 			major_sub := groups[1]
@@ -233,7 +233,7 @@ func fillForFIPS(spec *DevBuildSpec) {
 		}
 	} else {
 		fileName := spec.Product
-		if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition {
+		if spec.Product == ProductTidb && spec.Edition == EditionEnterprise {
 			fileName = fileName + "-enterprise"
 		}
 		dockerfile := fmt.Sprintf("https://raw.githubusercontent.com/PingCAP-QE/artifacts/main/dockerfiles/%s.Dockerfile", fileName)
@@ -275,7 +275,7 @@ func validateReq(req DevBuild) error {
 	if spec.GithubRepo != "" && (GHRepoToStruct(spec.GithubRepo) == nil || !githubRepoValidator.MatchString(spec.GithubRepo)) {
 		return fmt.Errorf("githubRepo is not valid, should be like org/repo")
 	}
-	if spec.Edition == EnterpriseEdition && spec.Product == ProductTidb {
+	if spec.Edition == EditionEnterprise && spec.Product == ProductTidb {
 		if !gitRefValidator.MatchString(spec.PluginGitRef) {
 			return fmt.Errorf("pluginGitRef is not valid")
 		}

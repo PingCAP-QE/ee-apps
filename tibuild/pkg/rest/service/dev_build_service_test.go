@@ -78,7 +78,7 @@ func TestDevBuildCreate(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master", GithubRepo: "pingcap/tidb"}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master", GithubRepo: "pingcap/tidb"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, 1, entity.ID)
@@ -94,21 +94,21 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 	t.Run("auto fill plugin for devbuild", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23"}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1", entity.Spec.PluginGitRef)
 	})
 	t.Run("auto fill plugin for hotfix", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2-20240125-5de58f5", Edition: EnterpriseEdition, GitRef: "pull/23", IsHotfix: true}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2-20240125-5de58f5", Edition: EditionEnterprise, GitRef: "pull/23", IsHotfix: true}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1.2", entity.Spec.PluginGitRef)
 	})
 	t.Run("auto fill fips", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTikv, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", Features: "fips"}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductTikv, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
@@ -117,7 +117,7 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 	t.Run("auto fill fips", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductBr, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", Features: "fips"}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductBr, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
@@ -125,7 +125,7 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 	t.Run("bad enterprise plugin", func(t *testing.T) {
 		_, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "maste"}},
+			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "maste"}},
 			DevBuildSaveOption{})
 		require.ErrorContains(t, err, "pluginGitRef is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
@@ -136,12 +136,12 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 
 	t.Run("bad version", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "av6.1.2", Edition: CommunityEdition}}, DevBuildSaveOption{})
+		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "av6.1.2", Edition: EditionCommunity}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "version is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("validate gitRef", func(t *testing.T) {
-		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: CommunityEdition, GitRef: "pull/1234 "}}
+		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "pull/1234 "}}
 		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "gitRef is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
@@ -164,7 +164,7 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 
 	t.Run("validate target image", func(t *testing.T) {
-		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: CommunityEdition, GitRef: "branch/feature/somefeat"}}
+		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "branch/feature/somefeat"}}
 		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.NoError(t, err)
 
@@ -182,18 +182,18 @@ func TestDevBuildCreate(t *testing.T) {
 
 	t.Run("bad githubRepo", func(t *testing.T) {
 		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
-			Version: "v6.1.2", Edition: CommunityEdition, GithubRepo: "aa/bb/cc"}}, DevBuildSaveOption{})
+			Version: "v6.1.2", Edition: EditionCommunity, GithubRepo: "aa/bb/cc"}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "githubRepo is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("hotfix ok", func(t *testing.T) {
 		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "branch/master",
-			Version: "v6.1.2-20230102", Edition: CommunityEdition, IsHotfix: true}}, DevBuildSaveOption{})
+			Version: "v6.1.2-20230102", Edition: EditionCommunity, IsHotfix: true}}, DevBuildSaveOption{})
 		require.NoError(t, err)
 	})
 	t.Run("hotfix check", func(t *testing.T) {
 		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
-			Version: "v6.1.2", Edition: CommunityEdition, IsHotfix: true}}, DevBuildSaveOption{})
+			Version: "v6.1.2", Edition: EditionCommunity, IsHotfix: true}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "verion must be like v7.0.0-20230102... for hotfix")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
@@ -209,7 +209,7 @@ func TestDevBuildUpdate(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		mockedRepo.saved = DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"}}
+		mockedRepo.saved = DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"}}
 		entity, err := server.Update(context.TODO(), 1,
 			DevBuild{Spec: DevBuildSpec{Product: ProductBr}, Status: DevBuildStatus{Status: BuildStatusSuccess}},
 			DevBuildSaveOption{})
@@ -279,7 +279,7 @@ func TestDevBuildGet(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
-			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 			Status: DevBuildStatus{PipelineBuildID: 4}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
@@ -287,7 +287,7 @@ func TestDevBuildGet(t *testing.T) {
 	})
 	t.Run("render oci file", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
-			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 			Status: DevBuildStatus{PipelineBuildID: 4, BuildReport: &BuildReport{Binaries: []BinArtifact{{OciFile: &OciFile{Repo: "repo", Tag: "tag", File: "file"}}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
@@ -295,7 +295,7 @@ func TestDevBuildGet(t *testing.T) {
 	})
 	t.Run("render tekton pipeline", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
-			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 			Status: DevBuildStatus{PipelineBuildID: 4, TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{{Name: "p1"}}}}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{})
 		require.NoError(t, err)
@@ -303,7 +303,7 @@ func TestDevBuildGet(t *testing.T) {
 	})
 	t.Run("sync", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
-			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+			Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 			Status: DevBuildStatus{PipelineBuildID: 4, Status: BuildStatusProcessing}}
 		mockedJenkins.job = &gojenkins.Build{Raw: &gojenkins.BuildResponse{Result: "PROCCESSING", Timestamp: time.Unix(1, 0).UnixMilli()}}
 		entity, err := server.Get(context.TODO(), 1, DevBuildGetOption{Sync: true})
@@ -323,7 +323,7 @@ func TestMergeTektonStatus(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		mockedRepo.saved = DevBuild{ID: 1,
 			Spec: DevBuildSpec{
-				Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition,
+				Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise,
 				GitRef: "pull/23", PluginGitRef: "master", PipelineEngine: TektonEngine,
 			},
 			Status: DevBuildStatus{TektonStatus: &TektonStatus{Pipelines: []TektonPipeline{
@@ -350,7 +350,7 @@ func TestDevBuildRerun(t *testing.T) {
 		Tekton:  &mockTrigger{},
 	}
 	mockedRepo.saved = DevBuild{ID: 2,
-		Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EnterpriseEdition, GitRef: "pull/23", PluginGitRef: "master"},
+		Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 		Status: DevBuildStatus{PipelineBuildID: 4}}
 	entity, err := server.Rerun(context.TODO(), 1, DevBuildSaveOption{})
 	require.NoError(t, err)
@@ -450,7 +450,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -464,7 +464,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: TektonEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -478,7 +478,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        "invalid-product",
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -493,7 +493,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        ExperimentalEdition, // Not in InvalidEditionForJenkins
+					Edition:        EditionExperimental, // Not in InvalidEditionForJenkins
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -508,7 +508,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        ProductEdition("unknown"), // Not in InvalidEditionForTekton
+					Edition:        "unknown", // Not in InvalidEditionForTekton
 					PipelineEngine: TektonEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -523,7 +523,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: "invalid_engine",
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -538,7 +538,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "invalid-version",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -553,7 +553,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "invalid/gitref",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 				},
@@ -568,7 +568,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap_tidb", // using _ instead of /
 				},
@@ -583,7 +583,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        EnterpriseEdition,
+					Edition:        EditionEnterprise,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					PluginGitRef:   "",
@@ -599,7 +599,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        EnterpriseEdition,
+					Edition:        EditionEnterprise,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					PluginGitRef:   "branch/enterprise",
@@ -614,7 +614,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					IsHotfix:       true,
@@ -630,7 +630,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0-20230102",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					IsHotfix:       true,
@@ -647,7 +647,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0-20230102",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					IsHotfix:       true,
@@ -662,7 +662,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: JenkinsEngine,
 					GithubRepo:     "pingcap/tidb",
 					Platform:       "linux/amd64",
@@ -678,7 +678,7 @@ func TestValidateReq(t *testing.T) {
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
 					Version:        "v6.5.0",
-					Edition:        CommunityEdition,
+					Edition:        EditionCommunity,
 					PipelineEngine: TektonEngine,
 					GithubRepo:     "pingcap/tidb",
 					Platform:       "linux/amd64",

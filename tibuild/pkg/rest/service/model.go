@@ -172,7 +172,7 @@ type DevBuildSpec struct {
 	GitRef            string         `json:"gitRef"`
 	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
 	Version           string         `json:"version"`
-	Edition           ProductEdition `json:"edition"`
+	Edition           string         `json:"edition"`
 	Platform          string         `json:"platform,omitempty"` // "linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64" or empty for all platforms.
 	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
 	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(256)"`
@@ -198,19 +198,18 @@ const (
 
 type GitRef string
 
-type ProductEdition string
-
+// Edition constants define the valid values for DevBuildSpec.Edition
 const (
-	EnterpriseEdition   ProductEdition = "enterprise"
-	CommunityEdition    ProductEdition = "community"
-	FailPointEdition    ProductEdition = "failpoint"
-	FipsEdition         ProductEdition = "fips"
-	ExperimentalEdition ProductEdition = "experimental"
+	EditionEnterprise   = "enterprise"
+	EditionCommunity    = "community"
+	EditionFailPoint    = "failpoint"
+	EditionFips         = "fips"
+	EditionExperimental = "experimental"
 )
 
 var (
-	InvalidEditionForJenkins = []ProductEdition{EnterpriseEdition, CommunityEdition}
-	InvalidEditionForTekton  = []ProductEdition{EnterpriseEdition, CommunityEdition, FailPointEdition, FipsEdition, ExperimentalEdition}
+	InvalidEditionForJenkins = []string{EditionEnterprise, EditionCommunity}
+	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperimental}
 )
 
 type BuildStatus string
