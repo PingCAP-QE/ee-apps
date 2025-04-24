@@ -15,7 +15,7 @@ func sampleDevBuild() DevBuild {
 		Meta: DevBuildMeta{CreatedBy: "some@pingcap.com"},
 		Spec: DevBuildSpec{
 			Product: ProductPd, GitRef: "branch/master", Version: "v7.5.0",
-			Edition: CommunityEdition, GitHash: "e264a6143f6d8badde7783577c5fced5dcb2c39f",
+			Edition: EditionCommunity, GitHash: "e264a6143f6d8badde7783577c5fced5dcb2c39f",
 		}}
 	fillWithDefaults(&obj)
 	if err := validateReq(obj); err != nil {

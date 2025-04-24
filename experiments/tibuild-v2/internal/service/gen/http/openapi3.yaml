@@ -149,7 +149,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -343,7 +343,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -537,7 +537,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -732,7 +732,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -926,7 +926,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -1120,7 +1120,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -1314,7 +1314,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -1537,7 +1537,7 @@ paths:
                             request:
                                 build_env: Ipsa et alias.
                                 builder_img: Et ipsa.
-                                edition: enterprise
+                                edition: experiment
                                 features: Veniam eaque nisi.
                                 git_ref: Aut adipisci sed.
                                 git_sha: Eum sit.
@@ -1567,7 +1567,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -1751,7 +1751,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2047,7 +2047,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2231,7 +2231,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2878,7 +2878,7 @@ components:
                 request:
                     build_env: Ipsa et alias.
                     builder_img: Et ipsa.
-                    edition: enterprise
+                    edition: experiment
                     features: Veniam eaque nisi.
                     git_ref: Aut adipisci sed.
                     git_sha: Eum sit.
@@ -2917,7 +2917,7 @@ components:
                 spec:
                     build_env: Dicta neque nulla cum dolorem.
                     builder_img: Non libero.
-                    edition: community
+                    edition: failpoint
                     features: Animi optio nesciunt omnis numquam natus eos.
                     git_ref: Quasi et.
                     git_sha: Delectus architecto voluptatum molestiae.
@@ -3123,12 +3123,16 @@ components:
                     example: Illo architecto et impedit.
                 edition:
                     type: string
-                    example: enterprise
+                    example: community
                     enum:
                         - enterprise
                         - community
+                        - fips
+                        - failpoint
+                        - experiment
                 features:
                     type: string
+                    description: '[Deprecated] use build_env for custom features'
                     example: Voluptas tempore repudiandae officia commodi sunt tempora.
                 git_ref:
                     type: string
@@ -3190,7 +3194,7 @@ components:
             example:
                 build_env: Necessitatibus qui.
                 builder_img: Sunt enim rem ipsum et sit.
-                edition: community
+                edition: enterprise
                 features: Aliquid doloribus delectus deserunt et.
                 git_ref: Omnis excepturi cumque.
                 git_sha: Error possimus ea cupiditate eveniet voluptate consequatur.

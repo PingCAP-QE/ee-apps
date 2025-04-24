@@ -188,9 +188,10 @@ type DevBuildMetaResponse struct {
 
 // DevBuildSpecResponse is used to define fields on response body types.
 type DevBuildSpecResponse struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           string  `form:"edition" json:"edition" xml:"edition"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    string  `form:"edition" json:"edition" xml:"edition"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -285,9 +286,10 @@ type DevBuildMetaResponseBody struct {
 
 // DevBuildSpecResponseBody is used to define fields on response body types.
 type DevBuildSpecResponseBody struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           string  `form:"edition" json:"edition" xml:"edition"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    string  `form:"edition" json:"edition" xml:"edition"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -375,9 +377,10 @@ type OciArtifactResponseBody struct {
 
 // DevBuildSpecRequestBody is used to define fields on request body types.
 type DevBuildSpecRequestBody struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -793,8 +796,8 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment"}))
 		}
 	}
 	if body.PipelineEngine != nil {

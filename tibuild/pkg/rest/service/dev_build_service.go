@@ -184,7 +184,7 @@ func fillWithDefaults(req *DevBuild) {
 }
 
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
-	if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition && spec.PluginGitRef == "" {
+	if spec.Product == ProductTidb && spec.Edition == EditionEnterprise && spec.PluginGitRef == "" {
 		groups := versionValidator.FindStringSubmatch(spec.Version)
 		if len(groups) == 3 {
 			major_sub := groups[1]
@@ -233,7 +233,7 @@ func fillForFIPS(spec *DevBuildSpec) {
 		}
 	} else {
 		fileName := spec.Product
-		if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition {
+		if spec.Product == ProductTidb && spec.Edition == EditionEnterprise {
 			fileName = fileName + "-enterprise"
 		}
 		dockerfile := fmt.Sprintf("https://raw.githubusercontent.com/PingCAP-QE/artifacts/main/dockerfiles/%s.Dockerfile", fileName)
@@ -251,9 +251,21 @@ func validateReq(req DevBuild) error {
 	if !spec.Product.IsValid() {
 		return fmt.Errorf("product is not valid")
 	}
-	if !spec.Edition.IsValid() {
-		return fmt.Errorf("edition is not valid")
+
+	// validate for edition for different pipeline engines
+	switch spec.PipelineEngine {
+	case JenkinsEngine:
+		if !slices.Contains(InvalidEditionForJenkins, spec.Edition) {
+			return fmt.Errorf("edition is not valid for jenkins engine")
+		}
+	case TektonEngine:
+		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
+			return fmt.Errorf("edition is not valid for tekton engine")
+		}
+	default:
+		return fmt.Errorf("pipeline engine is not valid")
 	}
+
 	if !versionValidator.MatchString(spec.Version) {
 		return fmt.Errorf("version is not valid")
 	}
@@ -263,7 +275,7 @@ func validateReq(req DevBuild) error {
 	if spec.GithubRepo != "" && (GHRepoToStruct(spec.GithubRepo) == nil || !githubRepoValidator.MatchString(spec.GithubRepo)) {
 		return fmt.Errorf("githubRepo is not valid, should be like org/repo")
 	}
-	if spec.Edition == EnterpriseEdition && spec.Product == ProductTidb {
+	if spec.Edition == EditionEnterprise && spec.Product == ProductTidb {
 		if !gitRefValidator.MatchString(spec.PluginGitRef) {
 			return fmt.Errorf("pluginGitRef is not valid")
 		}
