@@ -251,9 +251,21 @@ func validateReq(req DevBuild) error {
 	if !spec.Product.IsValid() {
 		return fmt.Errorf("product is not valid")
 	}
-	if !spec.Edition.IsValid() {
-		return fmt.Errorf("edition is not valid")
+
+	// validate for edition for different pipeline engines
+	switch spec.PipelineEngine {
+	case JenkinsEngine:
+		if !slices.Contains(InvalidEditionForJenkins, spec.Edition) {
+			return fmt.Errorf("edition is not valid for jenkins engine")
+		}
+	case TektonEngine:
+		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
+			return fmt.Errorf("edition is not valid for tekton engine")
+		}
+	default:
+		return fmt.Errorf("pipeline engine is not valid")
 	}
+
 	if !versionValidator.MatchString(spec.Version) {
 		return fmt.Errorf("version is not valid")
 	}

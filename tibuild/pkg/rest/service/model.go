@@ -201,18 +201,17 @@ type GitRef string
 type ProductEdition string
 
 const (
-	EnterpriseEdition ProductEdition = "enterprise"
-	CommunityEdition  ProductEdition = "community"
+	EnterpriseEdition   ProductEdition = "enterprise"
+	CommunityEdition    ProductEdition = "community"
+	FailPointEdition    ProductEdition = "failpoint"
+	FipsEdition         ProductEdition = "fips"
+	ExperimentalEdition ProductEdition = "experimental"
 )
 
-func (p ProductEdition) IsValid() bool {
-	switch p {
-	case EnterpriseEdition, CommunityEdition:
-		return true
-	default:
-		return false
-	}
-}
+var (
+	InvalidEditionForJenkins = []ProductEdition{EnterpriseEdition, CommunityEdition}
+	InvalidEditionForTekton  = []ProductEdition{EnterpriseEdition, CommunityEdition, FailPointEdition, FipsEdition, ExperimentalEdition}
+)
 
 type BuildStatus string
 

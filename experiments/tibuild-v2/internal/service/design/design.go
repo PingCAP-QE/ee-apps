@@ -235,9 +235,11 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("build_env", String)
 	Attribute("builder_img", String)
 	Attribute("edition", String, func() {
-		Enum("enterprise", "community")
+		Enum("enterprise", "community", "fips", "failpoint", "experiment")
 	})
-	Attribute("features", String)
+	Attribute("features", String, func() {
+		Description("[Deprecated] use build_env for custom features")
+	})
 	Attribute("git_ref", String)
 	Attribute("git_sha", String)
 	Attribute("github_repo", String)

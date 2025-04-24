@@ -435,3 +435,273 @@ func TestOciArtifactToFiles(t *testing.T) {
 	require.NotNil(t, files[0].Sha256OciFile)
 	require.NotNil(t, files[1].Sha256OciFile)
 }
+
+func TestValidateReq(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     DevBuild
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid request with jenkins pipeline",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid request with tekton pipeline",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid product",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        "invalid-product",
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "product is not valid",
+		},
+		{
+			name: "invalid edition for jenkins",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        ExperimentalEdition, // Not in InvalidEditionForJenkins
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "edition is not valid for jenkins engine",
+		},
+		{
+			name: "invalid edition for tekton",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        ProductEdition("unknown"), // Not in InvalidEditionForTekton
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "edition is not valid for tekton engine",
+		},
+		{
+			name: "invalid pipeline engine",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: "invalid_engine",
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "pipeline engine is not valid",
+		},
+		{
+			name: "invalid version",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "invalid-version",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "version is not valid",
+		},
+		{
+			name: "invalid gitRef",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "invalid/gitref",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "gitRef is not valid",
+		},
+		{
+			name: "invalid githubRepo",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap_tidb", // using _ instead of /
+				},
+			},
+			wantErr: true,
+			errMsg:  "githubRepo is not valid, should be like org/repo",
+		},
+		{
+			name: "missing pluginGitRef for enterprise edition",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        EnterpriseEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					PluginGitRef:   "",
+				},
+			},
+			wantErr: true,
+			errMsg:  "pluginGitRef is not valid",
+		},
+		{
+			name: "valid enterprise edition with pluginGitRef",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        EnterpriseEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					PluginGitRef:   "branch/enterprise",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "hotfix with invalid version format",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					IsHotfix:       true,
+				},
+			},
+			wantErr: true,
+			errMsg:  "verion must be like v7.0.0-20230102... for hotfix",
+		},
+		{
+			name: "hotfix with valid version but targetImg set",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0-20230102",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					IsHotfix:       true,
+					TargetImg:      "example/image:tag",
+				},
+			},
+			wantErr: true,
+			errMsg:  "target image shall be empty for hotfix",
+		},
+		{
+			name: "valid hotfix",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0-20230102",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					IsHotfix:       true,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "jenkins engine with platform set",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: JenkinsEngine,
+					GithubRepo:     "pingcap/tidb",
+					Platform:       "linux/amd64",
+				},
+			},
+			wantErr: true,
+			errMsg:  "cannot set platform when pipeline engine is Jenkins",
+		},
+		{
+			name: "tekton engine with platform set",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        CommunityEdition,
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+					Platform:       "linux/amd64",
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateReq(tt.req)
+
+			// Check if error is expected
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateReq() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// Check error message if error is expected
+			if tt.wantErr && err != nil && err.Error() != tt.errMsg {
+				t.Errorf("validateReq() error message = %v, want %v", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}

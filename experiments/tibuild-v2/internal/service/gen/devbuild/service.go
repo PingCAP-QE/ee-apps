@@ -122,9 +122,10 @@ type DevBuildMeta struct {
 }
 
 type DevBuildSpec struct {
-	BuildEnv          *string
-	BuilderImg        *string
-	Edition           string
+	BuildEnv   *string
+	BuilderImg *string
+	Edition    string
+	// [Deprecated] use build_env for custom features
 	Features          *string
 	GitRef            string
 	GitSha            *string
