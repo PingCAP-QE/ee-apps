@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
@@ -17,9 +18,12 @@ import (
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/gen/fileserver"
-	"github.com/PingCAP-QE/ee-apps/publisher/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	implfs "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
+	implimg "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/image"
+	impltiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 )
 
 func main() {
@@ -65,6 +69,7 @@ func main() {
 	var (
 		tiupSvc tiup.Service
 		fsSvc   fileserver.Service
+		imgSvc  image.Service
 	)
 	{
 		// Configure Kafka kafkaWriter
@@ -83,8 +88,9 @@ func main() {
 			DB:       config.Redis.DB,
 		})
 
-		tiupSvc = impl.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource)
-		fsSvc = impl.NewFileserver(&logger, kafkaWriter, redisClient, config.EventSource)
+		tiupSvc = impltiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
+		fsSvc = implfs.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
+		imgSvc = implimg.NewService(&logger, redisClient, time.Hour)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -92,6 +98,7 @@ func main() {
 	var (
 		tiupEndpoints *tiup.Endpoints
 		fsEndpoints   *fileserver.Endpoints
+		imgEndpoints  *image.Endpoints
 	)
 	{
 		tiupEndpoints = tiup.NewEndpoints(tiupSvc)
@@ -100,6 +107,9 @@ func main() {
 		fsEndpoints = fileserver.NewEndpoints(fsSvc)
 		fsEndpoints.Use(debug.LogPayloads())
 		fsEndpoints.Use(log.Endpoint)
+		imgEndpoints = image.NewEndpoints(imgSvc)
+		imgEndpoints.Use(debug.LogPayloads())
+		imgEndpoints.Use(log.Endpoint)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
