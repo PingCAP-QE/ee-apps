@@ -9,14 +9,14 @@ type Worker struct {
 	Kafka struct {
 		KafkaBasic    `yaml:",inline" json:",inline"`
 		ConsumerGroup string `yaml:"consumer_group" json:"consumer_group,omitempty"`
-	} `yaml:"kafka" json:"kafka,omitempty"`
-	Redis   Redis             `yaml:"redis" json:"redis,omitempty"`
+	} `yaml:"kafka,omitzero" json:"kafka,omitzero"`
+	Redis   Redis             `yaml:"redis" json:"redis"`
 	Options map[string]string `yaml:"options" json:"options,omitempty"`
 }
 
 type Service struct {
-	Kafka       KafkaBasic `yaml:"kafka" json:"kafka,omitempty"`
-	Redis       Redis      `yaml:"redis" json:"redis,omitempty"`
+	Kafka       KafkaBasic `yaml:"kafka" json:"kafka"`
+	Redis       Redis      `yaml:"redis" json:"redis"`
 	EventSource string     `yaml:"event_source" json:"event_source,omitempty"`
 }
 
@@ -34,5 +34,5 @@ type KafkaBasic struct {
 		Type     string `yaml:"type" json:"type,omitempty"`
 		Username string `yaml:"username" json:"username,omitempty"`
 		Password string `yaml:"password" json:"password,omitempty"`
-	} `yaml:"credentials" json:"credentials,omitempty"`
+	} `yaml:"credentials" json:"credentials"`
 }
