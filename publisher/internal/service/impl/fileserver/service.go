@@ -1,4 +1,4 @@
-package impl
+package fileserver
 
 import (
 	"context"
@@ -11,7 +11,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 
-	fileserver "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 // fileserver service example implementation.
@@ -24,14 +25,14 @@ type fileserversrvc struct {
 	stateTTL    time.Duration
 }
 
-// NewFileserver returns the fileserver service implementation.
-func NewFileserver(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) fileserver.Service {
+// NewService returns the fileserver service implementation.
+func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) fileserver.Service {
 	return &fileserversrvc{
 		logger:      logger,
 		kafkaWriter: kafkaWriter,
 		redisClient: redisClient,
 		eventSource: eventSrc,
-		stateTTL:    DefaultStateTTL,
+		stateTTL:    share.DefaultStateTTL,
 	}
 }
 
@@ -68,7 +69,7 @@ func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.Req
 
 	// 4. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.redisClient.SetNX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
+		if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.stateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
@@ -97,7 +98,7 @@ func (s *fileserversrvc) composeEvents(request *PublishRequestFS) []cloudevents.
 	var ret []cloudevents.Event
 	event := cloudevents.NewEvent()
 	event.SetID(uuid.New().String())
-	event.SetType(EventTypeFsPublishRequest)
+	event.SetType(share.EventTypeFsPublishRequest)
 	event.SetSource(s.eventSource)
 	event.SetSubject(request.Publish.Repo)
 	event.SetData(cloudevents.ApplicationJSON, request)

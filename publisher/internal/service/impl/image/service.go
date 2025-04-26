@@ -1,4 +1,4 @@
-package impl
+package image
 
 import (
 	"context"
@@ -11,10 +11,11 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
-// NewImage returns the image service implementation.
-func NewImage(logger *zerolog.Logger, redisClient *redis.Client, timeout time.Duration) image.Service {
+// NewService returns the image service implementation.
+func NewService(logger *zerolog.Logger, redisClient *redis.Client, timeout time.Duration) image.Service {
 	return &imagesrvc{
 		logger:      logger,
 		redisClient: redisClient,
@@ -49,7 +50,7 @@ func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPay
 	requestID := uuid.New().String()
 
 	// 2. init the status in redis.
-	if err := s.redisClient.SetNX(ctx, requestID, PublishStateQueued, DefaultStateTTL).Err(); err != nil {
+	if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
 		return "", fmt.Errorf("failed to initialize request status: %v", err)
 	}
 
@@ -68,7 +69,8 @@ func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPay
 		l := s.logger.With().Str("request_id", requestID).Logger()
 
 		// Update status to processing
-		if err := s.redisClient.Set(ctxWithTimeout, requestID, PublishStateProcessing, DefaultStateTTL).Err(); err != nil {
+		if err := s.redisClient.Set(ctxWithTimeout, requestID, share.PublishStateProcessing,
+			share.DefaultStateTTL).Err(); err != nil {
 			l.Err(err).Msg("Failed to update status to processing")
 			return
 		}
@@ -77,15 +79,15 @@ func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPay
 		err := s.copyImage(ctxWithTimeout, p)
 
 		// Update final status based on result
-		newStatus := PublishStateSuccess
+		newStatus := share.PublishStateSuccess
 		if err != nil {
-			newStatus = PublishStateFailed
+			newStatus = share.PublishStateFailed
 			l.Err(err).Msg("Image copy failed")
 		} else {
 			l.Info().Msg("Image copy completed successfully")
 		}
 
-		if err := s.redisClient.Set(context.Background(), requestID, newStatus, DefaultStateTTL).Err(); err != nil {
+		if err := s.redisClient.Set(context.Background(), requestID, newStatus, share.DefaultStateTTL).Err(); err != nil {
 			l.Err(err).Str("intended_status", newStatus).Msg("Failed to update final status")
 		}
 	}()
@@ -119,6 +121,6 @@ func (s *imagesrvc) copyImage(ctx context.Context, p *image.RequestToCopyPayload
 		return err
 	}
 
-	l.Info().Msg("Image successfully synced to DockerHub")
+	l.Info().Msg("Image successfully synced to destination")
 	return nil
 }

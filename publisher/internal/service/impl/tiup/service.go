@@ -1,4 +1,4 @@
-package impl
+package tiup
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	gentiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 // tiup service example implementation.
@@ -24,14 +25,14 @@ type tiupsrvc struct {
 	stateTTL    time.Duration
 }
 
-// NewTiup returns the tiup service implementation.
-func NewTiup(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
+// NewService returns the tiup service implementation.
+func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
 	return &tiupsrvc{
 		logger:      logger,
 		kafkaWriter: kafkaWriter,
 		redisClient: redisClient,
 		eventSource: eventSrc,
-		stateTTL:    DefaultStateTTL,
+		stateTTL:    share.DefaultStateTTL,
 	}
 }
 
@@ -73,7 +74,7 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 
 	// 4. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.redisClient.SetNX(ctx, requestID, PublishStateQueued, s.stateTTL).Err(); err != nil {
+		if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.stateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
@@ -128,7 +129,7 @@ func (s *tiupsrvc) composeEvents(requests []PublishRequestTiUP) []cloudevents.Ev
 	for _, request := range requests {
 		event := cloudevents.NewEvent()
 		event.SetID(uuid.New().String())
-		event.SetType(EventTypeTiupPublishRequest)
+		event.SetType(share.EventTypeTiupPublishRequest)
 		event.SetSource(s.eventSource)
 		event.SetSubject(request.Publish.Name)
 		event.SetData(cloudevents.ApplicationJSON, request)

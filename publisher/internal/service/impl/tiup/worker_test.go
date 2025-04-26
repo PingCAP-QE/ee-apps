@@ -1,10 +1,11 @@
-package impl
+package tiup
 
 import (
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 )
@@ -72,9 +73,9 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 			},
 			args: args{
 				req: &PublishRequestTiUP{
-					From: From{
-						Type: FromTypeOci,
-						Oci: &FromOci{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
 							Repo: "test-repo",
 							Tag:  "test-tag",
 						},

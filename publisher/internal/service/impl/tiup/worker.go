@@ -1,4 +1,4 @@
-package impl
+package tiup
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	redsync "github.com/go-redsync/redsync/v4"
@@ -39,7 +40,7 @@ type tiupWorker struct {
 	}
 }
 
-func NewTiupWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[string]string) (*tiupWorker, error) {
+func NewWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[string]string) (*tiupWorker, error) {
 	handler := tiupWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -75,7 +76,7 @@ func NewTiupWorker(logger *zerolog.Logger, redisClient *redis.Client, options ma
 }
 
 func (p *tiupWorker) SupportEventTypes() []string {
-	return []string{EventTypeTiupPublishRequest}
+	return []string{share.EventTypeTiupPublishRequest}
 }
 
 // Handle for test case run events
@@ -83,7 +84,7 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
-	p.redisClient.SetXX(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
+	p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateProcessing, redis.KeepTTL)
 
 	data := new(PublishRequestTiUP)
 	if err := event.DataAs(&data); err != nil {
@@ -93,12 +94,12 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	result := p.rateLimit(data, p.options.NightlyInterval, p.handle)
 	switch {
 	case cloudevents.IsACK(result):
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateSuccess, redis.KeepTTL)
 	case cloudevents.IsNACK(result):
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateFailed, redis.KeepTTL)
 		p.notifyLark(data, result)
 	default:
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateCanceled, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateCanceled, redis.KeepTTL)
 	}
 
 	return result
@@ -140,7 +141,7 @@ func (p *tiupWorker) rateLimit(data *PublishRequestTiUP, ttl time.Duration, run 
 
 func (p *tiupWorker) handle(data *PublishRequestTiUP) cloudevents.Result {
 	// 1. get the the tarball from data.From.
-	saveTo, err := downloadFile(data)
+	saveTo, err := share.DownloadFile(&data.From)
 	if err != nil {
 		p.logger.Err(err).Msg("download file failed")
 		return cloudevents.NewReceipt(false, "download file failed: %v", err)
@@ -186,7 +187,7 @@ func (p *tiupWorker) notifyLark(req *PublishRequestTiUP, err error) {
 		return
 	}
 
-	info := failureNotifyInfo{
+	info := share.FailureNotifyInfo{
 		Title:         "TiUP Publish Failed",
 		FailedMessage: err.Error(),
 		Params: [][2]string{
@@ -199,7 +200,7 @@ func (p *tiupWorker) notifyLark(req *PublishRequestTiUP, err error) {
 		},
 	}
 
-	jsonPayload, err := newLarkCardWithGoTemplate(info)
+	jsonPayload, err := share.NewLarkCardWithGoTemplate(info)
 	if err != nil {
 		p.logger.Err(err).Msg("failed to gen message payload")
 		return

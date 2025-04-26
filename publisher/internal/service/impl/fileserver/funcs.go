@@ -1,4 +1,4 @@
-package impl
+package fileserver
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 var (
@@ -33,7 +34,7 @@ var (
 //	    3.2.5 set the publish info description, entrypoint with value of same key in the element.
 func analyzeFsFromOciArtifact(repo, tag string) (*PublishRequestFS, error) {
 	// Find the file.
-	repository, err := getOciRepo(repo)
+	repository, err := share.GetOciRepo(repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get OCI repository: %v", err)
 	}
@@ -44,14 +45,14 @@ func analyzeFsFromOciArtifact(repo, tag string) (*PublishRequestFS, error) {
 	}
 
 	// 1. Fetch the artifact config
-	config, ociDigest, err := fetchOCIArtifactConfig(repo, tag)
+	config, ociDigest, err := share.FetchOCIArtifactConfig(repo, tag)
 	if err != nil {
 		return nil, err
 	}
 
-	from := From{
-		Type: FromTypeOci,
-		Oci: &FromOci{
+	from := share.From{
+		Type: share.FromTypeOci,
+		Oci: &share.FromOci{
 			Repo: repo,
 			// use digest to avoid the problem of new override on the tag.
 			Tag: ociDigest,
@@ -93,7 +94,7 @@ func getFileKeys(files []string) (map[string]string, error) {
 }
 
 func analyzeFsFromOciArtifactUrl(url string) (*PublishRequestFS, error) {
-	repo, tag, err := splitRepoAndTag(url)
+	repo, tag, err := share.SplitRepoAndTag(url)
 	if err != nil {
 		return nil, err
 	}

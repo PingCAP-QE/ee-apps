@@ -1,4 +1,4 @@
-package impl
+package share
 
 import (
 	"context"
@@ -19,45 +19,26 @@ import (
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
 )
 
-func downloadFile(data *PublishRequestTiUP) (string, error) {
-	switch data.From.Type {
+func DownloadFile(from *From) (string, error) {
+	switch from.Type {
 	case FromTypeOci:
-		// save to file with `saveTo` param:
-		return downloadOCIFile(data.From.Oci)
+		return downloadOCIFile(from.Oci)
 	case FromTypeHTTP:
-		return downloadHTTPFile(data.From.HTTP.URL)
+		return DownloadHTTPFile(from.HTTP.URL)
 	default:
-		return "", fmt.Errorf("unknown from type: %v", data.From.Type)
+		return "", fmt.Errorf("unknown from type: %v", from.Type)
 	}
 }
 
-func downloadOCIFile(from *FromOci) (ret string, err error) {
-	err = doWithOCIFile(from, func(input io.Reader) error {
-		ret, err = downloadFileFromReader(input)
-		return err
-	})
-
-	return
-}
-
-func downloadHTTPFile(url string) (ret string, err error) {
-	err = doWithHttpFile(url, func(input io.Reader) error {
+func DownloadHTTPFile(url string) (ret string, err error) {
+	err = DoWithHttpFile(url, func(input io.Reader) error {
 		ret, err = downloadFileFromReader(input)
 		return err
 	})
 	return
 }
 
-func downloadFileFromReader(input io.Reader) (ret string, err error) {
-	doWithTempFileFromReader(input, func(input *os.File) error {
-		ret = input.Name()
-		return nil
-	})
-
-	return
-}
-
-func doWithTempFileFromReader(input io.Reader, fn func(input *os.File) error) error {
+func DoWithTempFileFromReader(input io.Reader, fn func(input *os.File) error) error {
 	tempFile, err := os.CreateTemp("", "download_file_*")
 	if err != nil {
 		return err
@@ -70,7 +51,7 @@ func doWithTempFileFromReader(input io.Reader, fn func(input *os.File) error) er
 	return fn(tempFile)
 }
 
-func doWithHttpFile(url string, fn func(input io.Reader) error) error {
+func DoWithHttpFile(url string, fn func(input io.Reader) error) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -84,8 +65,8 @@ func doWithHttpFile(url string, fn func(input io.Reader) error) error {
 	return fn(resp.Body)
 }
 
-func doWithOCIFile(from *FromOci, fn func(input io.Reader) error) error {
-	repo, err := getOciRepo(from.Repo)
+func DoWithOCIFile(from *FromOci, fn func(input io.Reader) error) error {
+	repo, err := GetOciRepo(from.Repo)
 	if err != nil {
 		return err
 	}
@@ -98,7 +79,7 @@ func doWithOCIFile(from *FromOci, fn func(input io.Reader) error) error {
 	return fn(rc)
 }
 
-func getOciRepo(repo string) (*remote.Repository, error) {
+func GetOciRepo(repo string) (*remote.Repository, error) {
 	repository, err := remote.NewRepository(repo)
 	if err != nil {
 		return nil, err
@@ -114,7 +95,7 @@ func getOciRepo(repo string) (*remote.Repository, error) {
 	return repository, nil
 }
 
-func splitRepoAndTag(url string) (string, string, error) {
+func SplitRepoAndTag(url string) (string, string, error) {
 	splitor := ":"
 	if strings.Contains(url, "@sha256:") {
 		splitor = "@"
@@ -128,8 +109,8 @@ func splitRepoAndTag(url string) (string, string, error) {
 }
 
 // return the config of the artifact and the digest of the artifact.
-func fetchOCIArtifactConfig(repo, tag string) (map[string]interface{}, string, error) {
-	repository, err := getOciRepo(repo)
+func FetchOCIArtifactConfig(repo, tag string) (map[string]any, string, error) {
+	repository, err := GetOciRepo(repo)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get OCI repository: %v", err)
 	}
@@ -151,10 +132,28 @@ func fetchOCIArtifactConfig(repo, tag string) (map[string]interface{}, string, e
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch artifact config: %v", err)
 	}
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(configBytes, &config); err != nil {
 		return nil, "", fmt.Errorf("failed to unmarshal config: %v", err)
 	}
 
 	return config, desc.Digest.String(), nil
+}
+
+func downloadOCIFile(from *FromOci) (ret string, err error) {
+	err = DoWithOCIFile(from, func(input io.Reader) error {
+		ret, err = downloadFileFromReader(input)
+		return err
+	})
+
+	return
+}
+
+func downloadFileFromReader(input io.Reader) (ret string, err error) {
+	DoWithTempFileFromReader(input, func(input *os.File) error {
+		ret = input.Name()
+		return nil
+	})
+
+	return
 }

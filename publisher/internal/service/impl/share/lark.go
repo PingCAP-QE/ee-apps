@@ -1,4 +1,4 @@
-package impl
+package share
 
 import (
 	"bytes"
@@ -11,10 +11,17 @@ import (
 	_ "embed"
 )
 
-//go:embed lark_templates/tiup-publish-failure-notify.yaml.tmpl
+//go:embed lark_templates/service-failure-notify.yaml.tmpl
 var larkTemplateBytes string
 
-func newLarkCardWithGoTemplate(infos any) (string, error) {
+type FailureNotifyInfo struct {
+	Title         string
+	RerunCommands string
+	FailedMessage string
+	Params        [][2]string // key-value pairs.
+}
+
+func NewLarkCardWithGoTemplate(infos any) (string, error) {
 	tmpl, err := template.New("lark").Funcs(sprig.FuncMap()).Parse(larkTemplateBytes)
 	if err != nil {
 		return "", err
@@ -25,7 +32,7 @@ func newLarkCardWithGoTemplate(infos any) (string, error) {
 		return "", err
 	}
 
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
 		return "", err
 	}
@@ -36,11 +43,4 @@ func newLarkCardWithGoTemplate(infos any) (string, error) {
 	}
 
 	return string(jsonBytes), nil
-}
-
-type failureNotifyInfo struct {
-	Title         string
-	RerunCommands string
-	FailedMessage string
-	Params        [][2]string // key-value pairs.
 }

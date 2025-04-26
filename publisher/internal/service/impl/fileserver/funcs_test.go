@@ -1,9 +1,11 @@
-package impl
+package fileserver
 
 import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 func Test_analyzeFsFromOciArtifact(t *testing.T) {
@@ -34,9 +36,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/pingcap/tidb/package",
 						Tag:  "sha256:b99b4e4f301bae87fa30fa58319da55bb6bdec94cbb29dccc35cf296815c3276",
 					},
@@ -66,9 +68,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/pingcap/tiflow/package",
 						Tag:  "sha256:14e97372e2884406dc1b8c8a9390a1fbdd57d91eee67ba340032622409e5c288",
 					},
@@ -94,9 +96,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/pingcap/tiflash/package",
 						Tag:  "sha256:4ba33a9106feb2189a5b1726155b6e1c15b102b8094956ece069afc01d9bb4a2",
 					},
@@ -119,9 +121,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/tikv/pd/package",
 						Tag:  "sha256:4d1222a01dd594176ec7f2dcf0b8e8cdaa2f838621d7738b56cdb39c9847f0a7",
 					},
@@ -146,9 +148,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/tikv/tikv/package",
 						Tag:  "sha256:b526c02e883d54f97162c445294e9aa805620d5af9979b24667958aff870be06",
 					},
@@ -172,9 +174,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/pingcap/tidb-tools/package",
 						Tag:  "sha256:b50b45ffb0f53e3bf7c6140aa57fb768c4f2a9f6471e2987c423c0da217338b6",
 					},
@@ -197,9 +199,9 @@ func Test_analyzeFsFromOciArtifact(t *testing.T) {
 				tag:  "v8.1.1_linux_amd64",
 			},
 			want: &PublishRequestFS{
-				From: From{
-					Type: FromTypeOci,
-					Oci: &FromOci{
+				From: share.From{
+					Type: share.FromTypeOci,
+					Oci: &share.FromOci{
 						Repo: "hub.pingcap.net/pingcap/tidb-binlog/package",
 						Tag:  "sha256:2c4704588ef754eaaed5d0034f44c6077257cebd382b90b2241b5e0ff4be640c",
 					},

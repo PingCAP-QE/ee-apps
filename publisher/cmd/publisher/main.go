@@ -21,7 +21,9 @@ import (
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	implfs "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
+	implimg "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/image"
+	impltiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 )
 
 func main() {
@@ -86,9 +88,9 @@ func main() {
 			DB:       config.Redis.DB,
 		})
 
-		tiupSvc = impl.NewTiup(&logger, kafkaWriter, redisClient, config.EventSource)
-		fsSvc = impl.NewFileserver(&logger, kafkaWriter, redisClient, config.EventSource)
-		imgSvc = impl.NewImage(&logger, redisClient, time.Hour)
+		tiupSvc = impltiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
+		fsSvc = implfs.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
+		imgSvc = implimg.NewService(&logger, redisClient, time.Hour)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services

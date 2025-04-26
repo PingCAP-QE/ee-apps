@@ -1,4 +1,4 @@
-package impl
+package fileserver
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/ks3sdklib/aws-sdk-go/aws"
@@ -32,7 +33,7 @@ type fsWorker struct {
 	s3Client *s3.S3
 }
 
-func NewFsWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) (*fsWorker, error) {
+func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) (*fsWorker, error) {
 	handler := fsWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -62,7 +63,7 @@ func NewFsWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[
 }
 
 func (p *fsWorker) SupportEventTypes() []string {
-	return []string{EventTypeFsPublishRequest}
+	return []string{share.EventTypeFsPublishRequest}
 }
 
 // Handle for test case run events
@@ -70,7 +71,7 @@ func (p *fsWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
-	p.redisClient.SetXX(context.Background(), event.ID(), PublishStateProcessing, redis.KeepTTL)
+	p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateProcessing, redis.KeepTTL)
 
 	data := new(PublishRequestFS)
 	if err := event.DataAs(&data); err != nil {
@@ -80,12 +81,12 @@ func (p *fsWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	result := p.handle(data)
 	switch {
 	case cloudevents.IsACK(result):
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateSuccess, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateSuccess, redis.KeepTTL)
 	case cloudevents.IsNACK(result):
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateFailed, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateFailed, redis.KeepTTL)
 		p.notifyLark(&data.Publish, result)
 	default:
-		p.redisClient.SetXX(context.Background(), event.ID(), PublishStateCanceled, redis.KeepTTL)
+		p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateCanceled, redis.KeepTTL)
 	}
 
 	return result
@@ -96,8 +97,8 @@ func (p *fsWorker) handle(data *PublishRequestFS) cloudevents.Result {
 	for fromFile, targetKey := range targetFsFullPaths(&data.Publish) {
 		from := *data.From.Oci
 		from.File = fromFile
-		err := doWithOCIFile(&from, func(input io.Reader) error {
-			return doWithTempFileFromReader(input, func(inputF *os.File) error {
+		err := share.DoWithOCIFile(&from, func(input io.Reader) error {
+			return share.DoWithTempFileFromReader(input, func(inputF *os.File) error {
 				// 2. publish the tarball.
 				return p.publish(inputF, targetKey)
 			})

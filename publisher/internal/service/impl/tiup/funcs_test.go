@@ -1,132 +1,49 @@
-package impl
+package tiup
 
 import (
 	"reflect"
 	"testing"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
-func Test_xxx(t *testing.T) {
-	if !cloudevents.IsACK(nil) {
-		t.Errorf("IsACK(nil) = false, want true")
-	}
-
-	if !cloudevents.IsACK(cloudevents.NewReceipt(true, "xxxx")) {
-		t.Errorf("xxx")
-	}
-	if !cloudevents.IsNACK(cloudevents.NewReceipt(true, "xxxx")) {
-		t.Errorf("xxx")
-	}
-
-	if !cloudevents.IsNACK(cloudevents.NewReceipt(false, "xxxx")) {
-		t.Errorf("xxx")
-	}
-}
-
-func Test_fetchOCIArtifactConfig(t *testing.T) {
+func Test_transformTiupVer(t *testing.T) {
 	type args struct {
-		repo string
-		tag  string
+		version string
+		tag     string
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    map[string]interface{}
-		wantErr bool
+		name string
+		args args
+		want string
 	}{
 		{
-			name: "TestFetchOCIArtifactConfig",
+			name: "test1",
 			args: args{
-				repo: "hub.pingcap.net/pingcap/tidb/package",
-				tag:  "v8.3.0_linux_amd64",
+				version: "v8.5.0-pre",
+				tag:     "v8.5.0-centos7_linux_amd64",
 			},
-			want: map[string]interface{}{
-				"org.opencontainers.image.version": "v8.3.0-pre",
-				"net.pingcap.tibuild.os":           "linux",
-				"net.pingcap.tibuild.architecture": "amd64",
-				"net.pingcap.tibuild.profile":      "release",
-				"net.pingcap.tibuild.git-sha":      "1a0c3ac3292fff7742faa0c00a662ccb66ba40db",
-				"net.pingcap.tibuild.tiup": []interface{}{
-					map[string]interface{}{
-						"description": "TiDB is an open source distributed HTAP database compatible with the MySQL protocol.",
-						"entrypoint":  "tidb-server",
-						"file":        "tidb-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "TiDB/TiKV cluster backup restore tool.",
-						"entrypoint":  "br",
-						"standalone":  true,
-						"file":        "br-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "Dumpling is a CLI tool that helps you dump MySQL/TiDB data.",
-						"entrypoint":  "dumpling",
-						"file":        "dumpling-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "TiDB Lightning is a tool used for fast full import of large amounts of data into a TiDB cluster",
-						"entrypoint":  "tidb-lightning",
-						"standalone":  true,
-						"file":        "tidb-lightning-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-				},
-			},
+			want: "v8.5.0-centos7",
 		},
 		{
-			name: "TestFetchOCIArtifactConfig",
+			name: "test2",
 			args: args{
-				repo: "hub.pingcap.net/pingcap/tidb/package",
-				tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
+				version: "v9.0.0-beta.1.pre",
+				tag:     "v9.0.0-beta.1_linux_amd64",
 			},
-			want: map[string]interface{}{
-				"org.opencontainers.image.version": "v8.3.0-pre",
-				"net.pingcap.tibuild.os":           "linux",
-				"net.pingcap.tibuild.architecture": "amd64",
-				"net.pingcap.tibuild.profile":      "release",
-				"net.pingcap.tibuild.git-sha":      "1a0c3ac3292fff7742faa0c00a662ccb66ba40db",
-				"net.pingcap.tibuild.tiup": []interface{}{
-					map[string]interface{}{
-						"description": "TiDB is an open source distributed HTAP database compatible with the MySQL protocol.",
-						"entrypoint":  "tidb-server",
-						"file":        "tidb-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "TiDB/TiKV cluster backup restore tool.",
-						"entrypoint":  "br",
-						"standalone":  true,
-						"file":        "br-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "Dumpling is a CLI tool that helps you dump MySQL/TiDB data.",
-						"entrypoint":  "dumpling",
-						"file":        "dumpling-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-					map[string]interface{}{
-						"description": "TiDB Lightning is a tool used for fast full import of large amounts of data into a TiDB cluster",
-						"entrypoint":  "tidb-lightning",
-						"standalone":  true,
-						"file":        "tidb-lightning-v8.3.0-pre-linux-amd64.tar.gz",
-					},
-				},
-			},
+			want: "v9.0.0-beta.1",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _, err := fetchOCIArtifactConfig(tt.args.repo, tt.args.tag)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("fetchOCIArtifactConfig() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("fetchOCIArtifactConfig() = %v, want %v", got, tt.want)
+			if got := transformTiupVer(tt.args.version, tt.args.tag); got != tt.want {
+				t.Errorf("transformTiupVer() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_analyzeFromOciArtifact(t *testing.T) {
+func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 	type args struct {
 		repo string
 		tag  string
@@ -145,9 +62,9 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 			},
 			want: []PublishRequestTiUP{
 				{
-					From: From{
-						Type: FromTypeOci,
-						Oci: &FromOci{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
 							Tag:  "v8.3.0_linux_amd64",
 							File: "tidb-v8.3.0-pre-linux-amd64.tar.gz",
@@ -163,9 +80,9 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 					},
 				},
 				{
-					From: From{
-						Type: FromTypeOci,
-						Oci: &FromOci{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
 							Tag:  "v8.3.0_linux_amd64",
 							File: "br-v8.3.0-pre-linux-amd64.tar.gz",
@@ -181,9 +98,9 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 					},
 				},
 				{
-					From: From{
-						Type: FromTypeOci,
-						Oci: &FromOci{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
 							Tag:  "v8.3.0_linux_amd64",
 							File: "dumpling-v8.3.0-pre-linux-amd64.tar.gz",
@@ -199,9 +116,9 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 					},
 				},
 				{
-					From: From{
-						Type: FromTypeOci,
-						Oci: &FromOci{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
 							Tag:  "v8.3.0_linux_amd64",
 							File: "tidb-lightning-v8.3.0-pre-linux-amd64.tar.gz",
@@ -232,6 +149,7 @@ func Test_analyzeFromOciArtifact(t *testing.T) {
 		})
 	}
 }
+
 func Test_pkgName(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -277,6 +195,7 @@ func Test_pkgName(t *testing.T) {
 		})
 	}
 }
+
 func Test_transformVer(t *testing.T) {
 	tests := []struct {
 		name    string

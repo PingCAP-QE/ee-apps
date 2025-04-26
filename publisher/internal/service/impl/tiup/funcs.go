@@ -1,4 +1,4 @@
-package impl
+package tiup
 
 import (
 	"crypto/sha256"
@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 const nightlyVerSuffix = "-nightly"
@@ -37,7 +39,7 @@ func postCheckTiupPkg(localFile, remoteFileURL string) error {
 	}
 
 	// 2. Download the remote file
-	tempFile, err := downloadHTTPFile(remoteFileURL)
+	tempFile, err := share.DownloadHTTPFile(remoteFileURL)
 	if err != nil {
 		return fmt.Errorf("failed to download remote file: %v", err)
 	}
@@ -90,13 +92,13 @@ func calculateSHA256(filePath string) (string, error) {
 //	    3.2.5 set the publish info description, entrypoint with value of same key in the element.
 func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) {
 	// 1. Fetch the artifact config
-	config, ociDigest, err := fetchOCIArtifactConfig(repo, tag)
+	config, ociDigest, err := share.FetchOCIArtifactConfig(repo, tag)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Check if "net.pingcap.tibuild.tiup" exists
-	tiupPackages, ok := config["net.pingcap.tibuild.tiup"].([]interface{})
+	tiupPackages, ok := config["net.pingcap.tibuild.tiup"].([]any)
 	if !ok || len(tiupPackages) == 0 {
 		return nil, nil // No TiUP packages to publish
 	}
@@ -109,13 +111,13 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) 
 	// 3. Loop through TiUP packages
 	var publishRequests []PublishRequestTiUP
 	for _, pkg := range tiupPackages {
-		pkgMap := pkg.(map[string]interface{})
+		pkgMap := pkg.(map[string]any)
 		file := pkgMap["file"].(string)
 
 		// 3.1 Set the publish 'from' part
-		from := From{
-			Type: FromTypeOci,
-			Oci: &FromOci{
+		from := share.From{
+			Type: share.FromTypeOci,
+			Oci: &share.FromOci{
 				Repo: repo,
 				File: file,
 				// use digest to avoid the problem of new override on the tag.
@@ -142,7 +144,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) 
 }
 
 func analyzeTiupFromOciArtifactUrl(url string) ([]PublishRequestTiUP, error) {
-	repo, tag, err := splitRepoAndTag(url)
+	repo, tag, err := share.SplitRepoAndTag(url)
 	if err != nil {
 		return nil, err
 	}
