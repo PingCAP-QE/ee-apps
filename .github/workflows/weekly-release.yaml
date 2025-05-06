@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,8 +49,6 @@ jobs:
               echo "has_changes=false" >> $GITHUB_OUTPUT
             fi
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get current date
         if: steps.check-changes.outputs.has_changes == 'true'
@@ -78,5 +78,3 @@ jobs:
               --title "Weekly Release $TAG_NAME" \
               --notes "Weekly automatic release created on $(date +'%Y-%m-%d')"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
