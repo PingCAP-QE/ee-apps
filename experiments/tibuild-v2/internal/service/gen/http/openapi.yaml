@@ -679,7 +679,7 @@ definitions:
                 is_push_gcr: true
                 pipeline_engine: tekton
                 plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                product: drainer
+                product: tiflash
                 product_base_img: Ea debitis.
                 product_dockerfile: Quia enim sint aut asperiores.
                 target_img: Architecto enim molestiae dolorem est.
@@ -934,7 +934,7 @@ definitions:
                 example: Cumque rerum rerum ut.
             product:
                 type: string
-                example: pump
+                example: tidb-tools
                 enum:
                     - tidb
                     - br
@@ -953,6 +953,7 @@ definitions:
                     - ng-monitoring
                     - tidb-dashboard
                     - ticdc-newarch
+                    - tiproxy
             product_base_img:
                 type: string
                 example: Quia ex.
@@ -977,7 +978,7 @@ definitions:
             is_push_gcr: true
             pipeline_engine: tekton
             plugin_git_ref: Dolorem est non asperiores suscipit.
-            product: drainer
+            product: tidb-dashboard
             product_base_img: Et qui in.
             product_dockerfile: Et illo consectetur.
             target_img: Consequuntur sit suscipit ipsum.
@@ -1235,7 +1236,7 @@ definitions:
                 is_push_gcr: true
                 pipeline_engine: tekton
                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                product: pd
+                product: tidb-lightning
                 product_base_img: Nemo harum.
                 product_dockerfile: Reprehenderit eaque exercitationem.
                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.

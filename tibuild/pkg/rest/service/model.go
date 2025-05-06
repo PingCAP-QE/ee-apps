@@ -16,23 +16,24 @@ type Context interface {
 type Product string
 
 const (
-	ProductTidb             Product = "tidb"
-	ProductEnterprisePlugin Product = "enterprise-plugin"
-	ProductTikv             Product = "tikv"
-	ProductPd               Product = "pd"
-	ProductTiflash          Product = "tiflash"
 	ProductBr               Product = "br"
+	ProductDm               Product = "dm"
+	ProductDrainer          Product = "drainer"
 	ProductDumpling         Product = "dumpling"
-	ProductTidbLightning    Product = "tidb-lightning"
+	ProductEnterprisePlugin Product = "enterprise-plugin"
+	ProductNgMonitoring     Product = "ng-monitoring"
+	ProductPd               Product = "pd"
+	ProductPump             Product = "pump"
 	ProductTicdc            Product = "ticdc"
 	ProductTicdcNewarch     Product = "ticdc-newarch"
-	ProductDm               Product = "dm"
+	ProductTidb             Product = "tidb"
 	ProductTidbBinlog       Product = "tidb-binlog"
-	ProductTidbTools        Product = "tidb-tools"
-	ProductNgMonitoring     Product = "ng-monitoring"
 	ProductTidbDashboard    Product = "tidb-dashboard"
-	ProductDrainer          Product = "drainer"
-	ProductPump             Product = "pump"
+	ProductTidbLightning    Product = "tidb-lightning"
+	ProductTidbTools        Product = "tidb-tools"
+	ProductTiflash          Product = "tiflash"
+	ProductTikv             Product = "tikv"
+	ProductTiproxy          Product = "tiproxy"
 
 	ProductUnknown Product = ""
 )
@@ -96,10 +97,25 @@ var (
 	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
 )
 
-var allProducts = [...]Product{ProductTidb, ProductTikv, ProductPd,
-	ProductTiflash, ProductBr, ProductTidbLightning, ProductDumpling,
-	ProductTicdc, ProductTicdcNewarch, ProductDm, ProductTidbBinlog, ProductTidbTools,
-	ProductNgMonitoring, ProductTidbDashboard, ProductDrainer, ProductPump}
+var allProducts = [...]Product{
+	ProductBr,
+	ProductDm,
+	ProductDrainer,
+	ProductDumpling,
+	ProductNgMonitoring,
+	ProductPd,
+	ProductPump,
+	ProductTicdc,
+	ProductTicdcNewarch,
+	ProductTidb,
+	ProductTidbBinlog,
+	ProductTidbDashboard,
+	ProductTidbLightning,
+	ProductTidbTools,
+	ProductTiflash,
+	ProductTikv,
+	ProductTiproxy,
+}
 
 func StringToProduct(s string) Product {
 	for _, i := range allProducts {

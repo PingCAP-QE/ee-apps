@@ -252,16 +252,18 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("product", String, func() {
 		Enum(
 			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
-			"tikv",              // from tikv/tikv repo.
-			"pd",                // from tikv/pd repo.
-			"enterprise-plugin", // from pingcap-inc/enterprise-plugin repo.
-			"tiflash",           // from pingcap/tiflash repo.
-			"ticdc", "dm",       // from pingcap/tiflow repo.
+			"tikv",                           // from tikv/tikv repo.
+			"pd",                             // from tikv/pd repo.
+			"enterprise-plugin",              // from pingcap-inc/enterprise-plugin repo.
+			"tiflash",                        // from pingcap/tiflash repo.
+			"ticdc",                          // from pingcap/tiflow or pingcap/ticdc repo.
+			"dm",                             // from pingcap/tiflow repo.
 			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
 			"tidb-tools",     // from pingcap/tidb-tools repo.
 			"ng-monitoring",  // from pingcap/ng-monitoring repo.
 			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
 			"ticdc-newarch",  // from pingcap/ticdc repo.
+			"tiproxy",        // from pingcap/tiproxy repo.
 		)
 	})
 	Attribute("product_base_img", String)
