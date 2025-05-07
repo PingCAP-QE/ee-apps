@@ -1,55 +1,45 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
-
 	"time"
 )
 
-type Context interface {
-	context.Context
-}
-
-type Product string
-
 const (
-	ProductBr               Product = "br"
-	ProductDm               Product = "dm"
-	ProductDrainer          Product = "drainer"
-	ProductDumpling         Product = "dumpling"
-	ProductEnterprisePlugin Product = "enterprise-plugin"
-	ProductNgMonitoring     Product = "ng-monitoring"
-	ProductPd               Product = "pd"
-	ProductPump             Product = "pump"
-	ProductTicdc            Product = "ticdc"
-	ProductTicdcNewarch     Product = "ticdc-newarch"
-	ProductTidb             Product = "tidb"
-	ProductTidbBinlog       Product = "tidb-binlog"
-	ProductTidbDashboard    Product = "tidb-dashboard"
-	ProductTidbLightning    Product = "tidb-lightning"
-	ProductTidbTools        Product = "tidb-tools"
-	ProductTiflash          Product = "tiflash"
-	ProductTikv             Product = "tikv"
-	ProductTiproxy          Product = "tiproxy"
+	ProductBr               = "br"
+	ProductDm               = "dm"
+	ProductDrainer          = "drainer"
+	ProductDumpling         = "dumpling"
+	ProductEnterprisePlugin = "enterprise-plugin"
+	ProductNgMonitoring     = "ng-monitoring"
+	ProductPd               = "pd"
+	ProductPump             = "pump"
+	ProductTicdc            = "ticdc"
+	ProductTicdcNewarch     = "ticdc-newarch"
+	ProductTidb             = "tidb"
+	ProductTidbBinlog       = "tidb-binlog"
+	ProductTidbDashboard    = "tidb-dashboard"
+	ProductTidbLightning    = "tidb-lightning"
+	ProductTidbTools        = "tidb-tools"
+	ProductTiflash          = "tiflash"
+	ProductTikv             = "tikv"
+	ProductTiproxy          = "tiproxy"
 
-	ProductUnknown Product = ""
+	ProductUnknown = ""
 )
 
-func (p Product) IsValid() bool {
-	for _, v := range allProducts {
-		if p == v {
-			return true
-		}
-	}
-	return false
-}
+const (
+	KeyOfApiAccount   = "apiAccount"
+	AdminApiAccount   = "admin"
+	TibuildApiAccount = "tibuild"
+)
 
 type BranchCreateReq struct {
-	Prod        Product `json:"prod"`
-	BaseVersion string  `json:"baseVersion"`
+	Prod        string `json:"prod"`
+	BaseVersion string `json:"baseVersion"`
 }
 
 type BranchCreateResp struct {
@@ -58,8 +48,8 @@ type BranchCreateResp struct {
 }
 
 type TagCreateReq struct {
-	Prod   Product `json:"prod"`
-	Branch string  `json:"branch"`
+	Prod   string `json:"prod"`
+	Branch string `json:"branch"`
 }
 
 type TagCreateResp struct {
@@ -97,7 +87,7 @@ var (
 	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
 )
 
-var allProducts = [...]Product{
+var allProducts = []string{
 	ProductBr,
 	ProductDm,
 	ProductDrainer,
@@ -117,16 +107,14 @@ var allProducts = [...]Product{
 	ProductTiproxy,
 }
 
-func StringToProduct(s string) Product {
-	for _, i := range allProducts {
-		if s == string(i) {
-			return Product(s)
-		}
+func StringToProduct(s string) string {
+	if slices.Contains(allProducts, s) {
+		return s
 	}
 	return ProductUnknown
 }
 
-func ProdToRepo(prod Product) *GithubRepo {
+func ProdToRepo(prod string) *GithubRepo {
 	switch prod {
 	case ProductBr, ProductTidbLightning, ProductDumpling, ProductTidb:
 		return &RepoTidb
@@ -184,32 +172,30 @@ type DevBuildSaveOption struct {
 }
 
 type DevBuildSpec struct {
-	Product           Product        `json:"product"`
-	GitRef            string         `json:"gitRef"`
-	GitHash           string         `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
-	Version           string         `json:"version"`
-	Edition           string         `json:"edition"`
-	Platform          string         `json:"platform,omitempty"` // "linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64" or empty for all platforms.
-	PluginGitRef      string         `json:"pluginGitRef,omitempty"`
-	BuildEnv          string         `json:"buildEnv,omitempty" gorm:"type:varchar(256)"`
-	ProductDockerfile string         `json:"productDockerfile,omitempty" gorm:"type:varchar(256)"`
-	ProductBaseImg    string         `json:"productBaseImg,omitempty" gorm:"type:varchar(256)"`
-	BuilderImg        string         `json:"builderImg,omitempty" gorm:"type:varchar(256)"`
-	GithubRepo        string         `json:"githubRepo,omitempty" gorm:"type:varchar(128)"`
-	IsPushGCR         bool           `json:"isPushGCR,omitempty"`
-	Features          string         `json:"features,omitempty" gorm:"type:varchar(128)"`
-	IsHotfix          bool           `json:"isHotfix,omitempty"`
-	TargetImg         string         `json:"targetImg,omitempty" gorm:"type:varchar(256)"`
-	PipelineEngine    PipelineEngine `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
+	Product           string `json:"product"`
+	GitRef            string `json:"gitRef"`
+	GitHash           string `json:"gitHash,omitempty" gorm:"type:varchar(64)"`
+	Version           string `json:"version"`
+	Edition           string `json:"edition"`
+	Platform          string `json:"platform,omitempty"` // "linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64" or empty for all platforms.
+	PluginGitRef      string `json:"pluginGitRef,omitempty"`
+	BuildEnv          string `json:"buildEnv,omitempty" gorm:"type:varchar(256)"`
+	ProductDockerfile string `json:"productDockerfile,omitempty" gorm:"type:varchar(256)"`
+	ProductBaseImg    string `json:"productBaseImg,omitempty" gorm:"type:varchar(256)"`
+	BuilderImg        string `json:"builderImg,omitempty" gorm:"type:varchar(256)"`
+	GithubRepo        string `json:"githubRepo,omitempty" gorm:"type:varchar(128)"`
+	IsPushGCR         bool   `json:"isPushGCR,omitempty"`
+	Features          string `json:"features,omitempty" gorm:"type:varchar(128)"`
+	IsHotfix          bool   `json:"isHotfix,omitempty"`
+	TargetImg         string `json:"targetImg,omitempty" gorm:"type:varchar(256)"`
+	PipelineEngine    string `json:"pipelineEngine,omitempty" gorm:"type:varchar(16)"`
 	prNumber          int
 	prBaseRef         string
 }
 
-type PipelineEngine string
-
 const (
-	JenkinsEngine PipelineEngine = "jenkins"
-	TektonEngine  PipelineEngine = "tekton"
+	JenkinsEngine = "jenkins"
+	TektonEngine  = "tekton"
 )
 
 type GitRef string
@@ -231,34 +217,26 @@ var (
 type BuildStatus string
 
 const (
-	BuildStatusPending    BuildStatus = "PENDING"
-	BuildStatusProcessing BuildStatus = "PROCESSING"
-	BuildStatusAborted    BuildStatus = "ABORTED"
-	BuildStatusSuccess    BuildStatus = "SUCCESS"
-	BuildStatusFailure    BuildStatus = "FAILURE"
-	BuildStatusError      BuildStatus = "ERROR"
+	BuildStatusPending    = "PENDING"
+	BuildStatusProcessing = "PROCESSING"
+	BuildStatusAborted    = "ABORTED"
+	BuildStatusSuccess    = "SUCCESS"
+	BuildStatusFailure    = "FAILURE"
+	BuildStatusError      = "ERROR"
 )
 
-func (p BuildStatus) IsValid() bool {
-	switch p {
-	case BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError:
-		return true
-	default:
-		return false
-	}
+var validBuildStatuses = []string{BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError}
+
+func IsValidBuildStatus(status string) bool {
+	return slices.Contains(validBuildStatuses, status)
 }
 
-func (p BuildStatus) IsCompleted() bool {
-	switch p {
-	case BuildStatusPending, BuildStatusProcessing:
-		return false
-	default:
-		return true
-	}
+func IsBuildStatusCompleted(status string) bool {
+	return !slices.Contains([]string{BuildStatusPending, BuildStatusProcessing}, status)
 }
 
 type DevBuildStatus struct {
-	Status           BuildStatus     `json:"status" gorm:"type:varchar(16)"`
+	Status           string          `json:"status" gorm:"type:varchar(16)"`
 	PipelineBuildID  int64           `json:"pipelineBuildID,omitempty"`
 	PipelineViewURL  string          `json:"pipelineViewURL,omitempty" gorm:"-"`
 	PipelineViewURLs []string        `json:"pipelineViewURLs,omitempty" gorm:"-"`
@@ -279,8 +257,8 @@ type TektonPipeline struct {
 	Name         string          `json:"name"`
 	URL          string          `json:"url,omitempty"`
 	GitHash      string          `json:"gitHash,omitempty"`
-	Status       BuildStatus     `json:"status"`
-	Platform     Platform        `json:"platform,omitempty"`
+	Status       string          `json:"status"`
+	Platform     string          `json:"platform,omitempty"`
 	StartAt      *time.Time      `json:"startAt,omitempty"`
 	EndAt        *time.Time      `json:"endAt,omitempty"`
 	OciArtifacts []OciArtifact   `json:"ociArtifacts,omitempty"`
@@ -302,23 +280,21 @@ type BuildReport struct {
 }
 
 type ImageArtifact struct {
-	Platform Platform `json:"platform"`
-	URL      string   `json:"url"`
+	Platform string `json:"platform"`
+	URL      string `json:"url"`
 }
 
-type Platform string
-
 var (
-	MultiArch   Platform = "multi-arch"
-	LinuxAmd64  Platform = "linux/amd64"
-	LinuxArm64  Platform = "linux/arm64"
-	DarwinAmd64 Platform = "darwin/amd64"
-	DarwinArm64 Platform = "darwin/arm64"
+	MultiArch   = "multi-arch"
+	LinuxAmd64  = "linux/amd64"
+	LinuxArm64  = "linux/arm64"
+	DarwinAmd64 = "darwin/amd64"
+	DarwinArm64 = "darwin/arm64"
 )
 
 type BinArtifact struct {
 	Component     string   `json:"component,omitempty"`
-	Platform      Platform `json:"platform"`
+	Platform      string   `json:"platform"`
 	URL           string   `json:"url"`
 	Sha256URL     string   `json:"sha256URL"`
 	OciFile       *OciFile `json:"ociFile,omitempty"`
@@ -335,10 +311,3 @@ type ImageSyncRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 }
-
-type TibuildCtxKey string
-
-var KeyOfApiAccount TibuildCtxKey = "apiAccount"
-
-const AdminApiAccount = "admin"
-const TibuildApiAccount = "tibuild"

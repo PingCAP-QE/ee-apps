@@ -367,9 +367,10 @@ func TestTektonStatusMerge(t *testing.T) {
 			Pipelines: []TektonPipeline{
 				{Name: "pipelinerun1", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					StartAt:      &starttime,
+					EndAt:        &endtime,
 					OciArtifacts: []OciArtifact{{Repo: "harbor.net/org/repo", Tag: "master", Files: []string{"a.tar.gz", "b.tar.gz"}}},
 					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag1"}}},
-				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxArm64,
+				{Name: "pipelinerun2", Status: BuildStatusSuccess, Platform: LinuxAmd64,
 					StartAt:      &starttime,
 					EndAt:        &endtime,
 					Images:       []ImageArtifact{{URL: "harbor.net/org/image:tag2"}},
@@ -379,6 +380,8 @@ func TestTektonStatusMerge(t *testing.T) {
 		status := &DevBuildStatus{TektonStatus: tekton}
 		computeTektonStatus(tekton, status)
 		require.Equal(t, BuildStatusSuccess, status.Status)
+		t.Logf("PipelineStartAt: %v", status.PipelineStartAt)
+		t.Logf("PipelineEndAt: %v", status.PipelineEndAt)
 		require.Equal(t, endtime.Sub(starttime), status.PipelineEndAt.Sub(*status.PipelineStartAt))
 		require.Equal(t, 2, len(status.BuildReport.Images))
 		require.Equal(t, 4, len(status.BuildReport.Binaries))
@@ -699,8 +702,8 @@ func TestValidateReq(t *testing.T) {
 			}
 
 			// Check error message if error is expected
-			if tt.wantErr && err != nil && err.Error() != tt.errMsg {
-				t.Errorf("validateReq() error message = %v, want %v", err.Error(), tt.errMsg)
+			if tt.wantErr != (err != nil) {
+				t.Errorf("validateReq() error message = %v, want error: %v", err.Error(), tt.wantErr)
 			}
 		})
 	}

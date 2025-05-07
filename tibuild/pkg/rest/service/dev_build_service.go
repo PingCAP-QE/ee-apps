@@ -248,8 +248,8 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
-	if !spec.Product.IsValid() {
-		return fmt.Errorf("product is not valid")
+	if !slices.Contains(allProducts, spec.Product) {
+		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
 	}
 
 	// validate for edition for different pipeline engines
@@ -303,7 +303,7 @@ func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option
 	if err != nil {
 		return nil, err
 	}
-	if !req.Status.Status.IsValid() {
+	if !IsValidBuildStatus(req.Status.Status) {
 		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
 	}
 	if req.Status.TektonStatus == nil {
@@ -376,7 +376,7 @@ func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, 
 	}
 	startAt := build.GetTimestamp().Local()
 	entity.Status.PipelineStartAt = &startAt
-	if entity.Status.Status.IsCompleted() && entity.Status.PipelineEndAt == nil {
+	if IsBuildStatusCompleted(entity.Status.Status) && entity.Status.PipelineEndAt == nil {
 		if build.GetDuration() != 0 {
 			endAt := startAt.Add(time.Duration(build.GetDuration() * float64(time.Microsecond)))
 			entity.Status.PipelineEndAt = &endAt
@@ -441,7 +441,7 @@ func computeTektonStatus(tekton *TektonStatus, status *DevBuildStatus) {
 	collectTektonArtifacts(tekton.Pipelines, status.BuildReport)
 	status.PipelineStartAt = getTektonStartAt(tekton.Pipelines)
 	status.Status = computeTektonPhase(tekton.Pipelines)
-	if status.Status.IsCompleted() {
+	if IsBuildStatusCompleted(status.Status) {
 		status.PipelineEndAt = getLatestEndAt(tekton.Pipelines)
 	}
 }
@@ -473,11 +473,11 @@ func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
 	return startAt
 }
 
-func computeTektonPhase(pipelines []TektonPipeline) BuildStatus {
+func computeTektonPhase(pipelines []TektonPipeline) string {
 	phase := BuildStatusPending
-	var success_platforms = map[Platform]struct{}{}
-	var failure_platforms = map[Platform]struct{}{}
-	var triggered_platforms = map[Platform]struct{}{}
+	var success_platforms = map[string]struct{}{}
+	var failure_platforms = map[string]struct{}{}
+	var triggered_platforms = map[string]struct{}{}
 	for _, pipeline := range pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
@@ -511,7 +511,7 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	return latest_endat
 }
 
-func ociArtifactToFiles(platform Platform, artifact OciArtifact) []BinArtifact {
+func ociArtifactToFiles(platform string, artifact OciArtifact) []BinArtifact {
 	var rt []BinArtifact
 	var sha256s = make(map[string]*OciFile)
 	for _, file := range artifact.Files {

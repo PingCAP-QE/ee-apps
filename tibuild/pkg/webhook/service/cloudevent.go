@@ -112,7 +112,7 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 	}, nil
 }
 
-func parsePlatform(pipeline tekton.PipelineRun) rest.Platform {
+func parsePlatform(pipeline tekton.PipelineRun) string {
 	os := ""
 	arch := ""
 	for _, p := range pipeline.Spec.Params {
@@ -124,7 +124,7 @@ func parsePlatform(pipeline tekton.PipelineRun) rest.Platform {
 		}
 	}
 	if os != "" && arch != "" {
-		return rest.Platform(os + "/" + arch)
+		return os + "/" + arch
 	} else {
 		return ""
 	}
