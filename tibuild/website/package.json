@@ -1,10 +1,10 @@
 {
-  "name": "my-app",
+  "name": "tibuild-web",
   "version": "0.2.0",
   "private": true,
-  "engines" : { 
-    "npm" : ">=10",
-    "node" : ">=20"
+  "engines": {
+    "npm": ">=10",
+    "node": ">=20"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -24,9 +24,11 @@
     "react-dom": "^18.0.0",
     "react-query": "^3.39.3",
     "react-router-dom": "^6.20.1",
-    "react-scripts": "^5.0.1",
     "store": "^2.0.12",
     "web-vitals": "^3.5.0"
+  },
+  "devDependencies": {
+    "react-scripts": "^5.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
