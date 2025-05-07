@@ -25,13 +25,14 @@ const (
 )
 
 var componentToRepoMap = map[string]string{
-	"ticdc":     "tiflow",
-	"dm":        "tiflow",
-	"tidb":      "tidb",
-	"dumpling":  "tidb",
-	"lightning": "tidb",
-	"br":        "tidb",
+	"ticdc":         "tiflow",
+	"dm":            "tiflow",
+	"tidb":          "tidb",
+	"dumpling":      "tidb",
+	"lightning":     "tidb",
+	"br":            "tidb",
 	"ticdc-newarch": "ticdc",
+	"tiproxy":       "tiproxy",
 }
 
 type PipelineTriggerStruct struct {

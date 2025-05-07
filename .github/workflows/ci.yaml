@@ -8,6 +8,9 @@ on:
       - "**/Dockerfile"
       - "**/*.go"
       - "**/*.gomod"
+      - "**/*.js"
+      - "**/package.json"
+      - "**/package-lock.json"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

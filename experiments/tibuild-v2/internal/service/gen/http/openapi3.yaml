@@ -158,7 +158,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -352,7 +352,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -546,7 +546,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -741,7 +741,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -935,7 +935,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1129,7 +1129,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1323,7 +1323,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1546,7 +1546,7 @@ paths:
                                 is_push_gcr: true
                                 pipeline_engine: tekton
                                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                                product: pd
+                                product: tidb-lightning
                                 product_base_img: Nemo harum.
                                 product_dockerfile: Reprehenderit eaque exercitationem.
                                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -1576,7 +1576,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -1760,7 +1760,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2056,7 +2056,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2240,7 +2240,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2887,7 +2887,7 @@ components:
                     is_push_gcr: true
                     pipeline_engine: tekton
                     plugin_git_ref: Eum vel officiis quasi sit a ex.
-                    product: pd
+                    product: tidb-lightning
                     product_base_img: Nemo harum.
                     product_dockerfile: Reprehenderit eaque exercitationem.
                     target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -2926,7 +2926,7 @@ components:
                     is_push_gcr: false
                     pipeline_engine: tekton
                     plugin_git_ref: Voluptas voluptas et modi autem et aut.
-                    product: tidb-binlog
+                    product: br
                     product_base_img: Nihil nisi ut.
                     product_dockerfile: Natus voluptatibus fuga voluptatem sunt animi modi.
                     target_img: Porro eos vel et qui inventore adipisci.
@@ -3160,7 +3160,7 @@ components:
                     example: Nobis asperiores quia et nulla dignissimos excepturi.
                 product:
                     type: string
-                    example: pump
+                    example: tidb-dashboard
                     enum:
                         - tidb
                         - br
@@ -3179,6 +3179,7 @@ components:
                         - ng-monitoring
                         - tidb-dashboard
                         - ticdc-newarch
+                        - tiproxy
                 product_base_img:
                     type: string
                     example: Fugiat qui sed.
@@ -3203,7 +3204,7 @@ components:
                 is_push_gcr: false
                 pipeline_engine: tekton
                 plugin_git_ref: Impedit voluptatem dolor molestiae ipsa.
-                product: ticdc-newarch
+                product: tiflash
                 product_base_img: Pariatur voluptatem est.
                 product_dockerfile: Vel aut.
                 target_img: Sit tempora eos.

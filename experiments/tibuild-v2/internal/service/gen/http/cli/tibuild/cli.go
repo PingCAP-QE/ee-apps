@@ -305,7 +305,7 @@ Example:
          "is_push_gcr": true,
          "pipeline_engine": "tekton",
          "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
-         "product": "pd",
+         "product": "tidb-lightning",
          "product_base_img": "Nemo harum.",
          "product_dockerfile": "Reprehenderit eaque exercitationem.",
          "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
