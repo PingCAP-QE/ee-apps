@@ -248,8 +248,10 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
-	if !slices.Contains(allProducts, spec.Product) {
-		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
+const invalidProductError = "product %s is invalid, valid list is: %s"
+if !slices.Contains(allProducts, spec.Product) {
+	return fmt.Errorf(invalidProductError, spec.Product, strings.Join(allProducts, ","))
+}
 	}
 
 	// validate for edition for different pipeline engines
