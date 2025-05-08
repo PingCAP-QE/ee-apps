@@ -24,7 +24,7 @@ var _ HotfixService = repoService{}
 const FormatYYYYMMDD = "20060102"
 
 func (r repoService) CreateBranch(ctx context.Context, req BranchCreateReq) (resp *BranchCreateResp, err error) {
-	repo := ProdToRepo(req.Prod)
+	repo := prodToRepoMap[req.Prod]
 	if repo == nil {
 		return nil, fmt.Errorf("unknown product")
 	}
@@ -44,7 +44,7 @@ func (r repoService) CreateBranch(ctx context.Context, req BranchCreateReq) (res
 }
 
 func (r repoService) CreateTag(ctx context.Context, req TagCreateReq) (resp *TagCreateResp, err error) {
-	repo := ProdToRepo(req.Prod)
+	repo := prodToRepoMap[req.Prod]
 	if repo == nil {
 		return nil, fmt.Errorf("unknown product")
 	}

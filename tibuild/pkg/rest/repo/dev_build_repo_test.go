@@ -23,7 +23,7 @@ func TestDevBuildCreate(t *testing.T) {
 	repo := DevBuildRepo{Db: odb}
 	mock.ExpectBegin()
 	now := time.Unix(1, 0)
-	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "", "v6.7.0", EditionCommunity, "",
+	mock.ExpectExec("INSERT INTO `dev_builds`").WithArgs(now, "", now, ProductBr, "", "", "v6.7.0", EditionCommunity, "", "",
 		"AA=BB", "https://raw.example.com/Dockerfile", "", "pingcap/builder", "", false, "", false, "", /* target_img */
 		JenkinsEngine, "PENDING", 0, "", nil, nil,
 		json.RawMessage("null"), json.RawMessage("null")).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -69,7 +69,7 @@ func TestDevBuildUpdate(t *testing.T) {
 	tekton_text, err := json.Marshal(tekton_status)
 	require.NoError(t, err)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", "", false, "", false, "", "", "SUCCESS", 0, "", nil, nil, report_text, tekton_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE `dev_builds` SET").WithArgs(now, "", sqlmock.AnyArg(), ProductBr, "", "", "", "", "", "", "", "", "", "", "", false, "", false, "", "", "SUCCESS", 0, "", nil, nil, report_text, tekton_text, 1).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	entity, err := repo.Update(context.TODO(),
 		1,
