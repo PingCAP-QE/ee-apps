@@ -200,7 +200,7 @@ func guessEnterprisePluginRef(spec *DevBuildSpec) {
 
 func fillGithubRepo(spec *DevBuildSpec) {
 	if spec.GithubRepo == "" {
-		repo := ProdToRepo(spec.Product)
+		repo := prodToRepoMap[spec.Product]
 		if repo != nil {
 			spec.GithubRepo = fmt.Sprintf("%s/%s", repo.Owner, repo.Repo)
 		}

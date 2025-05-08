@@ -3,32 +3,8 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
-)
-
-const (
-	ProductBr               = "br"
-	ProductDm               = "dm"
-	ProductDrainer          = "drainer"
-	ProductDumpling         = "dumpling"
-	ProductEnterprisePlugin = "enterprise-plugin"
-	ProductNgMonitoring     = "ng-monitoring"
-	ProductPd               = "pd"
-	ProductPump             = "pump"
-	ProductTicdc            = "ticdc"
-	ProductTicdcNewarch     = "ticdc-newarch"
-	ProductTidb             = "tidb"
-	ProductTidbBinlog       = "tidb-binlog"
-	ProductTidbDashboard    = "tidb-dashboard"
-	ProductTidbLightning    = "tidb-lightning"
-	ProductTidbTools        = "tidb-tools"
-	ProductTiflash          = "tiflash"
-	ProductTikv             = "tikv"
-	ProductTiproxy          = "tiproxy"
-
-	ProductUnknown = ""
 )
 
 const (
@@ -72,75 +48,6 @@ func GHRepoToStruct(repo string) *GithubRepo {
 		return nil
 	}
 	return &GithubRepo{Owner: ss[0], Repo: ss[1]}
-}
-
-var (
-	RepoTidb          = GithubRepo{Owner: "pingcap", Repo: "tidb"}
-	RepoTikv          = GithubRepo{Owner: "tikv", Repo: "tikv"}
-	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
-	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
-	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
-	RepoTicdc         = GithubRepo{Owner: "pingcap", Repo: "ticdc"}
-	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
-	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
-	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
-	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
-)
-
-var allProducts = []string{
-	ProductBr,
-	ProductDm,
-	ProductDrainer,
-	ProductDumpling,
-	ProductNgMonitoring,
-	ProductPd,
-	ProductPump,
-	ProductTicdc,
-	ProductTicdcNewarch,
-	ProductTidb,
-	ProductTidbBinlog,
-	ProductTidbDashboard,
-	ProductTidbLightning,
-	ProductTidbTools,
-	ProductTiflash,
-	ProductTikv,
-	ProductTiproxy,
-}
-
-func StringToProduct(s string) string {
-	if slices.Contains(allProducts, s) {
-		return s
-	}
-	return ProductUnknown
-}
-
-func ProdToRepo(prod string) *GithubRepo {
-	switch prod {
-	case ProductBr, ProductTidbLightning, ProductDumpling, ProductTidb:
-		return &RepoTidb
-	case ProductTikv:
-		return &RepoTikv
-	case ProductPd:
-		return &RepoPd
-	case ProductTiflash:
-		return &RepoTiflash
-	case ProductTicdc, ProductDm:
-		return &RepoTiflow
-	case ProductTicdcNewarch:
-		return &RepoTicdc
-	case ProductDrainer, ProductPump:
-		fallthrough
-	case ProductTidbBinlog:
-		return &RepoTidbBinlog
-	case ProductTidbTools:
-		return &RepoTidbTools
-	case ProductNgMonitoring:
-		return &RepoNgMonitoring
-	case ProductTidbDashboard:
-		return &RepoTidbDashboard
-	default:
-		return nil
-	}
 }
 
 type DevBuild struct {
@@ -193,48 +100,6 @@ type DevBuildSpec struct {
 	prBaseRef         string
 }
 
-const (
-	JenkinsEngine = "jenkins"
-	TektonEngine  = "tekton"
-)
-
-type GitRef string
-
-// Edition constants define the valid values for DevBuildSpec.Edition
-const (
-	EditionEnterprise = "enterprise"
-	EditionCommunity  = "community"
-	EditionFailPoint  = "failpoint"
-	EditionFips       = "fips"
-	EditionExperiment = "experiment"
-)
-
-var (
-	InvalidEditionForJenkins = []string{EditionEnterprise, EditionCommunity}
-	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment}
-)
-
-type BuildStatus string
-
-const (
-	BuildStatusPending    = "PENDING"
-	BuildStatusProcessing = "PROCESSING"
-	BuildStatusAborted    = "ABORTED"
-	BuildStatusSuccess    = "SUCCESS"
-	BuildStatusFailure    = "FAILURE"
-	BuildStatusError      = "ERROR"
-)
-
-var validBuildStatuses = []string{BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError}
-
-func IsValidBuildStatus(status string) bool {
-	return slices.Contains(validBuildStatuses, status)
-}
-
-func IsBuildStatusCompleted(status string) bool {
-	return !slices.Contains([]string{BuildStatusPending, BuildStatusProcessing}, status)
-}
-
 type DevBuildStatus struct {
 	Status           string          `json:"status" gorm:"type:varchar(16)"`
 	PipelineBuildID  int64           `json:"pipelineBuildID,omitempty"`
@@ -283,14 +148,6 @@ type ImageArtifact struct {
 	Platform string `json:"platform"`
 	URL      string `json:"url"`
 }
-
-var (
-	MultiArch   = "multi-arch"
-	LinuxAmd64  = "linux/amd64"
-	LinuxArm64  = "linux/arm64"
-	DarwinAmd64 = "darwin/amd64"
-	DarwinArm64 = "darwin/arm64"
-)
 
 type BinArtifact struct {
 	Component     string   `json:"component,omitempty"`
