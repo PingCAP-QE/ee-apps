@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -89,7 +88,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 		// TODO: add auth in header.
 		Post(apiURL)
 	if err != nil {
-		return "", SkipError(err)
+		return "", err
 	}
 	if !resp.IsSuccess() {
 		return "", fmt.Errorf("trigger devbuild failed: %s", resp.String())
@@ -131,7 +130,7 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return nil, InformationError(errors.New(devBuildDetailedHelpText))
+		return nil, NewInformationError(devBuildDetailedHelpText)
 	}
 
 	// Check required flags

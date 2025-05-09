@@ -47,15 +47,6 @@ type CommandResponse struct {
 	Error   string
 }
 
-type (
-	// InformationError represents an information level error that occurred during command execution.
-	// it will give some information but not error, such as help and skip reasons.
-	InformationError error
-
-	// SkipError represents a skip level error that occurred during command execution.
-	SkipError error
-)
-
 type commandLarkMsgContent struct {
 	Text string `json:"text"`
 }

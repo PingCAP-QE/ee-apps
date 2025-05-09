@@ -58,7 +58,7 @@ Optional options for trigger:
   --productBaseImg string   Product base image
   --builderImg string       Docker image for builder
   --targetImg string        Target image
-  --engine string           Pipeline engine (jenkins or tekton, default: jenkins)
+  --engine string           Pipeline engine (jenkins or tekton, default: jenkins, 'tekton' is in beta)
 `
 )
 
@@ -74,7 +74,7 @@ func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	case "poll":
 		return runCommandDevbuildPoll(ctx, args[1:])
 	case "-h", "--help":
-		return devBuildDetailedHelpText, nil
+		return devBuildDetailedHelpText, NewInformationError("Requested command usage")
 	default:
 		return "", fmt.Errorf("unknown subcommand: %s", subCmd)
 	}
