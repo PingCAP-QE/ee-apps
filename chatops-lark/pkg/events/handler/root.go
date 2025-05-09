@@ -198,18 +198,18 @@ func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool
 
 	// send different level response for the error types.
 	switch e := err.(type) {
-	case SkipError:
+	case *SkipError:
 		asyncLog.Info().Msg("Command was skipped")
-		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
-		r.sendResponse(messageID, replyInThread, StatusSkip, message)
-	case InformationError:
+		responseMsg := strings.Join([]string{message, e.Error()}, "\n---\n")
+		r.sendResponse(messageID, replyInThread, StatusSkip, responseMsg)
+	case *InformationError:
 		asyncLog.Info().Msg("Command was handled but just feedback information")
-		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
-		r.sendResponse(messageID, replyInThread, StatusInfo, message)
+		responseMsg := strings.Join([]string{message, e.Error()}, "\n---\n")
+		r.sendResponse(messageID, replyInThread, StatusInfo, responseMsg)
 	default:
 		asyncLog.Err(err).Msg("Command processing failed")
-		message = fmt.Sprintf("%s\n---\n**error:**\n%v", message, err)
-		r.sendResponse(messageID, replyInThread, StatusFailure, message)
+		responseMsg := strings.Join([]string{message, e.Error()}, "\n---\n")
+		r.sendResponse(messageID, replyInThread, StatusFailure, responseMsg)
 	}
 }
 
@@ -244,7 +244,7 @@ func (r *rootHandler) getCommandConfig(command *Command, cmdLogger zerolog.Logge
 	if !ok {
 		cmdLogger.Warn().Msg("Unsupported command")
 
-		return nil, fmt.Errorf("Unsupported command: %s\n\n%s", command.Name, r.availableCommandsHelp())
+		return nil, NewSkipError(fmt.Sprintf("Unsupported command: %s\n\n%s", command.Name, r.availableCommandsHelp()))
 	}
 	return &cmdConfig, nil
 }

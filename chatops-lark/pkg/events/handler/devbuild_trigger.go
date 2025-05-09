@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -28,6 +27,25 @@ type triggerParams struct {
 	hotfix            bool
 	pushGCR           bool
 	dryRun            bool
+}
+
+// Verify required params
+func (p triggerParams) Verify() error {
+	missingFlags := []string{}
+	if p.product == "" {
+		missingFlags = append(missingFlags, "--product")
+	}
+	if p.version == "" {
+		missingFlags = append(missingFlags, "--version")
+	}
+	if p.gitRef == "" {
+		missingFlags = append(missingFlags, "--gitRef")
+	}
+	if len(missingFlags) > 0 {
+		return fmt.Errorf("required flags %v are missing", missingFlags)
+	}
+
+	return nil
 }
 
 type triggerResult struct {
@@ -89,7 +107,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 		// TODO: add auth in header.
 		Post(apiURL)
 	if err != nil {
-		return "", SkipError(err)
+		return "", err
 	}
 	if !resp.IsSuccess() {
 		return "", fmt.Errorf("trigger devbuild failed: %s", resp.String())
@@ -106,6 +124,12 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 
 	fs := flag.NewFlagSet("trigger", flag.ContinueOnError)
 	{
+		// Required flags (previously positional arguments)
+		fs.StringVar(&ret.product, "product", "", "product to build (required)")
+		fs.StringVar(&ret.version, "version", "", "version to build (required)")
+		fs.StringVar(&ret.gitRef, "gitRef", "", "git reference to build from (required)")
+
+		// Optional flags
 		fs.StringVar(&ret.edition, "e", "community", "default is community")
 		fs.StringVar(&ret.edition, "edition", "community", "default is community")
 		fs.StringVar(&ret.platform, "p", "", "platform to build, default is for all")
@@ -125,16 +149,13 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return nil, InformationError(errors.New(devBuildDetailedHelpText))
+		return nil, NewInformationError(devBuildDetailedHelpText)
 	}
 
-	if fs.NArg() < 3 {
-		return nil, fmt.Errorf("missing required positional arguments: product, version, gitRef")
+	if err := ret.Verify(); err != nil {
+		return nil, err
 	}
 
-	ret.product = fs.Arg(0)
-	ret.version = fs.Arg(1)
-	ret.gitRef = fs.Arg(2)
 	ret.buildEnvs = buildEnv
 
 	return &ret, nil
