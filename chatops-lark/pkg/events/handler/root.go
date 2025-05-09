@@ -198,11 +198,11 @@ func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool
 
 	// send different level response for the error types.
 	switch e := err.(type) {
-	case skipError:
+	case *SkipError:
 		asyncLog.Info().Msg("Command was skipped")
 		message = fmt.Sprintf("%s\n---\n**skip:**\n%v", message, e)
 		r.sendResponse(messageID, replyInThread, StatusSkip, message)
-	case informationError:
+	case *InformationError:
 		asyncLog.Info().Msg("Command was handled but just feedback information")
 		message = fmt.Sprintf("%s\n---\n**information:**\n%v", message, e)
 		r.sendResponse(messageID, replyInThread, StatusInfo, message)

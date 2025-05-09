@@ -1,29 +1,27 @@
 package handler
 
-// informationError implements InformationError
-type informationError struct {
-	msg string
-}
+// InformationError implements InformationError
+type InformationError struct{ msg string }
+
+// SkipError implements SkipError
+type SkipError struct{ msg string }
 
 // Error implements the error interface
-func (e informationError) Error() string {
+func (e InformationError) Error() string {
 	return e.msg
 }
 
 // NewInformationError creates a new information level error
 func NewInformationError(msg string) error {
-	return informationError{msg}
+	return &InformationError{msg}
 }
 
-// skipError implements SkipError
-type skipError struct{ msg string }
-
 // Error implements the error interface
-func (e skipError) Error() string {
+func (e SkipError) Error() string {
 	return e.msg
 }
 
 // NewSkipError creates a new skip level Error
 func NewSkipError(msg string) error {
-	return skipError{msg}
+	return &SkipError{msg}
 }

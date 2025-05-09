@@ -29,6 +29,25 @@ type triggerParams struct {
 	dryRun            bool
 }
 
+// Verify required params
+func (p triggerParams) Verify() error {
+	missingFlags := []string{}
+	if p.product == "" {
+		missingFlags = append(missingFlags, "--product")
+	}
+	if p.version == "" {
+		missingFlags = append(missingFlags, "--version")
+	}
+	if p.gitRef == "" {
+		missingFlags = append(missingFlags, "--gitRef")
+	}
+	if len(missingFlags) > 0 {
+		return fmt.Errorf("required flags %v are missing", missingFlags)
+	}
+
+	return nil
+}
+
 type triggerResult struct {
 	ID int `json:"id"`
 }
@@ -133,15 +152,8 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 		return nil, NewInformationError(devBuildDetailedHelpText)
 	}
 
-	// Check required flags
-	if ret.product == "" {
-		return nil, fmt.Errorf("required flag -product is missing")
-	}
-	if ret.version == "" {
-		return nil, fmt.Errorf("required flag -version is missing")
-	}
-	if ret.gitRef == "" {
-		return nil, fmt.Errorf("required flag -gitRef is missing")
+	if err := ret.Verify(); err != nil {
+		return nil, err
 	}
 
 	ret.buildEnvs = buildEnv
