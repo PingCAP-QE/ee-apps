@@ -14,9 +14,7 @@ go to [design/design.go](./design/design.go)
 
 run:
 ```bash
-rm -rf gen cmd tiup.go
-goa gen github.com/PingCAP-QE/ee-apps/publisher/design
-goa example github.com/PingCAP-QE/ee-apps/publisher/design
+go generate ./...
 ```
 
 ## How to run

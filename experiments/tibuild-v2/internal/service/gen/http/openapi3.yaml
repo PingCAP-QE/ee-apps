@@ -149,7 +149,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -158,7 +158,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -343,7 +343,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -352,7 +352,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -537,7 +537,7 @@ paths:
                                       spec:
                                         build_env: Aut tenetur corrupti et voluptatem voluptas.
                                         builder_img: Qui ea non et vel.
-                                        edition: community
+                                        edition: failpoint
                                         features: Ut tempora amet dicta rerum a nihil.
                                         git_ref: Quia fugiat sed ut.
                                         git_sha: Neque quibusdam possimus.
@@ -546,7 +546,7 @@ paths:
                                         is_push_gcr: true
                                         pipeline_engine: tekton
                                         plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                        product: drainer
+                                        product: tiflash
                                         product_base_img: Ea debitis.
                                         product_dockerfile: Quia enim sint aut asperiores.
                                         target_img: Architecto enim molestiae dolorem est.
@@ -732,7 +732,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -741,7 +741,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -926,7 +926,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -935,7 +935,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1120,7 +1120,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -1129,7 +1129,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1314,7 +1314,7 @@ paths:
                                   spec:
                                     build_env: Aut tenetur corrupti et voluptatem voluptas.
                                     builder_img: Qui ea non et vel.
-                                    edition: community
+                                    edition: failpoint
                                     features: Ut tempora amet dicta rerum a nihil.
                                     git_ref: Quia fugiat sed ut.
                                     git_sha: Neque quibusdam possimus.
@@ -1323,7 +1323,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: tekton
                                     plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                                    product: drainer
+                                    product: tiflash
                                     product_base_img: Ea debitis.
                                     product_dockerfile: Quia enim sint aut asperiores.
                                     target_img: Architecto enim molestiae dolorem est.
@@ -1537,7 +1537,7 @@ paths:
                             request:
                                 build_env: Ipsa et alias.
                                 builder_img: Et ipsa.
-                                edition: enterprise
+                                edition: experiment
                                 features: Veniam eaque nisi.
                                 git_ref: Aut adipisci sed.
                                 git_sha: Eum sit.
@@ -1546,7 +1546,7 @@ paths:
                                 is_push_gcr: true
                                 pipeline_engine: tekton
                                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                                product: pd
+                                product: tidb-lightning
                                 product_base_img: Nemo harum.
                                 product_dockerfile: Reprehenderit eaque exercitationem.
                                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -1567,7 +1567,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -1576,7 +1576,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -1751,7 +1751,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -1760,7 +1760,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2047,7 +2047,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2056,7 +2056,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2231,7 +2231,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: community
+                                    edition: experiment
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2240,7 +2240,7 @@ paths:
                                     is_push_gcr: true
                                     pipeline_engine: jenkins
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: pd
+                                    product: tidb-lightning
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2878,7 +2878,7 @@ components:
                 request:
                     build_env: Ipsa et alias.
                     builder_img: Et ipsa.
-                    edition: enterprise
+                    edition: experiment
                     features: Veniam eaque nisi.
                     git_ref: Aut adipisci sed.
                     git_sha: Eum sit.
@@ -2887,7 +2887,7 @@ components:
                     is_push_gcr: true
                     pipeline_engine: tekton
                     plugin_git_ref: Eum vel officiis quasi sit a ex.
-                    product: pd
+                    product: tidb-lightning
                     product_base_img: Nemo harum.
                     product_dockerfile: Reprehenderit eaque exercitationem.
                     target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -2917,7 +2917,7 @@ components:
                 spec:
                     build_env: Dicta neque nulla cum dolorem.
                     builder_img: Non libero.
-                    edition: community
+                    edition: failpoint
                     features: Animi optio nesciunt omnis numquam natus eos.
                     git_ref: Quasi et.
                     git_sha: Delectus architecto voluptatum molestiae.
@@ -2926,7 +2926,7 @@ components:
                     is_push_gcr: false
                     pipeline_engine: tekton
                     plugin_git_ref: Voluptas voluptas et modi autem et aut.
-                    product: tidb-binlog
+                    product: br
                     product_base_img: Nihil nisi ut.
                     product_dockerfile: Natus voluptatibus fuga voluptatem sunt animi modi.
                     target_img: Porro eos vel et qui inventore adipisci.
@@ -3123,12 +3123,16 @@ components:
                     example: Illo architecto et impedit.
                 edition:
                     type: string
-                    example: enterprise
+                    example: community
                     enum:
                         - enterprise
                         - community
+                        - fips
+                        - failpoint
+                        - experiment
                 features:
                     type: string
+                    description: '[Deprecated] use build_env for custom features'
                     example: Voluptas tempore repudiandae officia commodi sunt tempora.
                 git_ref:
                     type: string
@@ -3156,7 +3160,7 @@ components:
                     example: Nobis asperiores quia et nulla dignissimos excepturi.
                 product:
                     type: string
-                    example: pump
+                    example: tidb-dashboard
                     enum:
                         - tidb
                         - br
@@ -3175,6 +3179,7 @@ components:
                         - ng-monitoring
                         - tidb-dashboard
                         - ticdc-newarch
+                        - tiproxy
                 product_base_img:
                     type: string
                     example: Fugiat qui sed.
@@ -3190,7 +3195,7 @@ components:
             example:
                 build_env: Necessitatibus qui.
                 builder_img: Sunt enim rem ipsum et sit.
-                edition: community
+                edition: enterprise
                 features: Aliquid doloribus delectus deserunt et.
                 git_ref: Omnis excepturi cumque.
                 git_sha: Error possimus ea cupiditate eveniet voluptate consequatur.
@@ -3199,7 +3204,7 @@ components:
                 is_push_gcr: false
                 pipeline_engine: tekton
                 plugin_git_ref: Impedit voluptatem dolor molestiae ipsa.
-                product: ticdc-newarch
+                product: tiflash
                 product_base_img: Pariatur voluptatem est.
                 product_dockerfile: Vel aut.
                 target_img: Sit tempora eos.

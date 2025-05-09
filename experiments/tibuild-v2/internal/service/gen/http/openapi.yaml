@@ -670,7 +670,7 @@ definitions:
             spec:
                 build_env: Aut tenetur corrupti et voluptatem voluptas.
                 builder_img: Qui ea non et vel.
-                edition: community
+                edition: failpoint
                 features: Ut tempora amet dicta rerum a nihil.
                 git_ref: Quia fugiat sed ut.
                 git_sha: Neque quibusdam possimus.
@@ -679,7 +679,7 @@ definitions:
                 is_push_gcr: true
                 pipeline_engine: tekton
                 plugin_git_ref: Ducimus eius et sit praesentium sed illum.
-                product: drainer
+                product: tiflash
                 product_base_img: Ea debitis.
                 product_dockerfile: Quia enim sint aut asperiores.
                 target_img: Architecto enim molestiae dolorem est.
@@ -897,12 +897,16 @@ definitions:
                 example: Dolor eaque harum minima.
             edition:
                 type: string
-                example: community
+                example: fips
                 enum:
                     - enterprise
                     - community
+                    - fips
+                    - failpoint
+                    - experiment
             features:
                 type: string
+                description: '[Deprecated] use build_env for custom features'
                 example: Aut illum voluptatem quam ea voluptatem aliquam.
             git_ref:
                 type: string
@@ -930,7 +934,7 @@ definitions:
                 example: Cumque rerum rerum ut.
             product:
                 type: string
-                example: pump
+                example: tidb-tools
                 enum:
                     - tidb
                     - br
@@ -949,6 +953,7 @@ definitions:
                     - ng-monitoring
                     - tidb-dashboard
                     - ticdc-newarch
+                    - tiproxy
             product_base_img:
                 type: string
                 example: Quia ex.
@@ -964,7 +969,7 @@ definitions:
         example:
             build_env: Enim assumenda.
             builder_img: Ut et.
-            edition: community
+            edition: experiment
             features: Incidunt ut unde natus atque nesciunt fugit.
             git_ref: Eos quae neque eligendi nisi dolor aliquid.
             git_sha: Et aut.
@@ -973,7 +978,7 @@ definitions:
             is_push_gcr: true
             pipeline_engine: tekton
             plugin_git_ref: Dolorem est non asperiores suscipit.
-            product: drainer
+            product: tidb-dashboard
             product_base_img: Et qui in.
             product_dockerfile: Et illo consectetur.
             target_img: Consequuntur sit suscipit ipsum.
@@ -1222,7 +1227,7 @@ definitions:
             request:
                 build_env: Ipsa et alias.
                 builder_img: Et ipsa.
-                edition: enterprise
+                edition: experiment
                 features: Veniam eaque nisi.
                 git_ref: Aut adipisci sed.
                 git_sha: Eum sit.
@@ -1231,7 +1236,7 @@ definitions:
                 is_push_gcr: true
                 pipeline_engine: tekton
                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                product: pd
+                product: tidb-lightning
                 product_base_img: Nemo harum.
                 product_dockerfile: Reprehenderit eaque exercitationem.
                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.

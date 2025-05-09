@@ -184,7 +184,7 @@ func fillWithDefaults(req *DevBuild) {
 }
 
 func guessEnterprisePluginRef(spec *DevBuildSpec) {
-	if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition && spec.PluginGitRef == "" {
+	if spec.Product == ProductTidb && spec.Edition == EditionEnterprise && spec.PluginGitRef == "" {
 		groups := versionValidator.FindStringSubmatch(spec.Version)
 		if len(groups) == 3 {
 			major_sub := groups[1]
@@ -200,7 +200,7 @@ func guessEnterprisePluginRef(spec *DevBuildSpec) {
 
 func fillGithubRepo(spec *DevBuildSpec) {
 	if spec.GithubRepo == "" {
-		repo := ProdToRepo(spec.Product)
+		repo := prodToRepoMap[spec.Product]
 		if repo != nil {
 			spec.GithubRepo = fmt.Sprintf("%s/%s", repo.Owner, repo.Repo)
 		}
@@ -233,7 +233,7 @@ func fillForFIPS(spec *DevBuildSpec) {
 		}
 	} else {
 		fileName := spec.Product
-		if spec.Product == ProductTidb && spec.Edition == EnterpriseEdition {
+		if spec.Product == ProductTidb && spec.Edition == EditionEnterprise {
 			fileName = fileName + "-enterprise"
 		}
 		dockerfile := fmt.Sprintf("https://raw.githubusercontent.com/PingCAP-QE/artifacts/main/dockerfiles/%s.Dockerfile", fileName)
@@ -248,12 +248,24 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
-	if !spec.Product.IsValid() {
-		return fmt.Errorf("product is not valid")
+	if !slices.Contains(allProducts, spec.Product) {
+		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
 	}
-	if !spec.Edition.IsValid() {
-		return fmt.Errorf("edition is not valid")
+
+	// validate for edition for different pipeline engines
+	switch spec.PipelineEngine {
+	case JenkinsEngine:
+		if !slices.Contains(InvalidEditionForJenkins, spec.Edition) {
+			return fmt.Errorf("edition is not valid for jenkins engine")
+		}
+	case TektonEngine:
+		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
+			return fmt.Errorf("edition is not valid for tekton engine")
+		}
+	default:
+		return fmt.Errorf("pipeline engine is not valid")
 	}
+
 	if !versionValidator.MatchString(spec.Version) {
 		return fmt.Errorf("version is not valid")
 	}
@@ -263,7 +275,7 @@ func validateReq(req DevBuild) error {
 	if spec.GithubRepo != "" && (GHRepoToStruct(spec.GithubRepo) == nil || !githubRepoValidator.MatchString(spec.GithubRepo)) {
 		return fmt.Errorf("githubRepo is not valid, should be like org/repo")
 	}
-	if spec.Edition == EnterpriseEdition && spec.Product == ProductTidb {
+	if spec.Edition == EditionEnterprise && spec.Product == ProductTidb {
 		if !gitRefValidator.MatchString(spec.PluginGitRef) {
 			return fmt.Errorf("pluginGitRef is not valid")
 		}
@@ -291,7 +303,7 @@ func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option
 	if err != nil {
 		return nil, err
 	}
-	if !req.Status.Status.IsValid() {
+	if !IsValidBuildStatus(req.Status.Status) {
 		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
 	}
 	if req.Status.TektonStatus == nil {
@@ -364,7 +376,7 @@ func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, 
 	}
 	startAt := build.GetTimestamp().Local()
 	entity.Status.PipelineStartAt = &startAt
-	if entity.Status.Status.IsCompleted() && entity.Status.PipelineEndAt == nil {
+	if IsBuildStatusCompleted(entity.Status.Status) && entity.Status.PipelineEndAt == nil {
 		if build.GetDuration() != 0 {
 			endAt := startAt.Add(time.Duration(build.GetDuration() * float64(time.Microsecond)))
 			entity.Status.PipelineEndAt = &endAt
@@ -429,7 +441,7 @@ func computeTektonStatus(tekton *TektonStatus, status *DevBuildStatus) {
 	collectTektonArtifacts(tekton.Pipelines, status.BuildReport)
 	status.PipelineStartAt = getTektonStartAt(tekton.Pipelines)
 	status.Status = computeTektonPhase(tekton.Pipelines)
-	if status.Status.IsCompleted() {
+	if IsBuildStatusCompleted(status.Status) {
 		status.PipelineEndAt = getLatestEndAt(tekton.Pipelines)
 	}
 }
@@ -461,11 +473,11 @@ func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
 	return startAt
 }
 
-func computeTektonPhase(pipelines []TektonPipeline) BuildStatus {
+func computeTektonPhase(pipelines []TektonPipeline) string {
 	phase := BuildStatusPending
-	var success_platforms = map[Platform]struct{}{}
-	var failure_platforms = map[Platform]struct{}{}
-	var triggered_platforms = map[Platform]struct{}{}
+	var success_platforms = map[string]struct{}{}
+	var failure_platforms = map[string]struct{}{}
+	var triggered_platforms = map[string]struct{}{}
 	for _, pipeline := range pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
@@ -499,7 +511,7 @@ func getLatestEndAt(pipelines []TektonPipeline) *time.Time {
 	return latest_endat
 }
 
-func ociArtifactToFiles(platform Platform, artifact OciArtifact) []BinArtifact {
+func ociArtifactToFiles(platform string, artifact OciArtifact) []BinArtifact {
 	var rt []BinArtifact
 	var sha256s = make(map[string]*OciFile)
 	for _, file := range artifact.Files {

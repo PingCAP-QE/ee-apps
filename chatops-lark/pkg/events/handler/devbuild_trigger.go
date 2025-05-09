@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
-
-	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type triggerParams struct {
@@ -59,27 +57,27 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 		return "", err
 	}
 
-	triggerParams := service.DevBuild{
-		Meta: service.DevBuildMeta{
-			CreatedBy: ctx.Value(ctxKeyLarkSenderEmail).(string),
+	triggerParams := map[string]any{
+		"meta": map[string]any{
+			"createdBy": ctx.Value(ctxKeyLarkSenderEmail),
 		},
-		Spec: service.DevBuildSpec{
-			Product:           service.StringToProduct(params.product),
-			Edition:           service.ProductEdition(params.edition),
-			Version:           params.version,
-			Platform:          params.platform,
-			GitRef:            params.gitRef,
-			PluginGitRef:      params.pluginGitRef,
-			GithubRepo:        params.githubRepo,
-			IsPushGCR:         params.pushGCR,
-			Features:          params.features,
-			IsHotfix:          params.hotfix,
-			BuildEnv:          strings.Join(params.buildEnvs, " "),
-			ProductDockerfile: params.productDockerfile,
-			ProductBaseImg:    params.productBaseImg,
-			BuilderImg:        params.builderImg,
-			TargetImg:         params.targetImg,
-			PipelineEngine:    service.PipelineEngine(params.engine),
+		"spec": map[string]any{
+			"product":           params.product,
+			"edition":           params.edition,
+			"version":           params.version,
+			"platform":          params.platform,
+			"gitRef":            params.gitRef,
+			"pluginGitRef":      params.pluginGitRef,
+			"githubRepo":        params.githubRepo,
+			"isPushGCR":         params.pushGCR,
+			"features":          params.features,
+			"isHotfix":          params.hotfix,
+			"buildEnv":          strings.Join(params.buildEnvs, " "),
+			"productDockerfile": params.productDockerfile,
+			"productBaseImg":    params.productBaseImg,
+			"builderImg":        params.builderImg,
+			"targetImg":         params.targetImg,
+			"pipelineEngine":    params.engine,
 		},
 	}
 

@@ -10,8 +10,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
 
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/publisher/pkg/impl"
 )
 
 // Load and parse configuration.
@@ -42,7 +44,7 @@ func initTiupWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker
 		DB:       config.Redis.DB,
 	})
 
-	worker, err := impl.NewTiupWorker(&log.Logger, redisClient, config.Options)
+	worker, err := tiup.NewWorker(&log.Logger, redisClient, config.Options)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
 	}
@@ -73,7 +75,7 @@ func initFsWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) 
 		DB:       config.Redis.DB,
 	})
 
-	worker, err := impl.NewFsWorker(&log.Logger, redisClient, config.Options)
+	worker, err := fileserver.NewWorker(&log.Logger, redisClient, config.Options)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
 	}

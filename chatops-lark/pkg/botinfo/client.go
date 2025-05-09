@@ -26,10 +26,10 @@ type BotInfoResponse struct {
 	} `json:"bot"`
 }
 
-// GetBotName fetches the bot name from Lark API using app credentials
-func GetBotName(ctx context.Context, appID, appSecret string) (string, error) {
+// GetBotOpenID fetches the bot OpenID from Lark API using app credentials
+// Renamed from GetBotInfo and simplified to return only OpenID
+func GetBotOpenID(ctx context.Context, appID, appSecret string) (string, error) {
 	client := lark.NewClient(appID, appSecret)
-	// Get tenant access token
 	var tenantAccessToken string
 	{
 		resp, err := client.GetTenantAccessTokenBySelfBuiltApp(ctx, &larkcore.SelfBuiltTenantAccessTokenReq{
@@ -47,7 +47,6 @@ func GetBotName(ctx context.Context, appID, appSecret string) (string, error) {
 		tenantAccessToken = resp.TenantAccessToken
 	}
 
-	// Get bot info
 	var botResp BotInfoResponse
 	{
 		resp, err := client.Get(ctx, botInfoPathURL, nil, larkcore.AccessTokenTypeTenant,
@@ -69,9 +68,10 @@ func GetBotName(ctx context.Context, appID, appSecret string) (string, error) {
 			return "", fmt.Errorf("API error: %s (code: %d)", botResp.Msg, botResp.Code)
 		}
 
-		if botResp.Bot.AppName == "" {
-			return "", fmt.Errorf("bot name is empty in API response")
+		if botResp.Bot.OpenID == "" {
+			return "", fmt.Errorf("bot openID is empty in API response from %s", botInfoPathURL)
 		}
 	}
-	return botResp.Bot.AppName, nil
+
+	return botResp.Bot.OpenID, nil
 }

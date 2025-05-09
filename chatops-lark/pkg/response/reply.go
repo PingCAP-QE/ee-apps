@@ -20,7 +20,7 @@ type info struct {
 	Message string
 }
 
-func NewReplyMessageReq(msgID string, status, msg string) (*larkim.ReplyMessageReq, error) {
+func NewReplyMessageReq(msgID string, replyInThread bool, status, msg string) (*larkim.ReplyMessageReq, error) {
 	rawContent, err := newLarkCardWithGoTemplate(&info{Status: status, Message: msg})
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func NewReplyMessageReq(msgID string, status, msg string) (*larkim.ReplyMessageR
 		MessageId(msgID).
 		Body(larkim.NewReplyMessageReqBodyBuilder().
 			MsgType(larkim.MsgTypeInteractive).
-			ReplyInThread(true).
+			ReplyInThread(replyInThread).
 			Content(rawContent).
 			Build()).
 		Build(), nil

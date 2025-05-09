@@ -188,9 +188,10 @@ type DevBuildMetaResponse struct {
 
 // DevBuildSpecResponse is used to define fields on response body types.
 type DevBuildSpecResponse struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -278,9 +279,10 @@ type OciArtifactResponse struct {
 
 // DevBuildSpecRequestBody is used to define fields on request body types.
 type DevBuildSpecRequestBody struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           string  `form:"edition" json:"edition" xml:"edition"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    string  `form:"edition" json:"edition" xml:"edition"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -305,9 +307,10 @@ type DevBuildMetaResponseBody struct {
 
 // DevBuildSpecResponseBody is used to define fields on response body types.
 type DevBuildSpecResponseBody struct {
-	BuildEnv          *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg        *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
-	Edition           *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
+	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
 	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
@@ -1038,8 +1041,8 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment"}))
 		}
 	}
 	if body.PipelineEngine != nil {
@@ -1048,8 +1051,8 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 		}
 	}
 	if body.Product != nil {
-		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch"}))
+		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch" || *body.Product == "tiproxy") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
 		}
 	}
 	return
@@ -1251,16 +1254,16 @@ func ValidateOciArtifactResponse(body *OciArtifactResponse) (err error) {
 // ValidateDevBuildSpecRequestBody runs the validations defined on
 // DevBuildSpecRequestBody
 func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) {
-	if !(body.Edition == "enterprise" || body.Edition == "community") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community"}))
+	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment"}))
 	}
 	if body.PipelineEngine != nil {
 		if !(*body.PipelineEngine == "jenkins" || *body.PipelineEngine == "tekton") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipeline_engine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
 		}
 	}
-	if !(body.Product == "tidb" || body.Product == "br" || body.Product == "dumpling" || body.Product == "tidb-lightning" || body.Product == "tikv" || body.Product == "pd" || body.Product == "enterprise-plugin" || body.Product == "tiflash" || body.Product == "ticdc" || body.Product == "dm" || body.Product == "tidb-binlog" || body.Product == "drainer" || body.Product == "pump" || body.Product == "tidb-tools" || body.Product == "ng-monitoring" || body.Product == "tidb-dashboard" || body.Product == "ticdc-newarch") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch"}))
+	if !(body.Product == "tidb" || body.Product == "br" || body.Product == "dumpling" || body.Product == "tidb-lightning" || body.Product == "tikv" || body.Product == "pd" || body.Product == "enterprise-plugin" || body.Product == "tiflash" || body.Product == "ticdc" || body.Product == "dm" || body.Product == "tidb-binlog" || body.Product == "drainer" || body.Product == "pump" || body.Product == "tidb-tools" || body.Product == "ng-monitoring" || body.Product == "tidb-dashboard" || body.Product == "ticdc-newarch" || body.Product == "tiproxy") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
 	}
 	return
 }
@@ -1305,8 +1308,8 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment"}))
 		}
 	}
 	if body.PipelineEngine != nil {
@@ -1315,8 +1318,8 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 		}
 	}
 	if body.Product != nil {
-		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch"}))
+		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch" || *body.Product == "tiproxy") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
 		}
 	}
 	return
