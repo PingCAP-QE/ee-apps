@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"sync"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/rs/zerolog/log"
@@ -90,13 +91,17 @@ func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents
 		Value: cloudEventBytes,
 	}
 
-	err = eb.writer.WriteMessages(ctx, message)
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	startTime := time.Now()
+	if err := eb.writer.WriteMessages(ctx, message); err != nil {
 		log.Err(err).Str("topic", topic).Str("ce-id", event.ID()).Msg("error writing message to Kafka")
 		return err
 	}
 
-	log.Debug().Str("topic", topic).Str("ce-id", event.ID()).Msg("message written to Kafka")
+	log.Debug().Str("topic", topic).Str("ce-id", event.ID()).
+		Dur("duration", time.Since(startTime)).
+		Msg("message written to Kafka")
 	return cloudevents.ResultACK
 }
 
