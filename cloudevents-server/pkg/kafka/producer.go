@@ -1,6 +1,8 @@
 package kafka
 
 import (
+	"time"
+
 	"github.com/rs/zerolog/log"
 	kafka "github.com/segmentio/kafka-go"
 )
@@ -22,9 +24,13 @@ func NewWriter(auth Authentication, brokers []string, topic, clientID string) (*
 		ErrorLogger: kafka.LoggerFunc(func(msg string, keysAndValues ...interface{}) {
 			log.Error().Msgf(msg, keysAndValues...)
 		}),
-		Balancer: &kafka.Hash{},
-		Dialer:   dialer,
-		Topic:    topic,
+		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		BatchTimeout: 5 * time.Second,
+		BatchSize:    10,
+		Balancer:     &kafka.Hash{},
+		Dialer:       dialer,
+		Topic:        topic,
 	}
 
 	writer := kafka.NewWriter(writeConfig)
