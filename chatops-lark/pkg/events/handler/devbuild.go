@@ -20,9 +20,9 @@ Subcommands:
   poll <buildID>     - Poll the status of a build
 
 Examples:
-  /devbuild trigger --product tidb --version v6.5.0 --gitRef master -e enterprise
-  /devbuild trigger --product tikv --version v6.5.0 --gitRef master --features failpoint
-  /devbuild trigger --product tiflash --version v6.5.0 --gitRef master --pushGCR
+  /devbuild trigger --product tidb --version v6.5.0 --gitRef branch/master -e enterprise
+  /devbuild trigger --product tikv --version v6.5.0 --gitRef branch/master --features failpoint
+  /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master --pushGCR
   /devbuild poll 12345
 
 For more details, use: /devbuild --help
@@ -35,15 +35,15 @@ Subcommands:
   poll <buildID>     - Poll the status of a build
 
 Examples:
-  /devbuild trigger --product tidb --version v6.5.0 --gitRef master -e enterprise
-  /devbuild trigger --product tikv --version v6.5.0 --gitRef master --features failpoint
-  /devbuild trigger --product tiflash --version v6.5.0 --gitRef master --pushGCR
+  /devbuild trigger --product tidb --version v6.5.0 --gitRef branch/master -e enterprise
+  /devbuild trigger --product tikv --version v6.5.0 --gitRef branch/master --features failpoint
+  /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master --pushGCR
   /devbuild poll 12345
 
 Required options for trigger:
   --product string          Product to build (tidb, tikv, pd, etc.)
-  --version string          Version to build
-  --gitRef string           Git reference to build from (branch, tag, or commit)
+  --version string          Version to build (v1.2.3)
+  --gitRef string           Git reference to build from (branch/<branch-name>, tag/<tag-name>, commit/<commit-sha> or pull/<number>)
 
 Optional options for trigger:
   -e, --edition string      Product edition (community or enterprise, default: community)
