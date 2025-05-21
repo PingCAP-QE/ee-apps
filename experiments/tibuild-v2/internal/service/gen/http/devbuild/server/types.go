@@ -796,8 +796,8 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
 		}
 	}
 	if body.PipelineEngine != nil {

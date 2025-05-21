@@ -296,7 +296,7 @@ Example:
       "request": {
          "build_env": "Ipsa et alias.",
          "builder_img": "Et ipsa.",
-         "edition": "experiment",
+         "edition": "fips",
          "features": "Veniam eaque nisi.",
          "git_ref": "Aut adipisci sed.",
          "git_sha": "Eum sit.",

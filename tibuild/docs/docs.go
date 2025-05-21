@@ -366,7 +366,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prod": {
-                    "$ref": "#/definitions/service.Product"
+                    "type": "string"
                 }
             }
         },
@@ -406,25 +406,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "service.BuildStatus": {
-            "type": "string",
-            "enum": [
-                "PENDING",
-                "PROCESSING",
-                "ABORTED",
-                "SUCCESS",
-                "FAILURE",
-                "ERROR"
-            ],
-            "x-enum-varnames": [
-                "BuildStatusPending",
-                "BuildStatusProcessing",
-                "BuildStatusAborted",
-                "BuildStatusSuccess",
-                "BuildStatusFailure",
-                "BuildStatusError"
-            ]
         },
         "service.DevBuild": {
             "type": "object",
@@ -467,7 +448,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "edition": {
-                    "$ref": "#/definitions/service.ProductEdition"
+                    "type": "string"
                 },
                 "features": {
                     "type": "string"
@@ -488,13 +469,17 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "pipelineEngine": {
-                    "$ref": "#/definitions/service.PipelineEngine"
+                    "type": "string"
+                },
+                "platform": {
+                    "description": "\"linux/amd64\" or \"linux/arm64\" or \"darwin/amd64\" or \"darwin/arm64\" or empty for all platforms.",
+                    "type": "string"
                 },
                 "pluginGitRef": {
                     "type": "string"
                 },
                 "product": {
-                    "$ref": "#/definitions/service.Product"
+                    "type": "string"
                 },
                 "productBaseImg": {
                     "type": "string"
@@ -538,7 +523,7 @@ const docTemplate = `{
                     }
                 },
                 "status": {
-                    "$ref": "#/definitions/service.BuildStatus"
+                    "type": "string"
                 },
                 "tektonStatus": {
                     "$ref": "#/definitions/service.TektonStatus"
@@ -598,71 +583,6 @@ const docTemplate = `{
                 }
             }
         },
-        "service.PipelineEngine": {
-            "type": "string",
-            "enum": [
-                "jenkins",
-                "tekton"
-            ],
-            "x-enum-varnames": [
-                "JenkinsEngine",
-                "TektonEngine"
-            ]
-        },
-        "service.Product": {
-            "type": "string",
-            "enum": [
-                "tidb",
-                "enterprise-plugin",
-                "tikv",
-                "pd",
-                "tiflash",
-                "br",
-                "dumpling",
-                "tidb-lightning",
-                "ticdc",
-                "ticdc-newarch",
-                "dm",
-                "tidb-binlog",
-                "tidb-tools",
-                "ng-monitoring",
-                "tidb-dashboard",
-                "drainer",
-                "pump",
-                ""
-            ],
-            "x-enum-varnames": [
-                "ProductTidb",
-                "ProductEnterprisePlugin",
-                "ProductTikv",
-                "ProductPd",
-                "ProductTiflash",
-                "ProductBr",
-                "ProductDumpling",
-                "ProductTidbLightning",
-                "ProductTicdc",
-                "ProductTicdcNewarch",
-                "ProductDm",
-                "ProductTidbBinlog",
-                "ProductTidbTools",
-                "ProductNgMonitoring",
-                "ProductTidbDashboard",
-                "ProductDrainer",
-                "ProductPump",
-                "ProductUnknown"
-            ]
-        },
-        "service.ProductEdition": {
-            "type": "string",
-            "enum": [
-                "enterprise",
-                "community"
-            ],
-            "x-enum-varnames": [
-                "EnterpriseEdition",
-                "CommunityEdition"
-            ]
-        },
         "service.TagCreateReq": {
             "type": "object",
             "properties": {
@@ -670,7 +590,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prod": {
-                    "$ref": "#/definitions/service.Product"
+                    "type": "string"
                 }
             }
         },
@@ -716,7 +636,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/service.BuildStatus"
+                    "type": "string"
                 },
                 "url": {
                     "type": "string"
