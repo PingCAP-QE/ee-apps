@@ -23,6 +23,7 @@ const (
 	EditionCommunity  = "community"
 	EditionFailPoint  = "failpoint"
 	EditionFips       = "fips"
+	EditionNextGen    = "next-gen"
 	EditionExperiment = "experiment"
 
 	// Products
@@ -58,7 +59,7 @@ const (
 var (
 	// editions
 	InvalidEditionForJenkins = []string{EditionEnterprise, EditionCommunity}
-	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment}
+	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment, EditionNextGen}
 
 	// build status
 	validBuildStatuses = []string{BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError}

@@ -897,13 +897,14 @@ definitions:
                 example: Dolor eaque harum minima.
             edition:
                 type: string
-                example: fips
+                example: failpoint
                 enum:
                     - enterprise
                     - community
                     - fips
                     - failpoint
                     - experiment
+                    - next-gen
             features:
                 type: string
                 description: '[Deprecated] use build_env for custom features'
@@ -969,7 +970,7 @@ definitions:
         example:
             build_env: Enim assumenda.
             builder_img: Ut et.
-            edition: experiment
+            edition: community
             features: Incidunt ut unde natus atque nesciunt fugit.
             git_ref: Eos quae neque eligendi nisi dolor aliquid.
             git_sha: Et aut.
@@ -1227,7 +1228,7 @@ definitions:
             request:
                 build_env: Ipsa et alias.
                 builder_img: Et ipsa.
-                edition: experiment
+                edition: fips
                 features: Veniam eaque nisi.
                 git_ref: Aut adipisci sed.
                 git_sha: Eum sit.

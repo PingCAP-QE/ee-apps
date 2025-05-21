@@ -26,7 +26,7 @@ definitions:
       baseVersion:
         type: string
       prod:
-        $ref: '#/definitions/service.Product'
+        type: string
     type: object
   service.BranchCreateResp:
     properties:
@@ -52,22 +52,6 @@ definitions:
       printedVersion:
         type: string
     type: object
-  service.BuildStatus:
-    enum:
-    - PENDING
-    - PROCESSING
-    - ABORTED
-    - SUCCESS
-    - FAILURE
-    - ERROR
-    type: string
-    x-enum-varnames:
-    - BuildStatusPending
-    - BuildStatusProcessing
-    - BuildStatusAborted
-    - BuildStatusSuccess
-    - BuildStatusFailure
-    - BuildStatusError
   service.DevBuild:
     properties:
       id:
@@ -95,7 +79,7 @@ definitions:
       builderImg:
         type: string
       edition:
-        $ref: '#/definitions/service.ProductEdition'
+        type: string
       features:
         type: string
       gitHash:
@@ -109,11 +93,15 @@ definitions:
       isPushGCR:
         type: boolean
       pipelineEngine:
-        $ref: '#/definitions/service.PipelineEngine'
+        type: string
+      platform:
+        description: '"linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64"
+          or empty for all platforms.'
+        type: string
       pluginGitRef:
         type: string
       product:
-        $ref: '#/definitions/service.Product'
+        type: string
       productBaseImg:
         type: string
       productDockerfile:
@@ -142,7 +130,7 @@ definitions:
           type: string
         type: array
       status:
-        $ref: '#/definitions/service.BuildStatus'
+        type: string
       tektonStatus:
         $ref: '#/definitions/service.TektonStatus'
     type: object
@@ -180,68 +168,12 @@ definitions:
       tag:
         type: string
     type: object
-  service.PipelineEngine:
-    enum:
-    - jenkins
-    - tekton
-    type: string
-    x-enum-varnames:
-    - JenkinsEngine
-    - TektonEngine
-  service.Product:
-    enum:
-    - tidb
-    - enterprise-plugin
-    - tikv
-    - pd
-    - tiflash
-    - br
-    - dumpling
-    - tidb-lightning
-    - ticdc
-    - ticdc-newarch
-    - dm
-    - tidb-binlog
-    - tidb-tools
-    - ng-monitoring
-    - tidb-dashboard
-    - drainer
-    - pump
-    - ""
-    type: string
-    x-enum-varnames:
-    - ProductTidb
-    - ProductEnterprisePlugin
-    - ProductTikv
-    - ProductPd
-    - ProductTiflash
-    - ProductBr
-    - ProductDumpling
-    - ProductTidbLightning
-    - ProductTicdc
-    - ProductTicdcNewarch
-    - ProductDm
-    - ProductTidbBinlog
-    - ProductTidbTools
-    - ProductNgMonitoring
-    - ProductTidbDashboard
-    - ProductDrainer
-    - ProductPump
-    - ProductUnknown
-  service.ProductEdition:
-    enum:
-    - enterprise
-    - community
-    type: string
-    x-enum-varnames:
-    - EnterpriseEdition
-    - CommunityEdition
   service.TagCreateReq:
     properties:
       branch:
         type: string
       prod:
-        $ref: '#/definitions/service.Product'
+        type: string
     type: object
   service.TagCreateResp:
     properties:
@@ -271,7 +203,7 @@ definitions:
       startAt:
         type: string
       status:
-        $ref: '#/definitions/service.BuildStatus'
+        type: string
       url:
         type: string
     type: object

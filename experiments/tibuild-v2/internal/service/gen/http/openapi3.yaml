@@ -1537,7 +1537,7 @@ paths:
                             request:
                                 build_env: Ipsa et alias.
                                 builder_img: Et ipsa.
-                                edition: experiment
+                                edition: fips
                                 features: Veniam eaque nisi.
                                 git_ref: Aut adipisci sed.
                                 git_sha: Eum sit.
@@ -1567,7 +1567,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: experiment
+                                    edition: failpoint
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -1751,7 +1751,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: experiment
+                                    edition: failpoint
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2047,7 +2047,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: experiment
+                                    edition: failpoint
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2231,7 +2231,7 @@ paths:
                                 spec:
                                     build_env: Fugit non eligendi.
                                     builder_img: Omnis asperiores sit consequatur.
-                                    edition: experiment
+                                    edition: failpoint
                                     features: Sit similique.
                                     git_ref: Perferendis perspiciatis hic distinctio minima molestiae quis.
                                     git_sha: Tempora earum quam est architecto.
@@ -2878,7 +2878,7 @@ components:
                 request:
                     build_env: Ipsa et alias.
                     builder_img: Et ipsa.
-                    edition: experiment
+                    edition: fips
                     features: Veniam eaque nisi.
                     git_ref: Aut adipisci sed.
                     git_sha: Eum sit.
@@ -3123,13 +3123,14 @@ components:
                     example: Illo architecto et impedit.
                 edition:
                     type: string
-                    example: community
+                    example: fips
                     enum:
                         - enterprise
                         - community
                         - fips
                         - failpoint
                         - experiment
+                        - next-gen
                 features:
                     type: string
                     description: '[Deprecated] use build_env for custom features'
@@ -3195,7 +3196,7 @@ components:
             example:
                 build_env: Necessitatibus qui.
                 builder_img: Sunt enim rem ipsum et sit.
-                edition: enterprise
+                edition: community
                 features: Aliquid doloribus delectus deserunt et.
                 git_ref: Omnis excepturi cumque.
                 git_sha: Error possimus ea cupiditate eveniet voluptate consequatur.
