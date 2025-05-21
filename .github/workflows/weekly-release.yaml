@@ -61,15 +61,17 @@ jobs:
           # Create tag name with date
           TAG_NAME="v${{ steps.date.outputs.date }}"
 
-          # Create a new tag
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -a $TAG_NAME -m "Weekly release $TAG_NAME"
+
 
           # Check if the tag already exists
           if git ls-remote --tags origin $TAG_NAME; then
             echo "Tag $TAG_NAME already exists, only one release can be created in same date, if you want to create a new release, please delete the existing tag"
           else
+            # Create a new tag
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"         
+            git tag -a $TAG_NAME -m "Weekly release $TAG_NAME"
+          
             # Push the tag
             git push origin $TAG_NAME
 
