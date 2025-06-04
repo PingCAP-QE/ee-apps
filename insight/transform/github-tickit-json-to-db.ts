@@ -141,6 +141,7 @@ async function transform(
 
   let completed = 0;
   for (const file of files) {
+    await progressBar.console(`Importing file: ${file}`);
     const data = JSON.parse(await Deno.readTextFile(file));
     await saveTicket(client, table, data);
     await progressBar.render(completed++);
