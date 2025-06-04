@@ -89,7 +89,9 @@ function githubTicketInsertValues(data: Record<string, any>) {
     data.type,
     data.repo,
     data.number,
-    data.title,
+    data.title && data.title.length > 500
+      ? data.title.substring(0, 500)
+      : data.title,
     data.author,
     data.email,
     data.state,
