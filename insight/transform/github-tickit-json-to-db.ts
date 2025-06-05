@@ -33,7 +33,7 @@ export async function createTable(client: mysql.Client, tableName: string) {
       commits JSON,
       review JSON,
       review_comments JSON,
-      INDEX (repo, number)
+      CONSTRAINT ticket UNIQUE (repo, number)
     )
   `;
 
