@@ -292,18 +292,19 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "audrey.paucek@ratke.info",
+      "created_by": "alford_lowe@dubuque.net",
       "request": {
-         "build_env": "Ipsa et alias.",
-         "builder_img": "Et ipsa.",
-         "edition": "fips",
-         "features": "Veniam eaque nisi.",
+         "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
+         "builder_img": "Harum magni est ipsa et.",
+         "edition": "next-gen",
+         "features": "Ipsa neque sed veniam eaque nisi.",
          "git_ref": "Aut adipisci sed.",
          "git_sha": "Eum sit.",
          "github_repo": "Suscipit et.",
          "is_hotfix": true,
          "is_push_gcr": true,
          "pipeline_engine": "tekton",
+         "platform": "linux/arm64",
          "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
          "product": "tidb-lightning",
          "product_base_img": "Nemo harum.",

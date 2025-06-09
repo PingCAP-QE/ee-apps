@@ -191,6 +191,7 @@ type DevBuildSpecResponse struct {
 	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
 	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
 	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	Platform   *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
@@ -282,6 +283,7 @@ type DevBuildSpecRequestBody struct {
 	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
 	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
 	Edition    string  `form:"edition" json:"edition" xml:"edition"`
+	Platform   string  `form:"platform" json:"platform" xml:"platform"`
 	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
@@ -310,6 +312,7 @@ type DevBuildSpecResponseBody struct {
 	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
 	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
 	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
+	Platform   *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	// [Deprecated] use build_env for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
@@ -1045,6 +1048,11 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
 		}
 	}
+	if body.Platform != nil {
+		if !(*body.Platform == "all" || *body.Platform == "linux" || *body.Platform == "darwin" || *body.Platform == "linux/amd64" || *body.Platform == "linux/arm64" || *body.Platform == "darwin/amd64" || *body.Platform == "darwin/arm64") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.platform", *body.Platform, []any{"all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}))
+		}
+	}
 	if body.PipelineEngine != nil {
 		if !(*body.PipelineEngine == "jenkins" || *body.PipelineEngine == "tekton") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipeline_engine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
@@ -1257,6 +1265,9 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment" || body.Edition == "next-gen") {
 		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
 	}
+	if !(body.Platform == "all" || body.Platform == "linux" || body.Platform == "darwin" || body.Platform == "linux/amd64" || body.Platform == "linux/arm64" || body.Platform == "darwin/amd64" || body.Platform == "darwin/arm64") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.platform", body.Platform, []any{"all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}))
+	}
 	if body.PipelineEngine != nil {
 		if !(*body.PipelineEngine == "jenkins" || *body.PipelineEngine == "tekton") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipeline_engine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
@@ -1310,6 +1321,11 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 	if body.Edition != nil {
 		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+		}
+	}
+	if body.Platform != nil {
+		if !(*body.Platform == "all" || *body.Platform == "linux" || *body.Platform == "darwin" || *body.Platform == "linux/amd64" || *body.Platform == "linux/arm64" || *body.Platform == "darwin/amd64" || *body.Platform == "darwin/arm64") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.platform", *body.Platform, []any{"all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}))
 		}
 	}
 	if body.PipelineEngine != nil {

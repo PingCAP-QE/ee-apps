@@ -47,7 +47,7 @@ Required options for trigger:
 
 Optional options for trigger:
   -e, --edition string      Product edition (community or enterprise, default: community)
-  -p, --platform string     Build for platform (linux/amd64, linux/arm64, darwin/amd64 or darwin/arm64, default: all), only support when the engine is tekton.
+  -p, --platform string     Build for platform (linux, darwin, linux/amd64, linux/arm64, darwin/amd64 or darwin/arm64, default: all), only support when the engine is tekton.
   --pluginGitRef string     Git reference for plugins (only for enterprise tidb)
   --pushGCR                 Whether to push to GCR (default: false)
   --githubRepo string       GitHub repository (for forked repos)
