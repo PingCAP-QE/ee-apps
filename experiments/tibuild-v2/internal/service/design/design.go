@@ -237,6 +237,10 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("edition", String, func() {
 		Enum("enterprise", "community", "fips", "failpoint", "experiment", "next-gen")
 	})
+	Attribute("platform", String, func() {
+		Default("all")
+		Enum("all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64")
+	})
 	Attribute("features", String, func() {
 		Description("[Deprecated] use build_env for custom features")
 	})

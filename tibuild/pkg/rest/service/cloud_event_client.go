@@ -38,21 +38,23 @@ type CloudEventClient struct {
 }
 
 func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
-	event, err := newDevBuildCloudEvent(dev)
+	events, err := newDevBuildCloudEvents(dev)
 	if err != nil {
 		return err
 	}
 
-	c := cloudevents.ContextWithTarget(ctx, s.endpoint)
-	if result := s.client.Send(c, *event); !protocol.IsACK(result) {
-		slog.ErrorContext(ctx, "failed to send", "reason", result)
-		return fmt.Errorf("failed to send ce:%w", result)
+	for _, event := range events {
+		c := cloudevents.ContextWithTarget(ctx, s.endpoint)
+		if result := s.client.Send(c, event); !protocol.IsACK(result) {
+			slog.ErrorContext(ctx, "failed to send", "reason", result)
+			return fmt.Errorf("failed to send ce:%w", result)
+		}
 	}
 
 	return nil
 }
 
-func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
+func newDevBuildCloudEvents(dev DevBuild) ([]cloudevents.Event, error) {
 	repo := GHRepoToStruct(dev.Spec.GithubRepo)
 
 	var eventType string
@@ -74,21 +76,40 @@ func newDevBuildCloudEvent(dev DevBuild) (*cloudevents.Event, error) {
 		return nil, fmt.Errorf("unkown git ref format")
 	}
 
-	event := cloudevents.NewEvent()
-	event.SetType(eventType)
-	event.SetData(cloudevents.ApplicationJSON, eventData)
-	event.SetSubject(fmt.Sprint(dev.ID))
-	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
-	event.SetExtension("user", dev.Meta.CreatedBy)
-	event.SetExtension("paramProfile", string(dev.Spec.Edition))
-	if dev.Spec.BuilderImg != "" {
-		event.SetExtension("paramBuilderImage", dev.Spec.BuilderImg)
-	}
-	if dev.Spec.Platform != "" {
-		event.SetExtension("paramPlatform", dev.Spec.Platform)
+	events := []cloudevents.Event{}
+	for _, platform := range parsePlatforms(dev.Spec.Platform) {
+		event := cloudevents.NewEvent()
+		event.SetType(eventType)
+		event.SetData(cloudevents.ApplicationJSON, eventData)
+		event.SetSubject(fmt.Sprint(dev.ID))
+		event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
+		event.SetExtension("user", dev.Meta.CreatedBy)
+		event.SetExtension("paramProfile", string(dev.Spec.Edition))
+		if dev.Spec.BuilderImg != "" {
+			event.SetExtension("paramBuilderImage", dev.Spec.BuilderImg)
+		}
+		if platform != "" {
+			event.SetExtension("paramPlatform", platform)
+		}
+		events = append(events, event)
 	}
 
-	return &event, nil
+	return events, nil
+}
+
+func parsePlatforms(platformExp string) []string {
+	switch platformExp {
+	case LinuxAmd64, LinuxArm64, DarwinAmd64, DarwinArm64:
+		return []string{platformExp}
+	case "linux", "linux/all":
+		return []string{LinuxAmd64, LinuxArm64}
+	case "darwin", "darwin/all":
+		return []string{DarwinAmd64, DarwinArm64}
+	case "", "all":
+		return []string{""}
+	default:
+		return strings.Split(platformExp, ",")
+	}
 }
 
 func newFakeGitHubPushEventPayload(owner, repo, ref, sha string) *github.PushEvent {

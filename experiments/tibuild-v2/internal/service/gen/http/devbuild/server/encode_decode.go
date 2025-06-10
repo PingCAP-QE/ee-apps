@@ -693,6 +693,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 		BuildEnv:          v.BuildEnv,
 		BuilderImg:        v.BuilderImg,
 		Edition:           v.Edition,
+		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
 		GitSha:            v.GitSha,
@@ -706,6 +707,12 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
 		Version:           v.Version,
+	}
+	{
+		var zero string
+		if res.Platform == zero {
+			res.Platform = "all"
+		}
 	}
 
 	return res
@@ -906,6 +913,12 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 		TargetImg:         v.TargetImg,
 		Version:           *v.Version,
 	}
+	if v.Platform != nil {
+		res.Platform = *v.Platform
+	}
+	if v.Platform == nil {
+		res.Platform = "all"
+	}
 
 	return res
 }
@@ -929,6 +942,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 		BuildEnv:          v.BuildEnv,
 		BuilderImg:        v.BuilderImg,
 		Edition:           v.Edition,
+		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
 		GitSha:            v.GitSha,
@@ -942,6 +956,12 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
 		Version:           v.Version,
+	}
+	{
+		var zero string
+		if res.Platform == zero {
+			res.Platform = "all"
+		}
 	}
 
 	return res

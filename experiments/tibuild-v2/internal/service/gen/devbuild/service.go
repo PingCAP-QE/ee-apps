@@ -125,6 +125,7 @@ type DevBuildSpec struct {
 	BuildEnv   *string
 	BuilderImg *string
 	Edition    string
+	Platform   string
 	// [Deprecated] use build_env for custom features
 	Features          *string
 	GitRef            string
