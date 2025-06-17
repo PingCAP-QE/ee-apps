@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/kafka"
 )
