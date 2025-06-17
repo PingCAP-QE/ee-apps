@@ -33,6 +33,11 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
+	handlerLog := log.With().Stack().Caller().
+		Str("ce-type", event.Type()).
+		Str("ce-id", event.ID()).
+		Logger()
+
 	switch event.Type() {
 	case string(tektoncloudevent.TaskRunFailedEventV1):
 		// Skip notify the taskrun when it created by a pipelineRun.
@@ -53,19 +58,18 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 
 		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL, h.FailedStepTailLines)
 		if err != nil {
+			handlerLog.Err(err).
+				Bytes("ce-data", event.Data()).
+				Msg("failed to extract lark infos")
 			return err
 		}
 
-		log.Debug().
-			Str("ce-type", event.Type()).
+		handlerLog.Debug().
 			Str("receivers", strings.Join(receivers, ",")).
 			Msg("send notification for the event type.")
 		return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
 	}
 
-	log.Debug().
-		Str("handler", "taskRunHandler").
-		Str("ce-type", event.Type()).
-		Msg("skip notifing for the event type.")
+	handlerLog.Debug().Msg("skip notifing for the event type.")
 	return cloudevents.ResultACK
 }

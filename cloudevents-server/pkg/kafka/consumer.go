@@ -18,7 +18,7 @@ func NewReader(auth Authentication, brokers []string, topic, consumerGroupID, cl
 	readerConfig := NewReaderConfig(brokers, []string{topic}, dialer)
 	readerConfig.GroupID = consumerGroupID
 	readerConfig.Logger = kafka.LoggerFunc(log.Printf)
-	readerConfig.ErrorLogger = kafka.LoggerFunc(func(msg string, keysAndValues ...interface{}) {
+	readerConfig.ErrorLogger = kafka.LoggerFunc(func(msg string, keysAndValues ...any) {
 		log.Error().Msgf(msg, keysAndValues...)
 	})
 

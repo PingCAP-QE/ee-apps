@@ -40,6 +40,11 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		return cloudevents.NewReceipt(false, "invalid data: %v", err)
 	}
 
+	handlerLog := log.With().Stack().Caller().
+		Str("ce-type", event.Type()).
+		Str("ce-id", event.ID()).
+		Logger()
+
 	switch tektoncloudevent.TektonEventType(event.Type()) {
 	case tektoncloudevent.PipelineRunStartedEventV1,
 		tektoncloudevent.PipelineRunFailedEventV1,
@@ -57,19 +62,19 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 
 		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL, h.FailedStepTailLines)
 		if err != nil {
+			handlerLog.Err(err).
+				Bytes("ce-data", event.Data()).
+				Str("receivers", strings.Join(receivers, ",")).
+				Msg("failed to extract lark infos from event")
 			return cloudevents.ResultNACK
 		}
 
-		log.Debug().
-			Str("ce-type", event.Type()).
+		handlerLog.Debug().
 			Str("receivers", strings.Join(receivers, ",")).
 			Msg("send notification for the event type.")
 		return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
 	default:
-		log.Debug().
-			Str("handler", "pipelineRunHandler").
-			Str("ce-type", event.Type()).
-			Msg("skip notifing for the event type.")
+		handlerLog.Debug().Msg("skip notifing for the event type.")
 		return cloudevents.ResultACK
 	}
 }

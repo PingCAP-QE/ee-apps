@@ -26,7 +26,7 @@ func main() {
 		e := cloudevents.NewEvent()
 		e.SetType("sample sender")
 		e.SetSource("client/main.go")
-		_ = e.SetData(cloudevents.ApplicationJSON, map[string]interface{}{
+		_ = e.SetData(cloudevents.ApplicationJSON, map[string]any{
 			"id":      i,
 			"message": "Hello, World!",
 		})
