@@ -8,13 +8,14 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.8.1
+	github.com/goccy/go-yaml v1.18.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.2.8
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.33.0
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/tektoncd/pipeline v0.39.0
-	gopkg.in/yaml.v3 v3.0.1
+	k8s.io/api v0.23.9
 	k8s.io/apimachinery v0.23.9
 	knative.dev/pkg v0.0.0-20220805012121-7b8b06028e4f
 )
@@ -131,7 +132,7 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.23.9 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/client-go v0.23.9 // indirect
 	k8s.io/klog/v2 v2.70.2-0.20220707122935-0990e81f1a8f // indirect
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf // indirect

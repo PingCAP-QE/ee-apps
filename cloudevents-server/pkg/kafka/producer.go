@@ -21,7 +21,7 @@ func NewWriter(auth Authentication, brokers []string, topic, clientID string) (*
 		Brokers: brokers,
 		Async:   true,
 		Logger:  kafka.LoggerFunc(log.Printf),
-		ErrorLogger: kafka.LoggerFunc(func(msg string, keysAndValues ...interface{}) {
+		ErrorLogger: kafka.LoggerFunc(func(msg string, keysAndValues ...any) {
 			log.Error().Msgf(msg, keysAndValues...)
 		}),
 		WriteTimeout: 10 * time.Second,

@@ -15,10 +15,10 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/protocol"
+	yaml "github.com/goccy/go-yaml"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog/log"
-	"gopkg.in/yaml.v3"
 
 	_ "embed"
 )
@@ -57,7 +57,7 @@ func getReceiverIDType(id string) string {
 func composeAndSendLarkMessages(client *lark.Client, receivers []string, infos *cardMessageInfos) protocol.Result {
 	createMsgReqs, err := composeLarkMessages(receivers, infos)
 	if err != nil {
-		log.Error().Err(err).Msg("compose lark message failed")
+		log.Err(err).Stack().Any("infos", infos).Msg("compose lark message failed")
 		return cloudevents.NewReceipt(true, "compose lark message failed: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func composeAndSendLarkMessages(client *lark.Client, receivers []string, infos *
 func sendLarkMessage(client *lark.Client, createMsgReq *larkim.CreateMessageReq) error {
 	resp, err := client.Im.Message.Create(context.Background(), createMsgReq)
 	if err != nil {
-		log.Error().Err(err).Msg("send lark message failed")
+		log.Err(err).Stack().Msg("send lark message failed")
 		return cloudevents.NewReceipt(true, "send lark message failed: %v", err)
 	}
 
@@ -131,7 +131,7 @@ func newLarkCardWithGoTemplate(infos *cardMessageInfos) (string, error) {
 		return "", err
 	}
 
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
 		return "", err
 	}
