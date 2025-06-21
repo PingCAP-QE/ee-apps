@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Skaffold - test
 on:
   pull_request:
@@ -44,8 +45,6 @@ jobs:
               - 'cloudevents-server/**'
             tibuild:
               - 'tibuild/**'
-            exp-tibuild-v2:
-              - 'experiments/tibuild-v2/**'
             dl:
               - 'dl/**'
             publisher:
@@ -92,14 +91,7 @@ jobs:
             --push=false \
             --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - exp-tibuild-v2
-        if: steps.changes.outputs.exp-tibuild-v2 == 'true'
-        working-directory: experiments/tibuild-v2
-        run: |
-          skaffold build \
-            --push=false \
-            --platform ${{ matrix.platform }} \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
+
       - name: Build image - dl
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl

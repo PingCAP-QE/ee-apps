@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Test and Build - tibuild-v2
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tibuild-v2.yaml
+      - "experiments/tibuild-v2/**/*.go"
+      - "experiments/tibuild-v2/**/go.mod"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and Build experiments/tibuild-v2
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"
+          fetch-tags: "true"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: experiments/tibuild-v2/go.mod
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run tests
+        working-directory: experiments/tibuild-v2
+        run: |
+          go test -v ./...
