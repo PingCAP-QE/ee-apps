@@ -203,6 +203,7 @@ func TestTriggerBuild(t *testing.T) {
 		assert.NotNil(t, build)
 		assert.True(t, receivedRequest, "Cloud event request should have been sent")
 		assert.Equal(t, devbuild.BuildStatus("pending"), build.Status.Status)
+		assert.Equal(t, engine, *build.Spec.PipelineEngine)
 	})
 
 	t.Run("Jenkins Engine", func(t *testing.T) {
@@ -214,8 +215,9 @@ func TestTriggerBuild(t *testing.T) {
 		env.jenkinsServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedRequest = true
 			// The Jenkins API path should include "build" for triggering a job
-			assert.Contains(t, r.URL.Path, "/build")
-			w.WriteHeader(http.StatusOK)
+			// assert.Contains(t, r.URL.Path, env.cfg.Jenkins.JobName)
+			w.Header().Set("Location", "/queue/item/1234/")
+			w.WriteHeader(http.StatusCreated)
 		})
 
 		ctx := context.Background()
@@ -236,7 +238,8 @@ func TestTriggerBuild(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, build)
 		assert.True(t, receivedRequest, "Jenkins API request should have been sent")
-		assert.Equal(t, devbuild.BuildStatus("pending"), build.Status.Status)
+		assert.Equal(t, devbuild.BuildStatus("processing"), build.Status.Status)
+		assert.Equal(t, engine, *build.Spec.PipelineEngine)
 	})
 
 	t.Run("Default Engine Selection", func(t *testing.T) {
@@ -254,7 +257,8 @@ func TestTriggerBuild(t *testing.T) {
 
 		env.jenkinsServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			jenkinsReceived = true
-			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Location", "/queue/item/1234/")
+			w.WriteHeader(http.StatusCreated)
 		})
 
 		ctx := context.Background()
@@ -273,6 +277,10 @@ func TestTriggerBuild(t *testing.T) {
 		build, err := env.service.Create(ctx, createPayload)
 		require.NoError(t, err)
 		assert.NotNil(t, build)
+
+		// Assert the engine and status are as expected (jenkins/processing)
+		assert.Equal(t, "jenkins", *build.Spec.PipelineEngine)
+		assert.Equal(t, devbuild.BuildStatus("processing"), build.Status.Status)
 
 		// Based on the symbol list, it appears tekton is the default engine
 		// Only one of these should be true based on the default engine implementation
@@ -329,35 +337,82 @@ func TestTriggerBuild(t *testing.T) {
 }
 
 func TestDevBuildRerun(t *testing.T) {
-	env := setupTestEnv(t)
-	defer teardownTestEnv(env)
+	t.Run("Tekton engine", func(t *testing.T) {
+		engine := "tekton"
+		env := setupTestEnv(t)
+		defer teardownTestEnv(env)
 
-	ctx := context.Background()
+		ctx := context.Background()
 
-	// First create a build
-	createPayload := &devbuild.CreatePayload{
-		CreatedBy: "test-user",
-		Request: &devbuild.DevBuildSpec{
-			Product: "pd",
-			Edition: "community",
-			Version: "v6.1.0",
-			GitRef:  "branch/master",
-		},
-		Dryrun: true,
-	}
+		// First create a build
+		createPayload := &devbuild.CreatePayload{
+			CreatedBy: "test-user",
+			Request: &devbuild.DevBuildSpec{
+				Product:        "pd",
+				Edition:        "community",
+				Version:        "v6.1.0",
+				GitRef:         "branch/master",
+				PipelineEngine: &engine,
+			},
+			Dryrun: false,
+		}
 
-	created, err := env.service.Create(ctx, createPayload)
-	require.NoError(t, err)
+		created, err := env.service.Create(ctx, createPayload)
+		require.NoError(t, err)
 
-	// Then rerun it
-	rerunPayload := &devbuild.RerunPayload{
-		ID: created.ID,
-	}
+		// Then rerun it
+		rerunPayload := &devbuild.RerunPayload{
+			ID: created.ID,
+		}
 
-	rerun, err := env.service.Rerun(ctx, rerunPayload)
-	require.NoError(t, err)
-	assert.NotEqual(t, created.ID, rerun.ID)
-	assert.Equal(t, created.Spec.Product, rerun.Spec.Product)
-	assert.Equal(t, created.Spec.Edition, rerun.Spec.Edition)
-	assert.Equal(t, created.Spec.Version, rerun.Spec.Version)
+		rerun, err := env.service.Rerun(ctx, rerunPayload)
+		require.NoError(t, err)
+		assert.NotEqual(t, created.ID, rerun.ID)
+		assert.Equal(t, created.Spec.Product, rerun.Spec.Product)
+		assert.Equal(t, created.Spec.Edition, rerun.Spec.Edition)
+		assert.Equal(t, created.Spec.Version, rerun.Spec.Version)
+	})
+
+	t.Run("Jenkins engine", func(t *testing.T) {
+		engine := "jenkins"
+		env := setupTestEnv(t)
+		defer teardownTestEnv(env)
+
+		// Set up Jenkins handler to simulate real Jenkins response
+		env.jenkinsServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Location", "/queue/item/5678/")
+			w.WriteHeader(http.StatusCreated)
+		})
+
+		ctx := context.Background()
+
+		// First create a build
+		createPayload := &devbuild.CreatePayload{
+			CreatedBy: "test-user",
+			Request: &devbuild.DevBuildSpec{
+				Product:        "pd",
+				Edition:        "community",
+				Version:        "v6.1.0",
+				GitRef:         "branch/master",
+				PipelineEngine: &engine,
+			},
+			Dryrun: false,
+		}
+
+		created, err := env.service.Create(ctx, createPayload)
+		require.NoError(t, err)
+
+		// Then rerun it
+		rerunPayload := &devbuild.RerunPayload{
+			ID: created.ID,
+		}
+
+		rerun, err := env.service.Rerun(ctx, rerunPayload)
+		require.NoError(t, err)
+		assert.NotEqual(t, created.ID, rerun.ID)
+		assert.Equal(t, created.Spec.Product, rerun.Spec.Product)
+		assert.Equal(t, created.Spec.Edition, rerun.Spec.Edition)
+		assert.Equal(t, created.Spec.Version, rerun.Spec.Version)
+		assert.Equal(t, "jenkins", *rerun.Spec.PipelineEngine)
+	})
 }

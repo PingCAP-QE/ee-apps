@@ -66,10 +66,12 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 	if p.CreatedBy != nil {
 		query.Where(entdevbuild.CreatedBy(*p.CreatedBy))
 	}
-	if p.Direction == "desc" {
-		query.Order(ent.Desc(p.Sort))
-	} else {
-		query.Order(ent.Asc(p.Sort))
+	if p.Sort != "" {
+		if p.Direction == "desc" {
+			query.Order(ent.Desc(p.Sort))
+		} else {
+			query.Order(ent.Asc(p.Sort))
+		}
 	}
 
 	builds, err := query.All(ctx)
