@@ -1059,8 +1059,8 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 		}
 	}
 	if body.Product != nil {
-		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch" || *body.Product == "tiproxy") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
+		if !(*body.Product == "dm" || *body.Product == "enterprise-plugin" || *body.Product == "ng-monitoring" || *body.Product == "pd" || *body.Product == "ticdc" || *body.Product == "ticdc-newarch" || *body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-dashboard" || *body.Product == "tidb-operator" || *body.Product == "tidb-tools" || *body.Product == "tiflash" || *body.Product == "tikv" || *body.Product == "tiproxy") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"dm", "enterprise-plugin", "ng-monitoring", "pd", "ticdc", "ticdc-newarch", "tidb", "br", "dumpling", "tidb-lightning", "tidb-binlog", "drainer", "pump", "tidb-dashboard", "tidb-operator", "tidb-tools", "tiflash", "tikv", "tiproxy"}))
 		}
 	}
 	return
@@ -1273,8 +1273,8 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipeline_engine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
 		}
 	}
-	if !(body.Product == "tidb" || body.Product == "br" || body.Product == "dumpling" || body.Product == "tidb-lightning" || body.Product == "tikv" || body.Product == "pd" || body.Product == "enterprise-plugin" || body.Product == "tiflash" || body.Product == "ticdc" || body.Product == "dm" || body.Product == "tidb-binlog" || body.Product == "drainer" || body.Product == "pump" || body.Product == "tidb-tools" || body.Product == "ng-monitoring" || body.Product == "tidb-dashboard" || body.Product == "ticdc-newarch" || body.Product == "tiproxy") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
+	if !(body.Product == "dm" || body.Product == "enterprise-plugin" || body.Product == "ng-monitoring" || body.Product == "pd" || body.Product == "ticdc" || body.Product == "ticdc-newarch" || body.Product == "tidb" || body.Product == "br" || body.Product == "dumpling" || body.Product == "tidb-lightning" || body.Product == "tidb-binlog" || body.Product == "drainer" || body.Product == "pump" || body.Product == "tidb-dashboard" || body.Product == "tidb-operator" || body.Product == "tidb-tools" || body.Product == "tiflash" || body.Product == "tikv" || body.Product == "tiproxy") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", body.Product, []any{"dm", "enterprise-plugin", "ng-monitoring", "pd", "ticdc", "ticdc-newarch", "tidb", "br", "dumpling", "tidb-lightning", "tidb-binlog", "drainer", "pump", "tidb-dashboard", "tidb-operator", "tidb-tools", "tiflash", "tikv", "tiproxy"}))
 	}
 	return
 }
@@ -1334,8 +1334,8 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 		}
 	}
 	if body.Product != nil {
-		if !(*body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tikv" || *body.Product == "pd" || *body.Product == "enterprise-plugin" || *body.Product == "tiflash" || *body.Product == "ticdc" || *body.Product == "dm" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-tools" || *body.Product == "ng-monitoring" || *body.Product == "tidb-dashboard" || *body.Product == "ticdc-newarch" || *body.Product == "tiproxy") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"tidb", "br", "dumpling", "tidb-lightning", "tikv", "pd", "enterprise-plugin", "tiflash", "ticdc", "dm", "tidb-binlog", "drainer", "pump", "tidb-tools", "ng-monitoring", "tidb-dashboard", "ticdc-newarch", "tiproxy"}))
+		if !(*body.Product == "dm" || *body.Product == "enterprise-plugin" || *body.Product == "ng-monitoring" || *body.Product == "pd" || *body.Product == "ticdc" || *body.Product == "ticdc-newarch" || *body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-dashboard" || *body.Product == "tidb-operator" || *body.Product == "tidb-tools" || *body.Product == "tiflash" || *body.Product == "tikv" || *body.Product == "tiproxy") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"dm", "enterprise-plugin", "ng-monitoring", "pd", "ticdc", "ticdc-newarch", "tidb", "br", "dumpling", "tidb-lightning", "tidb-binlog", "drainer", "pump", "tidb-dashboard", "tidb-operator", "tidb-tools", "tiflash", "tikv", "tiproxy"}))
 		}
 	}
 	return

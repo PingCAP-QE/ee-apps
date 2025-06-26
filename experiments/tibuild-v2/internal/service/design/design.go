@@ -255,18 +255,19 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("plugin_git_ref", String)
 	Attribute("product", String, func() {
 		Enum(
+			"dm",                                       // from pingcap/tiflow repo.
+			"enterprise-plugin",                        // from pingcap-inc/enterprise-plugin repo.
+			"ng-monitoring",                            // from pingcap/ng-monitoring repo.
+			"pd",                                       // from tikv/pd repo.
+			"ticdc",                                    // from pingcap/tiflow or pingcap/ticdc repo.
+			"ticdc-newarch",                            // from pingcap/ticdc repo.
 			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
-			"tikv",                           // from tikv/tikv repo.
-			"pd",                             // from tikv/pd repo.
-			"enterprise-plugin",              // from pingcap-inc/enterprise-plugin repo.
-			"tiflash",                        // from pingcap/tiflash repo.
-			"ticdc",                          // from pingcap/tiflow or pingcap/ticdc repo.
-			"dm",                             // from pingcap/tiflow repo.
 			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
-			"tidb-tools",     // from pingcap/tidb-tools repo.
-			"ng-monitoring",  // from pingcap/ng-monitoring repo.
 			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
-			"ticdc-newarch",  // from pingcap/ticdc repo.
+			"tidb-operator",  // from pingcap/tidb-operator repo.
+			"tidb-tools",     // from pingcap/tidb-tools repo.
+			"tiflash",        // from pingcap/tiflash repo.
+			"tikv",           // from tikv/tikv repo.
 			"tiproxy",        // from pingcap/tiproxy repo.
 		)
 	})

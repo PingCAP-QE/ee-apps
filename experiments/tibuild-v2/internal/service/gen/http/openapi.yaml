@@ -668,7 +668,7 @@ definitions:
                 pipeline_engine: jenkins
                 platform: all
                 plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                product: enterprise-plugin
+                product: pump
                 product_base_img: Et sit.
                 product_dockerfile: Sed illum.
                 target_img: Sint ea debitis.
@@ -960,25 +960,26 @@ definitions:
                 example: Rerum ut dolore omnis quia ex.
             product:
                 type: string
-                example: tidb-tools
+                example: pump
                 enum:
+                    - dm
+                    - enterprise-plugin
+                    - ng-monitoring
+                    - pd
+                    - ticdc
+                    - ticdc-newarch
                     - tidb
                     - br
                     - dumpling
                     - tidb-lightning
-                    - tikv
-                    - pd
-                    - enterprise-plugin
-                    - tiflash
-                    - ticdc
-                    - dm
                     - tidb-binlog
                     - drainer
                     - pump
-                    - tidb-tools
-                    - ng-monitoring
                     - tidb-dashboard
-                    - ticdc-newarch
+                    - tidb-operator
+                    - tidb-tools
+                    - tiflash
+                    - tikv
                     - tiproxy
             product_base_img:
                 type: string
@@ -1005,7 +1006,7 @@ definitions:
             pipeline_engine: jenkins
             platform: darwin/arm64
             plugin_git_ref: Consequuntur sit suscipit ipsum.
-            product: tidb-dashboard
+            product: br
             product_base_img: Cupiditate doloremque dolorem.
             product_dockerfile: Autem nam voluptas vitae.
             target_img: Id aperiam in impedit est.
@@ -1289,7 +1290,7 @@ definitions:
                 pipeline_engine: tekton
                 platform: linux/arm64
                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                product: tidb-lightning
+                product: tikv
                 product_base_img: Nemo harum.
                 product_dockerfile: Reprehenderit eaque exercitationem.
                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.
