@@ -291,7 +291,7 @@ func validateReq(req DevBuild) error {
 	if spec.PipelineEngine == JenkinsEngine && spec.Platform != "" {
 		return errors.New("cannot set platform when pipeline engine is Jenkins")
 	}
-	if spec.PipelineEngine == JenkinsEngine && slices.Contains(supportedProductsInJenkinsEngine, spec.Product) {
+	if spec.PipelineEngine == JenkinsEngine && !slices.Contains(supportedProductsInJenkinsEngine, spec.Product) {
 		return fmt.Errorf("product %s is not supported by Jenkins engine implementation!", spec.Product)
 	}
 	return nil
