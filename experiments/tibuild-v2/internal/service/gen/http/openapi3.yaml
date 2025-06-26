@@ -159,7 +159,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: all
                                         plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                        product: enterprise-plugin
+                                        product: pump
                                         product_base_img: Et sit.
                                         product_dockerfile: Sed illum.
                                         target_img: Sint ea debitis.
@@ -378,7 +378,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: all
                                         plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                        product: enterprise-plugin
+                                        product: pump
                                         product_base_img: Et sit.
                                         product_dockerfile: Sed illum.
                                         target_img: Sint ea debitis.
@@ -597,7 +597,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: all
                                         plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                        product: enterprise-plugin
+                                        product: pump
                                         product_base_img: Et sit.
                                         product_dockerfile: Sed illum.
                                         target_img: Sint ea debitis.
@@ -816,7 +816,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: all
                                         plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                        product: enterprise-plugin
+                                        product: pump
                                         product_base_img: Et sit.
                                         product_dockerfile: Sed illum.
                                         target_img: Sint ea debitis.
@@ -1036,7 +1036,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: all
                                     plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                    product: enterprise-plugin
+                                    product: pump
                                     product_base_img: Et sit.
                                     product_dockerfile: Sed illum.
                                     target_img: Sint ea debitis.
@@ -1255,7 +1255,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: all
                                     plugin_git_ref: Aliquid sint voluptate asperiores atque voluptatem ea.
-                                    product: enterprise-plugin
+                                    product: pump
                                     product_base_img: Et sit.
                                     product_dockerfile: Sed illum.
                                     target_img: Sint ea debitis.
@@ -1503,7 +1503,7 @@ paths:
                                 pipeline_engine: tekton
                                 platform: linux/arm64
                                 plugin_git_ref: Eum vel officiis quasi sit a ex.
-                                product: tidb-lightning
+                                product: tikv
                                 product_base_img: Nemo harum.
                                 product_dockerfile: Reprehenderit eaque exercitationem.
                                 target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -1534,7 +1534,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: tidb-lightning
+                                    product: tiflash
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -1719,7 +1719,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: tidb-lightning
+                                    product: tiflash
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2016,7 +2016,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: tidb-lightning
+                                    product: tiflash
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2201,7 +2201,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptas aut eveniet.
-                                    product: tidb-lightning
+                                    product: tiflash
                                     product_base_img: Aut consectetur delectus.
                                     product_dockerfile: Libero aut consequatur corrupti autem iste.
                                     target_img: Voluptate debitis.
@@ -2831,7 +2831,7 @@ components:
                     pipeline_engine: tekton
                     platform: linux/arm64
                     plugin_git_ref: Eum vel officiis quasi sit a ex.
-                    product: tidb-lightning
+                    product: tikv
                     product_base_img: Nemo harum.
                     product_dockerfile: Reprehenderit eaque exercitationem.
                     target_img: Dolorem blanditiis velit voluptatem exercitationem et.
@@ -3118,25 +3118,26 @@ components:
                     example: Aut ex sit.
                 product:
                     type: string
-                    example: enterprise-plugin
+                    example: pump
                     enum:
+                        - dm
+                        - enterprise-plugin
+                        - ng-monitoring
+                        - pd
+                        - ticdc
+                        - ticdc-newarch
                         - tidb
                         - br
                         - dumpling
                         - tidb-lightning
-                        - tikv
-                        - pd
-                        - enterprise-plugin
-                        - tiflash
-                        - ticdc
-                        - dm
                         - tidb-binlog
                         - drainer
                         - pump
-                        - tidb-tools
-                        - ng-monitoring
                         - tidb-dashboard
-                        - ticdc-newarch
+                        - tidb-operator
+                        - tidb-tools
+                        - tiflash
+                        - tikv
                         - tiproxy
                 product_base_img:
                     type: string
@@ -3163,7 +3164,7 @@ components:
                 pipeline_engine: tekton
                 platform: darwin/arm64
                 plugin_git_ref: Qui quia molestiae.
-                product: tidb
+                product: pd
                 product_base_img: Accusamus corporis eaque et dolorum vitae perspiciatis.
                 product_dockerfile: Nostrum error cum velit ut.
                 target_img: Atque voluptas consequatur animi quas ipsum tempora.

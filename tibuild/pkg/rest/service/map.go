@@ -45,6 +45,7 @@ const (
 	ProductTiflash          = "tiflash"
 	ProductTikv             = "tikv"
 	ProductTiproxy          = "tiproxy"
+	ProductTidbOperator     = "tidb-operator"
 	ProductUnknown          = "" // unkown
 
 	// Build status
@@ -84,6 +85,24 @@ var (
 		ProductTikv,
 		ProductTiproxy,
 	}
+	supportedProductsInJenkinsEngine = []string{
+		ProductBr,
+		ProductDm,
+		ProductDrainer,
+		ProductDumpling,
+		ProductNgMonitoring,
+		ProductPd,
+		ProductPump,
+		ProductTicdc,
+		ProductTicdcNewarch,
+		ProductTidb,
+		ProductTidbBinlog,
+		ProductTidbDashboard,
+		ProductTidbLightning,
+		ProductTidbTools,
+		ProductTiflash,
+		ProductTikv,
+	}
 
 	// code repositoies
 	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
@@ -91,6 +110,7 @@ var (
 	RepoTidb          = GithubRepo{Owner: "pingcap", Repo: "tidb"}
 	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
 	RepoTidbDashboard = GithubRepo{Owner: "pingcap", Repo: "tidb-dashboard"}
+	RepoTidbOperator  = GithubRepo{Owner: "pingcap", Repo: "tidb-operator"}
 	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
 	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
 	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
@@ -113,6 +133,7 @@ var (
 		ProductTidbBinlog:    &RepoTidbBinlog,
 		ProductTidbDashboard: &RepoTidbDashboard,
 		ProductTidbLightning: &RepoTidb,
+		ProductTidbOperator:  &RepoTidbOperator,
 		ProductTidbTools:     &RepoTidbTools,
 		ProductTiflash:       &RepoTiflash,
 		ProductTikv:          &RepoTikv,

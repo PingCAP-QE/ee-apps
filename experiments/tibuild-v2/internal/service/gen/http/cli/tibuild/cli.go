@@ -306,7 +306,7 @@ Example:
          "pipeline_engine": "tekton",
          "platform": "linux/arm64",
          "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
-         "product": "tidb-lightning",
+         "product": "tikv",
          "product_base_img": "Nemo harum.",
          "product_dockerfile": "Reprehenderit eaque exercitationem.",
          "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
