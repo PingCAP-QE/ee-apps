@@ -11,7 +11,7 @@ export async function createTable(
 ) {
   // Create the table if it doesn't exist
   const sql = `
-      CREATE TABLE \`${tableName}\` IF NOT EXSIT (
+      CREATE TABLE IF NOT EXSIT \`${tableName}\` (
         id INT AUTO_INCREMENT PRIMARY KEY,
         type ENUM('issue', 'pull') NOT NULL,
         repo VARCHAR(255) NOT NULL,
