@@ -17,9 +17,10 @@ async function getDockerRepoStats(hubImg: string) {
       star_count,
       storage_size,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     return {
-      error: `Failed to fetch data: ${error.message}`,
+      error: `Failed to fetch data: ${message}`,
     };
   }
 }
@@ -41,9 +42,14 @@ async function main() {
 
   const results = await Promise.all(images.map(getDockerRepoStats));
   console.dir(results);
+
+  const hasErrors = results.some((r) => "error" in r);
+  if (hasErrors) {
+    console.error("\nAn error occurred while fetching stats for some images.");
+    Deno.exit(1);
+  }
 }
 
 if (import.meta.main) {
   await main();
-  Deno.exit(0);
 }
