@@ -3,61 +3,72 @@ import * as mysql from "https://deno.land/x/mysql@v2.12.1/mod.ts";
 import { walk } from "jsr:@std/fs@1.0.18/walk";
 import ProgressBar from "jsr:@deno-library/progress";
 import { convertDsnToClientConfig } from "../db/utils.ts";
+import { green } from "jsr:@std/fmt/colors";
 
-export async function createTable(client: mysql.Client, tableName: string) {
+export async function createTable(
+  client: mysql.Client,
+  tableName: string,
+) {
+  // Create the table if it doesn't exist
   const sql = `
-    CREATE TABLE IF NOT EXISTS \`${tableName}\` (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      type ENUM('issue', 'pull') NOT NULL,
-      repo VARCHAR(255) NOT NULL,
-      number INT NOT NULL,
-      title VARCHAR(512) NOT NULL,
-      author VARCHAR(128) NOT NULL,
-      email VARCHAR(128),
-      state ENUM('open', 'closed') NOT NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      closed_at DATETIME,
-      closed_by VARCHAR(255),
-      assignee VARCHAR(255),
-      assignees JSON,
-      labels JSON,
-      comments JSON,
-      merged BOOLEAN,
-      merged_at DATETIME,
-      merged_by VARCHAR(128),
-      additions INT,
-      deletions INT,
-      changed_files INT,
-      commit_count INT,
-      commits JSON,
-      review JSON,
-      review_comments JSON,
-      CONSTRAINT ticket UNIQUE (repo, number)
-    )
-  `;
-
+      CREATE TABLE \`${tableName}\` IF NOT EXSIT (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        type ENUM('issue', 'pull') NOT NULL,
+        repo VARCHAR(255) NOT NULL,
+        number INT NOT NULL,
+        title VARCHAR(512) NOT NULL,
+        body TEXT,
+        author VARCHAR(128) NOT NULL,
+        email VARCHAR(128),
+        state ENUM('open', 'closed') NOT NULL,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        closed_at DATETIME,
+        closed_by VARCHAR(255),
+        assignee VARCHAR(255),
+        assignees JSON,
+        labels JSON,
+        comments JSON,
+        merged BOOLEAN,
+        merged_at DATETIME,
+        merged_by VARCHAR(128),
+        additions INT,
+        deletions INT,
+        changed_files INT,
+        commit_count INT,
+        commits JSON,
+        review JSON,
+        review_comments JSON,
+        timeline JSON,
+        cross_references JSON,
+        branches JSON,
+        CONSTRAINT ticket UNIQUE (repo, number)
+      )
+    `;
   await client.execute(sql);
+  console.log(`Created table ${tableName}`);
+  return;
 }
 
 export async function saveTicket(
   client: mysql.Client,
   tableName: string,
-  job: Record<string, any>,
+  job: Record<string, unknown>,
 ) {
   const insertOrUpdateSql = `
       INSERT INTO \`${tableName}\` (
-        type, repo, number, title, author, email, state, created_at, updated_at,
+        type, repo, number, title, body, author, email, state, created_at, updated_at,
         closed_at, closed_by, assignee, assignees, labels, comments, merged,
         merged_at, merged_by, additions, deletions, changed_files, commit_count,
-        commits, review, review_comments
+        commits, review, review_comments, timeline, cross_references, branches
       ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       ) ON DUPLICATE KEY UPDATE
       type = VALUES(type),
       repo = VALUES(repo),
       number = VALUES(number),
       title = VALUES(title),
+      body = VALUES(body),
       author = VALUES(author),
       email = VALUES(email),
       state = VALUES(state),
@@ -78,20 +89,24 @@ export async function saveTicket(
       commit_count = VALUES(commit_count),
       commits = VALUES(commits),
       review = VALUES(review),
-      review_comments = VALUES(review_comments)
+      review_comments = VALUES(review_comments),
+      timeline = VALUES(timeline),
+      cross_references = VALUES(cross_references),
+      branches = VALUES(branches)
     `;
 
   await client.execute(insertOrUpdateSql, githubTicketInsertValues(job));
 }
 
-function githubTicketInsertValues(data: Record<string, any>) {
+function githubTicketInsertValues(data: Record<string, unknown>) {
   return [
     data.type,
     data.repo,
     data.number,
-    data.title && data.title.length > 500
+    typeof data.title === "string" && data.title.length > 500
       ? data.title.substring(0, 500)
       : data.title,
+    data.body,
     data.author,
     data.email,
     data.state,
@@ -113,6 +128,9 @@ function githubTicketInsertValues(data: Record<string, any>) {
     JSON.stringify(data.commits),
     JSON.stringify(data.review),
     JSON.stringify(data.review_comments),
+    JSON.stringify(data.timeline),
+    JSON.stringify(data.cross_references),
+    JSON.stringify(data.branches),
   ];
 }
 
@@ -143,10 +161,18 @@ async function transform(
 
   let completed = 0;
   for (const file of files) {
-    await progressBar.console(`Importing file: ${file}`);
-    const data = JSON.parse(await Deno.readTextFile(file));
-    await saveTicket(client, table, data);
-    await progressBar.render(completed++);
+    try {
+      await progressBar.console(`${green("Importing file:")} ${file}`);
+      const data = JSON.parse(await Deno.readTextFile(file));
+      await saveTicket(client, table, data);
+      await progressBar.render(++completed);
+    } catch (error) {
+      console.error(
+        `Error processing file ${file}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }
 
@@ -173,7 +199,7 @@ async function main() {
     config.tls = { mode: mysql.TLSMode.VERIFY_IDENTITY };
   }
   const db = await new mysql.Client().connect(config);
-  await createTable(db, args.table); // create it if not exists.
+  await createTable(db, args.table);
   await transform(args.path, db, args.table);
   await db.close();
 }
