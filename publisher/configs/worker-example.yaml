@@ -8,7 +8,7 @@ tiup:
   redis:
     addr: "redis-server:6379"
     db: 0
-    password: "redis_password"  
+    password: "redis_password"
 
   options:
     mirror_url: http://tiup.mirror.site
@@ -26,7 +26,7 @@ file_server:
   redis:
     addr: "redis-server:6379"
     db: 0
-    password: "redis_password"  
+    password: "redis_password"
 
   options:
     lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.

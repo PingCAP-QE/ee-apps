@@ -3,7 +3,7 @@
 # All configuration information keys is in /tirelease/commons/configs/config.go in struct of ConfigYaml
 # Config like this:
 mysql_dsn: "root:your password@tcp(127.0.0.1:3306)/your_db_name?charset=utf8mb4&parseTime=True&loc=Local"
- 
+
 jenkins:
   username: "your jenkins account"
   password: "your password"

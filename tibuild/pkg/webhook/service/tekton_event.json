@@ -7,7 +7,7 @@
     "datacontenttype": "application/json",
     "time": "2023-12-07T06:30:55.539307083Z",
     "data": {
-        "pipelineRun": 
+        "pipelineRun":
             {
                 "apiVersion": "tekton.dev/v1beta1",
                 "kind": "PipelineRun",

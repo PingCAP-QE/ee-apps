@@ -39,10 +39,10 @@ func apiCall(apiUrl string) (*http.Response, error) {
 		log.Printf("request init error: %s\n", err.Error())
 		return nil, err
 	}
-	
+
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "token " + getGitHubToken())
-	
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("request error: %s\n", err.Error())

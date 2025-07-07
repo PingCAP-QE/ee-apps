@@ -13,4 +13,3 @@ export async function fetchGithubSSOAuth(codeString) {
     return data
 
 }
-

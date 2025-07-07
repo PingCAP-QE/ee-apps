@@ -11,4 +11,3 @@ export function fetchBuildParam({pipeline_id = -1}) {
             console.log(e);
         });
 }
-

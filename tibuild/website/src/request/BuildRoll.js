@@ -11,4 +11,3 @@ export function fetchBuildRoll({pipeline_build_id = -1}) {
             console.log(e);
         });
 }
-

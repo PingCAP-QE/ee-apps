@@ -10,5 +10,3 @@ export const SECRET='7e50fa628ae20d78c112ff07eaa22baf80825bc4';
 export function url(url) {
   return `${config.SERVER_HOST}${url}`;
 }
-
-
