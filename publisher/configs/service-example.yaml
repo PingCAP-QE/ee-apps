@@ -13,4 +13,3 @@ redis:
   addr: "redis-server:6379"
   db: 0
   password: "redis_password"
-

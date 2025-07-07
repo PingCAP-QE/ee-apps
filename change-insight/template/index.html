@@ -32,7 +32,7 @@
             showMonthAfterYear: true,
           }
           );
-          $('.ui.accordion').accordion(); 
+          $('.ui.accordion').accordion();
         } );
         </script>
 </head>
@@ -67,7 +67,7 @@
         <div class="ui three column grid">
           <div class="two wide column"></div>
           <div class="twelve wide column">
-        
+
             <div class="ui three column grid">
                 <div class="two wide column"></div>
                 <div class="five wide column"></div>
@@ -161,7 +161,7 @@
                 if (beginDate == "" || endDate == ""){
                     alert("please select the Date")
                     return
-                } 
+                }
                 $.ajax({url:"/confiChangeDuringDate?beginDate="+beginDate+"&endDate="+endDate,success:function(result){
                     var jsonData = result["configData"]
                     content = ''
@@ -209,13 +209,13 @@
                                     Commiter=jsonData[o][k]["FileOper"][f][fc]["Commiter"]
                                     Mail=jsonData[o][k]["FileOper"][f][fc]["Mail"]
                                     content = content + "<tr><td><a target='_blank'  href='"+commitRef+"'>"+commitID+"</a></td><td>"+date+"</td><td>"+Message+"</td><td>"+Commiter+"</td><td>"+Mail+"</td></tr>"
-                                }  
+                                }
                             }
                         }
                         content = content + '</tbody></table></div></div>'
                     }
                     $("#search_result")[0].innerHTML = content
-                    $('.ui.accordion').accordion(); 
+                    $('.ui.accordion').accordion();
                 }});
             });
         </script>
@@ -226,7 +226,7 @@
                 if (beginDate == "" || endDate == ""){
                     alert("please select the Date")
                     return
-                } 
+                }
                 $.ajax({url:"/configChangeDuringRelease?branch1="+beginDate+"&branch2="+endDate,success:function(result){
                     var jsonData = result["configData"]
                     content = ''
@@ -274,13 +274,13 @@
                                     Commiter=jsonData[o][k]["FileOper"][f][fc]["Commiter"]
                                     Mail=jsonData[o][k]["FileOper"][f][fc]["Mail"]
                                     content = content + "<tr><td><a target='_blank'  href='"+commitRef+"'>"+commitID+"</a></td><td>"+date+"</td><td>"+Message+"</td><td>"+Commiter+"</td><td>"+Mail+"</td></tr>"
-                                }  
+                                }
                             }
                         }
                         content = content + '</tbody></table></div></div>'
                     }
                     $("#search_result")[0].innerHTML = content
-                    $('.ui.accordion').accordion(); 
+                    $('.ui.accordion').accordion();
                 }});
             });
         </script>

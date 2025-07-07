@@ -11,4 +11,3 @@ export function fetchList({pipeline_id = 1, page = 1, page_size = 100}) {
             console.log(e);
         });
 }
-

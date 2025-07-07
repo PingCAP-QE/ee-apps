@@ -247,7 +247,7 @@ func tiupRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] tiup request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON: 
+    -body JSON:
 
 Example:
     %[1]s tiup request-to-publish --body '{
@@ -283,7 +283,7 @@ Example:
 // fileserverUsage displays the usage of the fileserver command and its
 // subcommands.
 func fileserverUsage() {
-	fmt.Fprintf(os.Stderr, `Publisher service for static file server 
+	fmt.Fprintf(os.Stderr, `Publisher service for static file server
 Usage:
     %[1]s [globalflags] fileserver COMMAND [flags]
 
@@ -299,7 +299,7 @@ func fileserverRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] fileserver request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON: 
+    -body JSON:
 
 Example:
     %[1]s fileserver request-to-publish --body '{
@@ -337,7 +337,7 @@ func imageRequestToCopyUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] image request-to-copy -body JSON
 
 RequestToCopy implements request-to-copy.
-    -body JSON: 
+    -body JSON:
 
 Example:
     %[1]s image request-to-copy --body '{

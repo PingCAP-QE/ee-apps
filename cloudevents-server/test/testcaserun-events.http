@@ -31,7 +31,7 @@ Content-Type: application/cloudevents+json; charset=UTF-8
     "specversion" : "1.0",
     "type": "test-case-run-report",
     "id": "{{$randomInt 0 1000}}",
-    "source": "http://source.com/subcontext",   
+    "source": "http://source.com/subcontext",
     "time": "{{$localDatetime iso8601}}",
     "repo": "pingcap/tidb",
     "branch": "master",

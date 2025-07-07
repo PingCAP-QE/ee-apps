@@ -268,7 +268,7 @@ func ociListFilesUsage() {
 
 ListFiles implements list-files.
     -repository STRING: OCI artifact repository
-    -tag STRING: 
+    -tag STRING:
 
 Example:
     %[1]s oci list-files --repository "Excepturi perferendis dolores voluptas eius non." --tag "Est reprehenderit quibusdam eveniet velit."
@@ -280,9 +280,9 @@ func ociDownloadFileUsage() {
 
 DownloadFile implements download-file.
     -repository STRING: OCI artifact repository
-    -tag STRING: 
-    -file STRING: 
-    -file-regex STRING: 
+    -tag STRING:
+    -file STRING:
+    -file-regex STRING:
 
 Example:
     %[1]s oci download-file --repository "hub.pingcap.net/pingcap/tidb/package" --tag "v8.1.0_darwin_arm64" --file "tidb-v7.5.0-darwin-arm64.tar.gz" --file-regex "tidb-.+[.]tar[.]gz"
@@ -294,8 +294,8 @@ func ociDownloadFileSha256Usage() {
 
 DownloadFileSha256 implements download-file-sha256.
     -repository STRING: OCI artifact repository
-    -file STRING: 
-    -tag STRING: 
+    -file STRING:
+    -tag STRING:
 
 Example:
     %[1]s oci download-file-sha256 --repository "Quis maiores hic et commodi aut." --file "Corrupti qui qui iusto." --tag "Enim animi exercitationem voluptate perferendis ut."
