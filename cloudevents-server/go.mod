@@ -13,7 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.33.0
-	github.com/segmentio/kafka-go v0.4.47
+	github.com/segmentio/kafka-go v0.4.48
 	github.com/tektoncd/pipeline v0.39.0
 	k8s.io/api v0.23.9
 	k8s.io/apimachinery v0.23.9
