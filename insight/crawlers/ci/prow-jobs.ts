@@ -1,6 +1,7 @@
 import { parseArgs } from "jsr:@std/cli@1.0.14/parse-args";
 import * as mysql from "https://deno.land/x/mysql@v2.12.1/mod.ts";
 import { convertDsnToClientConfig } from "../../db/utils.ts";
+
 interface prowJobRun {
   kind: string;
   metadata: {
@@ -98,68 +99,40 @@ export async function saveJobs(
   client: mysql.Client,
   tableName: string,
   jobs: prowJobRun[],
+  chunkSize = 100, // Default chunk size
 ) {
-  const values = jobs.map((job) => jobInsertValues(job));
-  const placeholders = values.map((value) =>
-    `(${value.map(() => "?").join(", ")})`
-  ).join(", ");
+  for (let i = 0; i < jobs.length; i += chunkSize) {
+    const chunk = jobs.slice(i, i + chunkSize);
+    const values = chunk.map((job) => jobInsertValues(job));
+    const placeholders = values.map((value) =>
+      `(${value.map(() => "?").join(", ")})`
+    ).join(", ");
 
-  const sql = `
-    INSERT INTO \`${tableName}\` (
-      namespace, prowJobId, jobName, type, state, startTime, completionTime, optional, report, org, repo, base_ref, pull, context, url, spec, status
-    ) VALUES ${placeholders}
-    ON DUPLICATE KEY UPDATE
-      state = VALUES(state),
-      startTime = VALUES(startTime),
-      completionTime = VALUES(completionTime),
-      url = VALUES(url),
-      status = VALUES(status);
-  `;
-  const flattenedValues = values.flat();
-  await client.execute(sql, flattenedValues);
-}
-
-export async function saveJob(
-  client: mysql.Client,
-  tableName: string,
-  job: prowJobRun,
-) {
-  const selectSql = `
-      SELECT state FROM \`${tableName}\` WHERE prowJobId = ?;
-    `;
-
-  const insertOrUpdateSql = `
+    const sql = `
       INSERT INTO \`${tableName}\` (
         namespace, prowJobId, jobName, type, state, startTime, completionTime, optional, report, org, repo, base_ref, pull, context, url, spec, status
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      ) ON DUPLICATE KEY UPDATE
+      ) VALUES ${placeholders}
+      ON DUPLICATE KEY UPDATE
         state = VALUES(state),
         startTime = VALUES(startTime),
         completionTime = VALUES(completionTime),
         url = VALUES(url),
         status = VALUES(status);
     `;
-
-  const values = jobInsertValues(job);
-
-  const [existingJob] = await client.query(selectSql, [job.metadata.name]);
-  const shouldUpdateOrInsert = !existingJob ||
-    (existingJob.state != job.status.state);
-  if (!shouldUpdateOrInsert) {
-    return;
+    const flattenedValues = values.flat();
+    await client.execute(sql, flattenedValues);
+    console.info(`Saved ${i}/${jobs.length} jobs`);
   }
-
-  await client.execute(insertOrUpdateSql, values);
 }
 
 async function main() {
   const args = parseArgs(Deno.args, {
-    string: ["dsn", "table", "prow_base_url"],
+    string: ["dsn", "table", "prow_base_url", "chunk_size"],
     default: {
       tls: true,
       table: "prow_jobs",
       prow_base_url: "https://prow.tidb.net",
+      chunk_size: "100",
     },
     negatable: ["tls"],
   });
@@ -167,8 +140,14 @@ async function main() {
   // check the args, if they are valid
   if (!(args.dsn && args.table && args.prow_base_url)) {
     console.error(
-      "Usage: script --dsn <dsn> --table <tableName> --prow_base_url <prowBaseUrl> [--no-tls]",
+      "Usage: script --dsn <dsn> --table <tableName> --prow_base_url <prowBaseUrl> [--chunk_size <size>] [--no-tls]",
     );
+    Deno.exit(1);
+  }
+
+  const chunkSize = parseInt(args.chunk_size, 10);
+  if (isNaN(chunkSize) || chunkSize <= 0) {
+    console.error("Invalid chunk_size. It must be a positive integer.");
     Deno.exit(1);
   }
 
@@ -184,7 +163,7 @@ async function main() {
   const jobs = await fetchProwJobs(args.prow_base_url);
   console.info("fetched job count:", jobs.length);
   console.info("Saving the jobs to the table:", args.table);
-  await saveJobs(db, args.table, jobs);
+  await saveJobs(db, args.table, jobs, chunkSize);
   console.info("Jobs saved successfully");
   console.groupEnd();
   await db.close();
