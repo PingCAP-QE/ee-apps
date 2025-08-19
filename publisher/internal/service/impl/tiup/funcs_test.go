@@ -55,6 +55,33 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name: "TestFetchOCIArtifactConfig1",
+			args: args{
+				repo: "hub.pingcap.net/pingcap/tidb/package",
+				tag:  "v8.3.0_linux_amd64",
+			},
+			want: []PublishRequestTiUP{
+				{
+					From: share.From{
+						Type: share.FromTypeOci,
+						Oci: &share.FromOci{
+							Repo: "hub.pingcap.net/pingcap/tidb/package",
+							Tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
+							File: "tidb-v8.3.0-pre-linux-amd64.tar.gz",
+						},
+					},
+					Publish: PublishInfoTiUP{
+						Version:     "v8.3.0",
+						OS:          "linux",
+						Arch:        "amd64",
+						Name:        "tidb",
+						Description: "TiDB is an open source distributed HTAP database compatible with the MySQL protocol.",
+						EntryPoint:  "tidb-server",
+					},
+				},
+			},
+		},
+		{
 			name: "TestFetchOCIArtifactConfig",
 			args: args{
 				repo: "hub.pingcap.net/pingcap/tidb/package",
@@ -66,7 +93,7 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 						Type: share.FromTypeOci,
 						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
-							Tag:  "v8.3.0_linux_amd64",
+							Tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
 							File: "tidb-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
@@ -84,7 +111,7 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 						Type: share.FromTypeOci,
 						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
-							Tag:  "v8.3.0_linux_amd64",
+							Tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
 							File: "br-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
@@ -102,7 +129,7 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 						Type: share.FromTypeOci,
 						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
-							Tag:  "v8.3.0_linux_amd64",
+							Tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
 							File: "dumpling-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
@@ -120,7 +147,7 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 						Type: share.FromTypeOci,
 						Oci: &share.FromOci{
 							Repo: "hub.pingcap.net/pingcap/tidb/package",
-							Tag:  "v8.3.0_linux_amd64",
+							Tag:  "sha256:02ffdf71eaeca234cc4f03e8daaf19858e5f5ee8dcbecb38b98d5525851dacee",
 							File: "tidb-lightning-v8.3.0-pre-linux-amd64.tar.gz",
 						},
 					},
@@ -143,8 +170,10 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 				t.Errorf("analyzeFromOciArtifact() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got[0], tt.want[0]) {
-				t.Errorf("analyzeFromOciArtifact() = \n\t%v\n\twant = \n\t%v", got[0], tt.want[0])
+			for i := range tt.want {
+				if !reflect.DeepEqual(got[i], tt.want[i]) {
+					t.Errorf("analyzeFromOciArtifact() = \n\t%v\n\twant = \n\t%v", got[i], tt.want[i])
+				}
 			}
 		})
 	}
