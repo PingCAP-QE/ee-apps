@@ -5,8 +5,10 @@ import (
 )
 
 const (
-	EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
-	EventTypeFsPublishRequest   = "net.pingcap.tibuild.fs-publish-request"
+	EventTypeTiupPublishRequest           = "net.pingcap.tibuild.tiup-publish-request"
+	EventTypeFsPublishRequest             = "net.pingcap.tibuild.fs-publish-request"
+	EventTypeImagePublishRequest          = "net.pingcap.tibuild.image-publish-request"
+	EventTypeImageMultiArchCollectRequest = "net.pingcap.tibuild.image-multiarch-collect-request"
 
 	FromTypeOci  = "oci"
 	FromTypeHTTP = "http"
@@ -50,4 +52,8 @@ func (f FromOci) String() string {
 
 type FromHTTP struct {
 	URL string `json:"url,omitempty"`
+}
+
+func IsStateCompleted(state string) bool {
+	return state == PublishStateSuccess || state == PublishStateFailed || state == PublishStateCanceled
 }

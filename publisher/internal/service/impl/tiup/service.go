@@ -86,17 +86,7 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 // QueryPublishingStatus implements query-publishing-status.
 func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPublishingStatusPayload) (res string, err error) {
 	s.logger.Info().Msgf("tiup.query-publishing-status")
-	// 1. Get the request dealing status from redis with the request id.
-	status, err := s.redisClient.Get(ctx, p.RequestID).Result()
-	if err != nil {
-		if err == redis.Nil {
-			return "", fmt.Errorf("request ID not found")
-		}
-		return "", fmt.Errorf("failed to get status from Redis: %v", err)
-	}
-
-	// 2. Return the request dealing status.
-	return status, nil
+	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
 }
 
 // ResetRateLimit implements tiup.Service.

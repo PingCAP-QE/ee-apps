@@ -34,8 +34,7 @@ func TestImageServiceCopyFlow(t *testing.T) {
 	logger := zerolog.New(zerolog.NewConsoleWriter())
 
 	// Create the service with a relatively short timeout
-	timeout := 2 * time.Minute
-	service := NewService(&logger, redisClient, timeout)
+	service := NewService(&logger, nil, redisClient, "test")
 
 	// Setup test image names
 	sourceImage := "ttl.sh/pingcap-test-source:1h"
