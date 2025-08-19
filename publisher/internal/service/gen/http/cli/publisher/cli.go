@@ -27,24 +27,24 @@ import (
 func UsageCommands() string {
 	return `tiup (request-to-publish|query-publishing-status|reset-rate-limit)
 fileserver (request-to-publish|query-publishing-status)
-image (request-to-copy|query-copying-status)
+image (request-to-copy|query-copying-status|request-multiarch-collect|query-multiarch-collect-status)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` tiup request-to-publish --body '{
-      "artifact_url": "Consequatur ea eum saepe.",
-      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
-      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
-      "version": "Omnis dolorem eveniet fugit nemo."
+      "artifact_url": "Fuga earum sit.",
+      "request_id": "Facere odio et cupiditate ut exercitationem sunt.",
+      "tiup-mirror": "Odio laborum.",
+      "version": "Ipsum ea enim est magnam a."
    }'` + "\n" +
 		os.Args[0] + ` fileserver request-to-publish --body '{
-      "artifact_url": "Tenetur mollitia consequatur perferendis."
+      "artifact_url": "Ipsa sunt aut harum quo fuga earum."
    }'` + "\n" +
 		os.Args[0] + ` image request-to-copy --body '{
-      "destination": "Quia sed sunt vero.",
-      "source": "Iusto ut et deserunt nisi voluptates."
+      "destination": "Reprehenderit quaerat quam sapiente.",
+      "source": "Voluptas excepturi laudantium ullam dicta tenetur et."
    }'` + "\n" +
 		""
 }
@@ -84,6 +84,12 @@ func ParseEndpoint(
 
 		imageQueryCopyingStatusFlags         = flag.NewFlagSet("query-copying-status", flag.ExitOnError)
 		imageQueryCopyingStatusRequestIDFlag = imageQueryCopyingStatusFlags.String("request-id", "REQUIRED", "request track id")
+
+		imageRequestMultiarchCollectFlags    = flag.NewFlagSet("request-multiarch-collect", flag.ExitOnError)
+		imageRequestMultiarchCollectBodyFlag = imageRequestMultiarchCollectFlags.String("body", "REQUIRED", "")
+
+		imageQueryMultiarchCollectStatusFlags         = flag.NewFlagSet("query-multiarch-collect-status", flag.ExitOnError)
+		imageQueryMultiarchCollectStatusRequestIDFlag = imageQueryMultiarchCollectStatusFlags.String("request-id", "REQUIRED", "Request track id")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
@@ -97,6 +103,8 @@ func ParseEndpoint(
 	imageFlags.Usage = imageUsage
 	imageRequestToCopyFlags.Usage = imageRequestToCopyUsage
 	imageQueryCopyingStatusFlags.Usage = imageQueryCopyingStatusUsage
+	imageRequestMultiarchCollectFlags.Usage = imageRequestMultiarchCollectUsage
+	imageQueryMultiarchCollectStatusFlags.Usage = imageQueryMultiarchCollectStatusUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -165,6 +173,12 @@ func ParseEndpoint(
 			case "query-copying-status":
 				epf = imageQueryCopyingStatusFlags
 
+			case "request-multiarch-collect":
+				epf = imageRequestMultiarchCollectFlags
+
+			case "query-multiarch-collect-status":
+				epf = imageQueryMultiarchCollectStatusFlags
+
 			}
 
 		}
@@ -218,6 +232,12 @@ func ParseEndpoint(
 			case "query-copying-status":
 				endpoint = c.QueryCopyingStatus()
 				data, err = imagec.BuildQueryCopyingStatusPayload(*imageQueryCopyingStatusRequestIDFlag)
+			case "request-multiarch-collect":
+				endpoint = c.RequestMultiarchCollect()
+				data, err = imagec.BuildRequestMultiarchCollectPayload(*imageRequestMultiarchCollectBodyFlag)
+			case "query-multiarch-collect-status":
+				endpoint = c.QueryMultiarchCollectStatus()
+				data, err = imagec.BuildQueryMultiarchCollectStatusPayload(*imageQueryMultiarchCollectStatusRequestIDFlag)
 			}
 		}
 	}
@@ -247,14 +267,14 @@ func tiupRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] tiup request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s tiup request-to-publish --body '{
-      "artifact_url": "Consequatur ea eum saepe.",
-      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
-      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
-      "version": "Omnis dolorem eveniet fugit nemo."
+      "artifact_url": "Fuga earum sit.",
+      "request_id": "Facere odio et cupiditate ut exercitationem sunt.",
+      "tiup-mirror": "Odio laborum.",
+      "version": "Ipsum ea enim est magnam a."
    }'
 `, os.Args[0])
 }
@@ -266,7 +286,7 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s tiup query-publishing-status --request-id "Consectetur dolor magnam aut et labore."
+    %[1]s tiup query-publishing-status --request-id "Et in."
 `, os.Args[0])
 }
 
@@ -283,7 +303,7 @@ Example:
 // fileserverUsage displays the usage of the fileserver command and its
 // subcommands.
 func fileserverUsage() {
-	fmt.Fprintf(os.Stderr, `Publisher service for static file server
+	fmt.Fprintf(os.Stderr, `Publisher service for static file server 
 Usage:
     %[1]s [globalflags] fileserver COMMAND [flags]
 
@@ -299,11 +319,11 @@ func fileserverRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] fileserver request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s fileserver request-to-publish --body '{
-      "artifact_url": "Tenetur mollitia consequatur perferendis."
+      "artifact_url": "Ipsa sunt aut harum quo fuga earum."
    }'
 `, os.Args[0])
 }
@@ -315,7 +335,7 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s fileserver query-publishing-status --request-id "Adipisci pariatur maiores neque enim perferendis."
+    %[1]s fileserver query-publishing-status --request-id "Totam voluptas consequatur consectetur cumque."
 `, os.Args[0])
 }
 
@@ -328,6 +348,8 @@ Usage:
 COMMAND:
     request-to-copy: RequestToCopy implements request-to-copy.
     query-copying-status: QueryCopyingStatus implements query-copying-status.
+    request-multiarch-collect: RequestMultiarchCollect implements request-multiarch-collect.
+    query-multiarch-collect-status: QueryMultiarchCollectStatus implements query-multiarch-collect-status.
 
 Additional help:
     %[1]s image COMMAND --help
@@ -337,12 +359,12 @@ func imageRequestToCopyUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] image request-to-copy -body JSON
 
 RequestToCopy implements request-to-copy.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s image request-to-copy --body '{
-      "destination": "Quia sed sunt vero.",
-      "source": "Iusto ut et deserunt nisi voluptates."
+      "destination": "Reprehenderit quaerat quam sapiente.",
+      "source": "Voluptas excepturi laudantium ullam dicta tenetur et."
    }'
 `, os.Args[0])
 }
@@ -354,6 +376,32 @@ QueryCopyingStatus implements query-copying-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s image query-copying-status --request-id "b950a88c-f01c-4fe7-bd5e-218a50d70137"
+    %[1]s image query-copying-status --request-id "04008b92-0d62-4798-b015-fb967cf3ae82"
+`, os.Args[0])
+}
+
+func imageRequestMultiarchCollectUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] image request-multiarch-collect -body JSON
+
+RequestMultiarchCollect implements request-multiarch-collect.
+    -body JSON: 
+
+Example:
+    %[1]s image request-multiarch-collect --body '{
+      "async": false,
+      "image_url": "Est delectus deserunt ut.",
+      "release_tag_suffix": "Modi ipsum."
+   }'
+`, os.Args[0])
+}
+
+func imageQueryMultiarchCollectStatusUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] image query-multiarch-collect-status -request-id STRING
+
+QueryMultiarchCollectStatus implements query-multiarch-collect-status.
+    -request-id STRING: Request track id
+
+Example:
+    %[1]s image query-multiarch-collect-status --request-id "fd88883f-b103-4c43-8b25-e54abfa51bd3"
 `, os.Args[0])
 }

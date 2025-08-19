@@ -16,15 +16,19 @@ import (
 
 // Client is the "image" service client.
 type Client struct {
-	RequestToCopyEndpoint      goa.Endpoint
-	QueryCopyingStatusEndpoint goa.Endpoint
+	RequestToCopyEndpoint               goa.Endpoint
+	QueryCopyingStatusEndpoint          goa.Endpoint
+	RequestMultiarchCollectEndpoint     goa.Endpoint
+	QueryMultiarchCollectStatusEndpoint goa.Endpoint
 }
 
 // NewClient initializes a "image" service client given the endpoints.
-func NewClient(requestToCopy, queryCopyingStatus goa.Endpoint) *Client {
+func NewClient(requestToCopy, queryCopyingStatus, requestMultiarchCollect, queryMultiarchCollectStatus goa.Endpoint) *Client {
 	return &Client{
-		RequestToCopyEndpoint:      requestToCopy,
-		QueryCopyingStatusEndpoint: queryCopyingStatus,
+		RequestToCopyEndpoint:               requestToCopy,
+		QueryCopyingStatusEndpoint:          queryCopyingStatus,
+		RequestMultiarchCollectEndpoint:     requestMultiarchCollect,
+		QueryMultiarchCollectStatusEndpoint: queryMultiarchCollectStatus,
 	}
 }
 
@@ -43,6 +47,28 @@ func (c *Client) RequestToCopy(ctx context.Context, p *RequestToCopyPayload) (re
 func (c *Client) QueryCopyingStatus(ctx context.Context, p *QueryCopyingStatusPayload) (res string, err error) {
 	var ires any
 	ires, err = c.QueryCopyingStatusEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(string), nil
+}
+
+// RequestMultiarchCollect calls the "request-multiarch-collect" endpoint of
+// the "image" service.
+func (c *Client) RequestMultiarchCollect(ctx context.Context, p *RequestMultiarchCollectPayload) (res *RequestMultiarchCollectResult, err error) {
+	var ires any
+	ires, err = c.RequestMultiarchCollectEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*RequestMultiarchCollectResult), nil
+}
+
+// QueryMultiarchCollectStatus calls the "query-multiarch-collect-status"
+// endpoint of the "image" service.
+func (c *Client) QueryMultiarchCollectStatus(ctx context.Context, p *QueryMultiarchCollectStatusPayload) (res string, err error) {
+	var ires any
+	ires, err = c.QueryMultiarchCollectStatusEndpoint(ctx, p)
 	if err != nil {
 		return
 	}

@@ -22,6 +22,50 @@ type RequestToCopyRequestBody struct {
 	Destination *string `form:"destination,omitempty" json:"destination,omitempty" xml:"destination,omitempty"`
 }
 
+// RequestMultiarchCollectRequestBody is the type of the "image" service
+// "request-multiarch-collect" endpoint HTTP request body.
+type RequestMultiarchCollectRequestBody struct {
+	// The image URL to collect
+	ImageURL *string `form:"image_url,omitempty" json:"image_url,omitempty" xml:"image_url,omitempty"`
+	// Suffix for the release tag
+	ReleaseTagSuffix *string `form:"release_tag_suffix,omitempty" json:"release_tag_suffix,omitempty" xml:"release_tag_suffix,omitempty"`
+	// Whether to run the collection asynchronously. If true, returns a request id.
+	// If false or omitted, runs synchronously and returns the result directly.
+	Async *bool `form:"async,omitempty" json:"async,omitempty" xml:"async,omitempty"`
+}
+
+// RequestMultiarchCollectResponseBody is the type of the "image" service
+// "request-multiarch-collect" endpoint HTTP response body.
+type RequestMultiarchCollectResponseBody struct {
+	// Whether to run the collection asynchronously. If true, returns a request id.
+	// If false or omitted, runs synchronously and returns the result directly.
+	Async bool `form:"async" json:"async" xml:"async"`
+	// Repository of the collected image
+	Repo *string `form:"repo,omitempty" json:"repo,omitempty" xml:"repo,omitempty"`
+	// Tags of the collected image
+	Tags []string `form:"tags,omitempty" json:"tags,omitempty" xml:"tags,omitempty"`
+	// Request id for async mode (uuidv4 format)
+	RequestID *string `form:"request_id,omitempty" json:"request_id,omitempty" xml:"request_id,omitempty"`
+}
+
+// NewRequestMultiarchCollectResponseBody builds the HTTP response body from
+// the result of the "request-multiarch-collect" endpoint of the "image"
+// service.
+func NewRequestMultiarchCollectResponseBody(res *image.RequestMultiarchCollectResult) *RequestMultiarchCollectResponseBody {
+	body := &RequestMultiarchCollectResponseBody{
+		Async:     res.Async,
+		Repo:      res.Repo,
+		RequestID: res.RequestID,
+	}
+	if res.Tags != nil {
+		body.Tags = make([]string, len(res.Tags))
+		for i, val := range res.Tags {
+			body.Tags[i] = val
+		}
+	}
+	return body
+}
+
 // NewRequestToCopyPayload builds a image service request-to-copy endpoint
 // payload.
 func NewRequestToCopyPayload(body *RequestToCopyRequestBody) *image.RequestToCopyPayload {
@@ -42,6 +86,37 @@ func NewQueryCopyingStatusPayload(requestID string) *image.QueryCopyingStatusPay
 	return v
 }
 
+// NewRequestMultiarchCollectPayload builds a image service
+// request-multiarch-collect endpoint payload.
+func NewRequestMultiarchCollectPayload(body *RequestMultiarchCollectRequestBody) *image.RequestMultiarchCollectPayload {
+	v := &image.RequestMultiarchCollectPayload{
+		ImageURL: *body.ImageURL,
+	}
+	if body.ReleaseTagSuffix != nil {
+		v.ReleaseTagSuffix = *body.ReleaseTagSuffix
+	}
+	if body.Async != nil {
+		v.Async = *body.Async
+	}
+	if body.ReleaseTagSuffix == nil {
+		v.ReleaseTagSuffix = "release"
+	}
+	if body.Async == nil {
+		v.Async = false
+	}
+
+	return v
+}
+
+// NewQueryMultiarchCollectStatusPayload builds a image service
+// query-multiarch-collect-status endpoint payload.
+func NewQueryMultiarchCollectStatusPayload(requestID string) *image.QueryMultiarchCollectStatusPayload {
+	v := &image.QueryMultiarchCollectStatusPayload{}
+	v.RequestID = requestID
+
+	return v
+}
+
 // ValidateRequestToCopyRequestBody runs the validations defined on
 // Request-To-CopyRequestBody
 func ValidateRequestToCopyRequestBody(body *RequestToCopyRequestBody) (err error) {
@@ -50,6 +125,15 @@ func ValidateRequestToCopyRequestBody(body *RequestToCopyRequestBody) (err error
 	}
 	if body.Destination == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("destination", "body"))
+	}
+	return
+}
+
+// ValidateRequestMultiarchCollectRequestBody runs the validations defined on
+// Request-Multiarch-CollectRequestBody
+func ValidateRequestMultiarchCollectRequestBody(body *RequestMultiarchCollectRequestBody) (err error) {
+	if body.ImageURL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("image_url", "body"))
 	}
 	return
 }

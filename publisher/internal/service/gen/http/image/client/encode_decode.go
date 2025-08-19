@@ -156,3 +156,142 @@ func DecodeQueryCopyingStatusResponse(decoder func(*http.Response) goahttp.Decod
 		}
 	}
 }
+
+// BuildRequestMultiarchCollectRequest instantiates a HTTP request object with
+// method and path set to call the "image" service "request-multiarch-collect"
+// endpoint
+func (c *Client) BuildRequestMultiarchCollectRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: RequestMultiarchCollectImagePath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("image", "request-multiarch-collect", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeRequestMultiarchCollectRequest returns an encoder for requests sent to
+// the image request-multiarch-collect server.
+func EncodeRequestMultiarchCollectRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*image.RequestMultiarchCollectPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("image", "request-multiarch-collect", "*image.RequestMultiarchCollectPayload", v)
+		}
+		body := NewRequestMultiarchCollectRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("image", "request-multiarch-collect", err)
+		}
+		return nil
+	}
+}
+
+// DecodeRequestMultiarchCollectResponse returns a decoder for responses
+// returned by the image request-multiarch-collect endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+func DecodeRequestMultiarchCollectResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body RequestMultiarchCollectResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("image", "request-multiarch-collect", err)
+			}
+			err = ValidateRequestMultiarchCollectResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("image", "request-multiarch-collect", err)
+			}
+			res := NewRequestMultiarchCollectResultOK(&body)
+			return res, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("image", "request-multiarch-collect", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildQueryMultiarchCollectStatusRequest instantiates a HTTP request object
+// with method and path set to call the "image" service
+// "query-multiarch-collect-status" endpoint
+func (c *Client) BuildQueryMultiarchCollectStatusRequest(ctx context.Context, v any) (*http.Request, error) {
+	var (
+		requestID string
+	)
+	{
+		p, ok := v.(*image.QueryMultiarchCollectStatusPayload)
+		if !ok {
+			return nil, goahttp.ErrInvalidType("image", "query-multiarch-collect-status", "*image.QueryMultiarchCollectStatusPayload", v)
+		}
+		requestID = p.RequestID
+	}
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: QueryMultiarchCollectStatusImagePath(requestID)}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("image", "query-multiarch-collect-status", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeQueryMultiarchCollectStatusResponse returns a decoder for responses
+// returned by the image query-multiarch-collect-status endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+func DecodeQueryMultiarchCollectStatusResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("image", "query-multiarch-collect-status", err)
+			}
+			if !(body == "queued" || body == "processing" || body == "success" || body == "failed" || body == "canceled") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("body", body, []any{"queued", "processing", "success", "failed", "canceled"}))
+			}
+			if err != nil {
+				return nil, goahttp.ErrValidationError("image", "query-multiarch-collect-status", err)
+			}
+			return body, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("image", "query-multiarch-collect-status", resp.StatusCode, string(body))
+		}
+	}
+}
