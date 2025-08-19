@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
@@ -90,7 +89,7 @@ func main() {
 
 		tiupSvc = impltiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
 		fsSvc = implfs.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
-		imgSvc = implimg.NewService(&logger, redisClient, time.Hour)
+		imgSvc = implimg.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
