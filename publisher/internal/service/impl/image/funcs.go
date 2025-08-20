@@ -1,44 +1,17 @@
 package image
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/rs/zerolog"
 )
-
-// getManifestEntries gets manifest and digest for each arch tag, returning v1.Descriptor with Platform info.
-func getManifestEntries(ctx context.Context, repo string, archTags []string, logger zerolog.Logger) ([]v1.Descriptor, error) {
-	manifests := []v1.Descriptor{}
-	for _, archTag := range archTags {
-		ref := fmt.Sprintf("%s:%s", repo, archTag)
-		desc, err := crane.Manifest(ref, crane.WithContext(ctx))
-		if err != nil {
-			logger.Error().Err(err).Str("ref", ref).Msg("Failed to get manifest")
-			continue
-		}
-
-		// Compose v1.Descriptor with digest and platform
-		var descriptor v1.Descriptor
-		if err := json.Unmarshal(desc, &descriptor); err != nil {
-			logger.Error().Err(err).Str("ref", ref).Msg("Failed to unmarshal manifest")
-			continue
-		}
-		manifests = append(manifests, descriptor)
-	}
-	return manifests, nil
-}
 
 // listSingleArchTags lists all tags in the given repo using crane.
 // Currently, it only supports two os/architectures: linux/amd64 and linux/arm64.
@@ -75,15 +48,6 @@ func filterArchTags(baseTag string, allTags []string) []string {
 	return archTags
 }
 
-// parseRepoAndTag parses the repo and tag from an image URL of the form repo:tag.
-func parseRepoAndTag(imageURL string) (repo, tag string, err error) {
-	parts := strings.Split(imageURL, ":")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid image_url, must be in form repo:tag")
-	}
-	return parts[0], parts[1], nil
-}
-
 // computeBaseTags computes the base tags from the pushed tag and release tag suffix.
 func computeBaseTags(pushedTag, releaseTagSuffix string) []string {
 	tag := pushedTag
@@ -109,34 +73,67 @@ func computeBaseTags(pushedTag, releaseTagSuffix string) []string {
 	return tags
 }
 
-func pushMultiarchManifest(repo string, tags []string, manifests []v1.Descriptor, logger zerolog.Logger) error {
-	_, err := name.NewRepository(repo)
-	if err != nil {
-		return fmt.Errorf("invalid repo name: %w", err)
-	}
+func pushMultiarchManifest(repo string, newTags, manifests []string, options []crane.Option) (string, error) {
+	o := crane.GetOptions(options...)
+	base := empty.Index
+	adds := make([]mutate.IndexAddendum, 0, len(manifests))
 
-	// Start with an empty index
-	idx := mutate.IndexMediaType(empty.Index, types.OCIImageIndex)
-	// Append each manifest descriptor to the index
-	for _, desc := range manifests {
-		idx = mutate.AppendManifests(idx, mutate.IndexAddendum{
-			Descriptor: desc,
-		})
-	}
-
-	// Push for each tag
-	for _, tag := range tags {
-		tagRef, err := name.NewTag(fmt.Sprintf("%s:%s", repo, tag))
+	for _, m := range manifests {
+		ref, err := name.ParseReference(m, o.Name...)
 		if err != nil {
-			logger.Error().Err(err).Str("tag", tag).Msg("invalid tag")
-			continue
+			return "", err
 		}
-		logger.Info().Str("tag", tag).Msg("Pushing multi-arch manifest")
-		if err := remote.WriteIndex(tagRef, idx, remote.WithAuthFromKeychain(authn.DefaultKeychain)); err != nil {
-			logger.Error().Err(err).Str("tag", tag).Msg("failed to push manifest list")
-			return err
+		desc, err := remote.Get(ref, o.Remote...)
+		if err != nil {
+			return "", err
+		}
+		if desc.MediaType.IsImage() {
+			img, err := desc.Image()
+			if err != nil {
+				return "", err
+			}
+
+			cf, err := img.ConfigFile()
+			if err != nil {
+				return "", err
+			}
+			newDesc, err := partial.Descriptor(img)
+			if err != nil {
+				return "", err
+			}
+			newDesc.Platform = cf.Platform()
+			adds = append(adds, mutate.IndexAddendum{
+				Add:        img,
+				Descriptor: *newDesc,
+			})
+		} else if desc.MediaType.IsIndex() {
+			idx, err := desc.ImageIndex()
+			if err != nil {
+				return "", err
+			}
+
+			adds = append(adds, mutate.IndexAddendum{
+				Add: idx,
+			})
+		} else {
+			return "", fmt.Errorf("saw unexpected MediaType %q for %q", desc.MediaType, m)
 		}
 	}
 
-	return nil
+	idx := mutate.AppendManifests(base, adds...)
+
+	for _, newTag := range newTags {
+		tag := fmt.Sprintf("%s:%s", repo, newTag)
+		ref, err := name.ParseReference(tag, o.Name...)
+		if err != nil {
+			return "", fmt.Errorf("parsing reference %s: %w", tag, err)
+		}
+
+		if err := remote.WriteIndex(ref, idx, o.Remote...); err != nil {
+			return "", fmt.Errorf("pushing image %s: %w", tag, err)
+		}
+	}
+
+	hash, _ := idx.Digest()
+	return hash.String(), nil
 }

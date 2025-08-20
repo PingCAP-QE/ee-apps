@@ -5,31 +5,6 @@ import (
 	"testing"
 )
 
-func TestParseRepoAndTag(t *testing.T) {
-	tests := []struct {
-		imageURL string
-		wantRepo string
-		wantTag  string
-		wantErr  bool
-	}{
-		{"repo.example.com/foo/bar:v1.2.3-linux-amd64", "repo.example.com/foo/bar", "v1.2.3-linux-amd64", false},
-		{"repo:tag", "repo", "tag", false},
-		{"repo-only", "", "", true},
-		{"repo:tag:extra", "", "", true},
-	}
-
-	for _, tt := range tests {
-		repo, tag, err := parseRepoAndTag(tt.imageURL)
-		if (err != nil) != tt.wantErr {
-			t.Errorf("parseRepoAndTag(%q) error = %v, wantErr %v", tt.imageURL, err, tt.wantErr)
-			continue
-		}
-		if repo != tt.wantRepo || tag != tt.wantTag {
-			t.Errorf("parseRepoAndTag(%q) = (%q, %q), want (%q, %q)", tt.imageURL, repo, tag, tt.wantRepo, tt.wantTag)
-		}
-	}
-}
-
 func TestComputeBaseTags(t *testing.T) {
 	tests := []struct {
 		pushedTag        string

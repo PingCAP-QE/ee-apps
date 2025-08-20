@@ -65,12 +65,19 @@ func (p *imageWorker) Handle(event cloudevents.Event) cloudevents.Result {
 
 // processCollectRequest performs the actual multi-arch image collection.
 func (w *imageWorker) processCollectRequest(ctx context.Context, event cloudevents.Event) error {
-	return processRequest[image.RequestMultiarchCollectPayload](ctx, event, w.logger, w.redisClient, w.collectMultiArch)
+	// Create a context with timeout
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	return processRequest[image.RequestMultiarchCollectPayload](ctxWithTimeout, event, w.logger, w.redisClient, w.collectMultiArch)
 }
 
 // processPublishRequest performs the actual image publishing.
 func (w *imageWorker) processPublishRequest(ctx context.Context, event cloudevents.Event) error {
-	return processRequest[image.RequestToCopyPayload](ctx, event, w.logger, w.redisClient, w.copyImage)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	return processRequest[image.RequestToCopyPayload](ctxWithTimeout, event, w.logger, w.redisClient, w.copyImage)
 }
 
 // copyImage copies a Docker image from the source registry to the target registry.
@@ -105,7 +112,7 @@ func (s *imageWorker) copyImage(ctx context.Context, p *image.RequestToCopyPaylo
 
 // collectMultiArch performs the actual multi-arch image collection (sync mode).
 func (s *imageWorker) collectMultiArch(ctx context.Context, p *image.RequestMultiarchCollectPayload) (*image.RequestMultiarchCollectResult, error) {
-	repo, pushedTag, err := parseRepoAndTag(p.ImageURL)
+	repo, pushedTag, err := share.SplitRepoAndTag(p.ImageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +122,18 @@ func (s *imageWorker) collectMultiArch(ctx context.Context, p *image.RequestMult
 		return nil, nil
 	}
 
-	manifests, err := getManifestEntries(ctx, repo, archTags, s.logger)
-	if err != nil {
-		return nil, err
+	var manifests []string
+	for _, archTag := range archTags {
+		digest, err := crane.Digest(fmt.Sprintf("%s:%s", repo, archTag), crane.WithContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+		manifests = append(manifests, fmt.Sprintf("%s@%s", repo, digest))
 	}
 
 	baseTags := computeBaseTags(pushedTag, p.ReleaseTagSuffix)
 	if len(manifests) > 1 {
-		if err := pushMultiarchManifest(repo, baseTags, manifests, s.logger); err != nil {
+		if _, err := pushMultiarchManifest(repo, baseTags, manifests, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -149,18 +160,14 @@ func processRequest[P any, R any](
 	requestID := event.ID()
 	l := logger.With().Str("request_id", requestID).Logger()
 
-	// Create a context with timeout
-	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
 	// Update status to processing
-	if err := redisClient.Set(ctxWithTimeout, requestID, share.PublishStateProcessing, share.DefaultStateTTL).Err(); err != nil {
+	if err := redisClient.Set(ctx, requestID, share.PublishStateProcessing, share.DefaultStateTTL).Err(); err != nil {
 		l.Err(err).Msg("Failed to update status to processing")
 		return err
 	}
 
 	// Call the generic process function
-	result, err := processFunc(ctxWithTimeout, &p)
+	result, err := processFunc(ctx, &p)
 
 	// Update final status based on result
 	newStatus := share.PublishStateSuccess
