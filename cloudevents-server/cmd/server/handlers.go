@@ -8,10 +8,10 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/testcaserun"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/lark"
 )
 
@@ -24,23 +24,23 @@ func healthzHandler(c *gin.Context) {
 }
 
 func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
-	p, err := cloudevents.NewHTTP()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create protocol")
-	}
-
 	handler, err := handler.NewEventProducer(cfg.Kafka)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create broker handler")
 	}
 
-	h, err := cloudevents.NewHTTPReceiveHandler(nil, p, handler.HandleCloudEvent)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create handler")
-	}
-
 	return func(c *gin.Context) {
-		h.ServeHTTP(c.Writer, c.Request)
+		p, err := cloudevents.NewHTTP()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to create protocol")
+		}
+
+		ceh, err := cloudevents.NewHTTPReceiveHandler(c, p, handler.HandleCloudEvent)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create handler")
+		}
+
+		ceh.ServeHTTP(c.Writer, c.Request)
 	}
 }
 
