@@ -90,7 +90,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 }
 
 func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, error) {
-	images, err := parse_tekton_image(pipeline.Status.PipelineResults)
+	images, err := parseTektonImage(pipeline.Status.PipelineResults)
 	if err != nil {
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
@@ -182,11 +182,16 @@ func convertOciArtifact(text string) (*rest.OciArtifact, error) {
 
 type TektonImageStruct struct {
 	Images []struct {
-		URL string `json:"url"`
-	} `json:"images"`
+		Repo          string   `json:"repo" yaml:"repo"`
+		Platform      string   `json:"platform" yaml:"platform"` // TODO: implement the field in tekton result.
+		Tag           string   `json:"tag" yaml:"tag"`
+		Tags          []string `json:"tags" yaml:"tags"`
+		MultiArchTags []string `json:"multi_arch_tags" yaml:"multi_arch_tags"`
+		URL           string   `json:"url" yaml:"url"`
+	} `json:"images" yaml:"images"`
 }
 
-func parse_tekton_image(results []tekton.PipelineRunResult) ([]rest.ImageArtifact, error) {
+func parseTektonImage(results []tekton.PipelineRunResult) ([]rest.ImageArtifact, error) {
 	var rt []rest.ImageArtifact
 	for _, r := range results {
 		if r.Name == "pushed-images" {
@@ -196,7 +201,14 @@ func parse_tekton_image(results []tekton.PipelineRunResult) ([]rest.ImageArtifac
 				return nil, err
 			}
 			for _, image := range images.Images {
-				rt = append(rt, rest.ImageArtifact{URL: image.URL})
+				imgURL := fmt.Sprintf("%s:%s", image.Repo, image.Tag)
+				rt = append(rt, rest.ImageArtifact{URL: imgURL, Platform: image.Platform})
+
+				// if it has multi arch tags, then we append the multi-arch image with the first tag.
+				if len(image.MultiArchTags) > 0 {
+					multiArchImgURL := fmt.Sprintf("%s:%s", image.Repo, image.MultiArchTags[0])
+					rt = append(rt, rest.ImageArtifact{URL: multiArchImgURL, Platform: rest.MultiArch})
+				}
 			}
 		}
 	}
