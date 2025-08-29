@@ -12,7 +12,7 @@ require (
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.33.0
-	github.com/segmentio/kafka-go v0.4.47
+	github.com/segmentio/kafka-go v0.4.49
 	goa.design/clue v1.0.7
 	goa.design/goa/v3 v3.19.1
 	goa.design/plugins/v3 v3.19.1
