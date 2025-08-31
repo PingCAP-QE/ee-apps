@@ -11,7 +11,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.2
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/go-github/v69 v69.2.0
-	github.com/mattn/go-sqlite3 v1.14.28
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.10.0
 	goa.design/clue v1.0.7
