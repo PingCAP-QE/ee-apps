@@ -456,11 +456,10 @@ func collectTektonArtifacts(pipelines []TektonPipeline, report *BuildReport) {
 			report.Binaries = append(report.Binaries, ociArtifactToFiles(pipeline.Platform, files)...)
 		}
 		for _, image := range pipeline.Images {
-			ri := image
-			if ri.Platform == "" {
-				ri.Platform = pipeline.Platform
+			if image.Platform == "" {
+				image.Platform = pipeline.Platform
 			}
-			report.Images = append(report.Images, ri)
+			report.Images = append(report.Images, image)
 		}
 	}
 }
