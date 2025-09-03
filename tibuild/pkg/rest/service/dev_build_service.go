@@ -200,16 +200,6 @@ func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOptio
 	return entity, nil
 }
 
-func (s DevbuildServer) GetInternalImageURL(img string) string {
-	for srcPrefix, dstPrefix := range s.ImageMirrorURLMap {
-		if strings.HasPrefix(img, srcPrefix) {
-			return strings.Replace(img, srcPrefix, dstPrefix, 1)
-		}
-	}
-
-	return ""
-}
-
 func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
 	obj, err := s.Get(ctx, id, DevBuildGetOption{})
 	if err != nil {
@@ -287,6 +277,23 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
 		}
 	}
+
+	// Append the internal image URL to the image list
+	for i, img := range entity.Status.BuildReport.Images {
+		if img.InternalURL == "" {
+			entity.Status.BuildReport.Images[i].InternalURL = s.getInternalImageURL(img.URL)
+		}
+	}
+}
+
+func (s DevbuildServer) getInternalImageURL(img string) string {
+	for srcPrefix, dstPrefix := range s.ImageMirrorURLMap {
+		if strings.HasPrefix(img, srcPrefix) {
+			return strings.Replace(img, srcPrefix, dstPrefix, 1)
+		}
+	}
+
+	return ""
 }
 
 func (s DevbuildServer) ociFileToUrl(artifact OciFile) string {
