@@ -816,8 +816,9 @@ func marshalDevbuildImageArtifactToImageArtifactResponse(v *devbuild.ImageArtifa
 		return nil
 	}
 	res := &ImageArtifactResponse{
-		Platform: v.Platform,
-		URL:      v.URL,
+		Platform:    v.Platform,
+		URL:         v.URL,
+		InternalURL: v.InternalURL,
 	}
 
 	return res
@@ -1066,8 +1067,9 @@ func marshalDevbuildImageArtifactToImageArtifactResponseBody(v *devbuild.ImageAr
 		return nil
 	}
 	res := &ImageArtifactResponseBody{
-		Platform: v.Platform,
-		URL:      v.URL,
+		Platform:    v.Platform,
+		URL:         v.URL,
+		InternalURL: v.InternalURL,
 	}
 
 	return res
@@ -1242,8 +1244,9 @@ func unmarshalImageArtifactRequestBodyToDevbuildImageArtifact(v *ImageArtifactRe
 		return nil
 	}
 	res := &devbuild.ImageArtifact{
-		Platform: *v.Platform,
-		URL:      *v.URL,
+		Platform:    *v.Platform,
+		URL:         *v.URL,
+		InternalURL: v.InternalURL,
 	}
 
 	return res

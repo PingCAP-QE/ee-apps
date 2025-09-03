@@ -13,6 +13,23 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	devbuildJobname   = "devbuild"
+	FIPS_FEATURE      = "fips"
+	FIPS_BUILD_ENV    = "ENABLE_FIPS=1"
+	FIPS_TIKV_BUILDER = "hub.pingcap.net/jenkins/tikv-builder:fips"
+	FIPS_TIKV_BASE    = "hub.pingcap.net/bases/tikv-base:v1-fips"
+)
+
+var (
+	versionValidator       *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$`)
+	hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
+	gitRefValidator        *regexp.Regexp = regexp.MustCompile(`^((master|main|release-.*|v\d.*|[0-9a-fA-F]{40})|(tag/.+)|(branch/.+)|(pull/\d+)|(commit/[0-9a-fA-F]{40}))$`)
+	githubRepoValidator    *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)
+)
+
+var _ DevBuildService = DevbuildServer{}
+
 type DevbuildServer struct {
 	Repo             DevBuildRepository
 	Jenkins          Jenkins
@@ -21,9 +38,16 @@ type DevbuildServer struct {
 	GHClient         GHClient
 	TektonViewURL    string
 	OciFileserverURL string
+
+	ImageMirrorURLMap map[string]string
 }
 
-const devbuildJobname = "devbuild"
+type DevBuildRepository interface {
+	Create(ctx context.Context, req DevBuild) (resp *DevBuild, err error)
+	Get(ctx context.Context, id int) (resp *DevBuild, err error)
+	Update(ctx context.Context, id int, req DevBuild) (resp *DevBuild, err error)
+	List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error)
+}
 
 func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuildSaveOption) (*DevBuild, error) {
 	req.Status = DevBuildStatus{}
@@ -57,7 +81,8 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, err
 	}
 	entity := *resp
-	if entity.Spec.PipelineEngine == JenkinsEngine {
+	switch entity.Spec.PipelineEngine {
+	case JenkinsEngine:
 		params := map[string]string{
 			"Product":           string(entity.Spec.Product),
 			"GitRef":            entity.Spec.GitRef,
@@ -94,7 +119,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			entity.Status.Status = BuildStatusProcessing
 			s.Repo.Update(ctx, entity.ID, entity)
 		}(entity)
-	} else if entity.Spec.PipelineEngine == TektonEngine {
+	case TektonEngine:
 		err = s.Tekton.TriggerDevBuild(ctx, entity)
 		if err != nil {
 			log.Error().Err(err).Msg("trigger tekton failed")
@@ -109,6 +134,163 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 	}
 
 	return &entity, nil
+}
+
+func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option DevBuildSaveOption) (resp *DevBuild, err error) {
+	if id == 0 || req.ID != 0 && req.ID != id {
+		return nil, fmt.Errorf("bad id%w", ErrBadRequest)
+	}
+	req.ID = id
+	old, err := s.Repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !IsValidBuildStatus(req.Status.Status) {
+		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
+	}
+	if req.Status.TektonStatus == nil {
+		req.Status.TektonStatus = old.Status.TektonStatus
+	}
+	old.Status = req.Status
+	old.Meta.UpdatedAt = s.Now()
+	if option.DryRun {
+		return old, nil
+	}
+	return s.Repo.Update(ctx, id, *old)
+}
+
+func (s DevbuildServer) List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error) {
+	return s.Repo.List(ctx, option)
+}
+
+func (s DevbuildServer) Rerun(ctx context.Context, id int, option DevBuildSaveOption) (*DevBuild, error) {
+	old, err := s.Get(ctx, id, DevBuildGetOption{})
+	if err != nil {
+		return nil, err
+	}
+	obj := DevBuild{}
+	obj.Spec = old.Spec
+	return s.Create(ctx, obj, option)
+}
+
+func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOption) (*DevBuild, error) {
+	entity, err := s.Repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if option.Sync && entity.Status.Status == BuildStatusProcessing {
+		entity, err = s.sync(ctx, entity)
+		if err != nil {
+			return nil, err
+		}
+		check, err := s.Repo.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if check.Meta.UpdatedAt != entity.Meta.UpdatedAt {
+			return nil, fmt.Errorf("update failed because of race condition%w", ErrInternalError)
+		}
+		entity.Meta.UpdatedAt = s.Now()
+		entity, err = s.Repo.Update(ctx, id, *entity)
+		if err != nil {
+			return nil, err
+		}
+	}
+	s.inflate(entity)
+	return entity, nil
+}
+
+func (s DevbuildServer) GetInternalImageURL(img string) string {
+	for srcPrefix, dstPrefix := range s.ImageMirrorURLMap {
+		if strings.HasPrefix(img, srcPrefix) {
+			return strings.Replace(img, srcPrefix, dstPrefix, 1)
+		}
+	}
+
+	return ""
+}
+
+func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
+	obj, err := s.Get(ctx, id, DevBuildGetOption{})
+	if err != nil {
+		return nil, err
+	}
+	if obj.Status.TektonStatus == nil {
+		obj.Status.TektonStatus = &TektonStatus{}
+	}
+	tekton := obj.Status.TektonStatus
+	name := pipeline.Name
+	index := -1
+	for i, p := range tekton.Pipelines {
+		if p.Name == name {
+			index = i
+		}
+	}
+	if index >= 0 {
+		tekton.Pipelines[index] = pipeline
+	} else {
+		tekton.Pipelines = append(tekton.Pipelines, pipeline)
+	}
+	if obj.Spec.PipelineEngine == TektonEngine {
+		computeTektonStatus(tekton, &obj.Status)
+	}
+	return s.Update(ctx, id, *obj, options)
+}
+
+func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {
+	if entity.Spec.PipelineEngine == TektonEngine {
+		return entity, nil
+	}
+	now := s.Now()
+	build, err := s.Jenkins.GetBuild(ctx, devbuildJobname, entity.Status.PipelineBuildID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch jenkins status error%w", ErrInternalError)
+	}
+	switch build.GetResult() {
+	case "SUCCESS":
+		entity.Status.Status = BuildStatusSuccess
+	case "FAILURE":
+		entity.Status.Status = BuildStatusFailure
+	case "ABORTED":
+		entity.Status.Status = BuildStatusAborted
+	}
+	startAt := build.GetTimestamp().Local()
+	entity.Status.PipelineStartAt = &startAt
+	if IsBuildStatusCompleted(entity.Status.Status) && entity.Status.PipelineEndAt == nil {
+		if build.GetDuration() != 0 {
+			endAt := startAt.Add(time.Duration(build.GetDuration() * float64(time.Microsecond)))
+			entity.Status.PipelineEndAt = &endAt
+		} else {
+			entity.Status.PipelineEndAt = &now
+		}
+	}
+	return entity, nil
+}
+
+func (s DevbuildServer) inflate(entity *DevBuild) {
+	if entity.Status.PipelineBuildID != 0 {
+		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(devbuildJobname, entity.Status.PipelineBuildID)
+		entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, entity.Status.PipelineViewURL)
+	}
+	if entity.Status.BuildReport != nil {
+		for i, bin := range entity.Status.BuildReport.Binaries {
+			if bin.URL == "" && bin.OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
+			}
+			if bin.Sha256OciFile != nil {
+				entity.Status.BuildReport.Binaries[i].Sha256URL = s.ociFileToUrl(*bin.Sha256OciFile)
+			}
+		}
+	}
+	if tek := entity.Status.TektonStatus; tek != nil {
+		for _, p := range tek.Pipelines {
+			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
+		}
+	}
+}
+
+func (s DevbuildServer) ociFileToUrl(artifact OciFile) string {
+	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, artifact.Repo, artifact.Tag, artifact.File)
 }
 
 func validatePermission(ctx context.Context, req *DevBuild) error {
@@ -207,11 +389,6 @@ func fillGithubRepo(spec *DevBuildSpec) {
 	}
 }
 
-const FIPS_FEATURE = "fips"
-const FIPS_BUILD_ENV = "ENABLE_FIPS=1"
-const FIPS_TIKV_BUILDER = "hub.pingcap.net/jenkins/tikv-builder:fips"
-const FIPS_TIKV_BASE = "hub.pingcap.net/bases/tikv-base:v1-fips"
-
 func fillForFIPS(spec *DevBuildSpec) {
 	if !hasFIPS(spec.Features) {
 		return
@@ -295,148 +472,6 @@ func validateReq(req DevBuild) error {
 		return fmt.Errorf("product %s is not supported by Jenkins engine implementation!", spec.Product)
 	}
 	return nil
-}
-
-func (s DevbuildServer) Update(ctx context.Context, id int, req DevBuild, option DevBuildSaveOption) (resp *DevBuild, err error) {
-	if id == 0 || req.ID != 0 && req.ID != id {
-		return nil, fmt.Errorf("bad id%w", ErrBadRequest)
-	}
-	req.ID = id
-	old, err := s.Repo.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if !IsValidBuildStatus(req.Status.Status) {
-		return nil, fmt.Errorf("bad status%w", ErrBadRequest)
-	}
-	if req.Status.TektonStatus == nil {
-		req.Status.TektonStatus = old.Status.TektonStatus
-	}
-	old.Status = req.Status
-	old.Meta.UpdatedAt = s.Now()
-	if option.DryRun {
-		return old, nil
-	}
-	return s.Repo.Update(ctx, id, *old)
-}
-
-func (s DevbuildServer) List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error) {
-	return s.Repo.List(ctx, option)
-}
-func (s DevbuildServer) Rerun(ctx context.Context, id int, option DevBuildSaveOption) (*DevBuild, error) {
-	old, err := s.Get(ctx, id, DevBuildGetOption{})
-	if err != nil {
-		return nil, err
-	}
-	obj := DevBuild{}
-	obj.Spec = old.Spec
-	return s.Create(ctx, obj, option)
-}
-
-func (s DevbuildServer) Get(ctx context.Context, id int, option DevBuildGetOption) (*DevBuild, error) {
-	entity, err := s.Repo.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if option.Sync && entity.Status.Status == BuildStatusProcessing {
-		entity, err = s.sync(ctx, entity)
-		if err != nil {
-			return nil, err
-		}
-		check, err := s.Repo.Get(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if check.Meta.UpdatedAt != entity.Meta.UpdatedAt {
-			return nil, fmt.Errorf("update failed because of race condition%w", ErrInternalError)
-		}
-		entity.Meta.UpdatedAt = s.Now()
-		entity, err = s.Repo.Update(ctx, id, *entity)
-		if err != nil {
-			return nil, err
-		}
-	}
-	s.inflate(entity)
-	return entity, nil
-}
-
-func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {
-	if entity.Spec.PipelineEngine == TektonEngine {
-		return entity, nil
-	}
-	now := s.Now()
-	build, err := s.Jenkins.GetBuild(ctx, devbuildJobname, entity.Status.PipelineBuildID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch jenkins status error%w", ErrInternalError)
-	}
-	switch build.GetResult() {
-	case "SUCCESS":
-		entity.Status.Status = BuildStatusSuccess
-	case "FAILURE":
-		entity.Status.Status = BuildStatusFailure
-	case "ABORTED":
-		entity.Status.Status = BuildStatusAborted
-	}
-	startAt := build.GetTimestamp().Local()
-	entity.Status.PipelineStartAt = &startAt
-	if IsBuildStatusCompleted(entity.Status.Status) && entity.Status.PipelineEndAt == nil {
-		if build.GetDuration() != 0 {
-			endAt := startAt.Add(time.Duration(build.GetDuration() * float64(time.Microsecond)))
-			entity.Status.PipelineEndAt = &endAt
-		} else {
-			entity.Status.PipelineEndAt = &now
-		}
-	}
-	return entity, nil
-}
-
-func (s DevbuildServer) inflate(entity *DevBuild) {
-	if entity.Status.PipelineBuildID != 0 {
-		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(devbuildJobname, entity.Status.PipelineBuildID)
-		entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, entity.Status.PipelineViewURL)
-	}
-	if entity.Status.BuildReport != nil {
-		for i, bin := range entity.Status.BuildReport.Binaries {
-			if bin.URL == "" && bin.OciFile != nil {
-				entity.Status.BuildReport.Binaries[i].URL = s.ociFileToUrl(*bin.OciFile)
-			}
-			if bin.Sha256OciFile != nil {
-				entity.Status.BuildReport.Binaries[i].Sha256URL = s.ociFileToUrl(*bin.Sha256OciFile)
-			}
-		}
-	}
-	if tek := entity.Status.TektonStatus; tek != nil {
-		for _, p := range tek.Pipelines {
-			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
-		}
-	}
-}
-
-func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error) {
-	obj, err := s.Get(ctx, id, DevBuildGetOption{})
-	if err != nil {
-		return nil, err
-	}
-	if obj.Status.TektonStatus == nil {
-		obj.Status.TektonStatus = &TektonStatus{}
-	}
-	tekton := obj.Status.TektonStatus
-	name := pipeline.Name
-	index := -1
-	for i, p := range tekton.Pipelines {
-		if p.Name == name {
-			index = i
-		}
-	}
-	if index >= 0 {
-		tekton.Pipelines[index] = pipeline
-	} else {
-		tekton.Pipelines = append(tekton.Pipelines, pipeline)
-	}
-	if obj.Spec.PipelineEngine == TektonEngine {
-		computeTektonStatus(tekton, &obj.Status)
-	}
-	return s.Update(ctx, id, *obj, options)
 }
 
 func computeTektonStatus(tekton *TektonStatus, status *DevBuildStatus) {
@@ -531,21 +566,3 @@ func ociArtifactToFiles(platform string, artifact OciArtifact) []BinArtifact {
 	}
 	return rt
 }
-
-func (s DevbuildServer) ociFileToUrl(artifact OciFile) string {
-	return fmt.Sprintf("%s/%s?tag=%s&file=%s", s.OciFileserverURL, artifact.Repo, artifact.Tag, artifact.File)
-}
-
-type DevBuildRepository interface {
-	Create(ctx context.Context, req DevBuild) (resp *DevBuild, err error)
-	Get(ctx context.Context, id int) (resp *DevBuild, err error)
-	Update(ctx context.Context, id int, req DevBuild) (resp *DevBuild, err error)
-	List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error)
-}
-
-var _ DevBuildService = DevbuildServer{}
-
-var versionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)(\.\d+).*$`)
-var hotfixVersionValidator *regexp.Regexp = regexp.MustCompile(`^v(\d+\.\d+)\.\d+-\d{8,}.*$`)
-var gitRefValidator *regexp.Regexp = regexp.MustCompile(`^((master|main|release-.*|v\d.*|[0-9a-fA-F]{40})|(tag/.+)|(branch/.+)|(pull/\d+)|(commit/[0-9a-fA-F]{40}))$`)
-var githubRepoValidator *regexp.Regexp = regexp.MustCompile(`^([\w_-]+/[\w_-]+)$`)

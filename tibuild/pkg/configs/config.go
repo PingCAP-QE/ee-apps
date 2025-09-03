@@ -30,6 +30,9 @@ type ConfigYaml struct {
 
 	TektonViewURL    string `yaml:"tektonviewurl,omitempty" json:"tektonviewurl,omitempty"`
 	OciFileserverURL string `yaml:"ocifileserverurl,omitempty" json:"ocifileserverurl,omitempty"`
+
+	// ImageMirrorURLMap is a map prefixes for transformation between direct url to mirror url.
+	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map,omitempty" json:"image_mirror_url_map,omitempty"`
 }
 
 type RestApiSecret struct {

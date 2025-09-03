@@ -168,8 +168,9 @@ type HTTPError struct {
 }
 
 type ImageArtifact struct {
-	Platform string
-	URL      string
+	Platform    string
+	URL         string
+	InternalURL *string
 }
 
 // ListPayload is the payload type of the devbuild service list method.

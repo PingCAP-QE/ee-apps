@@ -18,6 +18,7 @@ type DevBuildService interface {
 	Update(ctx context.Context, id int, req DevBuild, option DevBuildSaveOption) (resp *DevBuild, err error)
 	List(ctx context.Context, option DevBuildListOption) (resp []DevBuild, err error)
 	MergeTektonStatus(ctx context.Context, id int, pipeline TektonPipeline, options DevBuildSaveOption) (resp *DevBuild, err error)
+	GetInternalImageURL(string) string
 }
 
 type ArtifactHelperService interface {
