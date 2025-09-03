@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bndr/gojenkins"
@@ -22,6 +23,7 @@ type devbuildsrvc struct {
 	logger                 *zerolog.Logger
 	dbClient               *ent.Client
 	productRepoMap         map[string]string
+	imageMirrorURLMap      map[string]string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	jenkins                struct {
@@ -119,7 +121,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (r
 }
 
 // Get devbuild
-func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (res *devbuild.DevBuild, err error) {
+func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.get")
 
 	build, err := s.dbClient.DevBuild.Get(ctx, p.ID)
@@ -137,7 +139,16 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (res *de
 		}
 	}
 
-	return transformDevBuild(build), nil
+	res := transformDevBuild(build)
+
+	// Append the internal image URL to the image list
+	for i, img := range res.Status.BuildReport.Images {
+		if img.InternalURL == nil {
+			res.Status.BuildReport.Images[i].InternalURL = s.getInternalImageURL(img.URL)
+		}
+	}
+
+	return res, nil
 }
 
 // Update devbuild status
@@ -207,6 +218,17 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
 	s.logger.Info().Msgf("devbuild.ingestEvent")
 	return nil, nil
+}
+
+func (s *devbuildsrvc) getInternalImageURL(img string) *string {
+	for srcPrefix, dstPrefix := range s.imageMirrorURLMap {
+		if strings.HasPrefix(img, srcPrefix) {
+			ret := strings.Replace(img, srcPrefix, dstPrefix, 1)
+			return &ret
+		}
+	}
+
+	return nil
 }
 
 func newStoreClient(cfg config.Store) (*ent.Client, error) {
