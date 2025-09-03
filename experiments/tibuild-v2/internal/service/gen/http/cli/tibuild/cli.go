@@ -32,10 +32,10 @@ devbuild (list|create|get|update|rerun|ingest-event)
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Quia iure aut rerum velit fugit.",
-      "target": "Et quia."
+      "source": "Dolorem velit dolor.",
+      "target": "Qui earum omnis."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."` + "\n" +
+		os.Args[0] + ` devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."` + "\n" +
 		""
 }
 
@@ -239,12 +239,12 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Quia iure aut rerum velit fugit.",
-      "target": "Et quia."
+      "source": "Dolorem velit dolor.",
+      "target": "Qui earum omnis."
    }'
 `, os.Args[0])
 }
@@ -271,15 +271,15 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT:
-    -page-size INT:
-    -hotfix BOOL:
-    -sort STRING:
-    -direction STRING:
-    -created-by STRING:
+    -page INT: 
+    -page-size INT: 
+    -hotfix BOOL: 
+    -sort STRING: 
+    -direction STRING: 
+    -created-by STRING: 
 
 Example:
-    %[1]s devbuild list --page 4867459180796557280 --page-size 8611391175558168908 --hotfix false --sort "created_at" --direction "asc" --created-by "Quos nobis."
+    %[1]s devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."
 `, os.Args[0])
 }
 
@@ -287,30 +287,30 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON:
-    -dryrun BOOL:
+    -body JSON: 
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "alford_lowe@dubuque.net",
+      "created_by": "nyah@ondricka.org",
       "request": {
-         "build_env": "Adipisci nostrum blanditiis architecto libero est delectus.",
-         "builder_img": "Harum magni est ipsa et.",
-         "edition": "next-gen",
-         "features": "Ipsa neque sed veniam eaque nisi.",
-         "git_ref": "Aut adipisci sed.",
-         "git_sha": "Eum sit.",
-         "github_repo": "Suscipit et.",
-         "is_hotfix": true,
+         "build_env": "Quaerat necessitatibus distinctio nobis sit.",
+         "builder_img": "Vero sunt culpa molestiae sint ut.",
+         "edition": "community",
+         "features": "Molestias facilis voluptatem voluptate dignissimos ducimus.",
+         "git_ref": "Delectus accusantium.",
+         "git_sha": "Expedita non facilis a iste qui.",
+         "github_repo": "Provident voluptatem eum.",
+         "is_hotfix": false,
          "is_push_gcr": true,
-         "pipeline_engine": "tekton",
-         "platform": "linux/arm64",
-         "plugin_git_ref": "Eum vel officiis quasi sit a ex.",
+         "pipeline_engine": "jenkins",
+         "platform": "linux/amd64",
+         "plugin_git_ref": "Autem distinctio.",
          "product": "tikv",
-         "product_base_img": "Nemo harum.",
-         "product_dockerfile": "Reprehenderit eaque exercitationem.",
-         "target_img": "Dolorem blanditiis velit voluptatem exercitationem et.",
-         "version": "Cumque magnam error officiis impedit quaerat consectetur."
+         "product_base_img": "Itaque dolor recusandae.",
+         "product_dockerfile": "Deleniti eum.",
+         "target_img": "Eligendi dolorem autem ullam.",
+         "version": "Quaerat repellendus similique expedita quia."
       }
    }' --dryrun false
 `, os.Args[0])
@@ -321,7 +321,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL:
+    -sync BOOL: 
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -332,9 +332,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON:
+    -body JSON: 
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild update --body '{
@@ -342,161 +342,168 @@ Example:
          "build_report": {
             "binaries": [
                {
-                  "component": "Dicta officiis magni enim qui.",
+                  "component": "Impedit rerum sunt sunt.",
                   "oci_file": {
-                     "file": "Doloribus dolor officiis nihil rerum.",
-                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
-                     "tag": "Eos et ab et sed pariatur."
+                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
+                     "repo": "Molestiae consequatur atque ut fugit.",
+                     "tag": "Explicabo reprehenderit cumque fugiat."
                   },
-                  "platform": "Quo nulla.",
+                  "platform": "Quas ut voluptatibus nobis.",
                   "sha256_oci_file": {
-                     "file": "Doloribus dolor officiis nihil rerum.",
-                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
-                     "tag": "Eos et ab et sed pariatur."
+                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
+                     "repo": "Molestiae consequatur atque ut fugit.",
+                     "tag": "Explicabo reprehenderit cumque fugiat."
                   },
-                  "sha256_url": "http://legros.com/bernita",
-                  "url": "http://cassin.info/bertram_cummings"
+                  "sha256_url": "http://mayertowne.info/nina",
+                  "url": "http://ortizvandervort.name/alysa.rippin"
                },
                {
-                  "component": "Dicta officiis magni enim qui.",
+                  "component": "Impedit rerum sunt sunt.",
                   "oci_file": {
-                     "file": "Doloribus dolor officiis nihil rerum.",
-                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
-                     "tag": "Eos et ab et sed pariatur."
+                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
+                     "repo": "Molestiae consequatur atque ut fugit.",
+                     "tag": "Explicabo reprehenderit cumque fugiat."
                   },
-                  "platform": "Quo nulla.",
+                  "platform": "Quas ut voluptatibus nobis.",
                   "sha256_oci_file": {
-                     "file": "Doloribus dolor officiis nihil rerum.",
-                     "repo": "Qui veniam voluptates nisi ex repellat quae.",
-                     "tag": "Eos et ab et sed pariatur."
+                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
+                     "repo": "Molestiae consequatur atque ut fugit.",
+                     "tag": "Explicabo reprehenderit cumque fugiat."
                   },
-                  "sha256_url": "http://legros.com/bernita",
-                  "url": "http://cassin.info/bertram_cummings"
+                  "sha256_url": "http://mayertowne.info/nina",
+                  "url": "http://ortizvandervort.name/alysa.rippin"
                }
             ],
-            "git_sha": "xn9",
+            "git_sha": "q1m",
             "images": [
                {
-                  "platform": "Facilis ut libero doloribus beatae.",
-                  "url": "http://simoniscruickshank.org/myrtie"
+                  "internal_url": "http://bartoletti.org/tad",
+                  "platform": "Suscipit non molestias consequatur aut.",
+                  "url": "http://conroy.org/chaz_zieme"
                },
                {
-                  "platform": "Facilis ut libero doloribus beatae.",
-                  "url": "http://simoniscruickshank.org/myrtie"
+                  "internal_url": "http://bartoletti.org/tad",
+                  "platform": "Suscipit non molestias consequatur aut.",
+                  "url": "http://conroy.org/chaz_zieme"
                },
                {
-                  "platform": "Facilis ut libero doloribus beatae.",
-                  "url": "http://simoniscruickshank.org/myrtie"
-               },
-               {
-                  "platform": "Facilis ut libero doloribus beatae.",
-                  "url": "http://simoniscruickshank.org/myrtie"
+                  "internal_url": "http://bartoletti.org/tad",
+                  "platform": "Suscipit non molestias consequatur aut.",
+                  "url": "http://conroy.org/chaz_zieme"
                }
             ],
-            "plugin_git_sha": "efi",
-            "printed_version": "Dolores sequi minima eos sed."
+            "plugin_git_sha": "9au",
+            "printed_version": "Ducimus tenetur eum quia veniam."
          },
-         "err_msg": "Tempore consectetur quos odio.",
-         "pipeline_build_id": 1290727841481834534,
-         "pipeline_end_at": "5101-41-98 76:32:32",
-         "pipeline_start_at": "1610-85-81 04:74:79",
-         "pipeline_view_url": "http://carterthompson.org/german.blanda",
+         "err_msg": "Adipisci recusandae labore voluptas quam.",
+         "pipeline_build_id": 1835437060330262989,
+         "pipeline_end_at": "9311-38-47 43:78:42",
+         "pipeline_start_at": "2322-07-62 56:66:66",
+         "pipeline_view_url": "http://padberg.info/emery",
          "pipeline_view_urls": [
-            "http://lueilwitz.info/floyd.robel",
-            "http://ebert.com/bernita_keebler"
+            "http://block.net/mohammed",
+            "http://jonescrona.name/foster.hoeger"
          ],
-         "status": "processing",
+         "status": "error",
          "tekton_status": {
             "pipelines": [
                {
-                  "end_at": "2000-06-19T13:02:59Z",
-                  "git_sha": "wa6",
+                  "end_at": "1972-07-18T22:38:23Z",
+                  "git_sha": "pez",
                   "images": [
                      {
-                        "platform": "Facilis ut libero doloribus beatae.",
-                        "url": "http://simoniscruickshank.org/myrtie"
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
                      },
                      {
-                        "platform": "Facilis ut libero doloribus beatae.",
-                        "url": "http://simoniscruickshank.org/myrtie"
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
+                     },
+                     {
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
+                     },
+                     {
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
                      }
                   ],
-                  "name": "Ut quibusdam.",
+                  "name": "Et quia dolor perspiciatis animi.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
+                           "Sapiente vero facere quo aspernatur.",
+                           "Quia tempora dolor."
                         ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
+                        "repo": "Harum minima accusamus sequi aut.",
+                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
                      },
                      {
                         "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
+                           "Sapiente vero facere quo aspernatur.",
+                           "Quia tempora dolor."
                         ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
-                     },
-                     {
-                        "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
-                        ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
+                        "repo": "Harum minima accusamus sequi aut.",
+                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
                      }
                   ],
-                  "platform": "Aut nemo blanditiis.",
-                  "start_at": "2013-03-07T11:30:03Z",
-                  "status": "aborted",
-                  "url": "http://paucek.net/annamarie.senger"
+                  "platform": "Est iure.",
+                  "start_at": "1973-01-10T13:53:53Z",
+                  "status": "pending",
+                  "url": "http://jacobibailey.biz/mattie"
                },
                {
-                  "end_at": "2000-06-19T13:02:59Z",
-                  "git_sha": "wa6",
+                  "end_at": "1972-07-18T22:38:23Z",
+                  "git_sha": "pez",
                   "images": [
                      {
-                        "platform": "Facilis ut libero doloribus beatae.",
-                        "url": "http://simoniscruickshank.org/myrtie"
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
                      },
                      {
-                        "platform": "Facilis ut libero doloribus beatae.",
-                        "url": "http://simoniscruickshank.org/myrtie"
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
+                     },
+                     {
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
+                     },
+                     {
+                        "internal_url": "http://bartoletti.org/tad",
+                        "platform": "Suscipit non molestias consequatur aut.",
+                        "url": "http://conroy.org/chaz_zieme"
                      }
                   ],
-                  "name": "Ut quibusdam.",
+                  "name": "Et quia dolor perspiciatis animi.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
+                           "Sapiente vero facere quo aspernatur.",
+                           "Quia tempora dolor."
                         ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
+                        "repo": "Harum minima accusamus sequi aut.",
+                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
                      },
                      {
                         "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
+                           "Sapiente vero facere quo aspernatur.",
+                           "Quia tempora dolor."
                         ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
-                     },
-                     {
-                        "files": [
-                           "Incidunt rerum.",
-                           "Non quam."
-                        ],
-                        "repo": "Tenetur facere quia aspernatur voluptatem.",
-                        "tag": "Sit ab est laboriosam."
+                        "repo": "Harum minima accusamus sequi aut.",
+                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
                      }
                   ],
-                  "platform": "Aut nemo blanditiis.",
-                  "start_at": "2013-03-07T11:30:03Z",
-                  "status": "aborted",
-                  "url": "http://paucek.net/annamarie.senger"
+                  "platform": "Est iure.",
+                  "start_at": "1973-01-10T13:53:53Z",
+                  "status": "pending",
+                  "url": "http://jacobibailey.biz/mattie"
                }
             ]
          }
@@ -510,7 +517,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -521,13 +528,13 @@ func devbuildIngestEventUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
 
 Ingest a CloudEvent for build events
-    -body JSON:
-    -datacontenttype STRING:
-    -id STRING:
-    -source STRING:
-    -type STRING:
-    -specversion STRING:
-    -time STRING:
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
 
 Example:
     %[1]s devbuild ingest-event --body '{
@@ -539,6 +546,6 @@ Example:
       },
       "dataschema": "https://example.com/registry/schemas/build-event.json",
       "subject": "tidb-build-123"
-   }' --datacontenttype "Quia quas impedit cumque unde quam." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+   }' --datacontenttype "Et qui in." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
 `, os.Args[0])
 }

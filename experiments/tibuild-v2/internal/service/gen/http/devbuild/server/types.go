@@ -249,8 +249,9 @@ type OciFileResponse struct {
 
 // ImageArtifactResponse is used to define fields on response body types.
 type ImageArtifactResponse struct {
-	Platform string `form:"platform" json:"platform" xml:"platform"`
-	URL      string `form:"url" json:"url" xml:"url"`
+	Platform    string  `form:"platform" json:"platform" xml:"platform"`
+	URL         string  `form:"url" json:"url" xml:"url"`
+	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
 }
 
 // TektonStatusResponse is used to define fields on response body types.
@@ -348,8 +349,9 @@ type OciFileResponseBody struct {
 
 // ImageArtifactResponseBody is used to define fields on response body types.
 type ImageArtifactResponseBody struct {
-	Platform string `form:"platform" json:"platform" xml:"platform"`
-	URL      string `form:"url" json:"url" xml:"url"`
+	Platform    string  `form:"platform" json:"platform" xml:"platform"`
+	URL         string  `form:"url" json:"url" xml:"url"`
+	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
 }
 
 // TektonStatusResponseBody is used to define fields on response body types.
@@ -440,8 +442,9 @@ type OciFileRequestBody struct {
 
 // ImageArtifactRequestBody is used to define fields on request body types.
 type ImageArtifactRequestBody struct {
-	Platform *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	URL      *string `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
+	Platform    *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
+	URL         *string `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
+	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
 }
 
 // TektonStatusRequestBody is used to define fields on request body types.
@@ -934,6 +937,9 @@ func ValidateImageArtifactRequestBody(body *ImageArtifactRequestBody) (err error
 	}
 	if body.URL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
+	}
+	if body.InternalURL != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.internal_url", *body.InternalURL, goa.FormatURI))
 	}
 	return
 }

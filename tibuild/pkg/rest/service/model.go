@@ -145,8 +145,9 @@ type BuildReport struct {
 }
 
 type ImageArtifact struct {
-	Platform string `json:"platform"`
-	URL      string `json:"url"`
+	Platform    string `json:"platform,omitempty"`
+	URL         string `json:"url,omitempty"`
+	InternalURL string `json:"internal_url,omitempty"`
 }
 
 type BinArtifact struct {
