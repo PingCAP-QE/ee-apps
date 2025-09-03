@@ -49,7 +49,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 	srvc := devbuildsrvc{
 		logger:                 logger,
 		dbClient:               dbClient.Debug(),
-		productRepoMap:         map[string]string{"pd": "tikv/pd"},
+		productRepoMap:         cfg.ProductRepoMap,
+		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
 	}
@@ -59,7 +60,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 }
 
 // List devbuild with pagination support
-func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res []*devbuild.DevBuild, err error) {
+func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.list")
 	query := s.dbClient.DevBuild.Query().
 		Where(entdevbuild.IsHotfix(p.Hotfix)).
@@ -86,6 +87,7 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 		return nil, &devbuild.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
 
+	var res []*devbuild.DevBuild
 	for _, build := range builds {
 		res = append(res, transformDevBuild(build))
 	}
@@ -94,7 +96,7 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) (res [
 }
 
 // Create and trigger devbuild
-func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (res *devbuild.DevBuild, err error) {
+func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.create")
 
 	// 1. insert a new record into the database
