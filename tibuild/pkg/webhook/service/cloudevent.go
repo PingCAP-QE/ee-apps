@@ -42,12 +42,6 @@ func (s DevBuildCEServer) Handle(event cloudevents.Event) {
 		return
 	}
 
-	for i, image := range pipeline.Images {
-		if image.InternalURL != "" {
-			pipeline.Images[i].InternalURL = s.ds.GetInternalImageURL(image.URL)
-		}
-	}
-
 	_, err = s.ds.MergeTektonStatus(context.TODO(), bid, *pipeline, rest.DevBuildSaveOption{})
 	if err != nil {
 		slog.Error("not devbuild event")

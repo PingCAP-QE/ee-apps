@@ -5,6 +5,11 @@ type Service struct {
 	Github  Github  `yaml:"github" json:"github"`
 	Jenkins Jenkins `yaml:"jenkins" json:"jenkins"`
 	Tekton  Tekton  `yaml:"tekton" json:"tekton"`
+
+	// ProductRepoMap is a map of product names to their respective Github full repository names(<org>/<repo>).
+	ProductRepoMap map[string]string `yaml:"product_repo_map" json:"product_repo_map"`
+	// ImageMirrorURLMap is a map prefixes for transformation between direct url to mirror url.
+	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map" json:"image_mirror_url_map"`
 }
 
 type Github struct {

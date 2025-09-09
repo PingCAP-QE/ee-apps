@@ -55,6 +55,12 @@ func setupTestEnv(t *testing.T) *testEnv {
 			Password: "password",
 			JobName:  "test-build",
 		},
+		ProductRepoMap: map[string]string{
+			"pd": "pingcap/pd",
+		},
+		ImageMirrorURLMap: map[string]string{
+			"server1.test.net": "server2.test.net/new/",
+		},
 	}
 
 	logger := zerolog.New(os.Stdout)
