@@ -142,6 +142,9 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 	}
 
 	res := transformDevBuild(build)
+	if res.Status.BuildReport == nil {
+		return res, nil
+	}
 
 	// Append the internal image URL to the image list
 	for i, img := range res.Status.BuildReport.Images {
