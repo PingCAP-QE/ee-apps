@@ -55,6 +55,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 			Password: "password",
 			JobName:  "test-build",
 		},
+		ProductRepoMap: map[string]string{
+			"pd": "pingcap/pd",
+		},
 	}
 
 	logger := zerolog.New(os.Stdout)
