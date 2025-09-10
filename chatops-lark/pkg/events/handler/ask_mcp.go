@@ -35,7 +35,7 @@ func newStreamHttpMcpClient(ctx context.Context, baseURL string) (*client.Client
 	}
 	_, err = mcpClient.Initialize(ctx, initRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize: %v", err)
+		return nil, fmt.Errorf("Failed to initialize: %w", err)
 	}
 	return mcpClient, nil
 }
