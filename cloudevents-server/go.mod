@@ -2,7 +2,7 @@ module github.com/PingCAP-QE/ee-apps/cloudevents-server
 
 go 1.25.0
 
-toolchain go1.25.1
+toolchain go1.25.0
 
 require (
 	entgo.io/ent v0.14.5
