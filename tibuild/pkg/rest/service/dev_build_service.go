@@ -262,6 +262,7 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 		entity.Status.PipelineViewURL = s.Jenkins.BuildURL(devbuildJobname, entity.Status.PipelineBuildID)
 		entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, entity.Status.PipelineViewURL)
 	}
+
 	if entity.Status.BuildReport != nil {
 		for i, bin := range entity.Status.BuildReport.Binaries {
 			if bin.URL == "" && bin.OciFile != nil {
@@ -271,17 +272,18 @@ func (s DevbuildServer) inflate(entity *DevBuild) {
 				entity.Status.BuildReport.Binaries[i].Sha256URL = s.ociFileToUrl(*bin.Sha256OciFile)
 			}
 		}
-	}
-	if tek := entity.Status.TektonStatus; tek != nil {
-		for _, p := range tek.Pipelines {
-			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
+
+		// Append the internal image URL to the image list
+		for i, img := range entity.Status.BuildReport.Images {
+			if img.InternalURL == "" {
+				entity.Status.BuildReport.Images[i].InternalURL = s.getInternalImageURL(img.URL)
+			}
 		}
 	}
 
-	// Append the internal image URL to the image list
-	for i, img := range entity.Status.BuildReport.Images {
-		if img.InternalURL == "" {
-			entity.Status.BuildReport.Images[i].InternalURL = s.getInternalImageURL(img.URL)
+	if tek := entity.Status.TektonStatus; tek != nil {
+		for _, p := range tek.Pipelines {
+			entity.Status.PipelineViewURLs = append(entity.Status.PipelineViewURLs, fmt.Sprintf("%s/%s", s.TektonViewURL, p.Name))
 		}
 	}
 }
