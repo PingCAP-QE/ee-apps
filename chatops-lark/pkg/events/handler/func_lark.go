@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
@@ -104,8 +105,13 @@ func shouldHandle(event *larkim.P2MessageReceiveV1, botOpenID string) *Command {
 }
 
 func parseUserCustomAttr(attrID string, info *larkcontact.User) *string {
+	emptyValues := []string{"无", "NaN", "N/A", "NA", ""}
+
 	for _, attr := range info.CustomAttrs {
 		if attr.Id != nil && *attr.Id == attrID && attr.Value != nil && attr.Value.Text != nil {
+			if slices.Contains(emptyValues, *attr.Value.Text) {
+				return nil
+			}
 			return attr.Value.Text
 		}
 	}
