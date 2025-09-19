@@ -37,8 +37,9 @@ type Command struct {
 }
 
 type CommandActor struct {
-	OpenID string
-	Email  string
+	OpenID   string
+	Email    string
+	GitHubID *string
 }
 
 type CommandResponse struct {

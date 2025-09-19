@@ -5,7 +5,9 @@ import (
 	"regexp"
 	"strings"
 
+	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -27,13 +29,14 @@ func determineMessageType(event *larkim.P2MessageReceiveV1, botOpenID string) (m
 
 // checkIfBotMentioned checks if the bot was mentioned in the message using OpenID
 func checkIfBotMentioned(event *larkim.P2MessageReceiveV1, botOpenID string) bool {
-	if event.Event.Message.Mentions == nil || len(event.Event.Message.Mentions) == 0 {
+	if len(event.Event.Message.Mentions) == 0 {
 		return false
 	}
 
 	for _, mention := range event.Event.Message.Mentions {
-		log.Info().Interface("mention", mention).Msg("mention")
-		if mention != nil && mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == botOpenID {
+		mentioned := mention != nil && mention.Id != nil && mention.Id.OpenId != nil && *mention.Id.OpenId == botOpenID
+		if mentioned {
+			log.Debug().Interface("mention", mention).Msg("I am mentioned")
 			return true
 		}
 	}
@@ -97,5 +100,15 @@ func shouldHandle(event *larkim.P2MessageReceiveV1, botOpenID string) *Command {
 	} else if msgType == msgTypePrivate {
 		return parsePrivateCommand(event)
 	}
+	return nil
+}
+
+func parseUserCustomAttr(attrID string, info *larkcontact.User) *string {
+	for _, attr := range info.CustomAttrs {
+		if attr.Id != nil && *attr.Id == attrID && attr.Value != nil && attr.Value.Text != nil {
+			return attr.Value.Text
+		}
+	}
+
 	return nil
 }
