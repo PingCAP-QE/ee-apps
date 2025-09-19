@@ -81,11 +81,12 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 
 	// check if the event has been handled.
 	_, err := r.eventCache.Get(eventID)
-	if err == nil {
+	switch err {
+	case nil:
 		return nil
-	} else if err == bigcache.ErrEntryNotFound {
+	case bigcache.ErrEntryNotFound:
 		r.eventCache.Set(eventID, []byte(eventID))
-	} else {
+	default:
 		hl.Err(err).Msg("Unexpected error accessing event cache")
 		return err
 	}
@@ -102,21 +103,16 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	senderOpenID := *event.Event.Sender.SenderId.OpenId
-	res, err := r.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
-		UserIdType(larkcontact.UserIdTypeOpenId).
-		UserId(senderOpenID).
-		Build())
+	res, err := r.getUserInfo(ctx, *event.Event.Sender.SenderId.OpenId)
 	if err != nil {
 		hl.Err(err).Msg("get user info failed.")
 		return err
 	}
 
-	if !res.Success() {
-		hl.Error().Msg("get user info failed")
-		return nil
-	}
-
 	command.Sender = &CommandActor{OpenID: senderOpenID, Email: *res.Data.User.Email}
+	if r.Config.UserCustomAttrIDs != nil && r.Config.UserCustomAttrIDs.GitHubID != "" {
+		command.Sender.GitHubID = parseUserCustomAttr(r.Config.UserCustomAttrIDs.GitHubID, res.Data.User)
+	}
 
 	go func() {
 		defer r.deleteReaction(messageID, refactionID)
@@ -132,6 +128,21 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 	}()
 
 	return nil
+}
+
+func (r *rootHandler) getUserInfo(ctx context.Context, senderOpenID string) (*larkcontact.GetUserResp, error) {
+	res, err := r.Contact.User.Get(ctx, larkcontact.NewGetUserReqBuilder().
+		UserIdType(larkcontact.UserIdTypeOpenId).
+		UserId(senderOpenID).
+		Build())
+	if err != nil {
+		return nil, err
+	}
+	if !res.Success() {
+		return nil, res.CodeError
+	}
+
+	return res, nil
 }
 
 func (r *rootHandler) initialize() error {
@@ -166,19 +177,19 @@ func (r *rootHandler) initialize() error {
 	r.logger.Info().Str("botOpenID", r.botOpenID).Msg("Bot OpenID initialized via botinfo package")
 
 	r.commandRegistry = map[string]CommandConfig{
-		"/cherry-pick-invite": CommandConfig{
+		"/cherry-pick-invite": {
 			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
 			Handler:      runCommandCherryPickInvite,
 			AuditWebhook: r.Config.CherryPickInvite.AuditWebhook,
 			SetupContext: setupCtxCherryPickInvite,
 		},
-		"/devbuild": CommandConfig{
+		"/devbuild": {
 			Description:  "Trigger a devbuild or check build status",
 			Handler:      runCommandDevbuild,
 			AuditWebhook: r.Config.DevBuild.AuditWebhook,
 			SetupContext: setupCtxDevbuild,
 		},
-		"/ask": CommandConfig{
+		"/ask": {
 			Description:  "Ask a question with LLM",
 			Handler:      runCommandAsk,
 			AuditWebhook: r.Config.Ask.AuditWebhook,

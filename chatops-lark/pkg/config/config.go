@@ -11,8 +11,11 @@ import (
 // Config represents the overall application configuration, including all subcommands.
 type Config struct {
 	// Bot configuration
-	AppID     string `yaml:"app_id" json:"app_id"`
-	AppSecret string `yaml:"app_secret" json:"app_secret"`
+	AppID             string `yaml:"app_id" json:"app_id"`
+	AppSecret         string `yaml:"app_secret" json:"app_secret"`
+	UserCustomAttrIDs *struct {
+		GitHubID string `yaml:"github_id" json:"github_id"`
+	} `yaml:"user_custom_attr_ids,omitempty" json:"user_custom_attr_ids,omitempty"`
 
 	// Cherry pick configuration
 	CherryPickInvite struct {
