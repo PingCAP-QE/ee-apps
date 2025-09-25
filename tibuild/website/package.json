@@ -22,7 +22,7 @@
     "axios": "^1.6.2",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "react-query": "^3.39.3",
+    "@tanstack/react-query": "^4.0.5",
     "react-router-dom": "^6.20.1",
     "store": "^2.0.12",
     "web-vitals": "^3.5.0"
