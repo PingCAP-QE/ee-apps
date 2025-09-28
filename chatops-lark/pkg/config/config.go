@@ -49,6 +49,13 @@ type Config struct {
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
+	// RepoAdmin command configuration
+	RepoAdmin struct {
+		BaseCmdConfig `yaml:",inline" json:",inline"`
+
+		GithubToken string `yaml:"github_token" json:"github_token"`
+	} `yaml:"repo_admins" json:"repo_admins"`
+
 	// Debug mode
 	Debug bool `yaml:"debug" json:"debug"`
 }

@@ -33,5 +33,10 @@ devbuild:
   # audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
+# RepoAdmins command configuration
+repo_admins:
+  audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  github_token: "ghp_xxx"
+
 # Debug mode
 debug: false
