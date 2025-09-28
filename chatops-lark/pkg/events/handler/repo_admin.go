@@ -18,15 +18,15 @@ Usage: /repo-admins <repository_url>
 Description:
   Query repository administrators (excluding organization owners).
   This helps you find who to contact for repository write permissions.
-  
+
 Arguments:
   repository_url The GitHub repository URL (e.g., https://github.com/pingcap/tidb)
-  
+
 Examples:
   /repo-admins https://github.com/pingcap/tidb
-  /repo-admins https://github.com/tikv/tikv.git 
+  /repo-admins https://github.com/tikv/tikv.git
 
-Note: This command excludes organization owners and focuses on repository-specific administrators. 
+Note: This command excludes organization owners and focuses on repository-specific administrators.
 `
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
