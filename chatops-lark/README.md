@@ -5,45 +5,43 @@
 You can run it by following steps:
 
 1. Prepare the configuration file `config.yaml`. An example configuration file is provided at `config.yaml.example`:
+  ```yaml
+  # Bot configuration
+  app_id: <app_id> # or set it from cli options `--app-id`
+  app_secret: <app_secret> # or set it from cli options `--app-secret`
 
-```yaml
-# Bot configuration
-app_id: <app_id> # or set it from cli options `--app-id`
-app_secret: <app_secret> # or set it from cli options `--app-secret`
+  # Cherry pick configuration
+  cherry_pick_invite:
+    audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    github_token: "ghp_xxx"
 
-# Cherry pick configuration
-cherry_pick_invite:
-  audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-  github_token: "ghp_xxx"
+  # Ask command configuration
+  ask:
+    llm:
+      azure_config:
+        api_key: "your-api-key"
+        base_url: "https://your-deployment.openai.azure.com"
+        api_version: "2023-05-15"
+      model: "gpt-4"
+      system_prompt: "You are a helpful assistant for PingCAP employees."
+      mcp_servers:
+        tidb_server:
+          base_url: "https://mcp-server.example.com"
 
-# Ask command configuration
-ask:
-  llm:
-    azure_config:
-      api_key: "your-api-key"
-      base_url: "https://your-deployment.openai.azure.com"
-      api_version: "2023-05-15"
-    model: "gpt-4"
-    system_prompt: "You are a helpful assistant for PingCAP employees."
-    mcp_servers:
-      tidb_server:
-        base_url: "https://mcp-server.example.com"
+  # DevBuild configuration
+  devbuild:
+    api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
-# DevBuild configuration
-devbuild:
-  api_url: "https://tibuild.pingcap.net/api/devbuilds"
-
-# RepoAdmins command configuration
-repo_admins:
-  audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-  github_token: "ghp_xxx"
-```
+  # RepoAdmins command configuration
+  repo_admins:
+    audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    github_token: "ghp_xxx"
+  ```
 
 2. Run the lark bot app:
-
-```bash
-go run ./cmd/server [-app-id=<your_app_id>] [-app-secret=<your_app_secret>]
-```
+  ```bash
+  go run ./cmd/server [-app-id=<your_app_id>] [-app-secret=<your_app_secret>]
+  ```
 
 ## Deployment
 
