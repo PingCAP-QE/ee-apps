@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
@@ -26,7 +25,7 @@ Examples:
   /repo-admins pingcap/tidb
   /repo-admins tikv/tikv
 
-Note: This command excludes organization owners and focuses on repository-specific administrators.
+Note: Use owner/repo format only.
 `
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
@@ -35,40 +34,49 @@ func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("GitHub token not found in context")
 	}
 
-	if token == "" {
-		return "", fmt.Errorf("GitHub token is empty")
-	}
-
-	if len(args) < 1 {
+	if len(args) != 1 {
 		return "", fmt.Errorf(repoAdminHelpText)
 	}
 
-	repoURL := args[0]
 	gc := github.NewClient(nil).WithAuthToken(token)
-	return queryRepoAdmins(ctx, repoURL, gc)
+	return queryRepoAdmins(ctx, args[0], gc)
 }
 
-func queryRepoAdmins(ctx context.Context, repoURL string, gc *github.Client) (string, error) {
-	// Parse repository URL
-	owner, repo, err := parseRepoURL(repoURL)
+func queryRepoAdmins(ctx context.Context, repo string, gc *github.Client) (string, error) {
+	owner, repoName, err := parseRepo(repo)
 	if err != nil {
 		return "", err
 	}
+	log.Info().Str("owner", owner).Str("repo", repoName).Msg("Querying repository administrators")
 
-	log.Info().
-		Str("owner", owner).
-		Str("repo", repo).
-		Msg("Querying repository administrators")
-
-	// Check if owner is an organization first
-	isOrg, err := isOrganization(ctx, gc, owner)
+	user, _, err := gc.Users.Get(ctx, owner)
 	if err != nil {
-		log.Warn().Err(err).Str("owner", owner).Msg("Failed to check if owner is organization")
-		// Continue with direct collaborators only
-		isOrg = false
+		return "", fmt.Errorf("failed to get owner info: %w", err)
 	}
 
-	// Get repository direct collaborators
+	if user.GetType() == "Organization" {
+		return getOrgAdmins(ctx, gc, owner, repoName)
+	}
+
+	return fmt.Sprintf("Repository administrator for `%s/%s`:\n\n1. %s\n\n→ Contact %s for write access",
+		owner, repoName, owner, owner), nil
+}
+
+func parseRepo(repo string) (owner, repoName string, err error) {
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid repository format, expected owner/repo")
+	}
+
+	owner, repoName = parts[0], parts[1]
+	if owner == "" || repoName == "" {
+		return "", "", fmt.Errorf("owner and repo name cannot be empty")
+	}
+
+	return owner, repoName, nil
+}
+
+func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (string, error) {
 	collaborators, resp, err := gc.Repositories.ListCollaborators(ctx, owner, repo, &github.ListCollaboratorsOptions{
 		Affiliation: "direct",
 	})
@@ -76,123 +84,38 @@ func queryRepoAdmins(ctx context.Context, repoURL string, gc *github.Client) (st
 		if resp != nil && resp.StatusCode == 404 {
 			return "", fmt.Errorf("repository not found or no access permission")
 		}
-		return "", fmt.Errorf("failed to get repository collaborators: %v", err)
+		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}
 
-	var admins []string
-	adminMap := make(map[string]bool)
-
-	for _, collab := range collaborators {
-		username := collab.GetLogin()
-		if username == "" {
-			continue
-		}
-
-		// Use permissions from collaborator object (avoid N+1 query)
-		permissions := collab.GetPermissions()
-		if permissions != nil && permissions["admin"] {
-			if !adminMap[username] {
-				admins = append(admins, username)
-				adminMap[username] = true
-			}
-		}
-	}
+	admins := extractAdmins(collaborators)
 
 	// If no direct collaborators found and owner is organization, try organization teams
-	if len(admins) == 0 && isOrg {
+	if len(admins) == 0 {
 		teamAdmins := getTeamAdmins(ctx, gc, owner, repo)
-		for _, admin := range teamAdmins {
-			if !adminMap[admin] {
-				admins = append(admins, admin)
-				adminMap[admin] = true
-			}
-		}
+		admins = append(admins, teamAdmins...)
 	}
 
 	if len(admins) == 0 {
-		return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access", owner, repo), nil
+		return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
+			owner, repo), nil
 	}
 
-	// Format the response
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Repository administrators for `%s/%s`:\n\n", owner, repo))
-
-	for i, admin := range admins {
-		result.WriteString(fmt.Sprintf("%d. @%s", i+1, admin))
-		if i < len(admins)-1 {
-			result.WriteString("\n")
-		}
-	}
-
-	result.WriteString("\n\n→ Contact any admin above for write access")
-
-	return result.String(), nil
+	return formatAdminsResponse(owner, repo, admins), nil
 }
 
-func parseRepoURL(repoURL string) (owner, repo string, err error) {
-	if !strings.Contains(repoURL, "/") && !strings.Contains(repoURL, "://") && !strings.HasPrefix(repoURL, "git@") {
-		return "", "", fmt.Errorf("invalid repository format, expected owner/repo or full URL")
-	}
-
-	if !strings.Contains(repoURL, "://") && !strings.HasPrefix(repoURL, "git@") && strings.Count(repoURL, "/") == 1 {
-		parts := strings.Split(repoURL, "/")
-		if len(parts) != 2 {
-			return "", "", fmt.Errorf("invalid owner/repo format")
+func extractAdmins(collaborators []*github.User) []string {
+	var admins []string
+	for _, collab := range collaborators {
+		if username := collab.GetLogin(); username != "" {
+			if permissions := collab.GetPermissions(); permissions != nil && permissions["admin"] {
+				admins = append(admins, username)
+			}
 		}
-		owner = parts[0]
-		repo = strings.TrimSuffix(parts[1], ".git")
-		return owner, repo, nil
 	}
-
-	// deal with ssh urls, e.g. git@github.com:owner/repo.git
-	if strings.HasPrefix(repoURL, "git@") && strings.Contains(repoURL, ":") {
-		parts := strings.Split(repoURL, ":")
-		if len(parts) != 2 {
-			return "", "", fmt.Errorf("invalid SSH URL format")
-		}
-
-		path := strings.TrimPrefix(parts[1], "/")
-		pathParts := strings.Split(path, "/")
-		if len(pathParts) < 2 {
-			return "", "", fmt.Errorf("invalid repository path in SSH URL")
-		}
-
-		owner = pathParts[0]
-		repo = strings.TrimSuffix(pathParts[1], ".git")
-		return owner, repo, nil
-	}
-
-	// deal with path like github.com/owner/repo without https://
-	if !strings.Contains(repoURL, "://") && strings.Contains(repoURL, "/") {
-		repoURL = "https://" + repoURL
-	}
-
-	u, err := url.Parse(repoURL)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse repository URL: %v", err)
-	}
-
-	pathParts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	if len(pathParts) < 2 {
-		return "", "", fmt.Errorf("invalid repository URL format")
-	}
-
-	owner = pathParts[0]
-	repo = strings.TrimSuffix(pathParts[1], ".git")
-	return owner, repo, nil
-}
-
-func isOrganization(ctx context.Context, gc *github.Client, owner string) (bool, error) {
-	user, _, err := gc.Users.Get(ctx, owner)
-	if err != nil {
-		return false, err
-	}
-	return user.GetType() == "Organization", nil
+	return admins
 }
 
 func getTeamAdmins(ctx context.Context, gc *github.Client, owner, repo string) []string {
-	var allAdmins []string
-
 	teams, _, err := gc.Repositories.ListTeams(ctx, owner, repo, nil)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get repository teams")
@@ -204,26 +127,40 @@ func getTeamAdmins(ctx context.Context, gc *github.Client, owner, repo string) [
 		log.Warn().Err(err).Str("owner", owner).Msg("Failed to get organization info")
 		return nil
 	}
-	orgID := org.GetID()
 
+	var admins []string
 	for _, team := range teams {
 		if team.GetPermission() == "admin" {
-			members, _, err := gc.Teams.ListTeamMembersByID(ctx, orgID, team.GetID(), nil)
+			members, _, err := gc.Teams.ListTeamMembersByID(ctx, org.GetID(), team.GetID(), nil)
 			if err != nil {
 				log.Warn().Err(err).Str("team", team.GetName()).Msg("Failed to get team members")
 				continue
 			}
 
 			for _, member := range members {
-				username := member.GetLogin()
-				if username != "" {
-					allAdmins = append(allAdmins, username)
+				if username := member.GetLogin(); username != "" {
+					admins = append(admins, username)
 				}
 			}
 		}
 	}
 
-	return allAdmins
+	return admins
+}
+
+func formatAdminsResponse(owner, repo string, admins []string) string {
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Repository administrators for `%s/%s`:\n\n", owner, repo))
+
+	for i, admin := range admins {
+		result.WriteString(fmt.Sprintf("%d. @%s", i+1, admin))
+		if i < len(admins)-1 {
+			result.WriteString("\n")
+		}
+	}
+
+	result.WriteString("\n\n→ Contact any admin above for write access")
+	return result.String()
 }
 
 func setupCtxRepoAdmin(ctx context.Context, config config.Config, _ *CommandActor) context.Context {
