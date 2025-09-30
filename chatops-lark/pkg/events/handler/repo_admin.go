@@ -35,6 +35,10 @@ func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("GitHub token not found in context")
 	}
 
+	if token == "" {
+		return "", fmt.Errorf("GitHub token is empty")
+	}
+
 	if len(args) < 1 {
 		return "", fmt.Errorf(repoAdminHelpText)
 	}
