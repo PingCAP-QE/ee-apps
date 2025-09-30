@@ -21,7 +21,7 @@ Description:
 
 Arguments:
   owner/repo The GitHub repository in format owner/repo
-  
+
 Examples:
   /repo-admins pingcap/tidb
   /repo-admins tikv/tikv
