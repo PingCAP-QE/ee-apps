@@ -195,6 +195,12 @@ func (r *rootHandler) initialize() error {
 			AuditWebhook: r.Config.Ask.AuditWebhook,
 			SetupContext: setupAskCtx,
 		},
+		"/repo-admins": {
+			Description:  "Query repository administrators",
+			Handler:      runCommandRepoAdmin,
+			AuditWebhook: r.Config.RepoAdmin.AuditWebhook,
+			SetupContext: setupCtxRepoAdmin,
+		},
 	}
 
 	return nil

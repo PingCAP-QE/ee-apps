@@ -31,6 +31,11 @@ You can run it by following steps:
   # DevBuild configuration
   devbuild:
     api_url: "https://tibuild.pingcap.net/api/devbuilds"
+
+  # RepoAdmins command configuration
+  repo_admins:
+    audit_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    github_token: "ghp_xxx"
   ```
 
 2. Run the lark bot app:
