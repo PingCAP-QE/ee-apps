@@ -9,9 +9,9 @@ type Worker struct {
 	Kafka struct {
 		KafkaBasic    `yaml:",inline" json:",inline"`
 		ConsumerGroup string `yaml:"consumer_group" json:"consumer_group,omitempty"`
-	} `yaml:"kafka,omitzero" json:"kafka,omitzero"`
+	} `yaml:"kafka,omitempty" json:"kafka,omitzero"`
 	Redis   Redis             `yaml:"redis" json:"redis"`
-	Options map[string]string `yaml:"options" json:"options,omitempty"`
+	Options map[string]string `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
 type Service struct {
