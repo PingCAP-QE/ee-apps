@@ -14,27 +14,32 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const cherryPickInviteHelpText = `missing required positional arguments: pr_url, collaborator_username
-
-Usage: /cherry-pick-invite <pr_url> <collaborator_username>
+const cherryPickInviteHelpText = `Usage: /cherry-pick-invite <pr_url> <collaborator_username>
 
 Description:
   Grants a collaborator permission to make changes to a cherry-pick PR.
   This allows the collaborator to help resolve conflicts or make necessary adjustments.
 
-Arguments:
-  pr_url                 The URL of the cherry-pick pull request
-  collaborator_username  The GitHub username of the collaborator to grant access
-
 Examples:
   /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
   /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123
+
+Required arguments:
+  pr_url                 The URL of the cherry-pick pull request
+  collaborator_username  The GitHub username of the collaborator to grant access
+
+Use '/cherry-pick-invite --help' or '/cherry-pick-invite -h' to see this message.
 `
 
 func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
 	token := ctx.Value(ctxKeyGithubToken).(string)
+
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		return cherryPickInviteHelpText, NewInformationError("Requested command usage")
+	}
+
 	if len(args) < 2 {
-		return "", fmt.Errorf(cherryPickInviteHelpText)
+		return "", errors.New(cherryPickInviteHelpText)
 	}
 	cherryPickPrUrl := args[0]
 	collaboratorGithubID := args[1]

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,22 +11,24 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const repoAdminHelpText = `missing required positional argument: repository_url
-
-Usage: /repo-admins <owner/repo>
+const repoAdminHelpText = `Usage: /repo-admins <owner/repo>
 
 Description:
-  Query repository administrators (excluding organization owners).
-  This helps you find who to contact for repository write permissions.
-
-Arguments:
-  owner/repo The GitHub repository in format owner/repo
+  Query repository administrators who can grant write permissions.
+  This command helps you identify the right people to contact when you need
+  write access to a GitHub repository.
 
 Examples:
   /repo-admins pingcap/tidb
   /repo-admins tikv/tikv
 
-Note: Use owner/repo format only.
+Required arguments:
+  owner/repo  The GitHub repository in format owner/repo
+
+Note: This command excludes organization owners and shows repository-specific
+      administrators who can grant you write access.
+
+Use '/repo-admins --help' or '/repo-admins -h' to see this message.
 `
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
@@ -34,8 +37,12 @@ func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("GitHub token not found in context")
 	}
 
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		return repoAdminHelpText, NewInformationError("Requested command usage")
+	}
+
 	if len(args) != 1 {
-		return "", fmt.Errorf(repoAdminHelpText)
+		return "", errors.New(repoAdminHelpText)
 	}
 
 	gc := github.NewClient(nil).WithAuthToken(token)
@@ -65,12 +72,12 @@ func queryRepoAdmins(ctx context.Context, repo string, gc *github.Client) (strin
 func parseRepo(repo string) (owner, repoName string, err error) {
 	parts := strings.Split(repo, "/")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid repository format, expected owner/repo")
+		return "", "", errors.New("invalid repository format, expected owner/repo")
 	}
 
 	owner, repoName = parts[0], parts[1]
 	if owner == "" || repoName == "" {
-		return "", "", fmt.Errorf("owner and repo name cannot be empty")
+		return "", "", errors.New("owner and repo name cannot be empty")
 	}
 
 	return owner, repoName, nil
@@ -82,7 +89,7 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 	})
 	if err != nil {
 		if resp != nil && resp.StatusCode == 404 {
-			return "", fmt.Errorf("repository not found or no access permission")
+			return "", errors.New("repository not found or no access permission")
 		}
 		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}

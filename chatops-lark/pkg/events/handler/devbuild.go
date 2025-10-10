@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
@@ -10,25 +11,7 @@ import (
 // Configuration key for DevBuild URL in the config map
 const cfgKeyDevBuildURL = "devbuild.api_url"
 
-const (
-	devBuildHelpText = `missing subcommand
-
-Usage: /devbuild <subcommand> [args...]
-
-Subcommands:
-  trigger [options]  - Trigger a new dev build
-  poll <buildID>     - Poll the status of a build
-
-Examples:
-  /devbuild trigger --product tidb --version v6.5.0 --gitRef branch/master -e enterprise
-  /devbuild trigger --product tikv --version v6.5.0 --gitRef branch/master --features failpoint
-  /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master --pushGCR
-  /devbuild poll 12345
-
-For more details, use: /devbuild --help
-`
-
-	devBuildDetailedHelpText = `Usage: /devbuild <subcommand> [args...]
+const devBuildHelpText = `Usage: /devbuild <subcommand> [args...]
 
 Subcommands:
   trigger [options]  - Trigger a new dev build
@@ -59,12 +42,13 @@ Optional options for trigger:
   --builderImg string       Docker image for builder
   --targetImg string        Target image
   --engine string           Pipeline engine (jenkins or tekton, default: jenkins, 'tekton' is in beta)
+
+Use '/devbuild --help' or '/devbuild -h' to see this message.
 `
-)
 
 func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	if len(args) == 0 {
-		return "", fmt.Errorf(devBuildHelpText)
+		return "", errors.New(devBuildHelpText)
 	}
 
 	subCmd := args[0]
@@ -74,7 +58,7 @@ func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	case "poll":
 		return runCommandDevbuildPoll(ctx, args[1:])
 	case "-h", "--help":
-		return devBuildDetailedHelpText, NewInformationError("Requested command usage")
+		return devBuildHelpText, NewInformationError("Requested command usage")
 	default:
 		return "", fmt.Errorf("unknown subcommand: %s", subCmd)
 	}
