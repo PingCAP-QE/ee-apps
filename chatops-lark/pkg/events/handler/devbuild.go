@@ -25,7 +25,7 @@ Examples:
   /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master --pushGCR
   /devbuild poll 12345
 
-For more details, use: /devbuild --help
+For more details, use: /devbuild --help or /devbuild -h
 `
 
 	devBuildDetailedHelpText = `Usage: /devbuild <subcommand> [args...]

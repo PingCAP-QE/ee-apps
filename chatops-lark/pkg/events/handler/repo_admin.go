@@ -26,12 +26,33 @@ Examples:
   /repo-admins tikv/tikv
 
 Note: Use owner/repo format only.
+
+For more details, use: /repo-admins --help or /repo-admins -h
+`
+
+const repoAdminDetailedHelpText = `Usage: /repo-admins <owner/repo>
+
+Description:
+  Query repository administrators who can grant write permissions.
+
+Examples:
+  /repo-admins pingcap/tidb
+  /repo-admins tikv/tikv
+
+Required arguments:
+  owner/repo  The GitHub repository in format owner/repo
+
+Note: Use owner/repo format only.
 `
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 	token, ok := ctx.Value(ctxKeyGithubToken).(string)
 	if !ok || token == "" {
 		return "", fmt.Errorf("GitHub token not found in context")
+	}
+
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		return repoAdminDetailedHelpText, NewInformationError("Requested command usage")
 	}
 
 	if len(args) != 1 {

@@ -29,7 +29,7 @@ Example:
   /ask What is the on-call schedule for the infra team this week?
   /ask How do I debug error code 1234 in service X?
 
-For more details, use: /ask --help
+For more details, use: /ask --help or /ask -h
 `
 
 	askDetailedHelpText = `Usage: /ask <question...>
@@ -44,7 +44,8 @@ Examples:
   /ask Summarize the recent alerts for the database tier.
   /ask How do I request access to the staging environment?
 
-Use '/ask --help' or '/ask -h' to see this message.
+Required arguments:
+  question  The question to ask the AI assistant
 `
 )
 
@@ -59,14 +60,14 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	firstArg := args[0]
 	if firstArg == "-h" || firstArg == "--help" {
 		if len(args) == 1 {
-			return askDetailedHelpText, nil
+			return askDetailedHelpText, NewInformationError("Requested command usage")
 		}
 		// Allow asking help *about* something, e.g. /ask --help tools
 		// But for now, just treat any args after --help as part of the help request itself.
 		// Let's just return the detailed help for simplicity.
 		// Alternatively, could error out:
 		// return "", fmt.Errorf("unknown arguments after %s: %v", firstArg, args[1:])
-		return askDetailedHelpText, nil
+		return askDetailedHelpText, NewInformationError("Requested command usage")
 	}
 
 	// The entire argument list forms the question
