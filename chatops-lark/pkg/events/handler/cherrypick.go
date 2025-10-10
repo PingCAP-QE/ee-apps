@@ -14,44 +14,40 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const cherryPickInviteHelpText = `missing required positional arguments: pr_url, collaborator_username
-
-Usage: /cherry-pick-invite <pr_url> <collaborator_username>
+const (
+	_cherryPickInviteBase = `Usage: /cherry-pick-invite <pr_url> <collaborator_username>
 
 Description:
   Grants a collaborator permission to make changes to a cherry-pick PR.
   This allows the collaborator to help resolve conflicts or make necessary adjustments.
+
+Examples:
+  /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
+  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123`
+
+	cherryPickInviteHelpText = `missing required positional arguments: pr_url, collaborator_username
+
+` + _cherryPickInviteBase + `
 
 Arguments:
   pr_url                 The URL of the cherry-pick pull request
   collaborator_username  The GitHub username of the collaborator to grant access
 
-Examples:
-  /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
-  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123
-
 For more details, use: /cherry-pick-invite --help or /cherry-pick-invite -h
 `
 
-const cherryPickInviteDetailedHelpText = `Usage: /cherry-pick-invite <pr_url> <collaborator_username>
-
-Description:
-  Grants a collaborator permission to make changes to a cherry-pick PR.
-  This allows the collaborator to help resolve conflicts or make necessary adjustments.
-
-Examples:
-  /cherry-pick-invite https://github.com/tikv/tikv/pull/12345 username123
-  /cherry-pick-invite https://github.com/pingcap/tidb/pull/42123 username123
+	cherryPickInviteDetailedHelpText = _cherryPickInviteBase + `
 
 Required arguments:
   pr_url                 The URL of the cherry-pick pull request
   collaborator_username  The GitHub username of the collaborator to grant access
 `
+)
 
 func runCommandCherryPickInvite(ctx context.Context, args []string) (string, error) {
 	token := ctx.Value(ctxKeyGithubToken).(string)
 
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		return cherryPickInviteDetailedHelpText, NewInformationError("Requested command usage")
 	}
 

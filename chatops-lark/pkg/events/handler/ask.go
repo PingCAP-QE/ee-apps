@@ -59,9 +59,6 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	// Check for help flags explicitly, as there are no subcommands
 	firstArg := args[0]
 	if firstArg == "-h" || firstArg == "--help" {
-		if len(args) == 1 {
-			return askDetailedHelpText, NewInformationError("Requested command usage")
-		}
 		// Allow asking help *about* something, e.g. /ask --help tools
 		// But for now, just treat any args after --help as part of the help request itself.
 		// Let's just return the detailed help for simplicity.

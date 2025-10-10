@@ -10,40 +10,37 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const repoAdminHelpText = `missing required positional argument: repository_url
-
-Usage: /repo-admins <owner/repo>
+const (
+	_repoAdminBase = `Usage: /repo-admins <owner/repo>
 
 Description:
-  Query repository administrators (excluding organization owners).
-  This helps you find who to contact for repository write permissions.
-
-Arguments:
-  owner/repo The GitHub repository in format owner/repo
+  Query repository administrators who can grant write permissions.
+  This command helps you identify the right people to contact when you need
+  write access to a GitHub repository.
 
 Examples:
   /repo-admins pingcap/tidb
-  /repo-admins tikv/tikv
+  /repo-admins tikv/tikv`
 
-Note: Use owner/repo format only.
+	repoAdminHelpText = `missing required positional argument: repository
+
+` + _repoAdminBase + `
+
+Arguments:
+  owner/repo  The GitHub repository in format owner/repo
 
 For more details, use: /repo-admins --help or /repo-admins -h
 `
 
-const repoAdminDetailedHelpText = `Usage: /repo-admins <owner/repo>
-
-Description:
-  Query repository administrators who can grant write permissions.
-
-Examples:
-  /repo-admins pingcap/tidb
-  /repo-admins tikv/tikv
+	repoAdminDetailedHelpText = _repoAdminBase + `
 
 Required arguments:
   owner/repo  The GitHub repository in format owner/repo
 
-Note: Use owner/repo format only.
+Note: For organization repositories, this shows direct collaborators with admin
+      permissions. For personal repositories, it returns the repository owner.
 `
+)
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 	token, ok := ctx.Value(ctxKeyGithubToken).(string)
@@ -51,7 +48,7 @@ func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("GitHub token not found in context")
 	}
 
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		return repoAdminDetailedHelpText, NewInformationError("Requested command usage")
 	}
 
