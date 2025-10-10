@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -20,19 +21,7 @@ const (
 	ctxKeyMcpClients      = "llm.mcp_clients"
 )
 
-const (
-	askHelpText = `missing question
-
-Usage: /ask <question...>
-
-Example:
-  /ask What is the on-call schedule for the infra team this week?
-  /ask How do I debug error code 1234 in service X?
-
-For more details, use: /ask --help or /ask -h
-`
-
-	askDetailedHelpText = `Usage: /ask <question...>
+const askHelpText = `Usage: /ask <question...>
 
 Description:
   Asks an AI assistant a question. The assistant may leverage internal tools (MCP context)
@@ -46,14 +35,15 @@ Examples:
 
 Required arguments:
   question  The question to ask the AI assistant
+
+Use '/ask --help' or '/ask -h' to see this message.
 `
-)
 
 // runCommandAsk handles the /ask command logic.
 func runCommandAsk(ctx context.Context, args []string) (string, error) {
 	if len(args) == 0 {
 		// No question provided
-		return "", fmt.Errorf(askHelpText)
+		return "", errors.New(askHelpText)
 	}
 
 	// Check for help flags explicitly, as there are no subcommands
@@ -64,7 +54,7 @@ func runCommandAsk(ctx context.Context, args []string) (string, error) {
 		// Let's just return the detailed help for simplicity.
 		// Alternatively, could error out:
 		// return "", fmt.Errorf("unknown arguments after %s: %v", firstArg, args[1:])
-		return askDetailedHelpText, NewInformationError("Requested command usage")
+		return askHelpText, NewInformationError("Requested command usage")
 	}
 
 	// The entire argument list forms the question

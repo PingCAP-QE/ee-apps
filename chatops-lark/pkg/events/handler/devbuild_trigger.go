@@ -149,7 +149,7 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return nil, NewInformationError(devBuildDetailedHelpText)
+		return nil, NewInformationError(devBuildHelpText)
 	}
 
 	if err := ret.Verify(); err != nil {
