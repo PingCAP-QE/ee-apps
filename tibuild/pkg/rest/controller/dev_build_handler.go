@@ -30,13 +30,14 @@ func NewDevBuildHandler(svc service.DevBuildService, auth configs.RestApiSecret)
 func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, cfg *configs.ConfigYaml) service.DevBuildService {
 	db.AutoMigrate(&service.DevBuild{})
 	return &service.DevbuildServer{
-		Repo:             repo.DevBuildRepo{Db: db},
-		Jenkins:          jenkins,
-		Now:              time.Now,
-		Tekton:           service.NewCEClient(cfg.CloudEvent.Endpoint),
-		GHClient:         service.NewGHClient(cfg.Github.Token),
-		TektonViewURL:    cfg.TektonViewURL,
-		OciFileserverURL: cfg.OciFileserverURL,
+		Repo:              repo.DevBuildRepo{Db: db},
+		Jenkins:           jenkins,
+		Now:               time.Now,
+		Tekton:            service.NewCEClient(cfg.CloudEvent.Endpoint),
+		GHClient:          service.NewGHClient(cfg.Github.Token),
+		TektonViewURL:     cfg.TektonViewURL,
+		OciFileserverURL:  cfg.OciFileserverURL,
+		ImageMirrorURLMap: cfg.ImageMirrorURLMap,
 	}
 }
 
