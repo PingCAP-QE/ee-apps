@@ -85,7 +85,8 @@ func parseRepo(repo string) (owner, repoName string, err error) {
 
 func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (string, error) {
 	collaborators, resp, err := gc.Repositories.ListCollaborators(ctx, owner, repo, &github.ListCollaboratorsOptions{
-		Affiliation: "direct",
+		Affiliation: "all",
+		Permission:  "admin",
 	})
 	if err != nil {
 		if resp != nil && resp.StatusCode == 404 {
@@ -94,12 +95,23 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}
 
-	admins := extractAdmins(collaborators)
+	var admins []string
+	for _, collab := range collaborators {
+		username := collab.GetLogin()
+		if username == "" {
+			continue
+		}
 
-	// If no direct collaborators found and owner is organization, try organization teams
-	if len(admins) == 0 {
-		teamAdmins := getTeamAdmins(ctx, gc, owner, repo)
-		admins = append(admins, teamAdmins...)
+		isOwner, err := isOrgOwner(ctx, gc, owner, username)
+		if err != nil {
+			log.Warn().Err(err).Str("user", username).Msg("Failed to check if user is org owner")
+			admins = append(admins, username)
+			continue
+		}
+
+		if !isOwner {
+			admins = append(admins, username)
+		}
 	}
 
 	if len(admins) == 0 {
@@ -110,49 +122,13 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 	return formatAdminsResponse(owner, repo, admins), nil
 }
 
-func extractAdmins(collaborators []*github.User) []string {
-	var admins []string
-	for _, collab := range collaborators {
-		if username := collab.GetLogin(); username != "" {
-			if permissions := collab.GetPermissions(); permissions != nil && permissions["admin"] {
-				admins = append(admins, username)
-			}
-		}
-	}
-	return admins
-}
-
-func getTeamAdmins(ctx context.Context, gc *github.Client, owner, repo string) []string {
-	teams, _, err := gc.Repositories.ListTeams(ctx, owner, repo, nil)
+func isOrgOwner(ctx context.Context, gc *github.Client, org, username string) (bool, error) {
+	membership, _, err := gc.Organizations.GetOrgMembership(ctx, username, org)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get repository teams")
-		return nil
+		return false, err
 	}
 
-	org, _, err := gc.Organizations.Get(ctx, owner)
-	if err != nil {
-		log.Warn().Err(err).Str("owner", owner).Msg("Failed to get organization info")
-		return nil
-	}
-
-	var admins []string
-	for _, team := range teams {
-		if team.GetPermission() == "admin" {
-			members, _, err := gc.Teams.ListTeamMembersByID(ctx, org.GetID(), team.GetID(), nil)
-			if err != nil {
-				log.Warn().Err(err).Str("team", team.GetName()).Msg("Failed to get team members")
-				continue
-			}
-
-			for _, member := range members {
-				if username := member.GetLogin(); username != "" {
-					admins = append(admins, username)
-				}
-			}
-		}
-	}
-
-	return admins
+	return membership.GetRole() == "admin", nil
 }
 
 func formatAdminsResponse(owner, repo string, admins []string) string {
