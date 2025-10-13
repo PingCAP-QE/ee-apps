@@ -94,7 +94,7 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 	expectedAdmins := []string{"bb7133", "hawkingrei", "zhangjinpeng87"}
 
 	for _, expectedAdmin := range expectedAdmins {
-		if !strings.Contains(result, expectedAdmin) {
+		if !strings.Contains(result, "@"+expectedAdmin) {
 			t.Errorf("getOrgAdmins() result should contain %q, got:\n%s", expectedAdmin, result)
 		}
 	}

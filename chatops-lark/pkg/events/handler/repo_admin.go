@@ -123,8 +123,11 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 }
 
 func isOrgOwner(ctx context.Context, gc *github.Client, org, username string) (bool, error) {
-	membership, _, err := gc.Organizations.GetOrgMembership(ctx, username, org)
+	membership, resp, err := gc.Organizations.GetOrgMembership(ctx, username, org)
 	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return false, nil
+		}
 		return false, err
 	}
 
