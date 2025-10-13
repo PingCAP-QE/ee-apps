@@ -17,16 +17,16 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/users/pingcap", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/users/testorg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"login": "pingcap",
+			"login": "testorg",
 			"type":  "Organization",
 		})
 	})
 
-	mux.HandleFunc("/repos/pingcap/tidb/collaborators", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/testorg/testrepo/collaborators", func(w http.ResponseWriter, r *http.Request) {
 		affiliation := r.URL.Query().Get("affiliation")
 		permission := r.URL.Query().Get("permission")
 
@@ -38,29 +38,29 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		collaborators := []map[string]interface{}{
-			{"login": "c4pt0r", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "ngaut", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "siddontang", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "bb7133", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "qiuyesuifeng", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "hawkingrei", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "iamxy", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "zhangjinpeng87", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
-			{"login": "ti-chi-bot", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner1", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner2", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner3", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "admin1", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "admin2", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "admin3", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner4", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner5", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
+			{"login": "owner6", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
 		}
 		json.NewEncoder(w).Encode(collaborators)
 	})
 
 	orgOwners := map[string]bool{
-		"c4pt0r":       true,
-		"iamxy":        true,
-		"ngaut":        true,
-		"qiuyesuifeng": true,
-		"siddontang":   true,
-		"ti-chi-bot":   true,
+		"owner1": true,
+		"owner2": true,
+		"owner3": true,
+		"owner4": true,
+		"owner5": true,
+		"owner6": true,
 	}
 
-	mux.HandleFunc("/orgs/pingcap/memberships/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/orgs/testorg/memberships/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.URL.Path, "/")
 		username := parts[len(parts)-1]
 
@@ -85,13 +85,13 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	ctx := context.Background()
-	result, err := getOrgAdmins(ctx, gc, "pingcap", "tidb")
+	result, err := getOrgAdmins(ctx, gc, "testorg", "testrepo")
 
 	if err != nil {
 		t.Fatalf("getOrgAdmins() error = %v", err)
 	}
 
-	expectedAdmins := []string{"bb7133", "hawkingrei", "zhangjinpeng87"}
+	expectedAdmins := []string{"admin1", "admin2", "admin3"}
 
 	for _, expectedAdmin := range expectedAdmins {
 		if !strings.Contains(result, "@"+expectedAdmin) {
@@ -99,18 +99,18 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		}
 	}
 
-	excludedOwners := []string{"c4pt0r", "iamxy", "ngaut", "qiuyesuifeng", "siddontang", "ti-chi-bot"}
+	excludedOwners := []string{"owner1", "owner2", "owner3", "owner4", "owner5", "owner6"}
 	for _, owner := range excludedOwners {
 		if strings.Contains(result, "@"+owner) {
 			t.Errorf("getOrgAdmins() result should NOT contain org owner %q, got:\n%s", owner, result)
 		}
 	}
 
-	if !strings.Contains(result, "Repository administrators for `pingcap/tidb`:") {
+	if !strings.Contains(result, "Repository administrators for `testorg/testrepo`:") {
 		t.Errorf("getOrgAdmins() result should contain header, got:\n%s", result)
 	}
 
-	if !strings.Contains(result, "→ Contact any admin above for write access") {
+	if !strings.Contains(result, "→ Contact any contact whose GitHub ID is in the above list") {
 		t.Errorf("getOrgAdmins() result should contain footer, got:\n%s", result)
 	}
 
@@ -122,11 +122,11 @@ func TestGetOrgAdmins_PersonalRepo(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/users/octocat", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/users/testuser", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"login": "octocat",
+			"login": "testuser",
 			"type":  "User",
 		})
 	})
@@ -135,17 +135,17 @@ func TestGetOrgAdmins_PersonalRepo(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	ctx := context.Background()
-	result, err := queryRepoAdmins(ctx, "octocat/Hello-World", gc)
+	result, err := queryRepoAdmins(ctx, "testuser/myrepo", gc)
 
 	if err != nil {
 		t.Fatalf("queryRepoAdmins() error = %v", err)
 	}
 
-	if !strings.Contains(result, "Repository administrator for `octocat/Hello-World`:") {
+	if !strings.Contains(result, "Repository administrator for `testuser/myrepo`:") {
 		t.Errorf("queryRepoAdmins() should return personal repo format, got:\n%s", result)
 	}
 
-	if !strings.Contains(result, "1. octocat") {
+	if !strings.Contains(result, "1. testuser") {
 		t.Errorf("queryRepoAdmins() should contain owner name, got:\n%s", result)
 	}
 
@@ -157,7 +157,7 @@ func TestGetOrgAdmins_NoAdmins(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/test/repo/collaborators", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/testorg/emptyrepo/collaborators", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode([]interface{}{})
@@ -167,7 +167,7 @@ func TestGetOrgAdmins_NoAdmins(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	ctx := context.Background()
-	result, err := getOrgAdmins(ctx, gc, "test", "repo")
+	result, err := getOrgAdmins(ctx, gc, "testorg", "emptyrepo")
 
 	if err != nil {
 		t.Fatalf("getOrgAdmins() error = %v", err)
@@ -190,7 +190,7 @@ func TestGetOrgAdmins_RepoNotFound(t *testing.T) {
 	defer server.Close()
 
 	// Mock GET /repos/test/notfound/collaborators - return 404
-	mux.HandleFunc("/repos/test/notfound/collaborators", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/testorg/notfound/collaborators", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -202,7 +202,7 @@ func TestGetOrgAdmins_RepoNotFound(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	ctx := context.Background()
-	result, err := getOrgAdmins(ctx, gc, "test", "notfound")
+	result, err := getOrgAdmins(ctx, gc, "testorg", "notfound")
 
 	if err == nil {
 		t.Errorf("getOrgAdmins() should return error for 404, got result: %s", result)

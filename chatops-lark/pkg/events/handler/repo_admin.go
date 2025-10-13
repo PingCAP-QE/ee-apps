@@ -145,7 +145,7 @@ func formatAdminsResponse(owner, repo string, admins []string) string {
 		}
 	}
 
-	result.WriteString("\n\n→ Contact any admin above for write access")
+	result.WriteString("\n\n→ Contact any contact whose GitHub ID is in the above list")
 	return result.String()
 }
 
