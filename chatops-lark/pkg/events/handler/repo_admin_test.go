@@ -51,34 +51,24 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		json.NewEncoder(w).Encode(collaborators)
 	})
 
-	orgOwners := map[string]bool{
-		"owner1": true,
-		"owner2": true,
-		"owner3": true,
-		"owner4": true,
-		"owner5": true,
-		"owner6": true,
-	}
-
-	mux.HandleFunc("/orgs/testorg/memberships/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		username := parts[len(parts)-1]
+	mux.HandleFunc("/orgs/testorg/members/", func(w http.ResponseWriter, r *http.Request) {
+		role := r.URL.Query().Get("role")
+		if role != "admin" {
+			t.Errorf("Expected role=admin, got role=%s", role)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 
-		if orgOwners[username] {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"role":  "admin",
-				"state": "active",
-			})
-		} else {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"role":  "member",
-				"state": "active",
-			})
+		orgOwners := []map[string]interface{}{
+			{"login": "owner1", "type": "User"},
+			{"login": "owner2", "type": "User"},
+			{"login": "owner3", "type": "User"},
+			{"login": "owner4", "type": "User"},
+			{"login": "owner5", "type": "User"},
+			{"login": "owner6", "type": "User"},
 		}
+		json.NewEncoder(w).Encode(orgOwners)
 	})
 
 	gc := github.NewClient(nil)
@@ -158,6 +148,12 @@ func TestGetOrgAdmins_NoAdmins(t *testing.T) {
 	defer server.Close()
 
 	mux.HandleFunc("/repos/testorg/emptyrepo/collaborators", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]interface{}{})
+	})
+
+	mux.HandleFunc("/orgs/testorg/members", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode([]interface{}{})

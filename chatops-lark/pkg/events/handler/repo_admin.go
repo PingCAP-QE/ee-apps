@@ -95,21 +95,31 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}
 
+	orgOwners, err := getOrgOwners(ctx, gc, owner)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get org owners")
+		var allAdmins []string
+		for _, collab := range collaborators {
+			if username := collab.GetLogin(); username != "" {
+				allAdmins = append(allAdmins, username)
+			}
+		}
+		if len(allAdmins) == 0 {
+			return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
+				owner, repo), nil
+		}
+		return formatAdminsResponse(owner, repo, allAdmins), nil
+	}
+
+	ownerMap := make(map[string]bool, len(orgOwners))
+	for _, ownerName := range orgOwners {
+		ownerMap[ownerName] = true
+	}
+
 	var admins []string
 	for _, collab := range collaborators {
 		username := collab.GetLogin()
-		if username == "" {
-			continue
-		}
-
-		isOwner, err := isOrgOwner(ctx, gc, owner, username)
-		if err != nil {
-			log.Warn().Err(err).Str("user", username).Msg("Failed to check if user is org owner")
-			admins = append(admins, username)
-			continue
-		}
-
-		if !isOwner {
+		if username != "" && !ownerMap[username] {
 			admins = append(admins, username)
 		}
 	}
@@ -122,16 +132,21 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 	return formatAdminsResponse(owner, repo, admins), nil
 }
 
-func isOrgOwner(ctx context.Context, gc *github.Client, org, username string) (bool, error) {
-	membership, resp, err := gc.Organizations.GetOrgMembership(ctx, username, org)
+func getOrgOwners(ctx context.Context, gc *github.Client, org string) ([]string, error) {
+	members, _, err := gc.Organizations.ListMembers(ctx, org, &github.ListMembersOptions{
+		Role: "admin",
+	})
 	if err != nil {
-		if resp != nil && resp.StatusCode == 404 {
-			return false, nil
-		}
-		return false, err
+		return nil, err
 	}
 
-	return membership.GetRole() == "admin", nil
+	owners := make([]string, 0, len(members))
+	for _, member := range members {
+		if username := member.GetLogin(); username != "" {
+			owners = append(owners, username)
+		}
+	}
+	return owners, nil
 }
 
 func formatAdminsResponse(owner, repo string, admins []string) string {
