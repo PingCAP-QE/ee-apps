@@ -19,7 +19,7 @@ require (
 	github.com/tektoncd/pipeline v0.39.0
 	k8s.io/api v0.23.9
 	k8s.io/apimachinery v0.23.9
-	knative.dev/pkg v0.0.0-20220805012121-7b8b06028e4f
+	knative.dev/pkg b988e0b4526c
 )
 
 require (
