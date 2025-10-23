@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
@@ -160,15 +161,10 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 }
 
 func isBot(username string) bool {
-	botPatterns := []string{
-		"ti-chi-bot", "sre-bot", "tidbcloud-bot",
-	}
-
 	usernameLower := strings.ToLower(username)
-	for _, pattern := range botPatterns {
-		if strings.Contains(usernameLower, pattern) {
-			return true
-		}
+	botRegex := regexp.MustCompile(`^(.+-)?bot(-.+)?$`)
+	if botRegex.MatchString(usernameLower) {
+		return true
 	}
 
 	return false
