@@ -161,7 +161,7 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 
 func isBot(username string) bool {
 	botPatterns := []string{
-		"ti-chi-bot", "sre-bot",
+		"ti-chi-bot", "sre-bot", "tidbcloud-bot",
 	}
 
 	usernameLower := strings.ToLower(username)
