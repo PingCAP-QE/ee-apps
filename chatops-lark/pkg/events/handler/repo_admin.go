@@ -95,6 +95,21 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}
 
+	// if repository administrators is empty, return org owners
+	if len(collaborators) == 0 {
+		orgOwners, err := getOrgOwners(ctx, gc, owner)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to get org owners")
+			return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
+				owner, repo), nil
+		}
+		if len(orgOwners) > 0 {
+			return formatAdminsResponse(owner, repo, orgOwners), nil
+		}
+		return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
+			owner, repo), nil
+	}
+
 	orgOwners, err := getOrgOwners(ctx, gc, owner)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get org owners")
@@ -124,9 +139,15 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		}
 	}
 
+	//if the result is empty after filtering, return all repository administrators (without filtering).
 	if len(admins) == 0 {
-		return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
-			owner, repo), nil
+		var allAdmins []string
+		for _, collab := range collaborators {
+			if username := collab.GetLogin(); username != "" {
+				allAdmins = append(allAdmins, username)
+			}
+		}
+		return formatAdminsResponse(owner, repo, allAdmins), nil
 	}
 
 	return formatAdminsResponse(owner, repo, admins), nil
