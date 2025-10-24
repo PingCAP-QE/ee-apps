@@ -25,8 +25,43 @@ type RequestToPublishRequestBody struct {
 	// Staging is http://tiup.pingcap.net:8988, product is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror *string `form:"tiup-mirror,omitempty" json:"tiup-mirror,omitempty" xml:"tiup-mirror,omitempty"`
-	// The request id
-	RequestID *string `form:"request_id,omitempty" json:"request_id,omitempty" xml:"request_id,omitempty"`
+}
+
+// RequestToPublishSingleRequestBody is the type of the "tiup" service
+// "request-to-publish-single" endpoint HTTP request body.
+type RequestToPublishSingleRequestBody struct {
+	From    *FromRequestBody            `json:"from,omitempty"`
+	Publish *PublishInfoTiUPRequestBody `json:"publish,omitempty"`
+}
+
+// FromRequestBody is used to define fields on request body types.
+type FromRequestBody struct {
+	Type *string              `json:"type,omitempty"`
+	Oci  *FromOciRequestBody  `json:"oci,omitempty"`
+	HTTP *FromHTTPRequestBody `json:"http,omitempty"`
+}
+
+// FromOciRequestBody is used to define fields on request body types.
+type FromOciRequestBody struct {
+	Repo *string `json:"repo,omitempty"`
+	Tag  *string `json:"tag,omitempty"`
+	File *string `json:"file,omitempty"`
+}
+
+// FromHTTPRequestBody is used to define fields on request body types.
+type FromHTTPRequestBody struct {
+	URL *string `json:"url,omitempty"`
+}
+
+// PublishInfoTiUPRequestBody is used to define fields on request body types.
+type PublishInfoTiUPRequestBody struct {
+	Name        *string `json:"name,omitempty"`
+	Os          *string `json:"os,omitempty"`
+	Arch        *string `json:"arch,omitempty"`
+	Version     *string `json:"version,omitempty"`
+	Description *string `json:"description,omitempty"`
+	EntryPoint  *string `json:"entry_point,omitempty"`
+	Standalone  *bool   `json:"standalone,omitempty"`
 }
 
 // NewRequestToPublishPayload builds a tiup service request-to-publish endpoint
@@ -36,8 +71,17 @@ func NewRequestToPublishPayload(body *RequestToPublishRequestBody) *tiup.Request
 		ArtifactURL: *body.ArtifactURL,
 		Version:     body.Version,
 		TiupMirror:  *body.TiupMirror,
-		RequestID:   body.RequestID,
 	}
+
+	return v
+}
+
+// NewRequestToPublishSinglePublishRequestTiUP builds a tiup service
+// request-to-publish-single endpoint payload.
+func NewRequestToPublishSinglePublishRequestTiUP(body *RequestToPublishSingleRequestBody) *tiup.PublishRequestTiUP {
+	v := &tiup.PublishRequestTiUP{}
+	v.From = unmarshalFromRequestBodyToTiupFrom(body.From)
+	v.Publish = unmarshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(body.Publish)
 
 	return v
 }
@@ -59,6 +103,92 @@ func ValidateRequestToPublishRequestBody(body *RequestToPublishRequestBody) (err
 	}
 	if body.TiupMirror == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("tiup-mirror", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishSingleRequestBody runs the validations defined on
+// Request-To-Publish-SingleRequestBody
+func ValidateRequestToPublishSingleRequestBody(body *RequestToPublishSingleRequestBody) (err error) {
+	if body.From == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))
+	}
+	if body.Publish == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("publish", "body"))
+	}
+	if body.From != nil {
+		if err2 := ValidateFromRequestBody(body.From); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	if body.Publish != nil {
+		if err2 := ValidatePublishInfoTiUPRequestBody(body.Publish); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// ValidateFromRequestBody runs the validations defined on FromRequestBody
+func ValidateFromRequestBody(body *FromRequestBody) (err error) {
+	if body.Type == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("type", "body"))
+	}
+	if body.Type != nil {
+		if !(*body.Type == "oci" || *body.Type == "http") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.type", *body.Type, []any{"oci", "http"}))
+		}
+	}
+	if body.Oci != nil {
+		if err2 := ValidateFromOciRequestBody(body.Oci); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	if body.HTTP != nil {
+		if err2 := ValidateFromHTTPRequestBody(body.HTTP); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// ValidateFromOciRequestBody runs the validations defined on FromOciRequestBody
+func ValidateFromOciRequestBody(body *FromOciRequestBody) (err error) {
+	if body.Repo == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
+	}
+	if body.Tag == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tag", "body"))
+	}
+	if body.File == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("file", "body"))
+	}
+	return
+}
+
+// ValidateFromHTTPRequestBody runs the validations defined on
+// FromHTTPRequestBody
+func ValidateFromHTTPRequestBody(body *FromHTTPRequestBody) (err error) {
+	if body.URL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
+	}
+	return
+}
+
+// ValidatePublishInfoTiUPRequestBody runs the validations defined on
+// PublishInfoTiUPRequestBody
+func ValidatePublishInfoTiUPRequestBody(body *PublishInfoTiUPRequestBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Os == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("os", "body"))
+	}
+	if body.Arch == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("arch", "body"))
+	}
+	if body.Version == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("version", "body"))
 	}
 	return
 }

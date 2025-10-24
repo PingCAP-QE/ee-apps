@@ -25,7 +25,7 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `tiup (request-to-publish|query-publishing-status|reset-rate-limit)
+	return `tiup (request-to-publish|request-to-publish-single|query-publishing-status|reset-rate-limit)
 fileserver (request-to-publish|query-publishing-status)
 image (request-to-copy|query-copying-status)
 `
@@ -34,17 +34,16 @@ image (request-to-copy|query-copying-status)
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` tiup request-to-publish --body '{
-      "artifact_url": "Consequatur ea eum saepe.",
-      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
-      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
-      "version": "Omnis dolorem eveniet fugit nemo."
+      "artifact_url": "https://example.com/artifact.tar.gz",
+      "tiup-mirror": "Optio et aliquam ut laborum nulla.",
+      "version": "v1.0.0"
    }'` + "\n" +
 		os.Args[0] + ` fileserver request-to-publish --body '{
-      "artifact_url": "Tenetur mollitia consequatur perferendis."
+      "artifact_url": "Et molestiae quaerat numquam tenetur."
    }'` + "\n" +
 		os.Args[0] + ` image request-to-copy --body '{
-      "destination": "Quia sed sunt vero.",
-      "source": "Iusto ut et deserunt nisi voluptates."
+      "destination": "Odit quae molestiae quis.",
+      "source": "Et fuga accusamus."
    }'` + "\n" +
 		""
 }
@@ -63,6 +62,9 @@ func ParseEndpoint(
 
 		tiupRequestToPublishFlags    = flag.NewFlagSet("request-to-publish", flag.ExitOnError)
 		tiupRequestToPublishBodyFlag = tiupRequestToPublishFlags.String("body", "REQUIRED", "")
+
+		tiupRequestToPublishSingleFlags    = flag.NewFlagSet("request-to-publish-single", flag.ExitOnError)
+		tiupRequestToPublishSingleBodyFlag = tiupRequestToPublishSingleFlags.String("body", "REQUIRED", "")
 
 		tiupQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
 		tiupQueryPublishingStatusRequestIDFlag = tiupQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
@@ -87,6 +89,7 @@ func ParseEndpoint(
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
+	tiupRequestToPublishSingleFlags.Usage = tiupRequestToPublishSingleUsage
 	tiupQueryPublishingStatusFlags.Usage = tiupQueryPublishingStatusUsage
 	tiupResetRateLimitFlags.Usage = tiupResetRateLimitUsage
 
@@ -138,6 +141,9 @@ func ParseEndpoint(
 			switch epn {
 			case "request-to-publish":
 				epf = tiupRequestToPublishFlags
+
+			case "request-to-publish-single":
+				epf = tiupRequestToPublishSingleFlags
 
 			case "query-publishing-status":
 				epf = tiupQueryPublishingStatusFlags
@@ -193,6 +199,9 @@ func ParseEndpoint(
 			case "request-to-publish":
 				endpoint = c.RequestToPublish()
 				data, err = tiupc.BuildRequestToPublishPayload(*tiupRequestToPublishBodyFlag)
+			case "request-to-publish-single":
+				endpoint = c.RequestToPublishSingle()
+				data, err = tiupc.BuildRequestToPublishSinglePayload(*tiupRequestToPublishSingleBodyFlag)
 			case "query-publishing-status":
 				endpoint = c.QueryPublishingStatus()
 				data, err = tiupc.BuildQueryPublishingStatusPayload(*tiupQueryPublishingStatusRequestIDFlag)
@@ -236,6 +245,7 @@ Usage:
 
 COMMAND:
     request-to-publish: RequestToPublish implements request-to-publish.
+    request-to-publish-single: Request to publish a single TiUP package from a binary tarball
     query-publishing-status: QueryPublishingStatus implements query-publishing-status.
     reset-rate-limit: ResetRateLimit implements reset-rate-limit.
 
@@ -247,14 +257,40 @@ func tiupRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] tiup request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s tiup request-to-publish --body '{
-      "artifact_url": "Consequatur ea eum saepe.",
-      "request_id": "Voluptates voluptatem accusamus nisi omnis quia molestias.",
-      "tiup-mirror": "Voluptas dolore eos eveniet vero voluptas.",
-      "version": "Omnis dolorem eveniet fugit nemo."
+      "artifact_url": "https://example.com/artifact.tar.gz",
+      "tiup-mirror": "Optio et aliquam ut laborum nulla.",
+      "version": "v1.0.0"
+   }'
+`, os.Args[0])
+}
+
+func tiupRequestToPublishSingleUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] tiup request-to-publish-single -body JSON
+
+Request to publish a single TiUP package from a binary tarball
+    -body JSON: 
+
+Example:
+    %[1]s tiup request-to-publish-single --body '{
+      "from": {
+         "http": {
+            "url": "https://example.com/tidb-v7.5.0-linux-amd64.tar.gz"
+         },
+         "type": "http"
+      },
+      "publish": {
+         "arch": "amd64",
+         "description": "TiDB GA",
+         "entry_point": "bin/tidb-server",
+         "name": "tidb",
+         "os": "linux",
+         "standalone": false,
+         "version": "v7.5.0"
+      }
    }'
 `, os.Args[0])
 }
@@ -266,7 +302,7 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s tiup query-publishing-status --request-id "Consectetur dolor magnam aut et labore."
+    %[1]s tiup query-publishing-status --request-id "Laborum sit eligendi dignissimos."
 `, os.Args[0])
 }
 
@@ -283,7 +319,7 @@ Example:
 // fileserverUsage displays the usage of the fileserver command and its
 // subcommands.
 func fileserverUsage() {
-	fmt.Fprintf(os.Stderr, `Publisher service for static file server
+	fmt.Fprintf(os.Stderr, `Publisher service for static file server 
 Usage:
     %[1]s [globalflags] fileserver COMMAND [flags]
 
@@ -299,11 +335,11 @@ func fileserverRequestToPublishUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] fileserver request-to-publish -body JSON
 
 RequestToPublish implements request-to-publish.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s fileserver request-to-publish --body '{
-      "artifact_url": "Tenetur mollitia consequatur perferendis."
+      "artifact_url": "Et molestiae quaerat numquam tenetur."
    }'
 `, os.Args[0])
 }
@@ -315,7 +351,7 @@ QueryPublishingStatus implements query-publishing-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s fileserver query-publishing-status --request-id "Adipisci pariatur maiores neque enim perferendis."
+    %[1]s fileserver query-publishing-status --request-id "Vel asperiores."
 `, os.Args[0])
 }
 
@@ -337,12 +373,12 @@ func imageRequestToCopyUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] image request-to-copy -body JSON
 
 RequestToCopy implements request-to-copy.
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s image request-to-copy --body '{
-      "destination": "Quia sed sunt vero.",
-      "source": "Iusto ut et deserunt nisi voluptates."
+      "destination": "Odit quae molestiae quis.",
+      "source": "Et fuga accusamus."
    }'
 `, os.Args[0])
 }
@@ -354,6 +390,6 @@ QueryCopyingStatus implements query-copying-status.
     -request-id STRING: request track id
 
 Example:
-    %[1]s image query-copying-status --request-id "b950a88c-f01c-4fe7-bd5e-218a50d70137"
+    %[1]s image query-copying-status --request-id "18646abf-4fe6-47c0-adf2-e4f9afc80af2"
 `, os.Args[0])
 }

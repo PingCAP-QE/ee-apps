@@ -10,6 +10,7 @@ package client
 
 import (
 	tiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // RequestToPublishRequestBody is the type of the "tiup" service
@@ -24,8 +25,43 @@ type RequestToPublishRequestBody struct {
 	// Staging is http://tiup.pingcap.net:8988, product is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror string `form:"tiup-mirror" json:"tiup-mirror" xml:"tiup-mirror"`
-	// The request id
-	RequestID *string `form:"request_id,omitempty" json:"request_id,omitempty" xml:"request_id,omitempty"`
+}
+
+// RequestToPublishSingleRequestBody is the type of the "tiup" service
+// "request-to-publish-single" endpoint HTTP request body.
+type RequestToPublishSingleRequestBody struct {
+	From    *FromRequestBody            `json:"from,omitempty"`
+	Publish *PublishInfoTiUPRequestBody `json:"publish,omitempty"`
+}
+
+// FromRequestBody is used to define fields on request body types.
+type FromRequestBody struct {
+	Type string               `json:"type,omitempty"`
+	Oci  *FromOciRequestBody  `json:"oci,omitempty"`
+	HTTP *FromHTTPRequestBody `json:"http,omitempty"`
+}
+
+// FromOciRequestBody is used to define fields on request body types.
+type FromOciRequestBody struct {
+	Repo string `json:"repo,omitempty"`
+	Tag  string `json:"tag,omitempty"`
+	File string `json:"file,omitempty"`
+}
+
+// FromHTTPRequestBody is used to define fields on request body types.
+type FromHTTPRequestBody struct {
+	URL string `json:"url,omitempty"`
+}
+
+// PublishInfoTiUPRequestBody is used to define fields on request body types.
+type PublishInfoTiUPRequestBody struct {
+	Name        string  `json:"name,omitempty"`
+	Os          string  `json:"os,omitempty"`
+	Arch        string  `json:"arch,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	Description *string `json:"description,omitempty"`
+	EntryPoint  *string `json:"entry_point,omitempty"`
+	Standalone  *bool   `json:"standalone,omitempty"`
 }
 
 // NewRequestToPublishRequestBody builds the HTTP request body from the payload
@@ -35,7 +71,27 @@ func NewRequestToPublishRequestBody(p *tiup.RequestToPublishPayload) *RequestToP
 		ArtifactURL: p.ArtifactURL,
 		Version:     p.Version,
 		TiupMirror:  p.TiupMirror,
-		RequestID:   p.RequestID,
 	}
 	return body
+}
+
+// NewRequestToPublishSingleRequestBody builds the HTTP request body from the
+// payload of the "request-to-publish-single" endpoint of the "tiup" service.
+func NewRequestToPublishSingleRequestBody(p *tiup.PublishRequestTiUP) *RequestToPublishSingleRequestBody {
+	body := &RequestToPublishSingleRequestBody{}
+	if p.From != nil {
+		body.From = marshalTiupFromToFromRequestBody(p.From)
+	}
+	if p.Publish != nil {
+		body.Publish = marshalTiupPublishInfoTiUPToPublishInfoTiUPRequestBody(p.Publish)
+	}
+	return body
+}
+
+// ValidateFromRequestBody runs the validations defined on FromRequestBody
+func ValidateFromRequestBody(body *FromRequestBody) (err error) {
+	if !(body.Type == "oci" || body.Type == "http") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.type", body.Type, []any{"oci", "http"}))
+	}
+	return
 }

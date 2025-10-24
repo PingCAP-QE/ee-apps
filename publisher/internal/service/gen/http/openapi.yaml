@@ -38,7 +38,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Suscipit rem sunt eveniet reprehenderit ut.
+                            example: Dolorem odio.
             schemes:
                 - http
     /fs/publish-request/{request_id}:
@@ -137,7 +137,31 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Quo at optio rerum laboriosam.
+                            example: Consequatur quisquam asperiores rerum est.
+            schemes:
+                - http
+    /tiup/publish-request-single:
+        post:
+            tags:
+                - tiup
+            summary: request-to-publish-single tiup
+            description: Request to publish a single TiUP package from a binary tarball
+            operationId: tiup#request-to-publish-single
+            parameters:
+                - name: Request-To-Publish-SingleRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PublishRequestTiUP'
+                    required:
+                        - from
+                        - publish
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                        format: uuid
             schemes:
                 - http
     /tiup/publish-request/{request_id}:
@@ -184,11 +208,65 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Fugit qui fuga omnis.
+                example: Voluptatem est delectus deserunt.
         example:
-            artifact_url: Optio qui sequi atque et.
+            artifact_url: Atque modi ipsum sunt quis veritatis ut.
         required:
             - artifact_url
+    From:
+        title: From
+        type: object
+        properties:
+            http:
+                $ref: '#/definitions/FromHTTP'
+            oci:
+                $ref: '#/definitions/FromOci'
+            type:
+                type: string
+                example: oci
+                enum:
+                    - oci
+                    - http
+        example:
+            http:
+                url: https://example.com/tidb-v7.5.0-linux-amd64.tar.gz
+            type: http
+        required:
+            - type
+    FromHTTP:
+        title: FromHTTP
+        type: object
+        properties:
+            url:
+                type: string
+                example: https://example.com/tidb-v7.5.0-linux-amd64.tar.gz
+        description: Source from a direct HTTP URL
+        example:
+            url: https://example.com/tidb-v7.5.0-linux-amd64.tar.gz
+        required:
+            - url
+    FromOci:
+        title: FromOci
+        type: object
+        properties:
+            file:
+                type: string
+                example: tidb-v7.5.0-linux-amd64.tar.gz
+            repo:
+                type: string
+                example: hub.pingcap.net/dev/ci/tidb
+            tag:
+                type: string
+                example: v7.5.0_linux_amd64
+        description: Source from an OCI artifact
+        example:
+            file: tidb-v7.5.0-linux-amd64.tar.gz
+            repo: hub.pingcap.net/dev/ci/tidb
+            tag: v7.5.0_linux_amd64
+        required:
+            - repo
+            - tag
+            - file
     ImageRequestToCopyRequestBody:
         title: ImageRequestToCopyRequestBody
         type: object
@@ -196,17 +274,79 @@ definitions:
             destination:
                 type: string
                 description: destination image url
-                example: Ipsam distinctio sit nostrum.
+                example: Eveniet est fugit voluptas aperiam facere.
             source:
                 type: string
                 description: source image url
-                example: Architecto cupiditate in aut praesentium delectus eum.
+                example: Quos consectetur facere debitis eligendi iusto.
         example:
-            destination: Distinctio et ut beatae dolore.
-            source: Non animi ipsum unde voluptatem voluptas.
+            destination: Inventore saepe magnam neque ut.
+            source: Vitae consequatur.
         required:
             - source
             - destination
+    PublishInfoTiUP:
+        title: PublishInfoTiUP
+        type: object
+        properties:
+            arch:
+                type: string
+                example: amd64
+            description:
+                type: string
+                example: TiDB GA
+            entry_point:
+                type: string
+                example: bin/tidb-server
+            name:
+                type: string
+                example: tidb
+            os:
+                type: string
+                example: linux
+            standalone:
+                type: boolean
+                example: false
+            version:
+                type: string
+                example: v7.5.0
+        example:
+            arch: amd64
+            description: TiDB GA
+            entry_point: bin/tidb-server
+            name: tidb
+            os: linux
+            standalone: false
+            version: v7.5.0
+        required:
+            - name
+            - os
+            - arch
+            - version
+    PublishRequestTiUP:
+        title: PublishRequestTiUP
+        type: object
+        properties:
+            from:
+                $ref: '#/definitions/From'
+            publish:
+                $ref: '#/definitions/PublishInfoTiUP'
+        example:
+            from:
+                http:
+                    url: https://example.com/tidb-v7.5.0-linux-amd64.tar.gz
+                type: http
+            publish:
+                arch: amd64
+                description: TiDB GA
+                entry_point: bin/tidb-server
+                name: tidb
+                os: linux
+                standalone: false
+                version: v7.5.0
+        required:
+            - from
+            - publish
     TiupRequestToPublishRequestBody:
         title: TiupRequestToPublishRequestBody
         type: object
@@ -214,25 +354,20 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Sed id.
-            request_id:
-                type: string
-                description: The request id
-                example: Dolorem consectetur consectetur non.
+                example: https://example.com/artifact.tar.gz
             tiup-mirror:
                 type: string
                 description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                 default: http://tiup.pingcap.net:8988
-                example: Dolor recusandae et soluta veritatis.
+                example: Et earum nemo ut autem molestias aut.
             version:
                 type: string
                 description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
-                example: Et et ut ut et.
+                example: v1.0.0
         example:
-            artifact_url: Quibusdam consequatur nostrum nobis.
-            request_id: Tempora voluptas numquam quisquam.
-            tiup-mirror: Sed molestiae.
-            version: Molestiae veritatis delectus nesciunt beatae distinctio explicabo.
+            artifact_url: https://example.com/artifact.tar.gz
+            tiup-mirror: Omnis quasi repudiandae et omnis nesciunt.
+            version: v1.0.0
         required:
             - artifact_url
             - tiup-mirror

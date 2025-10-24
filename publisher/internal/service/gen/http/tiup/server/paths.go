@@ -17,6 +17,11 @@ func RequestToPublishTiupPath() string {
 	return "/tiup/publish-request"
 }
 
+// RequestToPublishSingleTiupPath returns the URL path to the tiup service request-to-publish-single HTTP endpoint.
+func RequestToPublishSingleTiupPath() string {
+	return "/tiup/publish-request-single"
+}
+
 // QueryPublishingStatusTiupPath returns the URL path to the tiup service query-publishing-status HTTP endpoint.
 func QueryPublishingStatusTiupPath(requestID string) string {
 	return fmt.Sprintf("/tiup/publish-request/%v", requestID)

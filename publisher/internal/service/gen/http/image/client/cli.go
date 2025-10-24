@@ -24,7 +24,7 @@ func BuildRequestToCopyPayload(imageRequestToCopyBody string) (*image.RequestToC
 	{
 		err = json.Unmarshal([]byte(imageRequestToCopyBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Quia sed sunt vero.\",\n      \"source\": \"Iusto ut et deserunt nisi voluptates.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Odit quae molestiae quis.\",\n      \"source\": \"Et fuga accusamus.\"\n   }'")
 		}
 	}
 	v := &image.RequestToCopyPayload{

@@ -16,6 +16,8 @@ import (
 type Service interface {
 	// RequestToPublish implements request-to-publish.
 	RequestToPublish(context.Context, *RequestToPublishPayload) (res []string, err error)
+	// Request to publish a single TiUP package from a binary tarball
+	RequestToPublishSingle(context.Context, *PublishRequestTiUP) (res string, err error)
 	// QueryPublishingStatus implements query-publishing-status.
 	QueryPublishingStatus(context.Context, *QueryPublishingStatusPayload) (res string, err error)
 	// ResetRateLimit implements reset-rate-limit.
@@ -36,7 +38,42 @@ const ServiceName = "tiup"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [3]string{"request-to-publish", "query-publishing-status", "reset-rate-limit"}
+var MethodNames = [4]string{"request-to-publish", "request-to-publish-single", "query-publishing-status", "reset-rate-limit"}
+
+type From struct {
+	Type string    `json:"type,omitempty"`
+	Oci  *FromOci  `json:"oci,omitempty"`
+	HTTP *FromHTTP `json:"http,omitempty"`
+}
+
+// Source from a direct HTTP URL
+type FromHTTP struct {
+	URL string `json:"url,omitempty"`
+}
+
+// Source from an OCI artifact
+type FromOci struct {
+	Repo string `json:"repo,omitempty"`
+	Tag  string `json:"tag,omitempty"`
+	File string `json:"file,omitempty"`
+}
+
+type PublishInfoTiUP struct {
+	Name        string  `json:"name,omitempty"`
+	Os          string  `json:"os,omitempty"`
+	Arch        string  `json:"arch,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	Description *string `json:"description,omitempty"`
+	EntryPoint  *string `json:"entry_point,omitempty"`
+	Standalone  *bool   `json:"standalone,omitempty"`
+}
+
+// PublishRequestTiUP is the payload type of the tiup service
+// request-to-publish-single method.
+type PublishRequestTiUP struct {
+	From    *From            `json:"from,omitempty"`
+	Publish *PublishInfoTiUP `json:"publish,omitempty"`
+}
 
 // QueryPublishingStatusPayload is the payload type of the tiup service
 // query-publishing-status method.
@@ -57,6 +94,4 @@ type RequestToPublishPayload struct {
 	// Staging is http://tiup.pingcap.net:8988, product is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror string
-	// The request id
-	RequestID *string
 }

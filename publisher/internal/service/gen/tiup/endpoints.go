@@ -16,23 +16,26 @@ import (
 
 // Endpoints wraps the "tiup" service endpoints.
 type Endpoints struct {
-	RequestToPublish      goa.Endpoint
-	QueryPublishingStatus goa.Endpoint
-	ResetRateLimit        goa.Endpoint
+	RequestToPublish       goa.Endpoint
+	RequestToPublishSingle goa.Endpoint
+	QueryPublishingStatus  goa.Endpoint
+	ResetRateLimit         goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "tiup" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		RequestToPublish:      NewRequestToPublishEndpoint(s),
-		QueryPublishingStatus: NewQueryPublishingStatusEndpoint(s),
-		ResetRateLimit:        NewResetRateLimitEndpoint(s),
+		RequestToPublish:       NewRequestToPublishEndpoint(s),
+		RequestToPublishSingle: NewRequestToPublishSingleEndpoint(s),
+		QueryPublishingStatus:  NewQueryPublishingStatusEndpoint(s),
+		ResetRateLimit:         NewResetRateLimitEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "tiup" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.RequestToPublish = m(e.RequestToPublish)
+	e.RequestToPublishSingle = m(e.RequestToPublishSingle)
 	e.QueryPublishingStatus = m(e.QueryPublishingStatus)
 	e.ResetRateLimit = m(e.ResetRateLimit)
 }
@@ -43,6 +46,15 @@ func NewRequestToPublishEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*RequestToPublishPayload)
 		return s.RequestToPublish(ctx, p)
+	}
+}
+
+// NewRequestToPublishSingleEndpoint returns an endpoint function that calls
+// the method "request-to-publish-single" of service "tiup".
+func NewRequestToPublishSingleEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*PublishRequestTiUP)
+		return s.RequestToPublishSingle(ctx, p)
 	}
 }
 

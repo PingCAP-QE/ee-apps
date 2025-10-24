@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	gentiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
@@ -90,7 +91,7 @@ func calculateSHA256(filePath string) (string, error) {
 //	    3.2.3 set the publish info arch with value of "net.pingcap.tibuild.architecture" key in top config.
 //	    3.2.4 set the publish info name with prefix part of the value of "file" key in the element, right trim from the "-vX.Y.Z" part.
 //	    3.2.5 set the publish info description, entrypoint with value of same key in the element.
-func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) {
+func analyzeTiupFromOciArtifact(repo, tag string) ([]gentiup.PublishRequestTiUP, error) {
 	// 1. Fetch the artifact config
 	config, ociDigest, err := share.FetchOCIArtifactConfig(repo, tag)
 	if err != nil {
@@ -104,20 +105,20 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) 
 	}
 
 	// Get common information
-	os := config["net.pingcap.tibuild.os"].(string)
-	arch := config["net.pingcap.tibuild.architecture"].(string)
+	osVal := config["net.pingcap.tibuild.os"].(string)
+	archVal := config["net.pingcap.tibuild.architecture"].(string)
 	version := transformTiupVer(config["org.opencontainers.image.version"].(string), tag)
 
 	// 3. Loop through TiUP packages
-	var publishRequests []PublishRequestTiUP
+	var publishRequests []gentiup.PublishRequestTiUP
 	for _, pkg := range tiupPackages {
 		pkgMap := pkg.(map[string]any)
 		file := pkgMap["file"].(string)
 
 		// 3.1 Set the publish 'from' part
-		from := share.From{
-			Type: share.FromTypeOci,
-			Oci: &share.FromOci{
+		from := &gentiup.From{
+			Type: "oci",
+			Oci: &gentiup.FromOci{
 				Repo: repo,
 				File: file,
 				// use digest to avoid the problem of new override on the tag.
@@ -126,15 +127,17 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) 
 		}
 
 		// 3.2 Set the publish info
-		publishInfo := PublishInfoTiUP{
+		desc := pkgMap["description"].(string)
+		entry := pkgMap["entrypoint"].(string)
+		publishInfo := &gentiup.PublishInfoTiUP{
 			Name:        tiupPkgName(file),
 			Version:     version,
-			OS:          os,
-			Arch:        arch,
-			Description: pkgMap["description"].(string),
-			EntryPoint:  pkgMap["entrypoint"].(string),
+			Os:          osVal,
+			Arch:        archVal,
+			Description: &desc,
+			EntryPoint:  &entry,
 		}
-		publishRequests = append(publishRequests, PublishRequestTiUP{
+		publishRequests = append(publishRequests, gentiup.PublishRequestTiUP{
 			From:    from,
 			Publish: publishInfo,
 		})
@@ -143,7 +146,7 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]PublishRequestTiUP, error) 
 	return publishRequests, nil
 }
 
-func analyzeTiupFromOciArtifactUrl(url string) ([]PublishRequestTiUP, error) {
+func analyzeTiupFromOciArtifactUrl(url string) ([]gentiup.PublishRequestTiUP, error) {
 	repo, tag, err := share.SplitRepoAndTag(url)
 	if err != nil {
 		return nil, err

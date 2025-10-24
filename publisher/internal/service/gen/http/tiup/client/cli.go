@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	tiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildRequestToPublishPayload builds the payload for the tiup
@@ -23,14 +24,49 @@ func BuildRequestToPublishPayload(tiupRequestToPublishBody string) (*tiup.Reques
 	{
 		err = json.Unmarshal([]byte(tiupRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Consequatur ea eum saepe.\",\n      \"request_id\": \"Voluptates voluptatem accusamus nisi omnis quia molestias.\",\n      \"tiup-mirror\": \"Voluptas dolore eos eveniet vero voluptas.\",\n      \"version\": \"Omnis dolorem eveniet fugit nemo.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"https://example.com/artifact.tar.gz\",\n      \"tiup-mirror\": \"Optio et aliquam ut laborum nulla.\",\n      \"version\": \"v1.0.0\"\n   }'")
 		}
 	}
 	v := &tiup.RequestToPublishPayload{
 		ArtifactURL: body.ArtifactURL,
 		Version:     body.Version,
 		TiupMirror:  body.TiupMirror,
-		RequestID:   body.RequestID,
+	}
+
+	return v, nil
+}
+
+// BuildRequestToPublishSinglePayload builds the payload for the tiup
+// request-to-publish-single endpoint from CLI flags.
+func BuildRequestToPublishSinglePayload(tiupRequestToPublishSingleBody string) (*tiup.PublishRequestTiUP, error) {
+	var err error
+	var body RequestToPublishSingleRequestBody
+	{
+		err = json.Unmarshal([]byte(tiupRequestToPublishSingleBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"https://example.com/tidb-v7.5.0-linux-amd64.tar.gz\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"amd64\",\n         \"description\": \"TiDB GA\",\n         \"entry_point\": \"bin/tidb-server\",\n         \"name\": \"tidb\",\n         \"os\": \"linux\",\n         \"standalone\": false,\n         \"version\": \"v7.5.0\"\n      }\n   }'")
+		}
+		if body.From == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))
+		}
+		if body.Publish == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("publish", "body"))
+		}
+		if body.From != nil {
+			if err2 := ValidateFromRequestBody(body.From); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &tiup.PublishRequestTiUP{}
+	if body.From != nil {
+		v.From = marshalFromRequestBodyToTiupFrom(body.From)
+	}
+	if body.Publish != nil {
+		v.Publish = marshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(body.Publish)
 	}
 
 	return v, nil
