@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 
+	tiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -59,6 +60,47 @@ func DecodeRequestToPublishRequest(mux goahttp.Muxer, decoder func(*http.Request
 	}
 }
 
+// EncodeRequestToPublishSingleResponse returns an encoder for responses
+// returned by the tiup request-to-publish-single endpoint.
+func EncodeRequestToPublishSingleResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeRequestToPublishSingleRequest returns a decoder for requests sent to
+// the tiup request-to-publish-single endpoint.
+func DecodeRequestToPublishSingleRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			body RequestToPublishSingleRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if err == io.EOF {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateRequestToPublishSingleRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+		payload := NewRequestToPublishSinglePublishRequestTiUP(&body)
+
+		return payload, nil
+	}
+}
+
 // EncodeQueryPublishingStatusResponse returns an encoder for responses
 // returned by the tiup query-publishing-status endpoint.
 func EncodeQueryPublishingStatusResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
@@ -94,4 +136,64 @@ func EncodeResetRateLimitResponse(encoder func(context.Context, http.ResponseWri
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
+}
+
+// unmarshalFromRequestBodyToTiupFrom builds a value of type *tiup.From from a
+// value of type *FromRequestBody.
+func unmarshalFromRequestBodyToTiupFrom(v *FromRequestBody) *tiup.From {
+	res := &tiup.From{
+		Type: *v.Type,
+	}
+	if v.Oci != nil {
+		res.Oci = unmarshalFromOciRequestBodyToTiupFromOci(v.Oci)
+	}
+	if v.HTTP != nil {
+		res.HTTP = unmarshalFromHTTPRequestBodyToTiupFromHTTP(v.HTTP)
+	}
+
+	return res
+}
+
+// unmarshalFromOciRequestBodyToTiupFromOci builds a value of type
+// *tiup.FromOci from a value of type *FromOciRequestBody.
+func unmarshalFromOciRequestBodyToTiupFromOci(v *FromOciRequestBody) *tiup.FromOci {
+	if v == nil {
+		return nil
+	}
+	res := &tiup.FromOci{
+		Repo: *v.Repo,
+		Tag:  *v.Tag,
+		File: *v.File,
+	}
+
+	return res
+}
+
+// unmarshalFromHTTPRequestBodyToTiupFromHTTP builds a value of type
+// *tiup.FromHTTP from a value of type *FromHTTPRequestBody.
+func unmarshalFromHTTPRequestBodyToTiupFromHTTP(v *FromHTTPRequestBody) *tiup.FromHTTP {
+	if v == nil {
+		return nil
+	}
+	res := &tiup.FromHTTP{
+		URL: *v.URL,
+	}
+
+	return res
+}
+
+// unmarshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP builds a value of
+// type *tiup.PublishInfoTiUP from a value of type *PublishInfoTiUPRequestBody.
+func unmarshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(v *PublishInfoTiUPRequestBody) *tiup.PublishInfoTiUP {
+	res := &tiup.PublishInfoTiUP{
+		Name:        *v.Name,
+		Os:          *v.Os,
+		Arch:        *v.Arch,
+		Version:     *v.Version,
+		Description: v.Description,
+		EntryPoint:  v.EntryPoint,
+		Standalone:  v.Standalone,
+	}
+
+	return res
 }

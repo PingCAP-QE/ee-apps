@@ -16,17 +16,19 @@ import (
 
 // Client is the "tiup" service client.
 type Client struct {
-	RequestToPublishEndpoint      goa.Endpoint
-	QueryPublishingStatusEndpoint goa.Endpoint
-	ResetRateLimitEndpoint        goa.Endpoint
+	RequestToPublishEndpoint       goa.Endpoint
+	RequestToPublishSingleEndpoint goa.Endpoint
+	QueryPublishingStatusEndpoint  goa.Endpoint
+	ResetRateLimitEndpoint         goa.Endpoint
 }
 
 // NewClient initializes a "tiup" service client given the endpoints.
-func NewClient(requestToPublish, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
+func NewClient(requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
 	return &Client{
-		RequestToPublishEndpoint:      requestToPublish,
-		QueryPublishingStatusEndpoint: queryPublishingStatus,
-		ResetRateLimitEndpoint:        resetRateLimit,
+		RequestToPublishEndpoint:       requestToPublish,
+		RequestToPublishSingleEndpoint: requestToPublishSingle,
+		QueryPublishingStatusEndpoint:  queryPublishingStatus,
+		ResetRateLimitEndpoint:         resetRateLimit,
 	}
 }
 
@@ -39,6 +41,17 @@ func (c *Client) RequestToPublish(ctx context.Context, p *RequestToPublishPayloa
 		return
 	}
 	return ires.([]string), nil
+}
+
+// RequestToPublishSingle calls the "request-to-publish-single" endpoint of the
+// "tiup" service.
+func (c *Client) RequestToPublishSingle(ctx context.Context, p *PublishRequestTiUP) (res string, err error) {
+	var ires any
+	ires, err = c.RequestToPublishSingleEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(string), nil
 }
 
 // QueryPublishingStatus calls the "query-publishing-status" endpoint of the

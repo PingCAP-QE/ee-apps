@@ -23,7 +23,7 @@ func BuildRequestToPublishPayload(fileserverRequestToPublishBody string) (*files
 	{
 		err = json.Unmarshal([]byte(fileserverRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Tenetur mollitia consequatur perferendis.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Et molestiae quaerat numquam tenetur.\"\n   }'")
 		}
 	}
 	v := &fileserver.RequestToPublishPayload{

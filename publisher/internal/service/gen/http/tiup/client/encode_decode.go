@@ -86,6 +86,77 @@ func DecodeRequestToPublishResponse(decoder func(*http.Response) goahttp.Decoder
 	}
 }
 
+// BuildRequestToPublishSingleRequest instantiates a HTTP request object with
+// method and path set to call the "tiup" service "request-to-publish-single"
+// endpoint
+func (c *Client) BuildRequestToPublishSingleRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: RequestToPublishSingleTiupPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("tiup", "request-to-publish-single", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeRequestToPublishSingleRequest returns an encoder for requests sent to
+// the tiup request-to-publish-single server.
+func EncodeRequestToPublishSingleRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*tiup.PublishRequestTiUP)
+		if !ok {
+			return goahttp.ErrInvalidType("tiup", "request-to-publish-single", "*tiup.PublishRequestTiUP", v)
+		}
+		body := NewRequestToPublishSingleRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("tiup", "request-to-publish-single", err)
+		}
+		return nil
+	}
+}
+
+// DecodeRequestToPublishSingleResponse returns a decoder for responses
+// returned by the tiup request-to-publish-single endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+func DecodeRequestToPublishSingleResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("tiup", "request-to-publish-single", err)
+			}
+			err = goa.MergeErrors(err, goa.ValidateFormat("body", body, goa.FormatUUID))
+			if err != nil {
+				return nil, goahttp.ErrValidationError("tiup", "request-to-publish-single", err)
+			}
+			return body, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("tiup", "request-to-publish-single", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // BuildQueryPublishingStatusRequest instantiates a HTTP request object with
 // method and path set to call the "tiup" service "query-publishing-status"
 // endpoint
@@ -193,4 +264,124 @@ func DecodeResetRateLimitResponse(decoder func(*http.Response) goahttp.Decoder, 
 			return nil, goahttp.ErrInvalidResponse("tiup", "reset-rate-limit", resp.StatusCode, string(body))
 		}
 	}
+}
+
+// marshalTiupFromToFromRequestBody builds a value of type *FromRequestBody
+// from a value of type *tiup.From.
+func marshalTiupFromToFromRequestBody(v *tiup.From) *FromRequestBody {
+	res := &FromRequestBody{
+		Type: v.Type,
+	}
+	if v.Oci != nil {
+		res.Oci = marshalTiupFromOciToFromOciRequestBody(v.Oci)
+	}
+	if v.HTTP != nil {
+		res.HTTP = marshalTiupFromHTTPToFromHTTPRequestBody(v.HTTP)
+	}
+
+	return res
+}
+
+// marshalTiupFromOciToFromOciRequestBody builds a value of type
+// *FromOciRequestBody from a value of type *tiup.FromOci.
+func marshalTiupFromOciToFromOciRequestBody(v *tiup.FromOci) *FromOciRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &FromOciRequestBody{
+		Repo: v.Repo,
+		Tag:  v.Tag,
+		File: v.File,
+	}
+
+	return res
+}
+
+// marshalTiupFromHTTPToFromHTTPRequestBody builds a value of type
+// *FromHTTPRequestBody from a value of type *tiup.FromHTTP.
+func marshalTiupFromHTTPToFromHTTPRequestBody(v *tiup.FromHTTP) *FromHTTPRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &FromHTTPRequestBody{
+		URL: v.URL,
+	}
+
+	return res
+}
+
+// marshalTiupPublishInfoTiUPToPublishInfoTiUPRequestBody builds a value of
+// type *PublishInfoTiUPRequestBody from a value of type *tiup.PublishInfoTiUP.
+func marshalTiupPublishInfoTiUPToPublishInfoTiUPRequestBody(v *tiup.PublishInfoTiUP) *PublishInfoTiUPRequestBody {
+	res := &PublishInfoTiUPRequestBody{
+		Name:        v.Name,
+		Os:          v.Os,
+		Arch:        v.Arch,
+		Version:     v.Version,
+		Description: v.Description,
+		EntryPoint:  v.EntryPoint,
+		Standalone:  v.Standalone,
+	}
+
+	return res
+}
+
+// marshalFromRequestBodyToTiupFrom builds a value of type *tiup.From from a
+// value of type *FromRequestBody.
+func marshalFromRequestBodyToTiupFrom(v *FromRequestBody) *tiup.From {
+	res := &tiup.From{
+		Type: v.Type,
+	}
+	if v.Oci != nil {
+		res.Oci = marshalFromOciRequestBodyToTiupFromOci(v.Oci)
+	}
+	if v.HTTP != nil {
+		res.HTTP = marshalFromHTTPRequestBodyToTiupFromHTTP(v.HTTP)
+	}
+
+	return res
+}
+
+// marshalFromOciRequestBodyToTiupFromOci builds a value of type *tiup.FromOci
+// from a value of type *FromOciRequestBody.
+func marshalFromOciRequestBodyToTiupFromOci(v *FromOciRequestBody) *tiup.FromOci {
+	if v == nil {
+		return nil
+	}
+	res := &tiup.FromOci{
+		Repo: v.Repo,
+		Tag:  v.Tag,
+		File: v.File,
+	}
+
+	return res
+}
+
+// marshalFromHTTPRequestBodyToTiupFromHTTP builds a value of type
+// *tiup.FromHTTP from a value of type *FromHTTPRequestBody.
+func marshalFromHTTPRequestBodyToTiupFromHTTP(v *FromHTTPRequestBody) *tiup.FromHTTP {
+	if v == nil {
+		return nil
+	}
+	res := &tiup.FromHTTP{
+		URL: v.URL,
+	}
+
+	return res
+}
+
+// marshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP builds a value of
+// type *tiup.PublishInfoTiUP from a value of type *PublishInfoTiUPRequestBody.
+func marshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(v *PublishInfoTiUPRequestBody) *tiup.PublishInfoTiUP {
+	res := &tiup.PublishInfoTiUP{
+		Name:        v.Name,
+		Os:          v.Os,
+		Arch:        v.Arch,
+		Version:     v.Version,
+		Description: v.Description,
+		EntryPoint:  v.EntryPoint,
+		Standalone:  v.Standalone,
+	}
+
+	return res
 }

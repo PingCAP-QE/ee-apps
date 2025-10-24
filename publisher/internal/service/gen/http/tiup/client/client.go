@@ -22,6 +22,10 @@ type Client struct {
 	// request-to-publish endpoint.
 	RequestToPublishDoer goahttp.Doer
 
+	// RequestToPublishSingle Doer is the HTTP client used to make requests to the
+	// request-to-publish-single endpoint.
+	RequestToPublishSingleDoer goahttp.Doer
+
 	// QueryPublishingStatus Doer is the HTTP client used to make requests to the
 	// query-publishing-status endpoint.
 	QueryPublishingStatusDoer goahttp.Doer
@@ -50,14 +54,15 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		RequestToPublishDoer:      doer,
-		QueryPublishingStatusDoer: doer,
-		ResetRateLimitDoer:        doer,
-		RestoreResponseBody:       restoreBody,
-		scheme:                    scheme,
-		host:                      host,
-		decoder:                   dec,
-		encoder:                   enc,
+		RequestToPublishDoer:       doer,
+		RequestToPublishSingleDoer: doer,
+		QueryPublishingStatusDoer:  doer,
+		ResetRateLimitDoer:         doer,
+		RestoreResponseBody:        restoreBody,
+		scheme:                     scheme,
+		host:                       host,
+		decoder:                    dec,
+		encoder:                    enc,
 	}
 }
 
@@ -80,6 +85,30 @@ func (c *Client) RequestToPublish() goa.Endpoint {
 		resp, err := c.RequestToPublishDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("tiup", "request-to-publish", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// RequestToPublishSingle returns an endpoint that makes HTTP requests to the
+// tiup service request-to-publish-single server.
+func (c *Client) RequestToPublishSingle() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeRequestToPublishSingleRequest(c.encoder)
+		decodeResponse = DecodeRequestToPublishSingleResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildRequestToPublishSingleRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.RequestToPublishSingleDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("tiup", "request-to-publish-single", err)
 		}
 		return decodeResponse(resp)
 	}
