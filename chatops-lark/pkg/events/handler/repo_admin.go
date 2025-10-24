@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
@@ -83,6 +84,21 @@ func parseRepo(repo string) (owner, repoName string, err error) {
 	return owner, repoName, nil
 }
 
+func extractUsernames(collaborators []*github.User) []string {
+	var usernames []string
+	for _, collab := range collaborators {
+		if username := collab.GetLogin(); username != "" {
+			usernames = append(usernames, username)
+		}
+	}
+	return usernames
+}
+
+func getNoAdminsMessage(owner, repo string) string {
+	return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
+		owner, repo)
+}
+
 func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (string, error) {
 	collaborators, resp, err := gc.Repositories.ListCollaborators(ctx, owner, repo, &github.ListCollaboratorsOptions{
 		Affiliation: "all",
@@ -100,28 +116,20 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		orgOwners, err := getOrgOwners(ctx, gc, owner)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to get org owners")
-			return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
-				owner, repo), nil
+			return getNoAdminsMessage(owner, repo), nil
 		}
 		if len(orgOwners) > 0 {
 			return formatAdminsResponse(owner, repo, orgOwners), nil
 		}
-		return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
-			owner, repo), nil
+		return getNoAdminsMessage(owner, repo), nil
 	}
 
 	orgOwners, err := getOrgOwners(ctx, gc, owner)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get org owners")
-		var allAdmins []string
-		for _, collab := range collaborators {
-			if username := collab.GetLogin(); username != "" {
-				allAdmins = append(allAdmins, username)
-			}
-		}
+		allAdmins := extractUsernames(collaborators)
 		if len(allAdmins) == 0 {
-			return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
-				owner, repo), nil
+			return getNoAdminsMessage(owner, repo), nil
 		}
 		return formatAdminsResponse(owner, repo, allAdmins), nil
 	}
@@ -132,25 +140,34 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 	}
 
 	var admins []string
+	var humanAdmins []string
 	for _, collab := range collaborators {
 		username := collab.GetLogin()
 		if username != "" && !ownerMap[username] {
 			admins = append(admins, username)
+			if !isBot(username) {
+				humanAdmins = append(humanAdmins, username)
+			}
 		}
 	}
 
 	//if the result is empty after filtering, return all repository administrators (without filtering).
-	if len(admins) == 0 {
-		var allAdmins []string
-		for _, collab := range collaborators {
-			if username := collab.GetLogin(); username != "" {
-				allAdmins = append(allAdmins, username)
-			}
-		}
+	if len(admins) == 0 || len(humanAdmins) == 0 {
+		allAdmins := extractUsernames(collaborators)
 		return formatAdminsResponse(owner, repo, allAdmins), nil
 	}
 
 	return formatAdminsResponse(owner, repo, admins), nil
+}
+
+func isBot(username string) bool {
+	usernameLower := strings.ToLower(username)
+	botRegex := regexp.MustCompile(`^(.+-)?bot(-.+)?$`)
+	if botRegex.MatchString(usernameLower) {
+		return true
+	}
+
+	return false
 }
 
 func getOrgOwners(ctx context.Context, gc *github.Client, org string) ([]string, error) {
