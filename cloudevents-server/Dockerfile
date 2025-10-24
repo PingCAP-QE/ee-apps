@@ -1,4 +1,4 @@
-FROM golang:1.25.1 AS builder
+FROM golang:1.25.3 AS builder
 COPY . /app
 RUN cd /app && go build -o server ./cmd/server
 
