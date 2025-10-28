@@ -199,7 +199,7 @@ func formatAdminsResponse(owner, repo string, admins []string) string {
 	result.WriteString("\n\n→ Contact any contact whose GitHub ID is in the above list")
 
 	if repoAdminFeatureFlag != "" {
-		result.WriteString(fmt.Sprintf("\n\n⚠️  This is a %s feature. Please report any issues or feedback.", repoAdminFeatureFlag))
+		result.WriteString(fmt.Sprintf("\n\n⚠️  This is a %s feature. Please report any issues or feedback to EE ChatOps bot.", repoAdminFeatureFlag))
 	}
 
 	return result.String()
