@@ -123,14 +123,18 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		ownerMap[ownerName] = true
 	}
 
-	var repoSpecificAdmins []string
 	var repoSpecificHumanAdmins []string
+	var allDirectHumanAdmins []string
 
 	for _, collab := range collaborators {
 		username := collab.GetLogin()
-		if username != "" && !ownerMap[username] {
-			repoSpecificAdmins = append(repoSpecificAdmins, username)
-			if !isBot(username) {
+		if username == "" {
+			continue
+		}
+
+		if !isBot(username) {
+			allDirectHumanAdmins = append(allDirectHumanAdmins, username)
+			if !ownerMap[username] {
 				repoSpecificHumanAdmins = append(repoSpecificHumanAdmins, username)
 			}
 		}
@@ -139,19 +143,6 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 	// 2. return direct repository administrators that not include someone who is also an org owner
 	if len(repoSpecificHumanAdmins) > 0 {
 		return formatAdminsResponse(owner, repo, repoSpecificHumanAdmins), nil
-	}
-
-	var allDirectAdmins []string
-	var allDirectHumanAdmins []string
-
-	for _, collab := range collaborators {
-		username := collab.GetLogin()
-		if username != "" {
-			allDirectAdmins = append(allDirectAdmins, username)
-			if !isBot(username) {
-				allDirectHumanAdmins = append(allDirectHumanAdmins, username)
-			}
-		}
 	}
 
 	// 3. if the direct repository administrators are empty after filtering out the org owner, return the direct repository administrators
