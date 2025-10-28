@@ -32,6 +32,10 @@ Note: This command excludes organization owners and shows repository-specific
 Use '/repo-admins --help' or '/repo-admins -h' to see this message.
 `
 
+const (
+	repoAdminFeatureFlag = "ALPHA"
+)
+
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 	token, ok := ctx.Value(ctxKeyGithubToken).(string)
 	if !ok || token == "" {
@@ -84,24 +88,19 @@ func parseRepo(repo string) (owner, repoName string, err error) {
 	return owner, repoName, nil
 }
 
-func extractUsernames(collaborators []*github.User) []string {
-	var usernames []string
-	for _, collab := range collaborators {
-		if username := collab.GetLogin(); username != "" {
-			usernames = append(usernames, username)
-		}
-	}
-	return usernames
-}
-
 func getNoAdminsMessage(owner, repo string) string {
 	return fmt.Sprintf("No repository administrators found for `%s/%s`.\n\n→ Contact repository owner for write access",
 		owner, repo)
 }
 
 func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (string, error) {
+	orgOwners, err := getOrgOwners(ctx, gc, owner)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get org owners")
+	}
+
 	collaborators, resp, err := gc.Repositories.ListCollaborators(ctx, owner, repo, &github.ListCollaboratorsOptions{
-		Affiliation: "all",
+		Affiliation: "direct", // retrieve only direct collaborators, excluding those with access via the organization.
 		Permission:  "admin",
 	})
 	if err != nil {
@@ -111,27 +110,12 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		return "", fmt.Errorf("failed to get collaborators: %w", err)
 	}
 
-	// if repository administrators is empty, return org owners
+	// 1. if direct repository administrators is empty, return org owners
 	if len(collaborators) == 0 {
-		orgOwners, err := getOrgOwners(ctx, gc, owner)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get org owners")
-			return getNoAdminsMessage(owner, repo), nil
-		}
 		if len(orgOwners) > 0 {
 			return formatAdminsResponse(owner, repo, orgOwners), nil
 		}
 		return getNoAdminsMessage(owner, repo), nil
-	}
-
-	orgOwners, err := getOrgOwners(ctx, gc, owner)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get org owners")
-		allAdmins := extractUsernames(collaborators)
-		if len(allAdmins) == 0 {
-			return getNoAdminsMessage(owner, repo), nil
-		}
-		return formatAdminsResponse(owner, repo, allAdmins), nil
 	}
 
 	ownerMap := make(map[string]bool, len(orgOwners))
@@ -139,25 +123,39 @@ func getOrgAdmins(ctx context.Context, gc *github.Client, owner, repo string) (s
 		ownerMap[ownerName] = true
 	}
 
-	var admins []string
-	var humanAdmins []string
+	var repoSpecificHumanAdmins []string
+	var allDirectHumanAdmins []string
+
 	for _, collab := range collaborators {
 		username := collab.GetLogin()
-		if username != "" && !ownerMap[username] {
-			admins = append(admins, username)
-			if !isBot(username) {
-				humanAdmins = append(humanAdmins, username)
+		if username == "" {
+			continue
+		}
+
+		if !isBot(username) {
+			allDirectHumanAdmins = append(allDirectHumanAdmins, username)
+			if !ownerMap[username] {
+				repoSpecificHumanAdmins = append(repoSpecificHumanAdmins, username)
 			}
 		}
 	}
 
-	//if the result is empty after filtering, return all repository administrators (without filtering).
-	if len(admins) == 0 || len(humanAdmins) == 0 {
-		allAdmins := extractUsernames(collaborators)
-		return formatAdminsResponse(owner, repo, allAdmins), nil
+	// 2. return direct repository administrators that not include someone who is also an org owner
+	if len(repoSpecificHumanAdmins) > 0 {
+		return formatAdminsResponse(owner, repo, repoSpecificHumanAdmins), nil
 	}
 
-	return formatAdminsResponse(owner, repo, admins), nil
+	// 3. if the direct repository administrators are empty after filtering out the org owner, return the direct repository administrators
+	if len(allDirectHumanAdmins) > 0 {
+		return formatAdminsResponse(owner, repo, allDirectHumanAdmins), nil
+	}
+
+	// 4. if there are no direct repository administrators or only bot, return the org owners
+	if len(orgOwners) > 0 {
+		return formatAdminsResponse(owner, repo, orgOwners), nil
+	}
+
+	return getNoAdminsMessage(owner, repo), nil
 }
 
 func isBot(username string) bool {
@@ -199,6 +197,11 @@ func formatAdminsResponse(owner, repo string, admins []string) string {
 	}
 
 	result.WriteString("\n\n→ Contact any contact whose GitHub ID is in the above list")
+
+	if repoAdminFeatureFlag != "" {
+		result.WriteString(fmt.Sprintf("\n\n⚠️  This is a %s feature. Please report any issues or feedback to EE ChatOps bot.", repoAdminFeatureFlag))
+	}
+
 	return result.String()
 }
 

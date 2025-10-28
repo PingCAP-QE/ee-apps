@@ -30,8 +30,8 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		affiliation := r.URL.Query().Get("affiliation")
 		permission := r.URL.Query().Get("permission")
 
-		if affiliation != "all" || permission != "admin" {
-			t.Errorf("Expected affiliation=all and permission=admin, got affiliation=%s, permission=%s", affiliation, permission)
+		if affiliation != "direct" || permission != "admin" {
+			t.Errorf("Expected affiliation=direct and permission=admin, got affiliation=%s, permission=%s", affiliation, permission)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
