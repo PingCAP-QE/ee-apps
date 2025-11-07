@@ -238,7 +238,7 @@ func TestParseCommandDevbuildTrigger(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "tikv default use tekton engine when not hotfix",
+			name: "tikv defaults to tekton engine",
 			args: []string{
 				"-product", "tikv",
 				"-version", "v8.5.4",
