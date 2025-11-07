@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -152,6 +153,10 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 		return nil, NewInformationError(devBuildHelpText)
 	}
 
+	if ret.engine == "" {
+		ret.engine = defaultEngineForProduct(ret.product)
+	}
+
 	if err := ret.Verify(); err != nil {
 		return nil, err
 	}
@@ -159,4 +164,12 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	ret.buildEnvs = buildEnv
 
 	return &ret, nil
+}
+
+func defaultEngineForProduct(s string) string {
+	if slices.Contains([]string{"tikv"}, s) {
+		return "tekton"
+	}
+
+	return ""
 }
