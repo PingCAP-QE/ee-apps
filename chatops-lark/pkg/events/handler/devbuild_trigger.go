@@ -166,8 +166,8 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	return &ret, nil
 }
 
-func defaultEngineForProduct(s string) string {
-	if slices.Contains([]string{"tikv"}, s) {
+func defaultEngineForProduct(product string) string {
+	if product == "tikv" {
 		return "tekton"
 	}
 
