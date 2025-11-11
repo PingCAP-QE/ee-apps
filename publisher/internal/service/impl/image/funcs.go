@@ -134,6 +134,9 @@ func pushMultiarchManifest(repo string, newTags, manifests []string, options []c
 		}
 	}
 
-	hash, _ := idx.Digest()
+	hash, err := idx.Digest()
+	if err != nil {
+		return "", fmt.Errorf("calculating index digest: %w", err)
+	}
 	return hash.String(), nil
 }

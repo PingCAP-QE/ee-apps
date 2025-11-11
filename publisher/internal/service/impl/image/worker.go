@@ -20,14 +20,14 @@ import (
 // imageWorker handles async multi-arch image collection requests and publishing requests.
 type imageWorker struct {
 	logger      zerolog.Logger
-	redisClient *redis.Client
+	redisClient redis.Cmdable
 	options     struct {
 		LarkWebhookURL string
 	}
 }
 
 // NewWorker creates a new MultiarchWorker instance.
-func NewWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[string]string) *imageWorker {
+func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) *imageWorker {
 	handler := imageWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -119,6 +119,7 @@ func (s *imageWorker) collectMultiArch(ctx context.Context, p *image.RequestMult
 
 	archTags := listSingleArchTags(repo, pushedTag)
 	if len(archTags) < 2 {
+		s.logger.Info().Str("image", p.ImageURL).Msg("less than 2 arch tags found, skipping multi-arch manifest creation")
 		return nil, nil
 	}
 

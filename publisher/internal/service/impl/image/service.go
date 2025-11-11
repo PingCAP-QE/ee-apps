@@ -2,6 +2,7 @@ package image
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -65,7 +66,6 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 	// wait for the result.
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -81,6 +81,14 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 			if share.IsStateCompleted(state) {
 				if state != share.PublishStateSuccess {
 					return nil, fmt.Errorf("multiarch collect failed, task state: %s", state)
+				}
+				// Fetch the result from Redis
+				resultJSON, err := s.redisClient.Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get result from redis: %w", err)
+				}
+				if err := json.Unmarshal(resultJSON, &result); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 				}
 				return result, nil
 			}
