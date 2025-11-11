@@ -21,3 +21,13 @@ func RequestToCopyImagePath() string {
 func QueryCopyingStatusImagePath(requestID string) string {
 	return fmt.Sprintf("/image/copy/%v", requestID)
 }
+
+// RequestMultiarchCollectImagePath returns the URL path to the image service request-multiarch-collect HTTP endpoint.
+func RequestMultiarchCollectImagePath() string {
+	return "/image/collect-multiarch"
+}
+
+// QueryMultiarchCollectStatusImagePath returns the URL path to the image service query-multiarch-collect-status HTTP endpoint.
+func QueryMultiarchCollectStatusImagePath(requestID string) string {
+	return fmt.Sprintf("/image/collect-multiarch/%v", requestID)
+}

@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 
+	image "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -87,6 +88,80 @@ func DecodeQueryCopyingStatusRequest(mux goahttp.Muxer, decoder func(*http.Reque
 			return nil, err
 		}
 		payload := NewQueryCopyingStatusPayload(requestID)
+
+		return payload, nil
+	}
+}
+
+// EncodeRequestMultiarchCollectResponse returns an encoder for responses
+// returned by the image request-multiarch-collect endpoint.
+func EncodeRequestMultiarchCollectResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*image.RequestMultiarchCollectResult)
+		enc := encoder(ctx, w)
+		body := NewRequestMultiarchCollectResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeRequestMultiarchCollectRequest returns a decoder for requests sent to
+// the image request-multiarch-collect endpoint.
+func DecodeRequestMultiarchCollectRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			body RequestMultiarchCollectRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if err == io.EOF {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateRequestMultiarchCollectRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+		payload := NewRequestMultiarchCollectPayload(&body)
+
+		return payload, nil
+	}
+}
+
+// EncodeQueryMultiarchCollectStatusResponse returns an encoder for responses
+// returned by the image query-multiarch-collect-status endpoint.
+func EncodeQueryMultiarchCollectStatusResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeQueryMultiarchCollectStatusRequest returns a decoder for requests sent
+// to the image query-multiarch-collect-status endpoint.
+func DecodeQueryMultiarchCollectStatusRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			requestID string
+			err       error
+
+			params = mux.Vars(r)
+		)
+		requestID = params["request_id"]
+		err = goa.MergeErrors(err, goa.ValidateFormat("request_id", requestID, goa.FormatUUID))
+		if err != nil {
+			return nil, err
+		}
+		payload := NewQueryMultiarchCollectStatusPayload(requestID)
 
 		return payload, nil
 	}

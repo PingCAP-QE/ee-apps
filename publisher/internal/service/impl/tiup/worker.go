@@ -79,7 +79,7 @@ func (p *tiupWorker) SupportEventTypes() []string {
 	return []string{share.EventTypeTiupPublishRequest}
 }
 
-// Handle for test case run events
+// Handle for tiup publication request events
 func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK

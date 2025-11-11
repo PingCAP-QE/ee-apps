@@ -24,7 +24,7 @@ func BuildRequestToCopyPayload(imageRequestToCopyBody string) (*image.RequestToC
 	{
 		err = json.Unmarshal([]byte(imageRequestToCopyBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Odit quae molestiae quis.\",\n      \"source\": \"Et fuga accusamus.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Sed molestiae.\",\n      \"source\": \"Delectus nesciunt beatae distinctio explicabo.\"\n   }'")
 		}
 	}
 	v := &image.RequestToCopyPayload{
@@ -48,6 +48,56 @@ func BuildQueryCopyingStatusPayload(imageQueryCopyingStatusRequestID string) (*i
 		}
 	}
 	v := &image.QueryCopyingStatusPayload{}
+	v.RequestID = requestID
+
+	return v, nil
+}
+
+// BuildRequestMultiarchCollectPayload builds the payload for the image
+// request-multiarch-collect endpoint from CLI flags.
+func BuildRequestMultiarchCollectPayload(imageRequestMultiarchCollectBody string) (*image.RequestMultiarchCollectPayload, error) {
+	var err error
+	var body RequestMultiarchCollectRequestBody
+	{
+		err = json.Unmarshal([]byte(imageRequestMultiarchCollectBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"async\": true,\n      \"image_url\": \"Doloribus laboriosam.\",\n      \"release_tag_suffix\": \"Aut voluptates quia nostrum odio molestiae ab.\"\n   }'")
+		}
+	}
+	v := &image.RequestMultiarchCollectPayload{
+		ImageURL:         body.ImageURL,
+		ReleaseTagSuffix: body.ReleaseTagSuffix,
+		Async:            body.Async,
+	}
+	{
+		var zero string
+		if v.ReleaseTagSuffix == zero {
+			v.ReleaseTagSuffix = "release"
+		}
+	}
+	{
+		var zero bool
+		if v.Async == zero {
+			v.Async = false
+		}
+	}
+
+	return v, nil
+}
+
+// BuildQueryMultiarchCollectStatusPayload builds the payload for the image
+// query-multiarch-collect-status endpoint from CLI flags.
+func BuildQueryMultiarchCollectStatusPayload(imageQueryMultiarchCollectStatusRequestID string) (*image.QueryMultiarchCollectStatusPayload, error) {
+	var err error
+	var requestID string
+	{
+		requestID = imageQueryMultiarchCollectStatusRequestID
+		err = goa.MergeErrors(err, goa.ValidateFormat("request_id", requestID, goa.FormatUUID))
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &image.QueryMultiarchCollectStatusPayload{}
 	v.RequestID = requestID
 
 	return v, nil

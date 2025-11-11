@@ -31,20 +31,20 @@ func TestParseCommandDevbuildTrigger(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing product flag",
-			args: []string{"-version", "v6.1.0", "-gitRef", "master"}, // missing product
+			name:     "missing product flag",
+			args:     []string{"-version", "v6.1.0", "-gitRef", "master"}, // missing product
 			expected: nil,
 			wantErr:  true,
 		},
 		{
-			name: "missing version flag",
-			args: []string{"-product", "tidb", "-gitRef", "master"}, // missing version
+			name:     "missing version flag",
+			args:     []string{"-product", "tidb", "-gitRef", "master"}, // missing version
 			expected: nil,
 			wantErr:  true,
 		},
 		{
-			name: "missing gitRef flag",
-			args: []string{"-product", "tidb", "-version", "v6.1.0"}, // missing gitRef
+			name:     "missing gitRef flag",
+			args:     []string{"-product", "tidb", "-version", "v6.1.0"}, // missing gitRef
 			expected: nil,
 			wantErr:  true,
 		},
@@ -226,6 +226,31 @@ func TestParseCommandDevbuildTrigger(t *testing.T) {
 				version:    "v6.1.0",
 				gitRef:     "master",
 				edition:    "experiment",
+				platform:   "linux/amd64",
+				buildEnvs:  []string{},
+				pushGCR:    false,
+				hotfix:     false,
+				dryRun:     false,
+				githubRepo: "",
+				features:   "",
+				engine:     "tekton",
+			},
+			wantErr: false,
+		},
+		{
+			name: "tikv default use tekton engine when not hotfix",
+			args: []string{
+				"-product", "tikv",
+				"-version", "v8.5.4",
+				"-gitRef", "master",
+				"-e", "community",
+				"-p", "linux/amd64",
+			},
+			expected: &triggerParams{
+				product:    "tikv",
+				version:    "v8.5.4",
+				gitRef:     "master",
+				edition:    "community",
 				platform:   "linux/amd64",
 				buildEnvs:  []string{},
 				pushGCR:    false,

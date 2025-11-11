@@ -26,6 +26,14 @@ type Client struct {
 	// query-copying-status endpoint.
 	QueryCopyingStatusDoer goahttp.Doer
 
+	// RequestMultiarchCollect Doer is the HTTP client used to make requests to the
+	// request-multiarch-collect endpoint.
+	RequestMultiarchCollectDoer goahttp.Doer
+
+	// QueryMultiarchCollectStatus Doer is the HTTP client used to make requests to
+	// the query-multiarch-collect-status endpoint.
+	QueryMultiarchCollectStatusDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -46,13 +54,15 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		RequestToCopyDoer:      doer,
-		QueryCopyingStatusDoer: doer,
-		RestoreResponseBody:    restoreBody,
-		scheme:                 scheme,
-		host:                   host,
-		decoder:                dec,
-		encoder:                enc,
+		RequestToCopyDoer:               doer,
+		QueryCopyingStatusDoer:          doer,
+		RequestMultiarchCollectDoer:     doer,
+		QueryMultiarchCollectStatusDoer: doer,
+		RestoreResponseBody:             restoreBody,
+		scheme:                          scheme,
+		host:                            host,
+		decoder:                         dec,
+		encoder:                         enc,
 	}
 }
 
@@ -94,6 +104,49 @@ func (c *Client) QueryCopyingStatus() goa.Endpoint {
 		resp, err := c.QueryCopyingStatusDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("image", "query-copying-status", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// RequestMultiarchCollect returns an endpoint that makes HTTP requests to the
+// image service request-multiarch-collect server.
+func (c *Client) RequestMultiarchCollect() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeRequestMultiarchCollectRequest(c.encoder)
+		decodeResponse = DecodeRequestMultiarchCollectResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildRequestMultiarchCollectRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.RequestMultiarchCollectDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("image", "request-multiarch-collect", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// QueryMultiarchCollectStatus returns an endpoint that makes HTTP requests to
+// the image service query-multiarch-collect-status server.
+func (c *Client) QueryMultiarchCollectStatus() goa.Endpoint {
+	var (
+		decodeResponse = DecodeQueryMultiarchCollectStatusResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildQueryMultiarchCollectStatusRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.QueryMultiarchCollectStatusDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("image", "query-multiarch-collect-status", err)
 		}
 		return decodeResponse(resp)
 	}

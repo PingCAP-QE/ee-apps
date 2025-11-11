@@ -256,4 +256,52 @@ var _ = Service("image", func() {
 			Response(StatusOK)
 		})
 	})
+
+	Method("request-multiarch-collect", func() {
+		Payload(func() {
+			Attribute("image_url", String, "The image URL to collect")
+			Attribute("release_tag_suffix", String, func() {
+				Description("Suffix for the release tag")
+				Default("release")
+			})
+			Attribute("async", Boolean, func() {
+				Description("Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.")
+				Default(false)
+			})
+			Required("image_url")
+		})
+		Result(func() {
+			Attribute("async", Boolean, func() {
+				Description("Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.")
+				Default(false)
+			})
+			// If async is true, request_id is required; if false, repo and tags are required.
+			Attribute("repo", String, "Repository of the collected image")
+			Attribute("tags", ArrayOf(String), "Tags of the collected image")
+			Attribute("request_id", String, func() {
+				Description("Request id for async mode (uuidv4 format)")
+				Format(FormatUUID)
+			})
+			Required("async")
+		})
+		HTTP(func() {
+			POST("/collect-multiarch")
+			Response(StatusOK)
+		})
+	})
+	Method("query-multiarch-collect-status", func() {
+		Payload(func() {
+			Attribute("request_id", String, "Request track id", func() {
+				Format(FormatUUID)
+			})
+			Required("request_id")
+		})
+		Result(String, "request state", func() {
+			Enum("queued", "processing", "success", "failed", "canceled")
+		})
+		HTTP(func() {
+			GET("/collect-multiarch/{request_id}")
+			Response(StatusOK)
+		})
+	})
 })
