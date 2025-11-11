@@ -149,7 +149,7 @@ func processRequest[P any, R any](
 	ctx context.Context,
 	event cloudevents.Event,
 	logger zerolog.Logger,
-	redisClient *redis.Client,
+	redisClient redis.Cmdable,
 	processFunc func(context.Context, *P) (R, error),
 ) error {
 	var p P
