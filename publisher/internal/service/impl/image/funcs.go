@@ -19,10 +19,10 @@ func listSingleArchTags(repo, oneArchTag string) []string {
 	// if `oneArchTag` is ends with '_linux_amd64', then another one will end with '_linux_arm64'
 	// if `oneArchTag` is ends with '_linux_arm64', then another one will end with '_linux_amd64'
 	var anotherArchTag string
-	if strings.HasSuffix(oneArchTag, "_linux_amd64") {
-		anotherArchTag = strings.Replace(oneArchTag, "_amd64", "_arm64", 1)
+    if strings.HasSuffix(oneArchTag, "_linux_amd64") {
+		anotherArchTag = strings.TrimSuffix(oneArchTag, "_linux_amd64") + "_linux_arm64"
 	} else if strings.HasSuffix(oneArchTag, "_linux_arm64") {
-		anotherArchTag = strings.Replace(oneArchTag, "_arm64", "_amd64", 1)
+		anotherArchTag = strings.TrimSuffix(oneArchTag, "_linux_arm64") + "_linux_amd64"
 	}
 
 	ret := []string{oneArchTag}
