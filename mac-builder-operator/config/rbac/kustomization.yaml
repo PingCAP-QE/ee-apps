@@ -25,4 +25,3 @@ resources:
 - macbuild_admin_role.yaml
 - macbuild_editor_role.yaml
 - macbuild_viewer_role.yaml
-
