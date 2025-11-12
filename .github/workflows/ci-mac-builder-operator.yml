@@ -14,30 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: mac-builder-operator/go.mod
+          cache-dependency-path: mac-builder-operator/go.sum
 
       - name: Run linter
         uses: golangci/golangci-lint-action@v8
         with:
+          working-directory: mac-builder-operator
           version: v2.4.0
   test:
     name: Unit-Test
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: mac-builder-operator/go.mod
+          cache-dependency-path: mac-builder-operator/go.sum
 
       - name: Running Tests
+        working-directory: mac-builder-operator
         run: |
           go mod tidy
           make test
@@ -47,12 +51,13 @@ jobs:
     needs: [lint, test]
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: mac-builder-operator/go.mod
+          cache-dependency-path: mac-builder-operator/go.sum
 
       - name: Install the latest version of kind
         run: |
@@ -64,6 +69,7 @@ jobs:
         run: kind version
 
       - name: Running Test e2e
+        working-directory: mac-builder-operator
         run: |
           go mod tidy
           make test-e2e
