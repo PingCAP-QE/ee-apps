@@ -31,27 +31,66 @@ const (
 
 // MacBuildSpec defines the desired state of MacBuild
 type MacBuildSpec struct {
-	// Git repository URL (e.g., https://github.com/user/repo.git)
+	// Source defines the code to be built
 	// +kubebuilder:validation:Required
-	GitRepository string `json:"gitRepository"`
+	Source SourceSpec `json:"source"`
 
-	// Git ref (branch, tag, or commit SHA) (e.g., main, v1.0.0, a1b2c3d4)
+	// Build defines the parameters for the build process
 	// +kubebuilder:validation:Required
-	GitRef string `json:"gitRef"`
+	Build BuildSpec `json:"build"`
 
-	// Build profile (e.g., release, debug)
-	// +optional
-	Profile *string `json:"profile,omitempty"`
-
-	// Artifact destination targets
+	// Artifacts defines where and how to publish the build output
 	// +kubebuilder:validation:Required
-	Output MacBuildOutput `json:"output"`
+	Artifacts ArtifactsSpec `json:"artifacts"`
 
 	// Seconds to retain the build resource after it has finished (succeeded or failed).
 	// After this time, it will be automatically deleted. If unset, it will be kept indefinitely.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	TtlSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+}
+
+// SourceSpec defines the code source
+type SourceSpec struct {
+	// Git repository URL (e.g., https://github.com/user/repo.git)
+	// +kubebuilder:validation:Required
+	GitRepository string `json:"gitRepository"`
+
+	// Git ref (branch or tag) (e.g., main, v1.0.0)
+	// +kubebuilder:validation:Required
+	GitRef string `json:"gitRef"`
+
+	// Optional: A specific git commit SHA to check out. Overrides gitRef if provided.
+	// (Maps to Tekton git-sha param)
+	// +optional
+	GitSha *string `json:"gitSha,omitempty"`
+
+	// Optional: A git refspec to fetch before checkout (e.g., refs/pull/123/head)
+	// +optional
+	GitRefspec *string `json:"gitRefspec,omitempty"`
+}
+
+// BuildSpec defines the build parameters
+type BuildSpec struct {
+	// Component to build (e.g., tidb, tikv)
+	// +kubebuilder:validation:Required
+	Component string `json:"component"`
+
+	// Version string to release (e.g., v1.2.3, nightly)
+	// +kubebuilder:validation:Required
+	Version string `json:"version"`
+
+	// OS to build for.
+	// +kubebuilder:default:="darwin"
+	OS string `json:"os,omitempty"`
+
+	// Architecture to build for (e.g., amd64, arm64)
+	Arch string `json:"arch,omitempty"`
+
+	// Build profile (e.g., release, failpoint)
+	// +optional
+	// +kubebuilder:default:="release"
+	Profile string `json:"profile,omitempty"`
 }
 
 // MacBuildOutput defines the build artifact targets
@@ -65,6 +104,19 @@ type MacBuildOutput struct {
 	// (e.g., my-registry.com/images/my-app)
 	// +optional
 	ImageRegistry *string `json:"imageRegistry,omitempty"`
+}
+
+// ArtifactsSpec defines the artifact publishing strategy
+type ArtifactsSpec struct {
+	// Whether to push artifacts to the registry
+	// +optional
+	// +kubebuilder:default:=false
+	Push bool `json:"push,omitempty"`
+
+	// Target registry (e.g., hub.pingcap.net)
+	// +optional
+	// +kubebuilder:default:="hub.pingcap.net"
+	Registry string `json:"registry,omitempty"`
 }
 
 // MacBuildStatus defines the observed state of MacBuild
@@ -101,13 +153,7 @@ type MacBuildStatus struct {
 
 // MacBuildResultOutputs contains the final URLs of the build artifacts
 type MacBuildResultOutputs struct {
-	// The final OCI URL for the binary, including digest
-	// +optional
-	BinaryOciUrl *string `json:"binaryOciUrl,omitempty"`
-
-	// The final OCI URL for the container image, including digest
-	// +optional
-	ImageOciUrl *string `json:"imageOciUrl,omitempty"`
+	PushedArtifactsYaml *string `json:"pushed_artifacts_yaml,omitempty"`
 }
 
 // +kubebuilder:object:root=true

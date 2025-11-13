@@ -51,32 +51,65 @@ spec:
           spec:
             description: MacBuildSpec defines the desired state of MacBuild
             properties:
-              gitRef:
-                description: Git ref (branch, tag, or commit SHA) (e.g., main, v1.0.0,
-                  a1b2c3d4)
-                type: string
-              gitRepository:
-                description: Git repository URL (e.g., https://github.com/user/repo.git)
-                type: string
-              output:
-                description: Artifact destination targets
+              artifacts:
+                description: Artifacts defines where and how to publish the build
+                  output
                 properties:
-                  binaryRegistry:
-                    description: |-
-                      OCI registry path for the raw binary artifact (e.g., .app, .dmg)
-                      (e.g., oci://my-registry.com/artifacts/my-app)
+                  push:
+                    default: false
+                    description: Whether to push artifacts to the registry
+                    type: boolean
+                  registry:
+                    default: hub.pingcap.net
+                    description: Target registry (e.g., hub.pingcap.net)
                     type: string
-                  imageRegistry:
-                    description: |-
-                      Optional: OCI registry path for the container image that includes the binary
-                      (e.g., my-registry.com/images/my-app)
+                type: object
+              build:
+                description: Build defines the parameters for the build process
+                properties:
+                  arch:
+                    description: Architecture to build for (e.g., amd64, arm64)
+                    type: string
+                  component:
+                    description: Component to build (e.g., tidb, tikv)
+                    type: string
+                  os:
+                    default: darwin
+                    description: OS to build for.
+                    type: string
+                  profile:
+                    default: release
+                    description: Build profile (e.g., release, failpoint)
+                    type: string
+                  version:
+                    description: Version string to release (e.g., v1.2.3, nightly)
                     type: string
                 required:
-                - binaryRegistry
+                - component
+                - version
                 type: object
-              profile:
-                description: Build profile (e.g., release, debug)
-                type: string
+              source:
+                description: Source defines the code to be built
+                properties:
+                  gitRef:
+                    description: Git ref (branch or tag) (e.g., main, v1.0.0)
+                    type: string
+                  gitRefspec:
+                    description: 'Optional: A git refspec to fetch before checkout
+                      (e.g., refs/pull/123/head)'
+                    type: string
+                  gitRepository:
+                    description: Git repository URL (e.g., https://github.com/user/repo.git)
+                    type: string
+                  gitSha:
+                    description: |-
+                      Optional: A specific git commit SHA to check out. Overrides gitRef if provided.
+                      (Maps to Tekton git-sha param)
+                    type: string
+                required:
+                - gitRef
+                - gitRepository
+                type: object
               ttlSecondsAfterFinished:
                 description: |-
                   Seconds to retain the build resource after it has finished (succeeded or failed).
@@ -85,9 +118,9 @@ spec:
                 minimum: 0
                 type: integer
             required:
-            - gitRef
-            - gitRepository
-            - output
+            - artifacts
+            - build
+            - source
             type: object
           status:
             description: MacBuildStatus defines the observed state of MacBuild

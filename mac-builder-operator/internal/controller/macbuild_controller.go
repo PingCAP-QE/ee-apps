@@ -20,7 +20,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +43,11 @@ type MacBuildReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	WorkerID string
+}
+
+type buildResult struct {
+	CommitHash          string
+	PushedArtifactsYaml string
 }
 
 // +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
@@ -112,7 +122,7 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 		// check the run status.
 		// TODO: in production, we need a more complex logic to check the long time goroutine.
-		outputs, err := r.runSimulatedBuild(ctx, macBuild)
+		result, err := r.runNativeBuild(ctx, macBuild)
 		newStatus := macBuild.Status.DeepCopy()
 		now := metav1.Now()
 		newStatus.CompletionTime = &now
@@ -125,7 +135,10 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		} else {
 			logger.Info("Build succeeded")
 			newStatus.Phase = buildv1alpha1.PhaseSucceeded
-			newStatus.Outputs = outputs
+			newStatus.CommitHash = &result.CommitHash
+			if result.PushedArtifactsYaml != "" {
+				newStatus.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
+			}
 		}
 
 		macBuild.Status = *newStatus
@@ -167,43 +180,302 @@ func (r *MacBuildReconciler) execCommand(logger logr.Logger, cmd *exec.Cmd) erro
 	logger.Info("Command executed successfully", "stdout", stdout.String())
 	return nil
 }
+func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
+	job := newNativeBuildJob(r, ctx, macBuild)
 
-// runSimulatedBuild simulated the full build.
-func (r *MacBuildReconciler) runSimulatedBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildv1alpha1.MacBuildResultOutputs, error) {
+	if err := job.setupWorkspace(); err != nil {
+		return nil, err
+	}
+	defer job.cleanup()
+
+	if err := job.cloneArtifactsRepo(); err != nil {
+		return nil, err
+	}
+
+	commitHash, err := job.cloneAndCheckoutSource()
+	if err != nil {
+		return nil, err
+	}
+	result := &buildResult{CommitHash: commitHash}
+
+	if err := job.generateEnvFile(); err != nil {
+		return result, err
+	}
+
+	if err := job.generateBuildScript(); err != nil {
+		return result, err
+	}
+
+	if _, err := os.Stat(job.buildScriptPath); os.IsNotExist(err) {
+		job.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
+		return result, nil
+	}
+
+	if err := job.executeBuild(); err != nil {
+		return result, err
+	}
+	if !job.spec.Artifacts.Push {
+		job.logger.Info("spec.artifacts.push is false, skipping publish phase.")
+		return result, nil
+	}
+
+	pushedYAML, err := job.executePublish()
+	if err != nil {
+		return result, err
+	}
+
+	result.PushedArtifactsYaml = pushedYAML
+	return result, nil
+}
+
+type nativeBuildJob struct {
+	reconciler *MacBuildReconciler
+	ctx        context.Context
+	logger     logr.Logger
+	macBuild   buildv1alpha1.MacBuild
+	spec       buildv1alpha1.MacBuildSpec // shortcut
+
+	// Paths
+	workspaceDir     string
+	sourceDir        string
+	artifactsRepoDir string
+	buildScriptPath  string
+	envFilePath      string
+	pushedResultPath string
+}
+
+func newNativeBuildJob(r *MacBuildReconciler, ctx context.Context, macBuild buildv1alpha1.MacBuild) *nativeBuildJob {
 	logger := logf.FromContext(ctx)
 
-	logger.Info("Simulating: Git Clone", "repo", macBuild.Spec.GitRepository, "ref", macBuild.Spec.GitRef)
-	if err := r.execCommand(logger, exec.Command("sleep", "3")); err != nil {
-		return nil, errors.New("git clone simulation failed")
+	// 在 'os.TempDir()' (例如 /var/folders/...) 中创建
+	// 'workspaceDir' 将在 'setupWorkspace' 中被创建
+	baseDir := os.TempDir()
+	workspaceName := fmt.Sprintf("macbuild-%s-%d", macBuild.Name, time.Now().UnixNano())
+	workspaceDir := filepath.Join(baseDir, workspaceName)
+
+	return &nativeBuildJob{
+		reconciler: r,
+		ctx:        ctx,
+		logger:     logger.WithValues("job", macBuild.Namespace, "workspace", workspaceDir),
+		macBuild:   macBuild,
+		spec:       macBuild.Spec,
+
+		workspaceDir:     workspaceDir,
+		sourceDir:        filepath.Join(workspaceDir, "source"),
+		artifactsRepoDir: filepath.Join(workspaceDir, "artifacts"),
+		buildScriptPath:  filepath.Join(workspaceDir, "build-package-artifacts.sh"),
+		envFilePath:      filepath.Join(workspaceDir, "remote.env"),
+		pushedResultPath: filepath.Join(workspaceDir, "pushed.yaml"),
+	}
+}
+
+func (j *nativeBuildJob) setupWorkspace() error {
+	j.logger.Info("Creating workspace", "dir", j.workspaceDir)
+	if err := os.MkdirAll(j.workspaceDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp workspace: %w", err)
+	}
+	return nil
+}
+
+func (j *nativeBuildJob) cleanup() {
+	j.logger.Info("Cleaning up workspace", "dir", j.workspaceDir)
+	if err := os.RemoveAll(j.workspaceDir); err != nil {
+		j.logger.Error(err, "Failed to clean up workspace")
+	}
+}
+
+func (j *nativeBuildJob) exec(cmd *exec.Cmd, dir ...string) error {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if len(dir) > 0 {
+		cmd.Dir = dir[0]
 	}
 
-	profile := "default-profile" // 默认值
-	if macBuild.Spec.Profile != nil {
-		profile = *macBuild.Spec.Profile
-	}
-	logger.Info("Simulating: Build", "profile", profile)
-	if err := r.execCommand(logger, exec.Command("sleep", "5")); err != nil {
-		return nil, errors.New("build simulation failed")
-	}
+	j.logger.Info("Executing command", "cmd", cmd.String(), "dir", cmd.Dir)
 
-	logger.Info("Simulating: OCI Upload", "target", macBuild.Spec.Output.BinaryRegistry)
-	if err := r.execCommand(logger, exec.Command("sleep", "2")); err != nil {
-		return nil, errors.New("OCI upload simulation failed")
+	if err := cmd.Run(); err != nil {
+		stderrStr := stderr.String()
+		j.logger.Error(err, "Command execution failed", "stderr", stderrStr)
+		// 返回 stderr 作为错误信息，这很有用
+		return errors.New(stderrStr)
 	}
 
-	fakeDigest := "sha256:0123456789abcdefa1b2c3d4e5f60001"
-	binaryURL := macBuild.Spec.Output.BinaryRegistry + "@" + fakeDigest
+	j.logger.Info("Command executed successfully", "stdout", stdout.String())
+	return nil
+}
 
-	outputs := &buildv1alpha1.MacBuildResultOutputs{
-		BinaryOciUrl: &binaryURL,
+func (j *nativeBuildJob) cloneArtifactsRepo() error {
+	j.logger.Info("Cloning artifacts repository...")
+	artifactsRepoURL := "https://github.com/PingCAP-QE/artifacts.git"
+	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", artifactsRepoURL, j.artifactsRepoDir)
+	if err := j.exec(cmd); err != nil {
+		return fmt.Errorf("failed to clone artifacts repo: %w", err)
+	}
+	return nil
+}
+
+func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
+	j.logger.Info("Cloning source repository", "repo", j.spec.Source.GitRepository)
+	cmdClone := exec.Command("git", "clone", j.spec.Source.GitRepository, j.sourceDir)
+	if err := j.exec(cmdClone); err != nil {
+		return "", fmt.Errorf("failed to clone source repo: %w", err)
 	}
 
-	if macBuild.Spec.Output.ImageRegistry != nil {
-		fakeImageDigest := "sha256:fedcba9876543210f1e2d3c4b5a61110"
-		imageURL := *macBuild.Spec.Output.ImageRegistry + "@" + fakeImageDigest
-		outputs.ImageOciUrl = &imageURL
+	if j.spec.Source.GitRefspec != nil && *j.spec.Source.GitRefspec != "" {
+		j.logger.Info("Fetching refspec", "refspec", *j.spec.Source.GitRefspec)
+		cmdFetch := exec.Command("git", "fetch", "origin", *j.spec.Source.GitRefspec)
+		if err := j.exec(cmdFetch, j.sourceDir); err != nil {
+			return "", fmt.Errorf("failed to fetch refspec: %w", err)
+		}
 	}
 
-	logger.Info("Simulation complete")
-	return outputs, nil
+	checkoutRef := j.spec.Source.GitRef
+	if j.spec.Source.GitSha != nil && *j.spec.Source.GitSha != "" {
+		checkoutRef = *j.spec.Source.GitSha
+	}
+	j.logger.Info("Checking out source", "ref", checkoutRef)
+	cmdCheckout := exec.Command("git", "checkout", checkoutRef)
+	if err := j.exec(cmdCheckout, j.sourceDir); err != nil {
+		return "", fmt.Errorf("failed to checkout source: %w", err)
+	}
+
+	// 获取最终的 Commit Hash
+	cmdHash := exec.Command("git", "rev-parse", "HEAD")
+	cmdHash.Dir = j.sourceDir
+	hashBytes, err := cmdHash.Output() // Output() 绕过了 j.exec
+	if err != nil {
+		return "", fmt.Errorf("failed to get commit hash: %w", err)
+	}
+	commitHash := strings.TrimSpace(string(hashBytes))
+	j.logger.Info("Source checked out", "commitHash", commitHash)
+	return commitHash, nil
+}
+
+func (j *nativeBuildJob) generateEnvFile() error {
+	j.logger.Info("Generating environment file...")
+
+	goVerCmd := exec.Command("go", "version")
+	goVerOut, err := goVerCmd.Output()
+	var goBinPath string
+	if err == nil {
+		parts := strings.Split(string(goVerOut), " ")
+		if len(parts) >= 3 {
+			verParts := strings.Split(parts[2], ".")
+			if len(verParts) >= 2 {
+				goBinPath = fmt.Sprintf("/usr/local/%s.%s/bin", verParts[0], verParts[1])
+			}
+		}
+	} else {
+		j.logger.Error(err, "Failed to get 'go version', $PATH may be incomplete in env file")
+	}
+
+	envContent := fmt.Sprintf(`
+export LC_ALL=C.UTF-8
+export PATH=%s:$PATH
+export NPM_CONFIG_REGISTRY="https://registry.npmmirror.com"
+export NODE_OPTIONS="--max_old_space_size=8192"
+export CARGO_NET_GIT_FETCH_WITH_CLI=true
+`, goBinPath)
+
+	if err := os.WriteFile(j.envFilePath, []byte(envContent), 0644); err != nil {
+		return fmt.Errorf("failed to write env file: %w", err)
+	}
+	return nil
+}
+
+func (j *nativeBuildJob) generateBuildScript() error {
+	j.logger.Info("Generating build script...")
+	genScript := filepath.Join(j.artifactsRepoDir, "packages/scripts/gen-package-artifacts-with-config.sh")
+
+	gitSha := ""
+	if j.spec.Source.GitSha != nil {
+		gitSha = *j.spec.Source.GitSha
+	}
+	if j.spec.Source.GitRef == gitSha {
+		gitSha = ""
+	}
+
+	cmdGenScript := exec.Command(genScript,
+		j.spec.Build.Component,
+		"darwin", // OS
+		j.spec.Build.Arch,
+		j.spec.Build.Version,
+		j.spec.Build.Profile,
+		j.spec.Source.GitRef,
+		gitSha,
+		filepath.Join(j.artifactsRepoDir, "packages/packages.yaml.tmpl"),
+		j.buildScriptPath,
+		j.spec.Artifacts.Registry,
+	)
+	if err := j.exec(cmdGenScript); err != nil {
+		return fmt.Errorf("failed to generate build script: %w", err)
+	}
+	return nil
+}
+
+func (j *nativeBuildJob) createRunnableScript(wrapperName string, scriptContent string) (string, error) {
+	scriptPath := filepath.Join(j.workspaceDir, wrapperName)
+	fullContent := fmt.Sprintf("#!/bin/bash\nset -eo pipefail\n%s\n", scriptContent)
+
+	if err := os.WriteFile(scriptPath, []byte(fullContent), 0755); err != nil {
+		return "", fmt.Errorf("failed to create runnable script %s: %w", wrapperName, err)
+	}
+	return scriptPath, nil
+}
+
+func (j *nativeBuildJob) executeBuild() error {
+	j.logger.Info("Executing build script (Build phase)...")
+
+	scriptContent := fmt.Sprintf(`
+source %s
+bash %s
+`, j.envFilePath, j.buildScriptPath)
+
+	runScriptPath, err := j.createRunnableScript("run_build.sh", scriptContent)
+	if err != nil {
+		return err
+	}
+
+	cmdBuild := exec.Command(runScriptPath)
+	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
+	if err := j.exec(cmdBuild, buildDir); err != nil {
+		return fmt.Errorf("build execution failed: %w", err)
+	}
+	return nil
+}
+
+func (j *nativeBuildJob) executePublish() (string, error) {
+	j.logger.Info("Executing build script (Publish phase)...")
+	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
+
+	scriptContent := fmt.Sprintf(`
+source %s
+bash %s -p -w "%s" -o "%s"
+`, j.envFilePath, j.buildScriptPath, releaseDir, j.pushedResultPath)
+
+	publishScriptPath, err := j.createRunnableScript("run_publish.sh", scriptContent)
+	if err != nil {
+		return "", err
+	}
+
+	cmdPublish := exec.Command(publishScriptPath)
+	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
+
+	err = j.exec(cmdPublish, buildDir)
+	if err != nil {
+		j.logger.Info("Publish failed, retrying once...", "error", err)
+		if errRetry := j.exec(cmdPublish, buildDir); errRetry != nil {
+			return "", fmt.Errorf("publish execution failed after retry: %w", errRetry)
+		}
+	}
+
+	j.logger.Info("Publish complete, reading results YAML.")
+	pushedYAMLBytes, err := os.ReadFile(j.pushedResultPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read pushed result file: %w", err)
+	}
+
+	return string(pushedYAMLBytes), nil
 }
