@@ -24,7 +24,7 @@ Tasks:
   - [ ] Check if `Status.Phase is Succeeded` or Failed.
   - [ ] Check if `Spec.TtlSecondsAfterFinished` is set.
   - [ ] Check if `Status.CompletionTime` is set.
-  - [ ] Decision: `time.Now().After(CompletionTime.Add(TTL))`.  
+  - [ ] Decision: `time.Now().After(CompletionTime.Add(TTL))`.
   - [ ] Action: `r.Delete(ctx, &macBuild)`.
   - [ ] Requeue: If not expired, use `ctrl.Result{RequeueAfter: remainingTime}`.
 

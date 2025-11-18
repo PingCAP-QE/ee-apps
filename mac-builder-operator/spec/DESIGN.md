@@ -26,13 +26,13 @@ The system consists of two main components:
 type MacBuildSpec struct {
     // Source defines the code to be built
     Source SourceSpec `json:"source"`
-    
+
     // Build defines the parameters for the build process
     Build BuildSpec `json:"build"`
-    
+
     // Artifacts defines where and how to publish the build output
     Artifacts ArtifactsSpec `json:"artifacts"`
-    
+
     // Lifecycle management (GC)
     // Seconds to retain the build resource after it has finished (succeeded or failed).
     // +optional
@@ -47,7 +47,7 @@ type SourceSpec struct {
 }
 
 type BuildSpec struct {
-		Component     string  `json:"component"`	
+		Component     string  `json:"component"`
     Version string `json:"version"`
     Arch    string `json:"arch,omitempty"`    // default: amd64
     Profile string `json:"profile,omitempty"` // default: release
@@ -64,12 +64,12 @@ type ArtifactsSpec struct {
 ```go
 type MacBuildStatus struct {
     Phase string `json:"phase,omitempty"` // Pending, Building, Succeeded, Failed
-    
+
     // Task Assignment & Execution Info
     WorkerID       *string      `json:"workerID,omitempty"`
     StartTime      *metav1.Time `json:"startTime,omitempty"`
     CompletionTime *metav1.Time `json:"completionTime,omitempty"` // Used for GC
-    
+
     // Results
     CommitHash          *string `json:"commitHash,omitempty"`
     PushedArtifactsYaml *string `json:"pushedArtifactsYaml,omitempty"` // Final artifact list
