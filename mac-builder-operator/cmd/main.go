@@ -62,6 +62,13 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var enableAgent, enableGC bool
+
+	// Controller-specific flags
+	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
+	flag.BoolVar(&enableGC, "enable-gc", true, "Enable the MacBuild GC reconciler. Runs in the cluster.")
+
+	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -86,6 +93,11 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if !enableAgent && !enableGC {
+		setupLog.Info("No controllers enabled. Use --enable-agent or --enable-gc to start a controller.")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -178,21 +190,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Get hostname for WorkerID
-	workerID, err := os.Hostname()
-	if err != nil {
-		setupLog.Error(err, "unable to get hostname for worker ID")
-		os.Exit(1)
+	if enableAgent {
+		// Get hostname for WorkerID, only needed for the agent.
+		workerID, err := os.Hostname()
+		if err != nil {
+			setupLog.Error(err, "unable to get hostname for worker ID")
+			os.Exit(1)
+		}
+		setupLog.Info("Starting manager with Worker ID", "workerID", workerID)
+		if err := (&controller.MacBuildReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			WorkerID: workerID,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
+			os.Exit(1)
+		}
+		setupLog.Info("MacBuild Agent controller enabled.")
 	}
-	setupLog.Info("Starting manager with Worker ID", "workerID", workerID)
-	if err := (&controller.MacBuildReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		WorkerID: workerID,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MacBuild")
-		os.Exit(1)
+
+	if enableGC {
+		if err := (&controller.MacBuildGCReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "MacBuildGC")
+			os.Exit(1)
+		}
+		setupLog.Info("MacBuild GC controller enabled.")
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
