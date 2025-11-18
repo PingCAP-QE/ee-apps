@@ -140,12 +140,7 @@ spec:
               outputs:
                 description: URLs of the final artifacts after completion
                 properties:
-                  binaryOciUrl:
-                    description: The final OCI URL for the binary, including digest
-                    type: string
-                  imageOciUrl:
-                    description: The final OCI URL for the container image, including
-                      digest
+                  pushed_artifacts_yaml:
                     type: string
                 type: object
               phase:

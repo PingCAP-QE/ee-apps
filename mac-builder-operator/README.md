@@ -1,8 +1,8 @@
-# mac-builder-operator
-// TODO(user): Add simple overview of use/purpose
+# Kubernetes Native macOS Build Operator
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+This project aims to bring macOS platform build tasks into the Kubernetes declarative management system. By leveraging a Custom Resource (MacBuild) and an Agent running directly on macOS physical machines, we achieve a "native" build process that eliminates dependencies on SSH and external orchestrators like Tekton/Boskos.
 
 ## Getting Started
 
@@ -111,7 +111,6 @@ previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml
 is manually re-applied afterwards.
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
