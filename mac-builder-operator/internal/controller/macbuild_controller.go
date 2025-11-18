@@ -247,8 +247,8 @@ type nativeBuildJob struct {
 func newNativeBuildJob(r *MacBuildReconciler, ctx context.Context, macBuild buildv1alpha1.MacBuild) *nativeBuildJob {
 	logger := logf.FromContext(ctx)
 
-	// 在 'os.TempDir()' (例如 /var/folders/...) 中创建
-	// 'workspaceDir' 将在 'setupWorkspace' 中被创建
+	// Create in 'os.TempDir()' (e.g., /var/folders/...)
+	// 'workspaceDir' will be created in 'setupWorkspace'
 	baseDir := os.TempDir()
 	workspaceName := fmt.Sprintf("macbuild-%s-%d", macBuild.Name, time.Now().UnixNano())
 	workspaceDir := filepath.Join(baseDir, workspaceName)
@@ -298,7 +298,7 @@ func (j *nativeBuildJob) exec(cmd *exec.Cmd, dir ...string) error {
 	if err := cmd.Run(); err != nil {
 		stderrStr := stderr.String()
 		j.logger.Error(err, "Command execution failed", "stderr", stderrStr)
-		// 返回 stderr 作为错误信息，这很有用
+		// Return stderr as the error message; this is useful
 		return errors.New(stderrStr)
 	}
 
@@ -318,7 +318,9 @@ func (j *nativeBuildJob) cloneArtifactsRepo() error {
 
 func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	j.logger.Info("Cloning source repository", "repo", j.spec.Source.GitRepository)
-	cmdClone := exec.Command("git", "clone", j.spec.Source.GitRepository, j.sourceDir)
+
+	toCloneDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
+	cmdClone := exec.Command("git", "clone", j.spec.Source.GitRepository, toCloneDir)
 	if err := j.exec(cmdClone); err != nil {
 		return "", fmt.Errorf("failed to clone source repo: %w", err)
 	}
@@ -326,7 +328,7 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	if j.spec.Source.GitRefspec != nil && *j.spec.Source.GitRefspec != "" {
 		j.logger.Info("Fetching refspec", "refspec", *j.spec.Source.GitRefspec)
 		cmdFetch := exec.Command("git", "fetch", "origin", *j.spec.Source.GitRefspec)
-		if err := j.exec(cmdFetch, j.sourceDir); err != nil {
+		if err := j.exec(cmdFetch, toCloneDir); err != nil {
 			return "", fmt.Errorf("failed to fetch refspec: %w", err)
 		}
 	}
@@ -337,14 +339,14 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	}
 	j.logger.Info("Checking out source", "ref", checkoutRef)
 	cmdCheckout := exec.Command("git", "checkout", checkoutRef)
-	if err := j.exec(cmdCheckout, j.sourceDir); err != nil {
+	if err := j.exec(cmdCheckout, toCloneDir); err != nil {
 		return "", fmt.Errorf("failed to checkout source: %w", err)
 	}
 
-	// 获取最终的 Commit Hash
+	// Get the final commit hash
 	cmdHash := exec.Command("git", "rev-parse", "HEAD")
-	cmdHash.Dir = j.sourceDir
-	hashBytes, err := cmdHash.Output() // Output() 绕过了 j.exec
+	cmdHash.Dir = toCloneDir
+	hashBytes, err := cmdHash.Output() // Output() bypasses j.exec
 	if err != nil {
 		return "", fmt.Errorf("failed to get commit hash: %w", err)
 	}
