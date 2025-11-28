@@ -35,17 +35,18 @@ const (
 	ProductNgMonitoring     = "ng-monitoring"
 	ProductPd               = "pd"
 	ProductPump             = "pump"
+	ProductTiCI             = "tici"
 	ProductTicdc            = "ticdc"
 	ProductTicdcNewarch     = "ticdc-newarch"
 	ProductTidb             = "tidb"
 	ProductTidbBinlog       = "tidb-binlog"
 	ProductTidbDashboard    = "tidb-dashboard"
 	ProductTidbLightning    = "tidb-lightning"
+	ProductTidbOperator     = "tidb-operator"
 	ProductTidbTools        = "tidb-tools"
 	ProductTiflash          = "tiflash"
 	ProductTikv             = "tikv"
 	ProductTiproxy          = "tiproxy"
-	ProductTidbOperator     = "tidb-operator"
 	ProductUnknown          = "" // unkown
 
 	// Build status
@@ -74,6 +75,7 @@ var (
 		ProductNgMonitoring,
 		ProductPd,
 		ProductPump,
+		ProductTiCI,
 		ProductTicdc,
 		ProductTicdcNewarch,
 		ProductTidb,
@@ -107,6 +109,8 @@ var (
 
 	// code repositoies
 	RepoNgMonitoring  = GithubRepo{Owner: "pingcap", Repo: "ng-monitoring"}
+	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
+	RepoTiCI          = GithubRepo{Owner: "pingcap-inc", Repo: "tici"}
 	RepoTicdc         = GithubRepo{Owner: "pingcap", Repo: "ticdc"}
 	RepoTidb          = GithubRepo{Owner: "pingcap", Repo: "tidb"}
 	RepoTidbBinlog    = GithubRepo{Owner: "pingcap", Repo: "tidb-binlog"}
@@ -115,9 +119,8 @@ var (
 	RepoTidbTools     = GithubRepo{Owner: "pingcap", Repo: "tidb-tools"}
 	RepoTiflash       = GithubRepo{Owner: "pingcap", Repo: "tiflash"}
 	RepoTiflow        = GithubRepo{Owner: "pingcap", Repo: "tiflow"}
-	RepoTiproxy       = GithubRepo{Owner: "pingcap", Repo: "tiproxy"}
 	RepoTikv          = GithubRepo{Owner: "tikv", Repo: "tikv"}
-	RepoPd            = GithubRepo{Owner: "tikv", Repo: "pd"}
+	RepoTiproxy       = GithubRepo{Owner: "pingcap", Repo: "tiproxy"}
 
 	// product name to code repository mapping.
 	prodToRepoMap = map[string]*GithubRepo{
@@ -128,6 +131,7 @@ var (
 		ProductNgMonitoring:  &RepoNgMonitoring,
 		ProductPd:            &RepoPd,
 		ProductPump:          &RepoTidbBinlog,
+		ProductTiCI:          &RepoTiCI,
 		ProductTicdc:         &RepoTiflow,
 		ProductTicdcNewarch:  &RepoTicdc,
 		ProductTidb:          &RepoTidb,

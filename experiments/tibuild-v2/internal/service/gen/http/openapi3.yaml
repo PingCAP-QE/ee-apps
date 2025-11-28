@@ -159,7 +159,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: darwin/amd64
                                         plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                        product: ticdc
+                                        product: pd
                                         product_base_img: Doloribus nisi corporis nihil soluta.
                                         product_dockerfile: Adipisci est.
                                         target_img: Qui necessitatibus possimus ab quos facere.
@@ -346,7 +346,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: darwin/amd64
                                         plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                        product: ticdc
+                                        product: pd
                                         product_base_img: Doloribus nisi corporis nihil soluta.
                                         product_dockerfile: Adipisci est.
                                         target_img: Qui necessitatibus possimus ab quos facere.
@@ -533,7 +533,7 @@ paths:
                                         pipeline_engine: jenkins
                                         platform: darwin/amd64
                                         plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                        product: ticdc
+                                        product: pd
                                         product_base_img: Doloribus nisi corporis nihil soluta.
                                         product_dockerfile: Adipisci est.
                                         target_img: Qui necessitatibus possimus ab quos facere.
@@ -721,7 +721,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                    product: ticdc
+                                    product: pd
                                     product_base_img: Doloribus nisi corporis nihil soluta.
                                     product_dockerfile: Adipisci est.
                                     target_img: Qui necessitatibus possimus ab quos facere.
@@ -908,7 +908,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                    product: ticdc
+                                    product: pd
                                     product_base_img: Doloribus nisi corporis nihil soluta.
                                     product_dockerfile: Adipisci est.
                                     target_img: Qui necessitatibus possimus ab quos facere.
@@ -1095,7 +1095,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                    product: ticdc
+                                    product: pd
                                     product_base_img: Doloribus nisi corporis nihil soluta.
                                     product_dockerfile: Adipisci est.
                                     target_img: Qui necessitatibus possimus ab quos facere.
@@ -1282,7 +1282,7 @@ paths:
                                     pipeline_engine: jenkins
                                     platform: darwin/amd64
                                     plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                    product: ticdc
+                                    product: pd
                                     product_base_img: Doloribus nisi corporis nihil soluta.
                                     product_dockerfile: Adipisci est.
                                     target_img: Qui necessitatibus possimus ab quos facere.
@@ -1498,7 +1498,7 @@ paths:
                                 pipeline_engine: jenkins
                                 platform: linux/amd64
                                 plugin_git_ref: Autem distinctio.
-                                product: tikv
+                                product: ng-monitoring
                                 product_base_img: Itaque dolor recusandae.
                                 product_dockerfile: Deleniti eum.
                                 target_img: Eligendi dolorem autem ullam.
@@ -1529,7 +1529,7 @@ paths:
                                     pipeline_engine: tekton
                                     platform: darwin/amd64
                                     plugin_git_ref: Facere ex cum.
-                                    product: ng-monitoring
+                                    product: dm
                                     product_base_img: Quisquam et temporibus fugiat esse.
                                     product_dockerfile: Omnis quo provident a sed est.
                                     target_img: Non quia quia beatae totam.
@@ -1739,7 +1739,7 @@ paths:
                                     pipeline_engine: tekton
                                     platform: darwin/amd64
                                     plugin_git_ref: Facere ex cum.
-                                    product: ng-monitoring
+                                    product: dm
                                     product_base_img: Quisquam et temporibus fugiat esse.
                                     product_dockerfile: Omnis quo provident a sed est.
                                     target_img: Non quia quia beatae totam.
@@ -2068,7 +2068,7 @@ paths:
                                     pipeline_engine: tekton
                                     platform: darwin/amd64
                                     plugin_git_ref: Facere ex cum.
-                                    product: ng-monitoring
+                                    product: dm
                                     product_base_img: Quisquam et temporibus fugiat esse.
                                     product_dockerfile: Omnis quo provident a sed est.
                                     target_img: Non quia quia beatae totam.
@@ -2278,7 +2278,7 @@ paths:
                                     pipeline_engine: tekton
                                     platform: darwin/amd64
                                     plugin_git_ref: Facere ex cum.
-                                    product: ng-monitoring
+                                    product: dm
                                     product_base_img: Quisquam et temporibus fugiat esse.
                                     product_dockerfile: Omnis quo provident a sed est.
                                     target_img: Non quia quia beatae totam.
@@ -2959,7 +2959,7 @@ components:
                     pipeline_engine: jenkins
                     platform: linux/amd64
                     plugin_git_ref: Autem distinctio.
-                    product: tikv
+                    product: ng-monitoring
                     product_base_img: Itaque dolor recusandae.
                     product_dockerfile: Deleniti eum.
                     target_img: Eligendi dolorem autem ullam.
@@ -2999,7 +2999,7 @@ components:
                     pipeline_engine: jenkins
                     platform: darwin
                     plugin_git_ref: Aut nemo et nihil nisi ut.
-                    product: tiflash
+                    product: tidb-binlog
                     product_base_img: Voluptatibus fuga voluptatem.
                     product_dockerfile: Animi modi tempore.
                     target_img: Eos vel et qui inventore adipisci.
@@ -3234,7 +3234,7 @@ components:
                     example: Voluptas praesentium dicta et id qui.
                 product:
                     type: string
-                    example: dm
+                    example: tidb-dashboard
                     enum:
                         - dm
                         - enterprise-plugin
@@ -3242,6 +3242,7 @@ components:
                         - pd
                         - ticdc
                         - ticdc-newarch
+                        - tici
                         - tidb
                         - br
                         - dumpling
@@ -3280,7 +3281,7 @@ components:
                 pipeline_engine: jenkins
                 platform: darwin/amd64
                 plugin_git_ref: Nihil eum deserunt.
-                product: br
+                product: tidb-binlog
                 product_base_img: Nulla ut maiores.
                 product_dockerfile: Quod vel illum.
                 target_img: Eius eum.
