@@ -251,8 +251,8 @@ func (c *DevBuildClient) Update() *DevBuildUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *DevBuildClient) UpdateOne(db *DevBuild) *DevBuildUpdateOne {
-	mutation := newDevBuildMutation(c.config, OpUpdateOne, withDevBuild(db))
+func (c *DevBuildClient) UpdateOne(_m *DevBuild) *DevBuildUpdateOne {
+	mutation := newDevBuildMutation(c.config, OpUpdateOne, withDevBuild(_m))
 	return &DevBuildUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -269,8 +269,8 @@ func (c *DevBuildClient) Delete() *DevBuildDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *DevBuildClient) DeleteOne(db *DevBuild) *DevBuildDeleteOne {
-	return c.DeleteOneID(db.ID)
+func (c *DevBuildClient) DeleteOne(_m *DevBuild) *DevBuildDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
