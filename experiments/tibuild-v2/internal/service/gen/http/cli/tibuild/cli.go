@@ -306,7 +306,7 @@ Example:
          "pipeline_engine": "jenkins",
          "platform": "linux/amd64",
          "plugin_git_ref": "Autem distinctio.",
-         "product": "tikv",
+         "product": "ng-monitoring",
          "product_base_img": "Itaque dolor recusandae.",
          "product_dockerfile": "Deleniti eum.",
          "target_img": "Eligendi dolorem autem ullam.",

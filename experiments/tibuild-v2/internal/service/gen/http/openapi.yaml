@@ -678,7 +678,7 @@ definitions:
                 pipeline_engine: jenkins
                 platform: darwin/amd64
                 plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                product: ticdc
+                product: pd
                 product_base_img: Doloribus nisi corporis nihil soluta.
                 product_dockerfile: Adipisci est.
                 target_img: Qui necessitatibus possimus ab quos facere.
@@ -938,7 +938,7 @@ definitions:
                 example: Similique autem deserunt et non.
             product:
                 type: string
-                example: tidb
+                example: tidb-binlog
                 enum:
                     - dm
                     - enterprise-plugin
@@ -946,6 +946,7 @@ definitions:
                     - pd
                     - ticdc
                     - ticdc-newarch
+                    - tici
                     - tidb
                     - br
                     - dumpling
@@ -984,7 +985,7 @@ definitions:
             pipeline_engine: tekton
             platform: darwin/arm64
             plugin_git_ref: At earum commodi et velit id molestias.
-            product: tidb-operator
+            product: br
             product_base_img: Tenetur iste quos ratione maiores.
             product_dockerfile: Vitae asperiores officiis quasi cumque iste.
             target_img: A consequatur consequuntur excepturi.
@@ -1234,7 +1235,7 @@ definitions:
                 pipeline_engine: jenkins
                 platform: linux/amd64
                 plugin_git_ref: Autem distinctio.
-                product: tikv
+                product: ng-monitoring
                 product_base_img: Itaque dolor recusandae.
                 product_dockerfile: Deleniti eum.
                 target_img: Eligendi dolorem autem ullam.

@@ -261,6 +261,7 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 			"pd",                                       // from tikv/pd repo.
 			"ticdc",                                    // from pingcap/tiflow or pingcap/ticdc repo.
 			"ticdc-newarch",                            // from pingcap/ticdc repo.
+			"tici",           // from pingcap-inc/tici repo.
 			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
 			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
 			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
