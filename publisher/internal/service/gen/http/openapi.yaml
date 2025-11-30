@@ -38,7 +38,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Commodi est qui.
+                            example: Nam debitis odit quasi.
             schemes:
                 - http
     /fs/publish-request/{request_id}:
@@ -186,7 +186,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Est enim perspiciatis.
+                            example: Tempora nostrum consequatur quis soluta.
             schemes:
                 - http
     /tiup/publish-request-single:
@@ -257,9 +257,9 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Qui autem minima beatae est nisi.
+                example: Qui quis deserunt doloribus in.
         example:
-            artifact_url: Laboriosam non autem assumenda consectetur omnis.
+            artifact_url: Quia recusandae fugit est.
         required:
             - artifact_url
     From:
@@ -272,7 +272,7 @@ definitions:
                 $ref: '#/definitions/FromOci'
             type:
                 type: string
-                example: http
+                example: oci
                 enum:
                     - oci
                     - http
@@ -328,16 +328,16 @@ definitions:
             image_url:
                 type: string
                 description: The image URL to collect
-                example: Praesentium voluptas.
+                example: Laudantium aliquid ut exercitationem dolore.
             release_tag_suffix:
                 type: string
                 description: Suffix for the release tag
                 default: release
-                example: Aut unde.
+                example: Provident quas enim necessitatibus.
         example:
-            async: true
-            image_url: Quidem provident consequatur rerum.
-            release_tag_suffix: Magni et iste maiores laudantium nemo cumque.
+            async: false
+            image_url: Ex dicta.
+            release_tag_suffix: Ipsam ut possimus soluta maiores.
         required:
             - image_url
     ImageRequestMultiarchCollectResponseBody:
@@ -352,28 +352,29 @@ definitions:
             repo:
                 type: string
                 description: Repository of the collected image
-                example: Labore quis vero.
+                example: Rerum at magni.
             request_id:
                 type: string
                 description: Request id for async mode (uuidv4 format)
-                example: 8e411bba-fe5b-4aec-b133-7ffb0fbdaeca
+                example: f2e765c9-f8ee-4f74-b9cd-6afff737b4e1
                 format: uuid
             tags:
                 type: array
                 items:
                     type: string
-                    example: Nisi non sit voluptatem a est.
+                    example: Iste maiores laudantium nemo cumque.
                 description: Tags of the collected image
                 example:
-                    - In non esse non.
-                    - Repellat aspernatur eum modi numquam natus.
+                    - Quasi voluptatem ad.
+                    - At voluptatem consequuntur.
+                    - Reiciendis tenetur.
         example:
             async: false
-            repo: Itaque sint amet.
-            request_id: ac28df56-15e4-4019-8e79-4592fbca3ac9
+            repo: Consectetur et.
+            request_id: 99d909e5-a5c0-48ce-9406-e42a3c275dff
             tags:
-                - Animi quo similique veniam dolores ea fugit.
-                - Illum voluptatum eos.
+                - Et laborum eos necessitatibus fugit rerum et.
+                - Totam repudiandae sequi.
         required:
             - async
     ImageRequestToCopyRequestBody:
@@ -383,14 +384,14 @@ definitions:
             destination:
                 type: string
                 description: destination image url
-                example: Eos quia.
+                example: Praesentium voluptas.
             source:
                 type: string
                 description: source image url
-                example: Sunt vel quo.
+                example: Et qui omnis quae debitis laboriosam quia.
         example:
-            destination: Eaque possimus dolorem aut aut ut.
-            source: Nisi est minima aspernatur voluptatem nemo.
+            destination: Omnis quidem.
+            source: Aut unde.
         required:
             - source
             - destination
@@ -468,14 +469,14 @@ definitions:
                 type: string
                 description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                 default: http://tiup.pingcap.net:8988
-                example: Reprehenderit doloremque alias optio a.
+                example: Ipsum esse quia occaecati libero inventore.
             version:
                 type: string
                 description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
                 example: v1.0.0
         example:
             artifact_url: https://example.com/artifact.tar.gz
-            tiup-mirror: Iure id necessitatibus ea.
+            tiup-mirror: A provident ipsum voluptatem eum numquam vel.
             version: v1.0.0
         required:
             - artifact_url
