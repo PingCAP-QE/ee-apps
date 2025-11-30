@@ -23,7 +23,7 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestToPublishRequestBody2'
                         example:
-                            artifact_url: Omnis provident minima est.
+                            artifact_url: Et ut beatae dolore officia deleniti repellat.
             responses:
                 "200":
                     description: OK response.
@@ -33,17 +33,14 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: A aperiam non est facere impedit voluptas.
+                                    example: Quam numquam voluptates tenetur.
                                 description: request track ids
                                 example:
-                                    - Voluptatem et aliquid.
-                                    - Laboriosam culpa exercitationem est expedita saepe.
-                                    - Tempore aut corporis quibusdam ipsam.
-                                    - Dolores tempora.
+                                    - Voluptatem et sint enim.
+                                    - Totam tempora illum est amet voluptas.
                             example:
-                                - Magni iure.
-                                - Repellendus necessitatibus.
-                                - Ea quis minus natus nesciunt.
+                                - Aperiam aliquid rerum expedita repudiandae consequuntur in.
+                                - Sed commodi neque sit.
     /fs/publish-request/{request_id}:
         get:
             tags:
@@ -58,8 +55,8 @@ paths:
                   schema:
                     type: string
                     description: request track id
-                    example: Atque odio sit quia dolores ipsam molestiae.
-                  example: Commodi consequuntur illum pariatur est ea.
+                    example: Reiciendis quo autem provident illum.
+                  example: Voluptatem recusandae eligendi.
             responses:
                 "200":
                     description: OK response.
@@ -68,7 +65,7 @@ paths:
                             schema:
                                 type: string
                                 description: request state
-                                example: canceled
+                                example: failed
                                 enum:
                                     - queued
                                     - processing
@@ -89,9 +86,9 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestMultiarchCollectRequestBody'
                         example:
-                            async: true
-                            image_url: Doloribus laboriosam.
-                            release_tag_suffix: Aut voluptates quia nostrum odio molestiae ab.
+                            async: false
+                            image_url: Voluptas similique magni ut aperiam excepturi quisquam.
+                            release_tag_suffix: Dolores nihil autem veritatis maiores quis eos.
             responses:
                 "200":
                     description: OK response.
@@ -101,13 +98,13 @@ paths:
                                 $ref: '#/components/schemas/RequestMultiarchCollectResponseBody'
                             example:
                                 async: false
-                                repo: Est quia nihil tempora consequatur exercitationem exercitationem.
-                                request_id: ef4eae0e-185d-4f55-bae4-ceb24bdeaee5
+                                repo: Omnis molestias voluptate autem.
+                                request_id: 36cbc383-2618-4f7f-9809-796be4396f92
                                 tags:
-                                    - Quo atque et.
-                                    - Doloremque ea rerum alias excepturi facilis ab.
-                                    - Modi quia iste.
-                                    - Amet quo laboriosam nihil aut facere.
+                                    - Nobis dolores facilis quibusdam sit.
+                                    - Non sit.
+                                    - Odit qui est.
+                                    - Occaecati in velit esse commodi aut.
     /image/collect-multiarch/{request_id}:
         get:
             tags:
@@ -122,9 +119,9 @@ paths:
                   schema:
                     type: string
                     description: Request track id
-                    example: 330cb51d-3420-4cdd-90c5-5230c139505a
+                    example: b870d3d9-8548-4b8f-af50-db107d3f02a5
                     format: uuid
-                  example: db0028a8-960c-4876-b888-f8685e79663b
+                  example: 6fe762c3-34a6-49ed-bbfc-32dd48264b85
             responses:
                 "200":
                     description: OK response.
@@ -133,14 +130,14 @@ paths:
                             schema:
                                 type: string
                                 description: request state
-                                example: failed
+                                example: canceled
                                 enum:
                                     - queued
                                     - processing
                                     - success
                                     - failed
                                     - canceled
-                            example: processing
+                            example: failed
     /image/copy:
         post:
             tags:
@@ -154,8 +151,8 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestToCopyRequestBody'
                         example:
-                            destination: Sed molestiae.
-                            source: Delectus nesciunt beatae distinctio explicabo.
+                            destination: Voluptatem et voluptatum doloribus ratione totam.
+                            source: Eum ut dolores est suscipit fugit.
             responses:
                 "200":
                     description: OK response.
@@ -164,9 +161,9 @@ paths:
                             schema:
                                 type: string
                                 description: request id
-                                example: ea4d6ca2-0095-43fe-b2fb-fc51ab41cc03
+                                example: 91a5e395-d17a-4a0c-ad68-88bd0daa64bf
                                 format: uuid
-                            example: 4da12f60-121c-4953-a0ca-9e78acef70f3
+                            example: c13fb79c-360c-47f0-8d4a-175dda9f8261
     /image/copy/{request_id}:
         get:
             tags:
@@ -181,9 +178,9 @@ paths:
                   schema:
                     type: string
                     description: request track id
-                    example: 10c9af3f-03ce-47e2-9327-f9d126f86750
+                    example: 10153699-6613-4d23-92c8-1f6717e7e9bd
                     format: uuid
-                  example: ce6eb7bf-1954-4b07-a8d4-43188a5d6863
+                  example: 8ddcc628-07b0-48df-9081-2912c265d19d
             responses:
                 "200":
                     description: OK response.
@@ -192,14 +189,14 @@ paths:
                             schema:
                                 type: string
                                 description: request state
-                                example: queued
+                                example: processing
                                 enum:
                                     - queued
                                     - processing
                                     - success
                                     - failed
                                     - canceled
-                            example: processing
+                            example: queued
     /tiup/publish-request:
         post:
             tags:
@@ -214,7 +211,7 @@ paths:
                             $ref: '#/components/schemas/RequestToPublishRequestBody'
                         example:
                             artifact_url: https://example.com/artifact.tar.gz
-                            tiup-mirror: Facere odio et cupiditate ut exercitationem sunt.
+                            tiup-mirror: Perspiciatis quo et fuga accusamus sequi odit.
                             version: v1.0.0
             responses:
                 "200":
@@ -225,18 +222,17 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Non inventore voluptatem odit ea.
+                                    example: Accusantium enim dolorem a et odit.
                                 description: request track ids
                                 example:
-                                    - Libero commodi expedita laudantium consequatur.
-                                    - Sapiente esse eligendi laboriosam consectetur.
-                                    - Aut repudiandae iusto.
-                                    - Blanditiis doloribus rem.
+                                    - Dolores et optio.
+                                    - Minus corrupti reiciendis unde et.
+                                    - Expedita dolores a dicta nisi quis qui.
+                                    - Ut praesentium explicabo id ut voluptas enim.
                             example:
-                                - Iusto fugiat ab nemo qui inventore.
-                                - Iste ut est debitis consequatur autem aliquam.
-                                - Consequatur sint suscipit quisquam praesentium.
-                                - Itaque officiis tenetur delectus tempora aut voluptates.
+                                - Dolorem provident est minima est enim amet.
+                                - Unde quo qui officia optio.
+                                - Deserunt quo qui repellendus.
     /tiup/publish-request-single:
         post:
             tags:
@@ -271,9 +267,9 @@ paths:
                             schema:
                                 type: string
                                 description: request id
-                                example: 94a283f1-e1c8-4ffd-81cc-4122b99bcf28
+                                example: cd72a47a-e3aa-432e-8bd8-3f6690223563
                                 format: uuid
-                            example: 26a77454-7145-48c9-830b-0ee2bec6aa0b
+                            example: 20f4c83a-b30f-4ee0-b53d-edbcc5c5cc8e
     /tiup/publish-request/{request_id}:
         get:
             tags:
@@ -288,8 +284,8 @@ paths:
                   schema:
                     type: string
                     description: request track id
-                    example: Totam fugit.
-                  example: Quasi facilis et.
+                    example: Consequatur et.
+                  example: Eius ab corporis harum quam.
             responses:
                 "200":
                     description: OK response.
@@ -305,7 +301,7 @@ paths:
                                     - success
                                     - failed
                                     - canceled
-                            example: success
+                            example: canceled
     /tiup/reset-rate-limit:
         post:
             tags:
@@ -326,7 +322,7 @@ components:
                     $ref: '#/components/schemas/FromOci'
                 type:
                     type: string
-                    example: oci
+                    example: http
                     enum:
                         - oci
                         - http
@@ -439,16 +435,16 @@ components:
                 image_url:
                     type: string
                     description: The image URL to collect
-                    example: Quia amet sed et quasi.
+                    example: Pariatur quis id sunt dignissimos.
                 release_tag_suffix:
                     type: string
                     description: Suffix for the release tag
                     default: release
-                    example: Aut pariatur quidem.
+                    example: Architecto reiciendis exercitationem ut eos.
             example:
                 async: true
-                image_url: Laudantium officiis quis assumenda molestiae.
-                release_tag_suffix: Assumenda labore voluptatem sunt.
+                image_url: Architecto doloribus id ut rerum unde rerum.
+                release_tag_suffix: Perspiciatis eos.
             required:
                 - image_url
         RequestMultiarchCollectResponseBody:
@@ -462,30 +458,29 @@ components:
                 repo:
                     type: string
                     description: Repository of the collected image
-                    example: Culpa dignissimos.
+                    example: Et harum dicta vero sunt maiores laboriosam.
                 request_id:
                     type: string
                     description: Request id for async mode (uuidv4 format)
-                    example: 0fb91531-a643-4b9e-aa91-0ca5e8d7c0dc
+                    example: 5eebf27f-8e51-496c-a2b6-b3711daf397d
                     format: uuid
                 tags:
                     type: array
                     items:
                         type: string
-                        example: Eligendi dignissimos et qui.
+                        example: Autem corporis facere.
                     description: Tags of the collected image
                     example:
-                        - Ducimus maiores reiciendis voluptatem voluptas.
-                        - Nemo distinctio et labore.
-                        - Quis iure illo dolorum eos incidunt eius.
-                        - Id cupiditate vero.
+                        - Ab nemo.
+                        - Inventore sint iste ut.
+                        - Debitis consequatur autem aliquam eaque.
             example:
-                async: false
-                repo: Aut et nihil voluptas fuga.
-                request_id: 71fbb520-feff-4e57-b362-4747494c5f5b
+                async: true
+                repo: Consectetur sed.
+                request_id: 436aa815-cdc5-4904-8aa9-8ffea11fd93d
                 tags:
-                    - Et blanditiis dolorem quasi.
-                    - Quisquam voluptatum velit aspernatur consequatur labore id.
+                    - Id assumenda similique quam eum ut.
+                    - Fugit ipsa quasi facilis et in impedit.
             required:
                 - async
         RequestToCopyRequestBody:
@@ -494,14 +489,14 @@ components:
                 destination:
                     type: string
                     description: destination image url
-                    example: Assumenda est sed nostrum laudantium aliquid.
+                    example: Et placeat error consequatur non quas.
                 source:
                     type: string
                     description: source image url
-                    example: Rerum recusandae esse perferendis.
+                    example: Illo nisi sapiente mollitia.
             example:
-                destination: Necessitatibus incidunt ratione.
-                source: Exercitationem dolore distinctio provident quas.
+                destination: Accusantium eaque.
+                source: Impedit qui voluptate omnis.
             required:
                 - source
                 - destination
@@ -516,14 +511,14 @@ components:
                     type: string
                     description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
                     default: http://tiup.pingcap.net:8988
-                    example: Voluptatem ad voluptatum at.
+                    example: Aut dolores aliquid voluptates et veritatis.
                 version:
                     type: string
                     description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
                     example: v1.0.0
             example:
                 artifact_url: https://example.com/artifact.tar.gz
-                tiup-mirror: Consequuntur repellendus reiciendis.
+                tiup-mirror: Earum odit.
                 version: v1.0.0
             required:
                 - artifact_url
@@ -534,9 +529,9 @@ components:
                 artifact_url:
                     type: string
                     description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                    example: Omnis architecto dignissimos sapiente voluptas voluptatem.
+                    example: A id cupiditate vero id.
             example:
-                artifact_url: Aut labore.
+                artifact_url: Suscipit consectetur.
             required:
                 - artifact_url
 tags:
