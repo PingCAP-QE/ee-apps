@@ -322,6 +322,58 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/api/hotfix/create-tidb-x-tag": {
+            "post": {
+                "description": "create tidb-x hotfix git tag with auto-incremented tag name (vX.Y.Z-nextgen.YYYYMM.N)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "hotfix"
+                ],
+                "summary": "create tidb-x hotfix tag",
+                "parameters": [
+                    {
+                        "description": "tidb-x hotfix tag param",
+                        "name": "TidbXHotfixTagCreateReq",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.TidbXHotfixTagCreateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.TidbXHotfixTagCreateResp"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HTTPError"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HTTPError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HTTPError"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {

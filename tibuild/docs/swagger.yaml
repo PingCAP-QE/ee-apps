@@ -447,4 +447,38 @@ paths:
       summary: rerun devbuild
       tags:
       - devbuild
+  /api/hotfix/create-tidb-x-tag:
+    post:
+      consumes:
+      - application/json
+      description: create tidb-x hotfix git tag with auto-incremented tag name (vX.Y.Z-nextgen.YYYYMM.N)
+      parameters:
+      - description: tidb-x hotfix tag param
+        in: body
+        name: TidbXHotfixTagCreateReq
+        required: true
+        schema:
+          $ref: '#/definitions/service.TidbXHotfixTagCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.TidbXHotfixTagCreateResp'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controller.HTTPError'
+      summary: create tidb-x hotfix tag
+      tags:
+      - hotfix
 swagger: "2.0"

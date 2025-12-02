@@ -65,7 +65,8 @@ func (h HotfixHandler) CreateTag(c *gin.Context) {
 	c.JSON(http.StatusOK, branch)
 }
 
-// // CreateTidbXHotfixTag godoc
+// CreateTidbXHotfixTag godoc
+//
 //	@Summary		create tidb-x hotfix tag
 //	@Description	create tidb-x hotfix git tag with auto-incremented tag name (vX.Y.Z-nextgen.YYYYMM.N)
 //	@Tags			hotfix
@@ -76,7 +77,7 @@ func (h HotfixHandler) CreateTag(c *gin.Context) {
 //	@Failure		422						{object}	HTTPError
 //	@Failure		400						{object}	HTTPError
 //	@Failure		500						{object}	HTTPError
-// // @Router /api/hotfix/create-tidb-x-tag [post]
+//	@Router			/api/hotfix/create-tidb-x-tag [post]
 func (h HotfixHandler) CreateTidbXHotfixTag(c *gin.Context) {
 	params := service.TidbXHotfixTagCreateReq{}
 	err := bindParam(&params, c)
