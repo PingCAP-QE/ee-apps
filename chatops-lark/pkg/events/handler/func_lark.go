@@ -81,26 +81,26 @@ func extractTextFromMessage(messageContent string, messageType *string) (string,
 		}
 
 		// Concatenate all text elements
-		var textParts []string
+		var lineParts []string
 		atMentionCounter := 1
 		for _, line := range lang.Content {
+			var elementsInLine []string
 			for _, elem := range line {
 				if elem.Tag == "text" {
-					textParts = append(textParts, elem.Text)
+					elementsInLine = append(elementsInLine, elem.Text)
 				} else if elem.Tag == "at" {
 					// Preserve @mentions in the format @_user_X (matching text message format)
 					// The actual user verification is done via the event's Mentions field
-					textParts = append(textParts, fmt.Sprintf("@_user_%d", atMentionCounter))
+					elementsInLine = append(elementsInLine, fmt.Sprintf("@_user_%d", atMentionCounter))
 					atMentionCounter++
 				}
 			}
-			// Add space after each line of content
-			if len(line) > 0 {
-				textParts = append(textParts, " ")
+			if len(elementsInLine) > 0 {
+				lineParts = append(lineParts, strings.Join(elementsInLine, ""))
 			}
 		}
 
-		return strings.TrimSpace(strings.Join(textParts, "")), nil
+		return strings.Join(lineParts, " "), nil
 	}
 
 	log.Warn().Str("messageType", *messageType).Msg("Unsupported message type")
