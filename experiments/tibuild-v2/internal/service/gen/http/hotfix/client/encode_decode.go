@@ -19,13 +19,13 @@ import (
 	goahttp "goa.design/goa/v3/http"
 )
 
-// BuildCreateTagRequest instantiates a HTTP request object with method and
-// path set to call the "hotfix" service "createTag" endpoint
-func (c *Client) BuildCreateTagRequest(ctx context.Context, v any) (*http.Request, error) {
-	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: CreateTagHotfixPath()}
+// BuildBumpForTidbxRequest instantiates a HTTP request object with method and
+// path set to call the "hotfix" service "bump-for-tidbx" endpoint
+func (c *Client) BuildBumpForTidbxRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: BumpForTidbxHotfixPath()}
 	req, err := http.NewRequest("POST", u.String(), nil)
 	if err != nil {
-		return nil, goahttp.ErrInvalidURL("hotfix", "createTag", u.String(), err)
+		return nil, goahttp.ErrInvalidURL("hotfix", "bump-for-tidbx", u.String(), err)
 	}
 	if ctx != nil {
 		req = req.WithContext(ctx)
@@ -34,30 +34,30 @@ func (c *Client) BuildCreateTagRequest(ctx context.Context, v any) (*http.Reques
 	return req, nil
 }
 
-// EncodeCreateTagRequest returns an encoder for requests sent to the hotfix
-// createTag server.
-func EncodeCreateTagRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+// EncodeBumpForTidbxRequest returns an encoder for requests sent to the hotfix
+// bump-for-tidbx server.
+func EncodeBumpForTidbxRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
 	return func(req *http.Request, v any) error {
-		p, ok := v.(*hotfix.CreateTagPayload)
+		p, ok := v.(*hotfix.BumpForTidbxPayload)
 		if !ok {
-			return goahttp.ErrInvalidType("hotfix", "createTag", "*hotfix.CreateTagPayload", v)
+			return goahttp.ErrInvalidType("hotfix", "bump-for-tidbx", "*hotfix.BumpForTidbxPayload", v)
 		}
-		body := NewCreateTagRequestBody(p)
+		body := NewBumpForTidbxRequestBody(p)
 		if err := encoder(req).Encode(&body); err != nil {
-			return goahttp.ErrEncodingError("hotfix", "createTag", err)
+			return goahttp.ErrEncodingError("hotfix", "bump-for-tidbx", err)
 		}
 		return nil
 	}
 }
 
-// DecodeCreateTagResponse returns a decoder for responses returned by the
-// hotfix createTag endpoint. restoreBody controls whether the response body
-// should be restored after having been read.
-// DecodeCreateTagResponse may return the following errors:
+// DecodeBumpForTidbxResponse returns a decoder for responses returned by the
+// hotfix bump-for-tidbx endpoint. restoreBody controls whether the response
+// body should be restored after having been read.
+// DecodeBumpForTidbxResponse may return the following errors:
 //   - "BadRequest" (type *hotfix.HTTPError): http.StatusBadRequest
 //   - "InternalServerError" (type *hotfix.HTTPError): http.StatusInternalServerError
 //   - error: internal error
-func DecodeCreateTagResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+func DecodeBumpForTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
 		if restoreBody {
 			b, err := io.ReadAll(resp.Body)
@@ -74,50 +74,50 @@ func DecodeCreateTagResponse(decoder func(*http.Response) goahttp.Decoder, resto
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var (
-				body CreateTagResponseBody
+				body BumpForTidbxResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "createTag", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
 			}
-			err = ValidateCreateTagResponseBody(&body)
+			err = ValidateBumpForTidbxResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "createTag", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
 			}
-			res := NewCreateTagHotfixTagResultOK(&body)
+			res := NewBumpForTidbxHotfixTagResultOK(&body)
 			return res, nil
 		case http.StatusBadRequest:
 			var (
-				body CreateTagBadRequestResponseBody
+				body BumpForTidbxBadRequestResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "createTag", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
 			}
-			err = ValidateCreateTagBadRequestResponseBody(&body)
+			err = ValidateBumpForTidbxBadRequestResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "createTag", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
 			}
-			return nil, NewCreateTagBadRequest(&body)
+			return nil, NewBumpForTidbxBadRequest(&body)
 		case http.StatusInternalServerError:
 			var (
-				body CreateTagInternalServerErrorResponseBody
+				body BumpForTidbxInternalServerErrorResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "createTag", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
 			}
-			err = ValidateCreateTagInternalServerErrorResponseBody(&body)
+			err = ValidateBumpForTidbxInternalServerErrorResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "createTag", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
 			}
-			return nil, NewCreateTagInternalServerError(&body)
+			return nil, NewBumpForTidbxInternalServerError(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
-			return nil, goahttp.ErrInvalidResponse("hotfix", "createTag", resp.StatusCode, string(body))
+			return nil, goahttp.ErrInvalidResponse("hotfix", "bump-for-tidbx", resp.StatusCode, string(body))
 		}
 	}
 }

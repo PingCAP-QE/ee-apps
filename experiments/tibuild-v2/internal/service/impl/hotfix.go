@@ -30,8 +30,8 @@ func NewHotfix(logger *zerolog.Logger, ghClient *github.Client) hotfix.Service {
 	}
 }
 
-// CreateTag creates a hot fix git tag for a GitHub repository.
-func (s *hotfixsrvc) CreateTag(ctx context.Context, p *hotfix.CreateTagPayload) (*hotfix.HotfixTagResult, error) {
+// BumpForTidbx creates a hot fix git tag for a GitHub repository.
+func (s *hotfixsrvc) BumpForTidbx(ctx context.Context, p *hotfix.BumpForTidbxPayload) (*hotfix.HotfixTagResult, error) {
 	l := s.logger.With().
 		Str("repo", p.Repo).
 		Str("author", p.Author).

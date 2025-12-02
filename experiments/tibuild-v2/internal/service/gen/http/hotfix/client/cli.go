@@ -15,18 +15,18 @@ import (
 	hotfix "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 )
 
-// BuildCreateTagPayload builds the payload for the hotfix createTag endpoint
-// from CLI flags.
-func BuildCreateTagPayload(hotfixCreateTagBody string) (*hotfix.CreateTagPayload, error) {
+// BuildBumpForTidbxPayload builds the payload for the hotfix bump-for-tidbx
+// endpoint from CLI flags.
+func BuildBumpForTidbxPayload(hotfixBumpForTidbxBody string) (*hotfix.BumpForTidbxPayload, error) {
 	var err error
-	var body CreateTagRequestBody
+	var body BumpForTidbxRequestBody
 	{
-		err = json.Unmarshal([]byte(hotfixCreateTagBody), &body)
+		err = json.Unmarshal([]byte(hotfixBumpForTidbxBody), &body)
 		if err != nil {
 			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"wuhuizuo\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
-	v := &hotfix.CreateTagPayload{
+	v := &hotfix.BumpForTidbxPayload{
 		Repo:   body.Repo,
 		Branch: body.Branch,
 		Commit: body.Commit,

@@ -18,8 +18,8 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
 
-// TestCreateTag_Integration tests the complete flow of creating a hotfix tag
-func TestCreateTag_Integration(t *testing.T) {
+// TestBumpForTidbx_Integration tests the complete flow of creating a hotfix tag
+func TestBumpForTidbx_Integration(t *testing.T) {
 	// Skip if running in CI or want to skip integration tests
 	if testing.Short() {
 		t.Skip("Skipping integration test")
@@ -42,13 +42,13 @@ func TestCreateTag_Integration(t *testing.T) {
 
 	t.Run("create tag with branch only", func(t *testing.T) {
 		branch := "main"
-		req := &hotfix.CreateTagPayload{
+		req := &hotfix.BumpForTidbxPayload{
 			Repo:   "owner/repo",
 			Branch: &branch,
 			Author: "test-user",
 		}
 
-		result, err := service.CreateTag(ctx, req)
+		result, err := service.BumpForTidbx(ctx, req)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, req.Repo, result.Repo)
@@ -57,8 +57,8 @@ func TestCreateTag_Integration(t *testing.T) {
 	})
 }
 
-// TestCreateTag_Validation tests input validation
-func TestCreateTag_Validation(t *testing.T) {
+// TestBumpForTidbx_Validation tests input validation
+func TestBumpForTidbx_Validation(t *testing.T) {
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
 	ghClient := github.NewClient(nil)
 	service := impl.NewHotfix(&logger, ghClient)
@@ -67,13 +67,13 @@ func TestCreateTag_Validation(t *testing.T) {
 
 	t.Run("invalid repository format", func(t *testing.T) {
 		branch := "main"
-		req := &hotfix.CreateTagPayload{
+		req := &hotfix.BumpForTidbxPayload{
 			Repo:   "invalid-repo-format",
 			Branch: &branch,
 			Author: "test-user",
 		}
 
-		result, err := service.CreateTag(ctx, req)
+		result, err := service.BumpForTidbx(ctx, req)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 
@@ -84,12 +84,12 @@ func TestCreateTag_Validation(t *testing.T) {
 	})
 
 	t.Run("missing both branch and commit", func(t *testing.T) {
-		req := &hotfix.CreateTagPayload{
+		req := &hotfix.BumpForTidbxPayload{
 			Repo:   "owner/repo",
 			Author: "test-user",
 		}
 
-		result, err := service.CreateTag(ctx, req)
+		result, err := service.BumpForTidbx(ctx, req)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 
@@ -101,13 +101,13 @@ func TestCreateTag_Validation(t *testing.T) {
 
 	t.Run("non-existent repository", func(t *testing.T) {
 		branch := "main"
-		req := &hotfix.CreateTagPayload{
+		req := &hotfix.BumpForTidbxPayload{
 			Repo:   "nonexistent/repo",
 			Branch: &branch,
 			Author: "test-user",
 		}
 
-		result, err := service.CreateTag(ctx, req)
+		result, err := service.BumpForTidbx(ctx, req)
 		// This will fail when trying to access GitHub API
 		assert.Error(t, err)
 		assert.Nil(t, result)

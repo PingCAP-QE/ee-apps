@@ -454,15 +454,15 @@ paths:
         post:
             tags:
                 - hotfix
-            summary: createTag hotfix
+            summary: bump-for-tidbx hotfix
             description: Create a hot fix git tag for a GitHub repository
-            operationId: hotfix#createTag
+            operationId: hotfix#bump-for-tidbx
             parameters:
-                - name: CreateTagRequestBody
+                - name: Bump-For-TidbxRequestBody
                   in: body
                   required: true
                   schema:
-                    $ref: '#/definitions/HotfixCreateTagRequestBody'
+                    $ref: '#/definitions/HotfixBumpForTidbxRequestBody'
                     required:
                         - repo
                         - author
@@ -1415,8 +1415,8 @@ definitions:
         required:
             - code
             - message
-    HotfixCreateTagRequestBody:
-        title: HotfixCreateTagRequestBody
+    HotfixBumpForTidbxRequestBody:
+        title: HotfixBumpForTidbxRequestBody
         type: object
         properties:
             author:

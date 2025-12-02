@@ -19,8 +19,8 @@ import (
 
 // Server lists the hotfix service endpoint HTTP handlers.
 type Server struct {
-	Mounts    []*MountPoint
-	CreateTag http.Handler
+	Mounts       []*MountPoint
+	BumpForTidbx http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -50,9 +50,9 @@ func New(
 ) *Server {
 	return &Server{
 		Mounts: []*MountPoint{
-			{"CreateTag", "POST", "/api/v2/hotfix/create-tag"},
+			{"BumpForTidbx", "POST", "/api/v2/hotfix/create-tag"},
 		},
-		CreateTag: NewCreateTagHandler(e.CreateTag, mux, decoder, encoder, errhandler, formatter),
+		BumpForTidbx: NewBumpForTidbxHandler(e.BumpForTidbx, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -61,7 +61,7 @@ func (s *Server) Service() string { return "hotfix" }
 
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
-	s.CreateTag = m(s.CreateTag)
+	s.BumpForTidbx = m(s.BumpForTidbx)
 }
 
 // MethodNames returns the methods served.
@@ -69,7 +69,7 @@ func (s *Server) MethodNames() []string { return hotfix.MethodNames[:] }
 
 // Mount configures the mux to serve the hotfix endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
-	MountCreateTagHandler(mux, h.CreateTag)
+	MountBumpForTidbxHandler(mux, h.BumpForTidbx)
 }
 
 // Mount configures the mux to serve the hotfix endpoints.
@@ -77,9 +77,9 @@ func (s *Server) Mount(mux goahttp.Muxer) {
 	Mount(mux, s)
 }
 
-// MountCreateTagHandler configures the mux to serve the "hotfix" service
-// "createTag" endpoint.
-func MountCreateTagHandler(mux goahttp.Muxer, h http.Handler) {
+// MountBumpForTidbxHandler configures the mux to serve the "hotfix" service
+// "bump-for-tidbx" endpoint.
+func MountBumpForTidbxHandler(mux goahttp.Muxer, h http.Handler) {
 	f, ok := h.(http.HandlerFunc)
 	if !ok {
 		f = func(w http.ResponseWriter, r *http.Request) {
@@ -89,9 +89,9 @@ func MountCreateTagHandler(mux goahttp.Muxer, h http.Handler) {
 	mux.Handle("POST", "/api/v2/hotfix/create-tag", f)
 }
 
-// NewCreateTagHandler creates a HTTP handler which loads the HTTP request and
-// calls the "hotfix" service "createTag" endpoint.
-func NewCreateTagHandler(
+// NewBumpForTidbxHandler creates a HTTP handler which loads the HTTP request
+// and calls the "hotfix" service "bump-for-tidbx" endpoint.
+func NewBumpForTidbxHandler(
 	endpoint goa.Endpoint,
 	mux goahttp.Muxer,
 	decoder func(*http.Request) goahttp.Decoder,
@@ -100,13 +100,13 @@ func NewCreateTagHandler(
 	formatter func(ctx context.Context, err error) goahttp.Statuser,
 ) http.Handler {
 	var (
-		decodeRequest  = DecodeCreateTagRequest(mux, decoder)
-		encodeResponse = EncodeCreateTagResponse(encoder)
-		encodeError    = EncodeCreateTagError(encoder, formatter)
+		decodeRequest  = DecodeBumpForTidbxRequest(mux, decoder)
+		encodeResponse = EncodeBumpForTidbxResponse(encoder)
+		encodeError    = EncodeBumpForTidbxError(encoder, formatter)
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
-		ctx = context.WithValue(ctx, goa.MethodKey, "createTag")
+		ctx = context.WithValue(ctx, goa.MethodKey, "bump-for-tidbx")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "hotfix")
 		payload, err := decodeRequest(r)
 		if err != nil {

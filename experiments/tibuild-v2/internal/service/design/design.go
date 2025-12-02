@@ -419,7 +419,7 @@ var _ = Service("hotfix", func() {
 	HTTP(func() {
 		Path("/hotfix")
 	})
-	Method("createTag", func() {
+	Method("bump-for-tidbx", func() {
 		Description("Create a hot fix git tag for a GitHub repository")
 		Payload(func() {
 			Attribute("repo", String, "Full name of GitHub repository (e.g., 'owner/repo')", func() {

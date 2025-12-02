@@ -16,26 +16,26 @@ import (
 
 // Endpoints wraps the "hotfix" service endpoints.
 type Endpoints struct {
-	CreateTag goa.Endpoint
+	BumpForTidbx goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "hotfix" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		CreateTag: NewCreateTagEndpoint(s),
+		BumpForTidbx: NewBumpForTidbxEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "hotfix" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
-	e.CreateTag = m(e.CreateTag)
+	e.BumpForTidbx = m(e.BumpForTidbx)
 }
 
-// NewCreateTagEndpoint returns an endpoint function that calls the method
-// "createTag" of service "hotfix".
-func NewCreateTagEndpoint(s Service) goa.Endpoint {
+// NewBumpForTidbxEndpoint returns an endpoint function that calls the method
+// "bump-for-tidbx" of service "hotfix".
+func NewBumpForTidbxEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
-		p := req.(*CreateTagPayload)
-		return s.CreateTag(ctx, p)
+		p := req.(*BumpForTidbxPayload)
+		return s.BumpForTidbx(ctx, p)
 	}
 }
