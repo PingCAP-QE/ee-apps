@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"testing"
 
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -47,7 +48,7 @@ func TestExtractTextFromMessage_PostMessage(t *testing.T) {
 	}
 
 	// Check that it contains the command
-	if !contains(text, "/ask") {
+	if !strings.Contains(text, "/ask") {
 		t.Errorf("Expected text to contain '/ask', got '%s'", text)
 	}
 }
@@ -72,7 +73,7 @@ func TestExtractTextFromMessage_PostMessageEnglish(t *testing.T) {
 	}
 
 	// Check that it contains the command
-	if !contains(text, "/help") {
+	if !strings.Contains(text, "/help") {
 		t.Errorf("Expected text to contain '/help', got '%s'", text)
 	}
 }
@@ -196,18 +197,4 @@ func TestParsePrivateCommand_PostMessage(t *testing.T) {
 	if len(cmd.Args) != 3 {
 		t.Errorf("Expected 3 args, got %d", len(cmd.Args))
 	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsInner(s, substr)))
-}
-
-func containsInner(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -81,16 +82,19 @@ func extractTextFromMessage(messageContent string, messageType *string) (string,
 
 		// Concatenate all text elements
 		var textParts []string
+		atMentionCounter := 1
 		for _, line := range lang.Content {
 			for _, elem := range line {
 				if elem.Tag == "text" {
 					textParts = append(textParts, elem.Text)
 				} else if elem.Tag == "at" {
-					// Preserve @mentions in the format @_user_X
-					textParts = append(textParts, "@_user_1")
+					// Preserve @mentions in the format @_user_X (matching text message format)
+					// The actual user verification is done via the event's Mentions field
+					textParts = append(textParts, fmt.Sprintf("@_user_%d", atMentionCounter))
+					atMentionCounter++
 				}
 			}
-			// Add newline after each line of content
+			// Add space after each line of content
 			if len(line) > 0 {
 				textParts = append(textParts, " ")
 			}
