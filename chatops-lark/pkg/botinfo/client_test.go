@@ -12,7 +12,6 @@ var (
 	testAppSecret = flag.String("app-secret", "", "app secret")
 )
 
-
 func TestGetBotOpenID(t *testing.T) {
 	// You should run it with: go test -run=TestGetBotOpenID/real_test ./pkg/botinfo -app-id <app-id> -app-secret <app-secret>
 	t.Run("real test", func(tt *testing.T) {
