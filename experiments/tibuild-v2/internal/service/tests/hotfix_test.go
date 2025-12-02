@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"testing"
 	"time"
@@ -29,8 +30,10 @@ func TestCreateTag_Integration(t *testing.T) {
 	t.Skip("Integration test requires GitHub credentials and proper repository access")
 
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
-	// Hardcoded empty token placeholder in test file could encourage developers to commit actual tokens. Consider using environment variables or test configuration files that are excluded from version control.
-	ghToken := "" // Use os.Getenv("GITHUB_TOKEN") for manual testing
+	ghToken := os.Getenv("GITHUB_TOKEN") // Use environment variable for GitHub token
+	if ghToken == "" {
+		t.Skip("GITHUB_TOKEN environment variable not set")
+	}
 	ghClient := impl.NewGitHubClient(ghToken)
 	service := impl.NewHotfix(&logger, ghClient)
 
