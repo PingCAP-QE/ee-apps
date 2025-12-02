@@ -209,11 +209,12 @@ func (s *hotfixsrvc) computeTagName(ctx context.Context, owner, repo string) (st
 	now := time.Now()
 	currentYearMonth := fmt.Sprintf("%04d%02d", now.Year(), now.Month())
 
-	// If no matching tags exist, create the first one
+	// If no matching tags exist, we cannot determine the version to use
 	if len(matchingTags) == 0 {
-		// Use a default version - this should ideally be passed as a parameter
-		// For now, we'll use v8.5.4 as shown in the example
-		return fmt.Sprintf("v8.5.4-nextgen.%s.1", currentYearMonth), nil
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusBadRequest,
+			Message: "no existing tags found matching pattern vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
+		}
 	}
 
 	// Sort tags to find the latest one
