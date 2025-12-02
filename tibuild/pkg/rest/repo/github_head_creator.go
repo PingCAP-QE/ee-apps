@@ -99,6 +99,186 @@ func (g githubHeadCreator) CreateTagFromBranch(ctx context.Context, repo service
 	panic("implement me")
 }
 
+func (g githubHeadCreator) GetCommitSHA(ctx context.Context, repo service.GithubRepo, ref string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", repo.Owner, repo.Repo, ref)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set(HeaderAuthorization, "token "+g.Token)
+	resp, err := g.httpDoer.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("failed to get commit SHA (status %d): %s", resp.StatusCode, string(body))
+	}
+	rt := struct {
+		Sha string `json:"sha"`
+	}{}
+	err = json.NewDecoder(resp.Body).Decode(&rt)
+	if err != nil {
+		return "", err
+	}
+	return rt.Sha, nil
+}
+
+func (g githubHeadCreator) ListTags(ctx context.Context, repo service.GithubRepo) ([]string, error) {
+	var allTags []string
+	page := 1
+	perPage := 100
+	
+	for {
+		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/tags?page=%d&per_page=%d", repo.Owner, repo.Repo, page, perPage)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set(HeaderAuthorization, "token "+g.Token)
+		resp, err := g.httpDoer.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("failed to list tags (status %d): %s", resp.StatusCode, string(body))
+		}
+		
+		var tags []struct {
+			Name string `json:"name"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&tags)
+		if err != nil {
+			return nil, err
+		}
+		
+		if len(tags) == 0 {
+			break
+		}
+		
+		for _, tag := range tags {
+			allTags = append(allTags, tag.Name)
+		}
+		
+		if len(tags) < perPage {
+			break
+		}
+		page++
+	}
+	
+	return allTags, nil
+}
+
+func (g githubHeadCreator) CreateAnnotatedTag(ctx context.Context, repo service.GithubRepo, tag string, commit string, message string) error {
+	// First, create a tag object
+	tagObjectURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/tags", repo.Owner, repo.Repo)
+	tagBody := map[string]interface{}{
+		"tag":     tag,
+		"message": message,
+		"object":  commit,
+		"type":    "commit",
+	}
+	
+	buffer := &bytes.Buffer{}
+	err := json.NewEncoder(buffer).Encode(tagBody)
+	if err != nil {
+		return err
+	}
+	
+	req, err := http.NewRequest("POST", tagObjectURL, buffer)
+	if err != nil {
+		return err
+	}
+	req.Header.Set(HeaderAuthorization, "token "+g.Token)
+	resp, err := g.httpDoer.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create tag object (status %d): %s", resp.StatusCode, string(body))
+	}
+	
+	var tagResp struct {
+		Sha string `json:"sha"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&tagResp)
+	if err != nil {
+		return err
+	}
+	
+	// Now create the reference
+	refURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs", repo.Owner, repo.Repo)
+	refBody := map[string]string{
+		"ref": "refs/tags/" + tag,
+		"sha": tagResp.Sha,
+	}
+	
+	buffer = &bytes.Buffer{}
+	err = json.NewEncoder(buffer).Encode(refBody)
+	if err != nil {
+		return err
+	}
+	
+	req, err = http.NewRequest("POST", refURL, buffer)
+	if err != nil {
+		return err
+	}
+	req.Header.Set(HeaderAuthorization, "token "+g.Token)
+	resp, err = g.httpDoer.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create tag reference (status %d): %s", resp.StatusCode, string(body))
+	}
+	
+	return nil
+}
+
+func (g githubHeadCreator) GetBranchesForCommit(ctx context.Context, repo service.GithubRepo, commit string) ([]string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s/branches-where-head", repo.Owner, repo.Repo, commit)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(HeaderAuthorization, "token "+g.Token)
+	resp, err := g.httpDoer.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get branches for commit (status %d): %s", resp.StatusCode, string(body))
+	}
+	
+	var branches []struct {
+		Name string `json:"name"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&branches)
+	if err != nil {
+		return nil, err
+	}
+	
+	var branchNames []string
+	for _, b := range branches {
+		branchNames = append(branchNames, b.Name)
+	}
+	
+	return branchNames, nil
+}
+
 func NewGithubHeadCreator(token string) githubHeadCreator {
 	return githubHeadCreator{Token: token, httpDoer: http.DefaultClient}
 }

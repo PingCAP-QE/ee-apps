@@ -22,6 +22,22 @@ func (p ChatPrinter) CreateTagFromBranch(ctx context.Context, repo service.Githu
 	return nil
 }
 
+func (p ChatPrinter) GetCommitSHA(ctx context.Context, repo service.GithubRepo, ref string) (string, error) {
+	return "", nil
+}
+
+func (p ChatPrinter) ListTags(ctx context.Context, repo service.GithubRepo) ([]string, error) {
+	return []string{}, nil
+}
+
+func (p ChatPrinter) CreateAnnotatedTag(ctx context.Context, repo service.GithubRepo, tag string, commit string, message string) error {
+	return nil
+}
+
+func (p ChatPrinter) GetBranchesForCommit(ctx context.Context, repo service.GithubRepo, commit string) ([]string, error) {
+	return []string{}, nil
+}
+
 func GenEEChatOpsCreateBranch(repo service.GithubRepo, branch string, tag string) string {
 	return fmt.Sprintf(" /create_branch_from_tag %s %s", service.GenTagURL(repo.URL(), tag), branch)
 }

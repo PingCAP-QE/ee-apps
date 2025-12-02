@@ -9,6 +9,7 @@ import (
 type HotfixService interface {
 	CreateBranch(ctx context.Context, req BranchCreateReq) (resp *BranchCreateResp, err error)
 	CreateTag(ctx context.Context, req TagCreateReq) (resp *TagCreateResp, err error)
+	CreateTidbXHotfixTag(ctx context.Context, req TidbXHotfixTagCreateReq) (resp *TidbXHotfixTagCreateResp, err error)
 }
 
 type DevBuildService interface {

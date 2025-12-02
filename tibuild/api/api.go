@@ -96,6 +96,7 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 	{
 		hotfixGroup.POST("/create-branch", hotfixHandler.CreateBranch)
 		hotfixGroup.POST("/create-tag", hotfixHandler.CreateTag)
+		hotfixGroup.POST("/create-tidb-x-tag", hotfixHandler.CreateTidbXHotfixTag)
 	}
 
 	jenkins, err := service.NewJenkins(context.Background(), "https://cd.pingcap.net/", cfg.Jenkins.UserName, cfg.Jenkins.PassWord)

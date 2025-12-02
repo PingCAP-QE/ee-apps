@@ -33,6 +33,19 @@ type TagCreateResp struct {
 	TagURL string `json:"tagURL"`
 }
 
+type TidbXHotfixTagCreateReq struct {
+	Repo   string `json:"repo" binding:"required"`
+	Branch string `json:"branch,omitempty"`
+	Commit string `json:"commit,omitempty"`
+	Author string `json:"author" binding:"required"`
+}
+
+type TidbXHotfixTagCreateResp struct {
+	Repo   string `json:"repo"`
+	Commit string `json:"commit"`
+	Tag    string `json:"tag"`
+}
+
 type GithubRepo struct {
 	Owner string
 	Repo  string
