@@ -195,7 +195,10 @@ func ComputeNextgenTagName(tags []string, now time.Time) (string, error) {
 			if tagYYYYMM == currentYYYYMM {
 				// Parse N
 				var n int
-				fmt.Sscanf(matches[5], "%d", &n)
+				_, err := fmt.Sscanf(matches[5], "%d", &n)
+				if err != nil {
+					continue // Skip tags with invalid N component
+				}
 				if n > maxN {
 					maxN = n
 					baseVersion = fmt.Sprintf("v%s.%s.%s", matches[1], matches[2], matches[3])

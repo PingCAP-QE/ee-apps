@@ -141,10 +141,10 @@ func (g githubHeadCreator) ListTags(ctx context.Context, repo service.GithubRepo
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 		
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			return nil, fmt.Errorf("failed to list tags (status %d): %s", resp.StatusCode, string(body))
 		}
 		
@@ -152,6 +152,7 @@ func (g githubHeadCreator) ListTags(ctx context.Context, repo service.GithubRepo
 			Name string `json:"name"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&tags)
+		resp.Body.Close()
 		if err != nil {
 			return nil, err
 		}
@@ -198,10 +199,10 @@ func (g githubHeadCreator) CreateAnnotatedTag(ctx context.Context, repo service.
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 	
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return fmt.Errorf("failed to create tag object (status %d): %s", resp.StatusCode, string(body))
 	}
 	
@@ -209,6 +210,7 @@ func (g githubHeadCreator) CreateAnnotatedTag(ctx context.Context, repo service.
 		Sha string `json:"sha"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&tagResp)
+	resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -235,18 +237,21 @@ func (g githubHeadCreator) CreateAnnotatedTag(ctx context.Context, repo service.
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 	
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return fmt.Errorf("failed to create tag reference (status %d): %s", resp.StatusCode, string(body))
 	}
+	resp.Body.Close()
 	
 	return nil
 }
 
 func (g githubHeadCreator) GetBranchesForCommit(ctx context.Context, repo service.GithubRepo, commit string) ([]string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s/branches-where-head", repo.Owner, repo.Repo, commit)
+	// Use the list branches endpoint to get all branches, then check if commit is in each branch
+	// This is more reliable than the deprecated branches-where-head endpoint
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches", repo.Owner, repo.Repo)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -256,24 +261,53 @@ func (g githubHeadCreator) GetBranchesForCommit(ctx context.Context, repo servic
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get branches for commit (status %d): %s", resp.StatusCode, string(body))
+		resp.Body.Close()
+		return nil, fmt.Errorf("failed to get branches (status %d): %s", resp.StatusCode, string(body))
 	}
 	
 	var branches []struct {
-		Name string `json:"name"`
+		Name   string `json:"name"`
+		Commit struct {
+			Sha string `json:"sha"`
+		} `json:"commit"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&branches)
+	resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
 	
 	var branchNames []string
 	for _, b := range branches {
-		branchNames = append(branchNames, b.Name)
+		// Check if the commit is reachable from this branch by comparing
+		compareURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/compare/%s...%s", 
+			repo.Owner, repo.Repo, commit, b.Name)
+		compareReq, err := http.NewRequest("GET", compareURL, nil)
+		if err != nil {
+			continue
+		}
+		compareReq.Header.Set(HeaderAuthorization, "token "+g.Token)
+		compareResp, err := g.httpDoer.Do(compareReq)
+		if err != nil {
+			continue
+		}
+		
+		if compareResp.StatusCode == http.StatusOK {
+			var compareResult struct {
+				Status string `json:"status"`
+			}
+			err = json.NewDecoder(compareResp.Body).Decode(&compareResult)
+			compareResp.Body.Close()
+			if err == nil && (compareResult.Status == "identical" || compareResult.Status == "behind") {
+				// Commit is in this branch
+				branchNames = append(branchNames, b.Name)
+			}
+		} else {
+			compareResp.Body.Close()
+		}
 	}
 	
 	return branchNames, nil
