@@ -11,6 +11,7 @@ tiup:
     password: "redis_password"
 
   options:
+    mirror_name: staging # staging|prod, this value will match for the event data field.
     mirror_url: http://tiup.mirror.site
     lark_webhook_url: https://feishu.custom-bot-webhook # create and copy the url then paste here.
     nightly_interval: 1h

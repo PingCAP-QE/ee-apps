@@ -165,7 +165,7 @@ func Test_analyzeTiupFromOciArtifact(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := analyzeTiupFromOciArtifact(tt.args.repo, tt.args.tag)
+			got, err := analyzeTiupFromOciArtifact(tt.args.repo, tt.args.tag, "staging")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("analyzeFromOciArtifact() error = %v, wantErr %v", err, tt.wantErr)
 				return

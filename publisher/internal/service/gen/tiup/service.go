@@ -14,8 +14,11 @@ import (
 
 // TiUP Publisher service
 type Service interface {
-	// RequestToPublish implements request-to-publish.
+	// Request to publish TiUP packages from a OCI artifact
 	RequestToPublish(context.Context, *RequestToPublishPayload) (res []string, err error)
+	// Request to delivery TiUP packages from OCI artifact controlled by delivery
+	// rules
+	DeliveryByRules(context.Context, *DeliveryByRulesPayload) (res []string, err error)
 	// Request to publish a single TiUP package from a binary tarball
 	RequestToPublishSingle(context.Context, *PublishRequestTiUP) (res string, err error)
 	// QueryPublishingStatus implements query-publishing-status.
@@ -38,7 +41,15 @@ const ServiceName = "tiup"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [4]string{"request-to-publish", "request-to-publish-single", "query-publishing-status", "reset-rate-limit"}
+var MethodNames = [5]string{"request-to-publish", "delivery-by-rules", "request-to-publish-single", "query-publishing-status", "reset-rate-limit"}
+
+// DeliveryByRulesPayload is the payload type of the tiup service
+// delivery-by-rules method.
+type DeliveryByRulesPayload struct {
+	// The full url of the pushed OCI artifact, contain the tag part. It will parse
+	// the repo from it.
+	ArtifactURL string
+}
 
 type From struct {
 	Type string    `json:"type,omitempty"`
@@ -73,6 +84,9 @@ type PublishInfoTiUP struct {
 type PublishRequestTiUP struct {
 	From    *From            `json:"from,omitempty"`
 	Publish *PublishInfoTiUP `json:"publish,omitempty"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror,omitempty"`
 }
 
 // QueryPublishingStatusPayload is the payload type of the tiup service
@@ -91,7 +105,7 @@ type RequestToPublishPayload struct {
 	// Force set the version. Default is the artifact version read from
 	// `org.opencontainers.image.version` of the manifest config.
 	Version *string
-	// Staging is http://tiup.pingcap.net:8988, product is
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
-	TiupMirror string
+	TiupMirror string `json:"tiup_mirror,omitempty"`
 }

@@ -12,14 +12,16 @@ import (
 	goahttp "goa.design/goa/v3/http"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
-	fssvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/server"
+	fileserversvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/server"
+	imagesvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/image/server"
 	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tiup/server"
-	tiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpoints, fsEndpoints *fileserver.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpoints, fileserverEndpoints *fileserver.Endpoints, imageEndpoints *image.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -48,18 +50,21 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 	// the service input and output data structures to HTTP requests and
 	// responses.
 	var (
-		tiupServer *tiupsvr.Server
-		fsServer   *fssvr.Server
+		tiupServer       *tiupsvr.Server
+		fileserverServer *fileserversvr.Server
+		imageServer      *imagesvr.Server
 	)
 	{
 		eh := errorHandler(ctx)
 		tiupServer = tiupsvr.New(tiupEndpoints, mux, dec, enc, eh, nil)
-		fsServer = fssvr.New(fsEndpoints, mux, dec, enc, eh, nil)
+		fileserverServer = fileserversvr.New(fileserverEndpoints, mux, dec, enc, eh, nil)
+		imageServer = imagesvr.New(imageEndpoints, mux, dec, enc, eh, nil)
 	}
 
 	// Configure the mux.
 	tiupsvr.Mount(mux, tiupServer)
-	fssvr.Mount(mux, fsServer)
+	fileserversvr.Mount(mux, fileserverServer)
+	imagesvr.Mount(mux, imageServer)
 
 	var handler http.Handler = mux
 	if dbg {
@@ -74,11 +79,14 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 	for _, m := range tiupServer.Mounts {
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
+	for _, m := range fileserverServer.Mounts {
+		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
+	}
+	for _, m := range imageServer.Mounts {
+		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
+	}
 
-	(*wg).Add(1)
-	go func() {
-		defer (*wg).Done()
-
+	wg.Go(func() {
 		// Start HTTP server in a separate goroutine.
 		go func() {
 			log.Printf(ctx, "HTTP server listening on %q", u.Host)
@@ -96,7 +104,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 		if err != nil {
 			log.Printf(ctx, "failed to shutdown: %v", err)
 		}
-	}()
+	})
 }
 
 // errorHandler returns a function that writes and logs the given error.

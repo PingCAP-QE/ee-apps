@@ -16,6 +16,7 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
 func main() {
@@ -34,13 +35,13 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	config, err := loadConfig(*configFile)
+	cfg, err := config.Load[config.Workers](*configFile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("load config failed")
 	}
 
-	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(config.Tiup)
-	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(config.FileServer)
+	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(cfg.Tiup)
+	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(cfg.FileServer)
 
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.
@@ -78,8 +79,7 @@ func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, 
 		return
 	}
 
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		defer wg.Done()
 		defer reader.Close()
 
@@ -104,7 +104,7 @@ func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, 
 				worker.Handle(cloudEvent)
 			}
 		}
-	}()
+	})
 
 	log.Info().Msg("Kafka consumer started")
 }

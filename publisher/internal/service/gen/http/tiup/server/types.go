@@ -22,9 +22,17 @@ type RequestToPublishRequestBody struct {
 	// Force set the version. Default is the artifact version read from
 	// `org.opencontainers.image.version` of the manifest config.
 	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
-	// Staging is http://tiup.pingcap.net:8988, product is
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
-	TiupMirror *string `form:"tiup-mirror,omitempty" json:"tiup-mirror,omitempty" xml:"tiup-mirror,omitempty"`
+	TiupMirror *string `json:"tiup_mirror,omitempty"`
+}
+
+// DeliveryByRulesRequestBody is the type of the "tiup" service
+// "delivery-by-rules" endpoint HTTP request body.
+type DeliveryByRulesRequestBody struct {
+	// The full url of the pushed OCI artifact, contain the tag part. It will parse
+	// the repo from it.
+	ArtifactURL *string `form:"artifact_url,omitempty" json:"artifact_url,omitempty" xml:"artifact_url,omitempty"`
 }
 
 // RequestToPublishSingleRequestBody is the type of the "tiup" service
@@ -32,6 +40,9 @@ type RequestToPublishRequestBody struct {
 type RequestToPublishSingleRequestBody struct {
 	From    *FromRequestBody            `json:"from,omitempty"`
 	Publish *PublishInfoTiUPRequestBody `json:"publish,omitempty"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror *string `json:"tiup_mirror,omitempty"`
 }
 
 // FromRequestBody is used to define fields on request body types.
@@ -70,7 +81,22 @@ func NewRequestToPublishPayload(body *RequestToPublishRequestBody) *tiup.Request
 	v := &tiup.RequestToPublishPayload{
 		ArtifactURL: *body.ArtifactURL,
 		Version:     body.Version,
-		TiupMirror:  *body.TiupMirror,
+	}
+	if body.TiupMirror != nil {
+		v.TiupMirror = *body.TiupMirror
+	}
+	if body.TiupMirror == nil {
+		v.TiupMirror = "staging"
+	}
+
+	return v
+}
+
+// NewDeliveryByRulesPayload builds a tiup service delivery-by-rules endpoint
+// payload.
+func NewDeliveryByRulesPayload(body *DeliveryByRulesRequestBody) *tiup.DeliveryByRulesPayload {
+	v := &tiup.DeliveryByRulesPayload{
+		ArtifactURL: *body.ArtifactURL,
 	}
 
 	return v
@@ -80,8 +106,14 @@ func NewRequestToPublishPayload(body *RequestToPublishRequestBody) *tiup.Request
 // request-to-publish-single endpoint payload.
 func NewRequestToPublishSinglePublishRequestTiUP(body *RequestToPublishSingleRequestBody) *tiup.PublishRequestTiUP {
 	v := &tiup.PublishRequestTiUP{}
+	if body.TiupMirror != nil {
+		v.TiupMirror = *body.TiupMirror
+	}
 	v.From = unmarshalFromRequestBodyToTiupFrom(body.From)
 	v.Publish = unmarshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(body.Publish)
+	if body.TiupMirror == nil {
+		v.TiupMirror = "staging"
+	}
 
 	return v
 }
@@ -101,8 +133,14 @@ func ValidateRequestToPublishRequestBody(body *RequestToPublishRequestBody) (err
 	if body.ArtifactURL == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("artifact_url", "body"))
 	}
-	if body.TiupMirror == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("tiup-mirror", "body"))
+	return
+}
+
+// ValidateDeliveryByRulesRequestBody runs the validations defined on
+// Delivery-By-RulesRequestBody
+func ValidateDeliveryByRulesRequestBody(body *DeliveryByRulesRequestBody) (err error) {
+	if body.ArtifactURL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("artifact_url", "body"))
 	}
 	return
 }

@@ -34,7 +34,14 @@ func TestImageServiceCopyFlow(t *testing.T) {
 	logger := zerolog.New(zerolog.NewConsoleWriter())
 
 	// Create the service with a relatively short timeout
-	service := NewService(&logger, nil, redisClient, "test")
+	service := &imagesrvc{
+		BaseService: &share.BaseService{
+			Logger:      &logger,
+			KafkaWriter: nil,
+			RedisClient: redisClient,
+			EventSource: "test",
+		},
+	}
 
 	// Setup test image names
 	sourceImage := "ttl.sh/pingcap-test-source:1h"

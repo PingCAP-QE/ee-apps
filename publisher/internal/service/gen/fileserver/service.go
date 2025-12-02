@@ -39,7 +39,7 @@ var MethodNames = [2]string{"request-to-publish", "query-publishing-status"}
 // QueryPublishingStatusPayload is the payload type of the fileserver service
 // query-publishing-status method.
 type QueryPublishingStatusPayload struct {
-	// request track id
+	// Request id for async mode (uuidv4 format)
 	RequestID string
 }
 

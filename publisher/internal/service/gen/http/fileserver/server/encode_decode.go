@@ -78,10 +78,15 @@ func DecodeQueryPublishingStatusRequest(mux goahttp.Muxer, decoder func(*http.Re
 	return func(r *http.Request) (*fileserver.QueryPublishingStatusPayload, error) {
 		var (
 			requestID string
+			err       error
 
 			params = mux.Vars(r)
 		)
 		requestID = params["request_id"]
+		err = goa.MergeErrors(err, goa.ValidateFormat("request_id", requestID, goa.FormatUUID))
+		if err != nil {
+			return nil, err
+		}
 		payload := NewQueryPublishingStatusPayload(requestID)
 
 		return payload, nil
