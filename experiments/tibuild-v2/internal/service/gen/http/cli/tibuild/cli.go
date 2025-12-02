@@ -16,6 +16,7 @@ import (
 
 	artifactc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/client"
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
+	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -26,6 +27,7 @@ import (
 func UsageCommands() string {
 	return `artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
+hotfix create-tag
 `
 }
 
@@ -36,6 +38,12 @@ func UsageExamples() string {
       "target": "Qui earum omnis."
    }'` + "\n" +
 		os.Args[0] + ` devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."` + "\n" +
+		os.Args[0] + ` hotfix create-tag --body '{
+      "author": "wuhuizuo",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "repo": "pingcap/tidb"
+   }'` + "\n" +
 		""
 }
 
@@ -89,6 +97,11 @@ func ParseEndpoint(
 		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
 		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
 		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
+
+		hotfixFlags = flag.NewFlagSet("hotfix", flag.ContinueOnError)
+
+		hotfixCreateTagFlags    = flag.NewFlagSet("create-tag", flag.ExitOnError)
+		hotfixCreateTagBodyFlag = hotfixCreateTagFlags.String("body", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -100,6 +113,9 @@ func ParseEndpoint(
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
 	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
+
+	hotfixFlags.Usage = hotfixUsage
+	hotfixCreateTagFlags.Usage = hotfixCreateTagUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -120,6 +136,8 @@ func ParseEndpoint(
 			svcf = artifactFlags
 		case "devbuild":
 			svcf = devbuildFlags
+		case "hotfix":
+			svcf = hotfixFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -161,6 +179,13 @@ func ParseEndpoint(
 
 			case "ingest-event":
 				epf = devbuildIngestEventFlags
+
+			}
+
+		case "hotfix":
+			switch epn {
+			case "create-tag":
+				epf = hotfixCreateTagFlags
 
 			}
 
@@ -213,6 +238,13 @@ func ParseEndpoint(
 				endpoint = c.IngestEvent()
 				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
 			}
+		case "hotfix":
+			c := hotfixc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "create-tag":
+				endpoint = c.CreateTag()
+				data, err = hotfixc.BuildCreateTagPayload(*hotfixCreateTagBodyFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -239,7 +271,7 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s artifact sync-image --body '{
@@ -271,12 +303,12 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT:
-    -page-size INT:
-    -hotfix BOOL:
-    -sort STRING:
-    -direction STRING:
-    -created-by STRING:
+    -page INT: 
+    -page-size INT: 
+    -hotfix BOOL: 
+    -sort STRING: 
+    -direction STRING: 
+    -created-by STRING: 
 
 Example:
     %[1]s devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."
@@ -287,8 +319,8 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON:
-    -dryrun BOOL:
+    -body JSON: 
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild create --body '{
@@ -321,7 +353,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL:
+    -sync BOOL: 
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -332,9 +364,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON:
+    -body JSON: 
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild update --body '{
@@ -517,7 +549,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -528,13 +560,13 @@ func devbuildIngestEventUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
 
 Ingest a CloudEvent for build events
-    -body JSON:
-    -datacontenttype STRING:
-    -id STRING:
-    -source STRING:
-    -type STRING:
-    -specversion STRING:
-    -time STRING:
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
 
 Example:
     %[1]s devbuild ingest-event --body '{
@@ -547,5 +579,34 @@ Example:
       "dataschema": "https://example.com/registry/schemas/build-event.json",
       "subject": "tidb-build-123"
    }' --datacontenttype "Et qui in." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+`, os.Args[0])
+}
+
+// hotfixUsage displays the usage of the hotfix command and its subcommands.
+func hotfixUsage() {
+	fmt.Fprintf(os.Stderr, `The hotfix service provides operations to manage hotfix git tags.
+Usage:
+    %[1]s [globalflags] hotfix COMMAND [flags]
+
+COMMAND:
+    create-tag: Create a hot fix git tag for a GitHub repository
+
+Additional help:
+    %[1]s hotfix COMMAND --help
+`, os.Args[0])
+}
+func hotfixCreateTagUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix create-tag -body JSON
+
+Create a hot fix git tag for a GitHub repository
+    -body JSON: 
+
+Example:
+    %[1]s hotfix create-tag --body '{
+      "author": "wuhuizuo",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "repo": "pingcap/tidb"
+   }'
 `, os.Args[0])
 }
