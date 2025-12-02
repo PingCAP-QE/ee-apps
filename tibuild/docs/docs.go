@@ -472,7 +472,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "platform": {
-                    "description": "\"linux/amd64\" or \"linux/arm64\" or \"darwin/amd64\" or \"darwin/arm64\" or empty for all platforms.",
+                    "description": "\"linux\", \"darwin\" or \"linux/amd64\" or \"linux/arm64\" or \"darwin/amd64\" or \"darwin/arm64\" or empty for all platforms.",
                     "type": "string"
                 },
                 "pluginGitRef": {
@@ -533,6 +533,9 @@ const docTemplate = `{
         "service.ImageArtifact": {
             "type": "object",
             "properties": {
+                "internal_url": {
+                    "type": "string"
+                },
                 "platform": {
                     "type": "string"
                 },
@@ -651,6 +654,41 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/service.TektonPipeline"
                     }
+                }
+            }
+        },
+        "service.TidbXHotfixTagCreateReq": {
+            "type": "object",
+            "required": [
+                "author",
+                "repo"
+            ],
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "commit": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.TidbXHotfixTagCreateResp": {
+            "type": "object",
+            "properties": {
+                "commit": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
                 }
             }
         }

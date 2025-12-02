@@ -95,8 +95,8 @@ definitions:
       pipelineEngine:
         type: string
       platform:
-        description: '"linux/amd64" or "linux/arm64" or "darwin/amd64" or "darwin/arm64"
-          or empty for all platforms.'
+        description: '"linux", "darwin" or "linux/amd64" or "linux/arm64" or "darwin/amd64"
+          or "darwin/arm64" or empty for all platforms.'
         type: string
       pluginGitRef:
         type: string
@@ -136,6 +136,8 @@ definitions:
     type: object
   service.ImageArtifact:
     properties:
+      internal_url:
+        type: string
       platform:
         type: string
       url:
@@ -213,6 +215,29 @@ definitions:
         items:
           $ref: '#/definitions/service.TektonPipeline'
         type: array
+    type: object
+  service.TidbXHotfixTagCreateReq:
+    properties:
+      author:
+        type: string
+      branch:
+        type: string
+      commit:
+        type: string
+      repo:
+        type: string
+    required:
+    - author
+    - repo
+    type: object
+  service.TidbXHotfixTagCreateResp:
+    properties:
+      commit:
+        type: string
+      repo:
+        type: string
+      tag:
+        type: string
     type: object
 info:
   contact: {}
