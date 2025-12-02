@@ -21,367 +21,367 @@ type DevBuildCreate struct {
 }
 
 // SetCreatedBy sets the "created_by" field.
-func (dbc *DevBuildCreate) SetCreatedBy(s string) *DevBuildCreate {
-	dbc.mutation.SetCreatedBy(s)
-	return dbc
+func (_c *DevBuildCreate) SetCreatedBy(v string) *DevBuildCreate {
+	_c.mutation.SetCreatedBy(v)
+	return _c
 }
 
 // SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableCreatedBy(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetCreatedBy(*s)
+func (_c *DevBuildCreate) SetNillableCreatedBy(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetCreatedBy(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (dbc *DevBuildCreate) SetCreatedAt(t time.Time) *DevBuildCreate {
-	dbc.mutation.SetCreatedAt(t)
-	return dbc
+func (_c *DevBuildCreate) SetCreatedAt(v time.Time) *DevBuildCreate {
+	_c.mutation.SetCreatedAt(v)
+	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableCreatedAt(t *time.Time) *DevBuildCreate {
-	if t != nil {
-		dbc.SetCreatedAt(*t)
+func (_c *DevBuildCreate) SetNillableCreatedAt(v *time.Time) *DevBuildCreate {
+	if v != nil {
+		_c.SetCreatedAt(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (dbc *DevBuildCreate) SetUpdatedAt(t time.Time) *DevBuildCreate {
-	dbc.mutation.SetUpdatedAt(t)
-	return dbc
+func (_c *DevBuildCreate) SetUpdatedAt(v time.Time) *DevBuildCreate {
+	_c.mutation.SetUpdatedAt(v)
+	return _c
 }
 
 // SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableUpdatedAt(t *time.Time) *DevBuildCreate {
-	if t != nil {
-		dbc.SetUpdatedAt(*t)
+func (_c *DevBuildCreate) SetNillableUpdatedAt(v *time.Time) *DevBuildCreate {
+	if v != nil {
+		_c.SetUpdatedAt(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetProduct sets the "product" field.
-func (dbc *DevBuildCreate) SetProduct(s string) *DevBuildCreate {
-	dbc.mutation.SetProduct(s)
-	return dbc
+func (_c *DevBuildCreate) SetProduct(v string) *DevBuildCreate {
+	_c.mutation.SetProduct(v)
+	return _c
 }
 
 // SetNillableProduct sets the "product" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableProduct(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetProduct(*s)
+func (_c *DevBuildCreate) SetNillableProduct(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetProduct(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetEdition sets the "edition" field.
-func (dbc *DevBuildCreate) SetEdition(s string) *DevBuildCreate {
-	dbc.mutation.SetEdition(s)
-	return dbc
+func (_c *DevBuildCreate) SetEdition(v string) *DevBuildCreate {
+	_c.mutation.SetEdition(v)
+	return _c
 }
 
 // SetNillableEdition sets the "edition" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableEdition(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetEdition(*s)
+func (_c *DevBuildCreate) SetNillableEdition(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetEdition(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetVersion sets the "version" field.
-func (dbc *DevBuildCreate) SetVersion(s string) *DevBuildCreate {
-	dbc.mutation.SetVersion(s)
-	return dbc
+func (_c *DevBuildCreate) SetVersion(v string) *DevBuildCreate {
+	_c.mutation.SetVersion(v)
+	return _c
 }
 
 // SetNillableVersion sets the "version" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableVersion(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetVersion(*s)
+func (_c *DevBuildCreate) SetNillableVersion(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetVersion(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetGithubRepo sets the "github_repo" field.
-func (dbc *DevBuildCreate) SetGithubRepo(s string) *DevBuildCreate {
-	dbc.mutation.SetGithubRepo(s)
-	return dbc
+func (_c *DevBuildCreate) SetGithubRepo(v string) *DevBuildCreate {
+	_c.mutation.SetGithubRepo(v)
+	return _c
 }
 
 // SetNillableGithubRepo sets the "github_repo" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableGithubRepo(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetGithubRepo(*s)
+func (_c *DevBuildCreate) SetNillableGithubRepo(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetGithubRepo(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetGitRef sets the "git_ref" field.
-func (dbc *DevBuildCreate) SetGitRef(s string) *DevBuildCreate {
-	dbc.mutation.SetGitRef(s)
-	return dbc
+func (_c *DevBuildCreate) SetGitRef(v string) *DevBuildCreate {
+	_c.mutation.SetGitRef(v)
+	return _c
 }
 
 // SetNillableGitRef sets the "git_ref" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableGitRef(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetGitRef(*s)
+func (_c *DevBuildCreate) SetNillableGitRef(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetGitRef(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetGitSha sets the "git_sha" field.
-func (dbc *DevBuildCreate) SetGitSha(s string) *DevBuildCreate {
-	dbc.mutation.SetGitSha(s)
-	return dbc
+func (_c *DevBuildCreate) SetGitSha(v string) *DevBuildCreate {
+	_c.mutation.SetGitSha(v)
+	return _c
 }
 
 // SetNillableGitSha sets the "git_sha" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableGitSha(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetGitSha(*s)
+func (_c *DevBuildCreate) SetNillableGitSha(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetGitSha(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetPluginGitRef sets the "plugin_git_ref" field.
-func (dbc *DevBuildCreate) SetPluginGitRef(s string) *DevBuildCreate {
-	dbc.mutation.SetPluginGitRef(s)
-	return dbc
+func (_c *DevBuildCreate) SetPluginGitRef(v string) *DevBuildCreate {
+	_c.mutation.SetPluginGitRef(v)
+	return _c
 }
 
 // SetNillablePluginGitRef sets the "plugin_git_ref" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePluginGitRef(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetPluginGitRef(*s)
+func (_c *DevBuildCreate) SetNillablePluginGitRef(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetPluginGitRef(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetIsHotfix sets the "is_hotfix" field.
-func (dbc *DevBuildCreate) SetIsHotfix(b bool) *DevBuildCreate {
-	dbc.mutation.SetIsHotfix(b)
-	return dbc
+func (_c *DevBuildCreate) SetIsHotfix(v bool) *DevBuildCreate {
+	_c.mutation.SetIsHotfix(v)
+	return _c
 }
 
 // SetNillableIsHotfix sets the "is_hotfix" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableIsHotfix(b *bool) *DevBuildCreate {
-	if b != nil {
-		dbc.SetIsHotfix(*b)
+func (_c *DevBuildCreate) SetNillableIsHotfix(v *bool) *DevBuildCreate {
+	if v != nil {
+		_c.SetIsHotfix(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetIsPushGcr sets the "is_push_gcr" field.
-func (dbc *DevBuildCreate) SetIsPushGcr(b bool) *DevBuildCreate {
-	dbc.mutation.SetIsPushGcr(b)
-	return dbc
+func (_c *DevBuildCreate) SetIsPushGcr(v bool) *DevBuildCreate {
+	_c.mutation.SetIsPushGcr(v)
+	return _c
 }
 
 // SetNillableIsPushGcr sets the "is_push_gcr" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableIsPushGcr(b *bool) *DevBuildCreate {
-	if b != nil {
-		dbc.SetIsPushGcr(*b)
+func (_c *DevBuildCreate) SetNillableIsPushGcr(v *bool) *DevBuildCreate {
+	if v != nil {
+		_c.SetIsPushGcr(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetTargetImg sets the "target_img" field.
-func (dbc *DevBuildCreate) SetTargetImg(s string) *DevBuildCreate {
-	dbc.mutation.SetTargetImg(s)
-	return dbc
+func (_c *DevBuildCreate) SetTargetImg(v string) *DevBuildCreate {
+	_c.mutation.SetTargetImg(v)
+	return _c
 }
 
 // SetNillableTargetImg sets the "target_img" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableTargetImg(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetTargetImg(*s)
+func (_c *DevBuildCreate) SetNillableTargetImg(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetTargetImg(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetPipelineEngine sets the "pipeline_engine" field.
-func (dbc *DevBuildCreate) SetPipelineEngine(s string) *DevBuildCreate {
-	dbc.mutation.SetPipelineEngine(s)
-	return dbc
+func (_c *DevBuildCreate) SetPipelineEngine(v string) *DevBuildCreate {
+	_c.mutation.SetPipelineEngine(v)
+	return _c
 }
 
 // SetNillablePipelineEngine sets the "pipeline_engine" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePipelineEngine(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetPipelineEngine(*s)
+func (_c *DevBuildCreate) SetNillablePipelineEngine(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetPipelineEngine(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetBuilderImg sets the "builder_img" field.
-func (dbc *DevBuildCreate) SetBuilderImg(s string) *DevBuildCreate {
-	dbc.mutation.SetBuilderImg(s)
-	return dbc
+func (_c *DevBuildCreate) SetBuilderImg(v string) *DevBuildCreate {
+	_c.mutation.SetBuilderImg(v)
+	return _c
 }
 
 // SetNillableBuilderImg sets the "builder_img" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableBuilderImg(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetBuilderImg(*s)
+func (_c *DevBuildCreate) SetNillableBuilderImg(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetBuilderImg(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetBuildEnv sets the "build_env" field.
-func (dbc *DevBuildCreate) SetBuildEnv(s string) *DevBuildCreate {
-	dbc.mutation.SetBuildEnv(s)
-	return dbc
+func (_c *DevBuildCreate) SetBuildEnv(v string) *DevBuildCreate {
+	_c.mutation.SetBuildEnv(v)
+	return _c
 }
 
 // SetNillableBuildEnv sets the "build_env" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableBuildEnv(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetBuildEnv(*s)
+func (_c *DevBuildCreate) SetNillableBuildEnv(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetBuildEnv(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetFeatures sets the "features" field.
-func (dbc *DevBuildCreate) SetFeatures(s string) *DevBuildCreate {
-	dbc.mutation.SetFeatures(s)
-	return dbc
+func (_c *DevBuildCreate) SetFeatures(v string) *DevBuildCreate {
+	_c.mutation.SetFeatures(v)
+	return _c
 }
 
 // SetNillableFeatures sets the "features" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableFeatures(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetFeatures(*s)
+func (_c *DevBuildCreate) SetNillableFeatures(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetFeatures(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetProductBaseImg sets the "product_base_img" field.
-func (dbc *DevBuildCreate) SetProductBaseImg(s string) *DevBuildCreate {
-	dbc.mutation.SetProductBaseImg(s)
-	return dbc
+func (_c *DevBuildCreate) SetProductBaseImg(v string) *DevBuildCreate {
+	_c.mutation.SetProductBaseImg(v)
+	return _c
 }
 
 // SetNillableProductBaseImg sets the "product_base_img" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableProductBaseImg(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetProductBaseImg(*s)
+func (_c *DevBuildCreate) SetNillableProductBaseImg(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetProductBaseImg(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetProductDockerfile sets the "product_dockerfile" field.
-func (dbc *DevBuildCreate) SetProductDockerfile(s string) *DevBuildCreate {
-	dbc.mutation.SetProductDockerfile(s)
-	return dbc
+func (_c *DevBuildCreate) SetProductDockerfile(v string) *DevBuildCreate {
+	_c.mutation.SetProductDockerfile(v)
+	return _c
 }
 
 // SetNillableProductDockerfile sets the "product_dockerfile" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableProductDockerfile(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetProductDockerfile(*s)
+func (_c *DevBuildCreate) SetNillableProductDockerfile(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetProductDockerfile(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetStatus sets the "status" field.
-func (dbc *DevBuildCreate) SetStatus(s string) *DevBuildCreate {
-	dbc.mutation.SetStatus(s)
-	return dbc
+func (_c *DevBuildCreate) SetStatus(v string) *DevBuildCreate {
+	_c.mutation.SetStatus(v)
+	return _c
 }
 
 // SetNillableStatus sets the "status" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableStatus(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetStatus(*s)
+func (_c *DevBuildCreate) SetNillableStatus(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetStatus(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetErrMsg sets the "err_msg" field.
-func (dbc *DevBuildCreate) SetErrMsg(s string) *DevBuildCreate {
-	dbc.mutation.SetErrMsg(s)
-	return dbc
+func (_c *DevBuildCreate) SetErrMsg(v string) *DevBuildCreate {
+	_c.mutation.SetErrMsg(v)
+	return _c
 }
 
 // SetNillableErrMsg sets the "err_msg" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillableErrMsg(s *string) *DevBuildCreate {
-	if s != nil {
-		dbc.SetErrMsg(*s)
+func (_c *DevBuildCreate) SetNillableErrMsg(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetErrMsg(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetPipelineBuildID sets the "pipeline_build_id" field.
-func (dbc *DevBuildCreate) SetPipelineBuildID(i int) *DevBuildCreate {
-	dbc.mutation.SetPipelineBuildID(i)
-	return dbc
+func (_c *DevBuildCreate) SetPipelineBuildID(v int) *DevBuildCreate {
+	_c.mutation.SetPipelineBuildID(v)
+	return _c
 }
 
 // SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePipelineBuildID(i *int) *DevBuildCreate {
-	if i != nil {
-		dbc.SetPipelineBuildID(*i)
+func (_c *DevBuildCreate) SetNillablePipelineBuildID(v *int) *DevBuildCreate {
+	if v != nil {
+		_c.SetPipelineBuildID(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetPipelineStartAt sets the "pipeline_start_at" field.
-func (dbc *DevBuildCreate) SetPipelineStartAt(t time.Time) *DevBuildCreate {
-	dbc.mutation.SetPipelineStartAt(t)
-	return dbc
+func (_c *DevBuildCreate) SetPipelineStartAt(v time.Time) *DevBuildCreate {
+	_c.mutation.SetPipelineStartAt(v)
+	return _c
 }
 
 // SetNillablePipelineStartAt sets the "pipeline_start_at" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePipelineStartAt(t *time.Time) *DevBuildCreate {
-	if t != nil {
-		dbc.SetPipelineStartAt(*t)
+func (_c *DevBuildCreate) SetNillablePipelineStartAt(v *time.Time) *DevBuildCreate {
+	if v != nil {
+		_c.SetPipelineStartAt(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetPipelineEndAt sets the "pipeline_end_at" field.
-func (dbc *DevBuildCreate) SetPipelineEndAt(t time.Time) *DevBuildCreate {
-	dbc.mutation.SetPipelineEndAt(t)
-	return dbc
+func (_c *DevBuildCreate) SetPipelineEndAt(v time.Time) *DevBuildCreate {
+	_c.mutation.SetPipelineEndAt(v)
+	return _c
 }
 
 // SetNillablePipelineEndAt sets the "pipeline_end_at" field if the given value is not nil.
-func (dbc *DevBuildCreate) SetNillablePipelineEndAt(t *time.Time) *DevBuildCreate {
-	if t != nil {
-		dbc.SetPipelineEndAt(*t)
+func (_c *DevBuildCreate) SetNillablePipelineEndAt(v *time.Time) *DevBuildCreate {
+	if v != nil {
+		_c.SetPipelineEndAt(*v)
 	}
-	return dbc
+	return _c
 }
 
 // SetBuildReport sets the "build_report" field.
-func (dbc *DevBuildCreate) SetBuildReport(m map[string]interface{}) *DevBuildCreate {
-	dbc.mutation.SetBuildReport(m)
-	return dbc
+func (_c *DevBuildCreate) SetBuildReport(v map[string]interface{}) *DevBuildCreate {
+	_c.mutation.SetBuildReport(v)
+	return _c
 }
 
 // SetTektonStatus sets the "tekton_status" field.
-func (dbc *DevBuildCreate) SetTektonStatus(m map[string]interface{}) *DevBuildCreate {
-	dbc.mutation.SetTektonStatus(m)
-	return dbc
+func (_c *DevBuildCreate) SetTektonStatus(v map[string]interface{}) *DevBuildCreate {
+	_c.mutation.SetTektonStatus(v)
+	return _c
 }
 
 // Mutation returns the DevBuildMutation object of the builder.
-func (dbc *DevBuildCreate) Mutation() *DevBuildMutation {
-	return dbc.mutation
+func (_c *DevBuildCreate) Mutation() *DevBuildMutation {
+	return _c.mutation
 }
 
 // Save creates the DevBuild in the database.
-func (dbc *DevBuildCreate) Save(ctx context.Context) (*DevBuild, error) {
-	dbc.defaults()
-	return withHooks(ctx, dbc.sqlSave, dbc.mutation, dbc.hooks)
+func (_c *DevBuildCreate) Save(ctx context.Context) (*DevBuild, error) {
+	_c.defaults()
+	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (dbc *DevBuildCreate) SaveX(ctx context.Context) *DevBuild {
-	v, err := dbc.Save(ctx)
+func (_c *DevBuildCreate) SaveX(ctx context.Context) *DevBuild {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -389,134 +389,134 @@ func (dbc *DevBuildCreate) SaveX(ctx context.Context) *DevBuild {
 }
 
 // Exec executes the query.
-func (dbc *DevBuildCreate) Exec(ctx context.Context) error {
-	_, err := dbc.Save(ctx)
+func (_c *DevBuildCreate) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (dbc *DevBuildCreate) ExecX(ctx context.Context) {
-	if err := dbc.Exec(ctx); err != nil {
+func (_c *DevBuildCreate) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (dbc *DevBuildCreate) defaults() {
-	if _, ok := dbc.mutation.CreatedAt(); !ok {
+func (_c *DevBuildCreate) defaults() {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := devbuild.DefaultCreatedAt()
-		dbc.mutation.SetCreatedAt(v)
+		_c.mutation.SetCreatedAt(v)
 	}
-	if _, ok := dbc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		v := devbuild.DefaultUpdatedAt()
-		dbc.mutation.SetUpdatedAt(v)
+		_c.mutation.SetUpdatedAt(v)
 	}
-	if _, ok := dbc.mutation.IsHotfix(); !ok {
+	if _, ok := _c.mutation.IsHotfix(); !ok {
 		v := devbuild.DefaultIsHotfix
-		dbc.mutation.SetIsHotfix(v)
+		_c.mutation.SetIsHotfix(v)
 	}
-	if _, ok := dbc.mutation.PipelineEngine(); !ok {
+	if _, ok := _c.mutation.PipelineEngine(); !ok {
 		v := devbuild.DefaultPipelineEngine
-		dbc.mutation.SetPipelineEngine(v)
+		_c.mutation.SetPipelineEngine(v)
 	}
-	if _, ok := dbc.mutation.Status(); !ok {
+	if _, ok := _c.mutation.Status(); !ok {
 		v := devbuild.DefaultStatus
-		dbc.mutation.SetStatus(v)
+		_c.mutation.SetStatus(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (dbc *DevBuildCreate) check() error {
-	if v, ok := dbc.mutation.CreatedBy(); ok {
+func (_c *DevBuildCreate) check() error {
+	if v, ok := _c.mutation.CreatedBy(); ok {
 		if err := devbuild.CreatedByValidator(v); err != nil {
 			return &ValidationError{Name: "created_by", err: fmt.Errorf(`ent: validator failed for field "DevBuild.created_by": %w`, err)}
 		}
 	}
-	if _, ok := dbc.mutation.CreatedAt(); !ok {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "DevBuild.created_at"`)}
 	}
-	if _, ok := dbc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "DevBuild.updated_at"`)}
 	}
-	if v, ok := dbc.mutation.Product(); ok {
+	if v, ok := _c.mutation.Product(); ok {
 		if err := devbuild.ProductValidator(v); err != nil {
 			return &ValidationError{Name: "product", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.Edition(); ok {
+	if v, ok := _c.mutation.Edition(); ok {
 		if err := devbuild.EditionValidator(v); err != nil {
 			return &ValidationError{Name: "edition", err: fmt.Errorf(`ent: validator failed for field "DevBuild.edition": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.Version(); ok {
+	if v, ok := _c.mutation.Version(); ok {
 		if err := devbuild.VersionValidator(v); err != nil {
 			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "DevBuild.version": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.GithubRepo(); ok {
+	if v, ok := _c.mutation.GithubRepo(); ok {
 		if err := devbuild.GithubRepoValidator(v); err != nil {
 			return &ValidationError{Name: "github_repo", err: fmt.Errorf(`ent: validator failed for field "DevBuild.github_repo": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.GitRef(); ok {
+	if v, ok := _c.mutation.GitRef(); ok {
 		if err := devbuild.GitRefValidator(v); err != nil {
 			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.GitSha(); ok {
+	if v, ok := _c.mutation.GitSha(); ok {
 		if err := devbuild.GitShaValidator(v); err != nil {
 			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.PluginGitRef(); ok {
+	if v, ok := _c.mutation.PluginGitRef(); ok {
 		if err := devbuild.PluginGitRefValidator(v); err != nil {
 			return &ValidationError{Name: "plugin_git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.plugin_git_ref": %w`, err)}
 		}
 	}
-	if _, ok := dbc.mutation.IsHotfix(); !ok {
+	if _, ok := _c.mutation.IsHotfix(); !ok {
 		return &ValidationError{Name: "is_hotfix", err: errors.New(`ent: missing required field "DevBuild.is_hotfix"`)}
 	}
-	if v, ok := dbc.mutation.TargetImg(); ok {
+	if v, ok := _c.mutation.TargetImg(); ok {
 		if err := devbuild.TargetImgValidator(v); err != nil {
 			return &ValidationError{Name: "target_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.target_img": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.PipelineEngine(); ok {
+	if v, ok := _c.mutation.PipelineEngine(); ok {
 		if err := devbuild.PipelineEngineValidator(v); err != nil {
 			return &ValidationError{Name: "pipeline_engine", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pipeline_engine": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.BuilderImg(); ok {
+	if v, ok := _c.mutation.BuilderImg(); ok {
 		if err := devbuild.BuilderImgValidator(v); err != nil {
 			return &ValidationError{Name: "builder_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.builder_img": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.BuildEnv(); ok {
+	if v, ok := _c.mutation.BuildEnv(); ok {
 		if err := devbuild.BuildEnvValidator(v); err != nil {
 			return &ValidationError{Name: "build_env", err: fmt.Errorf(`ent: validator failed for field "DevBuild.build_env": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.Features(); ok {
+	if v, ok := _c.mutation.Features(); ok {
 		if err := devbuild.FeaturesValidator(v); err != nil {
 			return &ValidationError{Name: "features", err: fmt.Errorf(`ent: validator failed for field "DevBuild.features": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.ProductBaseImg(); ok {
+	if v, ok := _c.mutation.ProductBaseImg(); ok {
 		if err := devbuild.ProductBaseImgValidator(v); err != nil {
 			return &ValidationError{Name: "product_base_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_base_img": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.ProductDockerfile(); ok {
+	if v, ok := _c.mutation.ProductDockerfile(); ok {
 		if err := devbuild.ProductDockerfileValidator(v); err != nil {
 			return &ValidationError{Name: "product_dockerfile", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_dockerfile": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.Status(); ok {
+	if v, ok := _c.mutation.Status(); ok {
 		if err := devbuild.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DevBuild.status": %w`, err)}
 		}
 	}
-	if v, ok := dbc.mutation.ErrMsg(); ok {
+	if v, ok := _c.mutation.ErrMsg(); ok {
 		if err := devbuild.ErrMsgValidator(v); err != nil {
 			return &ValidationError{Name: "err_msg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.err_msg": %w`, err)}
 		}
@@ -524,12 +524,12 @@ func (dbc *DevBuildCreate) check() error {
 	return nil
 }
 
-func (dbc *DevBuildCreate) sqlSave(ctx context.Context) (*DevBuild, error) {
-	if err := dbc.check(); err != nil {
+func (_c *DevBuildCreate) sqlSave(ctx context.Context) (*DevBuild, error) {
+	if err := _c.check(); err != nil {
 		return nil, err
 	}
-	_node, _spec := dbc.createSpec()
-	if err := sqlgraph.CreateNode(ctx, dbc.driver, _spec); err != nil {
+	_node, _spec := _c.createSpec()
+	if err := sqlgraph.CreateNode(ctx, _c.driver, _spec); err != nil {
 		if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}
@@ -537,117 +537,117 @@ func (dbc *DevBuildCreate) sqlSave(ctx context.Context) (*DevBuild, error) {
 	}
 	id := _spec.ID.Value.(int64)
 	_node.ID = int(id)
-	dbc.mutation.id = &_node.ID
-	dbc.mutation.done = true
+	_c.mutation.id = &_node.ID
+	_c.mutation.done = true
 	return _node, nil
 }
 
-func (dbc *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
+func (_c *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
 	var (
-		_node = &DevBuild{config: dbc.config}
+		_node = &DevBuild{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(devbuild.Table, sqlgraph.NewFieldSpec(devbuild.FieldID, field.TypeInt))
 	)
-	if value, ok := dbc.mutation.CreatedBy(); ok {
+	if value, ok := _c.mutation.CreatedBy(); ok {
 		_spec.SetField(devbuild.FieldCreatedBy, field.TypeString, value)
 		_node.CreatedBy = value
 	}
-	if value, ok := dbc.mutation.CreatedAt(); ok {
+	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(devbuild.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
-	if value, ok := dbc.mutation.UpdatedAt(); ok {
+	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(devbuild.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
-	if value, ok := dbc.mutation.Product(); ok {
+	if value, ok := _c.mutation.Product(); ok {
 		_spec.SetField(devbuild.FieldProduct, field.TypeString, value)
 		_node.Product = value
 	}
-	if value, ok := dbc.mutation.Edition(); ok {
+	if value, ok := _c.mutation.Edition(); ok {
 		_spec.SetField(devbuild.FieldEdition, field.TypeString, value)
 		_node.Edition = value
 	}
-	if value, ok := dbc.mutation.Version(); ok {
+	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(devbuild.FieldVersion, field.TypeString, value)
 		_node.Version = value
 	}
-	if value, ok := dbc.mutation.GithubRepo(); ok {
+	if value, ok := _c.mutation.GithubRepo(); ok {
 		_spec.SetField(devbuild.FieldGithubRepo, field.TypeString, value)
 		_node.GithubRepo = value
 	}
-	if value, ok := dbc.mutation.GitRef(); ok {
+	if value, ok := _c.mutation.GitRef(); ok {
 		_spec.SetField(devbuild.FieldGitRef, field.TypeString, value)
 		_node.GitRef = value
 	}
-	if value, ok := dbc.mutation.GitSha(); ok {
+	if value, ok := _c.mutation.GitSha(); ok {
 		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
 		_node.GitSha = value
 	}
-	if value, ok := dbc.mutation.PluginGitRef(); ok {
+	if value, ok := _c.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
 		_node.PluginGitRef = value
 	}
-	if value, ok := dbc.mutation.IsHotfix(); ok {
+	if value, ok := _c.mutation.IsHotfix(); ok {
 		_spec.SetField(devbuild.FieldIsHotfix, field.TypeBool, value)
 		_node.IsHotfix = value
 	}
-	if value, ok := dbc.mutation.IsPushGcr(); ok {
+	if value, ok := _c.mutation.IsPushGcr(); ok {
 		_spec.SetField(devbuild.FieldIsPushGcr, field.TypeBool, value)
 		_node.IsPushGcr = value
 	}
-	if value, ok := dbc.mutation.TargetImg(); ok {
+	if value, ok := _c.mutation.TargetImg(); ok {
 		_spec.SetField(devbuild.FieldTargetImg, field.TypeString, value)
 		_node.TargetImg = value
 	}
-	if value, ok := dbc.mutation.PipelineEngine(); ok {
+	if value, ok := _c.mutation.PipelineEngine(); ok {
 		_spec.SetField(devbuild.FieldPipelineEngine, field.TypeString, value)
 		_node.PipelineEngine = value
 	}
-	if value, ok := dbc.mutation.BuilderImg(); ok {
+	if value, ok := _c.mutation.BuilderImg(); ok {
 		_spec.SetField(devbuild.FieldBuilderImg, field.TypeString, value)
 		_node.BuilderImg = value
 	}
-	if value, ok := dbc.mutation.BuildEnv(); ok {
+	if value, ok := _c.mutation.BuildEnv(); ok {
 		_spec.SetField(devbuild.FieldBuildEnv, field.TypeString, value)
 		_node.BuildEnv = value
 	}
-	if value, ok := dbc.mutation.Features(); ok {
+	if value, ok := _c.mutation.Features(); ok {
 		_spec.SetField(devbuild.FieldFeatures, field.TypeString, value)
 		_node.Features = value
 	}
-	if value, ok := dbc.mutation.ProductBaseImg(); ok {
+	if value, ok := _c.mutation.ProductBaseImg(); ok {
 		_spec.SetField(devbuild.FieldProductBaseImg, field.TypeString, value)
 		_node.ProductBaseImg = value
 	}
-	if value, ok := dbc.mutation.ProductDockerfile(); ok {
+	if value, ok := _c.mutation.ProductDockerfile(); ok {
 		_spec.SetField(devbuild.FieldProductDockerfile, field.TypeString, value)
 		_node.ProductDockerfile = value
 	}
-	if value, ok := dbc.mutation.Status(); ok {
+	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(devbuild.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
-	if value, ok := dbc.mutation.ErrMsg(); ok {
+	if value, ok := _c.mutation.ErrMsg(); ok {
 		_spec.SetField(devbuild.FieldErrMsg, field.TypeString, value)
 		_node.ErrMsg = value
 	}
-	if value, ok := dbc.mutation.PipelineBuildID(); ok {
+	if value, ok := _c.mutation.PipelineBuildID(); ok {
 		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
 		_node.PipelineBuildID = value
 	}
-	if value, ok := dbc.mutation.PipelineStartAt(); ok {
+	if value, ok := _c.mutation.PipelineStartAt(); ok {
 		_spec.SetField(devbuild.FieldPipelineStartAt, field.TypeTime, value)
 		_node.PipelineStartAt = value
 	}
-	if value, ok := dbc.mutation.PipelineEndAt(); ok {
+	if value, ok := _c.mutation.PipelineEndAt(); ok {
 		_spec.SetField(devbuild.FieldPipelineEndAt, field.TypeTime, value)
 		_node.PipelineEndAt = value
 	}
-	if value, ok := dbc.mutation.BuildReport(); ok {
+	if value, ok := _c.mutation.BuildReport(); ok {
 		_spec.SetField(devbuild.FieldBuildReport, field.TypeJSON, value)
 		_node.BuildReport = value
 	}
-	if value, ok := dbc.mutation.TektonStatus(); ok {
+	if value, ok := _c.mutation.TektonStatus(); ok {
 		_spec.SetField(devbuild.FieldTektonStatus, field.TypeJSON, value)
 		_node.TektonStatus = value
 	}
@@ -662,16 +662,16 @@ type DevBuildCreateBulk struct {
 }
 
 // Save creates the DevBuild entities in the database.
-func (dbcb *DevBuildCreateBulk) Save(ctx context.Context) ([]*DevBuild, error) {
-	if dbcb.err != nil {
-		return nil, dbcb.err
+func (_c *DevBuildCreateBulk) Save(ctx context.Context) ([]*DevBuild, error) {
+	if _c.err != nil {
+		return nil, _c.err
 	}
-	specs := make([]*sqlgraph.CreateSpec, len(dbcb.builders))
-	nodes := make([]*DevBuild, len(dbcb.builders))
-	mutators := make([]Mutator, len(dbcb.builders))
-	for i := range dbcb.builders {
+	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
+	nodes := make([]*DevBuild, len(_c.builders))
+	mutators := make([]Mutator, len(_c.builders))
+	for i := range _c.builders {
 		func(i int, root context.Context) {
-			builder := dbcb.builders[i]
+			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*DevBuildMutation)
@@ -685,11 +685,11 @@ func (dbcb *DevBuildCreateBulk) Save(ctx context.Context) ([]*DevBuild, error) {
 				var err error
 				nodes[i], specs[i] = builder.createSpec()
 				if i < len(mutators)-1 {
-					_, err = mutators[i+1].Mutate(root, dbcb.builders[i+1].mutation)
+					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
 					// Invoke the actual operation on the latest mutation in the chain.
-					if err = sqlgraph.BatchCreate(ctx, dbcb.driver, spec); err != nil {
+					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
 							err = &ConstraintError{msg: err.Error(), wrap: err}
 						}
@@ -713,7 +713,7 @@ func (dbcb *DevBuildCreateBulk) Save(ctx context.Context) ([]*DevBuild, error) {
 		}(i, ctx)
 	}
 	if len(mutators) > 0 {
-		if _, err := mutators[0].Mutate(ctx, dbcb.builders[0].mutation); err != nil {
+		if _, err := mutators[0].Mutate(ctx, _c.builders[0].mutation); err != nil {
 			return nil, err
 		}
 	}
@@ -721,8 +721,8 @@ func (dbcb *DevBuildCreateBulk) Save(ctx context.Context) ([]*DevBuild, error) {
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (dbcb *DevBuildCreateBulk) SaveX(ctx context.Context) []*DevBuild {
-	v, err := dbcb.Save(ctx)
+func (_c *DevBuildCreateBulk) SaveX(ctx context.Context) []*DevBuild {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -730,14 +730,14 @@ func (dbcb *DevBuildCreateBulk) SaveX(ctx context.Context) []*DevBuild {
 }
 
 // Exec executes the query.
-func (dbcb *DevBuildCreateBulk) Exec(ctx context.Context) error {
-	_, err := dbcb.Save(ctx)
+func (_c *DevBuildCreateBulk) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (dbcb *DevBuildCreateBulk) ExecX(ctx context.Context) {
-	if err := dbcb.Exec(ctx); err != nil {
+func (_c *DevBuildCreateBulk) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

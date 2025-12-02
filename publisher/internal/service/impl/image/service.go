@@ -2,125 +2,140 @@ package image
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
-	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/kafka-go"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
-// NewService returns the image service implementation.
-func NewService(logger *zerolog.Logger, redisClient *redis.Client, timeout time.Duration) image.Service {
-	return &imagesrvc{
-		logger:      logger,
-		redisClient: redisClient,
-		timeout:     timeout,
-	}
-}
-
 // artifact service example implementation.
 // The example methods log the requests and return zero values.
 type imagesrvc struct {
 	logger      *zerolog.Logger
-	redisClient *redis.Client
-	timeout     time.Duration
+	kafkaWriter *kafka.Writer
+	redisClient redis.Cmdable
+	eventSource string
+	stateTTL    time.Duration
 }
 
-// QueryCopyingStatus implements image.Service.
-func (s *imagesrvc) QueryCopyingStatus(ctx context.Context, p *image.QueryCopyingStatusPayload) (string, error) {
-	status, err := s.redisClient.Get(ctx, p.RequestID).Result()
-	if err != nil {
-		if err == redis.Nil {
-			return "", fmt.Errorf("request ID not found")
-		}
-		return "", fmt.Errorf("failed to get status from Redis: %v", err)
+// NewService returns the image service implementation.
+func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) image.Service {
+	return &imagesrvc{
+		logger:      logger,
+		kafkaWriter: kafkaWriter,
+		redisClient: redisClient,
+		eventSource: eventSrc,
+		stateTTL:    share.DefaultStateTTL,
 	}
-
-	return status, nil
 }
 
 // RequestToCopy implements image.Service.
 func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPayload) (res string, err error) {
+	return s.enqueueRequest(ctx, share.EventTypeImagePublishRequest, p.Source, p)
+}
+
+// QueryCopyingStatus implements image.Service.
+func (s *imagesrvc) QueryCopyingStatus(ctx context.Context, p *image.QueryCopyingStatusPayload) (string, error) {
+	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
+}
+
+// RequestMultiarchCollect implements image.Service.
+func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.RequestMultiarchCollectPayload) (res *image.RequestMultiarchCollectResult, err error) {
+	requestID, err := s.enqueueRequest(ctx, share.EventTypeImageMultiArchCollectRequest, p.ImageURL, p)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &image.RequestMultiarchCollectResult{
+		Async: p.Async,
+	}
+
+	if p.Async {
+		result.RequestID = &requestID
+		return result, nil
+	}
+
+	// wait for the result.
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			state, err := s.QueryMultiarchCollectStatus(ctx, &image.QueryMultiarchCollectStatusPayload{
+				RequestID: requestID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if share.IsStateCompleted(state) {
+				if state != share.PublishStateSuccess {
+					return nil, fmt.Errorf("multiarch collect failed, task state: %s", state)
+				}
+				// Fetch the result from Redis
+				resultJSON, err := s.redisClient.Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get result from redis: %w", err)
+				}
+				if err := json.Unmarshal(resultJSON, &result); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+				}
+				return result, nil
+			}
+		}
+	}
+}
+
+// QueryMultiarchCollectStatus implements image.Service.
+func (s *imagesrvc) QueryMultiarchCollectStatus(ctx context.Context, p *image.QueryMultiarchCollectStatusPayload) (string, error) {
+	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
+}
+
+// RequestToCopy implements image.Service.
+func (s *imagesrvc) enqueueRequest(ctx context.Context, requestType, subject string, p any) (string, error) {
 	// 1. generate a unique request ID
 	requestID := uuid.New().String()
 
-	// 2. init the status in redis.
+	// 2. Compose cloud events
+	event := cloudevents.NewEvent()
+	event.SetID(requestID)
+	event.SetType(requestType)
+	event.SetSource(s.eventSource)
+	event.SetSubject(subject)
+	event.SetData(cloudevents.ApplicationJSON, p)
+
+	// 3. Send it to kafka topic with the request id as key and the event as value.
+	bs, err := event.MarshalJSON()
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal event: %v", err)
+	}
+	message := kafka.Message{
+		Key:   []byte(event.ID()),
+		Value: bs,
+	}
+	if err := s.kafkaWriter.WriteMessages(ctx, message); err != nil {
+		return "", fmt.Errorf("failed to send message to Kafka: %v", err)
+	}
+
+	// 4. Init the request dealing status in redis with the request id.
 	if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
 		return "", fmt.Errorf("failed to initialize request status: %v", err)
 	}
-
 	s.logger.Info().
+		Str("request_type", share.EventTypeImagePublishRequest).
 		Str("request_id", requestID).
-		Str("source", p.Source).
-		Str("destination", p.Destination).
-		Msg("Image copy request queued")
-
-	// 3. async call the copyImage method and wait the result and update the status in redis.
-	go func() {
-		// Create a context with timeout
-		ctxWithTimeout, cancel := context.WithTimeout(context.Background(), s.timeout)
-		defer cancel()
-
-		l := s.logger.With().Str("request_id", requestID).Logger()
-
-		// Update status to processing
-		if err := s.redisClient.Set(ctxWithTimeout, requestID, share.PublishStateProcessing,
-			share.DefaultStateTTL).Err(); err != nil {
-			l.Err(err).Msg("Failed to update status to processing")
-			return
-		}
-
-		// Copy the image
-		err := s.copyImage(ctxWithTimeout, p)
-
-		// Update final status based on result
-		newStatus := share.PublishStateSuccess
-		if err != nil {
-			newStatus = share.PublishStateFailed
-			l.Err(err).Msg("Image copy failed")
-		} else {
-			l.Info().Msg("Image copy completed successfully")
-		}
-
-		if err := s.redisClient.Set(context.Background(), requestID, newStatus, share.DefaultStateTTL).Err(); err != nil {
-			l.Err(err).Str("intended_status", newStatus).Msg("Failed to update final status")
-		}
-	}()
+		Any("request_payload", p).
+		Msg("request queued")
 
 	return requestID, nil
-}
-
-// copyImage copies a Docker image from the source registry to the target registry.
-//
-// When running in k8s pod, it should use the service account that has Docker authentication
-// configured and appended to its context.
-//
-// When debugging locally, it will use the default authentication stored in the
-// Docker config.json file (~/.docker/config.json).
-func (s *imagesrvc) copyImage(ctx context.Context, p *image.RequestToCopyPayload) error {
-	l := s.logger.With().
-		Str("source", p.Source).
-		Str("destination", p.Destination).
-		Logger()
-
-	l.Info().Msg("Syncing Docker image")
-
-	// Create options for crane operations
-	options := []crane.Option{
-		crane.WithContext(ctx),
-	}
-
-	// Use the crane library to copy the image directly between registries
-	if err := crane.Copy(p.Source, p.Destination, options...); err != nil {
-		l.Err(err).Msg("Failed to sync image")
-		return err
-	}
-
-	l.Info().Msg("Image successfully synced to destination")
-	return nil
 }
