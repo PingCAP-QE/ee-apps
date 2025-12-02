@@ -21,6 +21,10 @@ type Service struct {
 	Kafka       KafkaBasic `yaml:"kafka" json:"kafka"`
 	Redis       Redis      `yaml:"redis" json:"redis"`
 	EventSource string     `yaml:"event_source" json:"event_source,omitempty"`
+
+	// service config for special service.
+	// <service-name>: <service-config>
+	Services map[string]any `yaml:"services,omitempty" json:"services,omitempty"`
 }
 
 // Redis represents the configuration to connect to a Redis instance.

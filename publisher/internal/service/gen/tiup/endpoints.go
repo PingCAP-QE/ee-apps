@@ -17,6 +17,7 @@ import (
 // Endpoints wraps the "tiup" service endpoints.
 type Endpoints struct {
 	RequestToPublish       goa.Endpoint
+	DeliveryByRules        goa.Endpoint
 	RequestToPublishSingle goa.Endpoint
 	QueryPublishingStatus  goa.Endpoint
 	ResetRateLimit         goa.Endpoint
@@ -26,6 +27,7 @@ type Endpoints struct {
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		RequestToPublish:       NewRequestToPublishEndpoint(s),
+		DeliveryByRules:        NewDeliveryByRulesEndpoint(s),
 		RequestToPublishSingle: NewRequestToPublishSingleEndpoint(s),
 		QueryPublishingStatus:  NewQueryPublishingStatusEndpoint(s),
 		ResetRateLimit:         NewResetRateLimitEndpoint(s),
@@ -35,6 +37,7 @@ func NewEndpoints(s Service) *Endpoints {
 // Use applies the given middleware to all the "tiup" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.RequestToPublish = m(e.RequestToPublish)
+	e.DeliveryByRules = m(e.DeliveryByRules)
 	e.RequestToPublishSingle = m(e.RequestToPublishSingle)
 	e.QueryPublishingStatus = m(e.QueryPublishingStatus)
 	e.ResetRateLimit = m(e.ResetRateLimit)
@@ -46,6 +49,15 @@ func NewRequestToPublishEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*RequestToPublishPayload)
 		return s.RequestToPublish(ctx, p)
+	}
+}
+
+// NewDeliveryByRulesEndpoint returns an endpoint function that calls the
+// method "delivery-by-rules" of service "tiup".
+func NewDeliveryByRulesEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*DeliveryByRulesPayload)
+		return s.DeliveryByRules(ctx, p)
 	}
 }
 

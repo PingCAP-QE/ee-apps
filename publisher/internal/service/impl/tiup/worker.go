@@ -10,12 +10,13 @@ import (
 	"slices"
 	"time"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	redsync "github.com/go-redsync/redsync/v4"
 	goredis "github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/rs/zerolog"
+
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 const (
@@ -34,6 +35,7 @@ type tiupWorker struct {
 	mutex       *redsync.Mutex
 	options     struct {
 		LarkWebhookURL   string
+		MirrorName       string
 		MirrorURL        string
 		PublicServiceURL string
 		NightlyInterval  time.Duration
@@ -53,6 +55,7 @@ func NewWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[st
 		return nil, fmt.Errorf("parsing nightly interval failed: %v", err)
 	}
 	handler.options.NightlyInterval = nigthlyInterval
+	handler.options.MirrorName = options["mirror_name"]
 	handler.options.MirrorURL = options["mirror_url"]
 	handler.options.LarkWebhookURL = options["lark_webhook_url"]
 	if options["public_service_url"] != "" {
@@ -84,6 +87,11 @@ func (p *tiupWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	if !slices.Contains(p.SupportEventTypes(), event.Type()) {
 		return cloudevents.ResultNACK
 	}
+	// Skip the messages that are not for the current mirror
+	if event.Subject() != p.options.MirrorName {
+		return cloudevents.ResultNACK
+	}
+
 	p.redisClient.SetXX(context.Background(), event.ID(), share.PublishStateProcessing, redis.KeepTTL)
 
 	data := new(PublishRequestTiUP)
@@ -128,7 +136,7 @@ func (p *tiupWorker) rateLimit(data *PublishRequestTiUP, ttl time.Duration, run 
 	p.logger.Debug().Str("key", rateLimitKey).Msg("cache key")
 
 	p.logger.Warn().
-		Str("mirror", p.options.MirrorURL).
+		Str("mirror", p.options.MirrorName).
 		Str("pkg", data.Publish.Name).
 		Str("os", data.Publish.OS).
 		Str("arch", data.Publish.Arch).
@@ -195,7 +203,7 @@ func (p *tiupWorker) notifyLark(req *PublishRequestTiUP, err error) {
 			{"version", req.Publish.Version},
 			{"os", req.Publish.OS},
 			{"arch", req.Publish.Arch},
-			{"to-mirror", p.options.MirrorURL},
+			{"to-mirror", p.options.MirrorName},
 			{"from", req.From.String()},
 		},
 	}

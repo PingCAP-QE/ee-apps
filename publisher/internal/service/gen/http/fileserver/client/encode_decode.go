@@ -78,6 +78,12 @@ func DecodeRequestToPublishResponse(decoder func(*http.Response) goahttp.Decoder
 			if err != nil {
 				return nil, goahttp.ErrDecodingError("fileserver", "request-to-publish", err)
 			}
+			for _, e := range body {
+				err = goa.MergeErrors(err, goa.ValidateFormat("body[*]", e, goa.FormatUUID))
+			}
+			if err != nil {
+				return nil, goahttp.ErrValidationError("fileserver", "request-to-publish", err)
+			}
 			return body, nil
 		default:
 			body, _ := io.ReadAll(resp.Body)

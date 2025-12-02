@@ -19,6 +19,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 		redisClient *redis.Client
 		options     struct {
 			LarkWebhookURL   string
+			MirrorName       string
 			MirrorURL        string
 			PublicServiceURL string
 			NightlyInterval  time.Duration
@@ -39,6 +40,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				logger: zerolog.New(nil),
 				options: struct {
 					LarkWebhookURL   string
+					MirrorName       string
 					MirrorURL        string
 					PublicServiceURL string
 					NightlyInterval  time.Duration
@@ -62,11 +64,13 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				logger: zerolog.New(nil),
 				options: struct {
 					LarkWebhookURL   string
+					MirrorName       string
 					MirrorURL        string
 					PublicServiceURL string
 					NightlyInterval  time.Duration
 				}{
 					LarkWebhookURL:   testWebhookURL,
+					MirrorName:       "staging",
 					MirrorURL:        "https://test-mirror.com",
 					PublicServiceURL: "https://test-service.com",
 				},
@@ -96,6 +100,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				logger: zerolog.New(nil),
 				options: struct {
 					LarkWebhookURL   string
+					MirrorName       string
 					MirrorURL        string
 					PublicServiceURL string
 					NightlyInterval  time.Duration
@@ -119,6 +124,7 @@ func Test_tiupWorker_notifyLark(t *testing.T) {
 				logger: zerolog.New(nil),
 				options: struct {
 					LarkWebhookURL   string
+					MirrorName       string
 					MirrorURL        string
 					PublicServiceURL string
 					NightlyInterval  time.Duration

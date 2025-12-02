@@ -21,6 +21,7 @@ import (
 type Server struct {
 	Mounts                 []*MountPoint
 	RequestToPublish       http.Handler
+	DeliveryByRules        http.Handler
 	RequestToPublishSingle http.Handler
 	QueryPublishingStatus  http.Handler
 	ResetRateLimit         http.Handler
@@ -54,11 +55,13 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"RequestToPublish", "POST", "/tiup/publish-request"},
+			{"DeliveryByRules", "POST", "/tiup/delivery-by-rules"},
 			{"RequestToPublishSingle", "POST", "/tiup/publish-request-single"},
 			{"QueryPublishingStatus", "GET", "/tiup/publish-request/{request_id}"},
 			{"ResetRateLimit", "POST", "/tiup/reset-rate-limit"},
 		},
 		RequestToPublish:       NewRequestToPublishHandler(e.RequestToPublish, mux, decoder, encoder, errhandler, formatter),
+		DeliveryByRules:        NewDeliveryByRulesHandler(e.DeliveryByRules, mux, decoder, encoder, errhandler, formatter),
 		RequestToPublishSingle: NewRequestToPublishSingleHandler(e.RequestToPublishSingle, mux, decoder, encoder, errhandler, formatter),
 		QueryPublishingStatus:  NewQueryPublishingStatusHandler(e.QueryPublishingStatus, mux, decoder, encoder, errhandler, formatter),
 		ResetRateLimit:         NewResetRateLimitHandler(e.ResetRateLimit, mux, decoder, encoder, errhandler, formatter),
@@ -71,6 +74,7 @@ func (s *Server) Service() string { return "tiup" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.RequestToPublish = m(s.RequestToPublish)
+	s.DeliveryByRules = m(s.DeliveryByRules)
 	s.RequestToPublishSingle = m(s.RequestToPublishSingle)
 	s.QueryPublishingStatus = m(s.QueryPublishingStatus)
 	s.ResetRateLimit = m(s.ResetRateLimit)
@@ -82,6 +86,7 @@ func (s *Server) MethodNames() []string { return tiup.MethodNames[:] }
 // Mount configures the mux to serve the tiup endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountRequestToPublishHandler(mux, h.RequestToPublish)
+	MountDeliveryByRulesHandler(mux, h.DeliveryByRules)
 	MountRequestToPublishSingleHandler(mux, h.RequestToPublishSingle)
 	MountQueryPublishingStatusHandler(mux, h.QueryPublishingStatus)
 	MountResetRateLimitHandler(mux, h.ResetRateLimit)
@@ -122,6 +127,59 @@ func NewRequestToPublishHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "request-to-publish")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "tiup")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountDeliveryByRulesHandler configures the mux to serve the "tiup" service
+// "delivery-by-rules" endpoint.
+func MountDeliveryByRulesHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/tiup/delivery-by-rules", f)
+}
+
+// NewDeliveryByRulesHandler creates a HTTP handler which loads the HTTP
+// request and calls the "tiup" service "delivery-by-rules" endpoint.
+func NewDeliveryByRulesHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeDeliveryByRulesRequest(mux, decoder)
+		encodeResponse = EncodeDeliveryByRulesResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "delivery-by-rules")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "tiup")
 		payload, err := decodeRequest(r)
 		if err != nil {

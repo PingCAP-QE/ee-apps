@@ -22,6 +22,10 @@ type Client struct {
 	// request-to-publish endpoint.
 	RequestToPublishDoer goahttp.Doer
 
+	// DeliveryByRules Doer is the HTTP client used to make requests to the
+	// delivery-by-rules endpoint.
+	DeliveryByRulesDoer goahttp.Doer
+
 	// RequestToPublishSingle Doer is the HTTP client used to make requests to the
 	// request-to-publish-single endpoint.
 	RequestToPublishSingleDoer goahttp.Doer
@@ -55,6 +59,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		RequestToPublishDoer:       doer,
+		DeliveryByRulesDoer:        doer,
 		RequestToPublishSingleDoer: doer,
 		QueryPublishingStatusDoer:  doer,
 		ResetRateLimitDoer:         doer,
@@ -85,6 +90,30 @@ func (c *Client) RequestToPublish() goa.Endpoint {
 		resp, err := c.RequestToPublishDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("tiup", "request-to-publish", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// DeliveryByRules returns an endpoint that makes HTTP requests to the tiup
+// service delivery-by-rules server.
+func (c *Client) DeliveryByRules() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeDeliveryByRulesRequest(c.encoder)
+		decodeResponse = DecodeDeliveryByRulesResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildDeliveryByRulesRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.DeliveryByRulesDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("tiup", "delivery-by-rules", err)
 		}
 		return decodeResponse(resp)
 	}

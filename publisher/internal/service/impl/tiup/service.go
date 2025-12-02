@@ -3,44 +3,78 @@ package tiup
 import (
 	"context"
 	"fmt"
-	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/go-redis/redis/v8"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 
 	gentiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
 // tiup service example implementation.
-// The example methods log the requests and return zero values.
 type tiupsrvc struct {
-	logger      *zerolog.Logger
-	kafkaWriter *kafka.Writer
-	redisClient redis.Cmdable
-	eventSource string
-	stateTTL    time.Duration
+	*share.BaseService
+	deliveryConfig *DeliveryConfig
 }
 
 // NewService returns the tiup service implementation.
-func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) gentiup.Service {
-	return &tiupsrvc{
-		logger:      logger,
-		kafkaWriter: kafkaWriter,
-		redisClient: redisClient,
-		eventSource: eventSrc,
-		stateTTL:    share.DefaultStateTTL,
+func NewService(logger *zerolog.Logger, cfg config.Service) gentiup.Service {
+	srvc := &tiupsrvc{BaseService: share.NewBaseServiceService(logger, cfg)}
+
+	// load delivery config
+	tiupCfg := cfg.Services["tiup"]
+	switch v := tiupCfg.(type) {
+	case map[string]any:
+		deliveryConfigFile := v["deliveryConfigFile"]
+		switch file := deliveryConfigFile.(type) {
+		case string:
+			// load the yaml from the file
+			ret, err := config.Load[DeliveryConfig](file)
+			if err != nil {
+				srvc.Logger.Fatal().Err(err).Msgf("failed to load delivery config")
+			}
+
+			srvc.deliveryConfig = ret
+		}
 	}
+
+	return srvc
+}
+
+// RequestToPublish implements delivery-by-rules).
+func (s *tiupsrvc) DeliveryByRules(ctx context.Context, p *gentiup.DeliveryByRulesPayload) (res []string, err error) {
+	s.Logger.Info().Msgf("tiup.delivery-by-rules")
+	// skip when there is no delivery config
+	if s.deliveryConfig == nil {
+		return nil, nil
+	}
+
+	// 1. match for the rules
+	RequestToPublishPayloads, err := analyzeTiupDeliveries(p.ArtifactURL, s.deliveryConfig.TiupPublishRules)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Request to publish
+	for _, payload := range RequestToPublishPayloads {
+		ids, err := s.RequestToPublish(ctx, &payload)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, ids...)
+	}
+
+	return res, nil
 }
 
 // RequestToPublish implements request-to-publish.
 func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPublishPayload) (res []string, err error) {
-	s.logger.Info().Msgf("tiup.request-to-publish")
+	s.Logger.Info().Msgf("tiup.request-to-publish")
 	// 1. Analyze the artifact_url to get the repo and tag and the tiup package information.
-	publishRequests, err := analyzeTiupFromOciArtifactUrl(p.ArtifactURL)
+	publishRequests, err := analyzeTiupFromOciArtifactUrl(p.ArtifactURL, p.TiupMirror)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +89,7 @@ func (s *tiupsrvc) RequestToPublish(ctx context.Context, p *gentiup.RequestToPub
 
 // RequestToPublishSingle implements request-to-publish-single.
 func (s *tiupsrvc) RequestToPublishSingle(ctx context.Context, p *gentiup.PublishRequestTiUP) (string, error) {
-	s.logger.Info().Msgf("tiup.request-to-publish-single")
+	s.Logger.Info().Msgf("tiup.request-to-publish-single")
 	if p == nil {
 		return "", fmt.Errorf("payload is nil")
 	}
@@ -68,14 +102,14 @@ func (s *tiupsrvc) RequestToPublishSingle(ctx context.Context, p *gentiup.Publis
 
 // QueryPublishingStatus implements query-publishing-status.
 func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPublishingStatusPayload) (res string, err error) {
-	s.logger.Info().Msgf("tiup.query-publishing-status")
-	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
+	s.Logger.Info().Msgf("tiup.query-publishing-status")
+	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
 }
 
 // ResetRateLimit implements tiup.Service.
 func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
 	// get the keys
-	iter := s.redisClient.Scan(ctx, 0, fmt.Sprintf("%s:*", redisKeyPrefixTiupRateLimit), 0).Iterator()
+	iter := s.RedisClient.Scan(ctx, 0, fmt.Sprintf("%s:*", redisKeyPrefixTiupRateLimit), 0).Iterator()
 	var keys []string
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
@@ -88,11 +122,11 @@ func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
 	if len(keys) == 0 {
 		return nil
 	}
-	if err := s.redisClient.Del(ctx, keys...).Err(); err != nil {
-		s.logger.Err(err).Any("keys", keys).Msg("failed to delete keys")
+	if err := s.RedisClient.Del(ctx, keys...).Err(); err != nil {
+		s.Logger.Err(err).Any("keys", keys).Msg("failed to delete keys")
 		return fmt.Errorf("failed to delete keys: %v", err)
 	}
-	s.logger.Debug().Any("keys", keys).Msg("deleted redis keys.")
+	s.Logger.Debug().Any("keys", keys).Msg("deleted redis keys.")
 
 	return nil
 }
@@ -110,7 +144,7 @@ func (s *tiupsrvc) enqueueTiupPublishRequests(ctx context.Context, requests []ge
 			Value: bs,
 		})
 	}
-	err := s.kafkaWriter.WriteMessages(ctx, messages...)
+	err := s.KafkaWriter.WriteMessages(ctx, messages...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send message to Kafka: %v", err)
 	}
@@ -122,7 +156,7 @@ func (s *tiupsrvc) enqueueTiupPublishRequests(ctx context.Context, requests []ge
 
 	// init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.stateTTL).Err(); err != nil {
+		if err := s.RedisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.StateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
@@ -140,11 +174,8 @@ func (s *tiupsrvc) composeEvents(requests []gentiup.PublishRequestTiUP) []cloude
 }
 
 func (s *tiupsrvc) composeEvent(request *gentiup.PublishRequestTiUP) cloudevents.Event {
-	event := cloudevents.NewEvent()
-	event.SetID(uuid.New().String())
+	event := s.BaseService.ComposeEvent(request)
 	event.SetType(share.EventTypeTiupPublishRequest)
-	event.SetSource(s.eventSource)
-	event.SetSubject(request.Publish.Name)
-	event.SetData(cloudevents.ApplicationJSON, request)
+	event.SetSubject(request.TiupMirror)
 	return event
 }

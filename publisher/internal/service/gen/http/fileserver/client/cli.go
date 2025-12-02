@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	fileserver "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildRequestToPublishPayload builds the payload for the fileserver
@@ -23,7 +24,7 @@ func BuildRequestToPublishPayload(fileserverRequestToPublishBody string) (*files
 	{
 		err = json.Unmarshal([]byte(fileserverRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Et ut beatae dolore officia deleniti repellat.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Esse nisi est.\"\n   }'")
 		}
 	}
 	v := &fileserver.RequestToPublishPayload{
@@ -36,9 +37,14 @@ func BuildRequestToPublishPayload(fileserverRequestToPublishBody string) (*files
 // BuildQueryPublishingStatusPayload builds the payload for the fileserver
 // query-publishing-status endpoint from CLI flags.
 func BuildQueryPublishingStatusPayload(fileserverQueryPublishingStatusRequestID string) (*fileserver.QueryPublishingStatusPayload, error) {
+	var err error
 	var requestID string
 	{
 		requestID = fileserverQueryPublishingStatusRequestID
+		err = goa.MergeErrors(err, goa.ValidateFormat("request_id", requestID, goa.FormatUUID))
+		if err != nil {
+			return nil, err
+		}
 	}
 	v := &fileserver.QueryPublishingStatusPayload{}
 	v.RequestID = requestID

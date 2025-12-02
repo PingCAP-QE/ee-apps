@@ -38,7 +38,9 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Nam debitis odit quasi.
+                            description: Request id for async mode (uuidv4 format)
+                            example: 1f3d1cf9-b321-4bdc-8ae1-4509f419cb94
+                            format: uuid
             schemes:
                 - http
     /fs/publish-request/{request_id}:
@@ -50,9 +52,10 @@ paths:
             parameters:
                 - name: request_id
                   in: path
-                  description: request track id
+                  description: Request id for async mode (uuidv4 format)
                   required: true
                   type: string
+                  format: uuid
             responses:
                 "200":
                     description: OK response.
@@ -98,7 +101,7 @@ paths:
             parameters:
                 - name: request_id
                   in: path
-                  description: Request track id
+                  description: Request id for async mode (uuidv4 format)
                   required: true
                   type: string
                   format: uuid
@@ -147,7 +150,7 @@ paths:
             parameters:
                 - name: request_id
                   in: path
-                  description: request track id
+                  description: Request id for async mode (uuidv4 format)
                   required: true
                   type: string
                   format: uuid
@@ -164,11 +167,37 @@ paths:
                             - canceled
             schemes:
                 - http
+    /tiup/delivery-by-rules:
+        post:
+            tags:
+                - tiup
+            summary: delivery-by-rules tiup
+            description: Request to delivery TiUP packages from OCI artifact controlled by delivery rules
+            operationId: tiup#delivery-by-rules
+            parameters:
+                - name: Delivery-By-RulesRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TiupDeliveryByRulesRequestBody'
+                    required:
+                        - artifact_url
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Ipsam eos vitae et officiis inventore.
+            schemes:
+                - http
     /tiup/publish-request:
         post:
             tags:
                 - tiup
             summary: request-to-publish tiup
+            description: Request to publish TiUP packages from a OCI artifact
             operationId: tiup#request-to-publish
             parameters:
                 - name: Request-To-PublishRequestBody
@@ -178,7 +207,6 @@ paths:
                     $ref: '#/definitions/TiupRequestToPublishRequestBody'
                     required:
                         - artifact_url
-                        - tiup-mirror
             responses:
                 "200":
                     description: OK response.
@@ -186,7 +214,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Tempora nostrum consequatur quis soluta.
+                            example: Enim suscipit.
             schemes:
                 - http
     /tiup/publish-request-single:
@@ -257,9 +285,9 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Qui quis deserunt doloribus in.
+                example: Quam numquam quo.
         example:
-            artifact_url: Quia recusandae fugit est.
+            artifact_url: Expedita cum nisi officiis corrupti reprehenderit saepe.
         required:
             - artifact_url
     From:
@@ -324,20 +352,20 @@ definitions:
                 type: boolean
                 description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                 default: false
-                example: true
+                example: false
             image_url:
                 type: string
                 description: The image URL to collect
-                example: Laudantium aliquid ut exercitationem dolore.
+                example: Animi doloremque.
             release_tag_suffix:
                 type: string
                 description: Suffix for the release tag
                 default: release
-                example: Provident quas enim necessitatibus.
+                example: Corrupti tempore quibusdam reprehenderit porro eaque.
         example:
-            async: false
-            image_url: Ex dicta.
-            release_tag_suffix: Ipsam ut possimus soluta maiores.
+            async: true
+            image_url: Rerum aut sequi sequi nihil.
+            release_tag_suffix: Consequatur eveniet molestias.
         required:
             - image_url
     ImageRequestMultiarchCollectResponseBody:
@@ -348,33 +376,36 @@ definitions:
                 type: boolean
                 description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                 default: false
-                example: true
+                example: false
             repo:
                 type: string
                 description: Repository of the collected image
-                example: Rerum at magni.
+                example: Recusandae quos dolorum voluptas fugiat reiciendis aliquid.
             request_id:
                 type: string
                 description: Request id for async mode (uuidv4 format)
-                example: f2e765c9-f8ee-4f74-b9cd-6afff737b4e1
+                example: d0d723af-8a95-45db-9ae0-249518735e10
                 format: uuid
             tags:
                 type: array
                 items:
                     type: string
-                    example: Iste maiores laudantium nemo cumque.
+                    example: Quam accusantium aliquid laborum.
                 description: Tags of the collected image
                 example:
-                    - Quasi voluptatem ad.
-                    - At voluptatem consequuntur.
-                    - Reiciendis tenetur.
+                    - Quisquam qui suscipit nisi.
+                    - Ut commodi.
+                    - Quaerat corporis rerum tempore magnam.
+                    - Repellat reprehenderit.
         example:
             async: false
-            repo: Consectetur et.
-            request_id: 99d909e5-a5c0-48ce-9406-e42a3c275dff
+            repo: Dolores inventore rerum in consequuntur.
+            request_id: 2e9a500d-8abd-42ee-8ac9-2d3fd631a2e1
             tags:
-                - Et laborum eos necessitatibus fugit rerum et.
-                - Totam repudiandae sequi.
+                - Quia velit voluptas.
+                - Aliquam velit minus dignissimos fuga corporis.
+                - Pariatur mollitia consequatur.
+                - Est voluptatem aut non.
         required:
             - async
     ImageRequestToCopyRequestBody:
@@ -384,14 +415,14 @@ definitions:
             destination:
                 type: string
                 description: destination image url
-                example: Praesentium voluptas.
+                example: Quibusdam quibusdam veniam nisi rerum.
             source:
                 type: string
                 description: source image url
-                example: Et qui omnis quae debitis laboriosam quia.
+                example: Veritatis ipsa qui unde.
         example:
-            destination: Omnis quidem.
-            source: Aut unde.
+            destination: Fuga occaecati.
+            source: Omnis autem sequi.
         required:
             - source
             - destination
@@ -441,6 +472,11 @@ definitions:
                 $ref: '#/definitions/From'
             publish:
                 $ref: '#/definitions/PublishInfoTiUP'
+            tiup_mirror:
+                type: string
+                description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
+                default: staging
+                example: Aut esse eos itaque dolore.
         example:
             from:
                 http:
@@ -457,6 +493,18 @@ definitions:
         required:
             - from
             - publish
+    TiupDeliveryByRulesRequestBody:
+        title: TiupDeliveryByRulesRequestBody
+        type: object
+        properties:
+            artifact_url:
+                type: string
+                description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
+                example: oci.com/repo:tag
+        example:
+            artifact_url: oci.com/repo:tag
+        required:
+            - artifact_url
     TiupRequestToPublishRequestBody:
         title: TiupRequestToPublishRequestBody
         type: object
@@ -464,20 +512,19 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: https://example.com/artifact.tar.gz
-            tiup-mirror:
+                example: oci.com/repo:tag
+            tiup_mirror:
                 type: string
-                description: Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.
-                default: http://tiup.pingcap.net:8988
-                example: Ipsum esse quia occaecati libero inventore.
+                description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
+                default: staging
+                example: Quia et.
             version:
                 type: string
                 description: Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.
                 example: v1.0.0
         example:
-            artifact_url: https://example.com/artifact.tar.gz
-            tiup-mirror: A provident ipsum voluptatem eum numquam vel.
+            artifact_url: oci.com/repo:tag
+            tiup_mirror: Ipsa iste.
             version: v1.0.0
         required:
             - artifact_url
-            - tiup-mirror

@@ -17,15 +17,17 @@ import (
 // Client is the "tiup" service client.
 type Client struct {
 	RequestToPublishEndpoint       goa.Endpoint
+	DeliveryByRulesEndpoint        goa.Endpoint
 	RequestToPublishSingleEndpoint goa.Endpoint
 	QueryPublishingStatusEndpoint  goa.Endpoint
 	ResetRateLimitEndpoint         goa.Endpoint
 }
 
 // NewClient initializes a "tiup" service client given the endpoints.
-func NewClient(requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
+func NewClient(requestToPublish, deliveryByRules, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
 	return &Client{
 		RequestToPublishEndpoint:       requestToPublish,
+		DeliveryByRulesEndpoint:        deliveryByRules,
 		RequestToPublishSingleEndpoint: requestToPublishSingle,
 		QueryPublishingStatusEndpoint:  queryPublishingStatus,
 		ResetRateLimitEndpoint:         resetRateLimit,
@@ -37,6 +39,16 @@ func NewClient(requestToPublish, requestToPublishSingle, queryPublishingStatus, 
 func (c *Client) RequestToPublish(ctx context.Context, p *RequestToPublishPayload) (res []string, err error) {
 	var ires any
 	ires, err = c.RequestToPublishEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.([]string), nil
+}
+
+// DeliveryByRules calls the "delivery-by-rules" endpoint of the "tiup" service.
+func (c *Client) DeliveryByRules(ctx context.Context, p *DeliveryByRulesPayload) (res []string, err error) {
+	var ires any
+	ires, err = c.DeliveryByRulesEndpoint(ctx, p)
 	if err != nil {
 		return
 	}

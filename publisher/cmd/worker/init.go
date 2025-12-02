@@ -1,11 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
-
-	"gopkg.in/yaml.v3"
-
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
@@ -15,21 +10,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
-
-// Load and parse configuration.
-func loadConfig(configFile string) (*config.Workers, error) {
-	configData, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("error reading config file: %v", err)
-	}
-
-	var config config.Workers
-	if err := yaml.Unmarshal(configData, &config); err != nil {
-		return nil, fmt.Errorf("error parsing config file: %v", err)
-	}
-
-	return &config, nil
-}
 
 func initTiupWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) {
 	if config == nil {
