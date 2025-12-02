@@ -22,9 +22,17 @@ type RequestToPublishRequestBody struct {
 	// Force set the version. Default is the artifact version read from
 	// `org.opencontainers.image.version` of the manifest config.
 	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
-	// Staging is http://tiup.pingcap.net:8988, product is
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
-	TiupMirror string `form:"tiup-mirror" json:"tiup-mirror" xml:"tiup-mirror"`
+	TiupMirror string `json:"tiup_mirror,omitempty"`
+}
+
+// DeliveryByRulesRequestBody is the type of the "tiup" service
+// "delivery-by-rules" endpoint HTTP request body.
+type DeliveryByRulesRequestBody struct {
+	// The full url of the pushed OCI artifact, contain the tag part. It will parse
+	// the repo from it.
+	ArtifactURL string `form:"artifact_url" json:"artifact_url" xml:"artifact_url"`
 }
 
 // RequestToPublishSingleRequestBody is the type of the "tiup" service
@@ -32,6 +40,9 @@ type RequestToPublishRequestBody struct {
 type RequestToPublishSingleRequestBody struct {
 	From    *FromRequestBody            `json:"from,omitempty"`
 	Publish *PublishInfoTiUPRequestBody `json:"publish,omitempty"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror,omitempty"`
 }
 
 // FromRequestBody is used to define fields on request body types.
@@ -72,18 +83,41 @@ func NewRequestToPublishRequestBody(p *tiup.RequestToPublishPayload) *RequestToP
 		Version:     p.Version,
 		TiupMirror:  p.TiupMirror,
 	}
+	{
+		var zero string
+		if body.TiupMirror == zero {
+			body.TiupMirror = "staging"
+		}
+	}
+	return body
+}
+
+// NewDeliveryByRulesRequestBody builds the HTTP request body from the payload
+// of the "delivery-by-rules" endpoint of the "tiup" service.
+func NewDeliveryByRulesRequestBody(p *tiup.DeliveryByRulesPayload) *DeliveryByRulesRequestBody {
+	body := &DeliveryByRulesRequestBody{
+		ArtifactURL: p.ArtifactURL,
+	}
 	return body
 }
 
 // NewRequestToPublishSingleRequestBody builds the HTTP request body from the
 // payload of the "request-to-publish-single" endpoint of the "tiup" service.
 func NewRequestToPublishSingleRequestBody(p *tiup.PublishRequestTiUP) *RequestToPublishSingleRequestBody {
-	body := &RequestToPublishSingleRequestBody{}
+	body := &RequestToPublishSingleRequestBody{
+		TiupMirror: p.TiupMirror,
+	}
 	if p.From != nil {
 		body.From = marshalTiupFromToFromRequestBody(p.From)
 	}
 	if p.Publish != nil {
 		body.Publish = marshalTiupPublishInfoTiUPToPublishInfoTiUPRequestBody(p.Publish)
+	}
+	{
+		var zero string
+		if body.TiupMirror == zero {
+			body.TiupMirror = "staging"
+		}
 	}
 	return body
 }

@@ -43,14 +43,14 @@ var MethodNames = [4]string{"request-to-copy", "query-copying-status", "request-
 // QueryCopyingStatusPayload is the payload type of the image service
 // query-copying-status method.
 type QueryCopyingStatusPayload struct {
-	// request track id
+	// Request id for async mode (uuidv4 format)
 	RequestID string
 }
 
 // QueryMultiarchCollectStatusPayload is the payload type of the image service
 // query-multiarch-collect-status method.
 type QueryMultiarchCollectStatusPayload struct {
-	// Request track id
+	// Request id for async mode (uuidv4 format)
 	RequestID string
 }
 

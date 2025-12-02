@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	gentiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
@@ -91,7 +92,7 @@ func calculateSHA256(filePath string) (string, error) {
 //	    3.2.3 set the publish info arch with value of "net.pingcap.tibuild.architecture" key in top config.
 //	    3.2.4 set the publish info name with prefix part of the value of "file" key in the element, right trim from the "-vX.Y.Z" part.
 //	    3.2.5 set the publish info description, entrypoint with value of same key in the element.
-func analyzeTiupFromOciArtifact(repo, tag string) ([]gentiup.PublishRequestTiUP, error) {
+func analyzeTiupFromOciArtifact(repo, tag, mirror string) ([]gentiup.PublishRequestTiUP, error) {
 	// 1. Fetch the artifact config
 	config, ociDigest, err := share.FetchOCIArtifactConfig(repo, tag)
 	if err != nil {
@@ -138,20 +139,75 @@ func analyzeTiupFromOciArtifact(repo, tag string) ([]gentiup.PublishRequestTiUP,
 			EntryPoint:  &entry,
 		}
 		publishRequests = append(publishRequests, gentiup.PublishRequestTiUP{
-			From:    from,
-			Publish: publishInfo,
+			From:       from,
+			Publish:    publishInfo,
+			TiupMirror: mirror,
 		})
 	}
 
 	return publishRequests, nil
 }
 
-func analyzeTiupFromOciArtifactUrl(url string) ([]gentiup.PublishRequestTiUP, error) {
+func analyzeTiupFromOciArtifactUrl(ociUrl, mirror string) ([]gentiup.PublishRequestTiUP, error) {
+	repo, tag, err := share.SplitRepoAndTag(ociUrl)
+	if err != nil {
+		return nil, err
+	}
+	return analyzeTiupFromOciArtifact(repo, tag, mirror)
+}
+
+func analyzeTiupDeliveries(url string, rules map[string][]DeliveryRule) ([]gentiup.RequestToPublishPayload, error) {
 	repo, tag, err := share.SplitRepoAndTag(url)
 	if err != nil {
 		return nil, err
 	}
-	return analyzeTiupFromOciArtifact(repo, tag)
+
+	// filter the rules
+	var repoRules []DeliveryRule
+	for k, v := range rules {
+		// match for the repo
+		if !regexp.MustCompile(k).MatchString(repo) {
+			continue
+		}
+
+		for _, rule := range v {
+			for _, tagRegex := range rule.TagsRegex {
+				if regexp.MustCompile(tagRegex).MatchString(tag) {
+					repoRules = append(repoRules, rule)
+				}
+			}
+		}
+	}
+
+	// compute the delivery instructions
+	var deliveryInstructions []gentiup.RequestToPublishPayload
+	for _, rule := range repoRules {
+		deliveryInstructions = append(deliveryInstructions, computeDeliveryInstructionsForRule(rule, tag)...)
+	}
+
+	return slices.Compact(deliveryInstructions), nil
+}
+
+func computeDeliveryInstructionsForRule(rule DeliveryRule, ociTag string) []gentiup.RequestToPublishPayload {
+	var ret []gentiup.RequestToPublishPayload
+	var replacedVersion string
+	if rule.TagRegexReplace != nil {
+		for _, tagRegex := range rule.TagsRegex {
+			if regexp.MustCompile(tagRegex).MatchString(ociTag) {
+				replacedVersion = regexp.MustCompile(tagRegex).ReplaceAllString(ociTag, *rule.TagRegexReplace)
+			}
+		}
+	}
+	for _, m := range rule.DestMirrors {
+		instruction := gentiup.RequestToPublishPayload{TiupMirror: m}
+		if replacedVersion != "" {
+			instruction.Version = &replacedVersion
+		}
+
+		ret = append(ret, instruction)
+	}
+
+	return ret
 }
 
 // Get tiup pkg name from tarball filename

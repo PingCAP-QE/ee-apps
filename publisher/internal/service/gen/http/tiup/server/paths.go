@@ -17,6 +17,11 @@ func RequestToPublishTiupPath() string {
 	return "/tiup/publish-request"
 }
 
+// DeliveryByRulesTiupPath returns the URL path to the tiup service delivery-by-rules HTTP endpoint.
+func DeliveryByRulesTiupPath() string {
+	return "/tiup/delivery-by-rules"
+}
+
 // RequestToPublishSingleTiupPath returns the URL path to the tiup service request-to-publish-single HTTP endpoint.
 func RequestToPublishSingleTiupPath() string {
 	return "/tiup/publish-request-single"

@@ -106,6 +106,7 @@ var PublishRequestTiUP = Type("PublishRequestTiUP", func() {
 	Attribute("publish", PublishInfoTiUP, func() {
 		Meta("struct:tag:json", "publish,omitempty")
 	})
+	Attribute("tiup_mirror", String, TiupMirrorFunc)
 	Required("from", "publish")
 	Example(map[string]any{
 		"from": map[string]any{
@@ -124,6 +125,31 @@ var PublishRequestTiUP = Type("PublishRequestTiUP", func() {
 	})
 })
 
+var TiupMirrorFunc = func() {
+	Description("`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.")
+	Default("staging")
+	Meta("struct:tag:json", "tiup_mirror,omitempty")
+}
+
+var RequestTaskIDFunc = func() {
+	Description("Request id for async mode (uuidv4 format)")
+	Format(FormatUUID)
+}
+
+var TiupMirrorName = Type("TiupMirrorName", String, func() {
+	Description("Name of the TiUP mirror")
+	Enum("staging", "prod")
+})
+
+var TiupDeliveryResults = Type("TiupDeliveryResults", func() {
+	Attribute("results", MapOf(TiupMirrorName, ArrayOf(String, RequestTaskIDFunc)))
+})
+
+var TaskStateFunc = func() {
+	Description("State of the task")
+	Enum("queued", "processing", "success", "failed", "canceled")
+}
+
 var _ = Service("tiup", func() {
 	Description("TiUP Publisher service")
 	HTTP(func() {
@@ -131,20 +157,18 @@ var _ = Service("tiup", func() {
 	})
 
 	Method("request-to-publish", func() {
+		Description("Request to publish TiUP packages from a OCI artifact")
 		Payload(func() {
 			Attribute("artifact_url", String, func() {
 				Description("The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.")
-				Example("https://example.com/artifact.tar.gz")
+				Example("oci.com/repo:tag")
 			})
 			Attribute("version", String, func() {
 				Description("Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.")
 				Example("v1.0.0")
 			})
-			Attribute("tiup-mirror", String, func() {
-				Description("Staging is http://tiup.pingcap.net:8988, product is http://tiup.pingcap.net:8987.")
-				Default("http://tiup.pingcap.net:8988")
-			})
-			Required("artifact_url", "tiup-mirror")
+			Attribute("tiup_mirror", String, TiupMirrorFunc)
+			Required("artifact_url")
 		})
 		Result(ArrayOf(String), "request track ids")
 		HTTP(func() {
@@ -153,13 +177,27 @@ var _ = Service("tiup", func() {
 		})
 	})
 
+	Method("delivery-by-rules", func() {
+		Description("Request to delivery TiUP packages from OCI artifact controlled by delivery rules")
+		Payload(func() {
+			Attribute("artifact_url", String, func() {
+				Description("The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.")
+				Example("oci.com/repo:tag")
+			})
+			Required("artifact_url")
+		})
+		Result(ArrayOf(String), "request track ids")
+		HTTP(func() {
+			POST("/delivery-by-rules")
+			Response(StatusOK)
+		})
+	})
+
 	// Publish a single TiUP package directly from a binary tarball.
 	Method("request-to-publish-single", func() {
 		Description("Request to publish a single TiUP package from a binary tarball")
 		Payload(PublishRequestTiUP)
-		Result(String, "request id", func() {
-			Format(FormatUUID)
-		})
+		Result(String, RequestTaskIDFunc)
 		HTTP(func() {
 			POST("/publish-request-single")
 			Response(StatusOK)
@@ -171,9 +209,7 @@ var _ = Service("tiup", func() {
 			Attribute("request_id", String, "request track id")
 			Required("request_id")
 		})
-		Result(String, "request state", func() {
-			Enum("queued", "processing", "success", "failed", "canceled")
-		})
+		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/publish-request/{request_id}")
 			Response(StatusOK)
@@ -200,7 +236,7 @@ var _ = Service("fileserver", func() {
 			})
 			Required("artifact_url")
 		})
-		Result(ArrayOf(String), "request track ids")
+		Result(ArrayOf(String, RequestTaskIDFunc), "request track ids")
 		HTTP(func() {
 			POST("/publish-request")
 			Response(StatusOK)
@@ -208,12 +244,10 @@ var _ = Service("fileserver", func() {
 	})
 	Method("query-publishing-status", func() {
 		Payload(func() {
-			Attribute("request_id", String, "request track id")
+			Attribute("request_id", String, RequestTaskIDFunc)
 			Required("request_id")
 		})
-		Result(String, "request state", func() {
-			Enum("queued", "processing", "success", "failed", "canceled")
-		})
+		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/publish-request/{request_id}")
 			Response(StatusOK)
@@ -233,9 +267,7 @@ var _ = Service("image", func() {
 			Attribute("destination", String, "destination image url")
 			Required("source", "destination")
 		})
-		Result(String, "request id", func() {
-			Format(FormatUUID)
-		})
+		Result(String, RequestTaskIDFunc)
 		HTTP(func() {
 			POST("/copy")
 			Response(StatusOK)
@@ -243,14 +275,10 @@ var _ = Service("image", func() {
 	})
 	Method("query-copying-status", func() {
 		Payload(func() {
-			Attribute("request_id", String, "request track id", func() {
-				Format(FormatUUID)
-			})
+			Attribute("request_id", String, RequestTaskIDFunc)
 			Required("request_id")
 		})
-		Result(String, "request state", func() {
-			Enum("queued", "processing", "success", "failed", "canceled")
-		})
+		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/copy/{request_id}")
 			Response(StatusOK)
@@ -278,10 +306,7 @@ var _ = Service("image", func() {
 			// If async is true, request_id is required; if false, repo and tags are required.
 			Attribute("repo", String, "Repository of the collected image")
 			Attribute("tags", ArrayOf(String), "Tags of the collected image")
-			Attribute("request_id", String, func() {
-				Description("Request id for async mode (uuidv4 format)")
-				Format(FormatUUID)
-			})
+			Attribute("request_id", String, RequestTaskIDFunc)
 			Required("async")
 		})
 		HTTP(func() {
@@ -291,14 +316,10 @@ var _ = Service("image", func() {
 	})
 	Method("query-multiarch-collect-status", func() {
 		Payload(func() {
-			Attribute("request_id", String, "Request track id", func() {
-				Format(FormatUUID)
-			})
+			Attribute("request_id", String, RequestTaskIDFunc)
 			Required("request_id")
 		})
-		Result(String, "request state", func() {
-			Enum("queued", "processing", "success", "failed", "canceled")
-		})
+		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/collect-multiarch/{request_id}")
 			Response(StatusOK)

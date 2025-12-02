@@ -6,34 +6,24 @@ import (
 	"fmt"
 	"time"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/go-redis/redis/v8"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
 // artifact service example implementation.
-// The example methods log the requests and return zero values.
 type imagesrvc struct {
-	logger      *zerolog.Logger
-	kafkaWriter *kafka.Writer
-	redisClient redis.Cmdable
-	eventSource string
-	stateTTL    time.Duration
+	*share.BaseService
+	// deliveryConfig DeliveryConfig
 }
 
-// NewService returns the image service implementation.
-func NewService(logger *zerolog.Logger, kafkaWriter *kafka.Writer, redisClient redis.Cmdable, eventSrc string) image.Service {
+// NewService returns the tiup service implementation.
+func NewService(logger *zerolog.Logger, cfg config.Service) image.Service {
 	return &imagesrvc{
-		logger:      logger,
-		kafkaWriter: kafkaWriter,
-		redisClient: redisClient,
-		eventSource: eventSrc,
-		stateTTL:    share.DefaultStateTTL,
+		BaseService: share.NewBaseServiceService(logger, cfg),
 	}
 }
 
@@ -44,7 +34,7 @@ func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPay
 
 // QueryCopyingStatus implements image.Service.
 func (s *imagesrvc) QueryCopyingStatus(ctx context.Context, p *image.QueryCopyingStatusPayload) (string, error) {
-	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
 }
 
 // RequestMultiarchCollect implements image.Service.
@@ -83,7 +73,7 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 					return nil, fmt.Errorf("multiarch collect failed, task state: %s", state)
 				}
 				// Fetch the result from Redis
-				resultJSON, err := s.redisClient.Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
+				resultJSON, err := s.RedisClient.Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
 				if err != nil {
 					return nil, fmt.Errorf("failed to get result from redis: %w", err)
 				}
@@ -98,21 +88,15 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 
 // QueryMultiarchCollectStatus implements image.Service.
 func (s *imagesrvc) QueryMultiarchCollectStatus(ctx context.Context, p *image.QueryMultiarchCollectStatusPayload) (string, error) {
-	return share.QueryStatusFromRedis(ctx, s.redisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
 }
 
 // RequestToCopy implements image.Service.
 func (s *imagesrvc) enqueueRequest(ctx context.Context, requestType, subject string, p any) (string, error) {
-	// 1. generate a unique request ID
-	requestID := uuid.New().String()
-
-	// 2. Compose cloud events
-	event := cloudevents.NewEvent()
-	event.SetID(requestID)
+	// 1. Compose cloud events
+	event := s.BaseService.ComposeEvent(p)
 	event.SetType(requestType)
-	event.SetSource(s.eventSource)
 	event.SetSubject(subject)
-	event.SetData(cloudevents.ApplicationJSON, p)
 
 	// 3. Send it to kafka topic with the request id as key and the event as value.
 	bs, err := event.MarshalJSON()
@@ -123,15 +107,16 @@ func (s *imagesrvc) enqueueRequest(ctx context.Context, requestType, subject str
 		Key:   []byte(event.ID()),
 		Value: bs,
 	}
-	if err := s.kafkaWriter.WriteMessages(ctx, message); err != nil {
+	if err := s.KafkaWriter.WriteMessages(ctx, message); err != nil {
 		return "", fmt.Errorf("failed to send message to Kafka: %v", err)
 	}
 
 	// 4. Init the request dealing status in redis with the request id.
-	if err := s.redisClient.SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
+	requestID := event.ID()
+	if err := s.RedisClient.SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
 		return "", fmt.Errorf("failed to initialize request status: %v", err)
 	}
-	s.logger.Info().
+	s.Logger.Info().
 		Str("request_type", share.EventTypeImagePublishRequest).
 		Str("request_id", requestID).
 		Any("request_payload", p).

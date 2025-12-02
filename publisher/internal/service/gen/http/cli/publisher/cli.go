@@ -26,7 +26,7 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() []string {
 	return []string{
-		"tiup (request-to-publish|request-to-publish-single|query-publishing-status|reset-rate-limit)",
+		"tiup (request-to-publish|delivery-by-rules|request-to-publish-single|query-publishing-status|reset-rate-limit)",
 		"fileserver (request-to-publish|query-publishing-status)",
 		"image (request-to-copy|query-copying-status|request-multiarch-collect|query-multiarch-collect-status)",
 	}
@@ -34,9 +34,9 @@ func UsageCommands() []string {
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"https://example.com/artifact.tar.gz\",\n      \"tiup-mirror\": \"Perspiciatis quo et fuga accusamus sequi odit.\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
-		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Et ut beatae dolore officia deleniti repellat.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Voluptatem et voluptatum doloribus ratione totam.\",\n      \"source\": \"Eum ut dolores est suscipit fugit.\"\n   }'" + "\n" +
+	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
+		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Esse nisi est.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Nam numquam et blanditiis.\",\n      \"source\": \"Nihil voluptas.\"\n   }'" + "\n" +
 		""
 }
 
@@ -55,6 +55,9 @@ func ParseEndpoint(
 		tiupRequestToPublishFlags    = flag.NewFlagSet("request-to-publish", flag.ExitOnError)
 		tiupRequestToPublishBodyFlag = tiupRequestToPublishFlags.String("body", "REQUIRED", "")
 
+		tiupDeliveryByRulesFlags    = flag.NewFlagSet("delivery-by-rules", flag.ExitOnError)
+		tiupDeliveryByRulesBodyFlag = tiupDeliveryByRulesFlags.String("body", "REQUIRED", "")
+
 		tiupRequestToPublishSingleFlags    = flag.NewFlagSet("request-to-publish-single", flag.ExitOnError)
 		tiupRequestToPublishSingleBodyFlag = tiupRequestToPublishSingleFlags.String("body", "REQUIRED", "")
 
@@ -69,7 +72,7 @@ func ParseEndpoint(
 		fileserverRequestToPublishBodyFlag = fileserverRequestToPublishFlags.String("body", "REQUIRED", "")
 
 		fileserverQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
-		fileserverQueryPublishingStatusRequestIDFlag = fileserverQueryPublishingStatusFlags.String("request-id", "REQUIRED", "request track id")
+		fileserverQueryPublishingStatusRequestIDFlag = fileserverQueryPublishingStatusFlags.String("request-id", "REQUIRED", "Request id for async mode (uuidv4 format)")
 
 		imageFlags = flag.NewFlagSet("image", flag.ContinueOnError)
 
@@ -77,16 +80,17 @@ func ParseEndpoint(
 		imageRequestToCopyBodyFlag = imageRequestToCopyFlags.String("body", "REQUIRED", "")
 
 		imageQueryCopyingStatusFlags         = flag.NewFlagSet("query-copying-status", flag.ExitOnError)
-		imageQueryCopyingStatusRequestIDFlag = imageQueryCopyingStatusFlags.String("request-id", "REQUIRED", "request track id")
+		imageQueryCopyingStatusRequestIDFlag = imageQueryCopyingStatusFlags.String("request-id", "REQUIRED", "Request id for async mode (uuidv4 format)")
 
 		imageRequestMultiarchCollectFlags    = flag.NewFlagSet("request-multiarch-collect", flag.ExitOnError)
 		imageRequestMultiarchCollectBodyFlag = imageRequestMultiarchCollectFlags.String("body", "REQUIRED", "")
 
 		imageQueryMultiarchCollectStatusFlags         = flag.NewFlagSet("query-multiarch-collect-status", flag.ExitOnError)
-		imageQueryMultiarchCollectStatusRequestIDFlag = imageQueryMultiarchCollectStatusFlags.String("request-id", "REQUIRED", "Request track id")
+		imageQueryMultiarchCollectStatusRequestIDFlag = imageQueryMultiarchCollectStatusFlags.String("request-id", "REQUIRED", "Request id for async mode (uuidv4 format)")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
+	tiupDeliveryByRulesFlags.Usage = tiupDeliveryByRulesUsage
 	tiupRequestToPublishSingleFlags.Usage = tiupRequestToPublishSingleUsage
 	tiupQueryPublishingStatusFlags.Usage = tiupQueryPublishingStatusUsage
 	tiupResetRateLimitFlags.Usage = tiupResetRateLimitUsage
@@ -141,6 +145,9 @@ func ParseEndpoint(
 			switch epn {
 			case "request-to-publish":
 				epf = tiupRequestToPublishFlags
+
+			case "delivery-by-rules":
+				epf = tiupDeliveryByRulesFlags
 
 			case "request-to-publish-single":
 				epf = tiupRequestToPublishSingleFlags
@@ -205,6 +212,9 @@ func ParseEndpoint(
 			case "request-to-publish":
 				endpoint = c.RequestToPublish()
 				data, err = tiupc.BuildRequestToPublishPayload(*tiupRequestToPublishBodyFlag)
+			case "delivery-by-rules":
+				endpoint = c.DeliveryByRules()
+				data, err = tiupc.BuildDeliveryByRulesPayload(*tiupDeliveryByRulesBodyFlag)
 			case "request-to-publish-single":
 				endpoint = c.RequestToPublishSingle()
 				data, err = tiupc.BuildRequestToPublishSinglePayload(*tiupRequestToPublishSingleBodyFlag)
@@ -254,7 +264,8 @@ func tiupUsage() {
 	fmt.Fprintln(os.Stderr, `TiUP Publisher service`)
 	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] tiup COMMAND [flags]\n\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "COMMAND:")
-	fmt.Fprintln(os.Stderr, `    request-to-publish: RequestToPublish implements request-to-publish.`)
+	fmt.Fprintln(os.Stderr, `    request-to-publish: Request to publish TiUP packages from a OCI artifact`)
+	fmt.Fprintln(os.Stderr, `    delivery-by-rules: Request to delivery TiUP packages from OCI artifact controlled by delivery rules`)
 	fmt.Fprintln(os.Stderr, `    request-to-publish-single: Request to publish a single TiUP package from a binary tarball`)
 	fmt.Fprintln(os.Stderr, `    query-publishing-status: QueryPublishingStatus implements query-publishing-status.`)
 	fmt.Fprintln(os.Stderr, `    reset-rate-limit: ResetRateLimit implements reset-rate-limit.`)
@@ -270,14 +281,32 @@ func tiupRequestToPublishUsage() {
 
 	// Description
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, `RequestToPublish implements request-to-publish.`)
+	fmt.Fprintln(os.Stderr, `Request to publish TiUP packages from a OCI artifact`)
 
 	// Flags list
 	fmt.Fprintln(os.Stderr, `    -body JSON: `)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"https://example.com/artifact.tar.gz\",\n      \"tiup-mirror\": \"Perspiciatis quo et fuga accusamus sequi odit.\",\n      \"version\": \"v1.0.0\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'")
+}
+
+func tiupDeliveryByRulesUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tiup delivery-by-rules", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Request to delivery TiUP packages from OCI artifact controlled by delivery rules`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup delivery-by-rules --body '{\n      \"artifact_url\": \"oci.com/repo:tag\"\n   }'")
 }
 
 func tiupRequestToPublishSingleUsage() {
@@ -313,7 +342,7 @@ func tiupQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Sequi atque et officia architecto cupiditate.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Neque quo.\"")
 }
 
 func tiupResetRateLimitUsage() {
@@ -359,7 +388,7 @@ func fileserverRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Et ut beatae dolore officia deleniti repellat.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Esse nisi est.\"\n   }'")
 }
 
 func fileserverQueryPublishingStatusUsage() {
@@ -373,11 +402,11 @@ func fileserverQueryPublishingStatusUsage() {
 	fmt.Fprintln(os.Stderr, `QueryPublishingStatus implements query-publishing-status.`)
 
 	// Flags list
-	fmt.Fprintln(os.Stderr, `    -request-id STRING: request track id`)
+	fmt.Fprintln(os.Stderr, `    -request-id STRING: Request id for async mode (uuidv4 format)`)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"Rerum est dolorem.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"b91531a6-43ed-40cc-8b51-c9596233227f\"")
 }
 
 // imageUsage displays the usage of the image command and its subcommands.
@@ -408,7 +437,7 @@ func imageRequestToCopyUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Voluptatem et voluptatum doloribus ratione totam.\",\n      \"source\": \"Eum ut dolores est suscipit fugit.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Nam numquam et blanditiis.\",\n      \"source\": \"Nihil voluptas.\"\n   }'")
 }
 
 func imageQueryCopyingStatusUsage() {
@@ -422,11 +451,11 @@ func imageQueryCopyingStatusUsage() {
 	fmt.Fprintln(os.Stderr, `QueryCopyingStatus implements query-copying-status.`)
 
 	// Flags list
-	fmt.Fprintln(os.Stderr, `    -request-id STRING: request track id`)
+	fmt.Fprintln(os.Stderr, `    -request-id STRING: Request id for async mode (uuidv4 format)`)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"7396bb63-6d19-4d25-a21e-26ce72592b2f\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"778a675d-5eac-4b9e-bfbc-0dce05a7a616\"")
 }
 
 func imageRequestMultiarchCollectUsage() {
@@ -444,7 +473,7 @@ func imageRequestMultiarchCollectUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Voluptas similique magni ut aperiam excepturi quisquam.\",\n      \"release_tag_suffix\": \"Dolores nihil autem veritatis maiores quis eos.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Enim amet omnis unde quo.\",\n      \"release_tag_suffix\": \"Officia optio ut.\"\n   }'")
 }
 
 func imageQueryMultiarchCollectStatusUsage() {
@@ -458,9 +487,9 @@ func imageQueryMultiarchCollectStatusUsage() {
 	fmt.Fprintln(os.Stderr, `QueryMultiarchCollectStatus implements query-multiarch-collect-status.`)
 
 	// Flags list
-	fmt.Fprintln(os.Stderr, `    -request-id STRING: Request track id`)
+	fmt.Fprintln(os.Stderr, `    -request-id STRING: Request id for async mode (uuidv4 format)`)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"282061ee-8d9e-4f89-a0ec-63c2f3d4678c\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"11060f11-a816-4eba-beb4-89d8ccbce0c2\"")
 }

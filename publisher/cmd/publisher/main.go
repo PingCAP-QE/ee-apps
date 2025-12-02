@@ -11,9 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
-	"github.com/segmentio/kafka-go"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
@@ -23,6 +21,7 @@ import (
 	implfs "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
 	implimg "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/image"
 	impltiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
+	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
 func main() {
@@ -59,38 +58,15 @@ func main() {
 	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tiup.ServiceName).Logger()
 
 	// Load and parse configuration
-	config, err := loadConfig(*configFile)
+	cfg, err := config.Load[config.Service](*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
 	}
 
 	// Initialize the services.
-	var (
-		tiupSvc tiup.Service
-		fsSvc   fileserver.Service
-		imgSvc  image.Service
-	)
-	{
-		// Configure Kafka kafkaWriter
-		kafkaWriter := kafka.NewWriter(kafka.WriterConfig{
-			Brokers:  config.Kafka.Brokers,
-			Topic:    config.Kafka.Topic,
-			Balancer: &kafka.LeastBytes{},
-			Logger:   kafka.LoggerFunc(logger.Printf),
-		})
-
-		// Configure Redis client
-		redisClient := redis.NewClient(&redis.Options{
-			Addr:     config.Redis.Addr,
-			Password: config.Redis.Password,
-			Username: config.Redis.Username,
-			DB:       config.Redis.DB,
-		})
-
-		tiupSvc = impltiup.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
-		fsSvc = implfs.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
-		imgSvc = implimg.NewService(&logger, kafkaWriter, redisClient, config.EventSource)
-	}
+	tiupSvc := impltiup.NewService(&logger, *cfg)
+	fsSvc := implfs.NewService(&logger, *cfg)
+	imgSvc := implimg.NewService(&logger, *cfg)
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
@@ -150,7 +126,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, imgEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

@@ -24,13 +24,37 @@ func BuildRequestToPublishPayload(tiupRequestToPublishBody string) (*tiup.Reques
 	{
 		err = json.Unmarshal([]byte(tiupRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"https://example.com/artifact.tar.gz\",\n      \"tiup-mirror\": \"Perspiciatis quo et fuga accusamus sequi odit.\",\n      \"version\": \"v1.0.0\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'")
 		}
 	}
 	v := &tiup.RequestToPublishPayload{
 		ArtifactURL: body.ArtifactURL,
 		Version:     body.Version,
 		TiupMirror:  body.TiupMirror,
+	}
+	{
+		var zero string
+		if v.TiupMirror == zero {
+			v.TiupMirror = "staging"
+		}
+	}
+
+	return v, nil
+}
+
+// BuildDeliveryByRulesPayload builds the payload for the tiup
+// delivery-by-rules endpoint from CLI flags.
+func BuildDeliveryByRulesPayload(tiupDeliveryByRulesBody string) (*tiup.DeliveryByRulesPayload, error) {
+	var err error
+	var body DeliveryByRulesRequestBody
+	{
+		err = json.Unmarshal([]byte(tiupDeliveryByRulesBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"oci.com/repo:tag\"\n   }'")
+		}
+	}
+	v := &tiup.DeliveryByRulesPayload{
+		ArtifactURL: body.ArtifactURL,
 	}
 
 	return v, nil
@@ -61,12 +85,20 @@ func BuildRequestToPublishSinglePayload(tiupRequestToPublishSingleBody string) (
 			return nil, err
 		}
 	}
-	v := &tiup.PublishRequestTiUP{}
+	v := &tiup.PublishRequestTiUP{
+		TiupMirror: body.TiupMirror,
+	}
 	if body.From != nil {
 		v.From = marshalFromRequestBodyToTiupFrom(body.From)
 	}
 	if body.Publish != nil {
 		v.Publish = marshalPublishInfoTiUPRequestBodyToTiupPublishInfoTiUP(body.Publish)
+	}
+	{
+		var zero string
+		if v.TiupMirror == zero {
+			v.TiupMirror = "staging"
+		}
 	}
 
 	return v, nil
