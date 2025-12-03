@@ -20,19 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          sparse-checkout: |
+            charts
 
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.16.0
+          version: v3.18.3
 
       - name: Release charts
         working-directory: charts
