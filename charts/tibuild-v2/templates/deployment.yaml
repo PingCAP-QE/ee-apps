@@ -46,7 +46,7 @@ spec:
             {{- with .Values.server.config.secretKey }}
             - -config=/etc/config/{{ . }}
             {{- end }}
-            {{- with .Values.server.debug }}
+            {{- if .Values.server.debug }}
             - -debug
             {{- end }}
           ports:

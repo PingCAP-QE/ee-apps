@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "tibuild-v2.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "tibuild-v2.fullname" . }}:{{ .Values.service.port }}/healthz']
   restartPolicy: Never
