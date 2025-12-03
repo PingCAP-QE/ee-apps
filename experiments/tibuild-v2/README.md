@@ -48,6 +48,15 @@ go run ./cmd/server
 
 After waiting a few seconds, application is available and can be visited in the browser:[localhost:8080](http://localhost:8080/)
 
+## Health Check Endpoints
+
+The service provides health check endpoints for monitoring and load balancers:
+
+- `GET /api/v2/healthz` - Health check endpoint
+- `GET /api/v2/livez` - Liveness check endpoint
+
+Both endpoints return a boolean `true` value with HTTP 200 status when the service is healthy.
+
 ## File Structure
 
 > WIP
