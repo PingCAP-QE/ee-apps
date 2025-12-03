@@ -12,6 +12,8 @@ on:
       - "**/*.js"
       - "**/package.json"
       - "**/package-lock.json"
+env:
+  SKAFFOLD_VER: v2.17.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -72,7 +74,8 @@ jobs:
 
       - name: Setup skaffold
         run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.8.0/skaffold-linux-amd64 && \
+          platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+          curl -Lo skaffold "https://storage.googleapis.com/skaffold/releases/$SKAFFOLD_VER/skaffold-$platform" && \
           sudo install skaffold /usr/local/bin/
 
       - name: Build image - cloudevents-server
