@@ -16,6 +16,7 @@ import (
 
 	artifactc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/client"
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
+	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -26,6 +27,7 @@ import (
 func UsageCommands() string {
 	return `artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
+hotfix bump-tag-for-tidbx
 `
 }
 
@@ -36,6 +38,12 @@ func UsageExamples() string {
       "target": "Qui earum omnis."
    }'` + "\n" +
 		os.Args[0] + ` devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."` + "\n" +
+		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
+      "author": "wuhuizuo",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "repo": "pingcap/tidb"
+   }'` + "\n" +
 		""
 }
 
@@ -89,6 +97,11 @@ func ParseEndpoint(
 		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
 		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
 		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
+
+		hotfixFlags = flag.NewFlagSet("hotfix", flag.ContinueOnError)
+
+		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
+		hotfixBumpTagForTidbxBodyFlag = hotfixBumpTagForTidbxFlags.String("body", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -100,6 +113,9 @@ func ParseEndpoint(
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
 	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
+
+	hotfixFlags.Usage = hotfixUsage
+	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -120,6 +136,8 @@ func ParseEndpoint(
 			svcf = artifactFlags
 		case "devbuild":
 			svcf = devbuildFlags
+		case "hotfix":
+			svcf = hotfixFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -161,6 +179,13 @@ func ParseEndpoint(
 
 			case "ingest-event":
 				epf = devbuildIngestEventFlags
+
+			}
+
+		case "hotfix":
+			switch epn {
+			case "bump-tag-for-tidbx":
+				epf = hotfixBumpTagForTidbxFlags
 
 			}
 
@@ -212,6 +237,13 @@ func ParseEndpoint(
 			case "ingest-event":
 				endpoint = c.IngestEvent()
 				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
+			}
+		case "hotfix":
+			c := hotfixc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "bump-tag-for-tidbx":
+				endpoint = c.BumpTagForTidbx()
+				data, err = hotfixc.BuildBumpTagForTidbxPayload(*hotfixBumpTagForTidbxBodyFlag)
 			}
 		}
 	}
@@ -547,5 +579,34 @@ Example:
       "dataschema": "https://example.com/registry/schemas/build-event.json",
       "subject": "tidb-build-123"
    }' --datacontenttype "Et qui in." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+`, os.Args[0])
+}
+
+// hotfixUsage displays the usage of the hotfix command and its subcommands.
+func hotfixUsage() {
+	fmt.Fprintf(os.Stderr, `The hotfix service provides operations to manage hotfix git tags.
+Usage:
+    %[1]s [globalflags] hotfix COMMAND [flags]
+
+COMMAND:
+    bump-tag-for-tidbx: Create a hot fix git tag for a GitHub repository
+
+Additional help:
+    %[1]s hotfix COMMAND --help
+`, os.Args[0])
+}
+func hotfixBumpTagForTidbxUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
+
+Create a hot fix git tag for a GitHub repository
+    -body JSON:
+
+Example:
+    %[1]s hotfix bump-tag-for-tidbx --body '{
+      "author": "wuhuizuo",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "repo": "pingcap/tidb"
+   }'
 `, os.Args[0])
 }

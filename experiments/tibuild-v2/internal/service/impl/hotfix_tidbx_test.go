@@ -1,0 +1,266 @@
+package impl
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"testing"
+
+	"github.com/google/go-github/v69/github"
+	"github.com/migueleliasweb/go-github-mock/src/mock"
+	"github.com/rs/zerolog"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
+)
+
+func newServiceWithClient(client *github.Client) *hotfixsrvc {
+	logger := zerolog.New(io.Discard)
+	return &hotfixsrvc{
+		logger:   &logger,
+		ghClient: client,
+	}
+}
+
+func TestComputeNewTagNameForTidbx(t *testing.T) {
+	type testCase struct {
+		name      string
+		pages     [][]string
+		expected  string
+		expectErr bool
+		errCode   int
+	}
+
+	cases := []testCase{
+		{
+			name: "LastMonthIncrement",
+			pages: [][]string{
+				{
+					"v8.5.4-nextgen.202510.1",
+					"v8.5.4-nextgen.202510.3",
+					"v8.5.4-nextgen.202510.2",
+					"v8.5.4-nextgen.202510.foo",
+					"random-tag",
+				},
+			},
+			expected: "v8.5.4-nextgen.202510.4",
+		},
+		{
+			name: "Have tags with two months",
+			pages: [][]string{
+				{
+					"v7.1.0-nextgen.202410.10",
+					"v7.1.0-nextgen.202410.9",
+					"v7.1.0-nextgen.202409.3",
+				},
+			},
+			expected: "v7.1.0-nextgen.202410.11",
+		},
+		{
+			name: "NoMatchingTags",
+			pages: [][]string{
+				{
+					"v8.5.4",
+					"v8.5.4-nextgen.202512",
+					"some-other-tag",
+					"vX.Y.Z-nextgen.202512.abc",
+					"release-20251201",
+				},
+			},
+			expectErr: true,
+			errCode:   http.StatusBadRequest,
+		},
+		{
+			name: "Pagination",
+			pages: [][]string{
+				{
+					"v9.0.0-nextgen.202401.2",
+					"v9.0.0-nextgen.202401.1",
+					"v9.0.0-nextgen.202312.7",
+				},
+				{
+					"v9.0.0-nextgen.202511.3",
+					"v9.0.0-nextgen.202511.5",
+					"v9.0.0-nextgen.202601.0",
+				},
+			},
+			expected: "v9.0.0-nextgen.202601.1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Build mocked pages for ListTags
+			var tagPages []any
+
+			for _, names := range tc.pages {
+				tags := make([]*github.RepositoryTag, len(names))
+				for j, name := range names {
+					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
+				}
+				tagPages = append(tagPages, tags)
+			}
+			resp := mock.WithRequestMatchPages(mock.GetReposTagsByOwnerByRepo, tagPages...)
+
+			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp))
+			svc := newServiceWithClient(ghClient)
+
+			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo")
+			if tc.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				httpErr, ok := err.(*hotfix.HTTPError)
+				if !ok {
+					t.Fatalf("expected *hotfix.HTTPError, got %T", err)
+				}
+				if httpErr.Code != tc.errCode {
+					t.Fatalf("expected status %d, got %d", tc.errCode, httpErr.Code)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tag != tc.expected {
+				t.Fatalf("expected %s, got %s", tc.expected, tag)
+			}
+		})
+	}
+}
+
+func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
+	fullRepo := "owner/repo"
+
+	// Tags response for pagination flow
+	respTags := mock.WithRequestMatchPages(
+		mock.GetReposTagsByOwnerByRepo,
+		[]*github.RepositoryTag{
+			{Name: github.Ptr("v9.0.0-nextgen.202401.2")},
+			{Name: github.Ptr("v9.0.0-nextgen.202401.1")},
+			{Name: github.Ptr("v9.0.0-nextgen.202312.7")},
+		},
+		[]*github.RepositoryTag{
+			{Name: github.Ptr("v9.0.0-nextgen.202511.3")},
+			{Name: github.Ptr("v9.0.0-nextgen.202511.5")},
+			{Name: github.Ptr("v9.0.0-nextgen.202601.0")},
+		},
+	)
+
+	branch := "main"
+	commit := "abc123"
+	expectedTag := "v9.0.0-nextgen.202601.1"
+
+	type args struct {
+		fullRepo string
+		branch   string
+		commit   string
+	}
+	tests := []struct {
+		name          string
+		args          args
+		existTagPages [][]*github.RepositoryTag
+		expectTag     string
+	}{
+		{
+			name:      "PaginationFlow with branch",
+			args:      args{fullRepo: fullRepo, branch: branch},
+			expectTag: expectedTag,
+		},
+		{
+			name:      "PaginationFlow with commit",
+			args:      args{fullRepo: fullRepo, commit: commit},
+			expectTag: expectedTag,
+		},
+		{
+			name:      "PaginationFlow with branch and commit",
+			args:      args{fullRepo: fullRepo, branch: branch, commit: commit},
+			expectTag: expectedTag,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			// Prepare mocked responses:
+			// - GET tags pages
+			// - GET branch
+			// - POST create tag
+			// - POST create ref
+
+			httpClient := mock.NewMockedHTTPClient(
+				respTags,
+				mock.WithRequestMatch(
+					mock.GetReposCommitsByOwnerByRepoByRef,
+					&github.RepositoryCommit{
+						SHA: github.Ptr(commit),
+					},
+				),
+				mock.WithRequestMatch(
+					mock.GetReposBranchesByOwnerByRepoByBranch,
+					&github.Branch{
+						Name: github.Ptr(branch),
+						Commit: &github.RepositoryCommit{
+							SHA: github.Ptr(commit),
+						},
+					},
+				),
+				mock.WithRequestMatch(
+					mock.PostReposGitTagsByOwnerByRepo,
+					&github.Tag{
+						Tag:     github.Ptr("v9.0.0-nextgen.202601.1"),
+						Message: github.Ptr("Hot fix tag created by tester"),
+						Object: &github.GitObject{
+							Type: github.Ptr("commit"),
+							SHA:  github.Ptr(commit),
+						},
+						SHA: github.Ptr(commit),
+					},
+				),
+				mock.WithRequestMatch(
+					mock.PostReposGitRefsByOwnerByRepo,
+					&github.Reference{
+						Ref: github.Ptr("refs/tags/v9.0.0-nextgen.202601.1"),
+						Object: &github.GitObject{
+							SHA: github.Ptr(commit),
+						},
+					},
+				),
+				mock.WithRequestMatch(
+					mock.GetReposCompareByOwnerByRepoByBasehead,
+					&github.CommitsComparison{
+						Status: github.Ptr("behind"),
+					},
+				),
+			)
+			svc := newServiceWithClient(github.NewClient(httpClient))
+
+			// prepare api payload
+			apiCallPayload := &hotfix.BumpTagForTidbxPayload{
+				Repo:   fullRepo,
+				Author: "tester",
+			}
+			if test.args.commit != "" {
+				apiCallPayload.Commit = &test.args.commit
+			}
+			if test.args.branch != "" {
+				apiCallPayload.Branch = &test.args.branch
+			}
+
+			// call the api
+			result, err := svc.BumpTagForTidbx(tt.Context(), apiCallPayload)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if result.Repo != test.args.fullRepo {
+				t.Fatalf("expected repo %s, got %s", test.args.fullRepo, result.Repo)
+			}
+			if result.Commit != commit {
+				t.Fatalf("expected commit %s, got %s", commit, result.Commit)
+			}
+			if result.Tag != test.expectTag {
+				t.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
+			}
+		})
+	}
+}

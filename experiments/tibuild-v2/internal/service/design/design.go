@@ -204,6 +204,40 @@ var _ = Service("devbuild", func() {
 	})
 })
 
+var _ = Service("hotfix", func() {
+	Description("The hotfix service provides operations to manage hotfix git tags.")
+	Error("BadRequest", HTTPError, "Bad Request")
+	Error("InternalServerError", HTTPError, "Internal Server Error")
+	HTTP(func() {
+		Path("/hotfix")
+	})
+	Method("bump-tag-for-tidbx", func() {
+		Description("Create a hot fix git tag for a GitHub repository")
+		Payload(func() {
+			Attribute("repo", String, "Full name of GitHub repository (e.g., 'owner/repo')", func() {
+				Example("pingcap/tidb")
+			})
+			Attribute("branch", String, "Branch name of the GitHub repo", func() {
+				Example("release-8.5")
+			})
+			Attribute("commit", String, "Short or full git commit SHA", func() {
+				Example("abc123def456")
+			})
+			Attribute("author", String, "GitHub account who requested to create the git tag", func() {
+				Example("wuhuizuo")
+			})
+			Required("repo", "author")
+		})
+		Result(HotfixTagResult)
+		HTTP(func() {
+			POST("/bump-tag-for-tidbx")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+})
+
 var ImageSyncRequest = Type("ImageSyncRequest", func() {
 	Attribute("source", String)
 	Attribute("target", String)
@@ -261,7 +295,7 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 			"pd",                                       // from tikv/pd repo.
 			"ticdc",                                    // from pingcap/tiflow or pingcap/ticdc repo.
 			"ticdc-newarch",                            // from pingcap/ticdc repo.
-			"tici",           // from pingcap-inc/tici repo.
+			"tici",                                     // from pingcap-inc/tici repo.
 			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
 			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
 			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
@@ -410,4 +444,17 @@ var CloudEventResponse = Type("CloudEventResponse", func() {
 	})
 
 	Required("id", "status")
+})
+
+var HotfixTagResult = Type("HotfixTagResult", func() {
+	Attribute("repo", String, "Full name of GitHub repository", func() {
+		Example("pingcap/tidb")
+	})
+	Attribute("commit", String, "The commit tag created on", func() {
+		Example("abc123def456789")
+	})
+	Attribute("tag", String, "Git tag name", func() {
+		Example("v8.5.4-nextgen.202510.10")
+	})
+	Required("repo", "commit", "tag")
 })

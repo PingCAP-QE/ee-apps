@@ -8,6 +8,14 @@ import (
 	"github.com/google/go-github/v69/github"
 )
 
+// NewGitHubClient creates a new GitHub client with the provided token.
+func NewGitHubClient(token string) *github.Client {
+	if token == "" {
+		return github.NewClient(nil)
+	}
+	return github.NewClient(nil).WithAuthToken(token)
+}
+
 func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, ref string) string {
 	if ghClient == nil {
 		return ""
