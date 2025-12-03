@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goa.design/clue/debug"
+	"goa.design/clue/health"
 	"goa.design/clue/log"
 	goahttp "goa.design/goa/v3/http"
 
@@ -66,6 +67,11 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	devbuildsvr.Mount(mux, devbuildServer)
 	hotfixsvr.Mount(mux, hotfixServer)
 
+	// ** Mount health check handler **
+	check := health.Handler(health.NewChecker())
+	mux.Handle("GET", "/healthz", check)
+	mux.Handle("GET", "/livez", check)
+
 	var handler http.Handler = mux
 	if dbg {
 		// Log query and response bodies if debug logs are enabled.
@@ -86,10 +92,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 
-	(*wg).Add(1)
-	go func() {
-		defer (*wg).Done()
-
+	wg.Go(func() {
 		// Start HTTP server in a separate goroutine.
 		go func() {
 			log.Printf(ctx, "HTTP server listening on %q", u.Host)
@@ -107,7 +110,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 		if err != nil {
 			log.Printf(ctx, "failed to shutdown: %v", err)
 		}
-	}()
+	})
 }
 
 // errorHandler returns a function that writes and logs the given error.
