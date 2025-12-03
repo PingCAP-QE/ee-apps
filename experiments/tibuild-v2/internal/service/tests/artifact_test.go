@@ -37,7 +37,7 @@ func TestSyncImage_Integration(t *testing.T) {
 	})
 
 	// Get the registry URL (e.g., "localhost:5000")
-	registryURL, err := registryContainer.Address(t.Context())
+	registryURL, err := registryContainer.HostAddress(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
