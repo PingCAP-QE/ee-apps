@@ -76,7 +76,7 @@ jobs:
         run: |
           curl -Lo skaffold "https://storage.googleapis.com/skaffold/releases/${SKAFFOLD_VER}/skaffold-linux-amd64" && \
           sudo install skaffold /usr/local/bin/
-          rm -rf skaffold
+          rm -f skaffold
 
       - name: Build image - cloudevents-server
         if: steps.changes.outputs.cloudevents-server == 'true'
