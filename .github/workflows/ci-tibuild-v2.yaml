@@ -47,3 +47,8 @@ jobs:
         working-directory: experiments/tibuild-v2
         run: |
           go test -v ./...
+      - name: Run builds
+        working-directory: experiments/tibuild-v2
+        run: |
+          go build ./cmd/tibuild && \
+          go build ./cmd/tibuild-cli
