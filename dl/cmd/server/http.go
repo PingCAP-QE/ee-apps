@@ -9,20 +9,20 @@ import (
 	"sync"
 	"time"
 
-	health "github.com/PingCAP-QE/ee-apps/dl/gen/health"
-	healthsvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/health/server"
+	"goa.design/clue/health"
+	goahttp "goa.design/goa/v3/http"
+	httpmdlwr "goa.design/goa/v3/http/middleware"
+	"goa.design/goa/v3/middleware"
+
 	ks3svr "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/server"
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
-	goahttp "goa.design/goa/v3/http"
-	httpmdlwr "goa.design/goa/v3/http/middleware"
-	"goa.design/goa/v3/middleware"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, healthEndpoints *health.Endpoints, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool) {
 
 	// Setup goa log adapter.
 	var (
@@ -53,18 +53,15 @@ func handleHTTPServer(ctx context.Context, u *url.URL, healthEndpoints *health.E
 	// the service input and output data structures to HTTP requests and
 	// responses.
 	var (
-		healthServer *healthsvr.Server
-		ociServer    *ocisvr.Server
-		ks3Server    *ks3svr.Server
+		ociServer *ocisvr.Server
+		ks3Server *ks3svr.Server
 	)
 	{
 		eh := errorHandler(logger)
-		healthServer = healthsvr.New(healthEndpoints, mux, dec, enc, eh, nil)
 		ociServer = ocisvr.New(ociEndpoints, mux, dec, enc, eh, nil)
 		ks3Server = ks3svr.New(ks3Endpoints, mux, dec, enc, eh, nil)
 		if debug {
 			servers := goahttp.Servers{
-				healthServer,
 				ociServer,
 				ks3Server,
 			}
@@ -72,9 +69,13 @@ func handleHTTPServer(ctx context.Context, u *url.URL, healthEndpoints *health.E
 		}
 	}
 	// Configure the mux.
-	healthsvr.Mount(mux, healthServer)
 	ocisvr.Mount(mux, ociServer)
 	ks3svr.Mount(mux, ks3Server)
+
+	// ** Mount health check handler **
+	check := health.Handler(health.NewChecker())
+	mux.Handle("GET", "/healthz", check)
+	mux.Handle("GET", "/livez", check)
 
 	// Wrap the multiplexer with additional middlewares. Middlewares mounted
 	// here apply to all the service endpoints.
@@ -87,9 +88,6 @@ func handleHTTPServer(ctx context.Context, u *url.URL, healthEndpoints *health.E
 	// Start HTTP server using default configuration, change the code to
 	// configure the server as required by your service.
 	srv := &http.Server{Addr: u.Host, Handler: handler, ReadHeaderTimeout: time.Second * 60}
-	for _, m := range healthServer.Mounts {
-		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
-	}
 	for _, m := range ociServer.Mounts {
 		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
