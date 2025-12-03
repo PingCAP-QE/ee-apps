@@ -71,9 +71,9 @@ paths:
                     type: integer
                     description: The page number of items
                     default: 1
-                    example: 7066180170569869987
+                    example: 2997604712159398269
                     format: int64
-                  example: 1421566827918412211
+                  example: 2455158132722103212
                 - name: page_size
                   in: query
                   description: Page size
@@ -82,9 +82,9 @@ paths:
                     type: integer
                     description: Page size
                     default: 30
-                    example: 8390784216699171929
+                    example: 2899725767837631730
                     format: int64
-                  example: 1054659745533654314
+                  example: 3394455519772531220
                 - name: hotfix
                   in: query
                   description: Filter hotfix
@@ -93,8 +93,8 @@ paths:
                     type: boolean
                     description: Filter hotfix
                     default: false
-                    example: false
-                  example: false
+                    example: true
+                  example: true
                 - name: sort
                   in: query
                   description: What to sort results by
@@ -103,11 +103,11 @@ paths:
                     type: string
                     description: What to sort results by
                     default: created_at
-                    example: updated_at
+                    example: created_at
                     enum:
                         - created_at
                         - updated_at
-                  example: created_at
+                  example: updated_at
                 - name: direction
                   in: query
                   description: The direction of the sort
@@ -116,7 +116,7 @@ paths:
                     type: string
                     description: The direction of the sort
                     default: desc
-                    example: desc
+                    example: asc
                     enum:
                         - asc
                         - desc
@@ -128,8 +128,8 @@ paths:
                   schema:
                     type: string
                     description: Filter created by
-                    example: Ea error praesentium magnam harum quo qui.
-                  example: Et illum aperiam est sed tempora.
+                    example: Soluta accusantium enim cupiditate neque sint.
+                  example: Accusantium qui.
             responses:
                 "200":
                     description: OK response.
@@ -515,381 +515,7 @@ paths:
                                                   start_at: "1972-02-22T19:07:31Z"
                                                   status: aborted
                                                   url: http://leannon.org/ladarius
-                                    - id: 1725589418794861022
-                                      meta:
-                                        created_at: 3821-50-00 98:27:58
-                                        created_by: stanley_schimmel@ryan.biz
-                                        updated_at: 9765-68-44 45:22:91
-                                      spec:
-                                        build_env: Pariatur minima fugit.
-                                        builder_img: Facilis illo occaecati facilis consequatur temporibus sit.
-                                        edition: fips
-                                        features: Et commodi culpa necessitatibus in eum.
-                                        git_ref: Minima voluptate doloribus.
-                                        git_sha: Numquam est.
-                                        github_repo: Neque doloremque.
-                                        is_hotfix: true
-                                        is_push_gcr: true
-                                        pipeline_engine: jenkins
-                                        platform: darwin/amd64
-                                        plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                        product: pd
-                                        product_base_img: Doloribus nisi corporis nihil soluta.
-                                        product_dockerfile: Adipisci est.
-                                        target_img: Qui necessitatibus possimus ab quos facere.
-                                        version: Repudiandae voluptatem rem earum aut at nulla.
-                                      status:
-                                        build_report:
-                                            binaries:
-                                                - component: Totam esse maxime aliquid sunt numquam.
-                                                  oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  platform: Inventore id.
-                                                  sha256_oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  sha256_url: http://brakusmclaughlin.biz/delmer
-                                                  url: http://bodedickinson.info/lenore.raynor
-                                                - component: Totam esse maxime aliquid sunt numquam.
-                                                  oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  platform: Inventore id.
-                                                  sha256_oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  sha256_url: http://brakusmclaughlin.biz/delmer
-                                                  url: http://bodedickinson.info/lenore.raynor
-                                                - component: Totam esse maxime aliquid sunt numquam.
-                                                  oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  platform: Inventore id.
-                                                  sha256_oci_file:
-                                                    file: Illo voluptas dolor atque cum beatae sunt.
-                                                    repo: Amet autem accusantium sit accusamus.
-                                                    tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                                  sha256_url: http://brakusmclaughlin.biz/delmer
-                                                  url: http://bodedickinson.info/lenore.raynor
-                                            git_sha: bsz
-                                            images:
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                            plugin_git_sha: 2vx
-                                            printed_version: Odio impedit dicta.
-                                        err_msg: Esse et maxime vero nesciunt in et.
-                                        pipeline_build_id: 1614988319067806897
-                                        pipeline_end_at: 2136-77-70 88:28:14
-                                        pipeline_start_at: 6574-19-93 93:67:09
-                                        pipeline_view_url: http://haaggaylord.name/valentine_murazik
-                                        pipeline_view_urls:
-                                            - http://luettgensenger.com/ibrahim_sauer
-                                            - http://macejkovic.biz/maddison
-                                            - http://wiza.net/rosetta
-                                            - http://labadie.biz/santino
-                                        status: error
-                                        tekton_status:
-                                            pipelines:
-                                                - end_at: "1973-09-14T15:57:16Z"
-                                                  git_sha: 8yi
-                                                  images:
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                  name: Corrupti a accusantium natus in.
-                                                  oci_artifacts:
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                  platform: Hic quae.
-                                                  start_at: "1972-02-22T19:07:31Z"
-                                                  status: aborted
-                                                  url: http://leannon.org/ladarius
-                                                - end_at: "1973-09-14T15:57:16Z"
-                                                  git_sha: 8yi
-                                                  images:
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                  name: Corrupti a accusantium natus in.
-                                                  oci_artifacts:
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                  platform: Hic quae.
-                                                  start_at: "1972-02-22T19:07:31Z"
-                                                  status: aborted
-                                                  url: http://leannon.org/ladarius
-                                                - end_at: "1973-09-14T15:57:16Z"
-                                                  git_sha: 8yi
-                                                  images:
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                    - internal_url: http://grant.net/holly.smith
-                                                      platform: Aut minus aperiam quod ut eum deleniti.
-                                                      url: http://lesch.net/vida.jacobs
-                                                  name: Corrupti a accusantium natus in.
-                                                  oci_artifacts:
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                    - files:
-                                                        - Nihil commodi.
-                                                        - Et ad.
-                                                        - Non dolor deserunt atque exercitationem non.
-                                                        - Quibusdam possimus.
-                                                      repo: Esse ab quos esse delectus ea.
-                                                      tag: Porro voluptatem.
-                                                  platform: Hic quae.
-                                                  start_at: "1972-02-22T19:07:31Z"
-                                                  status: aborted
-                                                  url: http://leannon.org/ladarius
                             example:
-                                - id: 1725589418794861022
-                                  meta:
-                                    created_at: 3821-50-00 98:27:58
-                                    created_by: stanley_schimmel@ryan.biz
-                                    updated_at: 9765-68-44 45:22:91
-                                  spec:
-                                    build_env: Pariatur minima fugit.
-                                    builder_img: Facilis illo occaecati facilis consequatur temporibus sit.
-                                    edition: fips
-                                    features: Et commodi culpa necessitatibus in eum.
-                                    git_ref: Minima voluptate doloribus.
-                                    git_sha: Numquam est.
-                                    github_repo: Neque doloremque.
-                                    is_hotfix: true
-                                    is_push_gcr: true
-                                    pipeline_engine: jenkins
-                                    platform: darwin/amd64
-                                    plugin_git_ref: Voluptatibus et facere magnam velit optio.
-                                    product: pd
-                                    product_base_img: Doloribus nisi corporis nihil soluta.
-                                    product_dockerfile: Adipisci est.
-                                    target_img: Qui necessitatibus possimus ab quos facere.
-                                    version: Repudiandae voluptatem rem earum aut at nulla.
-                                  status:
-                                    build_report:
-                                        binaries:
-                                            - component: Totam esse maxime aliquid sunt numquam.
-                                              oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              platform: Inventore id.
-                                              sha256_oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              sha256_url: http://brakusmclaughlin.biz/delmer
-                                              url: http://bodedickinson.info/lenore.raynor
-                                            - component: Totam esse maxime aliquid sunt numquam.
-                                              oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              platform: Inventore id.
-                                              sha256_oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              sha256_url: http://brakusmclaughlin.biz/delmer
-                                              url: http://bodedickinson.info/lenore.raynor
-                                            - component: Totam esse maxime aliquid sunt numquam.
-                                              oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              platform: Inventore id.
-                                              sha256_oci_file:
-                                                file: Illo voluptas dolor atque cum beatae sunt.
-                                                repo: Amet autem accusantium sit accusamus.
-                                                tag: Aut laboriosam aspernatur perspiciatis perspiciatis.
-                                              sha256_url: http://brakusmclaughlin.biz/delmer
-                                              url: http://bodedickinson.info/lenore.raynor
-                                        git_sha: bsz
-                                        images:
-                                            - internal_url: http://grant.net/holly.smith
-                                              platform: Aut minus aperiam quod ut eum deleniti.
-                                              url: http://lesch.net/vida.jacobs
-                                            - internal_url: http://grant.net/holly.smith
-                                              platform: Aut minus aperiam quod ut eum deleniti.
-                                              url: http://lesch.net/vida.jacobs
-                                            - internal_url: http://grant.net/holly.smith
-                                              platform: Aut minus aperiam quod ut eum deleniti.
-                                              url: http://lesch.net/vida.jacobs
-                                            - internal_url: http://grant.net/holly.smith
-                                              platform: Aut minus aperiam quod ut eum deleniti.
-                                              url: http://lesch.net/vida.jacobs
-                                        plugin_git_sha: 2vx
-                                        printed_version: Odio impedit dicta.
-                                    err_msg: Esse et maxime vero nesciunt in et.
-                                    pipeline_build_id: 1614988319067806897
-                                    pipeline_end_at: 2136-77-70 88:28:14
-                                    pipeline_start_at: 6574-19-93 93:67:09
-                                    pipeline_view_url: http://haaggaylord.name/valentine_murazik
-                                    pipeline_view_urls:
-                                        - http://luettgensenger.com/ibrahim_sauer
-                                        - http://macejkovic.biz/maddison
-                                        - http://wiza.net/rosetta
-                                        - http://labadie.biz/santino
-                                    status: error
-                                    tekton_status:
-                                        pipelines:
-                                            - end_at: "1973-09-14T15:57:16Z"
-                                              git_sha: 8yi
-                                              images:
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                              name: Corrupti a accusantium natus in.
-                                              oci_artifacts:
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                              platform: Hic quae.
-                                              start_at: "1972-02-22T19:07:31Z"
-                                              status: aborted
-                                              url: http://leannon.org/ladarius
-                                            - end_at: "1973-09-14T15:57:16Z"
-                                              git_sha: 8yi
-                                              images:
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                              name: Corrupti a accusantium natus in.
-                                              oci_artifacts:
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                              platform: Hic quae.
-                                              start_at: "1972-02-22T19:07:31Z"
-                                              status: aborted
-                                              url: http://leannon.org/ladarius
-                                            - end_at: "1973-09-14T15:57:16Z"
-                                              git_sha: 8yi
-                                              images:
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                                - internal_url: http://grant.net/holly.smith
-                                                  platform: Aut minus aperiam quod ut eum deleniti.
-                                                  url: http://lesch.net/vida.jacobs
-                                              name: Corrupti a accusantium natus in.
-                                              oci_artifacts:
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                                - files:
-                                                    - Nihil commodi.
-                                                    - Et ad.
-                                                    - Non dolor deserunt atque exercitationem non.
-                                                    - Quibusdam possimus.
-                                                  repo: Esse ab quos esse delectus ea.
-                                                  tag: Porro voluptatem.
-                                              platform: Hic quae.
-                                              start_at: "1972-02-22T19:07:31Z"
-                                              status: aborted
-                                              url: http://leannon.org/ladarius
                                 - id: 1725589418794861022
                                   meta:
                                     created_at: 3821-50-00 98:27:58
@@ -1702,7 +1328,7 @@ paths:
                     description: Whether sync with jenkins
                     default: false
                     example: false
-                  example: false
+                  example: true
                 - name: id
                   in: path
                   description: ID of build
@@ -1911,7 +1537,7 @@ paths:
                     description: Dry run
                     default: false
                     example: false
-                  example: false
+                  example: true
                 - name: id
                   in: path
                   description: ID of build
@@ -2241,7 +1867,7 @@ paths:
                     description: Dry run
                     default: false
                     example: false
-                  example: true
+                  example: false
                 - name: id
                   in: path
                   description: ID of build
@@ -2449,8 +2075,8 @@ paths:
                   schema:
                     type: string
                     description: Content type of the data value
-                    example: Enim mollitia dolorem.
-                  example: Reprehenderit error quod dolor suscipit a qui.
+                    example: Animi unde.
+                  example: Voluptatem autem eos corrupti perspiciatis rem placeat.
                 - name: ce-id
                   in: header
                   description: Unique identifier for the event
@@ -2559,8 +2185,8 @@ paths:
                   schema:
                     type: string
                     description: Content type of the data value
-                    example: Officia iure ut reprehenderit eveniet consequatur rem.
-                  example: Modi libero quam ullam.
+                    example: Mollitia possimus.
+                  example: In adipisci.
                 - name: ce-id
                   in: header
                   description: Unique identifier for the event
@@ -2655,6 +2281,21 @@ paths:
                             example:
                                 code: 5950359717445890971
                                 message: Et cupiditate.
+    /api/v2/healthz:
+        get:
+            tags:
+                - health
+            summary: healthz health
+            operationId: health#healthz
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: boolean
+                                example: true
+                            example: false
     /api/v2/hotfix/bump-tag-for-tidbx:
         post:
             tags:
@@ -2702,6 +2343,21 @@ paths:
                             example:
                                 code: 1757193194923430968
                                 message: Impedit est.
+    /api/v2/livez:
+        get:
+            tags:
+                - health
+            summary: livez health
+            operationId: health#livez
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: boolean
+                                example: false
+                            example: false
 components:
     schemas:
         BinArtifact:
@@ -2709,35 +2365,35 @@ components:
             properties:
                 component:
                     type: string
-                    example: Recusandae voluptas reprehenderit voluptatum hic.
+                    example: Ipsam vitae ratione ullam.
                 oci_file:
                     $ref: '#/components/schemas/OciFile'
                 platform:
                     type: string
-                    example: Nam suscipit illum.
+                    example: Et culpa iusto quod.
                 sha256_oci_file:
                     $ref: '#/components/schemas/OciFile'
                 sha256_url:
                     type: string
-                    example: http://schowalter.net/leilani_runolfsdottir
+                    example: http://wilkinson.info/henry.hauck
                     format: uri
                 url:
                     type: string
-                    example: http://hagenes.name/sherman
+                    example: http://weber.info/daija
                     format: uri
             example:
-                component: Modi sed earum occaecati totam aliquam.
+                component: Quia odit quasi sint voluptatum.
                 oci_file:
                     file: Sint eligendi eos corporis voluptatum ipsa.
                     repo: Molestiae quam id animi.
                     tag: Quas maiores recusandae.
-                platform: Doloribus nulla et.
+                platform: Voluptas molestias explicabo officia necessitatibus ea.
                 sha256_oci_file:
                     file: Sint eligendi eos corporis voluptatum ipsa.
                     repo: Molestiae quam id animi.
                     tag: Quas maiores recusandae.
-                sha256_url: http://murphykris.name/korbin
-                url: http://herzogmurazik.com/destiney
+                sha256_url: http://hirthelind.name/carole
+                url: http://gutkowski.biz/jamarcus
         BuildReport:
             type: object
             properties:
@@ -2770,9 +2426,33 @@ components:
                             tag: Quas maiores recusandae.
                           sha256_url: http://gerhold.name/donato_wilkinson
                           url: http://daniellegros.org/ida_kozey
+                        - component: Sed possimus.
+                          oci_file:
+                            file: Sint eligendi eos corporis voluptatum ipsa.
+                            repo: Molestiae quam id animi.
+                            tag: Quas maiores recusandae.
+                          platform: Reprehenderit dolorem repudiandae.
+                          sha256_oci_file:
+                            file: Sint eligendi eos corporis voluptatum ipsa.
+                            repo: Molestiae quam id animi.
+                            tag: Quas maiores recusandae.
+                          sha256_url: http://gerhold.name/donato_wilkinson
+                          url: http://daniellegros.org/ida_kozey
+                        - component: Sed possimus.
+                          oci_file:
+                            file: Sint eligendi eos corporis voluptatum ipsa.
+                            repo: Molestiae quam id animi.
+                            tag: Quas maiores recusandae.
+                          platform: Reprehenderit dolorem repudiandae.
+                          sha256_oci_file:
+                            file: Sint eligendi eos corporis voluptatum ipsa.
+                            repo: Molestiae quam id animi.
+                            tag: Quas maiores recusandae.
+                          sha256_url: http://gerhold.name/donato_wilkinson
+                          url: http://daniellegros.org/ida_kozey
                 git_sha:
                     type: string
-                    example: vez
+                    example: oxj
                     maxLength: 40
                 images:
                     type: array
@@ -2793,11 +2473,11 @@ components:
                           url: http://stoltenberghuels.biz/noemi.carter
                 plugin_git_sha:
                     type: string
-                    example: ojk
+                    example: 72x
                     maxLength: 40
                 printed_version:
                     type: string
-                    example: Qui facere iure tempore sunt.
+                    example: Et eaque error.
             example:
                 binaries:
                     - component: Sed possimus.
@@ -2824,19 +2504,7 @@ components:
                         tag: Quas maiores recusandae.
                       sha256_url: http://gerhold.name/donato_wilkinson
                       url: http://daniellegros.org/ida_kozey
-                    - component: Sed possimus.
-                      oci_file:
-                        file: Sint eligendi eos corporis voluptatum ipsa.
-                        repo: Molestiae quam id animi.
-                        tag: Quas maiores recusandae.
-                      platform: Reprehenderit dolorem repudiandae.
-                      sha256_oci_file:
-                        file: Sint eligendi eos corporis voluptatum ipsa.
-                        repo: Molestiae quam id animi.
-                        tag: Quas maiores recusandae.
-                      sha256_url: http://gerhold.name/donato_wilkinson
-                      url: http://daniellegros.org/ida_kozey
-                git_sha: o7b
+                git_sha: s7s
                 images:
                     - internal_url: http://howellgerhold.name/pearline_zemlak
                       platform: Optio et ut dolorem ullam.
@@ -2847,8 +2515,8 @@ components:
                     - internal_url: http://howellgerhold.name/pearline_zemlak
                       platform: Optio et ut dolorem ullam.
                       url: http://stoltenberghuels.biz/noemi.carter
-                plugin_git_sha: hs6
-                printed_version: Dolore quisquam culpa et consequatur.
+                plugin_git_sha: 3i0
+                printed_version: Nostrum quibusdam maiores et quibusdam ut.
         BumpTagForTidbxRequestBody:
             type: object
             properties:
@@ -2889,7 +2557,7 @@ components:
                 datacontenttype:
                     type: string
                     description: Content type of the data value
-                    example: Repellendus accusantium quae beatae impedit a.
+                    example: Mollitia dolorem minus reprehenderit error quod.
                 dataschema:
                     type: string
                     description: Identifies the schema that data adheres to
@@ -2925,7 +2593,7 @@ components:
                     duration: 3600
                     status: success
                     version: v6.1.0
-                datacontenttype: Soluta ducimus et minima et inventore eaque.
+                datacontenttype: Suscipit a qui ut officia iure ut.
                 dataschema: https://example.com/registry/schemas/build-event.json
                 id: f81d4fae-7dec-11d0-a765-00a0c91e6bf6
                 source: /jenkins/build
@@ -2993,12 +2661,12 @@ components:
                 created_by:
                     type: string
                     description: Creator of build
-                    example: norval_kassulke@pfannerstillwintheiser.org
+                    example: marianna@wizakilback.info
                     format: email
                 request:
                     $ref: '#/components/schemas/DevBuildSpec'
             example:
-                created_by: jennings@reingereichmann.biz
+                created_by: columbus_weber@aufderharconsidine.info
                 request:
                     build_env: Quaerat necessitatibus distinctio nobis sit.
                     builder_img: Vero sunt culpa molestiae sint ut.
@@ -3025,7 +2693,7 @@ components:
             properties:
                 id:
                     type: integer
-                    example: 7379329175317177182
+                    example: 1166605274758281400
                     format: int64
                 meta:
                     $ref: '#/components/schemas/DevBuildMeta'
@@ -3034,13 +2702,13 @@ components:
                 status:
                     $ref: '#/components/schemas/DevBuildStatus'
             example:
-                id: 2672678138538881122
+                id: 6396091656958528421
                 meta:
-                    created_at: 9313-71-49 06:13:04
-                    created_by: janae@cristhayes.biz
-                    updated_at: 1816-70-05 43:52:94
+                    created_at: 1371-49-06 13:04:18
+                    created_by: leonora_johnston@hayesmonahan.biz
+                    updated_at: 1670-05-43 52:94:45
                 spec:
-                    build_env: Dicta neque nulla cum dolorem.
+                    build_env: Nulla cum dolorem.
                     builder_img: Non libero.
                     edition: failpoint
                     features: Optio nesciunt omnis numquam natus eos laboriosam.
@@ -3208,20 +2876,20 @@ components:
             properties:
                 created_at:
                     type: string
-                    example: 0130-16-06 95:77:22
+                    example: 4081-68-36 04:19:54
                     pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
                 created_by:
                     type: string
-                    example: nathen@roobschumm.info
+                    example: jaida@blanda.info
                     format: email
                 updated_at:
                     type: string
-                    example: 5944-67-39 47:52:47
+                    example: 4278-01-60 22:61:69
                     pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             example:
-                created_at: 2261-69-12 07:89:41
-                created_by: erwin@kuhn.info
-                updated_at: 8256-78-62 55:25:29
+                created_at: 9415-96-83 37:20:93
+                created_by: gracie.russel@cristlesch.com
+                updated_at: 1107-78-97 62:05:40
             required:
                 - created_at
                 - created_by
@@ -3231,13 +2899,13 @@ components:
             properties:
                 build_env:
                     type: string
-                    example: Harum consequatur necessitatibus quia.
+                    example: Omnis sunt unde cupiditate aut assumenda sed.
                 builder_img:
                     type: string
-                    example: Quos ut nisi sed nihil.
+                    example: Iste quis labore corrupti.
                 edition:
                     type: string
-                    example: community
+                    example: next-gen
                     enum:
                         - enterprise
                         - community
@@ -3248,22 +2916,22 @@ components:
                 features:
                     type: string
                     description: '[Deprecated] use build_env for custom features'
-                    example: Fugiat maiores sunt fugiat ut accusamus.
+                    example: Ut culpa nisi perspiciatis qui similique aliquam.
                 git_ref:
                     type: string
-                    example: In fugiat voluptatum quis ea.
+                    example: Commodi aut deserunt eum dignissimos.
                 git_sha:
                     type: string
-                    example: Quisquam qui pariatur distinctio molestiae fugiat nostrum.
+                    example: Odit rem sunt aliquam facere temporibus rem.
                 github_repo:
                     type: string
-                    example: Ea et quia.
+                    example: Consectetur voluptatum repudiandae ea quasi.
                 is_hotfix:
                     type: boolean
-                    example: false
+                    example: true
                 is_push_gcr:
                     type: boolean
-                    example: false
+                    example: true
                 pipeline_engine:
                     type: string
                     example: jenkins
@@ -3284,10 +2952,10 @@ components:
                         - darwin/arm64
                 plugin_git_ref:
                     type: string
-                    example: Necessitatibus et.
+                    example: Non omnis reiciendis distinctio ut dolores.
                 product:
                     type: string
-                    example: tidb
+                    example: tidb-dashboard
                     enum:
                         - dm
                         - enterprise-plugin
@@ -3311,34 +2979,34 @@ components:
                         - tiproxy
                 product_base_img:
                     type: string
-                    example: Sed ducimus eum id voluptatem.
+                    example: Accusantium et iusto.
                 product_dockerfile:
                     type: string
-                    example: Amet asperiores ut quibusdam ut dolores.
+                    example: Quos est enim.
                 target_img:
                     type: string
-                    example: Nemo atque quae et fuga omnis.
+                    example: Doloribus voluptas optio.
                 version:
                     type: string
-                    example: Unde cupiditate aut.
+                    example: Dolores assumenda possimus.
             example:
-                build_env: Sed ut iste quis labore corrupti dicta.
-                builder_img: Ad ut culpa nisi.
-                edition: experiment
-                features: Aliquam earum.
-                git_ref: Aut deserunt.
-                git_sha: Dignissimos qui odit rem.
-                github_repo: Aliquam facere temporibus.
+                build_env: Est natus aut.
+                builder_img: Ut ratione et.
+                edition: next-gen
+                features: Beatae deleniti nam fugit sapiente impedit.
+                git_ref: Accusantium illo incidunt voluptas aspernatur sint.
+                git_sha: Facere quam error quia perspiciatis excepturi.
+                github_repo: Dicta recusandae voluptas reprehenderit.
                 is_hotfix: false
-                is_push_gcr: true
+                is_push_gcr: false
                 pipeline_engine: tekton
-                platform: darwin/amd64
-                plugin_git_ref: Repudiandae ea quasi impedit adipisci fugit.
-                product: tiflash
-                product_base_img: Omnis reiciendis.
-                product_dockerfile: Ut dolores autem dolore.
-                target_img: Et iusto facere quos est.
-                version: Modi doloribus voluptas optio et dolores assumenda.
+                platform: darwin/arm64
+                plugin_git_ref: Suscipit illum neque eveniet sequi.
+                product: tidb
+                product_base_img: In voluptas qui voluptas praesentium dicta.
+                product_dockerfile: Id qui corrupti nihil assumenda.
+                target_img: Asperiores est veritatis repellat distinctio eum nam.
+                version: Excepturi et qui aut.
             required:
                 - product
                 - version
@@ -3351,37 +3019,37 @@ components:
                     $ref: '#/components/schemas/BuildReport'
                 err_msg:
                     type: string
-                    example: Nemo qui dolor et.
+                    example: Rerum est deserunt rerum quisquam non ut.
                 pipeline_build_id:
                     type: integer
-                    example: 5329986252251616337
+                    example: 673973594551868903
                     format: int64
                 pipeline_end_at:
                     type: string
-                    example: 5220-19-90 91:77:38
+                    example: 8492-68-50 65:06:89
                     pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
                 pipeline_start_at:
                     type: string
-                    example: 4711-73-50 64:64:71
+                    example: 6206-36-05 01:02:38
                     pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
                 pipeline_view_url:
                     type: string
-                    example: http://trantow.net/lionel.beahan
+                    example: http://hegmann.org/ambrose
                     format: uri
                 pipeline_view_urls:
                     type: array
                     items:
                         type: string
-                        example: http://nader.name/baron
+                        example: http://harvey.name/haleigh.langosh
                         format: uri
                     example:
-                        - http://ebertruecker.net/gladys
-                        - http://howe.biz/edgar
-                        - http://zulaufdubuque.name/emie_parisian
-                        - http://dietrich.com/lilian
+                        - http://sporer.net/aliyah
+                        - http://altenwerth.info/amani
+                        - http://kunde.com/ismael
+                        - http://walker.biz/maud.stiedemann
                 status:
                     type: string
-                    example: failure
+                    example: error
                     enum:
                         - pending
                         - processing
@@ -3443,15 +3111,16 @@ components:
                           url: http://stoltenberghuels.biz/noemi.carter
                     plugin_git_sha: a1b
                     printed_version: Perferendis nisi non quia debitis.
-                err_msg: Illum odit voluptate autem non odit.
-                pipeline_build_id: 8374285075512972416
-                pipeline_end_at: 3070-59-55 46:25:00
-                pipeline_start_at: 8498-22-71 71:22:48
-                pipeline_view_url: http://jast.info/miracle
+                err_msg: Voluptatibus qui nemo.
+                pipeline_build_id: 6664938189345810658
+                pipeline_end_at: 8845-49-02 05:44:54
+                pipeline_start_at: 8219-01-47 30:57:88
+                pipeline_view_url: http://haag.biz/kayleigh
                 pipeline_view_urls:
-                    - http://ebertwisoky.info/ernesto.wisozk
-                    - http://gulgowskiconroy.com/aracely
-                    - http://pfannerstill.org/fern.crist
+                    - http://nikolaus.info/dante.torp
+                    - http://predovic.name/francis
+                    - http://hand.info/jennings
+                    - http://dooley.com/dorian_wisozk
                 status: Sunt autem porro explicabo quos assumenda et.
                 tekton_status:
                     pipelines:
@@ -3540,14 +3209,14 @@ components:
             properties:
                 code:
                     type: integer
-                    example: 584072455644903525
+                    example: 4563018111230256479
                     format: int64
                 message:
                     type: string
-                    example: Officia ut non sint officia repellendus.
+                    example: Ut consequatur officiis.
             example:
-                code: 1070160970025755270
-                message: Non nisi debitis voluptas architecto.
+                code: 603829763409779689
+                message: Voluptatum modi.
             required:
                 - code
                 - message
@@ -3579,19 +3248,19 @@ components:
             properties:
                 internal_url:
                     type: string
-                    example: http://kozey.biz/haley.brekke
+                    example: http://schultz.biz/liliane
                     format: uri
                 platform:
                     type: string
-                    example: Debitis corrupti totam et.
+                    example: Qui libero alias.
                 url:
                     type: string
-                    example: http://paucek.biz/kaya
+                    example: http://jonesgrady.com/elmer
                     format: uri
             example:
-                internal_url: http://hauckkuhn.org/sam
-                platform: Est eos laboriosam facilis.
-                url: http://wiegandjones.com/soledad
+                internal_url: http://steuber.info/buster
+                platform: Quod ut dicta animi tenetur.
+                url: http://windler.biz/janet.ryan
             required:
                 - platform
                 - url
@@ -3600,13 +3269,13 @@ components:
             properties:
                 source:
                     type: string
-                    example: Beatae consequatur excepturi doloribus non saepe nemo.
+                    example: Harum eum rerum facilis.
                 target:
                     type: string
-                    example: Et molestiae numquam quis.
+                    example: Sint et eveniet deserunt.
             example:
-                source: At et fuga est quo magnam.
-                target: Sunt at qui culpa eum aut veniam.
+                source: Quia dolorem modi nihil consequatur.
+                target: Maxime praesentium occaecati.
             required:
                 - source
                 - target
@@ -3617,23 +3286,25 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Fugiat eveniet vitae nesciunt.
+                        example: Voluptates veniam occaecati ratione.
                     example:
-                        - Sed quod culpa.
-                        - Incidunt totam unde mollitia optio.
-                        - Voluptas doloribus eaque dolores.
+                        - Non rerum omnis earum fuga quasi sed.
+                        - Natus dolores beatae saepe quasi distinctio.
+                        - Quisquam dolorem vitae rerum nam.
+                        - Possimus vitae.
                 repo:
                     type: string
-                    example: At quasi.
+                    example: Quod officiis amet.
                 tag:
                     type: string
-                    example: Aut sint.
+                    example: Et et omnis quod veniam.
             example:
                 files:
-                    - Placeat sit accusamus neque magnam.
-                    - Quia culpa qui.
-                repo: Qui error.
-                tag: Excepturi quo perspiciatis at id.
+                    - Corporis aut ut doloribus eum omnis accusamus.
+                    - Consequatur possimus et ea et cupiditate commodi.
+                    - Ut quis blanditiis autem.
+                repo: Incidunt reprehenderit recusandae nihil unde.
+                tag: Delectus itaque.
             required:
                 - files
                 - repo
@@ -3643,17 +3314,17 @@ components:
             properties:
                 file:
                     type: string
-                    example: Et est natus aut ipsa ut ratione.
+                    example: Illum suscipit dolor quia.
                 repo:
                     type: string
-                    example: Laborum et vel beatae deleniti.
+                    example: Iusto dolorum quis qui earum voluptatum.
                 tag:
                     type: string
-                    example: Fugit sapiente.
+                    example: Ut ab et asperiores non.
             example:
-                file: Sit accusantium illo incidunt.
-                repo: Aspernatur sint cupiditate.
-                tag: Quam error quia perspiciatis excepturi illum.
+                file: Voluptatibus placeat enim repudiandae ipsa ut.
+                repo: Deserunt illo.
+                tag: Illum dolore eaque praesentium dolores suscipit libero.
             required:
                 - file
                 - repo
@@ -3663,11 +3334,11 @@ components:
             properties:
                 end_at:
                     type: string
-                    example: "1996-03-17T06:19:01Z"
+                    example: "2006-03-02T16:50:39Z"
                     format: date-time
                 git_sha:
                     type: string
-                    example: t9u
+                    example: oym
                     maxLength: 40
                 images:
                     type: array
@@ -3682,7 +3353,7 @@ components:
                           url: http://stoltenberghuels.biz/noemi.carter
                 name:
                     type: string
-                    example: Id natus.
+                    example: Consequatur iste vel.
                 oci_artifacts:
                     type: array
                     items:
@@ -3702,30 +3373,16 @@ components:
                             - Numquam neque reiciendis quaerat.
                           repo: Cumque ea est laboriosam esse dicta architecto.
                           tag: Tempore ut dolores.
-                        - files:
-                            - Qui libero sint ut blanditiis numquam.
-                            - Aperiam natus in ut quae accusantium.
-                            - Numquam possimus possimus ipsum rerum unde.
-                            - Numquam neque reiciendis quaerat.
-                          repo: Cumque ea est laboriosam esse dicta architecto.
-                          tag: Tempore ut dolores.
-                        - files:
-                            - Qui libero sint ut blanditiis numquam.
-                            - Aperiam natus in ut quae accusantium.
-                            - Numquam possimus possimus ipsum rerum unde.
-                            - Numquam neque reiciendis quaerat.
-                          repo: Cumque ea est laboriosam esse dicta architecto.
-                          tag: Tempore ut dolores.
                 platform:
                     type: string
-                    example: Non dolor voluptatem incidunt.
+                    example: At laudantium aspernatur voluptatibus nam.
                 start_at:
                     type: string
-                    example: "1982-03-20T01:09:51Z"
+                    example: "1977-04-09T20:53:06Z"
                     format: date-time
                 status:
                     type: string
-                    example: processing
+                    example: aborted
                     enum:
                         - pending
                         - processing
@@ -3735,11 +3392,11 @@ components:
                         - error
                 url:
                     type: string
-                    example: http://oharaschmitt.org/geraldine
+                    example: http://williamson.info/tessie
                     format: uri
             example:
-                end_at: "1994-04-04T04:36:32Z"
-                git_sha: 7rm
+                end_at: "1981-10-06T10:31:48Z"
+                git_sha: 17y
                 images:
                     - internal_url: http://howellgerhold.name/pearline_zemlak
                       platform: Optio et ut dolorem ullam.
@@ -3747,10 +3404,7 @@ components:
                     - internal_url: http://howellgerhold.name/pearline_zemlak
                       platform: Optio et ut dolorem ullam.
                       url: http://stoltenberghuels.biz/noemi.carter
-                    - internal_url: http://howellgerhold.name/pearline_zemlak
-                      platform: Optio et ut dolorem ullam.
-                      url: http://stoltenberghuels.biz/noemi.carter
-                name: Et unde.
+                name: Sequi inventore.
                 oci_artifacts:
                     - files:
                         - Qui libero sint ut blanditiis numquam.
@@ -3766,10 +3420,24 @@ components:
                         - Numquam neque reiciendis quaerat.
                       repo: Cumque ea est laboriosam esse dicta architecto.
                       tag: Tempore ut dolores.
-                platform: Est ut cumque.
-                start_at: "2016-01-06T19:23:58Z"
+                    - files:
+                        - Qui libero sint ut blanditiis numquam.
+                        - Aperiam natus in ut quae accusantium.
+                        - Numquam possimus possimus ipsum rerum unde.
+                        - Numquam neque reiciendis quaerat.
+                      repo: Cumque ea est laboriosam esse dicta architecto.
+                      tag: Tempore ut dolores.
+                    - files:
+                        - Qui libero sint ut blanditiis numquam.
+                        - Aperiam natus in ut quae accusantium.
+                        - Numquam possimus possimus ipsum rerum unde.
+                        - Numquam neque reiciendis quaerat.
+                      repo: Cumque ea est laboriosam esse dicta architecto.
+                      tag: Tempore ut dolores.
+                platform: Delectus consequuntur enim repellendus laborum accusamus.
+                start_at: "1981-02-04T22:43:38Z"
                 status: Sunt autem porro explicabo quos assumenda et.
-                url: http://cruickshank.name/juvenal_ruecker
+                url: http://hyattsenger.org/ansley
             required:
                 - name
                 - status
@@ -3859,47 +3527,86 @@ components:
                           start_at: "1989-08-15T02:04:38Z"
                           status: Sunt autem porro explicabo quos assumenda et.
                           url: http://mrazhagenes.net/irma
+                        - end_at: "1979-10-13T15:50:42Z"
+                          git_sha: k5h
+                          images:
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                          name: Voluptatibus atque et voluptas quibusdam fugiat et.
+                          oci_artifacts:
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                          platform: Iusto suscipit.
+                          start_at: "1989-08-15T02:04:38Z"
+                          status: Sunt autem porro explicabo quos assumenda et.
+                          url: http://mrazhagenes.net/irma
+                        - end_at: "1979-10-13T15:50:42Z"
+                          git_sha: k5h
+                          images:
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                            - internal_url: http://howellgerhold.name/pearline_zemlak
+                              platform: Optio et ut dolorem ullam.
+                              url: http://stoltenberghuels.biz/noemi.carter
+                          name: Voluptatibus atque et voluptas quibusdam fugiat et.
+                          oci_artifacts:
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                            - files:
+                                - Qui libero sint ut blanditiis numquam.
+                                - Aperiam natus in ut quae accusantium.
+                                - Numquam possimus possimus ipsum rerum unde.
+                                - Numquam neque reiciendis quaerat.
+                              repo: Cumque ea est laboriosam esse dicta architecto.
+                              tag: Tempore ut dolores.
+                          platform: Iusto suscipit.
+                          start_at: "1989-08-15T02:04:38Z"
+                          status: Sunt autem porro explicabo quos assumenda et.
+                          url: http://mrazhagenes.net/irma
             example:
                 pipelines:
-                    - end_at: "1979-10-13T15:50:42Z"
-                      git_sha: k5h
-                      images:
-                        - internal_url: http://howellgerhold.name/pearline_zemlak
-                          platform: Optio et ut dolorem ullam.
-                          url: http://stoltenberghuels.biz/noemi.carter
-                        - internal_url: http://howellgerhold.name/pearline_zemlak
-                          platform: Optio et ut dolorem ullam.
-                          url: http://stoltenberghuels.biz/noemi.carter
-                        - internal_url: http://howellgerhold.name/pearline_zemlak
-                          platform: Optio et ut dolorem ullam.
-                          url: http://stoltenberghuels.biz/noemi.carter
-                      name: Voluptatibus atque et voluptas quibusdam fugiat et.
-                      oci_artifacts:
-                        - files:
-                            - Qui libero sint ut blanditiis numquam.
-                            - Aperiam natus in ut quae accusantium.
-                            - Numquam possimus possimus ipsum rerum unde.
-                            - Numquam neque reiciendis quaerat.
-                          repo: Cumque ea est laboriosam esse dicta architecto.
-                          tag: Tempore ut dolores.
-                        - files:
-                            - Qui libero sint ut blanditiis numquam.
-                            - Aperiam natus in ut quae accusantium.
-                            - Numquam possimus possimus ipsum rerum unde.
-                            - Numquam neque reiciendis quaerat.
-                          repo: Cumque ea est laboriosam esse dicta architecto.
-                          tag: Tempore ut dolores.
-                        - files:
-                            - Qui libero sint ut blanditiis numquam.
-                            - Aperiam natus in ut quae accusantium.
-                            - Numquam possimus possimus ipsum rerum unde.
-                            - Numquam neque reiciendis quaerat.
-                          repo: Cumque ea est laboriosam esse dicta architecto.
-                          tag: Tempore ut dolores.
-                      platform: Iusto suscipit.
-                      start_at: "1989-08-15T02:04:38Z"
-                      status: Sunt autem porro explicabo quos assumenda et.
-                      url: http://mrazhagenes.net/irma
                     - end_at: "1979-10-13T15:50:42Z"
                       git_sha: k5h
                       images:
@@ -4108,3 +3815,5 @@ tags:
       description: The devbuild service provides operations to manage dev builds.
     - name: hotfix
       description: The hotfix service provides operations to manage hotfix git tags.
+    - name: health
+      description: Health service

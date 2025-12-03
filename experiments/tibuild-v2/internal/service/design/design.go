@@ -29,6 +29,24 @@ var _ = API("tibuild", func() {
 	})
 })
 
+var _ = Service("health", func() {
+	Description("Health service")
+
+	Method("healthz", func() {
+		Result(Boolean)
+		HTTP(func() {
+			GET("/healthz")
+		})
+	})
+
+	Method("livez", func() {
+		Result(Boolean)
+		HTTP(func() {
+			GET("/livez")
+		})
+	})
+})
+
 var _ = Service("artifact", func() {
 	Description("The artifact service provides operations to manage artifacts.")
 	Error("BadRequest", HTTPError, "Bad Request")

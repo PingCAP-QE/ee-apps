@@ -18,6 +18,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/health"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
@@ -57,6 +58,7 @@ func main() {
 	var (
 		artifactSvc artifact.Service
 		devbuildSvc devbuild.Service
+		healthSvc   health.Service
 		hotfixSvc   hotfix.Service
 	)
 	{
@@ -77,6 +79,10 @@ func main() {
 			}
 		}
 		{
+			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", health.ServiceName).Logger()
+			healthSvc = impl.NewHealth(&logger)
+		}
+		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", hotfix.ServiceName).Logger()
 			ghClient := impl.NewGitHubClient(cfg.Github.Token)
 			hotfixSvc = impl.NewHotfix(&logger, ghClient)
@@ -88,6 +94,7 @@ func main() {
 	var (
 		artifactEndpoints *artifact.Endpoints
 		devbuildEndpoints *devbuild.Endpoints
+		healthEndpoints   *health.Endpoints
 		hotfixEndpoints   *hotfix.Endpoints
 	)
 	{
@@ -97,6 +104,9 @@ func main() {
 		devbuildEndpoints = devbuild.NewEndpoints(devbuildSvc)
 		devbuildEndpoints.Use(debug.LogPayloads())
 		devbuildEndpoints.Use(log.Endpoint)
+		healthEndpoints = health.NewEndpoints(healthSvc)
+		healthEndpoints.Use(debug.LogPayloads())
+		healthEndpoints.Use(log.Endpoint)
 		hotfixEndpoints = hotfix.NewEndpoints(hotfixSvc)
 		hotfixEndpoints.Use(debug.LogPayloads())
 		hotfixEndpoints.Use(log.Endpoint)
@@ -141,7 +151,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, healthEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
 		}
 
 	case "product":
@@ -166,7 +176,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, healthEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

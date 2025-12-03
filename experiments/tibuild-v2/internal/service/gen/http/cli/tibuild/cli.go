@@ -16,6 +16,7 @@ import (
 
 	artifactc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/client"
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
+	healthc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/health/client"
 	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -25,7 +26,8 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `artifact sync-image
+	return `health (healthz|livez)
+artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
 hotfix bump-tag-for-tidbx
 `
@@ -33,7 +35,8 @@ hotfix bump-tag-for-tidbx
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` artifact sync-image --body '{
+	return os.Args[0] + ` health healthz` + "\n" +
+		os.Args[0] + ` artifact sync-image --body '{
       "source": "Dolorem velit dolor.",
       "target": "Qui earum omnis."
    }'` + "\n" +
@@ -57,6 +60,12 @@ func ParseEndpoint(
 	restore bool,
 ) (goa.Endpoint, any, error) {
 	var (
+		healthFlags = flag.NewFlagSet("health", flag.ContinueOnError)
+
+		healthHealthzFlags = flag.NewFlagSet("healthz", flag.ExitOnError)
+
+		healthLivezFlags = flag.NewFlagSet("livez", flag.ExitOnError)
+
 		artifactFlags = flag.NewFlagSet("artifact", flag.ContinueOnError)
 
 		artifactSyncImageFlags    = flag.NewFlagSet("sync-image", flag.ExitOnError)
@@ -103,6 +112,10 @@ func ParseEndpoint(
 		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
 		hotfixBumpTagForTidbxBodyFlag = hotfixBumpTagForTidbxFlags.String("body", "REQUIRED", "")
 	)
+	healthFlags.Usage = healthUsage
+	healthHealthzFlags.Usage = healthHealthzUsage
+	healthLivezFlags.Usage = healthLivezUsage
+
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
 
@@ -132,6 +145,8 @@ func ParseEndpoint(
 	{
 		svcn = flag.Arg(0)
 		switch svcn {
+		case "health":
+			svcf = healthFlags
 		case "artifact":
 			svcf = artifactFlags
 		case "devbuild":
@@ -153,6 +168,16 @@ func ParseEndpoint(
 	{
 		epn = svcf.Arg(0)
 		switch svcn {
+		case "health":
+			switch epn {
+			case "healthz":
+				epf = healthHealthzFlags
+
+			case "livez":
+				epf = healthLivezFlags
+
+			}
+
 		case "artifact":
 			switch epn {
 			case "sync-image":
@@ -209,6 +234,14 @@ func ParseEndpoint(
 	)
 	{
 		switch svcn {
+		case "health":
+			c := healthc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "healthz":
+				endpoint = c.Healthz()
+			case "livez":
+				endpoint = c.Livez()
+			}
 		case "artifact":
 			c := artifactc.NewClient(scheme, host, doer, enc, dec, restore)
 			switch epn {
@@ -254,6 +287,40 @@ func ParseEndpoint(
 	return endpoint, data, nil
 }
 
+// healthUsage displays the usage of the health command and its subcommands.
+func healthUsage() {
+	fmt.Fprintf(os.Stderr, `Health service
+Usage:
+    %[1]s [globalflags] health COMMAND [flags]
+
+COMMAND:
+    healthz: Healthz implements healthz.
+    livez: Livez implements livez.
+
+Additional help:
+    %[1]s health COMMAND --help
+`, os.Args[0])
+}
+func healthHealthzUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] health healthz
+
+Healthz implements healthz.
+
+Example:
+    %[1]s health healthz
+`, os.Args[0])
+}
+
+func healthLivezUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] health livez
+
+Livez implements livez.
+
+Example:
+    %[1]s health livez
+`, os.Args[0])
+}
+
 // artifactUsage displays the usage of the artifact command and its subcommands.
 func artifactUsage() {
 	fmt.Fprintf(os.Stderr, `The artifact service provides operations to manage artifacts.
@@ -271,7 +338,7 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s artifact sync-image --body '{
@@ -303,12 +370,12 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT:
-    -page-size INT:
-    -hotfix BOOL:
-    -sort STRING:
-    -direction STRING:
-    -created-by STRING:
+    -page INT: 
+    -page-size INT: 
+    -hotfix BOOL: 
+    -sort STRING: 
+    -direction STRING: 
+    -created-by STRING: 
 
 Example:
     %[1]s devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."
@@ -319,8 +386,8 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON:
-    -dryrun BOOL:
+    -body JSON: 
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild create --body '{
@@ -353,7 +420,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL:
+    -sync BOOL: 
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -364,9 +431,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON:
+    -body JSON: 
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild update --body '{
@@ -549,7 +616,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -560,13 +627,13 @@ func devbuildIngestEventUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
 
 Ingest a CloudEvent for build events
-    -body JSON:
-    -datacontenttype STRING:
-    -id STRING:
-    -source STRING:
-    -type STRING:
-    -specversion STRING:
-    -time STRING:
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
 
 Example:
     %[1]s devbuild ingest-event --body '{
@@ -599,7 +666,7 @@ func hotfixBumpTagForTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
 
 Create a hot fix git tag for a GitHub repository
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s hotfix bump-tag-for-tidbx --body '{

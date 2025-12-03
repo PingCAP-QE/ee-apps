@@ -13,15 +13,17 @@ import (
 
 	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	health "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/health"
 	hotfix "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	artifactsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/server"
 	devbuildsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/server"
+	healthsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/health/server"
 	hotfixsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/server"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, healthEndpoints *health.Endpoints, hotfixEndpoints *hotfix.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -52,18 +54,21 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	var (
 		artifactServer *artifactsvr.Server
 		devbuildServer *devbuildsvr.Server
+		healthServer   *healthsvr.Server
 		hotfixServer   *hotfixsvr.Server
 	)
 	{
 		eh := errorHandler(ctx)
 		artifactServer = artifactsvr.New(artifactEndpoints, mux, dec, enc, eh, nil)
 		devbuildServer = devbuildsvr.New(devbuildEndpoints, mux, dec, enc, eh, nil)
+		healthServer = healthsvr.New(healthEndpoints, mux, dec, enc, eh, nil)
 		hotfixServer = hotfixsvr.New(hotfixEndpoints, mux, dec, enc, eh, nil)
 	}
 
 	// Configure the mux.
 	artifactsvr.Mount(mux, artifactServer)
 	devbuildsvr.Mount(mux, devbuildServer)
+	healthsvr.Mount(mux, healthServer)
 	hotfixsvr.Mount(mux, hotfixServer)
 
 	var handler http.Handler = mux
@@ -80,6 +85,9 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range devbuildServer.Mounts {
+		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
+	}
+	for _, m := range healthServer.Mounts {
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range hotfixServer.Mounts {
