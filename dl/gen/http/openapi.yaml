@@ -13,32 +13,6 @@ produces:
     - application/xml
     - application/gob
 paths:
-    /healthz:
-        get:
-            tags:
-                - health
-            summary: healthz health
-            operationId: health#healthz
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: boolean
-            schemes:
-                - http
-    /livez:
-        get:
-            tags:
-                - health
-            summary: livez health
-            operationId: health#livez
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: boolean
-            schemes:
-                - http
     /oci-file-sha256/{repository}:
         get:
             tags:

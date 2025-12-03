@@ -74,8 +74,7 @@ jobs:
 
       - name: Setup skaffold
         run: |
-          platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
-          curl -Lo skaffold "https://storage.googleapis.com/skaffold/releases/$SKAFFOLD_VER/skaffold-$platform" && \
+          curl -Lo skaffold "https://storage.googleapis.com/skaffold/releases/${SKAFFOLD_VER}/skaffold-linux-amd64" && \
           sudo install skaffold /usr/local/bin/
 
       - name: Build image - cloudevents-server
