@@ -6,6 +6,8 @@
 *.dylib
 bin/
 venv/
+tibuild
+tibuild-cli
 
 # Test binary, built with `go test -c`
 *.testgit
