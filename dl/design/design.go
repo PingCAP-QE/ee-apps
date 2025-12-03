@@ -14,24 +14,6 @@ var _ = API("dl", func() {
 	})
 })
 
-var _ = Service("health", func() {
-	Description("Health service")
-
-	Method("healthz", func() {
-		Result(Boolean)
-		HTTP(func() {
-			GET("/healthz")
-		})
-	})
-
-	Method("livez", func() {
-		Result(Boolean)
-		HTTP(func() {
-			GET("/livez")
-		})
-	})
-})
-
 var _ = Service("oci", func() {
 	Description("OCI artifacts download service")
 
