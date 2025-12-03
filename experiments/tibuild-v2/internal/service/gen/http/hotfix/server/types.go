@@ -13,9 +13,9 @@ import (
 	goa "goa.design/goa/v3/pkg"
 )
 
-// BumpForTidbxRequestBody is the type of the "hotfix" service "bump-for-tidbx"
-// endpoint HTTP request body.
-type BumpForTidbxRequestBody struct {
+// BumpTagForTidbxRequestBody is the type of the "hotfix" service
+// "bump-tag-for-tidbx" endpoint HTTP request body.
+type BumpTagForTidbxRequestBody struct {
 	// Full name of GitHub repository (e.g., 'owner/repo')
 	Repo *string `form:"repo,omitempty" json:"repo,omitempty" xml:"repo,omitempty"`
 	// Branch name of the GitHub repo
@@ -26,9 +26,9 @@ type BumpForTidbxRequestBody struct {
 	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
 }
 
-// BumpForTidbxResponseBody is the type of the "hotfix" service
-// "bump-for-tidbx" endpoint HTTP response body.
-type BumpForTidbxResponseBody struct {
+// BumpTagForTidbxResponseBody is the type of the "hotfix" service
+// "bump-tag-for-tidbx" endpoint HTTP response body.
+type BumpTagForTidbxResponseBody struct {
 	// Full name of GitHub repository
 	Repo string `form:"repo" json:"repo" xml:"repo"`
 	// The commit tag created on
@@ -37,25 +37,25 @@ type BumpForTidbxResponseBody struct {
 	Tag string `form:"tag" json:"tag" xml:"tag"`
 }
 
-// BumpForTidbxBadRequestResponseBody is the type of the "hotfix" service
-// "bump-for-tidbx" endpoint HTTP response body for the "BadRequest" error.
-type BumpForTidbxBadRequestResponseBody struct {
+// BumpTagForTidbxBadRequestResponseBody is the type of the "hotfix" service
+// "bump-tag-for-tidbx" endpoint HTTP response body for the "BadRequest" error.
+type BumpTagForTidbxBadRequestResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
-// BumpForTidbxInternalServerErrorResponseBody is the type of the "hotfix"
-// service "bump-for-tidbx" endpoint HTTP response body for the
+// BumpTagForTidbxInternalServerErrorResponseBody is the type of the "hotfix"
+// service "bump-tag-for-tidbx" endpoint HTTP response body for the
 // "InternalServerError" error.
-type BumpForTidbxInternalServerErrorResponseBody struct {
+type BumpTagForTidbxInternalServerErrorResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
-// NewBumpForTidbxResponseBody builds the HTTP response body from the result of
-// the "bump-for-tidbx" endpoint of the "hotfix" service.
-func NewBumpForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpForTidbxResponseBody {
-	body := &BumpForTidbxResponseBody{
+// NewBumpTagForTidbxResponseBody builds the HTTP response body from the result
+// of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
+func NewBumpTagForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpTagForTidbxResponseBody {
+	body := &BumpTagForTidbxResponseBody{
 		Repo:   res.Repo,
 		Commit: res.Commit,
 		Tag:    res.Tag,
@@ -63,30 +63,31 @@ func NewBumpForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpForTidbxRespo
 	return body
 }
 
-// NewBumpForTidbxBadRequestResponseBody builds the HTTP response body from the
-// result of the "bump-for-tidbx" endpoint of the "hotfix" service.
-func NewBumpForTidbxBadRequestResponseBody(res *hotfix.HTTPError) *BumpForTidbxBadRequestResponseBody {
-	body := &BumpForTidbxBadRequestResponseBody{
+// NewBumpTagForTidbxBadRequestResponseBody builds the HTTP response body from
+// the result of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
+func NewBumpTagForTidbxBadRequestResponseBody(res *hotfix.HTTPError) *BumpTagForTidbxBadRequestResponseBody {
+	body := &BumpTagForTidbxBadRequestResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
 	return body
 }
 
-// NewBumpForTidbxInternalServerErrorResponseBody builds the HTTP response body
-// from the result of the "bump-for-tidbx" endpoint of the "hotfix" service.
-func NewBumpForTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *BumpForTidbxInternalServerErrorResponseBody {
-	body := &BumpForTidbxInternalServerErrorResponseBody{
+// NewBumpTagForTidbxInternalServerErrorResponseBody builds the HTTP response
+// body from the result of the "bump-tag-for-tidbx" endpoint of the "hotfix"
+// service.
+func NewBumpTagForTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *BumpTagForTidbxInternalServerErrorResponseBody {
+	body := &BumpTagForTidbxInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
 	return body
 }
 
-// NewBumpForTidbxPayload builds a hotfix service bump-for-tidbx endpoint
-// payload.
-func NewBumpForTidbxPayload(body *BumpForTidbxRequestBody) *hotfix.BumpForTidbxPayload {
-	v := &hotfix.BumpForTidbxPayload{
+// NewBumpTagForTidbxPayload builds a hotfix service bump-tag-for-tidbx
+// endpoint payload.
+func NewBumpTagForTidbxPayload(body *BumpTagForTidbxRequestBody) *hotfix.BumpTagForTidbxPayload {
+	v := &hotfix.BumpTagForTidbxPayload{
 		Repo:   *body.Repo,
 		Branch: body.Branch,
 		Commit: body.Commit,
@@ -96,9 +97,9 @@ func NewBumpForTidbxPayload(body *BumpForTidbxRequestBody) *hotfix.BumpForTidbxP
 	return v
 }
 
-// ValidateBumpForTidbxRequestBody runs the validations defined on
-// Bump-For-TidbxRequestBody
-func ValidateBumpForTidbxRequestBody(body *BumpForTidbxRequestBody) (err error) {
+// ValidateBumpTagForTidbxRequestBody runs the validations defined on
+// Bump-Tag-For-TidbxRequestBody
+func ValidateBumpTagForTidbxRequestBody(body *BumpTagForTidbxRequestBody) (err error) {
 	if body.Repo == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
 	}

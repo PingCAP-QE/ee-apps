@@ -19,13 +19,13 @@ import (
 	goahttp "goa.design/goa/v3/http"
 )
 
-// BuildBumpForTidbxRequest instantiates a HTTP request object with method and
-// path set to call the "hotfix" service "bump-for-tidbx" endpoint
-func (c *Client) BuildBumpForTidbxRequest(ctx context.Context, v any) (*http.Request, error) {
-	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: BumpForTidbxHotfixPath()}
+// BuildBumpTagForTidbxRequest instantiates a HTTP request object with method
+// and path set to call the "hotfix" service "bump-tag-for-tidbx" endpoint
+func (c *Client) BuildBumpTagForTidbxRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: BumpTagForTidbxHotfixPath()}
 	req, err := http.NewRequest("POST", u.String(), nil)
 	if err != nil {
-		return nil, goahttp.ErrInvalidURL("hotfix", "bump-for-tidbx", u.String(), err)
+		return nil, goahttp.ErrInvalidURL("hotfix", "bump-tag-for-tidbx", u.String(), err)
 	}
 	if ctx != nil {
 		req = req.WithContext(ctx)
@@ -34,30 +34,30 @@ func (c *Client) BuildBumpForTidbxRequest(ctx context.Context, v any) (*http.Req
 	return req, nil
 }
 
-// EncodeBumpForTidbxRequest returns an encoder for requests sent to the hotfix
-// bump-for-tidbx server.
-func EncodeBumpForTidbxRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+// EncodeBumpTagForTidbxRequest returns an encoder for requests sent to the
+// hotfix bump-tag-for-tidbx server.
+func EncodeBumpTagForTidbxRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
 	return func(req *http.Request, v any) error {
-		p, ok := v.(*hotfix.BumpForTidbxPayload)
+		p, ok := v.(*hotfix.BumpTagForTidbxPayload)
 		if !ok {
-			return goahttp.ErrInvalidType("hotfix", "bump-for-tidbx", "*hotfix.BumpForTidbxPayload", v)
+			return goahttp.ErrInvalidType("hotfix", "bump-tag-for-tidbx", "*hotfix.BumpTagForTidbxPayload", v)
 		}
-		body := NewBumpForTidbxRequestBody(p)
+		body := NewBumpTagForTidbxRequestBody(p)
 		if err := encoder(req).Encode(&body); err != nil {
-			return goahttp.ErrEncodingError("hotfix", "bump-for-tidbx", err)
+			return goahttp.ErrEncodingError("hotfix", "bump-tag-for-tidbx", err)
 		}
 		return nil
 	}
 }
 
-// DecodeBumpForTidbxResponse returns a decoder for responses returned by the
-// hotfix bump-for-tidbx endpoint. restoreBody controls whether the response
-// body should be restored after having been read.
-// DecodeBumpForTidbxResponse may return the following errors:
+// DecodeBumpTagForTidbxResponse returns a decoder for responses returned by
+// the hotfix bump-tag-for-tidbx endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeBumpTagForTidbxResponse may return the following errors:
 //   - "BadRequest" (type *hotfix.HTTPError): http.StatusBadRequest
 //   - "InternalServerError" (type *hotfix.HTTPError): http.StatusInternalServerError
 //   - error: internal error
-func DecodeBumpForTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+func DecodeBumpTagForTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
 		if restoreBody {
 			b, err := io.ReadAll(resp.Body)
@@ -74,50 +74,50 @@ func DecodeBumpForTidbxResponse(decoder func(*http.Response) goahttp.Decoder, re
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var (
-				body BumpForTidbxResponseBody
+				body BumpTagForTidbxResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			err = ValidateBumpForTidbxResponseBody(&body)
+			err = ValidateBumpTagForTidbxResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			res := NewBumpForTidbxHotfixTagResultOK(&body)
+			res := NewBumpTagForTidbxHotfixTagResultOK(&body)
 			return res, nil
 		case http.StatusBadRequest:
 			var (
-				body BumpForTidbxBadRequestResponseBody
+				body BumpTagForTidbxBadRequestResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			err = ValidateBumpForTidbxBadRequestResponseBody(&body)
+			err = ValidateBumpTagForTidbxBadRequestResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			return nil, NewBumpForTidbxBadRequest(&body)
+			return nil, NewBumpTagForTidbxBadRequest(&body)
 		case http.StatusInternalServerError:
 			var (
-				body BumpForTidbxInternalServerErrorResponseBody
+				body BumpTagForTidbxInternalServerErrorResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
-				return nil, goahttp.ErrDecodingError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			err = ValidateBumpForTidbxInternalServerErrorResponseBody(&body)
+			err = ValidateBumpTagForTidbxInternalServerErrorResponseBody(&body)
 			if err != nil {
-				return nil, goahttp.ErrValidationError("hotfix", "bump-for-tidbx", err)
+				return nil, goahttp.ErrValidationError("hotfix", "bump-tag-for-tidbx", err)
 			}
-			return nil, NewBumpForTidbxInternalServerError(&body)
+			return nil, NewBumpTagForTidbxInternalServerError(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
-			return nil, goahttp.ErrInvalidResponse("hotfix", "bump-for-tidbx", resp.StatusCode, string(body))
+			return nil, goahttp.ErrInvalidResponse("hotfix", "bump-tag-for-tidbx", resp.StatusCode, string(body))
 		}
 	}
 }

@@ -27,7 +27,7 @@ import (
 func UsageCommands() string {
 	return `artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
-hotfix bump-for-tidbx
+hotfix bump-tag-for-tidbx
 `
 }
 
@@ -38,7 +38,7 @@ func UsageExamples() string {
       "target": "Qui earum omnis."
    }'` + "\n" +
 		os.Args[0] + ` devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."` + "\n" +
-		os.Args[0] + ` hotfix bump-for-tidbx --body '{
+		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
       "author": "wuhuizuo",
       "branch": "release-8.5",
       "commit": "abc123def456",
@@ -100,8 +100,8 @@ func ParseEndpoint(
 
 		hotfixFlags = flag.NewFlagSet("hotfix", flag.ContinueOnError)
 
-		hotfixBumpForTidbxFlags    = flag.NewFlagSet("bump-for-tidbx", flag.ExitOnError)
-		hotfixBumpForTidbxBodyFlag = hotfixBumpForTidbxFlags.String("body", "REQUIRED", "")
+		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
+		hotfixBumpTagForTidbxBodyFlag = hotfixBumpTagForTidbxFlags.String("body", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -115,7 +115,7 @@ func ParseEndpoint(
 	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
 
 	hotfixFlags.Usage = hotfixUsage
-	hotfixBumpForTidbxFlags.Usage = hotfixBumpForTidbxUsage
+	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -184,8 +184,8 @@ func ParseEndpoint(
 
 		case "hotfix":
 			switch epn {
-			case "bump-for-tidbx":
-				epf = hotfixBumpForTidbxFlags
+			case "bump-tag-for-tidbx":
+				epf = hotfixBumpTagForTidbxFlags
 
 			}
 
@@ -241,9 +241,9 @@ func ParseEndpoint(
 		case "hotfix":
 			c := hotfixc.NewClient(scheme, host, doer, enc, dec, restore)
 			switch epn {
-			case "bump-for-tidbx":
-				endpoint = c.BumpForTidbx()
-				data, err = hotfixc.BuildBumpForTidbxPayload(*hotfixBumpForTidbxBodyFlag)
+			case "bump-tag-for-tidbx":
+				endpoint = c.BumpTagForTidbx()
+				data, err = hotfixc.BuildBumpTagForTidbxPayload(*hotfixBumpTagForTidbxBodyFlag)
 			}
 		}
 	}
@@ -589,20 +589,20 @@ Usage:
     %[1]s [globalflags] hotfix COMMAND [flags]
 
 COMMAND:
-    bump-for-tidbx: Create a hot fix git tag for a GitHub repository
+    bump-tag-for-tidbx: Create a hot fix git tag for a GitHub repository
 
 Additional help:
     %[1]s hotfix COMMAND --help
 `, os.Args[0])
 }
-func hotfixBumpForTidbxUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-for-tidbx -body JSON
+func hotfixBumpTagForTidbxUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
 
 Create a hot fix git tag for a GitHub repository
     -body JSON: 
 
 Example:
-    %[1]s hotfix bump-for-tidbx --body '{
+    %[1]s hotfix bump-tag-for-tidbx --body '{
       "author": "wuhuizuo",
       "branch": "release-8.5",
       "commit": "abc123def456",

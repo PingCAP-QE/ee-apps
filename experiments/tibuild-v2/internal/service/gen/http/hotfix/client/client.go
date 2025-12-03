@@ -18,9 +18,9 @@ import (
 
 // Client lists the hotfix service endpoint HTTP clients.
 type Client struct {
-	// BumpForTidbx Doer is the HTTP client used to make requests to the
-	// bump-for-tidbx endpoint.
-	BumpForTidbxDoer goahttp.Doer
+	// BumpTagForTidbx Doer is the HTTP client used to make requests to the
+	// bump-tag-for-tidbx endpoint.
+	BumpTagForTidbxDoer goahttp.Doer
 
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
@@ -42,7 +42,7 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		BumpForTidbxDoer:    doer,
+		BumpTagForTidbxDoer: doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
 		host:                host,
@@ -51,15 +51,15 @@ func NewClient(
 	}
 }
 
-// BumpForTidbx returns an endpoint that makes HTTP requests to the hotfix
-// service bump-for-tidbx server.
-func (c *Client) BumpForTidbx() goa.Endpoint {
+// BumpTagForTidbx returns an endpoint that makes HTTP requests to the hotfix
+// service bump-tag-for-tidbx server.
+func (c *Client) BumpTagForTidbx() goa.Endpoint {
 	var (
-		encodeRequest  = EncodeBumpForTidbxRequest(c.encoder)
-		decodeResponse = DecodeBumpForTidbxResponse(c.decoder, c.RestoreResponseBody)
+		encodeRequest  = EncodeBumpTagForTidbxRequest(c.encoder)
+		decodeResponse = DecodeBumpTagForTidbxResponse(c.decoder, c.RestoreResponseBody)
 	)
 	return func(ctx context.Context, v any) (any, error) {
-		req, err := c.BuildBumpForTidbxRequest(ctx, v)
+		req, err := c.BuildBumpTagForTidbxRequest(ctx, v)
 		if err != nil {
 			return nil, err
 		}
@@ -67,9 +67,9 @@ func (c *Client) BumpForTidbx() goa.Endpoint {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.BumpForTidbxDoer.Do(req)
+		resp, err := c.BumpTagForTidbxDoer.Do(req)
 		if err != nil {
-			return nil, goahttp.ErrRequestError("hotfix", "bump-for-tidbx", err)
+			return nil, goahttp.ErrRequestError("hotfix", "bump-tag-for-tidbx", err)
 		}
 		return decodeResponse(resp)
 	}

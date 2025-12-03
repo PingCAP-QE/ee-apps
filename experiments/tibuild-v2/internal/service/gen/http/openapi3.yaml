@@ -2655,19 +2655,19 @@ paths:
                             example:
                                 code: 5950359717445890971
                                 message: Et cupiditate.
-    /api/v2/hotfix/create-tag:
+    /api/v2/hotfix/bump-tag-for-tidbx:
         post:
             tags:
                 - hotfix
-            summary: bump-for-tidbx hotfix
+            summary: bump-tag-for-tidbx hotfix
             description: Create a hot fix git tag for a GitHub repository
-            operationId: hotfix#bump-for-tidbx
+            operationId: hotfix#bump-tag-for-tidbx
             requestBody:
                 required: true
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/BumpForTidbxRequestBody'
+                            $ref: '#/components/schemas/BumpTagForTidbxRequestBody'
                         example:
                             author: wuhuizuo
                             branch: release-8.5
@@ -2849,7 +2849,7 @@ components:
                       url: http://stoltenberghuels.biz/noemi.carter
                 plugin_git_sha: hs6
                 printed_version: Dolore quisquam culpa et consequatur.
-        BumpForTidbxRequestBody:
+        BumpTagForTidbxRequestBody:
             type: object
             properties:
                 author:

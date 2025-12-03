@@ -16,24 +16,25 @@ import (
 
 // Client is the "hotfix" service client.
 type Client struct {
-	BumpForTidbxEndpoint goa.Endpoint
+	BumpTagForTidbxEndpoint goa.Endpoint
 }
 
 // NewClient initializes a "hotfix" service client given the endpoints.
-func NewClient(bumpForTidbx goa.Endpoint) *Client {
+func NewClient(bumpTagForTidbx goa.Endpoint) *Client {
 	return &Client{
-		BumpForTidbxEndpoint: bumpForTidbx,
+		BumpTagForTidbxEndpoint: bumpTagForTidbx,
 	}
 }
 
-// BumpForTidbx calls the "bump-for-tidbx" endpoint of the "hotfix" service.
-// BumpForTidbx may return the following errors:
+// BumpTagForTidbx calls the "bump-tag-for-tidbx" endpoint of the "hotfix"
+// service.
+// BumpTagForTidbx may return the following errors:
 //   - "BadRequest" (type *HTTPError): Bad Request
 //   - "InternalServerError" (type *HTTPError): Internal Server Error
 //   - error: internal error
-func (c *Client) BumpForTidbx(ctx context.Context, p *BumpForTidbxPayload) (res *HotfixTagResult, err error) {
+func (c *Client) BumpTagForTidbx(ctx context.Context, p *BumpTagForTidbxPayload) (res *HotfixTagResult, err error) {
 	var ires any
-	ires, err = c.BumpForTidbxEndpoint(ctx, p)
+	ires, err = c.BumpTagForTidbxEndpoint(ctx, p)
 	if err != nil {
 		return
 	}

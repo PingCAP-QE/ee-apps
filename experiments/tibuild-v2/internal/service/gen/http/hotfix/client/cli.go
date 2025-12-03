@@ -15,18 +15,18 @@ import (
 	hotfix "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 )
 
-// BuildBumpForTidbxPayload builds the payload for the hotfix bump-for-tidbx
-// endpoint from CLI flags.
-func BuildBumpForTidbxPayload(hotfixBumpForTidbxBody string) (*hotfix.BumpForTidbxPayload, error) {
+// BuildBumpTagForTidbxPayload builds the payload for the hotfix
+// bump-tag-for-tidbx endpoint from CLI flags.
+func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.BumpTagForTidbxPayload, error) {
 	var err error
-	var body BumpForTidbxRequestBody
+	var body BumpTagForTidbxRequestBody
 	{
-		err = json.Unmarshal([]byte(hotfixBumpForTidbxBody), &body)
+		err = json.Unmarshal([]byte(hotfixBumpTagForTidbxBody), &body)
 		if err != nil {
 			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"wuhuizuo\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
-	v := &hotfix.BumpForTidbxPayload{
+	v := &hotfix.BumpTagForTidbxPayload{
 		Repo:   body.Repo,
 		Branch: body.Branch,
 		Commit: body.Commit,

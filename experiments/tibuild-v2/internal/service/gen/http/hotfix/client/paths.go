@@ -8,7 +8,7 @@
 
 package client
 
-// BumpForTidbxHotfixPath returns the URL path to the hotfix service bump-for-tidbx HTTP endpoint.
-func BumpForTidbxHotfixPath() string {
-	return "/api/v2/hotfix/create-tag"
+// BumpTagForTidbxHotfixPath returns the URL path to the hotfix service bump-tag-for-tidbx HTTP endpoint.
+func BumpTagForTidbxHotfixPath() string {
+	return "/api/v2/hotfix/bump-tag-for-tidbx"
 }

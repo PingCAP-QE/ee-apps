@@ -19,24 +19,24 @@ import (
 	goa "goa.design/goa/v3/pkg"
 )
 
-// EncodeBumpForTidbxResponse returns an encoder for responses returned by the
-// hotfix bump-for-tidbx endpoint.
-func EncodeBumpForTidbxResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+// EncodeBumpTagForTidbxResponse returns an encoder for responses returned by
+// the hotfix bump-tag-for-tidbx endpoint.
+func EncodeBumpTagForTidbxResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
 	return func(ctx context.Context, w http.ResponseWriter, v any) error {
 		res, _ := v.(*hotfix.HotfixTagResult)
 		enc := encoder(ctx, w)
-		body := NewBumpForTidbxResponseBody(res)
+		body := NewBumpTagForTidbxResponseBody(res)
 		w.WriteHeader(http.StatusOK)
 		return enc.Encode(body)
 	}
 }
 
-// DecodeBumpForTidbxRequest returns a decoder for requests sent to the hotfix
-// bump-for-tidbx endpoint.
-func DecodeBumpForTidbxRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+// DecodeBumpTagForTidbxRequest returns a decoder for requests sent to the
+// hotfix bump-tag-for-tidbx endpoint.
+func DecodeBumpTagForTidbxRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
 	return func(r *http.Request) (any, error) {
 		var (
-			body BumpForTidbxRequestBody
+			body BumpTagForTidbxRequestBody
 			err  error
 		)
 		err = decoder(r).Decode(&body)
@@ -50,19 +50,19 @@ func DecodeBumpForTidbxRequest(mux goahttp.Muxer, decoder func(*http.Request) go
 			}
 			return nil, goa.DecodePayloadError(err.Error())
 		}
-		err = ValidateBumpForTidbxRequestBody(&body)
+		err = ValidateBumpTagForTidbxRequestBody(&body)
 		if err != nil {
 			return nil, err
 		}
-		payload := NewBumpForTidbxPayload(&body)
+		payload := NewBumpTagForTidbxPayload(&body)
 
 		return payload, nil
 	}
 }
 
-// EncodeBumpForTidbxError returns an encoder for errors returned by the
-// bump-for-tidbx hotfix endpoint.
-func EncodeBumpForTidbxError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+// EncodeBumpTagForTidbxError returns an encoder for errors returned by the
+// bump-tag-for-tidbx hotfix endpoint.
+func EncodeBumpTagForTidbxError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
 	encodeError := goahttp.ErrorEncoder(encoder, formatter)
 	return func(ctx context.Context, w http.ResponseWriter, v error) error {
 		var en goa.GoaErrorNamer
@@ -78,7 +78,7 @@ func EncodeBumpForTidbxError(encoder func(context.Context, http.ResponseWriter) 
 			if formatter != nil {
 				body = formatter(ctx, res)
 			} else {
-				body = NewBumpForTidbxBadRequestResponseBody(res)
+				body = NewBumpTagForTidbxBadRequestResponseBody(res)
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadRequest)
@@ -91,7 +91,7 @@ func EncodeBumpForTidbxError(encoder func(context.Context, http.ResponseWriter) 
 			if formatter != nil {
 				body = formatter(ctx, res)
 			} else {
-				body = NewBumpForTidbxInternalServerErrorResponseBody(res)
+				body = NewBumpTagForTidbxInternalServerErrorResponseBody(res)
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
