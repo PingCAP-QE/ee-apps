@@ -18,14 +18,14 @@ type Config struct {
 	} `yaml:"user_custom_attr_ids,omitempty" json:"user_custom_attr_ids,omitempty"`
 
 	// Cherry pick configuration
-	CherryPickInvite struct {
+	CherryPickInvite *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		GithubToken string `yaml:"github_token" json:"github_token"`
 	} `yaml:"cherry_pick_invite" json:"cherry_pick_invite"`
 
 	// Ask command configuration
-	Ask struct {
+	Ask *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		LLM struct {
@@ -43,20 +43,20 @@ type Config struct {
 	} `yaml:"ask" json:"ask"`
 
 	// DevBuild configuration
-	DevBuild struct {
+	DevBuild *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
-	Hotfix struct {
+	Hotfix *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"hotfix" json:"hotfix"`
 
 	// RepoAdmin command configuration
-	RepoAdmin struct {
+	RepoAdmin *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		GithubToken string `yaml:"github_token" json:"github_token"`
@@ -103,15 +103,4 @@ func (c *Config) Validate() error {
 		return errors.New("app_secret is required")
 	}
 	return nil
-}
-
-// SetDefaults sets default values for the configuration
-func (c *Config) SetDefaults() {
-	// Set defaults for DevBuild
-	if c.DevBuild.ApiURL == "" {
-		c.DevBuild.ApiURL = "https://tibuild.pingcap.net/api/devbuilds"
-	}
-	if c.Hotfix.ApiURL == "" {
-		c.Hotfix.ApiURL = "https://tibuild.pingcap.net/api/v2/hotfix"
-	}
 }

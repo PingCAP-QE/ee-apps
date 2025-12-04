@@ -176,37 +176,46 @@ func (r *rootHandler) initialize() error {
 	r.botOpenID = openID
 	r.logger.Info().Str("botOpenID", r.botOpenID).Msg("Bot OpenID initialized via botinfo package")
 
-	r.commandRegistry = map[string]CommandConfig{
-		"/cherry-pick-invite": {
+	r.commandRegistry = make(map[string]CommandConfig)
+	if r.Config.CherryPickInvite != nil {
+		r.commandRegistry["/cherry-pick-invite"] = CommandConfig{
 			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
 			Handler:      runCommandCherryPickInvite,
 			Audit:        r.Config.CherryPickInvite.Audit,
 			SetupContext: setupCtxCherryPickInvite,
-		},
-		"/devbuild": {
+		}
+	}
+	if r.Config.DevBuild != nil {
+		r.commandRegistry["/devbuild"] = CommandConfig{
 			Description:  "Trigger a devbuild or check build status",
 			Handler:      runCommandDevbuild,
 			Audit:        r.Config.DevBuild.Audit,
 			SetupContext: setupCtxDevbuild,
-		},
-		"/ask": {
+		}
+	}
+	if r.Config.Ask != nil {
+		r.commandRegistry["/ask"] = CommandConfig{
 			Description:  "Ask a question with LLM",
 			Handler:      runCommandAsk,
 			Audit:        r.Config.Ask.Audit,
 			SetupContext: setupAskCtx,
-		},
-		"/repo-admins": {
+		}
+	}
+	if r.Config.RepoAdmin != nil {
+		r.commandRegistry["/repo-admins"] = CommandConfig{
 			Description:  "Query repository administrators",
 			Handler:      runCommandRepoAdmin,
 			Audit:        r.Config.RepoAdmin.Audit,
 			SetupContext: setupCtxRepoAdmin,
-		},
-		"/bump-tidbx-hotfix-tag": {
+		}
+	}
+	if r.Config.Hotfix != nil {
+		r.commandRegistry["/bump-tidbx-hotfix-tag"] = CommandConfig{
 			Description:  "Bump TiDB-X style hotfix tag for a GitHub repo",
 			Handler:      runCommandHotfixBumpTidbxTag,
 			Audit:        r.Config.Hotfix.Audit,
 			SetupContext: setupCtxHotfix,
-		},
+		}
 	}
 
 	return nil
