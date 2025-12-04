@@ -38,8 +38,6 @@ func main() {
 		cfg.AppSecret = *appSecret
 	}
 
-	// Set default values and validate
-	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid configuration")
 	}
