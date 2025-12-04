@@ -293,7 +293,6 @@ func (r *rootHandler) audit(auditWebhook, title string, command *Command, result
 		Args:      command.Args,
 		Result:    result,
 	}
-	r.logger.Debug().Any("result", result).Msg("Audit info")
 
 	return audit.RecordAuditMessage(auditInfo, auditWebhook)
 }
