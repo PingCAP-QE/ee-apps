@@ -13,15 +13,8 @@ import (
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/config"
 )
 
-const (
-	// Configuration key for Hotfix URL in the config map
-	cfgKeyHotfixURL = "hotfix.api_url"
-)
-
-// ctx keys scoped to this file
-type hotfixCtxKey string
-
-const hotfixCfgKey hotfixCtxKey = "hotfix.cfg"
+// ctx keys store hotfix service configuration
+const hotfixCfgKey string = "hotfix.cfg"
 
 type hotfixRuntimeConfig struct {
 	APIURL      string
