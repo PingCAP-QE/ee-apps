@@ -27,7 +27,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 		name           string
 		pages          [][]string
 		expected       string
-		tagedCommitSHA string
+		taggedCommitSHA string
 		expectErr      bool
 		errCode        int
 	}
@@ -96,7 +96,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v8.5.4-nextgen.202510.2",
 				},
 			},
-			tagedCommitSHA: testCommitSHA,
+			taggedCommitSHA: testCommitSHA,
 			expectErr:      true,
 			errCode:        http.StatusBadRequest,
 		},
@@ -113,7 +113,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
 					// For the CommitAlreadyTagged case, attach the commit SHA to the first tidbx-style tag
 					if j == 0 && tc.tagedCommitSHA != "" && strings.HasPrefix(name, "v") && strings.Contains(name, "-nextgen.") {
-						tags[j].Commit = &github.Commit{SHA: &tc.tagedCommitSHA}
+						tags[j].Commit = &github.Commit{SHA: &tc.taggedCommitSHA}
 					}
 				}
 				tagPages = append(tagPages, tags)
