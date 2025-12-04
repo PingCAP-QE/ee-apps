@@ -12,7 +12,7 @@
     (hasKey (first (first .Values.httpRoute.rules).matches).path "value")
     (first (first .Values.httpRoute.rules).matches).path.value
 }}
-    echo "Visit http://$APP_HOSTNAME{{ (first (first .Values.httpRoute.rules).matches).path.value | default \"/\" }} to use your application"
+    echo "Visit http://$APP_HOSTNAME{{ (first (first .Values.httpRoute.rules).matches).path.value | default "/" }} to use your application"
 
     NOTE: Your HTTPRoute depends on the listener configuration of your gateway and your HTTPRoute rules.
     The rules can be set for path, method, header and query parameters.
