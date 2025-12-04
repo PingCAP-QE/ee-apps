@@ -49,6 +49,12 @@ type Config struct {
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
+	Hotfix struct {
+		BaseCmdConfig `yaml:",inline" json:",inline"`
+
+		ApiURL string `yaml:"api_url" json:"api_url"`
+	} `yaml:"hotfix" json:"hotfix"`
+
 	// RepoAdmin command configuration
 	RepoAdmin struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
@@ -61,7 +67,13 @@ type Config struct {
 }
 
 type BaseCmdConfig struct {
-	AuditWebhook string `yaml:"audit_webhook" json:"audit_webhook"` // if empty, disable audit.
+	Audit *AuditConfig `yaml:"audit,omitempty" json:"audit,omitempty"`
+}
+
+type AuditConfig struct {
+	Webhook string `yaml:"webhook" json:"webhook"` // if empty, disable audit.
+	Title   string `yaml:"title" json:"title"`     // if empty, use default title
+	Result  bool   `yaml:"result" json:"result"`   // if true, include command result in audit
 }
 
 // LoadConfig loads the configuration from the specified YAML file
@@ -98,5 +110,8 @@ func (c *Config) SetDefaults() {
 	// Set defaults for DevBuild
 	if c.DevBuild.ApiURL == "" {
 		c.DevBuild.ApiURL = "https://tibuild.pingcap.net/api/devbuilds"
+	}
+	if c.Hotfix.ApiURL == "" {
+		c.Hotfix.ApiURL = "https://tibuild.pingcap.net/api/v2/hotfix"
 	}
 }

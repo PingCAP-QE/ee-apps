@@ -3,11 +3,19 @@ config:
 elements:
   - tag: markdown
     content: |-
-      {{.UserEmail}} trigger command `{{.Command}}` with args:
+      **🧑‍💻{{.UserEmail}} trigger command `{{.Command}}` with args:**
       {{ range .Args }}
       - {{ . }}
       {{ end }}
   - tag: hr
+  {{ with .Result }}
+  - tag: markdown
+    content: |
+      **📃Command result:**
+
+      {{ . | trim | indent 6 }}
+  - tag: hr
+  {{ end }}
   - tag: note
     elements:
       - tag: plain_text
@@ -15,5 +23,5 @@ elements:
 header:
   template: turquoise
   title:
-    content: chatbot audit message
+    content: {{ .Title | default "chatbot audit message" }}
     tag: plain_text

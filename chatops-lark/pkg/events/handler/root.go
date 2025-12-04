@@ -180,26 +180,32 @@ func (r *rootHandler) initialize() error {
 		"/cherry-pick-invite": {
 			Description:  "Grant a collaborator permission to edit a cherry-pick PR",
 			Handler:      runCommandCherryPickInvite,
-			AuditWebhook: r.Config.CherryPickInvite.AuditWebhook,
+			Audit:        r.Config.CherryPickInvite.Audit,
 			SetupContext: setupCtxCherryPickInvite,
 		},
 		"/devbuild": {
 			Description:  "Trigger a devbuild or check build status",
 			Handler:      runCommandDevbuild,
-			AuditWebhook: r.Config.DevBuild.AuditWebhook,
+			Audit:        r.Config.DevBuild.Audit,
 			SetupContext: setupCtxDevbuild,
 		},
 		"/ask": {
 			Description:  "Ask a question with LLM",
 			Handler:      runCommandAsk,
-			AuditWebhook: r.Config.Ask.AuditWebhook,
+			Audit:        r.Config.Ask.Audit,
 			SetupContext: setupAskCtx,
 		},
 		"/repo-admins": {
 			Description:  "Query repository administrators",
 			Handler:      runCommandRepoAdmin,
-			AuditWebhook: r.Config.RepoAdmin.AuditWebhook,
+			Audit:        r.Config.RepoAdmin.Audit,
 			SetupContext: setupCtxRepoAdmin,
+		},
+		"/bump-tidbx-hotfix-tag": {
+			Description:  "Bump TiDB-X style hotfix tag for a GitHub repo",
+			Handler:      runCommandHotfixBumpTidbxTag,
+			Audit:        r.Config.Hotfix.Audit,
+			SetupContext: setupCtxHotfix,
 		},
 	}
 
@@ -247,8 +253,12 @@ func (r *rootHandler) handleCommand(ctx context.Context, command *Command) (stri
 		return result, err
 	}
 
-	if cmdConfig.AuditWebhook != "" {
-		if auditErr := r.audit(cmdConfig.AuditWebhook, command); auditErr != nil {
+	if cmdConfig.Audit != nil && cmdConfig.Audit.Webhook != "" {
+		var auditResult *string
+		if cmdConfig.Audit.Result {
+			auditResult = &result
+		}
+		if auditErr := r.audit(cmdConfig.Audit.Webhook, cmdConfig.Audit.Title, command, auditResult); auditErr != nil {
 			cmdLogger.Warn().Err(auditErr).Msg("Failed to audit command")
 		}
 	}
@@ -266,12 +276,15 @@ func (r *rootHandler) getCommandConfig(command *Command, cmdLogger zerolog.Logge
 	return &cmdConfig, nil
 }
 
-func (r *rootHandler) audit(auditWebhook string, command *Command) error {
+func (r *rootHandler) audit(auditWebhook, title string, command *Command, result *string) error {
 	auditInfo := &audit.AuditInfo{
+		Title:     title,
 		UserEmail: command.Sender.Email,
 		Command:   command.Name,
 		Args:      command.Args,
+		Result:    result,
 	}
+	r.logger.Debug().Any("result", result).Msg("Audit info")
 
 	return audit.RecordAuditMessage(auditInfo, auditWebhook)
 }
