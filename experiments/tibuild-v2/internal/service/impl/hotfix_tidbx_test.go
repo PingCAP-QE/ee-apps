@@ -112,7 +112,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 				for j, name := range names {
 					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
 					// For the CommitAlreadyTagged case, attach the commit SHA to the first tidbx-style tag
-					if j == 0 && tc.tagedCommitSHA != "" && strings.HasPrefix(name, "v") && strings.Contains(name, "-nextgen.") {
+					if j == 0 && tc.taggedCommitSHA != "" && strings.HasPrefix(name, "v") && strings.Contains(name, "-nextgen.") {
 						tags[j].Commit = &github.Commit{SHA: &tc.taggedCommitSHA}
 					}
 				}
