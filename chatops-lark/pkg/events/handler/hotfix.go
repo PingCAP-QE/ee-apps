@@ -22,6 +22,26 @@ type hotfixRuntimeConfig struct {
 	ActorGitHub *string
 }
 
+// construct hotfixBumpTagRequest payload according to tibuild v2 goa design
+type hotfixBumpTagRequest struct {
+	Repo   string `json:"repo"`
+	Author string `json:"author"`
+	Commit string `json:"commit,omitempty"`
+	// Branch is optional in design; we don't require it in command, leave empty
+	Branch string `json:"branch,omitempty"`
+}
+
+type hotfixBumpTagResponse struct {
+	Repo   string `json:"repo"`
+	Commit string `json:"commit"`
+	Tag    string `json:"tag"`
+}
+
+type hotfixAPIError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
 // setupCtxHotfix prepares the runtime context for hotfix-related commands.
 func setupCtxHotfix(ctx context.Context, cfg config.Config, actor *CommandActor) context.Context {
 	runtime := hotfixRuntimeConfig{
@@ -115,15 +135,7 @@ func runCommandHotfixBumpTidbxTag(ctx context.Context, args []string) (string, e
 		return "", fmt.Errorf("hotfix API URL is not configured")
 	}
 
-	// construct request payload according to tibuild v2 goa design
-	type request struct {
-		Repo   string `json:"repo"`
-		Author string `json:"author"`
-		Commit string `json:"commit,omitempty"`
-		// Branch is optional in design; we don't require it in command, leave empty
-		Branch string `json:"branch,omitempty"`
-	}
-	reqBody := request{
+	reqBody := hotfixBumpTagRequest{
 		Repo:   params.repo,
 		Commit: params.commit,
 		Author: preferAuthor(runtime),
@@ -132,17 +144,9 @@ func runCommandHotfixBumpTidbxTag(ctx context.Context, args []string) (string, e
 	// POST to /bump-tag-for-tidbx
 	url := strings.TrimRight(runtime.APIURL, "/") + "/bump-tag-for-tidbx"
 
+	var res hotfixBumpTagResponse
+	var apiErr hotfixAPIError
 	client := resty.New().SetTimeout(20 * time.Second)
-	var res struct {
-		Repo   string `json:"repo"`
-		Commit string `json:"commit"`
-		Tag    string `json:"tag"`
-	}
-	var apiErr struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	}
-
 	r, err := client.R().
 		SetBody(reqBody).
 		SetResult(&res).
