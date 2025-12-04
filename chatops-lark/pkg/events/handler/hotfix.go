@@ -90,8 +90,12 @@ func parseCommandHotfixBumpTidbx(args []string) (*bumpTidbxParams, string, error
 		return nil, hotfixHelpText(), NewInformationError(fmt.Sprintf("Missing required argument(s): %s", strings.Join(missing, ", ")))
 	}
 
-	// basic repo format validation
-	if !strings.Contains(ret.repo, "/") {
+	// strict repo format validation: must be <org>/<repo>, neither part empty, and only one slash
+	if strings.Count(ret.repo, "/") != 1 {
+		return nil, hotfixHelpText(), NewInformationError("Invalid --repo. Expected format: <org>/<repo> (e.g., pingcap/tidb)")
+	}
+	parts := strings.Split(ret.repo, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, hotfixHelpText(), NewInformationError("Invalid --repo. Expected format: <org>/<repo> (e.g., pingcap/tidb)")
 	}
 
