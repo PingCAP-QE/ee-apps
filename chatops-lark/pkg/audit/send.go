@@ -17,9 +17,11 @@ import (
 var larkTemplateBytes string
 
 type AuditInfo struct {
+	Title     string
 	UserEmail string
 	Command   string
 	Args      []string
+	Result    *string
 }
 
 func RecordAuditMessage(info *AuditInfo, auditWebhook string) error {

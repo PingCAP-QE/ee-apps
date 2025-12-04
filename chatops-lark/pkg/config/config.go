@@ -18,14 +18,14 @@ type Config struct {
 	} `yaml:"user_custom_attr_ids,omitempty" json:"user_custom_attr_ids,omitempty"`
 
 	// Cherry pick configuration
-	CherryPickInvite struct {
+	CherryPickInvite *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		GithubToken string `yaml:"github_token" json:"github_token"`
 	} `yaml:"cherry_pick_invite" json:"cherry_pick_invite"`
 
 	// Ask command configuration
-	Ask struct {
+	Ask *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		LLM struct {
@@ -43,14 +43,20 @@ type Config struct {
 	} `yaml:"ask" json:"ask"`
 
 	// DevBuild configuration
-	DevBuild struct {
+	DevBuild *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
+	Hotfix *struct {
+		BaseCmdConfig `yaml:",inline" json:",inline"`
+
+		ApiURL string `yaml:"api_url" json:"api_url"`
+	} `yaml:"hotfix" json:"hotfix"`
+
 	// RepoAdmin command configuration
-	RepoAdmin struct {
+	RepoAdmin *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
 		GithubToken string `yaml:"github_token" json:"github_token"`
@@ -61,7 +67,13 @@ type Config struct {
 }
 
 type BaseCmdConfig struct {
-	AuditWebhook string `yaml:"audit_webhook" json:"audit_webhook"` // if empty, disable audit.
+	Audit *AuditConfig `yaml:"audit,omitempty" json:"audit,omitempty"`
+}
+
+type AuditConfig struct {
+	Webhook string `yaml:"webhook" json:"webhook"` // if empty, disable audit.
+	Title   string `yaml:"title" json:"title"`     // if empty, use default title
+	Result  bool   `yaml:"result" json:"result"`   // if true, include command result in audit
 }
 
 // LoadConfig loads the configuration from the specified YAML file
@@ -91,12 +103,4 @@ func (c *Config) Validate() error {
 		return errors.New("app_secret is required")
 	}
 	return nil
-}
-
-// SetDefaults sets default values for the configuration
-func (c *Config) SetDefaults() {
-	// Set defaults for DevBuild
-	if c.DevBuild.ApiURL == "" {
-		c.DevBuild.ApiURL = "https://tibuild.pingcap.net/api/devbuilds"
-	}
 }

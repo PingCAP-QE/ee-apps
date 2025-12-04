@@ -1,6 +1,7 @@
 package github
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -41,7 +42,7 @@ func apiCall(apiUrl string) (*http.Response, error) {
 	}
 
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "token " + getGitHubToken())
+	req.Header.Set("Authorization", "token "+getGitHubToken())
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
