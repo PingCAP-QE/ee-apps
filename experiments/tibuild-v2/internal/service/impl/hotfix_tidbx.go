@@ -61,7 +61,7 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	l.Info().Msg("Computed tag name")
 
 	// Step 3: Create the tag with author information
-	tagMessage := fmt.Sprintf("Hot fix tag created by %s", p.Author)
+	tagMessage := fmt.Sprintf("Created hot fix tag on behalf of %s", p.Author)
 	if err := s.createTag(ctx, owner, repo, tagName, commitSHA, tagMessage); err != nil {
 		l.Err(err).Msg("Failed to create tag")
 		return nil, err
