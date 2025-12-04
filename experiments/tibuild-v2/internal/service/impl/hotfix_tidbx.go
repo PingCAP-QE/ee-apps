@@ -23,6 +23,7 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	// Parse repository owner and name
 	parts := strings.SplitN(p.Repo, "/", 2)
 	if len(parts) != 2 {
+		l.Warn().Msg("Invalid repository format, expected 'owner/repo'")
 		return nil, &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
 			Message: "invalid repository format, expected 'owner/repo'",
@@ -32,6 +33,7 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 
 	// Validate that at least one of branch or commit is provided
 	if p.Branch == nil && p.Commit == nil {
+		l.Warn().Msg("At least one of 'branch' or 'commit' must be provided")
 		return nil, &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
 			Message: "at least one of 'branch' or 'commit' must be provided",
@@ -41,15 +43,17 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	// Step 1: Verify the branch or commit exists
 	commitSHA, err := s.verifyAndGetCommit(ctx, owner, repo, p.Branch, p.Commit)
 	if err != nil {
+		l.Err(err).Msg("Failed to verify commit")
 		return nil, err
 	}
 
 	l = l.With().Str("commit", commitSHA).Logger()
 	l.Info().Msg("Verified commit exists")
 
-	// Step 2: Compute the tag name
-	tagName, err := s.computeNewTagNameForTidbx(ctx, owner, repo)
+	// Step 2: Compute the tag name (and fail if commit already has a tidbx-style tag)
+	tagName, err := s.computeNewTagNameForTidbx(ctx, owner, repo, commitSHA)
 	if err != nil {
+		l.Err(err).Msg("Failed to compute tag name")
 		return nil, err
 	}
 
@@ -57,13 +61,13 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	l.Info().Msg("Computed tag name")
 
 	// Step 3: Create the tag with author information
-	tagMessage := fmt.Sprintf("Hot fix tag created by %s", p.Author)
+	tagMessage := fmt.Sprintf("Created hot fix tag on behalf of %s", p.Author)
 	if err := s.createTag(ctx, owner, repo, tagName, commitSHA, tagMessage); err != nil {
+		l.Err(err).Msg("Failed to create tag")
 		return nil, err
 	}
 
 	l.Info().Msg("Successfully created tag")
-
 	return &hotfix.HotfixTagResult{
 		Repo:   p.Repo,
 		Commit: commitSHA,
@@ -71,9 +75,10 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	}, nil
 }
 
-// computeNewTagNameForTidbx computes the next tag name based on existing tags.
+// computeNewTagNameForTidbx computes the next tag name based on existing tags,
+// and fails if the provided commit already has a tidbx-style tag.
 // Tags follow the pattern vX.Y.Z-nextgen.YYYYMM.N
-func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo string) (string, error) {
+func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string) (string, error) {
 	// Get all tags from the repository
 	var allTags []*github.RepositoryTag
 	opts := &github.ListOptions{PerPage: 100}
@@ -99,6 +104,17 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo 
 
 	for _, tag := range allTags {
 		name := tag.GetName()
+
+		// If the tidbx-style tag points to the provided commit, fail fast
+		if pattern.MatchString(name) {
+			if tag.Commit != nil && tag.Commit.SHA != nil && *tag.Commit.SHA == commitSHA {
+				return "", &hotfix.HTTPError{
+					Code:    http.StatusBadRequest,
+					Message: fmt.Sprintf("commit %s already has existing tidbx-style tag: %s", commitSHA, name),
+				}
+			}
+		}
+
 		matches := pattern.FindStringSubmatch(name)
 		if len(matches) == 4 {
 			seq, err := strconv.Atoi(matches[3])

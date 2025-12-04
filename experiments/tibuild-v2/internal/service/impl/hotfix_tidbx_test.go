@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v69/github"
@@ -23,13 +24,15 @@ func newServiceWithClient(client *github.Client) *hotfixsrvc {
 
 func TestComputeNewTagNameForTidbx(t *testing.T) {
 	type testCase struct {
-		name      string
-		pages     [][]string
-		expected  string
-		expectErr bool
-		errCode   int
+		name           string
+		pages          [][]string
+		expected       string
+		taggedCommitSHA string
+		expectErr      bool
+		errCode        int
 	}
 
+	testCommitSHA := "a9814602ed087838d71095efd35bd221ab0bf5a9"
 	cases := []testCase{
 		{
 			name: "LastMonthIncrement",
@@ -85,6 +88,18 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			},
 			expected: "v9.0.0-nextgen.202601.1",
 		},
+		{
+			name: "CommitAlreadyTagged",
+			pages: [][]string{
+				{
+					"v8.5.4-nextgen.202510.1",
+					"v8.5.4-nextgen.202510.2",
+				},
+			},
+			taggedCommitSHA: testCommitSHA,
+			expectErr:      true,
+			errCode:        http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {
@@ -96,6 +111,10 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 				tags := make([]*github.RepositoryTag, len(names))
 				for j, name := range names {
 					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
+					// For the CommitAlreadyTagged case, attach the commit SHA to the first tidbx-style tag
+					if j == 0 && tc.taggedCommitSHA != "" && strings.HasPrefix(name, "v") && strings.Contains(name, "-nextgen.") {
+						tags[j].Commit = &github.Commit{SHA: &tc.taggedCommitSHA}
+					}
 				}
 				tagPages = append(tagPages, tags)
 			}
@@ -104,7 +123,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp))
 			svc := newServiceWithClient(ghClient)
 
-			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo")
+			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", testCommitSHA)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -262,5 +281,59 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				t.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
 			}
 		})
+	}
+}
+
+func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
+	fullRepo := "owner/repo"
+	branch := "main"
+	commit := "abc123"
+
+	// Tags response includes a tidbx-style tag that points to the same commit
+	respTags := mock.WithRequestMatchPages(
+		mock.GetReposTagsByOwnerByRepo,
+		[]*github.RepositoryTag{
+			{Name: github.Ptr("v8.5.4-nextgen.202510.1"), Commit: &github.Commit{SHA: github.Ptr(commit)}},
+			{Name: github.Ptr("v8.5.4-nextgen.202510.2")},
+		},
+	)
+
+	httpClient := mock.NewMockedHTTPClient(
+		respTags,
+		mock.WithRequestMatch(
+			mock.GetReposCommitsByOwnerByRepoByRef,
+			&github.RepositoryCommit{
+				SHA: github.Ptr(commit),
+			},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposBranchesByOwnerByRepoByBranch,
+			&github.Branch{
+				Name: github.Ptr(branch),
+				Commit: &github.RepositoryCommit{
+					SHA: github.Ptr(commit),
+				},
+			},
+		),
+	)
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	apiCallPayload := &hotfix.BumpTagForTidbxPayload{
+		Repo:   fullRepo,
+		Author: "tester",
+		Branch: &branch,
+		Commit: &commit,
+	}
+
+	_, err := svc.BumpTagForTidbx(context.Background(), apiCallPayload)
+	if err == nil {
+		t.Fatalf("expected error due to existing tidbx-style tag on commit, got nil")
+	}
+	httpErr, ok := err.(*hotfix.HTTPError)
+	if !ok {
+		t.Fatalf("expected *hotfix.HTTPError, got %T", err)
+	}
+	if httpErr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, httpErr.Code)
 	}
 }
