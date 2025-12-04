@@ -37,10 +37,11 @@ devbuild:
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
 hotfix:
-  api_url: "https://tibuild.pingcap.net/api/v2/hotfix"
+  api_url: "https://tibuild.pingcap.net/api/v2/hotfix" # API endpoint for hotfix operations
   audit:
-    webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-    result: true
+    webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" # Webhook URL for audit logs
+    title: "Custom audit title" # Optional title for audit messages
+    result: true # Include command results in audit logs
 
 # RepoAdmins command configuration
 repo_admins:
