@@ -27,7 +27,7 @@ func NewService(logger *zerolog.Logger, cfg config.Service) gentiup.Service {
 	tiupCfg := cfg.Services["tiup"]
 	switch v := tiupCfg.(type) {
 	case map[string]any:
-		deliveryConfigFile := v["deliveryConfigFile"]
+		deliveryConfigFile := v[tiupServiceDeliveryCfgKey]
 		switch file := deliveryConfigFile.(type) {
 		case string:
 			// load the yaml from the file

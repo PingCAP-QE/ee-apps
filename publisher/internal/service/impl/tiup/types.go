@@ -3,6 +3,7 @@ package tiup
 import "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 
 const redisKeyPrefixTiupRateLimit = "ratelimit:tiup"
+const tiupServiceDeliveryCfgKey = "delivery_config_file"
 
 type PublishRequestTiUP struct {
 	From       share.From      `json:"from,omitzero"`
