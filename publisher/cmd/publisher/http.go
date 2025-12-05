@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goa.design/clue/debug"
+	"goa.design/clue/health"
 	"goa.design/clue/log"
 	goahttp "goa.design/goa/v3/http"
 
@@ -65,6 +66,11 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 	tiupsvr.Mount(mux, tiupServer)
 	fileserversvr.Mount(mux, fileserverServer)
 	imagesvr.Mount(mux, imageServer)
+
+	// ** Mount health check handler **
+	check := health.Handler(health.NewChecker())
+	mux.Handle("GET", "/healthz", check)
+	mux.Handle("GET", "/livez", check)
 
 	var handler http.Handler = mux
 	if dbg {
