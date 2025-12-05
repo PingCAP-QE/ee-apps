@@ -28,27 +28,26 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "publisher.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [/app/publisher]
+          command: [{{ .Values.command }}]
           args:
-            {{- with .Values.servers.publisher.config.secretKey }}
-            - --config=/config/{{ . }}
+            - "-domain=:{{ .Values.service.port }}"
+            {{- with .Values.server.config.secretKey }}
+            - -config=/etc/config/{{ . }}
             {{- end }}
-            {{- with .Values.servers.publisher.domain }}
-            - --domain={{ . }}
-            {{- end }}
-            {{- with .Values.servers.publisher.httpPort }}
-            - --http-port={{ . }}
-            {{- end }}
-            {{- with .Values.servers.publisher.debug }}
-            - --debug
+            {{- if .Values.server.debug }}
+            - -debug
             {{- end }}
           ports:
             - name: http
@@ -62,26 +61,18 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.resources }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          volumeMounts:
-            {{- with .Values.servers.publisher.config.secretName }}
-            - name: config
-              mountPath: /config
-            {{- end }}
-            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
       volumes:
-        {{- with .Values.servers.publisher.config.secretName }}
-        - name: config
-          secret:
-            secretName: {{ . }}
-            optional: false
-        {{- end }}
-        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
