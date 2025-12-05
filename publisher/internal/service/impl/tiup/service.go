@@ -175,7 +175,7 @@ func (s *tiupsrvc) composeEvents(requests []gentiup.PublishRequestTiUP) []cloude
 
 func (s *tiupsrvc) composeEvent(request *gentiup.PublishRequestTiUP) cloudevents.Event {
 	event := s.BaseService.ComposeEvent(request)
-	event.SetType(share.EventTypeTiupPublishRequest)
+	event.SetType(EventTypeTiupPublishRequest)
 	event.SetSubject(request.TiupMirror)
 	return event
 }

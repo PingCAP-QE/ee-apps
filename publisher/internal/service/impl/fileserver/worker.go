@@ -10,13 +10,15 @@ import (
 	"os"
 	"slices"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/ks3sdklib/aws-sdk-go/aws"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
 	"github.com/rs/zerolog"
+
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 const defaultMaxKS3Retries = 3
@@ -33,7 +35,7 @@ type fsWorker struct {
 	s3Client *s3.S3
 }
 
-func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) (*fsWorker, error) {
+func NewWorker(logger *zerolog.Logger, redisClient redis.UniversalClient, options map[string]string) (impl.Worker, error) {
 	handler := fsWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -63,7 +65,7 @@ func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[st
 }
 
 func (p *fsWorker) SupportEventTypes() []string {
-	return []string{share.EventTypeFsPublishRequest}
+	return []string{EventTypeFsPublishRequest}
 }
 
 // Handle for test case run events

@@ -16,6 +16,7 @@ import (
 	goredis "github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/rs/zerolog"
 
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
@@ -31,7 +32,7 @@ const (
 
 type tiupWorker struct {
 	logger      zerolog.Logger
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	mutex       *redsync.Mutex
 	options     struct {
 		LarkWebhookURL   string
@@ -42,7 +43,7 @@ type tiupWorker struct {
 	}
 }
 
-func NewWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[string]string) (*tiupWorker, error) {
+func NewWorker(logger *zerolog.Logger, redisClient redis.UniversalClient, options map[string]string) (impl.Worker, error) {
 	handler := tiupWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -79,7 +80,7 @@ func NewWorker(logger *zerolog.Logger, redisClient *redis.Client, options map[st
 }
 
 func (p *tiupWorker) SupportEventTypes() []string {
-	return []string{share.EventTypeTiupPublishRequest}
+	return []string{EventTypeTiupPublishRequest}
 }
 
 // Handle for tiup publication request events

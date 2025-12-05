@@ -1,74 +1,97 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+
+	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/go-redis/redis/v8"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
-func initTiupWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) {
-	if config == nil {
-		return nil, nil
-	}
+type workerFactory func(*zerolog.Logger, redis.UniversalClient, map[string]string) (impl.Worker, error)
 
-	// Configure Redis client.
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     config.Redis.Addr,
-		Password: config.Redis.Password,
-		Username: config.Redis.Username,
-		DB:       config.Redis.DB,
-	})
+func newWorkerFunc(ctx context.Context, workerName string, wf workerFactory, workerCfg *config.Worker) func() {
+	wl := log.With().Ctx(ctx).Str("worker", workerName).Logger()
 
-	worker, err := tiup.NewWorker(&log.Logger, redisClient, config.Options)
+	reader, worker, err := initTiupWorkerFromConfig(workerCfg, wf, &wl)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
+		wl.Err(err).Msg("Error initializing worker")
+		return nil
+	}
+	if reader == nil {
+		wl.Warn().Msg("empty kafka reader, skip")
+		return nil
+	}
+	if worker == nil {
+		wl.Warn().Msg("empty worker, skip")
+		return nil
 	}
 
-	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        config.Kafka.Brokers,
-		Topic:          config.Kafka.Topic,
-		GroupID:        config.Kafka.ConsumerGroup,
-		MinBytes:       10e3,
-		MaxBytes:       10e6,
-		CommitInterval: 5000,
-		Logger:         kafka.LoggerFunc(log.Printf),
-	})
+	return func() {
+		defer reader.Close()
+		wl.Info().Msg("Kafka consumer started")
 
-	return kafkaReader, worker
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				msg, err := reader.ReadMessage(ctx)
+				if err != nil {
+					wl.Err(err).Msg("Error reading message")
+					continue
+				}
+
+				var cloudEvent event.Event
+				if err := json.Unmarshal(msg.Value, &cloudEvent); err != nil {
+					wl.Err(err).Msg("Error unmarshaling CloudEvent")
+					continue
+				}
+
+				wl.Debug().
+					Str("ce-id", cloudEvent.ID()).
+					Str("ce-type", cloudEvent.Type()).
+					Str("ce-subject", cloudEvent.Subject()).
+					Msg("received cloud event")
+				worker.Handle(cloudEvent)
+			}
+		}
+	}
 }
 
-func initFsWorkerFromConfig(config *config.Worker) (*kafka.Reader, impl.Worker) {
-	if config == nil {
-		return nil, nil
+func initTiupWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logger) (*kafka.Reader, impl.Worker, error) {
+	if cfg == nil {
+		return nil, nil, nil
 	}
 
 	// Configure Redis client.
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     config.Redis.Addr,
-		Password: config.Redis.Password,
-		Username: config.Redis.Username,
-		DB:       config.Redis.DB,
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		Username: cfg.Redis.Username,
+		DB:       cfg.Redis.DB,
 	})
 
-	worker, err := fileserver.NewWorker(&log.Logger, redisClient, config.Options)
+	worker, err := wf(wl, redisClient, cfg.Options)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error creating tiup publishing worker")
+		return nil, nil, err
 	}
 
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        config.Kafka.Brokers,
-		Topic:          config.Kafka.Topic,
-		GroupID:        config.Kafka.ConsumerGroup,
+		Brokers:        cfg.Kafka.Brokers,
+		Topic:          cfg.Kafka.Topic,
+		GroupID:        cfg.Kafka.ConsumerGroup,
 		MinBytes:       10e3,
 		MaxBytes:       10e6,
 		CommitInterval: 5000,
 		Logger:         kafka.LoggerFunc(log.Printf),
 	})
 
-	return kafkaReader, worker
+	return kafkaReader, worker, nil
 }

@@ -5,6 +5,8 @@ import "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 const redisKeyPrefixTiupRateLimit = "ratelimit:tiup"
 const tiupServiceDeliveryCfgKey = "delivery_config_file"
 
+const EventTypeTiupPublishRequest = "net.pingcap.tibuild.tiup-publish-request"
+
 type PublishRequestTiUP struct {
 	From       share.From      `json:"from,omitzero"`
 	Publish    PublishInfoTiUP `json:"publish,omitzero"`
