@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/stretchr/testify/assert/yaml"
+	"gopkg.in/yaml.v3"
 )
 
 // Load and parse configuration
