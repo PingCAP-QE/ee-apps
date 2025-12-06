@@ -42,8 +42,8 @@ func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[st
 
 func (p *imageWorker) SupportEventTypes() []string {
 	return []string{
-		EventTypeImageMultiArchCollectRequest,
-		EventTypeImagePublishRequest,
+		share.EventTypeImageMultiArchCollectRequest,
+		share.EventTypeImagePublishRequest,
 	}
 }
 
@@ -54,9 +54,9 @@ func (p *imageWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	}
 
 	switch event.Type() {
-	case EventTypeImageMultiArchCollectRequest:
+	case share.EventTypeImageMultiArchCollectRequest:
 		return p.processCollectRequest(context.Background(), event)
-	case EventTypeImagePublishRequest:
+	case share.EventTypeImagePublishRequest:
 		return p.processPublishRequest(context.Background(), event)
 	default:
 		return cloudevents.ResultNACK

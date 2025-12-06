@@ -65,7 +65,7 @@ func NewWorker(logger *zerolog.Logger, redisClient redis.UniversalClient, option
 }
 
 func (p *fsWorker) SupportEventTypes() []string {
-	return []string{EventTypeFsPublishRequest}
+	return []string{share.EventTypeFsPublishRequest}
 }
 
 // Handle for test case run events

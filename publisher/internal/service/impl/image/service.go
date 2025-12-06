@@ -29,7 +29,7 @@ func NewService(logger *zerolog.Logger, cfg config.Service) image.Service {
 
 // RequestToCopy implements image.Service.
 func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPayload) (res string, err error) {
-	return s.enqueueRequest(ctx, EventTypeImagePublishRequest, p.Source, p)
+	return s.enqueueRequest(ctx, share.EventTypeImagePublishRequest, p.Source, p)
 }
 
 // QueryCopyingStatus implements image.Service.
@@ -39,7 +39,7 @@ func (s *imagesrvc) QueryCopyingStatus(ctx context.Context, p *image.QueryCopyin
 
 // RequestMultiarchCollect implements image.Service.
 func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.RequestMultiarchCollectPayload) (res *image.RequestMultiarchCollectResult, err error) {
-	requestID, err := s.enqueueRequest(ctx, EventTypeImageMultiArchCollectRequest, p.ImageURL, p)
+	requestID, err := s.enqueueRequest(ctx, share.EventTypeImageMultiArchCollectRequest, p.ImageURL, p)
 	if err != nil {
 		return nil, err
 	}

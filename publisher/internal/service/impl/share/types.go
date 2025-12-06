@@ -5,6 +5,11 @@ import (
 )
 
 const (
+	EventTypeTiupPublishRequest           = "net.pingcap.tibuild.tiup-publish-request"
+	EventTypeFsPublishRequest             = "net.pingcap.tibuild.fs-publish-request"
+	EventTypeImagePublishRequest          = "net.pingcap.tibuild.image-publish-request"
+	EventTypeImageMultiArchCollectRequest = "net.pingcap.tibuild.image-multiarch-collect-request"
+
 	FromTypeOci  = "oci"
 	FromTypeHTTP = "http"
 

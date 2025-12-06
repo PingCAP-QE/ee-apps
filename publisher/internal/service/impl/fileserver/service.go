@@ -78,7 +78,7 @@ func (s *fileserversrvc) composeEvents(request *PublishRequestFS) []cloudevents.
 	var ret []cloudevents.Event
 	event := cloudevents.NewEvent()
 	event.SetID(uuid.New().String())
-	event.SetType(EventTypeFsPublishRequest)
+	event.SetType(share.EventTypeFsPublishRequest)
 	event.SetSource(s.EventSource)
 	event.SetSubject(request.Publish.Repo)
 	event.SetData(cloudevents.ApplicationJSON, request)

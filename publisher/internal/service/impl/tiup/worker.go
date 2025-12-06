@@ -80,7 +80,7 @@ func NewWorker(logger *zerolog.Logger, redisClient redis.UniversalClient, option
 }
 
 func (p *tiupWorker) SupportEventTypes() []string {
-	return []string{EventTypeTiupPublishRequest}
+	return []string{share.EventTypeTiupPublishRequest}
 }
 
 // Handle for tiup publication request events
