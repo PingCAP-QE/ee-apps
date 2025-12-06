@@ -24,19 +24,19 @@ func BuildRequestToPublishPayload(tiupRequestToPublishBody string) (*tiup.Reques
 	{
 		err = json.Unmarshal([]byte(tiupRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"v1.0.0\"\n   }'")
+		}
+		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	v := &tiup.RequestToPublishPayload{
 		ArtifactURL: body.ArtifactURL,
-		Version:     body.Version,
 		TiupMirror:  body.TiupMirror,
-	}
-	{
-		var zero string
-		if v.TiupMirror == zero {
-			v.TiupMirror = "staging"
-		}
+		Version:     body.Version,
 	}
 
 	return v, nil
@@ -80,6 +80,9 @@ func BuildRequestToPublishSinglePayload(tiupRequestToPublishSingleBody string) (
 			if err2 := ValidateFromRequestBody(body.From); err2 != nil {
 				err = goa.MergeErrors(err, err2)
 			}
+		}
+		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
 		}
 		if err != nil {
 			return nil, err

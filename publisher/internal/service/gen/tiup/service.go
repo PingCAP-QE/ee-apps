@@ -102,10 +102,10 @@ type RequestToPublishPayload struct {
 	// The full url of the pushed OCI artifact, contain the tag part. It will parse
 	// the repo from it.
 	ArtifactURL string
-	// Force set the version. Default is the artifact version read from
-	// `org.opencontainers.image.version` of the manifest config.
-	Version *string
 	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror string `json:"tiup_mirror,omitempty"`
+	// Force set the version. Default is the artifact version read from
+	// `org.opencontainers.image.version` of the manifest config.
+	Version *string
 }

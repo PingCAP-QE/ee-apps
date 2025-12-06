@@ -127,6 +127,7 @@ var PublishRequestTiUP = Type("PublishRequestTiUP", func() {
 
 var TiupMirrorFunc = func() {
 	Description("`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.")
+	Enum("staging", "prod")
 	Default("staging")
 	Meta("struct:tag:json", "tiup_mirror,omitempty")
 }
@@ -163,12 +164,12 @@ var _ = Service("tiup", func() {
 				Description("The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.")
 				Example("oci.com/repo:tag")
 			})
+			Attribute("tiup_mirror", String, TiupMirrorFunc)
 			Attribute("version", String, func() {
 				Description("Force set the version. Default is the artifact version read from `org.opencontainers.image.version` of the manifest config.")
 				Example("v1.0.0")
 			})
-			Attribute("tiup_mirror", String, TiupMirrorFunc)
-			Required("artifact_url")
+			Required("artifact_url", "tiup_mirror")
 		})
 		Result(ArrayOf(String), "request track ids")
 		HTTP(func() {
