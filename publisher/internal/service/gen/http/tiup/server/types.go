@@ -19,12 +19,12 @@ type RequestToPublishRequestBody struct {
 	// The full url of the pushed OCI artifact, contain the tag part. It will parse
 	// the repo from it.
 	ArtifactURL *string `form:"artifact_url,omitempty" json:"artifact_url,omitempty" xml:"artifact_url,omitempty"`
-	// Force set the version. Default is the artifact version read from
-	// `org.opencontainers.image.version` of the manifest config.
-	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror *string `json:"tiup_mirror,omitempty"`
+	// Force set the version. Default is the artifact version read from
+	// `org.opencontainers.image.version` of the manifest config.
+	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
 // DeliveryByRulesRequestBody is the type of the "tiup" service
@@ -80,13 +80,8 @@ type PublishInfoTiUPRequestBody struct {
 func NewRequestToPublishPayload(body *RequestToPublishRequestBody) *tiup.RequestToPublishPayload {
 	v := &tiup.RequestToPublishPayload{
 		ArtifactURL: *body.ArtifactURL,
+		TiupMirror:  *body.TiupMirror,
 		Version:     body.Version,
-	}
-	if body.TiupMirror != nil {
-		v.TiupMirror = *body.TiupMirror
-	}
-	if body.TiupMirror == nil {
-		v.TiupMirror = "staging"
 	}
 
 	return v
@@ -133,6 +128,14 @@ func ValidateRequestToPublishRequestBody(body *RequestToPublishRequestBody) (err
 	if body.ArtifactURL == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("artifact_url", "body"))
 	}
+	if body.TiupMirror == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tiup_mirror", "body"))
+	}
+	if body.TiupMirror != nil {
+		if !(*body.TiupMirror == "staging" || *body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", *body.TiupMirror, []any{"staging", "prod"}))
+		}
+	}
 	return
 }
 
@@ -162,6 +165,11 @@ func ValidateRequestToPublishSingleRequestBody(body *RequestToPublishSingleReque
 	if body.Publish != nil {
 		if err2 := ValidatePublishInfoTiUPRequestBody(body.Publish); err2 != nil {
 			err = goa.MergeErrors(err, err2)
+		}
+	}
+	if body.TiupMirror != nil {
+		if !(*body.TiupMirror == "staging" || *body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", *body.TiupMirror, []any{"staging", "prod"}))
 		}
 	}
 	return

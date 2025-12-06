@@ -34,9 +34,9 @@ func UsageCommands() []string {
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
-		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Esse nisi est.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Nam numquam et blanditiis.\",\n      \"source\": \"Nihil voluptas.\"\n   }'" + "\n" +
+	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
+		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Aspernatur eum modi numquam natus quibusdam ea.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Quis iure illo dolorum eos incidunt eius.\",\n      \"source\": \"Distinctio et labore.\"\n   }'" + "\n" +
 		""
 }
 
@@ -288,7 +288,7 @@ func tiupRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"Fugit aut dolore recusandae distinctio suscipit.\",\n      \"version\": \"v1.0.0\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"v1.0.0\"\n   }'")
 }
 
 func tiupDeliveryByRulesUsage() {
@@ -342,7 +342,7 @@ func tiupQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Neque quo.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Sunt velit voluptas autem molestiae cupiditate.\"")
 }
 
 func tiupResetRateLimitUsage() {
@@ -388,7 +388,7 @@ func fileserverRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Esse nisi est.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Aspernatur eum modi numquam natus quibusdam ea.\"\n   }'")
 }
 
 func fileserverQueryPublishingStatusUsage() {
@@ -406,7 +406,7 @@ func fileserverQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"b91531a6-43ed-40cc-8b51-c9596233227f\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"f28c32b4-4e83-4247-b254-f88b2b4217f4\"")
 }
 
 // imageUsage displays the usage of the image command and its subcommands.
@@ -437,7 +437,7 @@ func imageRequestToCopyUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Nam numquam et blanditiis.\",\n      \"source\": \"Nihil voluptas.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Quis iure illo dolorum eos incidunt eius.\",\n      \"source\": \"Distinctio et labore.\"\n   }'")
 }
 
 func imageQueryCopyingStatusUsage() {
@@ -455,7 +455,7 @@ func imageQueryCopyingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"778a675d-5eac-4b9e-bfbc-0dce05a7a616\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"8594cd2e-93f8-4633-92b1-c2a458368134\"")
 }
 
 func imageRequestMultiarchCollectUsage() {
@@ -473,7 +473,7 @@ func imageRequestMultiarchCollectUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Enim amet omnis unde quo.\",\n      \"release_tag_suffix\": \"Officia optio ut.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Facilis et in impedit fugiat magni iure.\",\n      \"release_tag_suffix\": \"Repellendus necessitatibus.\"\n   }'")
 }
 
 func imageQueryMultiarchCollectStatusUsage() {
@@ -491,5 +491,5 @@ func imageQueryMultiarchCollectStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"11060f11-a816-4eba-beb4-89d8ccbce0c2\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"bf1954bb-0768-4443-988a-5d6863331d24\"")
 }
