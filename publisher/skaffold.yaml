@@ -6,8 +6,29 @@ build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
     - image: publisher
+      ko:
+        fromImage: gcr.io/distroless/static
+        main: ./cmd/publisher
+        dependencies:
+          paths:
+            - "**/*.go"
+            - "go.mod"
+            - "go.sum"
+        flags:
+          - -trimpath # Ko build flags (optional)
+          - -v
+        labels:
+          org.opencontainers.image.title: PingCAP Publisher Server
+          org.opencontainers.image.licenses: MIT License
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+          org.opencontainers.image.url: https://github.com/PingCAP-QE/ee-apps/tree/main/publisher
+
+    - image: publisher-worker
       docker:
-        dockerfile: Dockerfile
+        dockerfile: worker.Dockerfile
+    - image: publisher-cli
+      docker:
+        dockerfile: cli.Dockerfile
   local:
     useDockerCLI: true
     useBuildkit: true
