@@ -19,7 +19,7 @@ type workerFactory func(*zerolog.Logger, redis.UniversalClient, map[string]strin
 func newWorkerFunc(ctx context.Context, workerName string, wf workerFactory, workerCfg *config.Worker) func() {
 	wl := log.With().Ctx(ctx).Str("worker", workerName).Logger()
 
-	reader, worker, err := initTiupWorkerFromConfig(workerCfg, wf, &wl)
+	reader, worker, err := initWorkerFromConfig(workerCfg, wf, &wl)
 	if err != nil {
 		wl.Err(err).Msg("Error initializing worker")
 		return nil
@@ -65,7 +65,7 @@ func newWorkerFunc(ctx context.Context, workerName string, wf workerFactory, wor
 	}
 }
 
-func initTiupWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logger) (*kafka.Reader, impl.Worker, error) {
+func initWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logger) (*kafka.Reader, impl.Worker, error) {
 	if cfg == nil {
 		return nil, nil, nil
 	}
@@ -77,6 +77,11 @@ func initTiupWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.
 		Username: cfg.Redis.Username,
 		DB:       cfg.Redis.DB,
 	})
+	_, err := redisClient.Ping(context.Background()).Result()
+	if err != nil {
+		wl.Err(err).Msg("Failed to connect to Redis")
+		return nil, nil, err
+	}
 
 	worker, err := wf(wl, redisClient, cfg.Options)
 	if err != nil {
