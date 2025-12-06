@@ -160,7 +160,6 @@ tolerations: []
 
 affinity: {}
 
-command: /app/publisher # the entrypoint executor in the image.
 server:
   debug: false
   config:
