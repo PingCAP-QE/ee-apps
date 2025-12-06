@@ -19,12 +19,12 @@ type RequestToPublishRequestBody struct {
 	// The full url of the pushed OCI artifact, contain the tag part. It will parse
 	// the repo from it.
 	ArtifactURL string `form:"artifact_url" json:"artifact_url" xml:"artifact_url"`
-	// Force set the version. Default is the artifact version read from
-	// `org.opencontainers.image.version` of the manifest config.
-	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 	// `staging` is http://tiup.pingcap.net:8988, `prod` is
 	// http://tiup.pingcap.net:8987.
 	TiupMirror string `json:"tiup_mirror,omitempty"`
+	// Force set the version. Default is the artifact version read from
+	// `org.opencontainers.image.version` of the manifest config.
+	Version *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
 // DeliveryByRulesRequestBody is the type of the "tiup" service
@@ -80,14 +80,8 @@ type PublishInfoTiUPRequestBody struct {
 func NewRequestToPublishRequestBody(p *tiup.RequestToPublishPayload) *RequestToPublishRequestBody {
 	body := &RequestToPublishRequestBody{
 		ArtifactURL: p.ArtifactURL,
-		Version:     p.Version,
 		TiupMirror:  p.TiupMirror,
-	}
-	{
-		var zero string
-		if body.TiupMirror == zero {
-			body.TiupMirror = "staging"
-		}
+		Version:     p.Version,
 	}
 	return body
 }
