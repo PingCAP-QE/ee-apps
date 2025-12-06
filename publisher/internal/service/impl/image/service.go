@@ -117,7 +117,8 @@ func (s *imagesrvc) enqueueRequest(ctx context.Context, requestType, subject str
 		return "", fmt.Errorf("failed to initialize request status: %v", err)
 	}
 	s.Logger.Info().
-		Str("request_type", share.EventTypeImagePublishRequest).
+		Str("request_type", requestType).
+		Str("subject", subject).
 		Str("request_id", requestID).
 		Any("request_payload", p).
 		Msg("request queued")

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -10,12 +9,11 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/segmentio/kafka-go"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
@@ -40,9 +38,6 @@ func main() {
 		log.Fatal().Err(err).Msg("load config failed")
 	}
 
-	tiupPublishRequestKafkaReader, tiupWorker := initTiupWorkerFromConfig(cfg.Tiup)
-	fsPublishRequestKafkaReader, fsWorker := initFsWorkerFromConfig(cfg.FileServer)
-
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.
 	errc := make(chan error)
@@ -58,8 +53,16 @@ func main() {
 	// Start workers.
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
-	startWorker(ctx, &wg, tiupPublishRequestKafkaReader, tiupWorker)
-	startWorker(ctx, &wg, fsPublishRequestKafkaReader, fsWorker)
+
+	// tiup worker
+	if workerFn := newWorkerFunc(ctx, "tiup", tiup.NewWorker, cfg.Tiup); workerFn != nil {
+		wg.Go(workerFn)
+	}
+
+	// fileserver worker
+	if workerFn := newWorkerFunc(ctx, "fileserver", fileserver.NewWorker, cfg.FileServer); workerFn != nil {
+		wg.Go(workerFn)
+	}
 
 	// Wait for signal.
 	log.Warn().Msgf("exiting (%v)", <-errc)
@@ -67,44 +70,4 @@ func main() {
 	cancel()
 	wg.Wait()
 	log.Warn().Msg("exited")
-}
-
-func startWorker(ctx context.Context, wg *sync.WaitGroup, reader *kafka.Reader, worker impl.Worker) {
-	if reader == nil {
-		log.Warn().Msg("empty kafka reader, skip")
-		return
-	}
-	if worker == nil {
-		log.Warn().Msg("empty worker, skip")
-		return
-	}
-
-	wg.Go(func() {
-		defer wg.Done()
-		defer reader.Close()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				msg, err := reader.ReadMessage(ctx)
-				if err != nil {
-					log.Err(err).Msg("Error reading message")
-					continue
-				}
-
-				var cloudEvent event.Event
-				if err := json.Unmarshal(msg.Value, &cloudEvent); err != nil {
-					log.Err(err).Msg("Error unmarshaling CloudEvent")
-					continue
-				}
-
-				log.Debug().Str("ce-id", cloudEvent.ID()).Str("ce-type", cloudEvent.Type()).Msg("received cloud event")
-				worker.Handle(cloudEvent)
-			}
-		}
-	})
-
-	log.Info().Msg("Kafka consumer started")
 }
