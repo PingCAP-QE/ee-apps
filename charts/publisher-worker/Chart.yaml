@@ -1,6 +1,6 @@
 apiVersion: v2
-name: publisher
-description: Publisher service for TiUP mirrors and static package tarball download sites.
+name: publisher-worker
+description: Publisher worker for TiUP mirrors and static package tarball download sites.
 
 # A chart can be either an 'application' or a 'library' chart.
 #

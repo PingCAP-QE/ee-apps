@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "publisher.fullname" . }}
+  name: {{ include "publisher-worker.fullname" . }}
   labels:
-    {{- include "publisher.labels" . | nindent 4 }}
+    {{- include "publisher-worker.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "publisher.selectorLabels" . | nindent 6 }}
+      {{- include "publisher-worker.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "publisher.labels" . | nindent 8 }}
+        {{- include "publisher-worker.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -27,33 +27,27 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "publisher.serviceAccountName" . }}
+      serviceAccountName: {{ include "publisher-worker.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [/app/publisher]
+          command: [{{ .Values.command }}]
           args:
-            {{- with .Values.servers.publisher.config.secretKey }}
-            - --config=/config/{{ . }}
+            {{- with .Values.worker.config.secretKey }}
+            - -config=/etc/config/{{ . }}
             {{- end }}
-            {{- with .Values.servers.publisher.domain }}
-            - --domain={{ . }}
+            {{- if .Values.worker.debug }}
+            - -debug
             {{- end }}
-            {{- with .Values.servers.publisher.httpPort }}
-            - --http-port={{ . }}
-            {{- end }}
-            {{- with .Values.servers.publisher.debug }}
-            - --debug
-            {{- end }}
-          ports:
-            - name: http
-              containerPort: {{ .Values.service.port }}
-              protocol: TCP
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -62,26 +56,32 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.resources }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          volumeMounts:
-            {{- with .Values.servers.publisher.config.secretName }}
-            - name: config
-              mountPath: /config
-            {{- end }}
-            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
+          {{- if or .Values.volumeMounts .Values.worker.config.secretName }}
+          volumeMounts:
+          {{- if .Values.worker.config.secretName }}
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+      {{- if or .Values.volumes .Values.worker.config.secretName }}
       volumes:
-        {{- with .Values.servers.publisher.config.secretName }}
+      {{- with .Values.worker.config.secretName }}
         - name: config
           secret:
             secretName: {{ . }}
-            optional: false
-        {{- end }}
-        {{- with .Values.volumes }}
+      {{- end }}
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

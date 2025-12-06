@@ -15,4 +15,4 @@ redis:
   password: "redis_password"
 services:
   tiup:
-    delivery_config_file: "delivery-config.yaml" # should load from config map
+    # delivery_config_file: "delivery-config.yaml" # should load from config map

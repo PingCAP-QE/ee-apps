@@ -37,7 +37,7 @@ jobs:
         run: |
           echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          for chart in cloudevents-server dl publisher chatops-lark tibuild-v2; do
+          for chart in cloudevents-server dl publisher publisher-worker chatops-lark tibuild-v2; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
             if helm show values oci://ghcr.io/pingcap-qe/ee-apps/charts/$chart --version $CHART_VERSION > /dev/null; then
               echo "chart '$chart' has no new version, skip publish."
