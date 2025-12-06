@@ -83,7 +83,6 @@ spec:
           secret:
             secretName: {{ . }}
       {{- end }}
-      {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
