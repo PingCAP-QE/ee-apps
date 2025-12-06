@@ -24,12 +24,36 @@ build:
           org.opencontainers.image.url: https://github.com/PingCAP-QE/ee-apps/tree/main/publisher
 
     - image: publisher-worker
-      docker:
-        dockerfile: worker.Dockerfile
+      ko:
+        fromImage: ghcr.io/pingcap-qe/cd/utils/release:v2025.10.26-7-geb77a69
+        main: ./cmd/publisher
+        dependencies:
+          paths:
+            - go.mod
+            - "**/*.go"
+        flags:
+          - -trimpath # Ko build flags (optional)
+          - -v
+        labels:
+          org.opencontainers.image.title: PingCAP Publisher Worker
+          org.opencontainers.image.licenses: MIT License
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+          org.opencontainers.image.url: https://github.com/PingCAP-QE/ee-apps/tree/main/publisher
+
     - image: publisher-cli
-      docker:
-        dockerfile: cli.Dockerfile
-  local:
-    useDockerCLI: true
-    useBuildkit: true
-    concurrency: 0
+      ko:
+        fromImage: ghcr.io/pingcap-qe/cd/utils/release:v2025.10.26-7-geb77a69
+        main: ./cmd/publisher
+        dependencies:
+          paths:
+            - go.mod
+            - cmd/publisher-cli
+            - internal/service/gen
+        flags:
+          - -trimpath # Ko build flags (optional)
+          - -v
+        labels:
+          org.opencontainers.image.title: PingCAP Publisher CLI
+          org.opencontainers.image.licenses: MIT License
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+          org.opencontainers.image.url: https://github.com/PingCAP-QE/ee-apps/tree/main/publisher
