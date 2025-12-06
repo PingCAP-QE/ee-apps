@@ -14,6 +14,9 @@ build:
             - "**/*.go"
             - "go.mod"
             - "go.sum"
+          ignore:
+            - cmd/publisher-cli
+            - cmd/worker
         flags:
           - -trimpath # Ko build flags (optional)
           - -v
@@ -26,11 +29,15 @@ build:
     - image: publisher-worker
       ko:
         fromImage: ghcr.io/pingcap-qe/cd/utils/release:v2025.10.26-7-geb77a69
-        main: ./cmd/publisher
+        main: ./cmd/worker
         dependencies:
           paths:
-            - go.mod
             - "**/*.go"
+            - go.mod
+            - go.sum
+          ignore:
+            - cmd/publisher-cli
+            - cmd/publisher
         flags:
           - -trimpath # Ko build flags (optional)
           - -v
@@ -43,10 +50,11 @@ build:
     - image: publisher-cli
       ko:
         fromImage: ghcr.io/pingcap-qe/cd/utils/release:v2025.10.26-7-geb77a69
-        main: ./cmd/publisher
+        main: ./cmd/publisher-cli
         dependencies:
           paths:
             - go.mod
+            - go.sum
             - cmd/publisher-cli
             - internal/service/gen
         flags:
