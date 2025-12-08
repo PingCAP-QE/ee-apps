@@ -54,6 +54,7 @@ func (s *tiupsrvc) DeliveryByRules(ctx context.Context, p *gentiup.DeliveryByRul
 	// 1. match for the rules
 	RequestToPublishPayloads, err := analyzeTiupDeliveries(p.ArtifactURL, s.deliveryConfig.TiupPublishRules)
 	if err != nil {
+		s.Logger.Err(err).Str("artifact_url", p.ArtifactURL).Msg("failed to analyze tiup deliveries")
 		return nil, err
 	}
 
@@ -61,6 +62,7 @@ func (s *tiupsrvc) DeliveryByRules(ctx context.Context, p *gentiup.DeliveryByRul
 	for _, payload := range RequestToPublishPayloads {
 		ids, err := s.RequestToPublish(ctx, &payload)
 		if err != nil {
+			s.Logger.Err(err).Msg("failed to request to publish")
 			return nil, err
 		}
 

@@ -182,13 +182,13 @@ func analyzeTiupDeliveries(url string, rules map[string][]DeliveryRule) ([]genti
 	// compute the delivery instructions
 	var deliveryInstructions []gentiup.RequestToPublishPayload
 	for _, rule := range repoRules {
-		deliveryInstructions = append(deliveryInstructions, computeDeliveryInstructionsForRule(rule, tag)...)
+		deliveryInstructions = append(deliveryInstructions, computeDeliveryInstructionsForRule(rule, repo, tag)...)
 	}
 
 	return slices.Compact(deliveryInstructions), nil
 }
 
-func computeDeliveryInstructionsForRule(rule DeliveryRule, ociTag string) []gentiup.RequestToPublishPayload {
+func computeDeliveryInstructionsForRule(rule DeliveryRule, ociRepo, ociTag string) []gentiup.RequestToPublishPayload {
 	var ret []gentiup.RequestToPublishPayload
 	var replacedVersion string
 	if rule.TagRegexReplace != nil {
@@ -199,7 +199,7 @@ func computeDeliveryInstructionsForRule(rule DeliveryRule, ociTag string) []gent
 		}
 	}
 	for _, m := range rule.DestMirrors {
-		instruction := gentiup.RequestToPublishPayload{TiupMirror: m}
+		instruction := gentiup.RequestToPublishPayload{TiupMirror: m, ArtifactURL: fmt.Sprintf("%s:%s", ociRepo, ociTag)}
 		if replacedVersion != "" {
 			instruction.Version = &replacedVersion
 		}
