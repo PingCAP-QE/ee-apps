@@ -22,13 +22,13 @@ type PublishInfoTiUP struct {
 }
 
 type DeliveryRule struct {
-	Description     string   `json:"description,omitempty"`
-	TagsRegex       []string `json:"tags_regex"`
-	DestMirrors     []string `json:"dest_mirrors"`
-	Nightly         bool     `json:"nightly,omitempty"`
-	TagRegexReplace *string  `json:"tag_regex_replace,omitempty"`
+	Description     string   `json:"description,omitempty" yaml:"description,omitempty"`
+	TagsRegex       []string `json:"tags_regex" yaml:"tags_regex"`
+	DestMirrors     []string `json:"dest_mirrors" yaml:"dest_mirrors"`
+	Nightly         bool     `json:"nightly,omitempty" yaml:"nightly,omitempty"`
+	TagRegexReplace *string  `json:"tag_regex_replace,omitempty" yaml:"tag_regex_replace,omitempty"`
 }
 
 type DeliveryConfig struct {
-	TiupPublishRules map[string][]DeliveryRule `json:"tiup_publish_rules,omitempty"`
+	TiupPublishRules map[string][]DeliveryRule `json:"tiup_publish_rules,omitempty" yaml:"tiup_publish_rules,omitempty"`
 }
