@@ -135,24 +135,19 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			resp := mock.WithRequestMatchPages(mock.GetReposTagsByOwnerByRepo, tagPages...)
 
 			// Mock CompareCommits for the CommitBehindExistingTag case
-			var compareMock mock.MockBackendOption
+			var comparisonResponse *github.CommitsComparison
 			if tc.behindCommitSHA != "" {
-				compareMock = mock.WithRequestMatch(
-					mock.GetReposCompareByOwnerByRepoByBasehead,
-					&github.CommitsComparison{
-						Status:   github.Ptr("behind"),
-						BehindBy: github.Ptr(1),
-					},
-				)
+				comparisonResponse = &github.CommitsComparison{
+					Status:   github.Ptr("behind"),
+					BehindBy: github.Ptr(1),
+				}
 			} else {
-				compareMock = mock.WithRequestMatch(
-					mock.GetReposCompareByOwnerByRepoByBasehead,
-					&github.CommitsComparison{
-						Status:   github.Ptr("identical"),
-						BehindBy: github.Ptr(0),
-					},
-				)
+				comparisonResponse = &github.CommitsComparison{
+					Status:   github.Ptr("identical"),
+					BehindBy: github.Ptr(0),
+				}
 			}
+			compareMock := mock.WithRequestMatch(mock.GetReposCompareByOwnerByRepoByBasehead, comparisonResponse)
 
 			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
 			svc := newServiceWithClient(ghClient)
