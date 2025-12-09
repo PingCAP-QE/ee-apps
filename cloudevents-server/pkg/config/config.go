@@ -48,6 +48,7 @@ func (c *TektonNotification) IsMatched(typ, subject string) bool {
 
 type Tekton struct {
 	DashboardBaseURL    string               `yaml:"dashboard_base_url,omitempty" json:"dashboard_base_url,omitempty"`
+	Lark                LarkBotApp           `yaml:"lark" json:"lark"`
 	Notifications       []TektonNotification `yaml:"notifications,omitempty" json:"notifications,omitempty"`
 	FailedStepTailLines int                  `yaml:"failed_step_tail_lines,omitempty" json:"failed_step_tail_lines,omitempty"`
 }
@@ -55,9 +56,9 @@ type Tekton struct {
 type Kafka struct {
 	Brokers        []string             `yaml:"brokers,omitempty" json:"brokers,omitempty"`
 	ClientID       string               `yaml:"client_id,omitempty" json:"client_id,omitempty"`
-	Authentication kafka.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
-	Producer       kafka.Producer       `yaml:"producer,omitempty" json:"producer,omitempty"`
-	Consumer       kafka.Consumer       `yaml:"consumer,omitempty" json:"consumer,omitempty"`
+	Authentication kafka.Authentication `yaml:"authentication" json:"authentication"`
+	Producer       kafka.Producer       `yaml:"producer" json:"producer"`
+	Consumer       kafka.Consumer       `yaml:"consumer" json:"consumer"`
 }
 
 type TiBuild struct {
@@ -65,12 +66,17 @@ type TiBuild struct {
 	TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
 }
 
+type TestCaseRun struct {
+	Store Store `yaml:"store" json:"store"`
+}
+
 type Config struct {
-	Store   Store      `yaml:"store,omitempty" json:"store,omitempty"`
-	Lark    LarkBotApp `yaml:"lark,omitempty" json:"lark,omitempty"`
-	Tekton  Tekton     `yaml:"tekton,omitempty" json:"tekton,omitempty"`
-	TiBuild TiBuild    `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
-	Kafka   Kafka      `yaml:"kafka,omitempty" json:"kafka,omitempty"`
+	Kafka Kafka `yaml:"kafka" json:"kafka"`
+
+	// service config fields.
+	TestCaseRun *TestCaseRun `yaml:"test_case_run,omitempty" json:"test_case_run,omitempty"`
+	Tekton      *Tekton      `yaml:"tekton,omitempty" json:"tekton,omitempty"`
+	TiBuild     *TiBuild     `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
 }
 
 func (c *Config) LoadFromFile(file string) error {
