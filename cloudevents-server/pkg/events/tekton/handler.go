@@ -11,7 +11,6 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	larksdk "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/rs/zerolog/log"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/lark"
 )
 
 const (
@@ -29,7 +29,8 @@ const (
 	eventContextAnnotationInnerKeyUser = "user"
 )
 
-func NewHandler(cfg config.Tekton, larkClient *larksdk.Client) (handler.EventHandler, error) {
+func NewHandler(cfg config.Tekton) (handler.EventHandler, error) {
+	larkClient := lark.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret)
 	ret := new(handler.CompositeEventHandler).AddHandlers(
 		&pipelineRunHandler{LarkClient: larkClient, Tekton: cfg},
 		&taskRunHandler{LarkClient: larkClient, Tekton: cfg},

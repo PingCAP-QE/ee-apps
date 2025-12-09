@@ -12,7 +12,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/lark"
 )
 
 func indexHandler(c *gin.Context) {
@@ -47,23 +46,35 @@ func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
 // receiver creates a receiverFn wrapper class that is used by the client to
 // validate and invoke the provided function.
 func newCloudEventsHandler(cfg *config.Config) (handler.EventHandler, error) {
-	caseRunHandler, err := testcaserun.NewHandler(cfg.Store)
-	if err != nil {
-		return nil, err
+	ret := new(handler.CompositeEventHandler)
+
+	// Register test case run handler
+	if cfg.TestCaseRun != nil {
+		handler, err := testcaserun.NewHandler(cfg.TestCaseRun.Store)
+		if err != nil {
+			return nil, err
+		}
+
+		ret.AddHandlers(handler)
 	}
 
-	larkClient := lark.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret)
-	tektonHandler, err := tekton.NewHandler(cfg.Tekton, larkClient)
-	if err != nil {
-		return nil, err
+	// Register Tekton pipelinerun and taskrun handlers
+	if cfg.Tekton != nil {
+		handler, err := tekton.NewHandler(*cfg.Tekton)
+		if err != nil {
+			return nil, err
+		}
+		ret.AddHandlers(handler)
 	}
 
-	tibuildHandler, err := tibuild.NewHandler(cfg.TiBuild.ResultSinkURL, cfg.TiBuild.TriggerSinkURL)
-	if err != nil {
-		return nil, err
+	// Register TiDB build handlers
+	if cfg.TiBuild != nil {
+		handler, err := tibuild.NewHandler(*cfg.TiBuild)
+		if err != nil {
+			return nil, err
+		}
+		ret.AddHandlers(handler)
 	}
 
-	return new(handler.CompositeEventHandler).AddHandlers(
-		caseRunHandler, tektonHandler, tibuildHandler,
-	), nil
+	return ret, nil
 }
