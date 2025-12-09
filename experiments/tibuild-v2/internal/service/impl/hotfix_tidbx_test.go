@@ -24,15 +24,17 @@ func newServiceWithClient(client *github.Client) *hotfixsrvc {
 
 func TestComputeNewTagNameForTidbx(t *testing.T) {
 	type testCase struct {
-		name           string
-		pages          [][]string
-		expected       string
+		name            string
+		pages           [][]string
+		expected        string
 		taggedCommitSHA string
-		expectErr      bool
-		errCode        int
+		behindCommitSHA string
+		expectErr       bool
+		errCode         int
 	}
 
 	testCommitSHA := "a9814602ed087838d71095efd35bd221ab0bf5a9"
+	behindCommitSHA := "bbbb1234567890abcdef1234567890abcdef1234"
 	cases := []testCase{
 		{
 			name: "LastMonthIncrement",
@@ -97,8 +99,20 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 				},
 			},
 			taggedCommitSHA: testCommitSHA,
-			expectErr:      true,
-			errCode:        http.StatusBadRequest,
+			expectErr:       true,
+			errCode:         http.StatusBadRequest,
+		},
+		{
+			name: "CommitBehindExistingTag",
+			pages: [][]string{
+				{
+					"v8.5.4-nextgen.202510.1",
+					"v8.5.4-nextgen.202510.2",
+				},
+			},
+			behindCommitSHA: behindCommitSHA,
+			expectErr:       true,
+			errCode:         http.StatusBadRequest,
 		},
 	}
 
@@ -120,10 +134,35 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			}
 			resp := mock.WithRequestMatchPages(mock.GetReposTagsByOwnerByRepo, tagPages...)
 
-			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp))
+			// Mock CompareCommits for the CommitBehindExistingTag case
+			var compareMock mock.MockBackendOption
+			if tc.behindCommitSHA != "" {
+				compareMock = mock.WithRequestMatch(
+					mock.GetReposCompareByOwnerByRepoByBasehead,
+					&github.CommitsComparison{
+						Status:   github.Ptr("behind"),
+						BehindBy: github.Ptr(1),
+					},
+				)
+			} else {
+				compareMock = mock.WithRequestMatch(
+					mock.GetReposCompareByOwnerByRepoByBasehead,
+					&github.CommitsComparison{
+						Status:   github.Ptr("identical"),
+						BehindBy: github.Ptr(0),
+					},
+				)
+			}
+
+			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
 			svc := newServiceWithClient(ghClient)
 
-			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", testCommitSHA)
+			commitSHA := testCommitSHA
+			if tc.behindCommitSHA != "" {
+				commitSHA = tc.behindCommitSHA
+			}
+
+			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", commitSHA)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
