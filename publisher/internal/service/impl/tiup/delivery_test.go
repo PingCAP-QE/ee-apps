@@ -55,7 +55,7 @@ func TestComputeDeliveryInstructionsForRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := computeDeliveryInstructionsForRule(tt.rule, tt.ociTag)
+			got := computeDeliveryInstructionsForRule(tt.rule, "test.com/repo", tt.ociTag)
 			if len(got) != len(tt.wantMirrors) {
 				t.Fatalf("len(got)=%d, want %d", len(got), len(tt.wantMirrors))
 			}
