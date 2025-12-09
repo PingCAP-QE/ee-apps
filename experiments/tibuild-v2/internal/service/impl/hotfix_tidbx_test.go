@@ -280,9 +280,8 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				),
 				mock.WithRequestMatch(
 					mock.GetReposCompareByOwnerByRepoByBasehead,
-					&github.CommitsComparison{
-						Status: github.Ptr("behind"),
-					},
+					&github.CommitsComparison{Status: github.Ptr("identical")},
+					&github.CommitsComparison{Status: github.Ptr("ahead")},
 				),
 			)
 			svc := newServiceWithClient(github.NewClient(httpClient))
