@@ -1,13 +1,14 @@
-store:
-  driver: mysql
-  dsn: user:password@tcp(localhost:3306)/debug?parseTime=true
-lark:
-  app_id: cli_12345678
-  app_secret: s123456789
+test_case_run:
+  store:
+    driver: mysql
+    dsn: user:password@tcp(localhost:3306)/debug?parseTime=true
 tibuild:
   result_sink_url: http://tibuild.event.url:8080 # url of tibuild events listener.
   trigger_sink_url: http://el-xxx.tekton.url:8080 # url of tekton event listener.
 tekton:
+  lark:
+    app_id: cli_12345678
+    app_secret: s123456789
   dashboard_base_url: https://tekton.local.com/dashboard-path
   notifications:
     - event_type: ".*"
@@ -35,5 +36,5 @@ kafka:
   consumer:
     group_id: consumer-group-1
     topic_mapping:
-      '*': test-topic
+      "*": test-topic
     dead_letter_topic: test-topic-dead-letter
