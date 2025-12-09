@@ -158,7 +158,7 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
-	if comparison.GetBehindBy() > 0 && comparison.GetAheadBy() == 0 {
+if comparison.GetStatus() == "behind" {
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
 			Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s, cannot create new tag on the behind commit", commitSHA, latest.name),
