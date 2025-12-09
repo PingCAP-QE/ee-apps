@@ -46,34 +46,40 @@ func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
 // receiver creates a receiverFn wrapper class that is used by the client to
 // validate and invoke the provided function.
 func newCloudEventsHandler(cfg *config.Config) (handler.EventHandler, error) {
+	type handlerInitFunc func() (handler.EventHandler, error)
+	var inits = []handlerInitFunc{
+		// testcase run handler
+		func() (handler.EventHandler, error) {
+			if cfg.TestCaseRun == nil {
+				return nil, nil
+			}
+			return testcaserun.NewHandler(cfg.TestCaseRun.Store)
+		},
+		// tekton runs handler
+		func() (handler.EventHandler, error) {
+			if cfg.Tekton == nil {
+				return nil, nil
+			}
+			return tekton.NewHandler(*cfg.Tekton)
+		},
+		// tibuild handler
+		func() (handler.EventHandler, error) {
+			if cfg.TiBuild == nil {
+				return nil, nil
+			}
+			return tibuild.NewHandler(*cfg.TiBuild)
+		},
+	}
+
 	ret := new(handler.CompositeEventHandler)
-
-	// Register test case run handler
-	if cfg.TestCaseRun != nil {
-		handler, err := testcaserun.NewHandler(cfg.TestCaseRun.Store)
+	for _, initFn := range inits {
+		h, err := initFn()
 		if err != nil {
 			return nil, err
 		}
-
-		ret.AddHandlers(handler)
-	}
-
-	// Register Tekton pipelinerun and taskrun handlers
-	if cfg.Tekton != nil {
-		handler, err := tekton.NewHandler(*cfg.Tekton)
-		if err != nil {
-			return nil, err
+		if h != nil {
+			ret.AddHandlers(h)
 		}
-		ret.AddHandlers(handler)
-	}
-
-	// Register TiDB build handlers
-	if cfg.TiBuild != nil {
-		handler, err := tibuild.NewHandler(*cfg.TiBuild)
-		if err != nil {
-			return nil, err
-		}
-		ret.AddHandlers(handler)
 	}
 
 	return ret, nil
