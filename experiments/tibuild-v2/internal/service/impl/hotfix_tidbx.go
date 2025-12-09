@@ -130,8 +130,6 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
-	// No dependency on current time; we bump based on the latest month present in existing tags
-
 	// If no matching tags exist, we cannot determine the version to use
 	if len(matchingTags) == 0 {
 		return "", &hotfix.HTTPError{
@@ -150,6 +148,22 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 	})
 
 	latest := matchingTags[0]
+
+	// Check if the commit is behind the latest existing tidbx-style tag
+	comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest.name, commitSHA, nil)
+	if err != nil {
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("failed to compare commits: %v", err),
+		}
+	}
+
+	if comparison.GetStatus() == "behind" {
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest.name),
+		}
+	}
 
 	// Always increment sequence based on the latest tag's month found in the repository
 	return fmt.Sprintf("v%s-nextgen.%s.%d", latest.version, latest.yearMonth, latest.sequence+1), nil
