@@ -18,9 +18,9 @@ func TestComputeDeliveryInstructionsForRule(t *testing.T) {
 		{
 			name: "nextgen EA/GA rule expects $1 capture of tag",
 			rule: DeliveryRule{
-				DestMirrors:     []string{"staging"},
-				TagsRegex:       []string{"^(v[0-9]+[.][0-9]+[.][0-9]+-nextgen[.][0-9]+[.][0-9]+)_(linux|darwin)_(amd64|arm64)$"},
-				TagRegexReplace: strPtr("$1"),
+				DestMirrors:         []string{"staging"},
+				TagsRegex:           []string{"^(v[0-9]+[.][0-9]+[.][0-9]+-nextgen[.][0-9]+[.][0-9]+)_(linux|darwin)_(amd64|arm64)$"},
+				VersionRegexReplace: strPtr("$1"),
 			},
 			ociTag:             "v8.5.4-nextgen.202511.0_linux_amd64",
 			wantMirrors:        []string{"staging"},
@@ -30,9 +30,9 @@ func TestComputeDeliveryInstructionsForRule(t *testing.T) {
 		{
 			name: "versioin replace matched first pattern",
 			rule: DeliveryRule{
-				DestMirrors:     []string{"staging"},
-				TagsRegex:       []string{"^(feature-abc)_(linux|darwin)_(amd64|arm64)$", "^(debug-def)_(linux|darwin)_(amd64|arm64)$"},
-				TagRegexReplace: strPtr("$1-feature"),
+				DestMirrors:         []string{"staging"},
+				TagsRegex:           []string{"^(feature-abc)_(linux|darwin)_(amd64|arm64)$", "^(debug-def)_(linux|darwin)_(amd64|arm64)$"},
+				VersionRegexReplace: strPtr("$1-feature"),
 			},
 			ociTag:             "feature-abc_linux_amd64",
 			wantMirrors:        []string{"staging"},
@@ -42,9 +42,9 @@ func TestComputeDeliveryInstructionsForRule(t *testing.T) {
 		{
 			name: "versioin replace matched last pattern",
 			rule: DeliveryRule{
-				DestMirrors:     []string{"staging"},
-				TagsRegex:       []string{"^(feature-abc)_(linux|darwin)_(amd64|arm64)$", "^(debug-def)_(linux|darwin)_(amd64|arm64)$"},
-				TagRegexReplace: strPtr("$1-feature"),
+				DestMirrors:         []string{"staging"},
+				TagsRegex:           []string{"^(feature-abc)_(linux|darwin)_(amd64|arm64)$", "^(debug-def)_(linux|darwin)_(amd64|arm64)$"},
+				VersionRegexReplace: strPtr("$1-feature"),
 			},
 			ociTag:             "debug-def_linux_amd64",
 			wantMirrors:        []string{"staging"},

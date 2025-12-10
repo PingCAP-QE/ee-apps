@@ -2,7 +2,7 @@ module github.com/PingCAP-QE/ee-apps/tibuild
 
 go 1.25.0
 
-toolchain go1.25.4
+toolchain go1.25.5
 
 require (
 	entgo.io/ent v0.14.5

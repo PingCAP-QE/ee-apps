@@ -191,10 +191,10 @@ func analyzeTiupDeliveries(url string, rules map[string][]DeliveryRule) ([]genti
 func computeDeliveryInstructionsForRule(rule DeliveryRule, ociRepo, ociTag string) []gentiup.RequestToPublishPayload {
 	var ret []gentiup.RequestToPublishPayload
 	var replacedVersion string
-	if rule.TagRegexReplace != nil {
+	if rule.VersionRegexReplace != nil {
 		for _, tagRegex := range rule.TagsRegex {
 			if regexp.MustCompile(tagRegex).MatchString(ociTag) {
-				replacedVersion = regexp.MustCompile(tagRegex).ReplaceAllString(ociTag, *rule.TagRegexReplace)
+				replacedVersion = regexp.MustCompile(tagRegex).ReplaceAllString(ociTag, *rule.VersionRegexReplace)
 			}
 		}
 	}
