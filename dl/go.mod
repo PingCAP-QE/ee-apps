@@ -2,6 +2,8 @@ module github.com/PingCAP-QE/ee-apps/dl
 
 go 1.24.0
 
+toolchain go1.25.5
+
 require (
 	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/opencontainers/image-spec v1.1.1

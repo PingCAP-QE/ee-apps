@@ -1,8 +1,8 @@
 module github.com/PingCAP-QE/ee-apps/tibuild
 
-go 1.23.4
+go 1.25.0
 
-toolchain go1.25.4
+toolchain go1.25.5
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
