@@ -77,7 +77,7 @@ func (r *MacBuildGCReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Calculate expiration time.
 	ttl := time.Duration(*macBuild.Spec.TtlSecondsAfterFinished) * time.Second
-	expirationTime := macBuild.Status.CompletionTime.Time.Add(ttl)
+	expirationTime := macBuild.Status.CompletionTime.Add(ttl)
 	now := time.Now()
 
 	// Decision: Check if the resource has expired.
