@@ -12,7 +12,6 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/rs/zerolog/log"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -123,8 +122,8 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogL
 				return logs
 			})
 		}
-	case data.Run != nil:
-		if !fillInfosWithCustomRun(data.Run, &ret) {
+	case data.CustomRun != nil:
+		if !fillInfosWithCustomRun(data.CustomRun, &ret) {
 			return nil, nil
 		}
 	}
@@ -132,7 +131,7 @@ func extractLarkInfosFromEvent(event cloudevents.Event, baseURL string, tailLogL
 	return &ret, nil
 }
 
-func fillInfosWithCustomRun(data *v1alpha1.Run, ret *cardMessageInfos) bool {
+func fillInfosWithCustomRun(data *v1beta1.CustomRun, ret *cardMessageInfos) bool {
 	fillTimeFileds(ret, data.Status.StartTime, data.Status.CompletionTime)
 
 	for _, p := range data.Spec.Params {
