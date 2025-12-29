@@ -164,24 +164,15 @@ func (r *MacBuildReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *MacBuildReconciler) execCommand(logger logr.Logger, cmd *exec.Cmd) error {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	logger.Info("Executing command", "cmd", cmd.String())
-
-	if err := cmd.Run(); err != nil {
-		stderrStr := stderr.String()
-		logger.Error(err, "Command execution failed", "stderr", stderrStr)
-		return errors.New(stderrStr)
-	}
-
-	logger.Info("Command executed successfully", "stdout", stdout.String())
-	return nil
-}
 func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
 	job := newNativeBuildJob(r, ctx, macBuild)
+
+	// steps:
+	// 1. setup workspace
+	// 2. clone the source
+	// 3. generate build script
+	// 4. run build script
+	// 5. push the binary artifacts
 
 	if err := job.setupWorkspace(); err != nil {
 		return nil, err
