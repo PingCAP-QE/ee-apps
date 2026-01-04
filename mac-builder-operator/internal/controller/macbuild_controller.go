@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"os"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -158,55 +157,5 @@ func (r *MacBuildReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
 	job := newNativeBuildJob(r, ctx, macBuild)
-
-	// steps:
-	// 1. setup workspace
-	// 2. clone the source
-	// 3. generate build script
-	// 4. run build script
-	// 5. push the binary artifacts
-
-	if err := job.setupWorkspace(); err != nil {
-		return nil, err
-	}
-	defer job.cleanup()
-
-	if err := job.cloneArtifactsRepo(); err != nil {
-		return nil, err
-	}
-
-	commitHash, err := job.cloneAndCheckoutSource()
-	if err != nil {
-		return nil, err
-	}
-	result := &buildResult{CommitHash: commitHash}
-
-	if err := job.generateEnvFile(); err != nil {
-		return result, err
-	}
-
-	if err := job.generateBuildScript(); err != nil {
-		return result, err
-	}
-
-	if _, err := os.Stat(job.buildScriptPath); os.IsNotExist(err) {
-		job.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
-		return result, nil
-	}
-
-	if err := job.executeBuild(); err != nil {
-		return result, err
-	}
-	if !job.spec.Artifacts.Push {
-		job.logger.Info("spec.artifacts.push is false, skipping publish phase.")
-		return result, nil
-	}
-
-	pushedYAML, err := job.executePublish()
-	if err != nil {
-		return result, err
-	}
-
-	result.PushedArtifactsYaml = pushedYAML
-	return result, nil
+	return job.Run()
 }

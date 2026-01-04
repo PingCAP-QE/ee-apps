@@ -297,3 +297,56 @@ bash %s -p -w "%s" -o "%s"
 
 	return string(pushedYAMLBytes), nil
 }
+
+func (j *nativeBuildJob) Run() (*buildResult, error) {
+	// steps:
+	// 1. setup workspace
+	// 2. clone the source
+	// 3. generate build script
+	// 4. run build script
+	// 5. push the binary artifacts
+
+	if err := j.setupWorkspace(); err != nil {
+		return nil, err
+	}
+	defer j.cleanup()
+
+	if err := j.cloneArtifactsRepo(); err != nil {
+		return nil, err
+	}
+
+	commitHash, err := j.cloneAndCheckoutSource()
+	if err != nil {
+		return nil, err
+	}
+	result := &buildResult{CommitHash: commitHash}
+
+	if err := j.generateEnvFile(); err != nil {
+		return result, err
+	}
+
+	if err := j.generateBuildScript(); err != nil {
+		return result, err
+	}
+
+	if _, err := os.Stat(j.buildScriptPath); os.IsNotExist(err) {
+		j.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
+		return result, nil
+	}
+
+	if err := j.executeBuild(); err != nil {
+		return result, err
+	}
+	if !j.spec.Artifacts.Push {
+		j.logger.Info("spec.artifacts.push is false, skipping publish phase.")
+		return result, nil
+	}
+
+	pushedYAML, err := j.executePublish()
+	if err != nil {
+		return result, err
+	}
+
+	result.PushedArtifactsYaml = pushedYAML
+	return result, nil
+}
