@@ -113,7 +113,8 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 		// check the run status.
 		// TODO: in production, we need a more complex logic to check the long time goroutine.
-		result, err := r.runNativeBuild(ctx, macBuild)
+		job := newNativeBuildJob(ctx, macBuild)
+		result, err := job.Run()
 		newStatus := macBuild.Status.DeepCopy()
 		now := metav1.Now()
 		newStatus.CompletionTime = &now
@@ -156,6 +157,6 @@ func (r *MacBuildReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
-	job := newNativeBuildJob(r, ctx, macBuild)
+	job := newNativeBuildJob(ctx, macBuild)
 	return job.Run()
 }

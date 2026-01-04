@@ -34,11 +34,10 @@ import (
 
 // nativeBuildJob represents a build job for native Mac builds.
 type nativeBuildJob struct {
-	reconciler *MacBuildReconciler
-	ctx        context.Context
-	logger     logr.Logger
-	macBuild   buildv1alpha1.MacBuild
-	spec       buildv1alpha1.MacBuildSpec // shortcut
+	ctx      context.Context
+	logger   logr.Logger
+	macBuild buildv1alpha1.MacBuild
+	spec     buildv1alpha1.MacBuildSpec // shortcut
 
 	// Paths
 	workspaceDir     string
@@ -50,7 +49,7 @@ type nativeBuildJob struct {
 }
 
 // newNativeBuildJob creates a new instance of nativeBuildJob.
-func newNativeBuildJob(r *MacBuildReconciler, ctx context.Context, macBuild buildv1alpha1.MacBuild) *nativeBuildJob {
+func newNativeBuildJob(ctx context.Context, macBuild buildv1alpha1.MacBuild) *nativeBuildJob {
 	logger := logf.FromContext(ctx)
 
 	// Create in 'os.TempDir()' (e.g., /var/folders/...)
@@ -60,11 +59,10 @@ func newNativeBuildJob(r *MacBuildReconciler, ctx context.Context, macBuild buil
 	workspaceDir := filepath.Join(baseDir, workspaceName)
 
 	return &nativeBuildJob{
-		reconciler: r,
-		ctx:        ctx,
-		logger:     logger.WithValues("job", macBuild.Namespace, "workspace", workspaceDir),
-		macBuild:   macBuild,
-		spec:       macBuild.Spec,
+		ctx:      ctx,
+		logger:   logger.WithValues("job", macBuild.Namespace, "workspace", workspaceDir),
+		macBuild: macBuild,
+		spec:     macBuild.Spec,
 
 		workspaceDir:     workspaceDir,
 		sourceDir:        filepath.Join(workspaceDir, "source"),
@@ -73,6 +71,59 @@ func newNativeBuildJob(r *MacBuildReconciler, ctx context.Context, macBuild buil
 		envFilePath:      filepath.Join(workspaceDir, "remote.env"),
 		pushedResultPath: filepath.Join(workspaceDir, "pushed.yaml"),
 	}
+}
+
+func (j *nativeBuildJob) Run() (*buildResult, error) {
+	// steps:
+	// 1. setup workspace
+	// 2. clone the source
+	// 3. generate build script
+	// 4. run build script
+	// 5. push the binary artifacts
+
+	if err := j.setupWorkspace(); err != nil {
+		return nil, err
+	}
+	defer j.cleanup()
+
+	if err := j.cloneArtifactsRepo(); err != nil {
+		return nil, err
+	}
+
+	commitHash, err := j.cloneAndCheckoutSource()
+	if err != nil {
+		return nil, err
+	}
+	result := &buildResult{CommitHash: commitHash}
+
+	if err := j.generateEnvFile(); err != nil {
+		return result, err
+	}
+
+	if err := j.generateBuildScript(); err != nil {
+		return result, err
+	}
+
+	if _, err := os.Stat(j.buildScriptPath); os.IsNotExist(err) {
+		j.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
+		return result, nil
+	}
+
+	if err := j.executeBuild(); err != nil {
+		return result, err
+	}
+	if !j.spec.Artifacts.Push {
+		j.logger.Info("spec.artifacts.push is false, skipping publish phase.")
+		return result, nil
+	}
+
+	pushedYAML, err := j.executePublish()
+	if err != nil {
+		return result, err
+	}
+
+	result.PushedArtifactsYaml = pushedYAML
+	return result, nil
 }
 
 // setupWorkspace creates the workspace directory for the build job.
@@ -296,57 +347,4 @@ bash %s -p -w "%s" -o "%s"
 	}
 
 	return string(pushedYAMLBytes), nil
-}
-
-func (j *nativeBuildJob) Run() (*buildResult, error) {
-	// steps:
-	// 1. setup workspace
-	// 2. clone the source
-	// 3. generate build script
-	// 4. run build script
-	// 5. push the binary artifacts
-
-	if err := j.setupWorkspace(); err != nil {
-		return nil, err
-	}
-	defer j.cleanup()
-
-	if err := j.cloneArtifactsRepo(); err != nil {
-		return nil, err
-	}
-
-	commitHash, err := j.cloneAndCheckoutSource()
-	if err != nil {
-		return nil, err
-	}
-	result := &buildResult{CommitHash: commitHash}
-
-	if err := j.generateEnvFile(); err != nil {
-		return result, err
-	}
-
-	if err := j.generateBuildScript(); err != nil {
-		return result, err
-	}
-
-	if _, err := os.Stat(j.buildScriptPath); os.IsNotExist(err) {
-		j.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
-		return result, nil
-	}
-
-	if err := j.executeBuild(); err != nil {
-		return result, err
-	}
-	if !j.spec.Artifacts.Push {
-		j.logger.Info("spec.artifacts.push is false, skipping publish phase.")
-		return result, nil
-	}
-
-	pushedYAML, err := j.executePublish()
-	if err != nil {
-		return result, err
-	}
-
-	result.PushedArtifactsYaml = pushedYAML
-	return result, nil
 }
