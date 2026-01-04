@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- build_v1alpha1_macbuild.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
