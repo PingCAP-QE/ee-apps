@@ -6,7 +6,7 @@ toolchain go1.25.5
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250828141640-8dda9c968d09
+	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20260115154902-58256104e7ab
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-redis/redis/v8 v8.11.5
