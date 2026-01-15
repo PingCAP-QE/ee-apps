@@ -363,6 +363,7 @@ var ImageArtifact = Type("ImageArtifact", func() {
 
 var TektonStatus = Type("TektonStatus", func() {
 	Attribute("pipelines", ArrayOf(TektonPipeline))
+	Attribute("triggers_event_ids", ArrayOf(String, func() { Format(FormatUUID) }))
 	Required("pipelines")
 })
 

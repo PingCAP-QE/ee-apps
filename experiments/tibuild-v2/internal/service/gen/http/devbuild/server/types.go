@@ -256,7 +256,8 @@ type ImageArtifactResponse struct {
 
 // TektonStatusResponse is used to define fields on response body types.
 type TektonStatusResponse struct {
-	Pipelines []*TektonPipelineResponse `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	Pipelines        []*TektonPipelineResponse `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	TriggersEventIds []string                  `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineResponse is used to define fields on response body types.
@@ -356,7 +357,8 @@ type ImageArtifactResponseBody struct {
 
 // TektonStatusResponseBody is used to define fields on response body types.
 type TektonStatusResponseBody struct {
-	Pipelines []*TektonPipelineResponseBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	Pipelines        []*TektonPipelineResponseBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	TriggersEventIds []string                      `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineResponseBody is used to define fields on response body types.
@@ -449,7 +451,8 @@ type ImageArtifactRequestBody struct {
 
 // TektonStatusRequestBody is used to define fields on request body types.
 type TektonStatusRequestBody struct {
-	Pipelines []*TektonPipelineRequestBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	Pipelines        []*TektonPipelineRequestBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	TriggersEventIds []string                     `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineRequestBody is used to define fields on request body types.
@@ -956,6 +959,9 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 				err = goa.MergeErrors(err, err2)
 			}
 		}
+	}
+	for _, e := range body.TriggersEventIds {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggers_event_ids[*]", e, goa.FormatUUID))
 	}
 	return
 }
