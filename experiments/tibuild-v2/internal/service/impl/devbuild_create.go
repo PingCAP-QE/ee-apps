@@ -73,9 +73,15 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 	}
 
 	// 2. Send the cloud event to tekton listener that serves for tibuild.
-	if result := s.tektonCloudEventClient.Send(ctx, *event); !protocol.IsACK(result) {
+	respEvent, result := s.tektonCloudEventClient.Request(ctx, *event)
+	if !protocol.IsACK(result) {
 		s.logger.Err(result).Msg("failed to send cloud event")
 		return nil, fmt.Errorf("failed to send cloud event: %w", result)
+	}
+
+	// debug the resp event
+	if respEvent != nil {
+		s.logger.Debug().Stringer("response_event", respEvent).Msg("event sent ok with response")
 	}
 
 	return record, nil
