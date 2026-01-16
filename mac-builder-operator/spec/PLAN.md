@@ -18,7 +18,7 @@ Tasks:
   - [x] Create `macbuild_gc_controller.go` under internal/controller/.
   - [x] Define the `MacBuildGCReconciler` struct.
 - [x] Implement RBAC:
-  - [x] Requires delete permission: `// +kubebuilder:rbac:groups=build.pingcap.com,resources=macbuilds,verbs=get;list;watch;delete`
+  - [x] Requires delete permission: `// +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;delete`
 - [x] Implement Reconcile Logic:
   - [x] Fetch the `MacBuild` object.
   - [x] Check if `Status.Phase is Succeeded` or Failed.

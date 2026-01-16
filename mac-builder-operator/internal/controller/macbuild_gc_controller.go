@@ -35,8 +35,8 @@ type MacBuildGCReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=build.pingcap.com,resources=macbuilds,verbs=get;list;watch;delete
-// +kubebuilder:rbac:groups=build.pingcap.com,resources=macbuilds/status,verbs=get
+// +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds/status,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

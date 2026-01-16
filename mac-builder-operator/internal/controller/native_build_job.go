@@ -295,12 +295,9 @@ func (j *nativeBuildJob) createRunnableScript(wrapperName string, scriptContent 
 // executeBuild executes the build script.
 func (j *nativeBuildJob) executeBuild() error {
 	j.logger.Info("Executing build script (Build phase)...")
+	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
 
-	scriptContent := fmt.Sprintf(`
-source %s
-bash %s
-`, j.envFilePath, j.buildScriptPath)
-
+	scriptContent := fmt.Sprintf(`source %s;%s -b -a -w %s`, j.envFilePath, j.buildScriptPath, releaseDir)
 	runScriptPath, err := j.createRunnableScript("run_build.sh", scriptContent)
 	if err != nil {
 		return err
@@ -319,21 +316,10 @@ func (j *nativeBuildJob) executePublish() (string, error) {
 	j.logger.Info("Executing build script (Publish phase)...")
 	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
 
-	scriptContent := fmt.Sprintf(`
-source %s
-bash %s -p -w "%s" -o "%s"
-`, j.envFilePath, j.buildScriptPath, releaseDir, j.pushedResultPath)
-
-	publishScriptPath, err := j.createRunnableScript("run_publish.sh", scriptContent)
-	if err != nil {
-		return "", err
-	}
-
-	cmdPublish := exec.Command(publishScriptPath)
+	cmdPublish := exec.Command(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
 	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
 
-	err = j.exec(cmdPublish, buildDir)
-	if err != nil {
+	if err := j.exec(cmdPublish, buildDir); err != nil {
 		j.logger.Info("Publish failed, retrying once...", "error", err)
 		if errRetry := j.exec(cmdPublish, buildDir); errRetry != nil {
 			return "", fmt.Errorf("publish execution failed after retry: %w", errRetry)
