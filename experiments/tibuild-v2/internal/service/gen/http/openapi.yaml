@@ -491,6 +491,90 @@ paths:
                             - message
             schemes:
                 - http
+    /hotfix/tidbx/bump-tag:
+        post:
+            tags:
+                - hotfix
+            summary: bump-tag-for-tidbx hotfix
+            description: Create a hot fix git tag for a GitHub repository
+            operationId: hotfix#bump-tag-for-tidbx#1
+            parameters:
+                - name: Bump-Tag-For-TidbxRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/HotfixBumpTagForTidbxRequestBody'
+                    required:
+                        - repo
+                        - author
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/HotfixTagResult'
+                        required:
+                            - repo
+                            - commit
+                            - tag
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
+    /hotfix/tidbx/tag:
+        get:
+            tags:
+                - hotfix
+            summary: query-tag-of-tidbx hotfix
+            description: Query tag info of tidbx repo
+            operationId: hotfix#query-tag-of-tidbx
+            parameters:
+                - name: repo
+                  in: query
+                  description: Full name of GitHub repository (e.g., 'owner/repo')
+                  required: true
+                  type: string
+                - name: tag
+                  in: query
+                  description: Tag name of the GitHub repo
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/HotfixTagResult'
+                        required:
+                            - repo
+                            - commit
+                            - tag
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/HTTPError'
+                        required:
+                            - code
+                            - message
+            schemes:
+                - http
 definitions:
     BinArtifact:
         title: BinArtifact
@@ -498,29 +582,29 @@ definitions:
         properties:
             component:
                 type: string
-                example: Quas quaerat dolores ut aut qui.
+                example: Et et.
             oci_file:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Officiis totam.
+                example: Odio atque et repellendus officiis.
             sha256_oci_file:
                 $ref: '#/definitions/OciFile'
             sha256_url:
                 type: string
-                example: http://zboncak.com/nina.dibbert
+                example: http://toy.net/aubree.larson
                 format: uri
             url:
                 type: string
-                example: http://harberwaelchi.biz/alberta_rutherford
+                example: http://mannswaniawski.info/trenton.waelchi
                 format: uri
         example:
-            component: Culpa architecto at.
+            component: Eius velit dignissimos et voluptatem culpa architecto.
             oci_file:
                 file: Non ratione reiciendis minus sapiente doloremque rerum.
                 repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
                 tag: Nulla et saepe ratione est ut.
-            platform: Dolorem et dolores voluptatem ut.
+            platform: Nam dolorem et dolores voluptatem ut officiis.
             sha256_oci_file:
                 file: Non ratione reiciendis minus sapiente doloremque rerum.
                 repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
@@ -704,7 +788,7 @@ definitions:
         properties:
             id:
                 type: integer
-                example: 826457321634399193
+                example: 8922536377226007154
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -917,20 +1001,20 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: 4680-32-07 15:19:60
+                example: 0715-19-60 64:56:78
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             created_by:
                 type: string
-                example: susie@marquardt.name
+                example: jameson@rosenbaum.info
                 format: email
             updated_at:
                 type: string
-                example: 6456-78-89 01:11:42
+                example: 8901-11-42 22:83:70
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 2181-26-52 96:88:13
-            created_by: geraldine.keebler@bernier.info
-            updated_at: 4744-92-11 12:44:30
+            created_at: 2652-96-88 13:47:44
+            created_by: buster@ruecker.net
+            updated_at: 9211-12-44 30:89:24
         required:
             - created_at
             - created_by
@@ -941,13 +1025,13 @@ definitions:
         properties:
             build_env:
                 type: string
-                example: Repudiandae quo hic commodi blanditiis et natus.
+                example: Blanditiis et.
             builder_img:
                 type: string
-                example: Vitae molestias officiis laudantium illum voluptates.
+                example: Dolore vitae molestias.
             edition:
                 type: string
-                example: next-gen
+                example: fips
                 enum:
                     - enterprise
                     - community
@@ -958,19 +1042,19 @@ definitions:
             features:
                 type: string
                 description: '[Deprecated] use build_env for custom features'
-                example: Ut molestias eligendi veniam voluptas et.
+                example: Voluptates ut voluptatem facilis.
             git_ref:
                 type: string
-                example: Fuga sed id magni ut ea.
+                example: Molestias eligendi veniam voluptas et et fuga.
             git_sha:
                 type: string
-                example: Sint et quis id ea.
+                example: Id magni ut ea consequatur sint et.
             github_repo:
                 type: string
-                example: Nihil culpa quis doloribus soluta cumque commodi.
+                example: Id ea inventore nihil culpa quis doloribus.
             is_hotfix:
                 type: boolean
-                example: false
+                example: true
             is_push_gcr:
                 type: boolean
                 example: true
@@ -983,7 +1067,7 @@ definitions:
             platform:
                 type: string
                 default: all
-                example: all
+                example: linux/amd64
                 enum:
                     - all
                     - linux
@@ -994,10 +1078,10 @@ definitions:
                     - darwin/arm64
             plugin_git_ref:
                 type: string
-                example: Ut vitae eius.
+                example: Dolores vero.
             product:
                 type: string
-                example: tidb-operator
+                example: tici
                 enum:
                     - dm
                     - enterprise-plugin
@@ -1021,34 +1105,34 @@ definitions:
                     - tiproxy
             product_base_img:
                 type: string
-                example: Qui officiis eius cum voluptas.
+                example: Vitae eius minus iure qui officiis eius.
             product_dockerfile:
                 type: string
-                example: Odio delectus vero eos.
+                example: Voluptas aperiam odio delectus vero.
             target_img:
                 type: string
-                example: Exercitationem perspiciatis.
+                example: Similique exercitationem perspiciatis sed itaque beatae.
             version:
                 type: string
-                example: Itaque beatae soluta numquam.
+                example: Numquam sit minima tenetur ut pariatur.
         example:
-            build_env: Minima tenetur ut pariatur consequatur perferendis.
-            builder_img: Et eius omnis suscipit consequatur ut nostrum.
-            edition: next-gen
-            features: Ducimus molestias dolores est enim qui.
-            git_ref: Maiores vel magnam maiores dolore iure.
-            git_sha: Nobis labore labore nemo.
-            github_repo: Ut quasi corrupti.
+            build_env: Perferendis quos et.
+            builder_img: Omnis suscipit.
+            edition: experiment
+            features: Occaecati deserunt.
+            git_ref: Ducimus molestias dolores est enim qui.
+            git_sha: Maiores vel magnam maiores dolore iure.
+            github_repo: Nobis labore labore nemo.
             is_hotfix: true
             is_push_gcr: false
             pipeline_engine: jenkins
-            platform: darwin/arm64
-            plugin_git_ref: Sit facere aspernatur esse quod.
-            product: dm
-            product_base_img: Saepe nam.
-            product_dockerfile: Voluptate saepe ut.
-            target_img: Dignissimos est in quia molestiae exercitationem.
-            version: Et et.
+            platform: linux
+            plugin_git_ref: Quia eius blanditiis.
+            product: tikv
+            product_base_img: Facere aspernatur esse quod amet.
+            product_dockerfile: Saepe nam.
+            target_img: Voluptate saepe ut.
+            version: Dignissimos est in quia molestiae exercitationem.
         required:
             - product
             - version
@@ -1479,15 +1563,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 2174414703400687276
+                example: 719128964453386823
                 format: int64
             message:
                 type: string
-                example: Cupiditate rem quidem corporis quam omnis ut.
+                example: Nihil ducimus quisquam aspernatur occaecati eos laborum.
         description: Bad Request
         example:
-            code: 5915811804835091177
-            message: Quisquam aspernatur.
+            code: 8091817607347491116
+            message: Soluta aut.
         required:
             - code
             - message
@@ -1497,24 +1581,34 @@ definitions:
         properties:
             author:
                 type: string
-                description: GitHub account who requested to create the git tag
-                example: wuhuizuo
+                description: The email who requested to create the git tag
+                example: abc@test.com
             branch:
                 type: string
                 description: Branch name of the GitHub repo
                 example: release-8.5
+            change_id:
+                type: string
+                description: Change ID in release window
+                example: "3456"
             commit:
                 type: string
                 description: Short or full git commit SHA
                 example: abc123def456
+            release_id:
+                type: string
+                description: Release window ID
+                example: "12345"
             repo:
                 type: string
                 description: Full name of GitHub repository (e.g., 'owner/repo')
                 example: pingcap/tidb
         example:
-            author: wuhuizuo
+            author: abc@test.com
             branch: release-8.5
+            change_id: "3456"
             commit: abc123def456
+            release_id: "12345"
             repo: pingcap/tidb
         required:
             - repo
@@ -1523,10 +1617,22 @@ definitions:
         title: HotfixTagResult
         type: object
         properties:
+            author:
+                type: string
+                description: The email who requested to create the git tag
+                example: abc@test.com
+            change_id:
+                type: string
+                description: Change ID in release window
+                example: "3456"
             commit:
                 type: string
                 description: The commit tag created on
                 example: abc123def456789
+            release_id:
+                type: string
+                description: Release window ID
+                example: "12345"
             repo:
                 type: string
                 description: Full name of GitHub repository
@@ -1536,7 +1642,10 @@ definitions:
                 description: Git tag name
                 example: v8.5.4-nextgen.202510.10
         example:
+            author: abc@test.com
+            change_id: "3456"
             commit: abc123def456789
+            release_id: "12345"
             repo: pingcap/tidb
             tag: v8.5.4-nextgen.202510.10
         required:
@@ -1571,13 +1680,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Nihil dignissimos aut aut sit voluptas ut.
+                example: Minus ullam eum.
             target:
                 type: string
-                example: Non minus.
+                example: Asperiores neque corporis eligendi rerum.
         example:
-            source: Eum veritatis asperiores neque corporis eligendi rerum.
-            target: Nam necessitatibus impedit distinctio beatae.
+            source: Nam necessitatibus impedit distinctio beatae.
+            target: Possimus cupiditate rem quidem corporis quam.
         required:
             - source
             - target
@@ -1617,17 +1726,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Ad nihil non quo nihil quia.
+                example: Quas quaerat dolores ut aut qui.
             repo:
                 type: string
-                example: Asperiores commodi accusantium recusandae.
+                example: Ad nihil non quo nihil quia.
             tag:
                 type: string
-                example: Ipsa ut cupiditate repellat quisquam.
+                example: Asperiores commodi accusantium recusandae.
         example:
-            file: Tempore voluptatem at harum magnam temporibus.
-            repo: Totam reprehenderit iure unde perferendis.
-            tag: Odio atque et repellendus officiis.
+            file: Ipsa ut cupiditate repellat quisquam.
+            repo: Tempore voluptatem at harum magnam temporibus.
+            tag: Totam reprehenderit iure unde perferendis.
         required:
             - file
             - repo

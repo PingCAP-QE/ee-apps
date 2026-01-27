@@ -16,6 +16,8 @@ import (
 type Service interface {
 	// Create a hot fix git tag for a GitHub repository
 	BumpTagForTidbx(context.Context, *BumpTagForTidbxPayload) (res *HotfixTagResult, err error)
+	// Query tag info of tidbx repo
+	QueryTagOfTidbx(context.Context, *QueryTagOfTidbxPayload) (res *HotfixTagResult, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -32,7 +34,7 @@ const ServiceName = "hotfix"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [1]string{"bump-tag-for-tidbx"}
+var MethodNames = [2]string{"bump-tag-for-tidbx", "query-tag-of-tidbx"}
 
 // BumpTagForTidbxPayload is the payload type of the hotfix service
 // bump-tag-for-tidbx method.
@@ -43,8 +45,12 @@ type BumpTagForTidbxPayload struct {
 	Branch *string
 	// Short or full git commit SHA
 	Commit *string
-	// GitHub account who requested to create the git tag
+	// The email who requested to create the git tag
 	Author string
+	// Release window ID
+	ReleaseID *string
+	// Change ID in release window
+	ChangeID *string
 }
 
 type HTTPError struct {
@@ -60,6 +66,21 @@ type HotfixTagResult struct {
 	// The commit tag created on
 	Commit string
 	// Git tag name
+	Tag string
+	// The email who requested to create the git tag
+	Author *string
+	// Release window ID
+	ReleaseID *string
+	// Change ID in release window
+	ChangeID *string
+}
+
+// QueryTagOfTidbxPayload is the payload type of the hotfix service
+// query-tag-of-tidbx method.
+type QueryTagOfTidbxPayload struct {
+	// Full name of GitHub repository (e.g., 'owner/repo')
+	Repo string
+	// Tag name of the GitHub repo
 	Tag string
 }
 

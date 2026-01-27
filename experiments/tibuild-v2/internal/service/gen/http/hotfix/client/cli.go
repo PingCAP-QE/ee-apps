@@ -23,15 +23,35 @@ func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.Bump
 	{
 		err = json.Unmarshal([]byte(hotfixBumpTagForTidbxBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"wuhuizuo\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"change_id\": \"3456\",\n      \"commit\": \"abc123def456\",\n      \"release_id\": \"12345\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
 	v := &hotfix.BumpTagForTidbxPayload{
-		Repo:   body.Repo,
-		Branch: body.Branch,
-		Commit: body.Commit,
-		Author: body.Author,
+		Repo:      body.Repo,
+		Branch:    body.Branch,
+		Commit:    body.Commit,
+		Author:    body.Author,
+		ReleaseID: body.ReleaseID,
+		ChangeID:  body.ChangeID,
 	}
+
+	return v, nil
+}
+
+// BuildQueryTagOfTidbxPayload builds the payload for the hotfix
+// query-tag-of-tidbx endpoint from CLI flags.
+func BuildQueryTagOfTidbxPayload(hotfixQueryTagOfTidbxRepo string, hotfixQueryTagOfTidbxTag string) (*hotfix.QueryTagOfTidbxPayload, error) {
+	var repo string
+	{
+		repo = hotfixQueryTagOfTidbxRepo
+	}
+	var tag string
+	{
+		tag = hotfixQueryTagOfTidbxTag
+	}
+	v := &hotfix.QueryTagOfTidbxPayload{}
+	v.Repo = repo
+	v.Tag = tag
 
 	return v, nil
 }

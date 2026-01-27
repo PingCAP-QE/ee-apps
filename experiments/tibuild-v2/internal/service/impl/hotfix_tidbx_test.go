@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -260,8 +261,16 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				mock.WithRequestMatch(
 					mock.PostReposGitTagsByOwnerByRepo,
 					&github.Tag{
-						Tag:     github.Ptr("v9.0.0-nextgen.202601.1"),
-						Message: github.Ptr("Hot fix tag created by tester"),
+						Tag: github.Ptr("v9.0.0-nextgen.202601.1"),
+						// Message is now JSON metadata (see `tidbxTagMeta` in `hotfix_tidbx.go`)
+						Message: github.Ptr(func() string {
+							b, _ := json.Marshal(map[string]any{
+								"author":     "tester",
+								"release_id": "rw-12345",
+								"change_id":  "ch-67890",
+							})
+							return string(b)
+						}()),
 						Object: &github.GitObject{
 							Type: github.Ptr("commit"),
 							SHA:  github.Ptr(commit),
@@ -368,5 +377,101 @@ func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
 	}
 	if httpErr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, httpErr.Code)
+	}
+}
+
+func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v8.5.4-nextgen.202510.1"
+
+	wantAuthor := "tester@example.com"
+	wantReleaseID := "rw-12345"
+	wantChangeID := "ch-67890"
+
+	metaBytes, err := json.Marshal(map[string]any{
+		"author":     wantAuthor,
+		"release_id": wantReleaseID,
+		"change_id":  wantChangeID,
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal metadata json: %v", err)
+	}
+
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag:     github.Ptr(tag),
+				Message: github.Ptr(string(metaBytes)),
+				SHA:     github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if qerr != nil {
+		t.Fatalf("unexpected error: %v", qerr)
+	}
+
+	if res.Repo != fullRepo {
+		t.Fatalf("expected repo %s, got %s", fullRepo, res.Repo)
+	}
+	if res.Tag != tag {
+		t.Fatalf("expected tag %s, got %s", tag, res.Tag)
+	}
+	// Query uses the tag object SHA as Commit (per current implementation).
+	if res.Commit != "deadbeef" {
+		t.Fatalf("expected commit %s, got %s", "deadbeef", res.Commit)
+	}
+	if res.Author == nil || *res.Author != wantAuthor {
+		t.Fatalf("expected author %q, got %+v", wantAuthor, res.Author)
+	}
+	if res.ReleaseID == nil || *res.ReleaseID != wantReleaseID {
+		t.Fatalf("expected release_id %q, got %+v", wantReleaseID, res.ReleaseID)
+	}
+	if res.ChangeID == nil || *res.ChangeID != wantChangeID {
+		t.Fatalf("expected change_id %q, got %+v", wantChangeID, res.ChangeID)
+	}
+}
+
+func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v8.5.4-nextgen.202510.1"
+
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag:     github.Ptr(tag),
+				Message: github.Ptr("{not-json"),
+				SHA:     github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if qerr != nil {
+		t.Fatalf("unexpected error: %v", qerr)
+	}
+	if res.Author != nil || res.ReleaseID != nil || res.ChangeID != nil {
+		t.Fatalf("expected nil metadata fields on invalid json, got author=%+v release_id=%+v change_id=%+v", res.Author, res.ReleaseID, res.ChangeID)
 	}
 }

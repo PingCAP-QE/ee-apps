@@ -27,7 +27,7 @@ import (
 func UsageCommands() string {
 	return `artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
-hotfix bump-tag-for-tidbx
+hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)
 `
 }
 
@@ -39,9 +39,11 @@ func UsageExamples() string {
    }'` + "\n" +
 		os.Args[0] + ` devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."` + "\n" +
 		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
-      "author": "wuhuizuo",
+      "author": "abc@test.com",
       "branch": "release-8.5",
+      "change_id": "3456",
       "commit": "abc123def456",
+      "release_id": "12345",
       "repo": "pingcap/tidb"
    }'` + "\n" +
 		""
@@ -102,6 +104,10 @@ func ParseEndpoint(
 
 		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
 		hotfixBumpTagForTidbxBodyFlag = hotfixBumpTagForTidbxFlags.String("body", "REQUIRED", "")
+
+		hotfixQueryTagOfTidbxFlags    = flag.NewFlagSet("query-tag-of-tidbx", flag.ExitOnError)
+		hotfixQueryTagOfTidbxRepoFlag = hotfixQueryTagOfTidbxFlags.String("repo", "REQUIRED", "")
+		hotfixQueryTagOfTidbxTagFlag  = hotfixQueryTagOfTidbxFlags.String("tag", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -116,6 +122,7 @@ func ParseEndpoint(
 
 	hotfixFlags.Usage = hotfixUsage
 	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
+	hotfixQueryTagOfTidbxFlags.Usage = hotfixQueryTagOfTidbxUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -187,6 +194,9 @@ func ParseEndpoint(
 			case "bump-tag-for-tidbx":
 				epf = hotfixBumpTagForTidbxFlags
 
+			case "query-tag-of-tidbx":
+				epf = hotfixQueryTagOfTidbxFlags
+
 			}
 
 		}
@@ -244,6 +254,9 @@ func ParseEndpoint(
 			case "bump-tag-for-tidbx":
 				endpoint = c.BumpTagForTidbx()
 				data, err = hotfixc.BuildBumpTagForTidbxPayload(*hotfixBumpTagForTidbxBodyFlag)
+			case "query-tag-of-tidbx":
+				endpoint = c.QueryTagOfTidbx()
+				data, err = hotfixc.BuildQueryTagOfTidbxPayload(*hotfixQueryTagOfTidbxRepoFlag, *hotfixQueryTagOfTidbxTagFlag)
 			}
 		}
 	}
@@ -271,7 +284,7 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s artifact sync-image --body '{
@@ -303,12 +316,12 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT:
-    -page-size INT:
-    -hotfix BOOL:
-    -sort STRING:
-    -direction STRING:
-    -created-by STRING:
+    -page INT: 
+    -page-size INT: 
+    -hotfix BOOL: 
+    -sort STRING: 
+    -direction STRING: 
+    -created-by STRING: 
 
 Example:
     %[1]s devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."
@@ -319,8 +332,8 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON:
-    -dryrun BOOL:
+    -body JSON: 
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild create --body '{
@@ -353,7 +366,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL:
+    -sync BOOL: 
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -364,9 +377,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON:
+    -body JSON: 
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild update --body '{
@@ -614,7 +627,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -625,13 +638,13 @@ func devbuildIngestEventUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
 
 Ingest a CloudEvent for build events
-    -body JSON:
-    -datacontenttype STRING:
-    -id STRING:
-    -source STRING:
-    -type STRING:
-    -specversion STRING:
-    -time STRING:
+    -body JSON: 
+    -datacontenttype STRING: 
+    -id STRING: 
+    -source STRING: 
+    -type STRING: 
+    -specversion STRING: 
+    -time STRING: 
 
 Example:
     %[1]s devbuild ingest-event --body '{
@@ -655,6 +668,7 @@ Usage:
 
 COMMAND:
     bump-tag-for-tidbx: Create a hot fix git tag for a GitHub repository
+    query-tag-of-tidbx: Query tag info of tidbx repo
 
 Additional help:
     %[1]s hotfix COMMAND --help
@@ -664,14 +678,28 @@ func hotfixBumpTagForTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
 
 Create a hot fix git tag for a GitHub repository
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s hotfix bump-tag-for-tidbx --body '{
-      "author": "wuhuizuo",
+      "author": "abc@test.com",
       "branch": "release-8.5",
+      "change_id": "3456",
       "commit": "abc123def456",
+      "release_id": "12345",
       "repo": "pingcap/tidb"
    }'
+`, os.Args[0])
+}
+
+func hotfixQueryTagOfTidbxUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix query-tag-of-tidbx -repo STRING -tag STRING
+
+Query tag info of tidbx repo
+    -repo STRING: 
+    -tag STRING: 
+
+Example:
+    %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v8.5.4-nextgen-202510.1"
 `, os.Args[0])
 }

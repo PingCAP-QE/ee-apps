@@ -2989,9 +2989,11 @@ paths:
                         schema:
                             $ref: '#/components/schemas/BumpTagForTidbxRequestBody'
                         example:
-                            author: wuhuizuo
+                            author: abc@test.com
                             branch: release-8.5
+                            change_id: "3456"
                             commit: abc123def456
+                            release_id: "12345"
                             repo: pingcap/tidb
             responses:
                 "200":
@@ -3001,7 +3003,10 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/HotfixTagResult'
                             example:
+                                author: abc@test.com
+                                change_id: "3456"
                                 commit: abc123def456789
+                                release_id: "12345"
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -3022,6 +3027,118 @@ paths:
                             example:
                                 code: 7864691713642491140
                                 message: Quasi eligendi qui.
+    /api/v2/hotfix/tidbx/bump-tag:
+        post:
+            tags:
+                - hotfix
+            summary: bump-tag-for-tidbx hotfix
+            description: Create a hot fix git tag for a GitHub repository
+            operationId: hotfix#bump-tag-for-tidbx#1
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BumpTagForTidbxRequestBody'
+                        example:
+                            author: abc@test.com
+                            branch: release-8.5
+                            change_id: "3456"
+                            commit: abc123def456
+                            release_id: "12345"
+                            repo: pingcap/tidb
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HotfixTagResult'
+                            example:
+                                author: abc@test.com
+                                change_id: "3456"
+                                commit: abc123def456789
+                                release_id: "12345"
+                                repo: pingcap/tidb
+                                tag: v8.5.4-nextgen.202510.10
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 6588833732243090418
+                                message: Porro esse voluptatem.
+                "500":
+                    description: 'InternalServerError: Internal Server Error'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 7864691713642491140
+                                message: Quasi eligendi qui.
+    /api/v2/hotfix/tidbx/tag:
+        get:
+            tags:
+                - hotfix
+            summary: query-tag-of-tidbx hotfix
+            description: Query tag info of tidbx repo
+            operationId: hotfix#query-tag-of-tidbx
+            parameters:
+                - name: repo
+                  in: query
+                  description: Full name of GitHub repository (e.g., 'owner/repo')
+                  allowEmptyValue: true
+                  required: true
+                  schema:
+                    type: string
+                    description: Full name of GitHub repository (e.g., 'owner/repo')
+                    example: pingcap/tidb
+                  example: pingcap/tidb
+                - name: tag
+                  in: query
+                  description: Tag name of the GitHub repo
+                  allowEmptyValue: true
+                  required: true
+                  schema:
+                    type: string
+                    description: Tag name of the GitHub repo
+                    example: v8.5.4-nextgen-202510.1
+                  example: v8.5.4-nextgen-202510.1
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HotfixTagResult'
+                            example:
+                                author: abc@test.com
+                                change_id: "3456"
+                                commit: abc123def456789
+                                release_id: "12345"
+                                repo: pingcap/tidb
+                                tag: v8.5.4-nextgen.202510.10
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 8232016718988932310
+                                message: Dignissimos aut.
+                "500":
+                    description: 'InternalServerError: Internal Server Error'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 2726068038116724703
+                                message: Voluptas ut iste.
 components:
     schemas:
         BinArtifact:
@@ -3165,24 +3282,34 @@ components:
             properties:
                 author:
                     type: string
-                    description: GitHub account who requested to create the git tag
-                    example: wuhuizuo
+                    description: The email who requested to create the git tag
+                    example: abc@test.com
                 branch:
                     type: string
                     description: Branch name of the GitHub repo
                     example: release-8.5
+                change_id:
+                    type: string
+                    description: Change ID in release window
+                    example: "3456"
                 commit:
                     type: string
                     description: Short or full git commit SHA
                     example: abc123def456
+                release_id:
+                    type: string
+                    description: Release window ID
+                    example: "12345"
                 repo:
                     type: string
                     description: Full name of GitHub repository (e.g., 'owner/repo')
                     example: pingcap/tidb
             example:
-                author: wuhuizuo
+                author: abc@test.com
                 branch: release-8.5
+                change_id: "3456"
                 commit: abc123def456
+                release_id: "12345"
                 repo: pingcap/tidb
             required:
                 - repo
@@ -3876,10 +4003,22 @@ components:
         HotfixTagResult:
             type: object
             properties:
+                author:
+                    type: string
+                    description: The email who requested to create the git tag
+                    example: abc@test.com
+                change_id:
+                    type: string
+                    description: Change ID in release window
+                    example: "3456"
                 commit:
                     type: string
                     description: The commit tag created on
                     example: abc123def456789
+                release_id:
+                    type: string
+                    description: Release window ID
+                    example: "12345"
                 repo:
                     type: string
                     description: Full name of GitHub repository
@@ -3889,7 +4028,10 @@ components:
                     description: Git tag name
                     example: v8.5.4-nextgen.202510.10
             example:
+                author: abc@test.com
+                change_id: "3456"
                 commit: abc123def456789
+                release_id: "12345"
                 repo: pingcap/tidb
                 tag: v8.5.4-nextgen.202510.10
             required:

@@ -137,3 +137,15 @@ func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commit
 
 	return nil
 }
+
+func (s *hotfixsrvc) getTag(ctx context.Context, owner, repo, tagName string) (*github.Tag, error) {
+	tagObj, _, err := s.ghClient.Git.GetTag(ctx, owner, repo, tagName)
+	if err != nil {
+		return nil, &hotfix.HTTPError{
+			Code:    http.StatusNotFound,
+			Message: fmt.Sprintf("failed to get tag object: %v", err),
+		}
+	}
+
+	return tagObj, nil
+}
