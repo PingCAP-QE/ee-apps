@@ -398,6 +398,18 @@ func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
 	}
 
 	httpClient := mock.NewMockedHTTPClient(
+		// `QueryTagOfTidbx` now calls `s.getTag(...)` which does:
+		// 1) Git.GetRef("tags/<tag>")
+		// 2) Git.GetTag(<sha from ref>)
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + tag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
 		mock.WithRequestMatch(
 			mock.GetReposGitTagsByOwnerByRepoByTagSha,
 			&github.Tag{
@@ -448,6 +460,18 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 	tag := "v8.5.4-nextgen.202510.1"
 
 	httpClient := mock.NewMockedHTTPClient(
+		// `QueryTagOfTidbx` now calls `s.getTag(...)` which does:
+		// 1) Git.GetRef("tags/<tag>")
+		// 2) Git.GetTag(<sha from ref>)
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + tag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
 		mock.WithRequestMatch(
 			mock.GetReposGitTagsByOwnerByRepoByTagSha,
 			&github.Tag{

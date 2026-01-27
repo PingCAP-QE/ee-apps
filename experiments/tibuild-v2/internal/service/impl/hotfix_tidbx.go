@@ -92,9 +92,12 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 
 	l.Info().Msg("Successfully created tag")
 	return &hotfix.HotfixTagResult{
-		Repo:   p.Repo,
-		Commit: commitSHA,
-		Tag:    tagName,
+		Repo:      p.Repo,
+		Commit:    commitSHA,
+		Tag:       tagName,
+		Author:    &p.Author,
+		ReleaseID: p.ReleaseID,
+		ChangeID:  p.ChangeID,
 	}, nil
 }
 
@@ -116,17 +119,16 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 	}
 	owner, repo := parts[0], parts[1]
 
-	// 1. Get git tag information.
-	tagObj, _, err := s.ghClient.Git.GetTag(ctx, owner, repo, p.Tag)
+	// 1. Get git tag ref information.
+	tagObj, err := s.getTag(ctx, owner, repo, p.Tag)
 	if err != nil {
-		l.Err(err).Msg("Failed to get tag")
+		l.Err(err).Msg("Failed to get tag ref")
 		return nil, &hotfix.HTTPError{
 			Code:    http.StatusNotFound,
-			Message: fmt.Sprintf("failed to get tag object: %v", err),
+			Message: fmt.Sprintf("failed to get tag ref object: %v", err),
 		}
 	}
-	l.Info().Msg("Successfully get tag")
-
+	l.Info().Msg("Successfully get tag ref")
 	// 2. Parse fields in git tag message (metadata struct).
 	var tagMetadata tidbxTagMeta
 	if m := strings.TrimSpace(tagObj.GetMessage()); m != "" {
