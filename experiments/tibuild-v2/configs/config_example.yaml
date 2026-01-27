@@ -1,21 +1,33 @@
-# A configuration file is required for this project, like mysql/git configuration etc...
-# Because some configurations involve security, they cannot be disclosed. You should create "config.yaml" under this project by yourself.
-# All configuration information keys is in /tirelease/commons/configs/config.go in struct of ConfigYaml
-# Config like this:
-mysql_dsn: "root:your password@tcp(127.0.0.1:3306)/your_db_name?charset=utf8mb4&parseTime=True&loc=Local"
+# A configuration file is required for this project.
+# Create your own config file (default: ./config.yaml) and keep secrets out of git.
+# The full list of keys lives in pkg/config/config.go (struct: config.Service).
 
-jenkins:
-  username: "your jenkins account"
-  password: "your password"
+store:
+  # driver examples: mysql | sqlite3
+  driver: mysql
+  # mysql example:
+  #   root:password@tcp(127.0.0.1:3306)/tibuild?charset=utf8mb4&parseTime=True&loc=Local
+  dsn: "root:your-password@tcp(127.0.0.1:3306)/your_db_name?charset=utf8mb4&parseTime=True&loc=Local"
+
 github:
   token: ""
 
-restapisecret:
-  admintoken: "1"
-  tibuildtoken: "2"
+jenkins:
+  url: "https://<jenkins-url>"
+  username: "your-jenkins-account"
+  password: "your-jenkins-password"
+  job_name: "<jenkins-job-name>"
 
-cloudevent:
-  endpoint: "http://localhost:8000"
+tekton:
+  cloudevent_endpoint: "http://localhost:8000"
+  view_url: "https://<tekton-dashboard-url>/#/namespaces/ee-cd/pipelineruns"
+  oci_file_download_url: "https://<download-service-url>/oci-file"
 
-tektonviewurl: "https://<tekton-dashboard-url>/#/namespaces/ee-cd/pipelineruns"
-ocifileserverurl: "https://<download-service-url>/oci-file"
+# Map product name -> GitHub repo (<org>/<repo>)
+product_repo_map:
+  pd: pingcap/pd
+  tidb: pingcap/tidb
+
+# Map image URL prefix -> mirror URL prefix
+image_mirror_url_map:
+  "gcr.io/": "<your-mirror>/"

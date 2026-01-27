@@ -17,12 +17,14 @@ import (
 // Client is the "hotfix" service client.
 type Client struct {
 	BumpTagForTidbxEndpoint goa.Endpoint
+	QueryTagOfTidbxEndpoint goa.Endpoint
 }
 
 // NewClient initializes a "hotfix" service client given the endpoints.
-func NewClient(bumpTagForTidbx goa.Endpoint) *Client {
+func NewClient(bumpTagForTidbx, queryTagOfTidbx goa.Endpoint) *Client {
 	return &Client{
 		BumpTagForTidbxEndpoint: bumpTagForTidbx,
+		QueryTagOfTidbxEndpoint: queryTagOfTidbx,
 	}
 }
 
@@ -35,6 +37,21 @@ func NewClient(bumpTagForTidbx goa.Endpoint) *Client {
 func (c *Client) BumpTagForTidbx(ctx context.Context, p *BumpTagForTidbxPayload) (res *HotfixTagResult, err error) {
 	var ires any
 	ires, err = c.BumpTagForTidbxEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*HotfixTagResult), nil
+}
+
+// QueryTagOfTidbx calls the "query-tag-of-tidbx" endpoint of the "hotfix"
+// service.
+// QueryTagOfTidbx may return the following errors:
+//   - "BadRequest" (type *HTTPError): Bad Request
+//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - error: internal error
+func (c *Client) QueryTagOfTidbx(ctx context.Context, p *QueryTagOfTidbxPayload) (res *HotfixTagResult, err error) {
+	var ires any
+	ires, err = c.QueryTagOfTidbxEndpoint(ctx, p)
 	if err != nil {
 		return
 	}

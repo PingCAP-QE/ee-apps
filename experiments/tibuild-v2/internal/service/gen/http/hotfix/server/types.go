@@ -22,8 +22,12 @@ type BumpTagForTidbxRequestBody struct {
 	Branch *string `form:"branch,omitempty" json:"branch,omitempty" xml:"branch,omitempty"`
 	// Short or full git commit SHA
 	Commit *string `form:"commit,omitempty" json:"commit,omitempty" xml:"commit,omitempty"`
-	// GitHub account who requested to create the git tag
+	// The email who requested to create the git tag
 	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
+	// Release window ID
+	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
+	// Change ID in release window
+	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
 }
 
 // BumpTagForTidbxResponseBody is the type of the "hotfix" service
@@ -35,6 +39,29 @@ type BumpTagForTidbxResponseBody struct {
 	Commit string `form:"commit" json:"commit" xml:"commit"`
 	// Git tag name
 	Tag string `form:"tag" json:"tag" xml:"tag"`
+	// The email who requested to create the git tag
+	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
+	// Release window ID
+	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
+	// Change ID in release window
+	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+}
+
+// QueryTagOfTidbxResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body.
+type QueryTagOfTidbxResponseBody struct {
+	// Full name of GitHub repository
+	Repo string `form:"repo" json:"repo" xml:"repo"`
+	// The commit tag created on
+	Commit string `form:"commit" json:"commit" xml:"commit"`
+	// Git tag name
+	Tag string `form:"tag" json:"tag" xml:"tag"`
+	// The email who requested to create the git tag
+	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
+	// Release window ID
+	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
+	// Change ID in release window
+	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
 }
 
 // BumpTagForTidbxBadRequestResponseBody is the type of the "hotfix" service
@@ -52,13 +79,45 @@ type BumpTagForTidbxInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// QueryTagOfTidbxBadRequestResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body for the "BadRequest" error.
+type QueryTagOfTidbxBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryTagOfTidbxInternalServerErrorResponseBody is the type of the "hotfix"
+// service "query-tag-of-tidbx" endpoint HTTP response body for the
+// "InternalServerError" error.
+type QueryTagOfTidbxInternalServerErrorResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // NewBumpTagForTidbxResponseBody builds the HTTP response body from the result
 // of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
 func NewBumpTagForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpTagForTidbxResponseBody {
 	body := &BumpTagForTidbxResponseBody{
-		Repo:   res.Repo,
-		Commit: res.Commit,
-		Tag:    res.Tag,
+		Repo:      res.Repo,
+		Commit:    res.Commit,
+		Tag:       res.Tag,
+		Author:    res.Author,
+		ReleaseID: res.ReleaseID,
+		ChangeID:  res.ChangeID,
+	}
+	return body
+}
+
+// NewQueryTagOfTidbxResponseBody builds the HTTP response body from the result
+// of the "query-tag-of-tidbx" endpoint of the "hotfix" service.
+func NewQueryTagOfTidbxResponseBody(res *hotfix.HotfixTagResult) *QueryTagOfTidbxResponseBody {
+	body := &QueryTagOfTidbxResponseBody{
+		Repo:      res.Repo,
+		Commit:    res.Commit,
+		Tag:       res.Tag,
+		Author:    res.Author,
+		ReleaseID: res.ReleaseID,
+		ChangeID:  res.ChangeID,
 	}
 	return body
 }
@@ -84,15 +143,48 @@ func NewBumpTagForTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *B
 	return body
 }
 
+// NewQueryTagOfTidbxBadRequestResponseBody builds the HTTP response body from
+// the result of the "query-tag-of-tidbx" endpoint of the "hotfix" service.
+func NewQueryTagOfTidbxBadRequestResponseBody(res *hotfix.HTTPError) *QueryTagOfTidbxBadRequestResponseBody {
+	body := &QueryTagOfTidbxBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryTagOfTidbxInternalServerErrorResponseBody builds the HTTP response
+// body from the result of the "query-tag-of-tidbx" endpoint of the "hotfix"
+// service.
+func NewQueryTagOfTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *QueryTagOfTidbxInternalServerErrorResponseBody {
+	body := &QueryTagOfTidbxInternalServerErrorResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewBumpTagForTidbxPayload builds a hotfix service bump-tag-for-tidbx
 // endpoint payload.
 func NewBumpTagForTidbxPayload(body *BumpTagForTidbxRequestBody) *hotfix.BumpTagForTidbxPayload {
 	v := &hotfix.BumpTagForTidbxPayload{
-		Repo:   *body.Repo,
-		Branch: body.Branch,
-		Commit: body.Commit,
-		Author: *body.Author,
+		Repo:      *body.Repo,
+		Branch:    body.Branch,
+		Commit:    body.Commit,
+		Author:    *body.Author,
+		ReleaseID: body.ReleaseID,
+		ChangeID:  body.ChangeID,
 	}
+
+	return v
+}
+
+// NewQueryTagOfTidbxPayload builds a hotfix service query-tag-of-tidbx
+// endpoint payload.
+func NewQueryTagOfTidbxPayload(repo string, tag string) *hotfix.QueryTagOfTidbxPayload {
+	v := &hotfix.QueryTagOfTidbxPayload{}
+	v.Repo = repo
+	v.Tag = tag
 
 	return v
 }

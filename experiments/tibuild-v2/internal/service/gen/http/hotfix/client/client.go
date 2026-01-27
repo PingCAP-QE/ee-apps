@@ -22,6 +22,10 @@ type Client struct {
 	// bump-tag-for-tidbx endpoint.
 	BumpTagForTidbxDoer goahttp.Doer
 
+	// QueryTagOfTidbx Doer is the HTTP client used to make requests to the
+	// query-tag-of-tidbx endpoint.
+	QueryTagOfTidbxDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -43,6 +47,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		BumpTagForTidbxDoer: doer,
+		QueryTagOfTidbxDoer: doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
 		host:                host,
@@ -70,6 +75,30 @@ func (c *Client) BumpTagForTidbx() goa.Endpoint {
 		resp, err := c.BumpTagForTidbxDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("hotfix", "bump-tag-for-tidbx", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// QueryTagOfTidbx returns an endpoint that makes HTTP requests to the hotfix
+// service query-tag-of-tidbx server.
+func (c *Client) QueryTagOfTidbx() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeQueryTagOfTidbxRequest(c.encoder)
+		decodeResponse = DecodeQueryTagOfTidbxResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildQueryTagOfTidbxRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.QueryTagOfTidbxDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("hotfix", "query-tag-of-tidbx", err)
 		}
 		return decodeResponse(resp)
 	}

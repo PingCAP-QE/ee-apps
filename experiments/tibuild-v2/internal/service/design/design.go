@@ -223,14 +223,42 @@ var _ = Service("hotfix", func() {
 			Attribute("commit", String, "Short or full git commit SHA", func() {
 				Example("abc123def456")
 			})
-			Attribute("author", String, "GitHub account who requested to create the git tag", func() {
-				Example("wuhuizuo")
+			Attribute("author", String, "The email who requested to create the git tag", func() {
+				Example("abc@test.com")
+			})
+			Attribute("release_id", String, "Release window ID", func() {
+				Example("12345")
+			})
+			Attribute("change_id", String, "Change ID in release window", func() {
+				Example("3456")
 			})
 			Required("repo", "author")
 		})
 		Result(HotfixTagResult)
 		HTTP(func() {
 			POST("/bump-tag-for-tidbx")
+			POST("/tidbx/bump-tag")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+	Method("query-tag-of-tidbx", func() {
+		Description("Query tag info of tidbx repo")
+		Payload(func() {
+			Attribute("repo", String, "Full name of GitHub repository (e.g., 'owner/repo')", func() {
+				Example("pingcap/tidb")
+			})
+			Attribute("tag", String, "Tag name of the GitHub repo", func() {
+				Example("v8.5.4-nextgen-202510.1")
+			})
+			Required("repo", "tag")
+		})
+		Result(HotfixTagResult)
+		HTTP(func() {
+			GET("/tidbx/tag")
+			Param("repo")
+			Param("tag")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)
@@ -456,6 +484,15 @@ var HotfixTagResult = Type("HotfixTagResult", func() {
 	})
 	Attribute("tag", String, "Git tag name", func() {
 		Example("v8.5.4-nextgen.202510.10")
+	})
+	Attribute("author", String, "The email who requested to create the git tag", func() {
+		Example("abc@test.com")
+	})
+	Attribute("release_id", String, "Release window ID", func() {
+		Example("12345")
+	})
+	Attribute("change_id", String, "Change ID in release window", func() {
+		Example("3456")
 	})
 	Required("repo", "commit", "tag")
 })

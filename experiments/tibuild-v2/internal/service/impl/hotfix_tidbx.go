@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -12,6 +13,12 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/google/go-github/v69/github"
 )
+
+type tidbxTagMeta struct {
+	Author    *string `json:"author,omitempty"`
+	ReleaseID *string `json:"release_id,omitempty"`
+	ChangeID  *string `json:"change_id,omitempty"`
+}
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
 func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTidbxPayload) (*hotfix.HotfixTagResult, error) {
@@ -61,7 +68,23 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	l.Info().Msg("Computed tag name")
 
 	// Step 3: Create the tag with author information
-	tagMessage := fmt.Sprintf("Created hot fix tag on behalf of %s", p.Author)
+	// Step 3.1: prepare the git message with metadata struct.
+	tagMeta := tidbxTagMeta{
+		Author:    ptr(p.Author),
+		ReleaseID: p.ReleaseID,
+		ChangeID:  p.ChangeID,
+	}
+	var tagMessage string
+	tagMetaBytes, err := json.Marshal(tagMeta) //nolint
+	if err != nil {
+		l.Err(err).Msg("marshal tag metadata message failed.")
+		// fallback to normal message.
+		tagMessage = fmt.Sprintf("Created hot fix tag on behalf of %s", p.Author)
+	} else {
+		tagMessage = string(tagMetaBytes)
+	}
+
+	// Step 3.2: Create tag
 	if err := s.createTag(ctx, owner, repo, tagName, commitSHA, tagMessage); err != nil {
 		l.Err(err).Msg("Failed to create tag")
 		return nil, err
@@ -69,9 +92,58 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 
 	l.Info().Msg("Successfully created tag")
 	return &hotfix.HotfixTagResult{
-		Repo:   p.Repo,
-		Commit: commitSHA,
-		Tag:    tagName,
+		Repo:      p.Repo,
+		Commit:    commitSHA,
+		Tag:       tagName,
+		Author:    &p.Author,
+		ReleaseID: p.ReleaseID,
+		ChangeID:  p.ChangeID,
+	}, nil
+}
+
+// QueryTagOfTidbx get the TiDB-X tag information.
+func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTidbxPayload) (*hotfix.HotfixTagResult, error) {
+	l := s.logger.With().
+		Str("repo", p.Repo).
+		Str("tag", p.Tag).
+		Logger()
+
+	// Parse repository owner and name
+	parts := strings.SplitN(p.Repo, "/", 2)
+	if len(parts) != 2 {
+		l.Warn().Msg("Invalid repository format, expected 'owner/repo'")
+		return nil, &hotfix.HTTPError{
+			Code:    http.StatusBadRequest,
+			Message: "invalid repository format, expected 'owner/repo'",
+		}
+	}
+	owner, repo := parts[0], parts[1]
+
+	// 1. Get git tag ref information.
+	tagObj, err := s.getTag(ctx, owner, repo, p.Tag)
+	if err != nil {
+		l.Err(err).Msg("Failed to get tag ref")
+		return nil, &hotfix.HTTPError{
+			Code:    http.StatusNotFound,
+			Message: fmt.Sprintf("failed to get tag ref object: %v", err),
+		}
+	}
+	l.Info().Msg("Successfully get tag ref")
+	// 2. Parse fields in git tag message (metadata struct).
+	var tagMetadata tidbxTagMeta
+	if m := strings.TrimSpace(tagObj.GetMessage()); m != "" {
+		if err := json.Unmarshal([]byte(m), &tagMetadata); err != nil {
+			l.Warn().Err(err).Msg("failed to parse metadata in git tag message")
+		}
+	}
+
+	return &hotfix.HotfixTagResult{
+		Repo:      p.Repo,
+		Commit:    tagObj.GetSHA(),
+		Tag:       tagObj.GetTag(),
+		Author:    tagMetadata.Author,
+		ReleaseID: tagMetadata.ReleaseID,
+		ChangeID:  tagMetadata.ChangeID,
 	}, nil
 }
 

@@ -17,18 +17,21 @@ import (
 // Endpoints wraps the "hotfix" service endpoints.
 type Endpoints struct {
 	BumpTagForTidbx goa.Endpoint
+	QueryTagOfTidbx goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "hotfix" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		BumpTagForTidbx: NewBumpTagForTidbxEndpoint(s),
+		QueryTagOfTidbx: NewQueryTagOfTidbxEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "hotfix" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.BumpTagForTidbx = m(e.BumpTagForTidbx)
+	e.QueryTagOfTidbx = m(e.QueryTagOfTidbx)
 }
 
 // NewBumpTagForTidbxEndpoint returns an endpoint function that calls the
@@ -37,5 +40,14 @@ func NewBumpTagForTidbxEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*BumpTagForTidbxPayload)
 		return s.BumpTagForTidbx(ctx, p)
+	}
+}
+
+// NewQueryTagOfTidbxEndpoint returns an endpoint function that calls the
+// method "query-tag-of-tidbx" of service "hotfix".
+func NewQueryTagOfTidbxEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*QueryTagOfTidbxPayload)
+		return s.QueryTagOfTidbx(ctx, p)
 	}
 }
