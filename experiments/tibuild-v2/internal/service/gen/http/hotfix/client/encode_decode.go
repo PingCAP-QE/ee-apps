@@ -224,3 +224,72 @@ func DecodeQueryTagOfTidbxResponse(decoder func(*http.Response) goahttp.Decoder,
 		}
 	}
 }
+
+// marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody builds a value of
+// type *TiDBxBumpTagMetaRequestBody from a value of type
+// *hotfix.TiDBxBumpTagMeta.
+func marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody(v *hotfix.TiDBxBumpTagMeta) *TiDBxBumpTagMetaRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiDBxBumpTagMetaRequestBody{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+			ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta builds a value of
+// type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaRequestBody.
+func marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaRequestBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string
+			ReleaseID *string
+			ChangeID  *string
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta builds a value
+// of type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaResponseBody.
+func unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaResponseBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string
+			ReleaseID *string
+			ChangeID  *string
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}

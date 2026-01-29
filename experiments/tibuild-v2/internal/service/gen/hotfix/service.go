@@ -47,10 +47,8 @@ type BumpTagForTidbxPayload struct {
 	Commit *string
 	// The email who requested to create the git tag
 	Author string
-	// Release window ID
-	ReleaseID *string
-	// Change ID in release window
-	ChangeID *string
+	// meta data for the bumping context
+	Meta *TiDBxBumpTagMeta
 }
 
 type HTTPError struct {
@@ -69,10 +67,8 @@ type HotfixTagResult struct {
 	Tag string
 	// The email who requested to create the git tag
 	Author *string
-	// Release window ID
-	ReleaseID *string
-	// Change ID in release window
-	ChangeID *string
+	// meta data
+	Meta *TiDBxBumpTagMeta
 }
 
 // QueryTagOfTidbxPayload is the payload type of the hotfix service
@@ -82,6 +78,14 @@ type QueryTagOfTidbxPayload struct {
 	Repo string
 	// Tag name of the GitHub repo
 	Tag string
+}
+
+type TiDBxBumpTagMeta struct {
+	OpsReq *struct {
+		Applicant *string
+		ReleaseID *string
+		ChangeID  *string
+	}
 }
 
 // Error returns an error description.

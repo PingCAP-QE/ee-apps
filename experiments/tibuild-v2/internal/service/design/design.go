@@ -226,12 +226,7 @@ var _ = Service("hotfix", func() {
 			Attribute("author", String, "The email who requested to create the git tag", func() {
 				Example("abc@test.com")
 			})
-			Attribute("release_id", String, "Release window ID", func() {
-				Example("12345")
-			})
-			Attribute("change_id", String, "Change ID in release window", func() {
-				Example("3456")
-			})
+			Attribute("meta", TiDBxBumpTagMeta, "meta data for the bumping context")
 			Required("repo", "author")
 		})
 		Result(HotfixTagResult)
@@ -488,11 +483,14 @@ var HotfixTagResult = Type("HotfixTagResult", func() {
 	Attribute("author", String, "The email who requested to create the git tag", func() {
 		Example("abc@test.com")
 	})
-	Attribute("release_id", String, "Release window ID", func() {
-		Example("12345")
-	})
-	Attribute("change_id", String, "Change ID in release window", func() {
-		Example("3456")
-	})
+	Attribute("meta", TiDBxBumpTagMeta, "meta data")
 	Required("repo", "commit", "tag")
+})
+
+var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
+	Attribute("ops_req", func() {
+		Attribute("applicant", String, func() { Example("tidb") })
+		Attribute("release_id", String, func() { Example("r1") })
+		Attribute("change_id", String, func() { Example("c1") })
+	})
 })

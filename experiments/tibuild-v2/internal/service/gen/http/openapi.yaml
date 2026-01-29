@@ -1587,18 +1587,12 @@ definitions:
                 type: string
                 description: Branch name of the GitHub repo
                 example: release-8.5
-            change_id:
-                type: string
-                description: Change ID in release window
-                example: "3456"
             commit:
                 type: string
                 description: Short or full git commit SHA
                 example: abc123def456
-            release_id:
-                type: string
-                description: Release window ID
-                example: "12345"
+            meta:
+                $ref: '#/definitions/TiDBxBumpTagMeta'
             repo:
                 type: string
                 description: Full name of GitHub repository (e.g., 'owner/repo')
@@ -1606,9 +1600,12 @@ definitions:
         example:
             author: abc@test.com
             branch: release-8.5
-            change_id: "3456"
             commit: abc123def456
-            release_id: "12345"
+            meta:
+                ops_req:
+                    applicant: tidb
+                    change_id: c1
+                    release_id: r1
             repo: pingcap/tidb
         required:
             - repo
@@ -1621,18 +1618,12 @@ definitions:
                 type: string
                 description: The email who requested to create the git tag
                 example: abc@test.com
-            change_id:
-                type: string
-                description: Change ID in release window
-                example: "3456"
             commit:
                 type: string
                 description: The commit tag created on
                 example: abc123def456789
-            release_id:
-                type: string
-                description: Release window ID
-                example: "12345"
+            meta:
+                $ref: '#/definitions/TiDBxBumpTagMeta'
             repo:
                 type: string
                 description: Full name of GitHub repository
@@ -1643,9 +1634,12 @@ definitions:
                 example: v8.5.4-nextgen.202510.10
         example:
             author: abc@test.com
-            change_id: "3456"
             commit: abc123def456789
-            release_id: "12345"
+            meta:
+                ops_req:
+                    applicant: tidb
+                    change_id: c1
+                    release_id: r1
             repo: pingcap/tidb
             tag: v8.5.4-nextgen.202510.10
         required:
@@ -2057,3 +2051,28 @@ definitions:
                 - 0b37312b-14a2-4c21-b4f9-7814f59a1886
         required:
             - pipelines
+    TiDBxBumpTagMeta:
+        title: TiDBxBumpTagMeta
+        type: object
+        properties:
+            ops_req:
+                type: object
+                properties:
+                    applicant:
+                        type: string
+                        example: tidb
+                    change_id:
+                        type: string
+                        example: c1
+                    release_id:
+                        type: string
+                        example: r1
+                example:
+                    applicant: tidb
+                    change_id: c1
+                    release_id: r1
+        example:
+            ops_req:
+                applicant: tidb
+                change_id: c1
+                release_id: r1

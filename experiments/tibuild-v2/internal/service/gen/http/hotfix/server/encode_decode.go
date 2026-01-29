@@ -182,3 +182,49 @@ func EncodeQueryTagOfTidbxError(encoder func(context.Context, http.ResponseWrite
 		}
 	}
 }
+
+// unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta builds a value
+// of type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaRequestBody.
+func unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaRequestBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string
+			ReleaseID *string
+			ChangeID  *string
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody builds a value
+// of type *TiDBxBumpTagMetaResponseBody from a value of type
+// *hotfix.TiDBxBumpTagMeta.
+func marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody(v *hotfix.TiDBxBumpTagMeta) *TiDBxBumpTagMetaResponseBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiDBxBumpTagMetaResponseBody{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+			ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
