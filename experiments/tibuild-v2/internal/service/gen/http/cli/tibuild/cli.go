@@ -289,7 +289,7 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON: 
+    -body JSON:
 
 Example:
     %[1]s artifact sync-image --body '{
@@ -321,12 +321,12 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT: 
-    -page-size INT: 
-    -hotfix BOOL: 
-    -sort STRING: 
-    -direction STRING: 
-    -created-by STRING: 
+    -page INT:
+    -page-size INT:
+    -hotfix BOOL:
+    -sort STRING:
+    -direction STRING:
+    -created-by STRING:
 
 Example:
     %[1]s devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."
@@ -337,8 +337,8 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON: 
-    -dryrun BOOL: 
+    -body JSON:
+    -dryrun BOOL:
 
 Example:
     %[1]s devbuild create --body '{
@@ -371,7 +371,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL: 
+    -sync BOOL:
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -382,9 +382,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON: 
+    -body JSON:
     -id INT: ID of build
-    -dryrun BOOL: 
+    -dryrun BOOL:
 
 Example:
     %[1]s devbuild update --body '{
@@ -632,7 +632,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL: 
+    -dryrun BOOL:
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -643,13 +643,13 @@ func devbuildIngestEventUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
 
 Ingest a CloudEvent for build events
-    -body JSON: 
-    -datacontenttype STRING: 
-    -id STRING: 
-    -source STRING: 
-    -type STRING: 
-    -specversion STRING: 
-    -time STRING: 
+    -body JSON:
+    -datacontenttype STRING:
+    -id STRING:
+    -source STRING:
+    -type STRING:
+    -specversion STRING:
+    -time STRING:
 
 Example:
     %[1]s devbuild ingest-event --body '{
@@ -683,7 +683,7 @@ func hotfixBumpTagForTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
 
 Create a hot fix git tag for a GitHub repository
-    -body JSON: 
+    -body JSON:
 
 Example:
     %[1]s hotfix bump-tag-for-tidbx --body '{
@@ -706,8 +706,8 @@ func hotfixQueryTagOfTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix query-tag-of-tidbx -repo STRING -tag STRING
 
 Query tag info of tidbx repo
-    -repo STRING: 
-    -tag STRING: 
+    -repo STRING:
+    -tag STRING:
 
 Example:
     %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v8.5.4-nextgen-202510.1"
