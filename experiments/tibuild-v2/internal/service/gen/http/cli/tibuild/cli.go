@@ -41,9 +41,14 @@ func UsageExamples() string {
 		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
       "author": "abc@test.com",
       "branch": "release-8.5",
-      "change_id": "3456",
       "commit": "abc123def456",
-      "release_id": "12345",
+      "meta": {
+         "ops_req": {
+            "applicant": "tidb",
+            "change_id": "c1",
+            "release_id": "r1"
+         }
+      },
       "repo": "pingcap/tidb"
    }'` + "\n" +
 		""
@@ -684,9 +689,14 @@ Example:
     %[1]s hotfix bump-tag-for-tidbx --body '{
       "author": "abc@test.com",
       "branch": "release-8.5",
-      "change_id": "3456",
       "commit": "abc123def456",
-      "release_id": "12345",
+      "meta": {
+         "ops_req": {
+            "applicant": "tidb",
+            "change_id": "c1",
+            "release_id": "r1"
+         }
+      },
       "repo": "pingcap/tidb"
    }'
 `, os.Args[0])

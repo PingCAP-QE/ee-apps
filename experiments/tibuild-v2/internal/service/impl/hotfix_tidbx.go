@@ -14,10 +14,9 @@ import (
 	"github.com/google/go-github/v69/github"
 )
 
-type tidbxTagMeta struct {
-	Author    *string `json:"author,omitempty"`
-	ReleaseID *string `json:"release_id,omitempty"`
-	ChangeID  *string `json:"change_id,omitempty"`
+type tidbxGitTagMeta struct {
+	Author *string                  `json:"author,omitempty"`
+	Meta   *hotfix.TiDBxBumpTagMeta `json:"meta,omitempty"`
 }
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
@@ -69,19 +68,18 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 
 	// Step 3: Create the tag with author information
 	// Step 3.1: prepare the git message with metadata struct.
-	tagMeta := tidbxTagMeta{
-		Author:    ptr(p.Author),
-		ReleaseID: p.ReleaseID,
-		ChangeID:  p.ChangeID,
+	gitTagInfo := tidbxGitTagMeta{
+		Author: &p.Author,
+		Meta:   p.Meta,
 	}
 	var tagMessage string
-	tagMetaBytes, err := json.Marshal(tagMeta) //nolint
+	infoBytes, err := json.Marshal(gitTagInfo) //nolint
 	if err != nil {
 		l.Err(err).Msg("marshal tag metadata message failed.")
 		// fallback to normal message.
 		tagMessage = fmt.Sprintf("Created hot fix tag on behalf of %s", p.Author)
 	} else {
-		tagMessage = string(tagMetaBytes)
+		tagMessage = string(infoBytes)
 	}
 
 	// Step 3.2: Create tag
@@ -92,12 +90,11 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 
 	l.Info().Msg("Successfully created tag")
 	return &hotfix.HotfixTagResult{
-		Repo:      p.Repo,
-		Commit:    commitSHA,
-		Tag:       tagName,
-		Author:    &p.Author,
-		ReleaseID: p.ReleaseID,
-		ChangeID:  p.ChangeID,
+		Repo:   p.Repo,
+		Commit: commitSHA,
+		Tag:    tagName,
+		Author: &p.Author,
+		Meta:   p.Meta,
 	}, nil
 }
 
@@ -130,21 +127,24 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 	}
 	l.Info().Msg("Successfully get tag ref")
 	// 2. Parse fields in git tag message (metadata struct).
-	var tagMetadata tidbxTagMeta
+	tagMetadata := new(tidbxGitTagMeta)
 	if m := strings.TrimSpace(tagObj.GetMessage()); m != "" {
 		if err := json.Unmarshal([]byte(m), &tagMetadata); err != nil {
 			l.Warn().Err(err).Msg("failed to parse metadata in git tag message")
 		}
 	}
 
-	return &hotfix.HotfixTagResult{
-		Repo:      p.Repo,
-		Commit:    tagObj.GetSHA(),
-		Tag:       tagObj.GetTag(),
-		Author:    tagMetadata.Author,
-		ReleaseID: tagMetadata.ReleaseID,
-		ChangeID:  tagMetadata.ChangeID,
-	}, nil
+	ret := &hotfix.HotfixTagResult{
+		Repo:   p.Repo,
+		Commit: tagObj.GetSHA(),
+		Tag:    tagObj.GetTag(),
+	}
+	if tagMetadata != nil {
+		ret.Author = tagMetadata.Author
+		ret.Meta = tagMetadata.Meta
+	}
+
+	return ret, nil
 }
 
 // computeNewTagNameForTidbx computes the next tag name based on existing tags,

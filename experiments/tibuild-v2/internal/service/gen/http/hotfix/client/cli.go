@@ -23,16 +23,17 @@ func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.Bump
 	{
 		err = json.Unmarshal([]byte(hotfixBumpTagForTidbxBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"change_id\": \"3456\",\n      \"commit\": \"abc123def456\",\n      \"release_id\": \"12345\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
 	v := &hotfix.BumpTagForTidbxPayload{
-		Repo:      body.Repo,
-		Branch:    body.Branch,
-		Commit:    body.Commit,
-		Author:    body.Author,
-		ReleaseID: body.ReleaseID,
-		ChangeID:  body.ChangeID,
+		Repo:   body.Repo,
+		Branch: body.Branch,
+		Commit: body.Commit,
+		Author: body.Author,
+	}
+	if body.Meta != nil {
+		v.Meta = marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(body.Meta)
 	}
 
 	return v, nil

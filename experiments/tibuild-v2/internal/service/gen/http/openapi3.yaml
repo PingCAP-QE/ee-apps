@@ -2991,9 +2991,12 @@ paths:
                         example:
                             author: abc@test.com
                             branch: release-8.5
-                            change_id: "3456"
                             commit: abc123def456
-                            release_id: "12345"
+                            meta:
+                                ops_req:
+                                    applicant: tidb
+                                    change_id: c1
+                                    release_id: r1
                             repo: pingcap/tidb
             responses:
                 "200":
@@ -3004,9 +3007,12 @@ paths:
                                 $ref: '#/components/schemas/HotfixTagResult'
                             example:
                                 author: abc@test.com
-                                change_id: "3456"
                                 commit: abc123def456789
-                                release_id: "12345"
+                                meta:
+                                    ops_req:
+                                        applicant: tidb
+                                        change_id: c1
+                                        release_id: r1
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -3043,9 +3049,12 @@ paths:
                         example:
                             author: abc@test.com
                             branch: release-8.5
-                            change_id: "3456"
                             commit: abc123def456
-                            release_id: "12345"
+                            meta:
+                                ops_req:
+                                    applicant: tidb
+                                    change_id: c1
+                                    release_id: r1
                             repo: pingcap/tidb
             responses:
                 "200":
@@ -3056,9 +3065,12 @@ paths:
                                 $ref: '#/components/schemas/HotfixTagResult'
                             example:
                                 author: abc@test.com
-                                change_id: "3456"
                                 commit: abc123def456789
-                                release_id: "12345"
+                                meta:
+                                    ops_req:
+                                        applicant: tidb
+                                        change_id: c1
+                                        release_id: r1
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -3116,9 +3128,12 @@ paths:
                                 $ref: '#/components/schemas/HotfixTagResult'
                             example:
                                 author: abc@test.com
-                                change_id: "3456"
                                 commit: abc123def456789
-                                release_id: "12345"
+                                meta:
+                                    ops_req:
+                                        applicant: tidb
+                                        change_id: c1
+                                        release_id: r1
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -3288,18 +3303,12 @@ components:
                     type: string
                     description: Branch name of the GitHub repo
                     example: release-8.5
-                change_id:
-                    type: string
-                    description: Change ID in release window
-                    example: "3456"
                 commit:
                     type: string
                     description: Short or full git commit SHA
                     example: abc123def456
-                release_id:
-                    type: string
-                    description: Release window ID
-                    example: "12345"
+                meta:
+                    $ref: '#/components/schemas/TiDBxBumpTagMeta'
                 repo:
                     type: string
                     description: Full name of GitHub repository (e.g., 'owner/repo')
@@ -3307,9 +3316,12 @@ components:
             example:
                 author: abc@test.com
                 branch: release-8.5
-                change_id: "3456"
                 commit: abc123def456
-                release_id: "12345"
+                meta:
+                    ops_req:
+                        applicant: tidb
+                        change_id: c1
+                        release_id: r1
                 repo: pingcap/tidb
             required:
                 - repo
@@ -4007,18 +4019,12 @@ components:
                     type: string
                     description: The email who requested to create the git tag
                     example: abc@test.com
-                change_id:
-                    type: string
-                    description: Change ID in release window
-                    example: "3456"
                 commit:
                     type: string
                     description: The commit tag created on
                     example: abc123def456789
-                release_id:
-                    type: string
-                    description: Release window ID
-                    example: "12345"
+                meta:
+                    $ref: '#/components/schemas/TiDBxBumpTagMeta'
                 repo:
                     type: string
                     description: Full name of GitHub repository
@@ -4029,9 +4035,12 @@ components:
                     example: v8.5.4-nextgen.202510.10
             example:
                 author: abc@test.com
-                change_id: "3456"
                 commit: abc123def456789
-                release_id: "12345"
+                meta:
+                    ops_req:
+                        applicant: tidb
+                        change_id: c1
+                        release_id: r1
                 repo: pingcap/tidb
                 tag: v8.5.4-nextgen.202510.10
             required:
@@ -4533,6 +4542,30 @@ components:
                     - 62e3533a-6b73-42a8-9183-b5e0ee0c29d8
             required:
                 - pipelines
+        TiDBxBumpTagMeta:
+            type: object
+            properties:
+                ops_req:
+                    type: object
+                    properties:
+                        applicant:
+                            type: string
+                            example: tidb
+                        change_id:
+                            type: string
+                            example: c1
+                        release_id:
+                            type: string
+                            example: r1
+                    example:
+                        applicant: tidb
+                        change_id: c1
+                        release_id: r1
+            example:
+                ops_req:
+                    applicant: tidb
+                    change_id: c1
+                    release_id: r1
         UpdateRequestBody:
             type: object
             properties:

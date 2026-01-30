@@ -24,10 +24,8 @@ type BumpTagForTidbxRequestBody struct {
 	Commit *string `form:"commit,omitempty" json:"commit,omitempty" xml:"commit,omitempty"`
 	// The email who requested to create the git tag
 	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
-	// Release window ID
-	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
-	// Change ID in release window
-	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+	// meta data for the bumping context
+	Meta *TiDBxBumpTagMetaRequestBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 }
 
 // BumpTagForTidbxResponseBody is the type of the "hotfix" service
@@ -41,10 +39,8 @@ type BumpTagForTidbxResponseBody struct {
 	Tag string `form:"tag" json:"tag" xml:"tag"`
 	// The email who requested to create the git tag
 	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
-	// Release window ID
-	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
-	// Change ID in release window
-	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+	// meta data
+	Meta *TiDBxBumpTagMetaResponseBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 }
 
 // QueryTagOfTidbxResponseBody is the type of the "hotfix" service
@@ -58,10 +54,8 @@ type QueryTagOfTidbxResponseBody struct {
 	Tag string `form:"tag" json:"tag" xml:"tag"`
 	// The email who requested to create the git tag
 	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
-	// Release window ID
-	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
-	// Change ID in release window
-	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+	// meta data
+	Meta *TiDBxBumpTagMetaResponseBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 }
 
 // BumpTagForTidbxBadRequestResponseBody is the type of the "hotfix" service
@@ -94,16 +88,35 @@ type QueryTagOfTidbxInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// TiDBxBumpTagMetaResponseBody is used to define fields on response body types.
+type TiDBxBumpTagMetaResponseBody struct {
+	OpsReq *struct {
+		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+	} `json:"ops_req,omitempty"`
+}
+
+// TiDBxBumpTagMetaRequestBody is used to define fields on request body types.
+type TiDBxBumpTagMetaRequestBody struct {
+	OpsReq *struct {
+		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+	} `json:"ops_req,omitempty"`
+}
+
 // NewBumpTagForTidbxResponseBody builds the HTTP response body from the result
 // of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
 func NewBumpTagForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpTagForTidbxResponseBody {
 	body := &BumpTagForTidbxResponseBody{
-		Repo:      res.Repo,
-		Commit:    res.Commit,
-		Tag:       res.Tag,
-		Author:    res.Author,
-		ReleaseID: res.ReleaseID,
-		ChangeID:  res.ChangeID,
+		Repo:   res.Repo,
+		Commit: res.Commit,
+		Tag:    res.Tag,
+		Author: res.Author,
+	}
+	if res.Meta != nil {
+		body.Meta = marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody(res.Meta)
 	}
 	return body
 }
@@ -112,12 +125,13 @@ func NewBumpTagForTidbxResponseBody(res *hotfix.HotfixTagResult) *BumpTagForTidb
 // of the "query-tag-of-tidbx" endpoint of the "hotfix" service.
 func NewQueryTagOfTidbxResponseBody(res *hotfix.HotfixTagResult) *QueryTagOfTidbxResponseBody {
 	body := &QueryTagOfTidbxResponseBody{
-		Repo:      res.Repo,
-		Commit:    res.Commit,
-		Tag:       res.Tag,
-		Author:    res.Author,
-		ReleaseID: res.ReleaseID,
-		ChangeID:  res.ChangeID,
+		Repo:   res.Repo,
+		Commit: res.Commit,
+		Tag:    res.Tag,
+		Author: res.Author,
+	}
+	if res.Meta != nil {
+		body.Meta = marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody(res.Meta)
 	}
 	return body
 }
@@ -168,12 +182,13 @@ func NewQueryTagOfTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *Q
 // endpoint payload.
 func NewBumpTagForTidbxPayload(body *BumpTagForTidbxRequestBody) *hotfix.BumpTagForTidbxPayload {
 	v := &hotfix.BumpTagForTidbxPayload{
-		Repo:      *body.Repo,
-		Branch:    body.Branch,
-		Commit:    body.Commit,
-		Author:    *body.Author,
-		ReleaseID: body.ReleaseID,
-		ChangeID:  body.ChangeID,
+		Repo:   *body.Repo,
+		Branch: body.Branch,
+		Commit: body.Commit,
+		Author: *body.Author,
+	}
+	if body.Meta != nil {
+		v.Meta = unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(body.Meta)
 	}
 
 	return v
