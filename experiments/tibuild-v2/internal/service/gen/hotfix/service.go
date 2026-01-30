@@ -82,10 +82,10 @@ type QueryTagOfTidbxPayload struct {
 
 type TiDBxBumpTagMeta struct {
 	OpsReq *struct {
-		Applicant *string
-		ReleaseID *string
-		ChangeID  *string
-	}
+		Applicant *string `json:"applicant,omitempty"`
+		ReleaseID *string `json:"release_id,omitempty"`
+		ChangeID  *string `json:"change_id,omitempty"`
+	} `json:"ops_req,omitempty"`
 }
 
 // Error returns an error description.

@@ -265,9 +265,14 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 						// Message is now JSON metadata (see `tidbxTagMeta` in `hotfix_tidbx.go`)
 						Message: github.Ptr(func() string {
 							b, _ := json.Marshal(map[string]any{
-								"author":     "tester",
-								"release_id": "rw-12345",
-								"change_id":  "ch-67890",
+								"author": "tester",
+								"meta": map[string]any{
+									"ops_req": map[string]any{
+										"applicant":  "tester",
+										"release_id": "rw-12345",
+										"change_id":  "ch-67890",
+									},
+								},
 							})
 							return string(b)
 						}()),
@@ -389,9 +394,14 @@ func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
 	wantChangeID := "ch-67890"
 
 	metaBytes, err := json.Marshal(map[string]any{
-		"author":     wantAuthor,
-		"release_id": wantReleaseID,
-		"change_id":  wantChangeID,
+		"author": wantAuthor,
+		"meta": map[string]any{
+			"ops_req": map[string]any{
+				"applicant":  wantAuthor,
+				"release_id": wantReleaseID,
+				"change_id":  wantChangeID,
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("failed to marshal metadata json: %v", err)
@@ -447,11 +457,12 @@ func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
 	if res.Author == nil || *res.Author != wantAuthor {
 		t.Fatalf("expected author %q, got %+v", wantAuthor, res.Author)
 	}
-	if res.ReleaseID == nil || *res.ReleaseID != wantReleaseID {
-		t.Fatalf("expected release_id %q, got %+v", wantReleaseID, res.ReleaseID)
+
+	if res.Meta == nil || res.Meta.OpsReq == nil || res.Meta.OpsReq.ReleaseID == nil || *res.Meta.OpsReq.ReleaseID != wantReleaseID {
+		t.Fatalf("expected release_id %q, got %+v", wantReleaseID, res.Meta.OpsReq)
 	}
-	if res.ChangeID == nil || *res.ChangeID != wantChangeID {
-		t.Fatalf("expected change_id %q, got %+v", wantChangeID, res.ChangeID)
+	if res.Meta == nil || res.Meta.OpsReq == nil || res.Meta.OpsReq.ChangeID == nil || *res.Meta.OpsReq.ChangeID != wantChangeID {
+		t.Fatalf("expected change_id %q, got %+v", wantChangeID, res.Meta)
 	}
 }
 
@@ -495,7 +506,7 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 	if qerr != nil {
 		t.Fatalf("unexpected error: %v", qerr)
 	}
-	if res.Author != nil || res.ReleaseID != nil || res.ChangeID != nil {
-		t.Fatalf("expected nil metadata fields on invalid json, got author=%+v release_id=%+v change_id=%+v", res.Author, res.ReleaseID, res.ChangeID)
+	if res.Author != nil || res.Meta != nil {
+		t.Fatalf("expected nil metadata fields on invalid json, got author=%+v meta=%+v", res.Author, res.Meta)
 	}
 }

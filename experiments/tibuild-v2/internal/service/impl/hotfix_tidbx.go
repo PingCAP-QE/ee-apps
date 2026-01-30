@@ -15,8 +15,8 @@ import (
 )
 
 type tidbxGitTagMeta struct {
-	Author *string `json:"author,omitempty"`
-	Meta   *hotfix.TiDBxBumpTagMeta
+	Author *string                  `json:"author,omitempty"`
+	Meta   *hotfix.TiDBxBumpTagMeta `json:"meta,omitempty"`
 }
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
@@ -127,20 +127,24 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 	}
 	l.Info().Msg("Successfully get tag ref")
 	// 2. Parse fields in git tag message (metadata struct).
-	var tagMetadata tidbxGitTagMeta
+	tagMetadata := new(tidbxGitTagMeta)
 	if m := strings.TrimSpace(tagObj.GetMessage()); m != "" {
 		if err := json.Unmarshal([]byte(m), &tagMetadata); err != nil {
 			l.Warn().Err(err).Msg("failed to parse metadata in git tag message")
 		}
 	}
 
-	return &hotfix.HotfixTagResult{
+	ret := &hotfix.HotfixTagResult{
 		Repo:   p.Repo,
 		Commit: tagObj.GetSHA(),
 		Tag:    tagObj.GetTag(),
-		Author: tagMetadata.Author,
-		Meta:   tagMetadata.Meta,
-	}, nil
+	}
+	if tagMetadata != nil {
+		ret.Author = tagMetadata.Author
+		ret.Meta = tagMetadata.Meta
+	}
+
+	return ret, nil
 }
 
 // computeNewTagNameForTidbx computes the next tag name based on existing tags,

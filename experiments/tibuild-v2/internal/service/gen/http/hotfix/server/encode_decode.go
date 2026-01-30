@@ -193,9 +193,9 @@ func unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTa
 	res := &hotfix.TiDBxBumpTagMeta{}
 	if v.OpsReq != nil {
 		res.OpsReq = &struct {
-			Applicant *string
-			ReleaseID *string
-			ChangeID  *string
+			Applicant *string `json:"applicant,omitempty"`
+			ReleaseID *string `json:"release_id,omitempty"`
+			ChangeID  *string `json:"change_id,omitempty"`
 		}{
 			Applicant: v.OpsReq.Applicant,
 			ReleaseID: v.OpsReq.ReleaseID,

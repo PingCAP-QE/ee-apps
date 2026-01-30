@@ -94,7 +94,7 @@ type TiDBxBumpTagMetaRequestBody struct {
 		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
 		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
 		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
-	} `form:"ops_req,omitempty" json:"ops_req,omitempty" xml:"ops_req,omitempty"`
+	} `json:"ops_req,omitempty"`
 }
 
 // TiDBxBumpTagMetaResponseBody is used to define fields on response body types.
@@ -103,7 +103,7 @@ type TiDBxBumpTagMetaResponseBody struct {
 		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
 		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
 		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
-	} `form:"ops_req,omitempty" json:"ops_req,omitempty" xml:"ops_req,omitempty"`
+	} `json:"ops_req,omitempty"`
 }
 
 // NewBumpTagForTidbxRequestBody builds the HTTP request body from the payload

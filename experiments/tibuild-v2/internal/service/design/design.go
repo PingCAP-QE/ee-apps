@@ -489,8 +489,18 @@ var HotfixTagResult = Type("HotfixTagResult", func() {
 
 var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 	Attribute("ops_req", func() {
-		Attribute("applicant", String, func() { Example("tidb") })
-		Attribute("release_id", String, func() { Example("r1") })
-		Attribute("change_id", String, func() { Example("c1") })
+		Attribute("applicant", String, func() {
+			Example("tidb")
+			Meta("struct:tag:json", "applicant,omitempty")
+		})
+		Attribute("release_id", String, func() {
+			Example("r1")
+			Meta("struct:tag:json", "release_id,omitempty")
+		})
+		Attribute("change_id", String, func() {
+			Example("c1")
+			Meta("struct:tag:json", "change_id,omitempty")
+		})
+		Meta("struct:tag:json", "ops_req,omitempty")
 	})
 })
