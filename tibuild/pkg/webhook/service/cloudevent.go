@@ -11,7 +11,7 @@ import (
 
 	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"gopkg.in/yaml.v3"
 )
 
@@ -91,7 +91,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 }
 
 func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, error) {
-	images, err := parseTektonImage(pipeline.Status.Results)
+	images, err := parseTektonImage(pipeline.Status.PipelineResults)
 	if err != nil {
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
@@ -145,7 +145,7 @@ func parseGitHash(pipeline tekton.PipelineRun) string {
 
 func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
 	var rt []rest.OciArtifact
-	for _, r := range pipeline.Status.Results {
+	for _, r := range pipeline.Status.PipelineResults {
 		if r.Name == "pushed-binaries" {
 			v, err := convertOciArtifact(r.Value.StringVal)
 			if err != nil {
