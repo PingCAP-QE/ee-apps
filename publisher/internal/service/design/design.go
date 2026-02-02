@@ -327,3 +327,42 @@ var _ = Service("image", func() {
 		})
 	})
 })
+
+var _ = Service("tidbcloud", func() {
+	Description("Publisher service for tidbcloud platform")
+	HTTP(func() {
+		Path("/tidbcloud")
+	})
+	Method("update-component-version-in-cloudconfig", func() {
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Example("prod")
+			})
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/coomponent:v8.5.4")
+			})
+
+			Required("stage", "image")
+		})
+		Result(func() {
+			Attribute("stage", String)
+			Attribute("ticket", func() {
+				Description("ticket details")
+				Attribute("id", String, "ticket ID")
+				Attribute("url", String, func() {
+					Description("ticket visit url")
+					Format(FormatURI)
+				})
+				Attribute("release_id", String, "release window ID")
+				Attribute("change_id", String, "component publish flow ID")
+
+				Required("id")
+			})
+			Required("stage", "ticket")
+		})
+		HTTP(func() {
+			POST("/devops/cloudconfig/versions/component")
+			Response(StatusOK)
+		})
+	})
+})

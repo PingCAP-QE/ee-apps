@@ -16,6 +16,7 @@ import (
 
 	fileserverc "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/client"
 	imagec "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/image/client"
+	tidbcloudc "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tidbcloud/client"
 	tiupc "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tiup/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -29,14 +30,16 @@ func UsageCommands() []string {
 		"tiup (request-to-publish|delivery-by-rules|request-to-publish-single|query-publishing-status|reset-rate-limit)",
 		"fileserver (request-to-publish|query-publishing-status)",
 		"image (request-to-copy|query-copying-status|request-multiarch-collect|query-multiarch-collect-status)",
+		"tidbcloud update-component-version-in-cloudconfig",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
-		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Aspernatur eum modi numquam natus quibusdam ea.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Quis iure illo dolorum eos incidunt eius.\",\n      \"source\": \"Distinctio et labore.\"\n   }'" + "\n" +
+	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
+		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Nisi exercitationem laboriosam non.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Dolorum quo ut et.\",\n      \"source\": \"Aut voluptates sit magni.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
 
@@ -87,6 +90,11 @@ func ParseEndpoint(
 
 		imageQueryMultiarchCollectStatusFlags         = flag.NewFlagSet("query-multiarch-collect-status", flag.ExitOnError)
 		imageQueryMultiarchCollectStatusRequestIDFlag = imageQueryMultiarchCollectStatusFlags.String("request-id", "REQUIRED", "Request id for async mode (uuidv4 format)")
+
+		tidbcloudFlags = flag.NewFlagSet("tidbcloud", flag.ContinueOnError)
+
+		tidbcloudUpdateComponentVersionInCloudconfigFlags    = flag.NewFlagSet("update-component-version-in-cloudconfig", flag.ExitOnError)
+		tidbcloudUpdateComponentVersionInCloudconfigBodyFlag = tidbcloudUpdateComponentVersionInCloudconfigFlags.String("body", "REQUIRED", "")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
@@ -104,6 +112,9 @@ func ParseEndpoint(
 	imageQueryCopyingStatusFlags.Usage = imageQueryCopyingStatusUsage
 	imageRequestMultiarchCollectFlags.Usage = imageRequestMultiarchCollectUsage
 	imageQueryMultiarchCollectStatusFlags.Usage = imageQueryMultiarchCollectStatusUsage
+
+	tidbcloudFlags.Usage = tidbcloudUsage
+	tidbcloudUpdateComponentVersionInCloudconfigFlags.Usage = tidbcloudUpdateComponentVersionInCloudconfigUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -126,6 +137,8 @@ func ParseEndpoint(
 			svcf = fileserverFlags
 		case "image":
 			svcf = imageFlags
+		case "tidbcloud":
+			svcf = tidbcloudFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -183,6 +196,13 @@ func ParseEndpoint(
 
 			case "query-multiarch-collect-status":
 				epf = imageQueryMultiarchCollectStatusFlags
+
+			}
+
+		case "tidbcloud":
+			switch epn {
+			case "update-component-version-in-cloudconfig":
+				epf = tidbcloudUpdateComponentVersionInCloudconfigFlags
 
 			}
 
@@ -250,6 +270,13 @@ func ParseEndpoint(
 				endpoint = c.QueryMultiarchCollectStatus()
 				data, err = imagec.BuildQueryMultiarchCollectStatusPayload(*imageQueryMultiarchCollectStatusRequestIDFlag)
 			}
+		case "tidbcloud":
+			c := tidbcloudc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "update-component-version-in-cloudconfig":
+				endpoint = c.UpdateComponentVersionInCloudconfig()
+				data, err = tidbcloudc.BuildUpdateComponentVersionInCloudconfigPayload(*tidbcloudUpdateComponentVersionInCloudconfigBodyFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -288,7 +315,7 @@ func tiupRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"v1.0.0\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"v1.0.0\"\n   }'")
 }
 
 func tiupDeliveryByRulesUsage() {
@@ -342,7 +369,7 @@ func tiupQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Sunt velit voluptas autem molestiae cupiditate.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Ut culpa ut.\"")
 }
 
 func tiupResetRateLimitUsage() {
@@ -388,7 +415,7 @@ func fileserverRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Aspernatur eum modi numquam natus quibusdam ea.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Nisi exercitationem laboriosam non.\"\n   }'")
 }
 
 func fileserverQueryPublishingStatusUsage() {
@@ -406,7 +433,7 @@ func fileserverQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"f28c32b4-4e83-4247-b254-f88b2b4217f4\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"9c90f36b-bef0-4214-841c-d17a0a0ced68\"")
 }
 
 // imageUsage displays the usage of the image command and its subcommands.
@@ -437,7 +464,7 @@ func imageRequestToCopyUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Quis iure illo dolorum eos incidunt eius.\",\n      \"source\": \"Distinctio et labore.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Dolorum quo ut et.\",\n      \"source\": \"Aut voluptates sit magni.\"\n   }'")
 }
 
 func imageQueryCopyingStatusUsage() {
@@ -455,7 +482,7 @@ func imageQueryCopyingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"8594cd2e-93f8-4633-92b1-c2a458368134\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"92e7e162-dd2a-4f86-bb3d-60a83da7a611\"")
 }
 
 func imageRequestMultiarchCollectUsage() {
@@ -473,7 +500,7 @@ func imageRequestMultiarchCollectUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Facilis et in impedit fugiat magni iure.\",\n      \"release_tag_suffix\": \"Repellendus necessitatibus.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": true,\n      \"image_url\": \"Rerum laudantium beatae.\",\n      \"release_tag_suffix\": \"Laboriosam aut non aut occaecati iure.\"\n   }'")
 }
 
 func imageQueryMultiarchCollectStatusUsage() {
@@ -491,5 +518,34 @@ func imageQueryMultiarchCollectStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"bf1954bb-0768-4443-988a-5d6863331d24\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"687b3ce4-b168-4ff5-bd0e-5d99ce52dc2e\"")
+}
+
+// tidbcloudUsage displays the usage of the tidbcloud command and its
+// subcommands.
+func tidbcloudUsage() {
+	fmt.Fprintln(os.Stderr, `Publisher service for tidbcloud platform`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] tidbcloud COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    update-component-version-in-cloudconfig: UpdateComponentVersionInCloudconfig implements update-component-version-in-cloudconfig.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s tidbcloud COMMAND --help\n", os.Args[0])
+}
+func tidbcloudUpdateComponentVersionInCloudconfigUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud update-component-version-in-cloudconfig", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `UpdateComponentVersionInCloudconfig implements update-component-version-in-cloudconfig.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
 }

@@ -23,7 +23,7 @@ paths:
                         schema:
                             $ref: '#/components/schemas/DeliveryByRulesRequestBody'
                         example:
-                            artifact_url: Aspernatur eum modi numquam natus quibusdam ea.
+                            artifact_url: Nisi exercitationem laboriosam non.
             responses:
                 "200":
                     description: OK response.
@@ -34,17 +34,16 @@ paths:
                                 items:
                                     type: string
                                     description: Request id for async mode (uuidv4 format)
-                                    example: 7b8666e7-996d-401a-92ae-724c7416ef65
+                                    example: a3eef83f-c6c3-4335-bd5c-bb95017fe8dd
                                     format: uuid
                                 description: request track ids
                                 example:
-                                    - c07cfd53-f083-4c26-884b-c0143c4aea06
-                                    - b46537f8-bd6d-41a7-ab5b-df05a380a337
-                                    - 5f26be0f-b842-4600-a992-f882e5aba130
+                                    - a2b01793-0dad-43e2-9774-a97a297f98c0
+                                    - 6dda6725-98e8-4a71-9ccd-04b740ad521f
                             example:
-                                - f0a8f6e5-8881-4f35-a8f0-96be554b57e5
-                                - 8c484ffb-1100-48a3-a29d-f026c0141d86
-                                - c3b4e69b-c3f9-414d-bf6f-182433d2e719
+                                - 00dece86-ac4c-4c9e-9403-b15d2054c8b1
+                                - 20b540cc-1909-4e3c-abbd-69575e6b4564
+                                - 36821999-d155-4885-87b3-ed2f882e72d4
     /fs/publish-request/{request_id}:
         get:
             tags:
@@ -59,9 +58,9 @@ paths:
                   schema:
                     type: string
                     description: Request id for async mode (uuidv4 format)
-                    example: 6a144ddb-4c38-4c4d-b7d4-cd1299467868
+                    example: cfca8501-76b9-415c-9700-e0a2955efe61
                     format: uuid
-                  example: f92550ff-37fe-4a11-bedd-b774aa6596a1
+                  example: 642107ab-bf39-441a-ba74-6daaf5d5a85a
             responses:
                 "200":
                     description: OK response.
@@ -70,7 +69,7 @@ paths:
                             schema:
                                 type: string
                                 description: State of the task
-                                example: queued
+                                example: failed
                                 enum:
                                     - queued
                                     - processing
@@ -91,9 +90,9 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestMultiarchCollectRequestBody'
                         example:
-                            async: false
-                            image_url: Facilis et in impedit fugiat magni iure.
-                            release_tag_suffix: Repellendus necessitatibus.
+                            async: true
+                            image_url: Rerum laudantium beatae.
+                            release_tag_suffix: Laboriosam aut non aut occaecati iure.
             responses:
                 "200":
                     description: OK response.
@@ -103,11 +102,11 @@ paths:
                                 $ref: '#/components/schemas/RequestMultiarchCollectResponseBody'
                             example:
                                 async: true
-                                repo: Minus natus nesciunt quidem atque odio sit.
-                                request_id: 60f1e1f6-0dc1-4dc6-851b-c44da12f6012
+                                repo: Qui doloribus omnis.
+                                request_id: 9eaecd6e-99cd-4b5e-a2de-4a3448a204f0
                                 tags:
-                                    - Ipsam molestiae.
-                                    - Commodi consequuntur illum pariatur est ea.
+                                    - At delectus.
+                                    - Officiis molestiae amet nobis.
     /image/collect-multiarch/{request_id}:
         get:
             tags:
@@ -122,9 +121,9 @@ paths:
                   schema:
                     type: string
                     description: Request id for async mode (uuidv4 format)
-                    example: 1e4a6163-9839-4ed7-9ca1-59c5b861514a
+                    example: 181d081f-3046-4be8-a0b9-d011c9e1a8e1
                     format: uuid
-                  example: 5041946a-1281-4528-92e3-9eb44a37da3b
+                  example: c20a6477-6017-4ec6-a3a2-0805fb735a36
             responses:
                 "200":
                     description: OK response.
@@ -133,14 +132,14 @@ paths:
                             schema:
                                 type: string
                                 description: State of the task
-                                example: queued
+                                example: processing
                                 enum:
                                     - queued
                                     - processing
                                     - success
                                     - failed
                                     - canceled
-                            example: processing
+                            example: success
     /image/copy:
         post:
             tags:
@@ -154,8 +153,8 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestToCopyRequestBody'
                         example:
-                            destination: Quis iure illo dolorum eos incidunt eius.
-                            source: Distinctio et labore.
+                            destination: Dolorum quo ut et.
+                            source: Aut voluptates sit magni.
             responses:
                 "200":
                     description: OK response.
@@ -164,9 +163,9 @@ paths:
                             schema:
                                 type: string
                                 description: Request id for async mode (uuidv4 format)
-                                example: 67fb98ec-e09d-4625-9921-88a442e96af4
+                                example: 38452c7f-5ea0-497b-b746-9ca3ef3abe16
                                 format: uuid
-                            example: 109a853d-22e9-4ab5-865d-0b9bed5f83ba
+                            example: 6946d3fc-da4f-4f10-8f5e-b4d322210552
     /image/copy/{request_id}:
         get:
             tags:
@@ -181,9 +180,9 @@ paths:
                   schema:
                     type: string
                     description: Request id for async mode (uuidv4 format)
-                    example: 3490962e-7fab-4d88-8f32-a107f8843f22
+                    example: 2d884f6f-3c6c-4c8a-a36e-c7adcbdb9ada
                     format: uuid
-                  example: 1f6414ae-a92e-4712-a473-184f41f6f8b4
+                  example: b477d62a-bd80-4b3e-ad6c-06f80dfba11e
             responses:
                 "200":
                     description: OK response.
@@ -192,7 +191,7 @@ paths:
                             schema:
                                 type: string
                                 description: State of the task
-                                example: canceled
+                                example: processing
                                 enum:
                                     - queued
                                     - processing
@@ -200,6 +199,35 @@ paths:
                                     - failed
                                     - canceled
                             example: canceled
+    /tidbcloud/devops/cloudconfig/versions/component:
+        post:
+            tags:
+                - tidbcloud
+            summary: update-component-version-in-cloudconfig tidbcloud
+            operationId: tidbcloud#update-component-version-in-cloudconfig
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateComponentVersionInCloudconfigRequestBody'
+                        example:
+                            image: xxx.com/coomponent:v8.5.4
+                            stage: prod
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateComponentVersionInCloudconfigResponseBody'
+                            example:
+                                stage: Veniam nisi.
+                                ticket:
+                                    change_id: In possimus adipisci.
+                                    id: Excepturi omnis autem sequi saepe fuga.
+                                    release_id: Culpa repellat et ut.
+                                    url: http://medhurst.name/lela.waelchi
     /tiup/delivery-by-rules:
         post:
             tags:
@@ -224,15 +252,16 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Et omnis commodi ut accusamus.
+                                    example: Voluptatem pariatur voluptatem.
                                 description: request track ids
                                 example:
-                                    - Qui corrupti qui qui aperiam amet.
-                                    - Corporis consequatur amet voluptas facilis est illo.
+                                    - Eius rerum modi officia labore nulla.
+                                    - Unde et ut et earum.
+                                    - Unde ducimus minus facilis nihil.
                             example:
-                                - Sequi cupiditate et provident commodi iusto.
-                                - Repellendus inventore dolore.
-                                - Aut et est.
+                                - Dolorum ex nesciunt et quia facere.
+                                - Voluptatibus sed.
+                                - Itaque non sed.
     /tiup/publish-request:
         post:
             tags:
@@ -248,7 +277,7 @@ paths:
                             $ref: '#/components/schemas/RequestToPublishRequestBody'
                         example:
                             artifact_url: oci.com/repo:tag
-                            tiup_mirror: prod
+                            tiup_mirror: staging
                             version: v1.0.0
             responses:
                 "200":
@@ -259,16 +288,15 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Rerum velit et.
+                                    example: Vero voluptatum magnam.
                                 description: request track ids
                                 example:
-                                    - Esse nam.
-                                    - Velit quia hic.
-                                    - Numquam alias.
+                                    - Architecto ut suscipit et rerum iusto facilis.
+                                    - Quas officia distinctio adipisci ut voluptatum sint.
                             example:
-                                - Suscipit doloremque.
-                                - Quos numquam occaecati voluptatibus mollitia.
-                                - Exercitationem nam.
+                                - Corrupti ea rem.
+                                - Placeat nihil saepe velit odit maxime.
+                                - Adipisci dolor.
     /tiup/publish-request-single:
         post:
             tags:
@@ -303,9 +331,9 @@ paths:
                             schema:
                                 type: string
                                 description: Request id for async mode (uuidv4 format)
-                                example: 4c442380-3f18-4500-9f2a-e0125db00616
+                                example: 79b13134-6d56-484c-9981-81a0283ee0f1
                                 format: uuid
-                            example: 6c75c73a-017e-4a2a-b628-e6d60abe3a9b
+                            example: ef0cdca6-a059-4371-a183-a20bf0883102
     /tiup/publish-request/{request_id}:
         get:
             tags:
@@ -320,8 +348,8 @@ paths:
                   schema:
                     type: string
                     description: request track id
-                    example: Ipsa consequatur suscipit accusamus.
-                  example: Quia quo qui ut itaque dolorem.
+                    example: Perspiciatis eveniet eum quisquam temporibus magnam nemo.
+                  example: Aut dolorem debitis non error modi.
             responses:
                 "200":
                     description: OK response.
@@ -330,14 +358,14 @@ paths:
                             schema:
                                 type: string
                                 description: State of the task
-                                example: success
+                                example: queued
                                 enum:
                                     - queued
                                     - processing
                                     - success
                                     - failed
                                     - canceled
-                            example: processing
+                            example: canceled
     /tiup/reset-rate-limit:
         post:
             tags:
@@ -486,20 +514,20 @@ components:
                     type: boolean
                     description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                     default: false
-                    example: true
+                    example: false
                 image_url:
                     type: string
                     description: The image URL to collect
-                    example: Placeat rerum velit sunt quis necessitatibus repellat.
+                    example: Ut ducimus qui quia pariatur.
                 release_tag_suffix:
                     type: string
                     description: Suffix for the release tag
                     default: release
-                    example: Error voluptatem illum labore iste cumque omnis.
+                    example: Est nostrum in optio cupiditate placeat.
             example:
                 async: true
-                image_url: Animi quia non rerum saepe.
-                release_tag_suffix: Ad aut aliquam aut omnis magni vel.
+                image_url: Consequatur fugit modi aliquam aut laborum.
+                release_tag_suffix: Ea eaque est eum qui ad.
             required:
                 - image_url
         RequestMultiarchCollectResponseBody:
@@ -509,35 +537,34 @@ components:
                     type: boolean
                     description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                     default: false
-                    example: true
+                    example: false
                 repo:
                     type: string
                     description: Repository of the collected image
-                    example: Voluptate et magni sit.
+                    example: Ut eum nulla voluptates odio.
                 request_id:
                     type: string
                     description: Request id for async mode (uuidv4 format)
-                    example: 093c2e08-75cd-42db-b5b5-2f08cd479cf4
+                    example: 6a8e8797-fe3b-4281-ba72-ee6c75c72d32
                     format: uuid
                 tags:
                     type: array
                     items:
                         type: string
-                        example: Dolor impedit ab pariatur fuga natus.
+                        example: Veniam voluptatem eum laboriosam magnam deserunt laudantium.
                     description: Tags of the collected image
                     example:
-                        - Illum eius quibusdam expedita qui necessitatibus qui.
-                        - Doloribus ipsam maiores ut in delectus a.
-                        - Natus optio.
-                        - Voluptate reprehenderit deserunt explicabo.
+                        - Amet sed enim optio earum.
+                        - Voluptatem rem aut eaque.
             example:
                 async: false
-                repo: Ut eum nulla voluptates odio.
-                request_id: 20626555-f76a-4e87-97fe-3bd281ba72ee
+                repo: Suscipit doloremque.
+                request_id: 948781fe-4c3a-417e-8a2a-3628e6d60abe
                 tags:
-                    - Voluptatem eum laboriosam magnam deserunt laudantium.
-                    - Nam amet sed enim optio earum.
-                    - Voluptatem rem aut eaque.
+                    - Numquam occaecati voluptatibus mollitia in exercitationem nam.
+                    - Sit sequi.
+                    - Et provident commodi iusto enim repellendus.
+                    - Dolore nisi aut et.
             required:
                 - async
         RequestToCopyRequestBody:
@@ -546,14 +573,14 @@ components:
                 destination:
                     type: string
                     description: destination image url
-                    example: Tempora illo beatae aut.
+                    example: Aut aliquam aut omnis.
                 source:
                     type: string
                     description: source image url
-                    example: A earum.
+                    example: Non rerum saepe in.
             example:
-                destination: Ab numquam ipsam aperiam.
-                source: Non expedita explicabo ut qui nihil vero.
+                destination: Facilis dolor impedit.
+                source: Vel fugit corrupti at voluptate et magni.
             required:
                 - source
                 - destination
@@ -568,7 +595,7 @@ components:
                     type: string
                     description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
                     default: staging
-                    example: prod
+                    example: staging
                     enum:
                         - staging
                         - prod
@@ -589,27 +616,87 @@ components:
                 results:
                     type: object
                     example:
-                        prod:
-                            - 8900c38d-0704-4538-9a0c-6b5c9401ace8
-                            - 5f2b0dc4-b599-457e-907a-1428e809f3ea
-                            - 0b8a7cf1-75a8-4568-9aa6-ba9f8e0969e8
-                            - 3fc306be-be4d-42cb-8afd-c8d146f45d42
+                        staging:
+                            - a264513d-96b9-4c91-81be-e334960c7b5e
+                            - 8553d70e-b798-4618-9398-cbbfe9ec0ce2
                     additionalProperties:
                         type: array
                         items:
                             type: string
                             description: Request id for async mode (uuidv4 format)
-                            example: c09cd051-71aa-4b68-af17-9834f1c05949
+                            example: 06be863d-767d-4fcb-b90a-2691282ccfd7
                             format: uuid
                         example:
-                            - 7bfc18b3-514f-4a25-bd38-5e405ae7811f
-                            - b2062ed2-f7fa-4c83-81c7-a5c94a9447dc
-                            - 69f48e81-6383-4b20-9bab-91a9d44b365c
+                            - 2d5063e9-8d0c-447c-b57f-320d18b0a649
+                            - a25e40c5-0482-4ae3-a361-a7492e3c22aa
+                            - b8814324-31c1-40c6-9697-19e5a2965aa4
             example:
                 results:
-                    prod:
-                        - e750aa58-f877-4011-a194-f11a0c452def
-                        - 5bcbbaa2-ac3a-43db-b439-17c234940422
+                    staging:
+                        - aefdfacd-c08f-4576-9a68-40b9e153f441
+                        - fd16c80b-8685-4d1d-b5bd-36def2eac94c
+                        - 9b2a9022-398b-46ca-bbd9-44a4397527d7
+        UpdateComponentVersionInCloudconfigRequestBody:
+            type: object
+            properties:
+                image:
+                    type: string
+                    description: container image with tag
+                    example: xxx.com/coomponent:v8.5.4
+                stage:
+                    type: string
+                    description: env stage
+                    example: prod
+            example:
+                image: xxx.com/coomponent:v8.5.4
+                stage: prod
+            required:
+                - stage
+                - image
+        UpdateComponentVersionInCloudconfigResponseBody:
+            type: object
+            properties:
+                stage:
+                    type: string
+                    example: Consequatur suscipit accusamus.
+                ticket:
+                    type: object
+                    properties:
+                        change_id:
+                            type: string
+                            description: component publish flow ID
+                            example: Nihil maxime nesciunt sit autem.
+                        id:
+                            type: string
+                            description: ticket ID
+                            example: Quia quo qui ut itaque dolorem.
+                        release_id:
+                            type: string
+                            description: release window ID
+                            example: Eius eos dicta quas nobis ut magni.
+                        url:
+                            type: string
+                            description: ticket visit url
+                            example: http://bernierrolfson.net/jo
+                            format: uri
+                    description: ticket details
+                    example:
+                        change_id: Voluptatibus nemo modi earum.
+                        id: Velit similique.
+                        release_id: Voluptas ipsam natus.
+                        url: http://abshire.net/keon
+                    required:
+                        - id
+            example:
+                stage: Enim exercitationem eum.
+                ticket:
+                    change_id: Et odio rerum eos nemo labore nam.
+                    id: Tempora id qui reprehenderit.
+                    release_id: Aut voluptates voluptates fuga debitis.
+                    url: http://hoppe.info/rhoda
+            required:
+                - stage
+                - ticket
 tags:
     - name: tiup
       description: TiUP Publisher service
@@ -617,3 +704,5 @@ tags:
       description: 'Publisher service for static file server '
     - name: image
       description: Publisher service for container image
+    - name: tidbcloud
+      description: Publisher service for tidbcloud platform
