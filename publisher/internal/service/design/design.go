@@ -146,6 +146,20 @@ var TiupDeliveryResults = Type("TiupDeliveryResults", func() {
 	Attribute("results", MapOf(TiupMirrorName, ArrayOf(String, RequestTaskIDFunc)))
 })
 
+var TidbcloudOpsTicket = Type("TidbcloudOpsTicket", func() {
+	Description("Ops ticket details")
+	Attribute("id", String, "ticket ID")
+	Attribute("url", String, func() {
+		Description("ticket visit url")
+		Format(FormatURI)
+	})
+	Attribute("release_id", String, "release window ID")
+	Attribute("change_id", String, "component publish flow ID")
+	Attribute("component", String, "component name")
+	Attribute("component_version", String, "component version derived from image tag")
+	Required("id", "url", "component", "component_version")
+})
+
 var TaskStateFunc = func() {
 	Description("State of the task")
 	Enum("queued", "processing", "success", "failed", "canceled")
@@ -346,19 +360,8 @@ var _ = Service("tidbcloud", func() {
 		})
 		Result(func() {
 			Attribute("stage", String)
-			Attribute("ticket", func() {
-				Description("ticket details")
-				Attribute("id", String, "ticket ID")
-				Attribute("url", String, func() {
-					Description("ticket visit url")
-					Format(FormatURI)
-				})
-				Attribute("release_id", String, "release window ID")
-				Attribute("change_id", String, "component publish flow ID")
-
-				Required("id")
-			})
-			Required("stage", "ticket")
+			Attribute("tickets", ArrayOf(TidbcloudOpsTicket))
+			Required("stage", "tickets")
 		})
 		HTTP(func() {
 			POST("/devops/cloudconfig/versions/component")

@@ -39,7 +39,7 @@ paths:
                         items:
                             type: string
                             description: Request id for async mode (uuidv4 format)
-                            example: f86cc458-00e4-4ae6-b308-fe1d2f3ffbc2
+                            example: 2699eb5d-a56d-47af-a578-5950e5961665
                             format: uuid
             schemes:
                 - http
@@ -189,7 +189,7 @@ paths:
                         $ref: '#/definitions/TidbcloudUpdateComponentVersionInCloudconfigResponseBody'
                         required:
                             - stage
-                            - ticket
+                            - tickets
             schemes:
                 - http
     /tiup/delivery-by-rules:
@@ -214,7 +214,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Est saepe reprehenderit at iste optio animi.
+                            example: Tenetur non quisquam qui suscipit nisi architecto.
             schemes:
                 - http
     /tiup/publish-request:
@@ -240,7 +240,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Vel ex voluptatibus.
+                            example: Voluptas fugiat reiciendis aliquid aut quam.
             schemes:
                 - http
     /tiup/publish-request-single:
@@ -311,9 +311,9 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Aut repudiandae et eius explicabo quo aliquam.
+                example: Quis doloribus enim quaerat id id dolorum.
         example:
-            artifact_url: Aliquid doloribus qui tempore ut.
+            artifact_url: Ut dolores inventore.
         required:
             - artifact_url
     From:
@@ -378,20 +378,20 @@ definitions:
                 type: boolean
                 description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                 default: false
-                example: false
+                example: true
             image_url:
                 type: string
                 description: The image URL to collect
-                example: Qui dicta et nihil.
+                example: Ut perspiciatis beatae aut voluptas molestiae asperiores.
             release_tag_suffix:
                 type: string
                 description: Suffix for the release tag
                 default: release
-                example: Reprehenderit architecto eum dolor tempore.
+                example: Sequi consequuntur sit eaque illo in.
         example:
             async: false
-            image_url: Ea quia laboriosam facilis ut.
-            release_tag_suffix: Blanditiis laboriosam ex corporis est enim.
+            image_url: Reprehenderit non omnis consequatur perferendis.
+            release_tag_suffix: Aut culpa quo.
         required:
             - image_url
     ImageRequestMultiarchCollectResponseBody:
@@ -402,33 +402,32 @@ definitions:
                 type: boolean
                 description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                 default: false
-                example: false
+                example: true
             repo:
                 type: string
                 description: Repository of the collected image
-                example: Animi doloremque.
+                example: Voluptatem aut non aut sapiente et.
             request_id:
                 type: string
                 description: Request id for async mode (uuidv4 format)
-                example: d2833955-d274-437e-a14e-59a8a014f720
+                example: ed1835c3-fff0-43d6-a163-0afb65148f1b
                 format: uuid
             tags:
                 type: array
                 items:
                     type: string
-                    example: Corrupti tempore quibusdam reprehenderit porro eaque.
+                    example: Voluptatem excepturi nemo est et.
                 description: Tags of the collected image
                 example:
-                    - Rerum aut sequi sequi nihil.
-                    - Consequatur eveniet molestias.
+                    - Dolorem aperiam nobis quaerat debitis labore.
+                    - Sit accusamus maxime aut repudiandae.
         example:
             async: false
-            repo: Nulla omnis aperiam consectetur.
-            request_id: 69f48e81-6383-4b20-9bab-91a9d44b365c
+            repo: Quisquam amet voluptas dolores enim deleniti et.
+            request_id: 8235f013-5f43-4aa7-bee5-b0de4d8e511c
             tags:
-                - Ducimus pariatur delectus cupiditate voluptas.
-                - Voluptas fuga nulla molestiae.
-                - Ex dolor.
+                - Eveniet veritatis natus ratione voluptas ullam quam.
+                - Magni quo rerum et ut odit consectetur.
         required:
             - async
     ImageRequestToCopyRequestBody:
@@ -438,14 +437,14 @@ definitions:
             destination:
                 type: string
                 description: destination image url
-                example: Ut eaque illum nihil rerum.
+                example: Quia velit voluptas.
             source:
                 type: string
                 description: source image url
-                example: Similique voluptatem ut veritatis sint vitae.
+                example: In consequuntur aut.
         example:
-            destination: Reprehenderit fugiat dolores.
-            source: Et necessitatibus eius perspiciatis.
+            destination: Pariatur mollitia consequatur.
+            source: Aliquam velit minus dignissimos fuga corporis.
         required:
             - source
             - destination
@@ -499,7 +498,7 @@ definitions:
                 type: string
                 description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
                 default: staging
-                example: prod
+                example: staging
                 enum:
                     - staging
                     - prod
@@ -519,6 +518,48 @@ definitions:
         required:
             - from
             - publish
+    TidbcloudOpsTicket:
+        title: TidbcloudOpsTicket
+        type: object
+        properties:
+            change_id:
+                type: string
+                description: component publish flow ID
+                example: Porro adipisci dolore earum dolorem.
+            component:
+                type: string
+                description: component name
+                example: Id sunt voluptatem rem pariatur a magnam.
+            component_version:
+                type: string
+                description: component version derived from image tag
+                example: Neque optio et ad unde possimus et.
+            id:
+                type: string
+                description: ticket ID
+                example: Non ea amet.
+            release_id:
+                type: string
+                description: release window ID
+                example: Earum id alias consequatur ut officiis.
+            url:
+                type: string
+                description: ticket visit url
+                example: http://strosin.net/jevon
+                format: uri
+        description: Ops ticket details
+        example:
+            change_id: Omnis deleniti sit sit consectetur reprehenderit.
+            component: Totam aspernatur nemo.
+            component_version: Molestiae possimus doloremque hic.
+            id: Est alias ea quo et repellendus.
+            release_id: Nobis eaque ex quis eum et.
+            url: http://osinskischaefer.info/thomas
+        required:
+            - id
+            - url
+            - component
+            - component_version
     TidbcloudUpdateComponentVersionInCloudconfigRequestBody:
         title: TidbcloudUpdateComponentVersionInCloudconfigRequestBody
         type: object
@@ -543,45 +584,48 @@ definitions:
         properties:
             stage:
                 type: string
-                example: Et aut voluptates autem aut.
-            ticket:
-                type: object
-                properties:
-                    change_id:
-                        type: string
-                        description: component publish flow ID
-                        example: Doloremque tempora impedit quia odio voluptatem voluptatem.
-                    id:
-                        type: string
-                        description: ticket ID
-                        example: Et aut nisi debitis ab.
-                    release_id:
-                        type: string
-                        description: release window ID
-                        example: Labore voluptates voluptatem eaque quos.
-                    url:
-                        type: string
-                        description: ticket visit url
-                        example: http://bosco.net/rupert.kuphal
-                        format: uri
-                description: ticket details
+                example: Quod illo sunt est.
+            tickets:
+                type: array
+                items:
+                    $ref: '#/definitions/TidbcloudOpsTicket'
                 example:
-                    change_id: Dolore autem repudiandae.
-                    id: Cupiditate distinctio.
-                    release_id: Omnis dolorem soluta vero rerum est dolor.
-                    url: http://blanda.info/eldora
-                required:
-                    - id
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
         example:
-            stage: Voluptates facilis impedit amet.
-            ticket:
-                change_id: Qui temporibus voluptatem ut.
-                id: Culpa blanditiis assumenda magni vel amet.
-                release_id: Rem assumenda.
-                url: http://daniel.name/eula
+            stage: Inventore cupiditate qui.
+            tickets:
+                - change_id: Necessitatibus veritatis.
+                  component: Qui unde reiciendis quibusdam quibusdam veniam.
+                  component_version: Rerum excepturi omnis autem sequi saepe.
+                  id: Occaecati animi.
+                  release_id: Officiis corrupti reprehenderit.
+                  url: http://schuppe.name/nelda
+                - change_id: Necessitatibus veritatis.
+                  component: Qui unde reiciendis quibusdam quibusdam veniam.
+                  component_version: Rerum excepturi omnis autem sequi saepe.
+                  id: Occaecati animi.
+                  release_id: Officiis corrupti reprehenderit.
+                  url: http://schuppe.name/nelda
         required:
             - stage
-            - ticket
+            - tickets
     TiupDeliveryByRulesRequestBody:
         title: TiupDeliveryByRulesRequestBody
         type: object
@@ -606,7 +650,7 @@ definitions:
                 type: string
                 description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
                 default: staging
-                example: staging
+                example: prod
                 enum:
                     - staging
                     - prod

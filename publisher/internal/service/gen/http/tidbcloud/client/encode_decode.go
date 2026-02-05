@@ -92,3 +92,19 @@ func DecodeUpdateComponentVersionInCloudconfigResponse(decoder func(*http.Respon
 		}
 	}
 }
+
+// unmarshalTidbcloudOpsTicketResponseBodyToTidbcloudTidbcloudOpsTicket builds
+// a value of type *tidbcloud.TidbcloudOpsTicket from a value of type
+// *TidbcloudOpsTicketResponseBody.
+func unmarshalTidbcloudOpsTicketResponseBodyToTidbcloudTidbcloudOpsTicket(v *TidbcloudOpsTicketResponseBody) *tidbcloud.TidbcloudOpsTicket {
+	res := &tidbcloud.TidbcloudOpsTicket{
+		ID:               *v.ID,
+		URL:              *v.URL,
+		ReleaseID:        v.ReleaseID,
+		ChangeID:         v.ChangeID,
+		Component:        *v.Component,
+		ComponentVersion: *v.ComponentVersion,
+	}
+
+	return res
+}

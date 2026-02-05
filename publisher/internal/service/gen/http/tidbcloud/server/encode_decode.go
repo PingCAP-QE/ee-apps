@@ -61,3 +61,19 @@ func DecodeUpdateComponentVersionInCloudconfigRequest(mux goahttp.Muxer, decoder
 		return payload, nil
 	}
 }
+
+// marshalTidbcloudTidbcloudOpsTicketToTidbcloudOpsTicketResponseBody builds a
+// value of type *TidbcloudOpsTicketResponseBody from a value of type
+// *tidbcloud.TidbcloudOpsTicket.
+func marshalTidbcloudTidbcloudOpsTicketToTidbcloudOpsTicketResponseBody(v *tidbcloud.TidbcloudOpsTicket) *TidbcloudOpsTicketResponseBody {
+	res := &TidbcloudOpsTicketResponseBody{
+		ID:               v.ID,
+		URL:              v.URL,
+		ReleaseID:        v.ReleaseID,
+		ChangeID:         v.ChangeID,
+		Component:        v.Component,
+		ComponentVersion: v.ComponentVersion,
+	}
+
+	return res
+}

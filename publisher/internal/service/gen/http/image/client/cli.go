@@ -24,7 +24,7 @@ func BuildRequestToCopyPayload(imageRequestToCopyBody string) (*image.RequestToC
 	{
 		err = json.Unmarshal([]byte(imageRequestToCopyBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Dolorum quo ut et.\",\n      \"source\": \"Aut voluptates sit magni.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"destination\": \"Sit pariatur quis id sunt dignissimos accusantium.\",\n      \"source\": \"Et sed doloremque officiis accusantium ab.\"\n   }'")
 		}
 	}
 	v := &image.RequestToCopyPayload{
@@ -61,7 +61,7 @@ func BuildRequestMultiarchCollectPayload(imageRequestMultiarchCollectBody string
 	{
 		err = json.Unmarshal([]byte(imageRequestMultiarchCollectBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"async\": true,\n      \"image_url\": \"Rerum laudantium beatae.\",\n      \"release_tag_suffix\": \"Laboriosam aut non aut occaecati iure.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"async\": false,\n      \"image_url\": \"Voluptatibus quas aut.\",\n      \"release_tag_suffix\": \"Dolor deleniti id earum.\"\n   }'")
 		}
 	}
 	v := &image.RequestMultiarchCollectPayload{

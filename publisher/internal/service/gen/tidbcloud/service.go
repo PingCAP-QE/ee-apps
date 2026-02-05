@@ -35,6 +35,22 @@ const ServiceName = "tidbcloud"
 // MethodKey key.
 var MethodNames = [1]string{"update-component-version-in-cloudconfig"}
 
+// Ops ticket details
+type TidbcloudOpsTicket struct {
+	// ticket ID
+	ID string
+	// ticket visit url
+	URL string
+	// release window ID
+	ReleaseID *string
+	// component publish flow ID
+	ChangeID *string
+	// component name
+	Component string
+	// component version derived from image tag
+	ComponentVersion string
+}
+
 // UpdateComponentVersionInCloudconfigPayload is the payload type of the
 // tidbcloud service update-component-version-in-cloudconfig method.
 type UpdateComponentVersionInCloudconfigPayload struct {
@@ -47,16 +63,6 @@ type UpdateComponentVersionInCloudconfigPayload struct {
 // UpdateComponentVersionInCloudconfigResult is the result type of the
 // tidbcloud service update-component-version-in-cloudconfig method.
 type UpdateComponentVersionInCloudconfigResult struct {
-	Stage string
-	// ticket details
-	Ticket *struct {
-		// ticket ID
-		ID string
-		// ticket visit url
-		URL *string
-		// release window ID
-		ReleaseID *string
-		// component publish flow ID
-		ChangeID *string
-	}
+	Stage   string
+	Tickets []*TidbcloudOpsTicket
 }

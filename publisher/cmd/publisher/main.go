@@ -136,7 +136,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, imgEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, imgEndpoints, tidbcloudEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

@@ -27,18 +27,25 @@ type UpdateComponentVersionInCloudconfigRequestBody struct {
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
 type UpdateComponentVersionInCloudconfigResponseBody struct {
-	Stage *string `form:"stage,omitempty" json:"stage,omitempty" xml:"stage,omitempty"`
-	// ticket details
-	Ticket *struct {
-		// ticket ID
-		ID *string `form:"id" json:"id" xml:"id"`
-		// ticket visit url
-		URL *string `form:"url" json:"url" xml:"url"`
-		// release window ID
-		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
-		// component publish flow ID
-		ChangeID *string `form:"change_id" json:"change_id" xml:"change_id"`
-	} `form:"ticket,omitempty" json:"ticket,omitempty" xml:"ticket,omitempty"`
+	Stage   *string                           `form:"stage,omitempty" json:"stage,omitempty" xml:"stage,omitempty"`
+	Tickets []*TidbcloudOpsTicketResponseBody `form:"tickets,omitempty" json:"tickets,omitempty" xml:"tickets,omitempty"`
+}
+
+// TidbcloudOpsTicketResponseBody is used to define fields on response body
+// types.
+type TidbcloudOpsTicketResponseBody struct {
+	// ticket ID
+	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	// ticket visit url
+	URL *string `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
+	// release window ID
+	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
+	// component publish flow ID
+	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+	// component name
+	Component *string `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
+	// component version derived from image tag
+	ComponentVersion *string `form:"component_version,omitempty" json:"component_version,omitempty" xml:"component_version,omitempty"`
 }
 
 // NewUpdateComponentVersionInCloudconfigRequestBody builds the HTTP request
@@ -59,20 +66,13 @@ func NewUpdateComponentVersionInCloudconfigResultOK(body *UpdateComponentVersion
 	v := &tidbcloud.UpdateComponentVersionInCloudconfigResult{
 		Stage: *body.Stage,
 	}
-	v.Ticket = &struct {
-		// ticket ID
-		ID string
-		// ticket visit url
-		URL *string
-		// release window ID
-		ReleaseID *string
-		// component publish flow ID
-		ChangeID *string
-	}{
-		ID:        *body.Ticket.ID,
-		URL:       body.Ticket.URL,
-		ReleaseID: body.Ticket.ReleaseID,
-		ChangeID:  body.Ticket.ChangeID,
+	v.Tickets = make([]*tidbcloud.TidbcloudOpsTicket, len(body.Tickets))
+	for i, val := range body.Tickets {
+		if val == nil {
+			v.Tickets[i] = nil
+			continue
+		}
+		v.Tickets[i] = unmarshalTidbcloudOpsTicketResponseBodyToTidbcloudTidbcloudOpsTicket(val)
 	}
 
 	return v
@@ -84,16 +84,36 @@ func ValidateUpdateComponentVersionInCloudconfigResponseBody(body *UpdateCompone
 	if body.Stage == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("stage", "body"))
 	}
-	if body.Ticket == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("ticket", "body"))
+	if body.Tickets == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tickets", "body"))
 	}
-	if body.Ticket != nil {
-		if body.Ticket.ID == nil {
-			err = goa.MergeErrors(err, goa.MissingFieldError("id", "body.ticket"))
+	for _, e := range body.Tickets {
+		if e != nil {
+			if err2 := ValidateTidbcloudOpsTicketResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
 		}
-		if body.Ticket.URL != nil {
-			err = goa.MergeErrors(err, goa.ValidateFormat("body.ticket.url", *body.Ticket.URL, goa.FormatURI))
-		}
+	}
+	return
+}
+
+// ValidateTidbcloudOpsTicketResponseBody runs the validations defined on
+// TidbcloudOpsTicketResponseBody
+func ValidateTidbcloudOpsTicketResponseBody(body *TidbcloudOpsTicketResponseBody) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
+	if body.URL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
+	}
+	if body.Component == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("component", "body"))
+	}
+	if body.ComponentVersion == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("component_version", "body"))
+	}
+	if body.URL != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
 	}
 	return
 }

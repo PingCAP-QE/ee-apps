@@ -2,7 +2,12 @@ package tidbcloud
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
@@ -14,95 +19,200 @@ import (
 // The example methods log the requests and return zero values.
 type tidbcloudsrvc struct {
 	*share.BaseService
+	opsCfg      *OpsConfig
+	restyClient *resty.Client
 }
 
 // NewService returns the tidbcloud service implementation.
 func NewService(logger *zerolog.Logger, cfg config.Service) tidbcloud.Service {
-	return &tidbcloudsrvc{
-		BaseService: share.NewBaseServiceService(logger, cfg),
+	srvc := &tidbcloudsrvc{BaseService: share.NewBaseServiceService(logger, cfg)}
+	srvc.restyClient = resty.New().SetTimeout(30 * time.Second)
+
+	tidbcloudCfg := cfg.Services["tidbcloud"]
+	switch v := tidbcloudCfg.(type) {
+	case map[string]any:
+		configFileAny, ok := v["ops_config_file"]
+		if !ok {
+			break
+		}
+		configFile, ok := configFileAny.(string)
+		if !ok || strings.TrimSpace(configFile) == "" {
+			srvc.Logger.Fatal().Msg("tidbcloud.ops_config_file must be a non-empty string")
+		}
+		ret, err := config.Load[OpsConfig](configFile)
+		if err != nil {
+			srvc.Logger.Fatal().Err(err).Msg("failed to load tidbcloud ops config")
+		}
+		srvc.opsCfg = ret
 	}
+
+	return srvc
 }
 
-func (s *tidbcloudsrvc) callOpsPlatformAPI() {
+func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, component string, componentCfg OpsComponent, imageRepo, imageTag, componentVersion string) (*tidbcloud.TidbcloudOpsTicket, error) {
+	var author, releaseID, changeID string
+	if componentCfg.GitHubRepo != "" {
+		md, mdErr := s.getTiBuildTagMetadata(ctx, s.opsCfg, componentCfg.GitHubRepo, imageTag)
+		if mdErr != nil {
+			s.Logger.Warn().Err(mdErr).Str("stage", stage).Str("component", component).Msg("failed to get tibuild tag metadata")
+		} else if md != nil {
+			author = md.Author
+			releaseID = md.Meta.OpsReq.ReleaseID
+			changeID = md.Meta.OpsReq.ChangeID
+		}
+	}
 
+	payload := OpsUpdateComponentRequest{
+		ClusterType: componentCfg.ClusterType,
+		Version:     componentVersion,
+		BaseImage:   imageRepo,
+		Tag:         imageTag,
+		Policy:      "immediate",
+		Author:      author,
+		ReleaseID:   releaseID,
+		ChangeID:    changeID,
+	}
+
+	var out OpsUpdateComponentResponse
+	resp, err := s.opsRestyClient(stage).R().
+		SetContext(ctx).
+		SetBody(&payload).
+		SetResult(&out).
+		SetPathParam("component", component).
+		Post("/{component}")
+	if err != nil {
+		return nil, fmt.Errorf("update ops config for component %s: %w", component, err)
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("update ops config for component %s: http status %d: %s", component, resp.StatusCode(), strings.TrimSpace(string(resp.Body())))
+	}
+	if strings.TrimSpace(out.InstanceID) == "" {
+		return nil, fmt.Errorf("ops response missing instance_id for component %s", component)
+	}
+
+	ticketURL := opsInstanceURL(stage, out.InstanceID)
+	var releaseIDPtr, changeIDPtr *string
+	if releaseID != "" {
+		releaseIDPtr = &releaseID
+	}
+	if changeID != "" {
+		changeIDPtr = &changeID
+	}
+
+	return &tidbcloud.TidbcloudOpsTicket{
+		ID:               out.InstanceID,
+		URL:              ticketURL,
+		ReleaseID:        releaseIDPtr,
+		ChangeID:         changeIDPtr,
+		Component:        component,
+		ComponentVersion: componentVersion,
+	}, nil
+}
+
+func (s *tidbcloudsrvc) tibuildRestyClient() *resty.Client {
+	cfg := s.opsCfg.TiBuildV2
+	client := resty.New().SetBaseURL(cfg.APIBaseURL)
+
+	if cfg.User != "" && cfg.Password != "" {
+		client.SetBasicAuth(cfg.User, cfg.Password)
+	}
+	return client
+}
+
+func (s *tidbcloudsrvc) opsRestyClient(stage string) *resty.Client {
+	cfg, ok := s.opsCfg.Stages[stage]
+	if !ok {
+		return nil
+	}
+
+	return resty.New().
+		SetBaseURL(cfg.APIBaseURL).
+		SetHeader("x-api-key", cfg.APIKey)
+}
+
+func opsInstanceURL(stage, instanceID string) string {
+	if stage == "prod" {
+		return fmt.Sprintf("https://ops.tidbcloud.com/operations/%s", instanceID)
+	}
+	return fmt.Sprintf("https://ops-%s.tidbcloud.com/operations/%s", stage, instanceID)
+}
+
+func parseImageRepoTag(image string) (string, string, error) {
+	// use existing helper for "@sha256:" support
+	if strings.Contains(image, "@sha256:") {
+		return share.SplitRepoAndTag(image)
+	}
+	// split by last ':' to support registry with port
+	idx := strings.LastIndex(image, ":")
+	if idx < 0 || idx == len(image)-1 {
+		return "", "", fmt.Errorf("invalid image: %s", image)
+	}
+	return image[:idx], image[idx+1:], nil
+}
+
+func (s *tidbcloudsrvc) getTiBuildTagMetadata(ctx context.Context, cfg *OpsConfig, githubRepo, imageTag string) (*TiBuildTagMetadataResponse, error) {
+	var out TiBuildTagMetadataResponse
+	req := s.tibuildRestyClient().R().
+		SetContext(ctx).
+		SetHeader("Accept", "application/json").
+		SetResult(&out).
+		SetQueryParam("repo", githubRepo).
+		SetQueryParam("tag", imageTag)
+	resp, err := req.Get("/hotfix/tidbx/tag")
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("tibuild-v2 http status %d: %s", resp.StatusCode(), strings.TrimSpace(string(resp.Body())))
+	}
+	return &out, nil
 }
 
 // UpdateComponentVersionInCloudconfig implements
 // update-component-version-in-cloudconfig.
 func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context, p *tidbcloud.UpdateComponentVersionInCloudconfigPayload) (res *tidbcloud.UpdateComponentVersionInCloudconfigResult, err error) {
-	res = &tidbcloud.UpdateComponentVersionInCloudconfigResult{}
-	s.Logger.Info().Msgf("tidbcloud.update-component-version-in-cloudconfig")
+	if p == nil {
+		return nil, fmt.Errorf("payload is nil")
+	}
+	res = &tidbcloud.UpdateComponentVersionInCloudconfigResult{Stage: p.Stage}
+	if strings.TrimSpace(p.Stage) == "" {
+		return nil, fmt.Errorf("stage is empty")
+	}
+	if strings.TrimSpace(p.Image) == "" {
+		return nil, fmt.Errorf("image is empty")
+	}
+	if s.opsCfg == nil {
+		return nil, fmt.Errorf("tidbcloud ops config is not configured")
+	}
+	stageCfg, ok := s.opsCfg.Stages[p.Stage]
+	if !ok {
+		return nil, fmt.Errorf("stage %q not found in tidbcloud ops config", p.Stage)
+	}
 
-	// function make_ops_api_call() {
-	//            local stage="$1"
-	//            local component="$2"
-	//            local component_version="$3"
-	//            local cluster_type="$4"
-	//            local image_repo="$5"
-	//            local image_tag="$6"
-	//            local github_repo="$7"
-	//            local api_base_url="$8"
-	//            local api_key="$9"
-	//            local save_file="$10"
+	imageRepo, imageTag, err := parseImageRepoTag(p.Image)
+	if err != nil {
+		return nil, err
+	}
 
-	//            local api_url="$api_base_url/$component"
+	var components []string
+	for name, c := range stageCfg.Components {
+		if c.BaseImage == imageRepo {
+			components = append(components, name)
+		}
+	}
+	slices.Sort(components)
 
-	//            # get the tag metadata from github
-	//            local tag_metadata=$(get_git_tag_metadata "$github_repo" "$image_tag")
+	componentVersion := strings.SplitN(imageTag, "-", 2)[0]
 
-	//            # prepare payload file
-	//            local payload_file="/tmp/$component-$component_version.json"
-	//            jq -n \
-	//              --arg cluster_type "$cluster_type" \
-	//              --arg version "$component_version" \
-	//              --arg base_image "$image_repo" \
-	//              --arg tag "$image_tag" \
+	for _, component := range components {
+		c := stageCfg.Components[component]
+		ticket, err := s.callOpsPlatformAPI(ctx, p.Stage, component, c, imageRepo, imageTag, componentVersion)
+		if err != nil {
+			return nil, err
+		}
+		res.Tickets = append(res.Tickets, ticket)
+	}
 
-	//            echo "🚀 Request to update the image for component $component@$component_version in stage $stage with: $image_repo:$image_tag"
-	//            local response_file="/tmp/${component}-${component_version}-response.json"
-	//            curl -f \
-	//              --request POST \
-	//              --location "$api_url" \
-	//              --header "x-api-key: $api_key" \
-	//              --header "Content-Type: application/json" \
-	//              --data "@$payload_file" \
-	//              --output "$response_file"
-	//            ops_instance_id=$(jq -r .instance_id $response_file)
-	//            ops_ticket_url="$(get_ops_instance_url $stage $ops_instance_id)"
-	//            echo "✅ Requested image updating successfully for component $component@$component_version in stage $stage with: $image_repo:$image_tag, the Ops ticket URL is: $ops_ticket_url"
-	//            echo "$component@$component_version in $stage stage: $ops_ticket_url" >> "$save_file"
-	//        }
-
-	//        function update_ops_config_for_image() {
-	//          local stage="$1"
-	//          local image="$2"
-	//          local stage_config_file="$3"
-	//          local save_file="$4"
-	//          local api_base_url="$(jq -r '.api_base_url' $stage_config_file)"
-	//          local api_key="$(jq -r '.api_key' $stage_config_file)"
-
-	//          # split image name and tag
-	//          local image_repo=${image%:*}
-	//          local image_tag=${image##*:}
-
-	//          # get the component name from image repo: the base name of the image repo
-	//          local components=$(jq -r --arg img "$image_repo" '.components | to_entries | map(select(.value.base_image==$img) | .key) | join(",")' $stage_config_file)
-	//          if [ -z "$components" ]; then
-	//            echo "🤷 No component matched to bump on the Ops platform, skip."
-	//            return 0
-	//          fi
-
-	//          # get the component version from image tag(should return the vX.Y.Z part)
-	//          local component_version=$(echo $image_tag | cut -d'-' -f1)
-
-	//          # loop the components
-	//          IFS=',' read -ra components_array <<< "$components"
-	//          for component in "${components_array[@]}"; do
-	//            cluster_type="$(jq -r ".components.${component}.cluster_type" $stage_config_file)"
-	//            github_repo="$(jq -r ".components.${component}.github_repo" $stage_config_file)"
-	//            make_ops_api_call "$stage" "$component" "$component_version" "$cluster_type" "$image_repo" "$image_tag" "$github_repo" "$api_base_url" "$api_key" "$save_file"
-	//          done
-	//        }
-
-	return
+	s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Int("tickets", len(res.Tickets)).Msg("tidbcloud.update-component-version-in-cloudconfig")
+	return res, nil
 }

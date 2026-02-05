@@ -27,18 +27,25 @@ type UpdateComponentVersionInCloudconfigRequestBody struct {
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
 type UpdateComponentVersionInCloudconfigResponseBody struct {
-	Stage string `form:"stage" json:"stage" xml:"stage"`
-	// ticket details
-	Ticket *struct {
-		// ticket ID
-		ID string `form:"id" json:"id" xml:"id"`
-		// ticket visit url
-		URL *string `form:"url" json:"url" xml:"url"`
-		// release window ID
-		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
-		// component publish flow ID
-		ChangeID *string `form:"change_id" json:"change_id" xml:"change_id"`
-	} `form:"ticket" json:"ticket" xml:"ticket"`
+	Stage   string                            `form:"stage" json:"stage" xml:"stage"`
+	Tickets []*TidbcloudOpsTicketResponseBody `form:"tickets" json:"tickets" xml:"tickets"`
+}
+
+// TidbcloudOpsTicketResponseBody is used to define fields on response body
+// types.
+type TidbcloudOpsTicketResponseBody struct {
+	// ticket ID
+	ID string `form:"id" json:"id" xml:"id"`
+	// ticket visit url
+	URL string `form:"url" json:"url" xml:"url"`
+	// release window ID
+	ReleaseID *string `form:"release_id,omitempty" json:"release_id,omitempty" xml:"release_id,omitempty"`
+	// component publish flow ID
+	ChangeID *string `form:"change_id,omitempty" json:"change_id,omitempty" xml:"change_id,omitempty"`
+	// component name
+	Component string `form:"component" json:"component" xml:"component"`
+	// component version derived from image tag
+	ComponentVersion string `form:"component_version" json:"component_version" xml:"component_version"`
 }
 
 // NewUpdateComponentVersionInCloudconfigResponseBody builds the HTTP response
@@ -48,22 +55,17 @@ func NewUpdateComponentVersionInCloudconfigResponseBody(res *tidbcloud.UpdateCom
 	body := &UpdateComponentVersionInCloudconfigResponseBody{
 		Stage: res.Stage,
 	}
-	if res.Ticket != nil {
-		body.Ticket = &struct {
-			// ticket ID
-			ID string `form:"id" json:"id" xml:"id"`
-			// ticket visit url
-			URL *string `form:"url" json:"url" xml:"url"`
-			// release window ID
-			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
-			// component publish flow ID
-			ChangeID *string `form:"change_id" json:"change_id" xml:"change_id"`
-		}{
-			ID:        res.Ticket.ID,
-			URL:       res.Ticket.URL,
-			ReleaseID: res.Ticket.ReleaseID,
-			ChangeID:  res.Ticket.ChangeID,
+	if res.Tickets != nil {
+		body.Tickets = make([]*TidbcloudOpsTicketResponseBody, len(res.Tickets))
+		for i, val := range res.Tickets {
+			if val == nil {
+				body.Tickets[i] = nil
+				continue
+			}
+			body.Tickets[i] = marshalTidbcloudTidbcloudOpsTicketToTidbcloudOpsTicketResponseBody(val)
 		}
+	} else {
+		body.Tickets = []*TidbcloudOpsTicketResponseBody{}
 	}
 	return body
 }

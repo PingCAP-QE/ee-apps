@@ -37,8 +37,8 @@ func UsageCommands() []string {
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
-		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Nisi exercitationem laboriosam non.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Dolorum quo ut et.\",\n      \"source\": \"Aut voluptates sit magni.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Velit praesentium est.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Sit pariatur quis id sunt dignissimos accusantium.\",\n      \"source\": \"Et sed doloremque officiis accusantium ab.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
@@ -369,7 +369,7 @@ func tiupQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Ut culpa ut.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tiup query-publishing-status --request-id \"Occaecati occaecati.\"")
 }
 
 func tiupResetRateLimitUsage() {
@@ -415,7 +415,7 @@ func fileserverRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Nisi exercitationem laboriosam non.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Velit praesentium est.\"\n   }'")
 }
 
 func fileserverQueryPublishingStatusUsage() {
@@ -433,7 +433,7 @@ func fileserverQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"9c90f36b-bef0-4214-841c-d17a0a0ced68\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "fileserver query-publishing-status --request-id \"f639aa44-31bc-4024-a56c-c986fd6dce87\"")
 }
 
 // imageUsage displays the usage of the image command and its subcommands.
@@ -464,7 +464,7 @@ func imageRequestToCopyUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Dolorum quo ut et.\",\n      \"source\": \"Aut voluptates sit magni.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-to-copy --body '{\n      \"destination\": \"Sit pariatur quis id sunt dignissimos accusantium.\",\n      \"source\": \"Et sed doloremque officiis accusantium ab.\"\n   }'")
 }
 
 func imageQueryCopyingStatusUsage() {
@@ -482,7 +482,7 @@ func imageQueryCopyingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"92e7e162-dd2a-4f86-bb3d-60a83da7a611\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-copying-status --request-id \"2de02478-f524-46f0-afcf-e826b3bb4dd6\"")
 }
 
 func imageRequestMultiarchCollectUsage() {
@@ -500,7 +500,7 @@ func imageRequestMultiarchCollectUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": true,\n      \"image_url\": \"Rerum laudantium beatae.\",\n      \"release_tag_suffix\": \"Laboriosam aut non aut occaecati iure.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image request-multiarch-collect --body '{\n      \"async\": false,\n      \"image_url\": \"Voluptatibus quas aut.\",\n      \"release_tag_suffix\": \"Dolor deleniti id earum.\"\n   }'")
 }
 
 func imageQueryMultiarchCollectStatusUsage() {
@@ -518,7 +518,7 @@ func imageQueryMultiarchCollectStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"687b3ce4-b168-4ff5-bd0e-5d99ce52dc2e\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "image query-multiarch-collect-status --request-id \"20afa4d1-5eff-4bdb-941d-b3969471c9cb\"")
 }
 
 // tidbcloudUsage displays the usage of the tidbcloud command and its
