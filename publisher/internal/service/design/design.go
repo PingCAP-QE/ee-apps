@@ -353,7 +353,7 @@ var _ = Service("tidbcloud", func() {
 				Example("prod")
 			})
 			Attribute("image", String, "container image with tag", func() {
-				Example("xxx.com/coomponent:v8.5.4")
+                                Example("xxx.com/component:v8.5.4")
 			})
 
 			Required("stage", "image")
