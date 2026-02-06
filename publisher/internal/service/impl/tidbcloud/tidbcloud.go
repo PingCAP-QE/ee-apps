@@ -100,7 +100,7 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 	}
 
 	return &tidbcloud.TidbcloudOpsTicket{
-		ID:               fmt.Sprintf("%s", out.InstanceID),
+		ID:               fmt.Sprintf("%d", out.InstanceID),
 		URL:              ticketURL,
 		ReleaseID:        releaseIDPtr,
 		ChangeID:         changeIDPtr,
