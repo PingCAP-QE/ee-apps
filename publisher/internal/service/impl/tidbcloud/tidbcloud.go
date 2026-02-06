@@ -52,7 +52,7 @@ func NewService(logger *zerolog.Logger, cfg config.Service) tidbcloud.Service {
 func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, component string, componentCfg OpsComponent, imageRepo, imageTag, componentVersion string) (*tidbcloud.TidbcloudOpsTicket, error) {
 	var author, releaseID, changeID string
 	if componentCfg.GitHubRepo != "" {
-		md, mdErr := s.getTiBuildTagMetadata(ctx, s.opsCfg, componentCfg.GitHubRepo, imageTag)
+		md, mdErr := s.getTiBuildTagMetadata(ctx, componentCfg.GitHubRepo, imageTag)
 		if mdErr != nil {
 			s.Logger.Warn().Err(mdErr).Str("stage", stage).Str("component", component).Msg("failed to get tibuild tag metadata")
 		} else if md != nil {
@@ -150,7 +150,7 @@ func parseImageRepoTag(image string) (string, string, error) {
 	return image[:idx], image[idx+1:], nil
 }
 
-func (s *tidbcloudsrvc) getTiBuildTagMetadata(ctx context.Context, cfg *OpsConfig, githubRepo, imageTag string) (*TiBuildTagMetadataResponse, error) {
+func (s *tidbcloudsrvc) getTiBuildTagMetadata(ctx context.Context, githubRepo, imageTag string) (*TiBuildTagMetadataResponse, error) {
 	var out TiBuildTagMetadataResponse
 	req := s.tibuildRestyClient().R().
 		SetContext(ctx).
