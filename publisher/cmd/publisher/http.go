@@ -15,14 +15,21 @@ import (
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
 	fileserversvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/fileserver/server"
 	imagesvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/image/server"
+	tidbcloudsvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tidbcloud/server"
 	tiupsvr "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/http/tiup/server"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpoints, fileserverEndpoints *fileserver.Endpoints, imageEndpoints *image.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL,
+	tiupEndpoints *tiup.Endpoints,
+	fileserverEndpoints *fileserver.Endpoints,
+	imageEndpoints *image.Endpoints,
+	tidbcloudEndpoints *tidbcloud.Endpoints,
+	wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -54,18 +61,21 @@ func handleHTTPServer(ctx context.Context, u *url.URL, tiupEndpoints *tiup.Endpo
 		tiupServer       *tiupsvr.Server
 		fileserverServer *fileserversvr.Server
 		imageServer      *imagesvr.Server
+		tidbcloudServer  *tidbcloudsvr.Server
 	)
 	{
 		eh := errorHandler(ctx)
 		tiupServer = tiupsvr.New(tiupEndpoints, mux, dec, enc, eh, nil)
 		fileserverServer = fileserversvr.New(fileserverEndpoints, mux, dec, enc, eh, nil)
 		imageServer = imagesvr.New(imageEndpoints, mux, dec, enc, eh, nil)
+		tidbcloudServer = tidbcloudsvr.New(tidbcloudEndpoints, mux, dec, enc, eh, nil)
 	}
 
 	// Configure the mux.
 	tiupsvr.Mount(mux, tiupServer)
 	fileserversvr.Mount(mux, fileserverServer)
 	imagesvr.Mount(mux, imageServer)
+	tidbcloudsvr.Mount(mux, tidbcloudServer)
 
 	// ** Mount health check handler **
 	check := health.Handler(health.NewChecker())
