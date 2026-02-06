@@ -86,7 +86,7 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 	if resp.IsError() {
 		return nil, fmt.Errorf("update ops config for component %s: http status %d: %s", component, resp.StatusCode(), strings.TrimSpace(string(resp.Body())))
 	}
-	if strings.TrimSpace(out.InstanceID) == "" {
+	if out.InstanceID <= 0 {
 		return nil, fmt.Errorf("ops response missing instance_id for component %s", component)
 	}
 
@@ -100,7 +100,7 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 	}
 
 	return &tidbcloud.TidbcloudOpsTicket{
-		ID:               out.InstanceID,
+		ID:               fmt.Sprintf("%s", out.InstanceID),
 		URL:              ticketURL,
 		ReleaseID:        releaseIDPtr,
 		ChangeID:         changeIDPtr,
@@ -130,11 +130,11 @@ func (s *tidbcloudsrvc) opsRestyClient(stage string) *resty.Client {
 		SetHeader("x-api-key", cfg.APIKey)
 }
 
-func opsInstanceURL(stage, instanceID string) string {
+func opsInstanceURL(stage string, instanceID int) string {
 	if stage == "prod" {
-		return fmt.Sprintf("https://ops.tidbcloud.com/operations/%s", instanceID)
+		return fmt.Sprintf("https://ops.tidbcloud.com/operations/%d", instanceID)
 	}
-	return fmt.Sprintf("https://ops-%s.tidbcloud.com/operations/%s", stage, instanceID)
+	return fmt.Sprintf("https://ops-%s.tidbcloud.com/operations/%d", stage, instanceID)
 }
 
 func parseImageRepoTag(image string) (string, string, error) {

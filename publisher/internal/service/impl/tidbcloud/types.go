@@ -35,7 +35,7 @@ type OpsUpdateComponentRequest struct {
 }
 
 type OpsUpdateComponentResponse struct {
-	InstanceID string `json:"instance_id"`
+	InstanceID int `json:"instance_id"`
 }
 
 type TiBuildTagMetadataResponse struct {
