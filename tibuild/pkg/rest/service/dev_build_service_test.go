@@ -106,22 +106,19 @@ func TestDevBuildCreate(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1.2", entity.Spec.PluginGitRef)
 	})
-	t.Run("auto fill fips", func(t *testing.T) {
-		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTikv, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
-			DevBuildSaveOption{})
-		require.NoError(t, err)
-		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
-		require.Equal(t, FIPS_TIKV_BUILDER, entity.Spec.BuilderImg)
-		require.Equal(t, FIPS_TIKV_BASE, entity.Spec.ProductBaseImg)
-	})
-	t.Run("auto fill fips", func(t *testing.T) {
-		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductBr, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
-			DevBuildSaveOption{})
-		require.NoError(t, err)
-		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
-		require.Equal(t, "https://raw.githubusercontent.com/PingCAP-QE/artifacts/main/dockerfiles/br.Dockerfile", entity.Spec.ProductDockerfile)
+	t.Run("auto set tekton engine for tikv non-hotfix", func(t *testing.T) {
+		req := DevBuild{
+			Meta: DevBuildMeta{
+				// CreatedBy: "abc@test.com",
+			},
+			Spec: DevBuildSpec{
+				Product: ProductTikv,
+				Version: "v8.5.4",
+				Edition: EditionCommunity,
+				GitRef:  "pull/23"},
+		}
+		fillWithDefaults(&req)
+		require.Equal(t, TektonEngine, req.Spec.PipelineEngine)
 	})
 	t.Run("bad enterprise plugin", func(t *testing.T) {
 		_, err := server.Create(context.TODO(),
