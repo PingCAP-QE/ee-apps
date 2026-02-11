@@ -39,7 +39,7 @@ paths:
                         items:
                             type: string
                             description: Request id for async mode (uuidv4 format)
-                            example: 080ea04f-490a-4ff6-856a-1d8f0f7a5ba8
+                            example: 2699eb5d-a56d-47af-a578-5950e5961665
                             format: uuid
             schemes:
                 - http
@@ -167,6 +167,31 @@ paths:
                             - canceled
             schemes:
                 - http
+    /tidbcloud/devops/cloudconfig/versions/component:
+        post:
+            tags:
+                - tidbcloud
+            summary: update-component-version-in-cloudconfig tidbcloud
+            operationId: tidbcloud#update-component-version-in-cloudconfig
+            parameters:
+                - name: Update-Component-Version-In-CloudconfigRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TidbcloudUpdateComponentVersionInCloudconfigRequestBody'
+                    required:
+                        - stage
+                        - image
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/TidbcloudUpdateComponentVersionInCloudconfigResponseBody'
+                        required:
+                            - stage
+                            - tickets
+            schemes:
+                - http
     /tiup/delivery-by-rules:
         post:
             tags:
@@ -189,7 +214,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Recusandae dolorem.
+                            example: Tenetur non quisquam qui suscipit nisi architecto.
             schemes:
                 - http
     /tiup/publish-request:
@@ -215,7 +240,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Quia unde error molestias.
+                            example: Voluptas fugiat reiciendis aliquid aut quam.
             schemes:
                 - http
     /tiup/publish-request-single:
@@ -286,9 +311,9 @@ definitions:
             artifact_url:
                 type: string
                 description: The full url of the pushed OCI artifact, contain the tag part. It will parse the repo from it.
-                example: Rerum explicabo aut quis pariatur.
+                example: Quis doloribus enim quaerat id id dolorum.
         example:
-            artifact_url: Excepturi quia veniam autem.
+            artifact_url: Ut dolores inventore.
         required:
             - artifact_url
     From:
@@ -357,16 +382,16 @@ definitions:
             image_url:
                 type: string
                 description: The image URL to collect
-                example: Iste optio animi illo.
+                example: Ut perspiciatis beatae aut voluptas molestiae asperiores.
             release_tag_suffix:
                 type: string
                 description: Suffix for the release tag
                 default: release
-                example: Ut quis quis.
+                example: Sequi consequuntur sit eaque illo in.
         example:
             async: false
-            image_url: Quaerat id id.
-            release_tag_suffix: Facere ut dolores inventore rerum in.
+            image_url: Reprehenderit non omnis consequatur perferendis.
+            release_tag_suffix: Aut culpa quo.
         required:
             - image_url
     ImageRequestMultiarchCollectResponseBody:
@@ -377,33 +402,32 @@ definitions:
                 type: boolean
                 description: Whether to run the collection asynchronously. If true, returns a request id. If false or omitted, runs synchronously and returns the result directly.
                 default: false
-                example: false
+                example: true
             repo:
                 type: string
                 description: Repository of the collected image
-                example: Recusandae minima occaecati animi ad omnis iste.
+                example: Voluptatem aut non aut sapiente et.
             request_id:
                 type: string
                 description: Request id for async mode (uuidv4 format)
-                example: 9a4b5355-4319-44a8-9d19-6d8d350ade03
+                example: ed1835c3-fff0-43d6-a163-0afb65148f1b
                 format: uuid
             tags:
                 type: array
                 items:
                     type: string
-                    example: Doloremque nemo laboriosam eos iste.
+                    example: Voluptatem excepturi nemo est et.
                 description: Tags of the collected image
                 example:
-                    - Dolorum et.
-                    - Aliquid voluptatum odio.
+                    - Dolorem aperiam nobis quaerat debitis labore.
+                    - Sit accusamus maxime aut repudiandae.
         example:
             async: false
-            repo: Omnis autem sequi.
-            request_id: ec211be7-6472-4a0e-a4e9-6ac0a1157568
+            repo: Quisquam amet voluptas dolores enim deleniti et.
+            request_id: 8235f013-5f43-4aa7-bee5-b0de4d8e511c
             tags:
-                - Occaecati est animi recusandae.
-                - Dolorum voluptas fugiat reiciendis aliquid aut quam.
-                - Aliquid laborum tenetur non quisquam.
+                - Eveniet veritatis natus ratione voluptas ullam quam.
+                - Magni quo rerum et ut odit consectetur.
         required:
             - async
     ImageRequestToCopyRequestBody:
@@ -413,14 +437,14 @@ definitions:
             destination:
                 type: string
                 description: destination image url
-                example: Sit ipsa iste.
+                example: Quia velit voluptas.
             source:
                 type: string
                 description: source image url
-                example: Suscipit iure quia.
+                example: In consequuntur aut.
         example:
-            destination: Fugiat aut esse eos itaque dolore.
-            source: Ipsam eos vitae et officiis inventore.
+            destination: Pariatur mollitia consequatur.
+            source: Aliquam velit minus dignissimos fuga corporis.
         required:
             - source
             - destination
@@ -474,7 +498,7 @@ definitions:
                 type: string
                 description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
                 default: staging
-                example: prod
+                example: staging
                 enum:
                     - staging
                     - prod
@@ -494,6 +518,114 @@ definitions:
         required:
             - from
             - publish
+    TidbcloudOpsTicket:
+        title: TidbcloudOpsTicket
+        type: object
+        properties:
+            change_id:
+                type: string
+                description: component publish flow ID
+                example: Porro adipisci dolore earum dolorem.
+            component:
+                type: string
+                description: component name
+                example: Id sunt voluptatem rem pariatur a magnam.
+            component_version:
+                type: string
+                description: component version derived from image tag
+                example: Neque optio et ad unde possimus et.
+            id:
+                type: string
+                description: ticket ID
+                example: Non ea amet.
+            release_id:
+                type: string
+                description: release window ID
+                example: Earum id alias consequatur ut officiis.
+            url:
+                type: string
+                description: ticket visit url
+                example: http://strosin.net/jevon
+                format: uri
+        description: Ops ticket details
+        example:
+            change_id: Omnis deleniti sit sit consectetur reprehenderit.
+            component: Totam aspernatur nemo.
+            component_version: Molestiae possimus doloremque hic.
+            id: Est alias ea quo et repellendus.
+            release_id: Nobis eaque ex quis eum et.
+            url: http://osinskischaefer.info/thomas
+        required:
+            - id
+            - url
+            - component
+            - component_version
+    TidbcloudUpdateComponentVersionInCloudconfigRequestBody:
+        title: TidbcloudUpdateComponentVersionInCloudconfigRequestBody
+        type: object
+        properties:
+            image:
+                type: string
+                description: container image with tag
+                example: xxx.com/coomponent:v8.5.4
+            stage:
+                type: string
+                description: env stage
+                example: prod
+        example:
+            image: xxx.com/coomponent:v8.5.4
+            stage: prod
+        required:
+            - stage
+            - image
+    TidbcloudUpdateComponentVersionInCloudconfigResponseBody:
+        title: TidbcloudUpdateComponentVersionInCloudconfigResponseBody
+        type: object
+        properties:
+            stage:
+                type: string
+                example: Quod illo sunt est.
+            tickets:
+                type: array
+                items:
+                    $ref: '#/definitions/TidbcloudOpsTicket'
+                example:
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
+                    - change_id: Necessitatibus veritatis.
+                      component: Qui unde reiciendis quibusdam quibusdam veniam.
+                      component_version: Rerum excepturi omnis autem sequi saepe.
+                      id: Occaecati animi.
+                      release_id: Officiis corrupti reprehenderit.
+                      url: http://schuppe.name/nelda
+        example:
+            stage: Inventore cupiditate qui.
+            tickets:
+                - change_id: Necessitatibus veritatis.
+                  component: Qui unde reiciendis quibusdam quibusdam veniam.
+                  component_version: Rerum excepturi omnis autem sequi saepe.
+                  id: Occaecati animi.
+                  release_id: Officiis corrupti reprehenderit.
+                  url: http://schuppe.name/nelda
+                - change_id: Necessitatibus veritatis.
+                  component: Qui unde reiciendis quibusdam quibusdam veniam.
+                  component_version: Rerum excepturi omnis autem sequi saepe.
+                  id: Occaecati animi.
+                  release_id: Officiis corrupti reprehenderit.
+                  url: http://schuppe.name/nelda
+        required:
+            - stage
+            - tickets
     TiupDeliveryByRulesRequestBody:
         title: TiupDeliveryByRulesRequestBody
         type: object
@@ -518,7 +650,7 @@ definitions:
                 type: string
                 description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
                 default: staging
-                example: staging
+                example: prod
                 enum:
                     - staging
                     - prod
@@ -528,7 +660,7 @@ definitions:
                 example: v1.0.0
         example:
             artifact_url: oci.com/repo:tag
-            tiup_mirror: prod
+            tiup_mirror: staging
             version: v1.0.0
         required:
             - artifact_url

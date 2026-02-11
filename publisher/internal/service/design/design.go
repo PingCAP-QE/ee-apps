@@ -146,6 +146,20 @@ var TiupDeliveryResults = Type("TiupDeliveryResults", func() {
 	Attribute("results", MapOf(TiupMirrorName, ArrayOf(String, RequestTaskIDFunc)))
 })
 
+var TidbcloudOpsTicket = Type("TidbcloudOpsTicket", func() {
+	Description("Ops ticket details")
+	Attribute("id", String, "ticket ID")
+	Attribute("url", String, func() {
+		Description("ticket visit url")
+		Format(FormatURI)
+	})
+	Attribute("release_id", String, "release window ID")
+	Attribute("change_id", String, "component publish flow ID")
+	Attribute("component", String, "component name")
+	Attribute("component_version", String, "component version derived from image tag")
+	Required("id", "url", "component", "component_version")
+})
+
 var TaskStateFunc = func() {
 	Description("State of the task")
 	Enum("queued", "processing", "success", "failed", "canceled")
@@ -323,6 +337,34 @@ var _ = Service("image", func() {
 		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/collect-multiarch/{request_id}")
+			Response(StatusOK)
+		})
+	})
+})
+
+var _ = Service("tidbcloud", func() {
+	Description("Publisher service for tidbcloud platform")
+	HTTP(func() {
+		Path("/tidbcloud")
+	})
+	Method("update-component-version-in-cloudconfig", func() {
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Example("prod")
+			})
+			Attribute("image", String, "container image with tag", func() {
+                                Example("xxx.com/component:v8.5.4")
+			})
+
+			Required("stage", "image")
+		})
+		Result(func() {
+			Attribute("stage", String)
+			Attribute("tickets", ArrayOf(TidbcloudOpsTicket))
+			Required("stage", "tickets")
+		})
+		HTTP(func() {
+			POST("/devops/cloudconfig/versions/component")
 			Response(StatusOK)
 		})
 	})
