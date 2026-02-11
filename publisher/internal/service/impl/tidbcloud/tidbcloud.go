@@ -3,6 +3,7 @@ package tidbcloud
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -192,6 +193,14 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 	imageRepo, imageTag, err := parseImageRepoTag(p.Image)
 	if err != nil {
 		return nil, err
+	}
+
+	// Fast return if imageTag is not in format: vX.Y.Z-nextgen.YYDDMM.N
+	// Example: v7.5.0-nextgen.240101.1
+	re := regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
+	if !re.MatchString(imageTag) {
+		s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Str("image_tag", imageTag).Msg("skip update: image_tag is not in expected format vX.Y.Z-nextgen.YYDDMM.N")
+		return res, nil
 	}
 
 	var components []string
