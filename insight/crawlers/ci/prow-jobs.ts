@@ -77,6 +77,13 @@ export async function createJobTable(client: mysql.Client, tableName: string) {
 }
 
 function jobInsertValues(job: prowJobRun) {
+  // Helper to parse the retest label into a nullable boolean
+  const parseRetestLabel = (label: string | undefined): boolean | null => {
+    if (label === "true") return true;
+    if (label === "false") return false;
+    return null;
+  };
+
   return [
     job.metadata.namespace,
     job.metadata.name,
@@ -93,7 +100,7 @@ function jobInsertValues(job: prowJobRun) {
     job.metadata.labels["prow.k8s.io/refs.pull"] || null,
     job.metadata.labels["prow.k8s.io/context"] || null,
     job.status.url || null,
-    job.metadata.labels["prow.k8s.io/retest"] === "true" ? true : (job.metadata.labels["prow.k8s.io/retest"] === "false" ? false : null),
+    parseRetestLabel(job.metadata.labels["prow.k8s.io/retest"]),
     job.metadata.labels["prow.k8s.io/refs.pull.author"] || null,
     job.metadata.labels["event-GUID"] || null,
     JSON.stringify(job.spec),
