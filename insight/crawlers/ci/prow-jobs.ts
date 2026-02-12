@@ -64,6 +64,9 @@ export async function createJobTable(client: mysql.Client, tableName: string) {
       pull INT,
       context VARCHAR(128),
       url VARCHAR(255),
+      retest BOOLEAN DEFAULT FALSE,
+      author VARCHAR(128),
+      eventGuid VARCHAR(128),
       spec JSON,
       status JSON,
       PRIMARY KEY (prowJobId)
@@ -90,6 +93,9 @@ function jobInsertValues(job: prowJobRun) {
     job.metadata.labels["prow.k8s.io/refs.pull"] || null,
     job.metadata.labels["prow.k8s.io/context"] || null,
     job.status.url || null,
+    job.metadata.labels["prow.k8s.io/retest"] === "true",
+    job.metadata.labels["prow.k8s.io/refs.pull.author"] || null,
+    job.metadata.labels["event-GUID"] || null,
     JSON.stringify(job.spec),
     JSON.stringify(job.status),
   ];
@@ -110,13 +116,16 @@ export async function saveJobs(
 
     const sql = `
       INSERT INTO \`${tableName}\` (
-        namespace, prowJobId, jobName, type, state, startTime, completionTime, optional, report, org, repo, base_ref, pull, context, url, spec, status
+        namespace, prowJobId, jobName, type, state, startTime, completionTime, optional, report, org, repo, base_ref, pull, context, url, retest, author, eventGuid, spec, status
       ) VALUES ${placeholders}
       ON DUPLICATE KEY UPDATE
         state = VALUES(state),
         startTime = VALUES(startTime),
         completionTime = VALUES(completionTime),
         url = VALUES(url),
+        retest = VALUES(retest),
+        author = VALUES(author),
+        eventGuid = VALUES(eventGuid),
         status = VALUES(status);
     `;
     const flattenedValues = values.flat();
