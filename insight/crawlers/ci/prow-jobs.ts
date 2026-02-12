@@ -90,6 +90,7 @@ function jobInsertValues(job: prowJobRun) {
   };
 
   // Helper to get author from spec.refs.pulls[0].author for presubmit jobs
+  // Note: Only presubmit jobs have pulls array with author information
   const getAuthor = (): string | null => {
     if (job.spec.type === "presubmit" && job.spec.refs?.pulls?.[0]?.author) {
       return job.spec.refs.pulls[0].author;
