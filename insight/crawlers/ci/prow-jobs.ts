@@ -94,11 +94,11 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
 
   // Check if table exists
   const tableExistsResult = await client.query(
-    `SELECT COUNT(*) as count FROM information_schema.tables 
+    `SELECT COUNT(*) as count FROM information_schema.tables
      WHERE table_schema = DATABASE() AND table_name = ?`,
     [tableName]
   );
-  
+
   if (!tableExistsResult || tableExistsResult.length === 0 || tableExistsResult[0].count === 0) {
     console.info(`Table ${tableName} does not exist, skipping migration`);
     return;
@@ -106,11 +106,11 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
 
   // Get existing columns
   const columnsResult = await client.query(
-    `SELECT COLUMN_NAME FROM information_schema.columns 
+    `SELECT COLUMN_NAME FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = ?`,
     [tableName]
   );
-  
+
   const existingColumns = new Set(
     columnsResult.map((row: any) => row.COLUMN_NAME)
   );
