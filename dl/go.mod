@@ -2,7 +2,7 @@ module github.com/PingCAP-QE/ee-apps/dl
 
 go 1.25.0
 
-toolchain go1.25.5
+toolchain go1.26.0
 
 require (
 	github.com/ks3sdklib/aws-sdk-go v1.3.0
