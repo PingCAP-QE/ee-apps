@@ -17,12 +17,14 @@ import (
 // Client is the "tidbcloud" service client.
 type Client struct {
 	UpdateComponentVersionInCloudconfigEndpoint goa.Endpoint
+	AddTidbxImageTagInTcmsEndpoint              goa.Endpoint
 }
 
 // NewClient initializes a "tidbcloud" service client given the endpoints.
-func NewClient(updateComponentVersionInCloudconfig goa.Endpoint) *Client {
+func NewClient(updateComponentVersionInCloudconfig, addTidbxImageTagInTcms goa.Endpoint) *Client {
 	return &Client{
 		UpdateComponentVersionInCloudconfigEndpoint: updateComponentVersionInCloudconfig,
+		AddTidbxImageTagInTcmsEndpoint:              addTidbxImageTagInTcms,
 	}
 }
 
@@ -36,4 +38,15 @@ func (c *Client) UpdateComponentVersionInCloudconfig(ctx context.Context, p *Upd
 		return
 	}
 	return ires.(*UpdateComponentVersionInCloudconfigResult), nil
+}
+
+// AddTidbxImageTagInTcms calls the "add-tidbx-image-tag-in-tcms" endpoint of
+// the "tidbcloud" service.
+func (c *Client) AddTidbxImageTagInTcms(ctx context.Context, p *AddTidbxImageTagInTcmsPayload) (res *AddTidbxImageTagInTcmsResult, err error) {
+	var ires any
+	ires, err = c.AddTidbxImageTagInTcmsEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*AddTidbxImageTagInTcmsResult), nil
 }

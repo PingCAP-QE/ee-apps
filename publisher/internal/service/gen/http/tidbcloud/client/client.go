@@ -22,6 +22,10 @@ type Client struct {
 	// requests to the update-component-version-in-cloudconfig endpoint.
 	UpdateComponentVersionInCloudconfigDoer goahttp.Doer
 
+	// AddTidbxImageTagInTcms Doer is the HTTP client used to make requests to the
+	// add-tidbx-image-tag-in-tcms endpoint.
+	AddTidbxImageTagInTcmsDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -43,6 +47,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		UpdateComponentVersionInCloudconfigDoer: doer,
+		AddTidbxImageTagInTcmsDoer:              doer,
 		RestoreResponseBody:                     restoreBody,
 		scheme:                                  scheme,
 		host:                                    host,
@@ -71,6 +76,30 @@ func (c *Client) UpdateComponentVersionInCloudconfig() goa.Endpoint {
 		resp, err := c.UpdateComponentVersionInCloudconfigDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("tidbcloud", "update-component-version-in-cloudconfig", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// AddTidbxImageTagInTcms returns an endpoint that makes HTTP requests to the
+// tidbcloud service add-tidbx-image-tag-in-tcms server.
+func (c *Client) AddTidbxImageTagInTcms() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeAddTidbxImageTagInTcmsRequest(c.encoder)
+		decodeResponse = DecodeAddTidbxImageTagInTcmsResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildAddTidbxImageTagInTcmsRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.AddTidbxImageTagInTcmsDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
 		}
 		return decodeResponse(resp)
 	}

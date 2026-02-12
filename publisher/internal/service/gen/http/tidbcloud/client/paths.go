@@ -12,3 +12,8 @@ package client
 func UpdateComponentVersionInCloudconfigTidbcloudPath() string {
 	return "/tidbcloud/devops/cloudconfig/versions/component"
 }
+
+// AddTidbxImageTagInTcmsTidbcloudPath returns the URL path to the tidbcloud service add-tidbx-image-tag-in-tcms HTTP endpoint.
+func AddTidbxImageTagInTcmsTidbcloudPath() string {
+	return "/tidbcloud/tidbx-component-image-builds"
+}

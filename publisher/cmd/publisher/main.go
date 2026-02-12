@@ -57,7 +57,7 @@ func main() {
 		logLevel = zerolog.DebugLevel
 	}
 	zerolog.SetGlobalLevel(logLevel)
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tiup.ServiceName).Logger()
+	loggerCtx := zerolog.New(os.Stderr).With().Timestamp()
 
 	// Load and parse configuration
 	cfg, err := config.Load[config.Service](*configFile)
@@ -66,10 +66,14 @@ func main() {
 	}
 
 	// Initialize the services.
-	tiupSvc := impltiup.NewService(&logger, *cfg)
-	fsSvc := implfs.NewService(&logger, *cfg)
-	imgSvc := implimg.NewService(&logger, *cfg)
-	tidbcloudSvc := impltidbcloud.NewService(&logger, *cfg)
+	tiupLogger := loggerCtx.Str("service", "tiup").Logger()
+	tiupSvc := impltiup.NewService(&tiupLogger, *cfg)
+	fsLogger := loggerCtx.Str("service", "fileserver").Logger()
+	fsSvc := implfs.NewService(&fsLogger, *cfg)
+	imgLogger := loggerCtx.Str("service", "image").Logger()
+	imgSvc := implimg.NewService(&imgLogger, *cfg)
+	tidbcloudLogger := loggerCtx.Str("service", "tidbcloud").Logger()
+	tidbcloudSvc := impltidbcloud.NewService(&tidbcloudLogger, *cfg)
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.

@@ -9,6 +9,8 @@
 package server
 
 import (
+	"unicode/utf8"
+
 	tidbcloud "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -23,12 +25,41 @@ type UpdateComponentVersionInCloudconfigRequestBody struct {
 	Image *string `form:"image,omitempty" json:"image,omitempty" xml:"image,omitempty"`
 }
 
+// AddTidbxImageTagInTcmsRequestBody is the type of the "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint HTTP request body.
+type AddTidbxImageTagInTcmsRequestBody struct {
+	// container image with tag
+	Image *string `form:"image,omitempty" json:"image,omitempty" xml:"image,omitempty"`
+	// git informations
+	Github *struct {
+		// full github repo name
+		FullRepo *string `form:"full_repo" json:"full_repo" xml:"full_repo"`
+		// git ref
+		Ref *string `form:"ref" json:"ref" xml:"ref"`
+		// full commit SHA
+		CommitSha *string `form:"commit_sha" json:"commit_sha" xml:"commit_sha"`
+	} `form:"github,omitempty" json:"github,omitempty" xml:"github,omitempty"`
+}
+
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
 type UpdateComponentVersionInCloudconfigResponseBody struct {
 	Stage   string                            `form:"stage" json:"stage" xml:"stage"`
 	Tickets []*TidbcloudOpsTicketResponseBody `form:"tickets" json:"tickets" xml:"tickets"`
+}
+
+// AddTidbxImageTagInTcmsResponseBody is the type of the "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint HTTP response body.
+type AddTidbxImageTagInTcmsResponseBody struct {
+	// github full repo
+	Repo *string `json:"repo,omitempty"`
+	// github branch or tag name
+	Branch *string `json:"branch,omitempty"`
+	// github commit sha in the repo
+	Sha *string `json:"sha,omitempty"`
+	// image tag
+	ImageTag *string `json:"imageTag,omitempty"`
 }
 
 // TidbcloudOpsTicketResponseBody is used to define fields on response body
@@ -70,12 +101,49 @@ func NewUpdateComponentVersionInCloudconfigResponseBody(res *tidbcloud.UpdateCom
 	return body
 }
 
+// NewAddTidbxImageTagInTcmsResponseBody builds the HTTP response body from the
+// result of the "add-tidbx-image-tag-in-tcms" endpoint of the "tidbcloud"
+// service.
+func NewAddTidbxImageTagInTcmsResponseBody(res *tidbcloud.AddTidbxImageTagInTcmsResult) *AddTidbxImageTagInTcmsResponseBody {
+	body := &AddTidbxImageTagInTcmsResponseBody{
+		Repo:     res.Repo,
+		Branch:   res.Branch,
+		Sha:      res.Sha,
+		ImageTag: res.ImageTag,
+	}
+	return body
+}
+
 // NewUpdateComponentVersionInCloudconfigPayload builds a tidbcloud service
 // update-component-version-in-cloudconfig endpoint payload.
 func NewUpdateComponentVersionInCloudconfigPayload(body *UpdateComponentVersionInCloudconfigRequestBody) *tidbcloud.UpdateComponentVersionInCloudconfigPayload {
 	v := &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
 		Stage: *body.Stage,
 		Image: *body.Image,
+	}
+
+	return v
+}
+
+// NewAddTidbxImageTagInTcmsPayload builds a tidbcloud service
+// add-tidbx-image-tag-in-tcms endpoint payload.
+func NewAddTidbxImageTagInTcmsPayload(body *AddTidbxImageTagInTcmsRequestBody) *tidbcloud.AddTidbxImageTagInTcmsPayload {
+	v := &tidbcloud.AddTidbxImageTagInTcmsPayload{
+		Image: *body.Image,
+	}
+	if body.Github != nil {
+		v.Github = &struct {
+			// full github repo name
+			FullRepo string
+			// git ref
+			Ref *string
+			// full commit SHA
+			CommitSha string
+		}{
+			FullRepo:  *body.Github.FullRepo,
+			Ref:       body.Github.Ref,
+			CommitSha: *body.Github.CommitSha,
+		}
 	}
 
 	return v
@@ -89,6 +157,33 @@ func ValidateUpdateComponentVersionInCloudconfigRequestBody(body *UpdateComponen
 	}
 	if body.Image == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("image", "body"))
+	}
+	return
+}
+
+// ValidateAddTidbxImageTagInTcmsRequestBody runs the validations defined on
+// Add-Tidbx-Image-Tag-In-TcmsRequestBody
+func ValidateAddTidbxImageTagInTcmsRequestBody(body *AddTidbxImageTagInTcmsRequestBody) (err error) {
+	if body.Image == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("image", "body"))
+	}
+	if body.Github != nil {
+		if body.Github.FullRepo == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("full_repo", "body.github"))
+		}
+		if body.Github.CommitSha == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("commit_sha", "body.github"))
+		}
+		if body.Github.CommitSha != nil {
+			if utf8.RuneCountInString(*body.Github.CommitSha) < 40 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("body.github.commit_sha", *body.Github.CommitSha, utf8.RuneCountInString(*body.Github.CommitSha), 40, true))
+			}
+		}
+		if body.Github.CommitSha != nil {
+			if utf8.RuneCountInString(*body.Github.CommitSha) > 40 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("body.github.commit_sha", *body.Github.CommitSha, utf8.RuneCountInString(*body.Github.CommitSha), 40, false))
+			}
+		}
 	}
 	return
 }

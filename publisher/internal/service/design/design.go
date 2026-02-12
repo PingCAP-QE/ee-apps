@@ -353,7 +353,7 @@ var _ = Service("tidbcloud", func() {
 				Example("prod")
 			})
 			Attribute("image", String, "container image with tag", func() {
-                                Example("xxx.com/component:v8.5.4")
+				Example("xxx.com/component:v8.5.4")
 			})
 
 			Required("stage", "image")
@@ -365,6 +365,52 @@ var _ = Service("tidbcloud", func() {
 		})
 		HTTP(func() {
 			POST("/devops/cloudconfig/versions/component")
+			Response(StatusOK)
+		})
+	})
+	Method("add-tidbx-image-tag-in-tcms", func() {
+		Payload(func() {
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/component:v8.5.4")
+			})
+			Attribute("github", func() { // Should read config from the image when the attribute is not given.
+				Description("git informations")
+				Attribute("full_repo", String, "full github repo name", func() {
+					Example("pingcap/tidb")
+				})
+				Attribute("ref", String, "git ref", func() {
+					Example("refs/heads/master")
+				})
+				Attribute("commit_sha", String, "full commit SHA", func() {
+					MinLength(40)
+					MaxLength(40)
+					Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+				})
+				Required("full_repo", "commit_sha")
+			})
+			Required("image")
+
+		})
+		Result(func() {
+			Attribute("repo", String, "github full repo", func() {
+				Meta("struct:tag:json", "repo,omitempty")
+				Example("pingcap/tidb")
+			})
+			Attribute("branch", String, "github branch or tag name", func() {
+				Meta("struct:tag:json", "branch,omitempty")
+				Example("release-nextgen-20251011")
+			})
+			Attribute("sha", String, "github commit sha in the repo", func() {
+				Meta("struct:tag:json", "sha,omitempty")
+				Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+			})
+			Attribute("imageTag", String, "image tag", func() {
+				Meta("struct:tag:json", "imageTag,omitempty")
+				Example("release-nextgen-20251011-031069d")
+			})
+		})
+		HTTP(func() {
+			POST("/tidbx-component-image-builds")
 			Response(StatusOK)
 		})
 	})

@@ -21,6 +21,7 @@ import (
 type Server struct {
 	Mounts                              []*MountPoint
 	UpdateComponentVersionInCloudconfig http.Handler
+	AddTidbxImageTagInTcms              http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -51,8 +52,10 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"UpdateComponentVersionInCloudconfig", "POST", "/tidbcloud/devops/cloudconfig/versions/component"},
+			{"AddTidbxImageTagInTcms", "POST", "/tidbcloud/tidbx-component-image-builds"},
 		},
 		UpdateComponentVersionInCloudconfig: NewUpdateComponentVersionInCloudconfigHandler(e.UpdateComponentVersionInCloudconfig, mux, decoder, encoder, errhandler, formatter),
+		AddTidbxImageTagInTcms:              NewAddTidbxImageTagInTcmsHandler(e.AddTidbxImageTagInTcms, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -62,6 +65,7 @@ func (s *Server) Service() string { return "tidbcloud" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.UpdateComponentVersionInCloudconfig = m(s.UpdateComponentVersionInCloudconfig)
+	s.AddTidbxImageTagInTcms = m(s.AddTidbxImageTagInTcms)
 }
 
 // MethodNames returns the methods served.
@@ -70,6 +74,7 @@ func (s *Server) MethodNames() []string { return tidbcloud.MethodNames[:] }
 // Mount configures the mux to serve the tidbcloud endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountUpdateComponentVersionInCloudconfigHandler(mux, h.UpdateComponentVersionInCloudconfig)
+	MountAddTidbxImageTagInTcmsHandler(mux, h.AddTidbxImageTagInTcms)
 }
 
 // Mount configures the mux to serve the tidbcloud endpoints.
@@ -108,6 +113,60 @@ func NewUpdateComponentVersionInCloudconfigHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "update-component-version-in-cloudconfig")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "tidbcloud")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountAddTidbxImageTagInTcmsHandler configures the mux to serve the
+// "tidbcloud" service "add-tidbx-image-tag-in-tcms" endpoint.
+func MountAddTidbxImageTagInTcmsHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/tidbcloud/tidbx-component-image-builds", f)
+}
+
+// NewAddTidbxImageTagInTcmsHandler creates a HTTP handler which loads the HTTP
+// request and calls the "tidbcloud" service "add-tidbx-image-tag-in-tcms"
+// endpoint.
+func NewAddTidbxImageTagInTcmsHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeAddTidbxImageTagInTcmsRequest(mux, decoder)
+		encodeResponse = EncodeAddTidbxImageTagInTcmsResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "add-tidbx-image-tag-in-tcms")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "tidbcloud")
 		payload, err := decodeRequest(r)
 		if err != nil {

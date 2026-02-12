@@ -30,7 +30,7 @@ func UsageCommands() []string {
 		"tiup (request-to-publish|delivery-by-rules|request-to-publish-single|query-publishing-status|reset-rate-limit)",
 		"fileserver (request-to-publish|query-publishing-status)",
 		"image (request-to-copy|query-copying-status|request-multiarch-collect|query-multiarch-collect-status)",
-		"tidbcloud update-component-version-in-cloudconfig",
+		"tidbcloud (update-component-version-in-cloudconfig|add-tidbx-image-tag-in-tcms)",
 	}
 }
 
@@ -39,7 +39,7 @@ func UsageExamples() string {
 	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
 		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Velit praesentium est.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Sit pariatur quis id sunt dignissimos accusantium.\",\n      \"source\": \"Et sed doloremque officiis accusantium ab.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
+		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v8.5.4\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
 
@@ -95,6 +95,9 @@ func ParseEndpoint(
 
 		tidbcloudUpdateComponentVersionInCloudconfigFlags    = flag.NewFlagSet("update-component-version-in-cloudconfig", flag.ExitOnError)
 		tidbcloudUpdateComponentVersionInCloudconfigBodyFlag = tidbcloudUpdateComponentVersionInCloudconfigFlags.String("body", "REQUIRED", "")
+
+		tidbcloudAddTidbxImageTagInTcmsFlags    = flag.NewFlagSet("add-tidbx-image-tag-in-tcms", flag.ExitOnError)
+		tidbcloudAddTidbxImageTagInTcmsBodyFlag = tidbcloudAddTidbxImageTagInTcmsFlags.String("body", "REQUIRED", "")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
@@ -115,6 +118,7 @@ func ParseEndpoint(
 
 	tidbcloudFlags.Usage = tidbcloudUsage
 	tidbcloudUpdateComponentVersionInCloudconfigFlags.Usage = tidbcloudUpdateComponentVersionInCloudconfigUsage
+	tidbcloudAddTidbxImageTagInTcmsFlags.Usage = tidbcloudAddTidbxImageTagInTcmsUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -204,6 +208,9 @@ func ParseEndpoint(
 			case "update-component-version-in-cloudconfig":
 				epf = tidbcloudUpdateComponentVersionInCloudconfigFlags
 
+			case "add-tidbx-image-tag-in-tcms":
+				epf = tidbcloudAddTidbxImageTagInTcmsFlags
+
 			}
 
 		}
@@ -276,6 +283,9 @@ func ParseEndpoint(
 			case "update-component-version-in-cloudconfig":
 				endpoint = c.UpdateComponentVersionInCloudconfig()
 				data, err = tidbcloudc.BuildUpdateComponentVersionInCloudconfigPayload(*tidbcloudUpdateComponentVersionInCloudconfigBodyFlag)
+			case "add-tidbx-image-tag-in-tcms":
+				endpoint = c.AddTidbxImageTagInTcms()
+				data, err = tidbcloudc.BuildAddTidbxImageTagInTcmsPayload(*tidbcloudAddTidbxImageTagInTcmsBodyFlag)
 			}
 		}
 	}
@@ -528,6 +538,7 @@ func tidbcloudUsage() {
 	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] tidbcloud COMMAND [flags]\n\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    update-component-version-in-cloudconfig: UpdateComponentVersionInCloudconfig implements update-component-version-in-cloudconfig.`)
+	fmt.Fprintln(os.Stderr, `    add-tidbx-image-tag-in-tcms: AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s tidbcloud COMMAND --help\n", os.Args[0])
@@ -547,5 +558,23 @@ func tidbcloudUpdateComponentVersionInCloudconfigUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
+}
+
+func tidbcloudAddTidbxImageTagInTcmsUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud add-tidbx-image-tag-in-tcms", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud add-tidbx-image-tag-in-tcms --body '{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v8.5.4\"\n   }'")
 }
