@@ -74,7 +74,8 @@ func (s *tidbcloudsrvc) populateGithubFromImage(ctx context.Context, p *tidbclou
 		return
 	}
 
-	configBytes, err := crane.Config(p.Image, crane.WithContext(ctx))
+	craneOpts := append([]crane.Option{crane.WithContext(ctx)}, s.getCraneOptions()...)
+	configBytes, err := crane.Config(p.Image, craneOpts...)
 	if err != nil {
 		s.Logger.Err(err).Msg("read image config labels failed")
 		return
