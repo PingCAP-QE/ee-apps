@@ -50,19 +50,11 @@ type TiBuildTagMetadataResponse struct {
 
 // TestPlatformsConfig defines the configuration for the test platforms service.
 type TestPlatformsConfig struct {
-	TCMS      TCMSConfig      `json:"tcms" yaml:"tcms"`
-	ImageAuth ImageAuthConfig `json:"image_auth" yaml:"image_auth"`
+	TCMS TCMSConfig `json:"tcms" yaml:"tcms"`
 }
 
 // TCMSConfig defines the configuration for the TCMS API.
 type TCMSConfig struct {
 	APIBaseURL string `json:"api_base_url" yaml:"api_base_url"`
 	AuthToken  string `json:"auth_token" yaml:"auth_token"`
-}
-
-// ImageAuthConfig defines the configuration for private image authentication.
-type ImageAuthConfig struct {
-	Username            string `json:"username" yaml:"username"`
-	Password            string `json:"password" yaml:"password"`
-	UseDefaultKeychain  bool   `json:"use_default_keychain" yaml:"use_default_keychain"`
 }

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
@@ -69,29 +67,4 @@ func parseImageRepoTag(image string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid image: %s", image)
 	}
 	return image[:idx], image[idx+1:], nil
-}
-
-// getCraneOptions returns crane.Option based on the image auth configuration.
-func (s *tidbcloudsrvc) getCraneOptions() []crane.Option {
-	if s.tpsCfg == nil {
-		return nil
-	}
-
-	authCfg := s.tpsCfg.ImageAuth
-
-	// If use_default_keychain is true, return nil to let crane use its default keychain
-	if authCfg.UseDefaultKeychain {
-		return nil
-	}
-
-	// If username and password are provided, use them
-	if authCfg.Username != "" && authCfg.Password != "" {
-		auth := authn.FromConfig(authn.AuthConfig{
-			Username: authCfg.Username,
-			Password: authCfg.Password,
-		})
-		return []crane.Option{crane.WithAuth(auth)}
-	}
-
-	return nil
 }
