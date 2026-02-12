@@ -81,6 +81,57 @@ export async function createJobTable(client: mysql.Client, tableName: string) {
   await client.execute(sql);
 }
 
+export async function migrateJobTable(client: mysql.Client, tableName: string) {
+  // Check if table exists
+  const tableExistsResult = await client.query(
+    `SELECT COUNT(*) as count FROM information_schema.tables 
+     WHERE table_schema = DATABASE() AND table_name = ?`,
+    [tableName]
+  );
+  
+  if (!tableExistsResult || tableExistsResult.length === 0 || tableExistsResult[0].count === 0) {
+    console.info(`Table ${tableName} does not exist, skipping migration`);
+    return;
+  }
+
+  // Get existing columns
+  const columnsResult = await client.query(
+    `SELECT COLUMN_NAME FROM information_schema.columns 
+     WHERE table_schema = DATABASE() AND table_name = ?`,
+    [tableName]
+  );
+  
+  const existingColumns = new Set(
+    columnsResult.map((row: any) => row.COLUMN_NAME)
+  );
+
+  // Add retest column if it doesn't exist
+  if (!existingColumns.has("retest")) {
+    console.info(`Adding column 'retest' to table ${tableName}`);
+    await client.execute(
+      `ALTER TABLE \`${tableName}\` ADD COLUMN retest BOOLEAN DEFAULT NULL AFTER url`
+    );
+  }
+
+  // Add author column if it doesn't exist
+  if (!existingColumns.has("author")) {
+    console.info(`Adding column 'author' to table ${tableName}`);
+    await client.execute(
+      `ALTER TABLE \`${tableName}\` ADD COLUMN author VARCHAR(128) AFTER retest`
+    );
+  }
+
+  // Add event_guid column if it doesn't exist
+  if (!existingColumns.has("event_guid")) {
+    console.info(`Adding column 'event_guid' to table ${tableName}`);
+    await client.execute(
+      `ALTER TABLE \`${tableName}\` ADD COLUMN event_guid VARCHAR(128) AFTER author`
+    );
+  }
+
+  console.info(`Migration completed for table ${tableName}`);
+}
+
 function jobInsertValues(job: prowJobRun) {
   // Helper to parse the retest label into a nullable boolean
   const parseRetestLabel = (label: string | undefined): boolean | null => {
@@ -188,6 +239,7 @@ async function main() {
   }
   const db = await new mysql.Client().connect(config);
   await createJobTable(db, args.table); // create it if not exists.
+  await migrateJobTable(db, args.table); // migrate existing table to add new columns.
 
   console.group("Fetching jobs and saving to database...");
   const jobs = await fetchProwJobs(args.prow_base_url);
