@@ -79,7 +79,7 @@ func (s *tidbcloudsrvc) getCraneOptions() []crane.Option {
 
 	authCfg := s.tpsCfg.ImageAuth
 
-	// If use_default_keychain is true, let crane use the default keychain
+	// If use_default_keychain is true, return nil to let crane use its default keychain
 	if authCfg.UseDefaultKeychain {
 		return nil
 	}

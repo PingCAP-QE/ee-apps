@@ -8,15 +8,15 @@ import (
 
 func TestGetCraneOptions(t *testing.T) {
 	tests := []struct {
-		name     string
-		tpsCfg   *TestPlatformsConfig
-		wantNil  bool
-		wantAuth bool
+		name            string
+		tpsCfg          *TestPlatformsConfig
+		expectNilResult bool
+		wantAuth        bool
 	}{
 		{
-			name:    "nil config",
-			tpsCfg:  nil,
-			wantNil: true,
+			name:            "nil config",
+			tpsCfg:          nil,
+			expectNilResult: true,
 		},
 		{
 			name: "use default keychain",
@@ -25,7 +25,7 @@ func TestGetCraneOptions(t *testing.T) {
 					UseDefaultKeychain: true,
 				},
 			},
-			wantNil: true,
+			expectNilResult: true,
 		},
 		{
 			name: "username and password provided",
@@ -35,15 +35,15 @@ func TestGetCraneOptions(t *testing.T) {
 					Password: "testpass",
 				},
 			},
-			wantNil:  false,
-			wantAuth: true,
+			expectNilResult: false,
+			wantAuth:        true,
 		},
 		{
 			name: "no credentials",
 			tpsCfg: &TestPlatformsConfig{
 				ImageAuth: ImageAuthConfig{},
 			},
-			wantNil: true,
+			expectNilResult: true,
 		},
 		{
 			name: "only username",
@@ -52,7 +52,7 @@ func TestGetCraneOptions(t *testing.T) {
 					Username: "testuser",
 				},
 			},
-			wantNil: true,
+			expectNilResult: true,
 		},
 		{
 			name: "only password",
@@ -61,7 +61,7 @@ func TestGetCraneOptions(t *testing.T) {
 					Password: "testpass",
 				},
 			},
-			wantNil: true,
+			expectNilResult: true,
 		},
 	}
 
@@ -73,7 +73,7 @@ func TestGetCraneOptions(t *testing.T) {
 
 			opts := srvc.getCraneOptions()
 
-			if tt.wantNil {
+			if tt.expectNilResult {
 				if opts != nil {
 					t.Errorf("getCraneOptions() = %v, want nil", opts)
 				}
