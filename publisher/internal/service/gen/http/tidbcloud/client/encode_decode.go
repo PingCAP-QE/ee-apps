@@ -93,6 +93,74 @@ func DecodeUpdateComponentVersionInCloudconfigResponse(decoder func(*http.Respon
 	}
 }
 
+// BuildAddTidbxImageTagInTcmsRequest instantiates a HTTP request object with
+// method and path set to call the "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint
+func (c *Client) BuildAddTidbxImageTagInTcmsRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: AddTidbxImageTagInTcmsTidbcloudPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("tidbcloud", "add-tidbx-image-tag-in-tcms", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeAddTidbxImageTagInTcmsRequest returns an encoder for requests sent to
+// the tidbcloud add-tidbx-image-tag-in-tcms server.
+func EncodeAddTidbxImageTagInTcmsRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*tidbcloud.AddTidbxImageTagInTcmsPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("tidbcloud", "add-tidbx-image-tag-in-tcms", "*tidbcloud.AddTidbxImageTagInTcmsPayload", v)
+		}
+		body := NewAddTidbxImageTagInTcmsRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
+		}
+		return nil
+	}
+}
+
+// DecodeAddTidbxImageTagInTcmsResponse returns a decoder for responses
+// returned by the tidbcloud add-tidbx-image-tag-in-tcms endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+func DecodeAddTidbxImageTagInTcmsResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body AddTidbxImageTagInTcmsResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
+			}
+			res := NewAddTidbxImageTagInTcmsResultOK(&body)
+			return res, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("tidbcloud", "add-tidbx-image-tag-in-tcms", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // unmarshalTidbcloudOpsTicketResponseBodyToTidbcloudTidbcloudOpsTicket builds
 // a value of type *tidbcloud.TidbcloudOpsTicket from a value of type
 // *TidbcloudOpsTicketResponseBody.

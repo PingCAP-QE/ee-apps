@@ -23,12 +23,41 @@ type UpdateComponentVersionInCloudconfigRequestBody struct {
 	Image string `form:"image" json:"image" xml:"image"`
 }
 
+// AddTidbxImageTagInTcmsRequestBody is the type of the "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint HTTP request body.
+type AddTidbxImageTagInTcmsRequestBody struct {
+	// container image with tag
+	Image string `form:"image" json:"image" xml:"image"`
+	// git informations
+	Github *struct {
+		// full github repo name
+		FullRepo string `form:"full_repo" json:"full_repo" xml:"full_repo"`
+		// git ref
+		Ref *string `form:"ref" json:"ref" xml:"ref"`
+		// full commit SHA
+		CommitSha string `form:"commit_sha" json:"commit_sha" xml:"commit_sha"`
+	} `form:"github,omitempty" json:"github,omitempty" xml:"github,omitempty"`
+}
+
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
 type UpdateComponentVersionInCloudconfigResponseBody struct {
 	Stage   *string                           `form:"stage,omitempty" json:"stage,omitempty" xml:"stage,omitempty"`
 	Tickets []*TidbcloudOpsTicketResponseBody `form:"tickets,omitempty" json:"tickets,omitempty" xml:"tickets,omitempty"`
+}
+
+// AddTidbxImageTagInTcmsResponseBody is the type of the "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint HTTP response body.
+type AddTidbxImageTagInTcmsResponseBody struct {
+	// github full repo
+	Repo *string `json:"repo,omitempty"`
+	// github branch or tag name
+	Branch *string `json:"branch,omitempty"`
+	// github commit sha in the repo
+	Sha *string `json:"sha,omitempty"`
+	// image tag
+	ImageTag *string `json:"imageTag,omitempty"`
 }
 
 // TidbcloudOpsTicketResponseBody is used to define fields on response body
@@ -59,6 +88,30 @@ func NewUpdateComponentVersionInCloudconfigRequestBody(p *tidbcloud.UpdateCompon
 	return body
 }
 
+// NewAddTidbxImageTagInTcmsRequestBody builds the HTTP request body from the
+// payload of the "add-tidbx-image-tag-in-tcms" endpoint of the "tidbcloud"
+// service.
+func NewAddTidbxImageTagInTcmsRequestBody(p *tidbcloud.AddTidbxImageTagInTcmsPayload) *AddTidbxImageTagInTcmsRequestBody {
+	body := &AddTidbxImageTagInTcmsRequestBody{
+		Image: p.Image,
+	}
+	if p.Github != nil {
+		body.Github = &struct {
+			// full github repo name
+			FullRepo string `form:"full_repo" json:"full_repo" xml:"full_repo"`
+			// git ref
+			Ref *string `form:"ref" json:"ref" xml:"ref"`
+			// full commit SHA
+			CommitSha string `form:"commit_sha" json:"commit_sha" xml:"commit_sha"`
+		}{
+			FullRepo:  p.Github.FullRepo,
+			Ref:       p.Github.Ref,
+			CommitSha: p.Github.CommitSha,
+		}
+	}
+	return body
+}
+
 // NewUpdateComponentVersionInCloudconfigResultOK builds a "tidbcloud" service
 // "update-component-version-in-cloudconfig" endpoint result from a HTTP "OK"
 // response.
@@ -73,6 +126,19 @@ func NewUpdateComponentVersionInCloudconfigResultOK(body *UpdateComponentVersion
 			continue
 		}
 		v.Tickets[i] = unmarshalTidbcloudOpsTicketResponseBodyToTidbcloudTidbcloudOpsTicket(val)
+	}
+
+	return v
+}
+
+// NewAddTidbxImageTagInTcmsResultOK builds a "tidbcloud" service
+// "add-tidbx-image-tag-in-tcms" endpoint result from a HTTP "OK" response.
+func NewAddTidbxImageTagInTcmsResultOK(body *AddTidbxImageTagInTcmsResponseBody) *tidbcloud.AddTidbxImageTagInTcmsResult {
+	v := &tidbcloud.AddTidbxImageTagInTcmsResult{
+		Repo:     body.Repo,
+		Branch:   body.Branch,
+		Sha:      body.Sha,
+		ImageTag: body.ImageTag,
 	}
 
 	return v

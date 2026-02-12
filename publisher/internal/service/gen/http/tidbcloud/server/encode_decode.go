@@ -62,6 +62,47 @@ func DecodeUpdateComponentVersionInCloudconfigRequest(mux goahttp.Muxer, decoder
 	}
 }
 
+// EncodeAddTidbxImageTagInTcmsResponse returns an encoder for responses
+// returned by the tidbcloud add-tidbx-image-tag-in-tcms endpoint.
+func EncodeAddTidbxImageTagInTcmsResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*tidbcloud.AddTidbxImageTagInTcmsResult)
+		enc := encoder(ctx, w)
+		body := NewAddTidbxImageTagInTcmsResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeAddTidbxImageTagInTcmsRequest returns a decoder for requests sent to
+// the tidbcloud add-tidbx-image-tag-in-tcms endpoint.
+func DecodeAddTidbxImageTagInTcmsRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*tidbcloud.AddTidbxImageTagInTcmsPayload, error) {
+	return func(r *http.Request) (*tidbcloud.AddTidbxImageTagInTcmsPayload, error) {
+		var (
+			body AddTidbxImageTagInTcmsRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateAddTidbxImageTagInTcmsRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+		payload := NewAddTidbxImageTagInTcmsPayload(&body)
+
+		return payload, nil
+	}
+}
+
 // marshalTidbcloudTidbcloudOpsTicketToTidbcloudOpsTicketResponseBody builds a
 // value of type *TidbcloudOpsTicketResponseBody from a value of type
 // *tidbcloud.TidbcloudOpsTicket.

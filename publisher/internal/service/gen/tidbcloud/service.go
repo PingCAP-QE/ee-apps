@@ -17,6 +17,8 @@ type Service interface {
 	// UpdateComponentVersionInCloudconfig implements
 	// update-component-version-in-cloudconfig.
 	UpdateComponentVersionInCloudconfig(context.Context, *UpdateComponentVersionInCloudconfigPayload) (res *UpdateComponentVersionInCloudconfigResult, err error)
+	// AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.
+	AddTidbxImageTagInTcms(context.Context, *AddTidbxImageTagInTcmsPayload) (res *AddTidbxImageTagInTcmsResult, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -33,7 +35,36 @@ const ServiceName = "tidbcloud"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [1]string{"update-component-version-in-cloudconfig"}
+var MethodNames = [2]string{"update-component-version-in-cloudconfig", "add-tidbx-image-tag-in-tcms"}
+
+// AddTidbxImageTagInTcmsPayload is the payload type of the tidbcloud service
+// add-tidbx-image-tag-in-tcms method.
+type AddTidbxImageTagInTcmsPayload struct {
+	// container image with tag
+	Image string
+	// git informations
+	Github *struct {
+		// full github repo name
+		FullRepo string
+		// git ref
+		Ref *string
+		// full commit SHA
+		CommitSha string
+	}
+}
+
+// AddTidbxImageTagInTcmsResult is the result type of the tidbcloud service
+// add-tidbx-image-tag-in-tcms method.
+type AddTidbxImageTagInTcmsResult struct {
+	// github full repo
+	Repo *string `json:"repo,omitempty"`
+	// github branch or tag name
+	Branch *string `json:"branch,omitempty"`
+	// github commit sha in the repo
+	Sha *string `json:"sha,omitempty"`
+	// image tag
+	ImageTag *string `json:"imageTag,omitempty"`
+}
 
 // Ops ticket details
 type TidbcloudOpsTicket struct {

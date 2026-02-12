@@ -47,3 +47,14 @@ type TiBuildTagMetadataResponse struct {
 		} `json:"ops_req"`
 	} `json:"meta"`
 }
+
+// TestPlatformsConfig defines the configuration for the test platforms service.
+type TestPlatformsConfig struct {
+	TCMS TCMSConfig `json:"tcms" yaml:"tcms"`
+}
+
+// TCMSConfig defines the configuration for the TCMS API.
+type TCMSConfig struct {
+	APIBaseURL string `json:"api_base_url" yaml:"api_base_url"`
+	AuthToken  string `json:"auth_token" yaml:"auth_token"`
+}

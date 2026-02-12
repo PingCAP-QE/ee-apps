@@ -192,6 +192,27 @@ paths:
                             - tickets
             schemes:
                 - http
+    /tidbcloud/tidbx-component-image-builds:
+        post:
+            tags:
+                - tidbcloud
+            summary: add-tidbx-image-tag-in-tcms tidbcloud
+            operationId: tidbcloud#add-tidbx-image-tag-in-tcms
+            parameters:
+                - name: Add-Tidbx-Image-Tag-In-TcmsRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TidbcloudAddTidbxImageTagInTcmsRequestBody'
+                    required:
+                        - image
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/TidbcloudAddTidbxImageTagInTcmsResponseBody'
+            schemes:
+                - http
     /tiup/delivery-by-rules:
         post:
             tags:
@@ -518,6 +539,72 @@ definitions:
         required:
             - from
             - publish
+    TidbcloudAddTidbxImageTagInTcmsRequestBody:
+        title: TidbcloudAddTidbxImageTagInTcmsRequestBody
+        type: object
+        properties:
+            github:
+                type: object
+                properties:
+                    commit_sha:
+                        type: string
+                        description: full commit SHA
+                        example: 031069dfc0c70e839d996c9e1cf3d34930fc662f
+                        minLength: 40
+                        maxLength: 40
+                    full_repo:
+                        type: string
+                        description: full github repo name
+                        example: pingcap/tidb
+                    ref:
+                        type: string
+                        description: git ref
+                        example: refs/heads/master
+                description: git informations
+                example:
+                    commit_sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
+                    full_repo: pingcap/tidb
+                    ref: refs/heads/master
+                required:
+                    - full_repo
+                    - commit_sha
+            image:
+                type: string
+                description: container image with tag
+                example: xxx.com/component:v8.5.4
+        example:
+            github:
+                commit_sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
+                full_repo: pingcap/tidb
+                ref: refs/heads/master
+            image: xxx.com/component:v8.5.4
+        required:
+            - image
+    TidbcloudAddTidbxImageTagInTcmsResponseBody:
+        title: TidbcloudAddTidbxImageTagInTcmsResponseBody
+        type: object
+        properties:
+            branch:
+                type: string
+                description: github branch or tag name
+                example: release-nextgen-20251011
+            imageTag:
+                type: string
+                description: image tag
+                example: release-nextgen-20251011-031069d
+            repo:
+                type: string
+                description: github full repo
+                example: pingcap/tidb
+            sha:
+                type: string
+                description: github commit sha in the repo
+                example: 031069dfc0c70e839d996c9e1cf3d34930fc662f
+        example:
+            branch: release-nextgen-20251011
+            imageTag: release-nextgen-20251011-031069d
+            repo: pingcap/tidb
+            sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
     TidbcloudOpsTicket:
         title: TidbcloudOpsTicket
         type: object
@@ -567,13 +654,13 @@ definitions:
             image:
                 type: string
                 description: container image with tag
-                example: xxx.com/coomponent:v8.5.4
+                example: xxx.com/component:v8.5.4
             stage:
                 type: string
                 description: env stage
                 example: prod
         example:
-            image: xxx.com/coomponent:v8.5.4
+            image: xxx.com/component:v8.5.4
             stage: prod
         required:
             - stage

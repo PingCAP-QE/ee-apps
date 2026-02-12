@@ -17,18 +17,21 @@ import (
 // Endpoints wraps the "tidbcloud" service endpoints.
 type Endpoints struct {
 	UpdateComponentVersionInCloudconfig goa.Endpoint
+	AddTidbxImageTagInTcms              goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "tidbcloud" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		UpdateComponentVersionInCloudconfig: NewUpdateComponentVersionInCloudconfigEndpoint(s),
+		AddTidbxImageTagInTcms:              NewAddTidbxImageTagInTcmsEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "tidbcloud" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.UpdateComponentVersionInCloudconfig = m(e.UpdateComponentVersionInCloudconfig)
+	e.AddTidbxImageTagInTcms = m(e.AddTidbxImageTagInTcms)
 }
 
 // NewUpdateComponentVersionInCloudconfigEndpoint returns an endpoint function
@@ -38,5 +41,14 @@ func NewUpdateComponentVersionInCloudconfigEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*UpdateComponentVersionInCloudconfigPayload)
 		return s.UpdateComponentVersionInCloudconfig(ctx, p)
+	}
+}
+
+// NewAddTidbxImageTagInTcmsEndpoint returns an endpoint function that calls
+// the method "add-tidbx-image-tag-in-tcms" of service "tidbcloud".
+func NewAddTidbxImageTagInTcmsEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*AddTidbxImageTagInTcmsPayload)
+		return s.AddTidbxImageTagInTcms(ctx, p)
 	}
 }

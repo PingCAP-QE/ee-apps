@@ -11,8 +11,10 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
 	tidbcloud "github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildUpdateComponentVersionInCloudconfigPayload builds the payload for the
@@ -23,12 +25,55 @@ func BuildUpdateComponentVersionInCloudconfigPayload(tidbcloudUpdateComponentVer
 	{
 		err = json.Unmarshal([]byte(tidbcloudUpdateComponentVersionInCloudconfigBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"image\": \"xxx.com/coomponent:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"image\": \"xxx.com/component:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
 		}
 	}
 	v := &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
 		Stage: body.Stage,
 		Image: body.Image,
+	}
+
+	return v, nil
+}
+
+// BuildAddTidbxImageTagInTcmsPayload builds the payload for the tidbcloud
+// add-tidbx-image-tag-in-tcms endpoint from CLI flags.
+func BuildAddTidbxImageTagInTcmsPayload(tidbcloudAddTidbxImageTagInTcmsBody string) (*tidbcloud.AddTidbxImageTagInTcmsPayload, error) {
+	var err error
+	var body AddTidbxImageTagInTcmsRequestBody
+	{
+		err = json.Unmarshal([]byte(tidbcloudAddTidbxImageTagInTcmsBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v8.5.4\"\n   }'")
+		}
+		if body.Github != nil {
+			if utf8.RuneCountInString(body.Github.CommitSha) < 40 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("body.github.commit_sha", body.Github.CommitSha, utf8.RuneCountInString(body.Github.CommitSha), 40, true))
+			}
+			if utf8.RuneCountInString(body.Github.CommitSha) > 40 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("body.github.commit_sha", body.Github.CommitSha, utf8.RuneCountInString(body.Github.CommitSha), 40, false))
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &tidbcloud.AddTidbxImageTagInTcmsPayload{
+		Image: body.Image,
+	}
+	if body.Github != nil {
+		v.Github = &struct {
+			// full github repo name
+			FullRepo string
+			// git ref
+			Ref *string
+			// full commit SHA
+			CommitSha string
+		}{
+			FullRepo:  body.Github.FullRepo,
+			Ref:       body.Github.Ref,
+			CommitSha: body.Github.CommitSha,
+		}
 	}
 
 	return v, nil
