@@ -1,9 +1,3 @@
 tcms:
   api_base_url: "https://tcms.example.com/api"
   auth_token: "tcms_token"
-
-# Optional credentials for private image access.
-image_auth:
-  username: "registry_user"
-  password: "registry_password"
-  use_default_keychain: false
