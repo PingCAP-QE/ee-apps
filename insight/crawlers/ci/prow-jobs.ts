@@ -51,6 +51,11 @@ export async function fetchProwJobs(prowBaseUrl: string) {
 }
 
 export async function createJobTable(client: mysql.Client, tableName: string) {
+  // Validate table name to prevent SQL injection (only allow alphanumeric and underscores)
+  if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
+    throw new Error(`Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`);
+  }
+
   const sql = `
     CREATE TABLE IF NOT EXISTS \`${tableName}\` (
       id INT AUTO_INCREMENT,
@@ -82,6 +87,11 @@ export async function createJobTable(client: mysql.Client, tableName: string) {
 }
 
 export async function migrateJobTable(client: mysql.Client, tableName: string) {
+  // Validate table name to prevent SQL injection (only allow alphanumeric and underscores)
+  if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
+    throw new Error(`Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`);
+  }
+
   // Check if table exists
   const tableExistsResult = await client.query(
     `SELECT COUNT(*) as count FROM information_schema.tables 
