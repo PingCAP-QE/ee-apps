@@ -20,6 +20,11 @@ interface prowJobRun {
       org: string;
       repo: string;
       base_ref: string;
+      pulls?: {
+        number: number;
+        author: string;
+        sha: string;
+      }[];
     };
     extra_refs?: {
       org: string;
@@ -84,6 +89,14 @@ function jobInsertValues(job: prowJobRun) {
     return null;
   };
 
+  // Helper to get author from spec.refs.pulls[0].author for presubmit jobs
+  const getAuthor = (): string | null => {
+    if (job.spec.type === "presubmit" && job.spec.refs?.pulls?.[0]?.author) {
+      return job.spec.refs.pulls[0].author;
+    }
+    return null;
+  };
+
   return [
     job.metadata.namespace,
     job.metadata.name,
@@ -101,7 +114,7 @@ function jobInsertValues(job: prowJobRun) {
     job.metadata.labels["prow.k8s.io/context"] || null,
     job.status.url || null,
     parseRetestLabel(job.metadata.labels["prow.k8s.io/retest"]),
-    job.metadata.labels["prow.k8s.io/refs.pull.author"] || null,
+    getAuthor(),
     job.metadata.labels["event-GUID"] || null,
     JSON.stringify(job.spec),
     JSON.stringify(job.status),
