@@ -51,3 +51,23 @@ type CommandResponse struct {
 type commandLarkMsgContent struct {
 	Text string `json:"text"`
 }
+
+// Rich text (post) message structures
+type postContent struct {
+	ZhCn *postLanguage `json:"zh_cn,omitempty"`
+	EnUs *postLanguage `json:"en_us,omitempty"`
+	JaJp *postLanguage `json:"ja_jp,omitempty"`
+}
+
+type postLanguage struct {
+	Title   string          `json:"title,omitempty"`
+	Content [][]postElement `json:"content"`
+}
+
+type postElement struct {
+	Tag      string `json:"tag"`
+	Text     string `json:"text,omitempty"`
+	UnEscape bool   `json:"un_escape,omitempty"`
+	UserID   string `json:"user_id,omitempty"`
+	UserName string `json:"user_name,omitempty"`
+}
