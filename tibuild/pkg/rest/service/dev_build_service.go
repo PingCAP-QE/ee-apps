@@ -370,7 +370,12 @@ func fillWithDefaults(req *DevBuild) {
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
 	if req.Spec.PipelineEngine == "" {
-		req.Spec.PipelineEngine = JenkinsEngine
+		// switch to tekton engine for common dev-build for tikv components.
+		if req.Spec.Product == ProductTikv && !req.Spec.IsHotfix {
+			req.Spec.PipelineEngine = TektonEngine
+		} else {
+			req.Spec.PipelineEngine = JenkinsEngine
+		}
 	}
 }
 
@@ -524,21 +529,21 @@ func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
 
 func computeTektonPhase(pipelines []TektonPipeline) string {
 	phase := BuildStatusPending
-	var success_platforms = map[string]struct{}{}
-	var failure_platforms = map[string]struct{}{}
-	var triggered_platforms = map[string]struct{}{}
+	var succeedPlatforms = map[string]struct{}{}
+	var failedPlatforms = map[string]struct{}{}
+	var triggeredPlatforms = map[string]struct{}{}
 	for _, pipeline := range pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
-			success_platforms[pipeline.Platform] = struct{}{}
+			succeedPlatforms[pipeline.Platform] = struct{}{}
 		case BuildStatusFailure:
-			failure_platforms[pipeline.Platform] = struct{}{}
+			failedPlatforms[pipeline.Platform] = struct{}{}
 		}
-		triggered_platforms[pipeline.Platform] = struct{}{}
+		triggeredPlatforms[pipeline.Platform] = struct{}{}
 	}
-	if len(success_platforms) == len(triggered_platforms) {
+	if len(succeedPlatforms) == len(triggeredPlatforms) {
 		phase = BuildStatusSuccess
-	} else if len(failure_platforms) != 0 {
+	} else if len(failedPlatforms) != 0 {
 		phase = BuildStatusFailure
 	} else if len(pipelines) != 0 {
 		phase = BuildStatusProcessing
