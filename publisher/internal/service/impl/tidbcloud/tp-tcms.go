@@ -38,17 +38,11 @@ func (s *tidbcloudsrvc) AddTidbxImageTagInTcms(ctx context.Context, p *tidbcloud
 		ImageTag: &imgTag,
 	}
 	if p.Github != nil {
+		branch := strings.TrimPrefix(*p.Github.Ref, "refs/heads/")
+		branch = strings.TrimPrefix(branch, "refs/tags/")
+		reqBody.Branch = &branch
 		reqBody.Repo = &p.Github.FullRepo
 		reqBody.Sha = &p.Github.CommitSha
-		if p.Github.Ref != nil {
-			if v, ok := strings.CutPrefix(*p.Github.Ref, "refs/heads/"); ok {
-				reqBody.Branch = &v
-			} else if v, ok := strings.CutPrefix(*p.Github.Ref, "refs/tags/"); ok {
-				reqBody.Branch = &v
-			} else {
-				reqBody.Branch = p.Github.Ref
-			}
-		}
 	}
 
 	resp, err := s.tcmsRestyClient().R().
