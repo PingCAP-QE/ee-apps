@@ -118,6 +118,9 @@ func newDevBuildCloudEvent(record *ent.DevBuild) (*cloudevents.Event, error) {
 	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
 	event.SetExtension("paramProfile", string(record.Edition))
+	if record.GithubRepo != "" {
+		event.SetExtension("paramGithubRepo", record.GithubRepo)
+	}
 	if record.BuilderImg != "" {
 		event.SetExtension("paramBuilderImage", record.BuilderImg)
 	}
