@@ -63,9 +63,6 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
 	}
 	if req.Spec.PipelineEngine == TektonEngine {
-		if req.Meta.CreatedBy == "" {
-			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
-		}
 		err := fillDetailInfoForTekton(ctx, s.GHClient, &req)
 		if err != nil {
 			return nil, err
@@ -445,6 +442,9 @@ func validateReq(req DevBuild) error {
 			return fmt.Errorf("edition is not valid for jenkins engine")
 		}
 	case TektonEngine:
+		if req.Meta.CreatedBy == "" {
+			return fmt.Errorf("meta.createdBy is required for tekton builds")
+		}
 		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
 			return fmt.Errorf("edition is not valid for tekton engine")
 		}
