@@ -64,7 +64,7 @@ func newDevBuildCloudEvent(record *ent.DevBuild) (*cloudevents.Event, error) {
 		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, record.GitRef,
 			record.GitSha, prNumber)
 	default:
-		return nil, fmt.Errorf("unkown git ref format")
+return nil, fmt.Errorf("unknown git ref format")
 	}
 
 	event.SetData(cloudevents.ApplicationJSON, eventData)
