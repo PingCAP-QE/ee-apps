@@ -222,7 +222,8 @@ type TektonPipeline struct {
 }
 
 type TektonStatus struct {
-	Pipelines []*TektonPipeline
+	Pipelines        []*TektonPipeline
+	TriggersEventIds []string
 }
 
 // UpdatePayload is the payload type of the devbuild service update method.

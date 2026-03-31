@@ -42,9 +42,7 @@ func (s *artifactsrvc) SyncImage(ctx context.Context, p *artifact.ImageSyncReque
 	l.Info().Msg("Syncing Docker image")
 
 	// Create options for crane operations
-	options := []crane.Option{
-		crane.WithContext(ctx),
-	}
+	options := []crane.Option{crane.WithContext(ctx)}
 
 	// Use the crane library to copy the image directly between registries
 	if err := crane.Copy(p.Source, p.Target, options...); err != nil {

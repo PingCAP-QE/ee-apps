@@ -18,6 +18,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 )
 
@@ -56,6 +57,7 @@ func main() {
 	var (
 		artifactSvc artifact.Service
 		devbuildSvc devbuild.Service
+		hotfixSvc   hotfix.Service
 	)
 	{
 		logLevel := zerolog.InfoLevel
@@ -74,6 +76,11 @@ func main() {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}
 		}
+		{
+			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", hotfix.ServiceName).Logger()
+			ghClient := impl.NewGitHubClient(cfg.Github.Token)
+			hotfixSvc = impl.NewHotfix(&logger, ghClient)
+		}
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -81,6 +88,7 @@ func main() {
 	var (
 		artifactEndpoints *artifact.Endpoints
 		devbuildEndpoints *devbuild.Endpoints
+		hotfixEndpoints   *hotfix.Endpoints
 	)
 	{
 		artifactEndpoints = artifact.NewEndpoints(artifactSvc)
@@ -89,6 +97,9 @@ func main() {
 		devbuildEndpoints = devbuild.NewEndpoints(devbuildSvc)
 		devbuildEndpoints.Use(debug.LogPayloads())
 		devbuildEndpoints.Use(log.Endpoint)
+		hotfixEndpoints = hotfix.NewEndpoints(hotfixSvc)
+		hotfixEndpoints.Use(debug.LogPayloads())
+		hotfixEndpoints.Use(log.Endpoint)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -130,7 +141,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
 		}
 
 	case "product":
@@ -155,7 +166,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

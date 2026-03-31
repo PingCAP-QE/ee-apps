@@ -3,10 +3,12 @@ package tiup
 import "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 
 const redisKeyPrefixTiupRateLimit = "ratelimit:tiup"
+const tiupServiceDeliveryCfgKey = "delivery_config_file"
 
 type PublishRequestTiUP struct {
-	From    share.From      `json:"from,omitzero"`
-	Publish PublishInfoTiUP `json:"publish,omitzero"`
+	From       share.From      `json:"from,omitzero"`
+	Publish    PublishInfoTiUP `json:"publish,omitzero"`
+	TiupMirror string          `json:"tiup_mirror,omitempty"`
 }
 
 type PublishInfoTiUP struct {
@@ -17,4 +19,16 @@ type PublishInfoTiUP struct {
 	Description string `json:"description,omitempty"` // ignore for `EventTypeFsPublishRequest`
 	EntryPoint  string `json:"entry_point,omitempty"` // if event is `EventTypeFsPublishRequest`, the the value is the basename for store file, like tidb-server.tar.gz
 	Standalone  bool   `json:"standalone,omitempty"`  // ignore for `EventTypeFsPublishRequest`
+}
+
+type DeliveryRule struct {
+	Description         string   `json:"description,omitempty" yaml:"description,omitempty"`
+	TagsRegex           []string `json:"tags_regex" yaml:"tags_regex"`
+	DestMirrors         []string `json:"dest_mirrors" yaml:"dest_mirrors"`
+	Nightly             bool     `json:"nightly,omitempty" yaml:"nightly,omitempty"`
+	VersionRegexReplace *string  `json:"version_regex_replace,omitempty" yaml:"version_regex_replace,omitempty"`
+}
+
+type DeliveryConfig struct {
+	TiupPublishRules map[string][]DeliveryRule `json:"tiup_publish_rules,omitempty" yaml:"tiup_publish_rules,omitempty"`
 }

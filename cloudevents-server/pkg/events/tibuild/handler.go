@@ -9,16 +9,17 @@ import (
 	"github.com/rs/zerolog/log"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 
+	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
 )
 
 // NewHandler creates a new SinkHandler with the specified sink URL.
-func NewHandler(tibuildSinkURL, tektonSinkURL string) (handler.EventHandler, error) {
-	routeToTbHandler, err := newRouteHandler(tibuildSinkURL)
+func NewHandler(cfg config.TiBuild) (handler.EventHandler, error) {
+	routeToTbHandler, err := newRouteHandler(cfg.ResultSinkURL)
 	if err != nil {
 		return nil, err
 	}
-	routeToTektonHandler, err := newRouteHandler(tektonSinkURL)
+	routeToTektonHandler, err := newRouteHandler(cfg.TriggerSinkURL)
 	if err != nil {
 		return nil, err
 	}

@@ -16,6 +16,7 @@ import (
 
 	artifactc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/client"
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
+	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -26,16 +27,30 @@ import (
 func UsageCommands() string {
 	return `artifact sync-image
 devbuild (list|create|get|update|rerun|ingest-event)
+hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)
 `
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Dolorem velit dolor.",
-      "target": "Qui earum omnis."
+      "source": "Ut libero magnam sapiente dolores qui.",
+      "target": "Velit ducimus in deleniti at consequatur."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."` + "\n" +
+		os.Args[0] + ` devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."` + "\n" +
+		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
+      "author": "abc@test.com",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "meta": {
+         "ops_req": {
+            "applicant": "tidb",
+            "change_id": "c1",
+            "release_id": "r1"
+         }
+      },
+      "repo": "pingcap/tidb"
+   }'` + "\n" +
 		""
 }
 
@@ -89,6 +104,15 @@ func ParseEndpoint(
 		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
 		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
 		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
+
+		hotfixFlags = flag.NewFlagSet("hotfix", flag.ContinueOnError)
+
+		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
+		hotfixBumpTagForTidbxBodyFlag = hotfixBumpTagForTidbxFlags.String("body", "REQUIRED", "")
+
+		hotfixQueryTagOfTidbxFlags    = flag.NewFlagSet("query-tag-of-tidbx", flag.ExitOnError)
+		hotfixQueryTagOfTidbxRepoFlag = hotfixQueryTagOfTidbxFlags.String("repo", "REQUIRED", "")
+		hotfixQueryTagOfTidbxTagFlag  = hotfixQueryTagOfTidbxFlags.String("tag", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -100,6 +124,10 @@ func ParseEndpoint(
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
 	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
+
+	hotfixFlags.Usage = hotfixUsage
+	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
+	hotfixQueryTagOfTidbxFlags.Usage = hotfixQueryTagOfTidbxUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -120,6 +148,8 @@ func ParseEndpoint(
 			svcf = artifactFlags
 		case "devbuild":
 			svcf = devbuildFlags
+		case "hotfix":
+			svcf = hotfixFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -161,6 +191,16 @@ func ParseEndpoint(
 
 			case "ingest-event":
 				epf = devbuildIngestEventFlags
+
+			}
+
+		case "hotfix":
+			switch epn {
+			case "bump-tag-for-tidbx":
+				epf = hotfixBumpTagForTidbxFlags
+
+			case "query-tag-of-tidbx":
+				epf = hotfixQueryTagOfTidbxFlags
 
 			}
 
@@ -213,6 +253,16 @@ func ParseEndpoint(
 				endpoint = c.IngestEvent()
 				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
 			}
+		case "hotfix":
+			c := hotfixc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "bump-tag-for-tidbx":
+				endpoint = c.BumpTagForTidbx()
+				data, err = hotfixc.BuildBumpTagForTidbxPayload(*hotfixBumpTagForTidbxBodyFlag)
+			case "query-tag-of-tidbx":
+				endpoint = c.QueryTagOfTidbx()
+				data, err = hotfixc.BuildQueryTagOfTidbxPayload(*hotfixQueryTagOfTidbxRepoFlag, *hotfixQueryTagOfTidbxTagFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -243,8 +293,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Dolorem velit dolor.",
-      "target": "Qui earum omnis."
+      "source": "Ut libero magnam sapiente dolores qui.",
+      "target": "Velit ducimus in deleniti at consequatur."
    }'
 `, os.Args[0])
 }
@@ -279,7 +329,7 @@ List devbuild with pagination support
     -created-by STRING:
 
 Example:
-    %[1]s devbuild list --page 411945638169977778 --page-size 5083350743774833858 --hotfix true --sort "updated_at" --direction "asc" --created-by "Recusandae corporis."
+    %[1]s devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."
 `, os.Args[0])
 }
 
@@ -292,25 +342,25 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "nyah@ondricka.org",
+      "created_by": "callie_ankunding@luettgen.net",
       "request": {
-         "build_env": "Quaerat necessitatibus distinctio nobis sit.",
-         "builder_img": "Vero sunt culpa molestiae sint ut.",
+         "build_env": "Consequuntur fuga tempore.",
+         "builder_img": "Veniam quia minus odio neque incidunt.",
          "edition": "community",
-         "features": "Molestias facilis voluptatem voluptate dignissimos ducimus.",
-         "git_ref": "Delectus accusantium.",
-         "git_sha": "Expedita non facilis a iste qui.",
-         "github_repo": "Provident voluptatem eum.",
+         "features": "Ea ullam beatae.",
+         "git_ref": "Omnis voluptas cumque sunt laboriosam velit.",
+         "git_sha": "Autem natus molestiae quia.",
+         "github_repo": "Ducimus quia accusantium laborum ipsum nihil eum.",
          "is_hotfix": false,
-         "is_push_gcr": true,
-         "pipeline_engine": "jenkins",
-         "platform": "linux/amd64",
-         "plugin_git_ref": "Autem distinctio.",
-         "product": "ng-monitoring",
-         "product_base_img": "Itaque dolor recusandae.",
-         "product_dockerfile": "Deleniti eum.",
-         "target_img": "Eligendi dolorem autem ullam.",
-         "version": "Quaerat repellendus similique expedita quia."
+         "is_push_gcr": false,
+         "pipeline_engine": "tekton",
+         "platform": "darwin/amd64",
+         "plugin_git_ref": "Minus odit qui facere inventore nemo.",
+         "product": "drainer",
+         "product_base_img": "Molestiae et repellat quis necessitatibus et.",
+         "product_dockerfile": "Nisi omnis veritatis assumenda quo dolores enim.",
+         "target_img": "Qui accusantium voluptatum aut omnis.",
+         "version": "Sunt esse et impedit voluptatem."
       }
    }' --dryrun false
 `, os.Args[0])
@@ -342,173 +392,238 @@ Example:
          "build_report": {
             "binaries": [
                {
-                  "component": "Impedit rerum sunt sunt.",
+                  "component": "Qui vitae nostrum aut blanditiis possimus voluptate.",
                   "oci_file": {
-                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
-                     "repo": "Molestiae consequatur atque ut fugit.",
-                     "tag": "Explicabo reprehenderit cumque fugiat."
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
                   },
-                  "platform": "Quas ut voluptatibus nobis.",
+                  "platform": "Et labore.",
                   "sha256_oci_file": {
-                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
-                     "repo": "Molestiae consequatur atque ut fugit.",
-                     "tag": "Explicabo reprehenderit cumque fugiat."
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
                   },
-                  "sha256_url": "http://mayertowne.info/nina",
-                  "url": "http://ortizvandervort.name/alysa.rippin"
+                  "sha256_url": "http://batzmarks.net/delfina.walter",
+                  "url": "http://okon.net/casimir"
                },
                {
-                  "component": "Impedit rerum sunt sunt.",
+                  "component": "Qui vitae nostrum aut blanditiis possimus voluptate.",
                   "oci_file": {
-                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
-                     "repo": "Molestiae consequatur atque ut fugit.",
-                     "tag": "Explicabo reprehenderit cumque fugiat."
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
                   },
-                  "platform": "Quas ut voluptatibus nobis.",
+                  "platform": "Et labore.",
                   "sha256_oci_file": {
-                     "file": "Voluptates eos eveniet ratione quia delectus voluptas.",
-                     "repo": "Molestiae consequatur atque ut fugit.",
-                     "tag": "Explicabo reprehenderit cumque fugiat."
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
                   },
-                  "sha256_url": "http://mayertowne.info/nina",
-                  "url": "http://ortizvandervort.name/alysa.rippin"
+                  "sha256_url": "http://batzmarks.net/delfina.walter",
+                  "url": "http://okon.net/casimir"
+               },
+               {
+                  "component": "Qui vitae nostrum aut blanditiis possimus voluptate.",
+                  "oci_file": {
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
+                  },
+                  "platform": "Et labore.",
+                  "sha256_oci_file": {
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
+                  },
+                  "sha256_url": "http://batzmarks.net/delfina.walter",
+                  "url": "http://okon.net/casimir"
+               },
+               {
+                  "component": "Qui vitae nostrum aut blanditiis possimus voluptate.",
+                  "oci_file": {
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
+                  },
+                  "platform": "Et labore.",
+                  "sha256_oci_file": {
+                     "file": "Ut quia quod nisi est.",
+                     "repo": "Praesentium est necessitatibus hic.",
+                     "tag": "Nam doloremque."
+                  },
+                  "sha256_url": "http://batzmarks.net/delfina.walter",
+                  "url": "http://okon.net/casimir"
                }
             ],
-            "git_sha": "q1m",
+            "git_sha": "jh6",
             "images": [
                {
-                  "internal_url": "http://bartoletti.org/tad",
-                  "platform": "Suscipit non molestias consequatur aut.",
-                  "url": "http://conroy.org/chaz_zieme"
+                  "internal_url": "http://hauck.name/baron",
+                  "platform": "Tenetur labore placeat id explicabo iste rem.",
+                  "url": "http://streich.biz/sophie"
                },
                {
-                  "internal_url": "http://bartoletti.org/tad",
-                  "platform": "Suscipit non molestias consequatur aut.",
-                  "url": "http://conroy.org/chaz_zieme"
-               },
-               {
-                  "internal_url": "http://bartoletti.org/tad",
-                  "platform": "Suscipit non molestias consequatur aut.",
-                  "url": "http://conroy.org/chaz_zieme"
+                  "internal_url": "http://hauck.name/baron",
+                  "platform": "Tenetur labore placeat id explicabo iste rem.",
+                  "url": "http://streich.biz/sophie"
                }
             ],
-            "plugin_git_sha": "9au",
-            "printed_version": "Ducimus tenetur eum quia veniam."
+            "plugin_git_sha": "1l6",
+            "printed_version": "Rem atque veritatis."
          },
-         "err_msg": "Adipisci recusandae labore voluptas quam.",
-         "pipeline_build_id": 1835437060330262989,
-         "pipeline_end_at": "9311-38-47 43:78:42",
-         "pipeline_start_at": "2322-07-62 56:66:66",
-         "pipeline_view_url": "http://padberg.info/emery",
+         "err_msg": "Ab tempora autem.",
+         "pipeline_build_id": 8771877194158390155,
+         "pipeline_end_at": "0369-44-93 09:74:67",
+         "pipeline_start_at": "9953-90-66 13:84:41",
+         "pipeline_view_url": "http://wisoky.net/madaline_hegmann",
          "pipeline_view_urls": [
-            "http://block.net/mohammed",
-            "http://jonescrona.name/foster.hoeger"
+            "http://kunde.org/cristina",
+            "http://daniel.org/jeramie.schimmel"
          ],
-         "status": "error",
+         "status": "failure",
          "tekton_status": {
             "pipelines": [
                {
-                  "end_at": "1972-07-18T22:38:23Z",
-                  "git_sha": "pez",
+                  "end_at": "1987-12-16T02:33:04Z",
+                  "git_sha": "x4x",
                   "images": [
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      }
                   ],
-                  "name": "Et quia dolor perspiciatis animi.",
+                  "name": "Animi quia tempora.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Sapiente vero facere quo aspernatur.",
-                           "Quia tempora dolor."
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
                         ],
-                        "repo": "Harum minima accusamus sequi aut.",
-                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
                      },
                      {
                         "files": [
-                           "Sapiente vero facere quo aspernatur.",
-                           "Quia tempora dolor."
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
                         ],
-                        "repo": "Harum minima accusamus sequi aut.",
-                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
+                     },
+                     {
+                        "files": [
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
+                        ],
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
+                     },
+                     {
+                        "files": [
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
+                        ],
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
                      }
                   ],
-                  "platform": "Est iure.",
-                  "start_at": "1973-01-10T13:53:53Z",
-                  "status": "pending",
-                  "url": "http://jacobibailey.biz/mattie"
+                  "platform": "In laborum earum doloribus dignissimos sed doloremque.",
+                  "start_at": "1981-03-16T04:12:58Z",
+                  "status": "failure",
+                  "url": "http://pollichtreutel.org/paolo_schowalter"
                },
                {
-                  "end_at": "1972-07-18T22:38:23Z",
-                  "git_sha": "pez",
+                  "end_at": "1987-12-16T02:33:04Z",
+                  "git_sha": "x4x",
                   "images": [
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      },
                      {
-                        "internal_url": "http://bartoletti.org/tad",
-                        "platform": "Suscipit non molestias consequatur aut.",
-                        "url": "http://conroy.org/chaz_zieme"
+                        "internal_url": "http://hauck.name/baron",
+                        "platform": "Tenetur labore placeat id explicabo iste rem.",
+                        "url": "http://streich.biz/sophie"
                      }
                   ],
-                  "name": "Et quia dolor perspiciatis animi.",
+                  "name": "Animi quia tempora.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Sapiente vero facere quo aspernatur.",
-                           "Quia tempora dolor."
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
                         ],
-                        "repo": "Harum minima accusamus sequi aut.",
-                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
                      },
                      {
                         "files": [
-                           "Sapiente vero facere quo aspernatur.",
-                           "Quia tempora dolor."
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
                         ],
-                        "repo": "Harum minima accusamus sequi aut.",
-                        "tag": "Voluptatem quam ea voluptatem aliquam amet quam."
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
+                     },
+                     {
+                        "files": [
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
+                        ],
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
+                     },
+                     {
+                        "files": [
+                           "Beatae non fugit molestiae.",
+                           "Temporibus optio id iure."
+                        ],
+                        "repo": "Praesentium hic.",
+                        "tag": "Adipisci rerum neque temporibus quia exercitationem qui."
                      }
                   ],
-                  "platform": "Est iure.",
-                  "start_at": "1973-01-10T13:53:53Z",
-                  "status": "pending",
-                  "url": "http://jacobibailey.biz/mattie"
+                  "platform": "In laborum earum doloribus dignissimos sed doloremque.",
+                  "start_at": "1981-03-16T04:12:58Z",
+                  "status": "failure",
+                  "url": "http://pollichtreutel.org/paolo_schowalter"
                }
+            ],
+            "triggers_event_ids": [
+               "e9166f26-9ee4-44e1-9fa5-18192ccf4dc9",
+               "eaefb056-e6de-4158-b30d-7cffdfa16d73",
+               "a808b70b-9a09-4785-ac0f-4d3278bc37cf",
+               "426843cc-e5ad-409e-a876-bb39a7c56ea7"
             ]
          }
       }
-   }' --id 1 --dryrun true
+   }' --id 1 --dryrun false
 `, os.Args[0])
 }
 
@@ -546,6 +661,55 @@ Example:
       },
       "dataschema": "https://example.com/registry/schemas/build-event.json",
       "subject": "tidb-build-123"
-   }' --datacontenttype "Et qui in." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+   }' --datacontenttype "Id magni beatae quaerat." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+`, os.Args[0])
+}
+
+// hotfixUsage displays the usage of the hotfix command and its subcommands.
+func hotfixUsage() {
+	fmt.Fprintf(os.Stderr, `The hotfix service provides operations to manage hotfix git tags.
+Usage:
+    %[1]s [globalflags] hotfix COMMAND [flags]
+
+COMMAND:
+    bump-tag-for-tidbx: Create a hot fix git tag for a GitHub repository
+    query-tag-of-tidbx: Query tag info of tidbx repo
+
+Additional help:
+    %[1]s hotfix COMMAND --help
+`, os.Args[0])
+}
+func hotfixBumpTagForTidbxUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
+
+Create a hot fix git tag for a GitHub repository
+    -body JSON:
+
+Example:
+    %[1]s hotfix bump-tag-for-tidbx --body '{
+      "author": "abc@test.com",
+      "branch": "release-8.5",
+      "commit": "abc123def456",
+      "meta": {
+         "ops_req": {
+            "applicant": "tidb",
+            "change_id": "c1",
+            "release_id": "r1"
+         }
+      },
+      "repo": "pingcap/tidb"
+   }'
+`, os.Args[0])
+}
+
+func hotfixQueryTagOfTidbxUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix query-tag-of-tidbx -repo STRING -tag STRING
+
+Query tag info of tidbx repo
+    -repo STRING:
+    -tag STRING:
+
+Example:
+    %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v26.3.1-nextgen"
 `, os.Args[0])
 }

@@ -106,6 +106,22 @@ func TestDevBuildCRUD(t *testing.T) {
 		assert.Equal(t, "v6.1.0", build.Spec.Version)
 	})
 
+	t.Run("Create normalizes legacy next-gen edition", func(t *testing.T) {
+		createPayload := &devbuild.CreatePayload{
+			Request: &devbuild.DevBuildSpec{
+				Product: "pd",
+				Edition: "next-gen",
+				Version: "v26.3.1",
+				GitRef:  "branch/master",
+			},
+			Dryrun: true,
+		}
+
+		build, err := env.service.Create(ctx, createPayload)
+		require.NoError(t, err)
+		assert.Equal(t, "nextgen", build.Spec.Edition)
+	})
+
 	t.Run("List", func(t *testing.T) {
 		listPayload := &devbuild.ListPayload{
 			Page:      1,

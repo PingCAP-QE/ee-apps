@@ -839,6 +839,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponse(v *devbuild.TektonStatus)
 	} else {
 		res.Pipelines = []*TektonPipelineResponse{}
 	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
+	}
 
 	return res
 }
@@ -1090,6 +1096,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponseBody(v *devbuild.TektonSta
 	} else {
 		res.Pipelines = []*TektonPipelineResponseBody{}
 	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
+	}
 
 	return res
 }
@@ -1262,6 +1274,12 @@ func unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusReque
 	res.Pipelines = make([]*devbuild.TektonPipeline, len(v.Pipelines))
 	for i, val := range v.Pipelines {
 		res.Pipelines[i] = unmarshalTektonPipelineRequestBodyToDevbuildTektonPipeline(val)
+	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
 	}
 
 	return res

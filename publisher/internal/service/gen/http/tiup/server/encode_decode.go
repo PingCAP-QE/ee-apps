@@ -60,6 +60,47 @@ func DecodeRequestToPublishRequest(mux goahttp.Muxer, decoder func(*http.Request
 	}
 }
 
+// EncodeDeliveryByRulesResponse returns an encoder for responses returned by
+// the tiup delivery-by-rules endpoint.
+func EncodeDeliveryByRulesResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.([]string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeDeliveryByRulesRequest returns a decoder for requests sent to the tiup
+// delivery-by-rules endpoint.
+func DecodeDeliveryByRulesRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*tiup.DeliveryByRulesPayload, error) {
+	return func(r *http.Request) (*tiup.DeliveryByRulesPayload, error) {
+		var (
+			body DeliveryByRulesRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return nil, gerr
+			}
+			return nil, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateDeliveryByRulesRequestBody(&body)
+		if err != nil {
+			return nil, err
+		}
+		payload := NewDeliveryByRulesPayload(&body)
+
+		return payload, nil
+	}
+}
+
 // EncodeRequestToPublishSingleResponse returns an encoder for responses
 // returned by the tiup request-to-publish-single endpoint.
 func EncodeRequestToPublishSingleResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {

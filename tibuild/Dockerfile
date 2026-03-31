@@ -1,11 +1,11 @@
 # Copy 'website/' contents(not entire folder) into .(/webapp/) and build React
-FROM node:20.19.5 as webbuilder
+FROM node:20.20.0 as webbuilder
 WORKDIR /webapp
 COPY website/ .
 RUN --mount=type=cache,target=/webapp/node_modules npm install && yarn build
 
 # Copy whole project's contents(not entire folder) into .(/goapp/) and build Golang
-FROM golang:1.25.3 as serverbuilder
+FROM golang:1.25.5 as serverbuilder
 ENV CGO_ENABLED=0
 WORKDIR /goapp
 COPY . .

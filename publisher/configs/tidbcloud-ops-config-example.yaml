@@ -1,0 +1,21 @@
+## Example config for tidbcloud.UpdateComponentVersionInCloudconfig
+## This file is loaded via service config: services.tidbcloud.ops_config_file
+
+tibuild_v2:
+  api_base_url: "https://tibuild-v2.example.com"
+  user: "username"
+  password: "password"
+
+stages:
+  prod:
+    api_base_url: "https://ops-api.example.com"
+    api_key: "replace-with-real-api-key"
+    components:
+      tidb:
+        base_image: "hub.pingcap.net/pingcap/tidb"
+        cluster_type: "serverless"
+        github_repo: "pingcap/tidb"
+      tikv:
+        base_image: "hub.pingcap.net/tikv/tikv"
+        cluster_type: "serverless"
+        github_repo: "pingcap/tikv"

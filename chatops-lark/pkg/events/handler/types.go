@@ -26,7 +26,7 @@ type CommandHandler func(context.Context, []string) (string, error)
 type CommandConfig struct {
 	Description  string
 	Handler      CommandHandler
-	AuditWebhook string
+	Audit        *config.AuditConfig
 	SetupContext func(ctx context.Context, cfg config.Config, sender *CommandActor) context.Context
 }
 

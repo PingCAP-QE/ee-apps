@@ -41,24 +41,12 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
-{{- define "publisher.worker.labels" -}}
-helm.sh/chart: {{ include "publisher.chart" . }}
-{{ include "publisher.worker.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- end }}
 
 {{/*
 Selector labels
 */}}
 {{- define "publisher.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "publisher.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end }}
-{{- define "publisher.worker.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "publisher.name" . }}-worker
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 

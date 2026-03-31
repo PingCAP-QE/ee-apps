@@ -1,0 +1,1 @@
+The application is running at consumer mode, so there is no public access URLs.

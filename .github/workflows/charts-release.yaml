@@ -7,6 +7,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/charts-release.yaml"
       - "charts/*/Chart.yaml"
 
 jobs:
@@ -20,26 +21,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          sparse-checkout: |
+            charts
 
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.16.0
+          version: v3.18.3
 
       - name: Release charts
         working-directory: charts
         run: |
           echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          for chart in cloudevents-server dl publisher chatops-lark; do
+          for chart in cloudevents-server dl publisher publisher-worker chatops-lark tibuild-v2; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
             if helm show values oci://ghcr.io/pingcap-qe/ee-apps/charts/$chart --version $CHART_VERSION > /dev/null; then
               echo "chart '$chart' has no new version, skip publish."

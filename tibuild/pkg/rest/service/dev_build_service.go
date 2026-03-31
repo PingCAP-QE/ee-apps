@@ -63,9 +63,6 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
 	}
 	if req.Spec.PipelineEngine == TektonEngine {
-		if req.Meta.CreatedBy == "" {
-			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
-		}
 		err := fillDetailInfoForTekton(ctx, s.GHClient, &req)
 		if err != nil {
 			return nil, err
@@ -366,6 +363,7 @@ func getBranchForCommit(ctx context.Context, client GHClient, owner, repo, commi
 
 func fillWithDefaults(req *DevBuild) {
 	spec := &req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
@@ -439,6 +437,7 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	if !slices.Contains(allProducts, spec.Product) {
 		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
 	}
@@ -450,6 +449,9 @@ func validateReq(req DevBuild) error {
 			return fmt.Errorf("edition is not valid for jenkins engine")
 		}
 	case TektonEngine:
+		if req.Meta.CreatedBy == "" {
+			return fmt.Errorf("meta.createdBy is required for tekton builds")
+		}
 		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
 			return fmt.Errorf("edition is not valid for tekton engine")
 		}
