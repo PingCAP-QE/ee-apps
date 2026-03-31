@@ -39,7 +39,7 @@ func UsageExamples() string {
 	return os.Args[0] + " " + "tiup request-to-publish --body '{\n      \"artifact_url\": \"oci.com/repo:tag\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"v1.0.0\"\n   }'" + "\n" +
 		os.Args[0] + " " + "fileserver request-to-publish --body '{\n      \"artifact_url\": \"Velit praesentium est.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "image request-to-copy --body '{\n      \"destination\": \"Sit pariatur quis id sunt dignissimos accusantium.\",\n      \"source\": \"Et sed doloremque officiis accusantium ab.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v8.5.4\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
+		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
 
@@ -558,7 +558,7 @@ func tidbcloudUpdateComponentVersionInCloudconfigUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v8.5.4\",\n      \"stage\": \"prod\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'")
 }
 
 func tidbcloudAddTidbxImageTagInTcmsUsage() {
@@ -576,5 +576,5 @@ func tidbcloudAddTidbxImageTagInTcmsUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud add-tidbx-image-tag-in-tcms --body '{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v8.5.4\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud add-tidbx-image-tag-in-tcms --body '{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\"\n   }'")
 }

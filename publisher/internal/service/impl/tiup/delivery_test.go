@@ -28,6 +28,18 @@ func TestComputeDeliveryInstructionsForRule(t *testing.T) {
 			versionShouldBeNil: []bool{false},
 		},
 		{
+			name: "calendar-style nextgen rule expects $1 capture of tag",
+			rule: DeliveryRule{
+				DestMirrors:         []string{"staging"},
+				TagsRegex:           []string{"^(v[1-9][0-9]+[.][0-9]+[.][0-9]+(?:-[0-9]+-g[0-9a-f]{6,10})?-nextgen)_(linux|darwin)_(amd64|arm64)$"},
+				VersionRegexReplace: strPtr("$1"),
+			},
+			ociTag:             "v26.3.1-nextgen_linux_amd64",
+			wantMirrors:        []string{"staging"},
+			wantVersionValues:  []string{"v26.3.1-nextgen"},
+			versionShouldBeNil: []bool{false},
+		},
+		{
 			name: "versioin replace matched first pattern",
 			rule: DeliveryRule{
 				DestMirrors:         []string{"staging"},

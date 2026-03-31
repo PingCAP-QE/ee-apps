@@ -64,14 +64,14 @@ func newDevBuildCloudEvent(record *ent.DevBuild) (*cloudevents.Event, error) {
 		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, record.GitRef,
 			record.GitSha, prNumber)
 	default:
-return nil, fmt.Errorf("unknown git ref format")
+		return nil, fmt.Errorf("unknown git ref format")
 	}
 
 	event.SetData(cloudevents.ApplicationJSON, eventData)
 	event.SetSubject(fmt.Sprint(record.ID))
 	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
-	event.SetExtension("paramProfile", string(record.Edition))
+	event.SetExtension("paramProfile", normalizeEdition(string(record.Edition)))
 	if record.GithubRepo != "" {
 		event.SetExtension("paramGithubRepo", record.GithubRepo)
 	}

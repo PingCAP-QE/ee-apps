@@ -353,7 +353,7 @@ var _ = Service("tidbcloud", func() {
 				Example("prod")
 			})
 			Attribute("image", String, "container image with tag", func() {
-				Example("xxx.com/component:v8.5.4")
+				Example("xxx.com/component:v26.3.1-nextgen")
 			})
 
 			Required("stage", "image")
@@ -371,7 +371,7 @@ var _ = Service("tidbcloud", func() {
 	Method("add-tidbx-image-tag-in-tcms", func() {
 		Payload(func() {
 			Attribute("image", String, "container image with tag", func() {
-				Example("xxx.com/component:v8.5.4")
+				Example("xxx.com/component:v26.3.1-nextgen")
 			})
 			Attribute("github", func() { // Should read config from the image when the attribute is not given.
 				Description("git informations")
@@ -398,7 +398,7 @@ var _ = Service("tidbcloud", func() {
 			})
 			Attribute("branch", String, "github branch or tag name", func() {
 				Meta("struct:tag:json", "branch,omitempty")
-				Example("release-nextgen-20251011")
+				Example("v26.3.1")
 			})
 			Attribute("sha", String, "github commit sha in the repo", func() {
 				Meta("struct:tag:json", "sha,omitempty")
@@ -406,7 +406,7 @@ var _ = Service("tidbcloud", func() {
 			})
 			Attribute("imageTag", String, "image tag", func() {
 				Meta("struct:tag:json", "imageTag,omitempty")
-				Example("release-nextgen-20251011-031069d")
+				Example("v26.3.1-nextgen")
 			})
 		})
 		HTTP(func() {

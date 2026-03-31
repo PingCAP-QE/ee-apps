@@ -183,6 +183,58 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 	}
 }
 
+func TestComputeNewTagNameForTidbxCalendarStyle(t *testing.T) {
+	resp := mock.WithRequestMatchPages(
+		mock.GetReposTagsByOwnerByRepo,
+		[]*github.RepositoryTag{
+			{Name: github.Ptr("v25.12.9")},
+			{Name: github.Ptr("v26.0.0")},
+			{Name: github.Ptr("v26.3.1")},
+			{Name: github.Ptr("v26.3.3")},
+			{Name: github.Ptr("v26.2.9")},
+		},
+	)
+	compareMock := mock.WithRequestMatch(
+		mock.GetReposCompareByOwnerByRepoByBasehead,
+		&github.CommitsComparison{Status: github.Ptr("identical")},
+	)
+
+	ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
+	svc := newServiceWithClient(ghClient)
+
+	tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", "a9814602ed087838d71095efd35bd221ab0bf5a9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tag != "v26.3.4" {
+		t.Fatalf("expected v26.3.4, got %s", tag)
+	}
+}
+
+func TestComputeNewTagNameForTidbxCalendarStylePatchStartsAtZero(t *testing.T) {
+	resp := mock.WithRequestMatchPages(
+		mock.GetReposTagsByOwnerByRepo,
+		[]*github.RepositoryTag{
+			{Name: github.Ptr("v26.0.0")},
+		},
+	)
+	compareMock := mock.WithRequestMatch(
+		mock.GetReposCompareByOwnerByRepoByBasehead,
+		&github.CommitsComparison{Status: github.Ptr("identical")},
+	)
+
+	ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
+	svc := newServiceWithClient(ghClient)
+
+	tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", "a9814602ed087838d71095efd35bd221ab0bf5a9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tag != "v26.0.1" {
+		t.Fatalf("expected v26.0.1, got %s", tag)
+	}
+}
+
 func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 	fullRepo := "owner/repo"
 
@@ -508,5 +560,47 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 	}
 	if res.Author != nil || res.Meta != nil {
 		t.Fatalf("expected nil metadata fields on invalid json, got author=%+v meta=%+v", res.Author, res.Meta)
+	}
+}
+
+func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v26.0.0-nextgen"
+	gitTag := "v26.0.0"
+
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + gitTag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag: github.Ptr(gitTag),
+				SHA: github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, err := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Tag != gitTag {
+		t.Fatalf("expected resolved tag %s, got %s", gitTag, res.Tag)
 	}
 }

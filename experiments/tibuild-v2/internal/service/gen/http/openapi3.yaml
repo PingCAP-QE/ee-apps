@@ -1530,7 +1530,7 @@ paths:
                             request:
                                 build_env: Consequuntur fuga tempore.
                                 builder_img: Veniam quia minus odio neque incidunt.
-                                edition: experiment
+                                edition: community
                                 features: Ea ullam beatae.
                                 git_ref: Omnis voluptas cumque sunt laboriosam velit.
                                 git_sha: Autem natus molestiae quia.
@@ -3117,8 +3117,8 @@ paths:
                   schema:
                     type: string
                     description: Tag name of the GitHub repo
-                    example: v8.5.4-nextgen-202510.1
-                  example: v8.5.4-nextgen-202510.1
+                    example: v26.3.1-nextgen
+                  example: v26.3.1-nextgen
             responses:
                 "200":
                     description: OK response.
@@ -3452,7 +3452,7 @@ components:
                 request:
                     build_env: Consequuntur fuga tempore.
                     builder_img: Veniam quia minus odio neque incidunt.
-                    edition: experiment
+                    edition: community
                     features: Ea ullam beatae.
                     git_ref: Omnis voluptas cumque sunt laboriosam velit.
                     git_sha: Autem natus molestiae quia.
@@ -3492,7 +3492,7 @@ components:
                 spec:
                     build_env: Dicta neque nulla cum dolorem.
                     builder_img: Non libero.
-                    edition: failpoint
+                    edition: experiment
                     features: Optio nesciunt omnis numquam natus eos laboriosam.
                     git_ref: Et distinctio delectus architecto.
                     git_sha: Molestiae unde ea.
@@ -3699,6 +3699,7 @@ components:
                         - fips
                         - failpoint
                         - experiment
+                        - nextgen
                         - next-gen
                 features:
                     type: string
@@ -3779,7 +3780,7 @@ components:
             example:
                 build_env: Rerum consequuntur delectus non eum.
                 builder_img: Maiores ut.
-                edition: experiment
+                edition: nextgen
                 features: Sunt ab impedit.
                 git_ref: Dolores nam ipsa.
                 git_sha: Dolor facere numquam voluptas animi aperiam saepe.

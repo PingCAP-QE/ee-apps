@@ -12,6 +12,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/google/go-github/v69/github"
+	"golang.org/x/mod/semver"
 )
 
 type tidbxGitTagMeta struct {
@@ -115,9 +116,10 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 		}
 	}
 	owner, repo := parts[0], parts[1]
+	queryTag := normalizeTidbxQueryTag(p.Tag)
 
 	// 1. Get git tag ref information.
-	tagObj, err := s.getTag(ctx, owner, repo, p.Tag)
+	tagObj, err := s.getTag(ctx, owner, repo, queryTag)
 	if err != nil {
 		l.Err(err).Msg("Failed to get tag ref")
 		return nil, &hotfix.HTTPError{
@@ -149,7 +151,8 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 
 // computeNewTagNameForTidbx computes the next tag name based on existing tags,
 // and fails if the provided commit already has a tidbx-style tag.
-// Tags follow the pattern vX.Y.Z-nextgen.YYYYMM.N
+// Tags use the new plain semver flow starting at v26.0.0 and fall back to the
+// legacy vX.Y.Z-nextgen.YYYYMM.N pattern for older repositories.
 func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string) (string, error) {
 	// Get all tags from the repository
 	var allTags []*github.RepositoryTag
@@ -170,30 +173,34 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		opts.Page = resp.NextPage
 	}
 
-	// Parse and filter tags matching the pattern vX.Y.Z-nextgen.YYYYMM.N
-	pattern := regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
-	var matchingTags []tagInfo
+	// Parse and filter both the new >=v26.0.0 semver tags and the legacy nextgen tags.
+	legacyPattern := regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
+	var legacyTags []tagInfo
+	var newTags []string
 
 	for _, tag := range allTags {
 		name := tag.GetName()
 
-		// If the tidbx-style tag points to the provided commit, fail fast
-		if pattern.MatchString(name) {
-			if tag.Commit != nil && tag.Commit.SHA != nil && *tag.Commit.SHA == commitSHA {
-				return "", &hotfix.HTTPError{
-					Code:    http.StatusBadRequest,
-					Message: fmt.Sprintf("commit %s already has existing tidbx-style tag: %s", commitSHA, name),
-				}
+		if (legacyPattern.MatchString(name) || isNewTidbxGitTag(name)) &&
+			tag.Commit != nil && tag.Commit.SHA != nil && *tag.Commit.SHA == commitSHA {
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusBadRequest,
+				Message: fmt.Sprintf("commit %s already has existing tidbx-style tag: %s", commitSHA, name),
 			}
 		}
 
-		matches := pattern.FindStringSubmatch(name)
+		if isNewTidbxGitTag(name) {
+			newTags = append(newTags, name)
+			continue
+		}
+
+		matches := legacyPattern.FindStringSubmatch(name)
 		if len(matches) == 4 {
 			seq, err := strconv.Atoi(matches[3])
 			if err != nil {
 				continue
 			}
-			matchingTags = append(matchingTags, tagInfo{
+			legacyTags = append(legacyTags, tagInfo{
 				name:      name,
 				version:   matches[1],
 				yearMonth: matches[2],
@@ -202,24 +209,54 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
-	// If no matching tags exist, we cannot determine the version to use
-	if len(matchingTags) == 0 {
+	if len(newTags) > 0 {
+		sort.Slice(newTags, func(i, j int) bool {
+			return semver.Compare(newTags[i], newTags[j]) > 0
+		})
+
+		latest := newTags[0]
+		comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest, commitSHA, nil)
+		if err != nil {
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusInternalServerError,
+				Message: fmt.Sprintf("failed to compare commits: %v", err),
+			}
+		}
+		if comparison.GetStatus() == "behind" {
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusBadRequest,
+				Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest),
+			}
+		}
+
+		parts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
+		patch, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusInternalServerError,
+				Message: fmt.Sprintf("failed to parse patch from tag %s: %v", latest, err),
+			}
+		}
+		return fmt.Sprintf("v%s.%s.%d", parts[0], parts[1], patch+1), nil
+	}
+
+	// If no matching tags exist, we cannot determine the version to use.
+	if len(legacyTags) == 0 {
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
-			Message: "no existing tags found matching pattern vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
+			Message: "no existing tags found matching pattern >=v26.0.0 or vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
 		}
 	}
 
-	// Sort tags to find the latest one
-	// First by yearMonth (descending), then by sequence (descending)
-	sort.Slice(matchingTags, func(i, j int) bool {
-		if matchingTags[i].yearMonth != matchingTags[j].yearMonth {
-			return matchingTags[i].yearMonth > matchingTags[j].yearMonth
+	// Sort tags to find the latest legacy tag.
+	sort.Slice(legacyTags, func(i, j int) bool {
+		if legacyTags[i].yearMonth != legacyTags[j].yearMonth {
+			return legacyTags[i].yearMonth > legacyTags[j].yearMonth
 		}
-		return matchingTags[i].sequence > matchingTags[j].sequence
+		return legacyTags[i].sequence > legacyTags[j].sequence
 	})
 
-	latest := matchingTags[0]
+	latest := legacyTags[0]
 
 	// Check if the commit is behind the latest existing tidbx-style tag
 	comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest.name, commitSHA, nil)
