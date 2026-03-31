@@ -187,6 +187,8 @@ func TestComputeNewTagNameForTidbxCalendarStyle(t *testing.T) {
 	resp := mock.WithRequestMatchPages(
 		mock.GetReposTagsByOwnerByRepo,
 		[]*github.RepositoryTag{
+			{Name: github.Ptr("v25.12.9")},
+			{Name: github.Ptr("v26.0.0")},
 			{Name: github.Ptr("v26.3.1")},
 			{Name: github.Ptr("v26.3.3")},
 			{Name: github.Ptr("v26.2.9")},
@@ -213,7 +215,7 @@ func TestComputeNewTagNameForTidbxCalendarStylePatchStartsAtZero(t *testing.T) {
 	resp := mock.WithRequestMatchPages(
 		mock.GetReposTagsByOwnerByRepo,
 		[]*github.RepositoryTag{
-			{Name: github.Ptr("v26.3.0")},
+			{Name: github.Ptr("v26.0.0")},
 		},
 	)
 	compareMock := mock.WithRequestMatch(
@@ -228,8 +230,8 @@ func TestComputeNewTagNameForTidbxCalendarStylePatchStartsAtZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tag != "v26.3.1" {
-		t.Fatalf("expected v26.3.1, got %s", tag)
+	if tag != "v26.0.1" {
+		t.Fatalf("expected v26.0.1, got %s", tag)
 	}
 }
 
@@ -563,8 +565,8 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 
 func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
 	fullRepo := "owner/repo"
-	tag := "v26.3.0-nextgen"
-	gitTag := "v26.3.0"
+	tag := "v26.0.0-nextgen"
+	gitTag := "v26.0.0"
 
 	httpClient := mock.NewMockedHTTPClient(
 		mock.WithRequestMatch(

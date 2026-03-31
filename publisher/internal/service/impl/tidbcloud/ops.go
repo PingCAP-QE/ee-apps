@@ -9,9 +9,12 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
 	"github.com/go-resty/resty/v2"
+	"golang.org/x/mod/semver"
 )
 
-var supportedNextgenImageTagRegexp = regexp.MustCompile(`^(v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+|v[1-9][0-9]+\.\d+\.\d+-nextgen)$`)
+const nextgenCalendarTagThreshold = "v26.0.0"
+
+var legacyNextgenImageTagRegexp = regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
 
 // UpdateComponentVersionInCloudconfig implements
 // update-component-version-in-cloudconfig.
@@ -41,7 +44,7 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 
 	// Fast return unless the image tag is one of:
 	// - legacy nextgen git/image tags: v7.5.0-nextgen.240101.1
-	// - calendar-semver nextgen image tags: v26.3.0-nextgen
+	// - new semver nextgen image tags with base version >= v26.0.0, e.g. v26.0.0-nextgen
 	if !isSupportedNextgenImageTag(imageTag) {
 		s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Str("image_tag", imageTag).Msg("skip update: image_tag is not a supported nextgen release tag")
 		return res, nil
@@ -177,5 +180,15 @@ func opsInstanceURL(stage string, instanceID int) string {
 }
 
 func isSupportedNextgenImageTag(tag string) bool {
-	return supportedNextgenImageTagRegexp.MatchString(tag)
+	if legacyNextgenImageTagRegexp.MatchString(tag) {
+		return true
+	}
+	if !strings.HasSuffix(tag, "-nextgen") {
+		return false
+	}
+
+	baseTag := strings.TrimSuffix(tag, "-nextgen")
+	return semver.IsValid(baseTag) &&
+		!strings.Contains(strings.TrimPrefix(baseTag, "v"), "-") &&
+		semver.Compare(baseTag, nextgenCalendarTagThreshold) >= 0
 }

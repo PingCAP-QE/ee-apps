@@ -12,18 +12,12 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/google/go-github/v69/github"
+	"golang.org/x/mod/semver"
 )
 
 type tidbxGitTagMeta struct {
 	Author *string                  `json:"author,omitempty"`
 	Meta   *hotfix.TiDBxBumpTagMeta `json:"meta,omitempty"`
-}
-
-type calendarTagInfo struct {
-	name  string
-	year  int
-	month int
-	patch int
 }
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
@@ -157,9 +151,8 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 
 // computeNewTagNameForTidbx computes the next tag name based on existing tags,
 // and fails if the provided commit already has a tidbx-style tag.
-// Tags prefer the calendar-semver pattern vYY.M.N where N is an incrementing
-// patch sequence that may start at 0, and fall back to the legacy pattern
-// vX.Y.Z-nextgen.YYYYMM.N for older repositories.
+// Tags use the new plain semver flow starting at v26.0.0 and fall back to the
+// legacy vX.Y.Z-nextgen.YYYYMM.N pattern for older repositories.
 func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string) (string, error) {
 	// Get all tags from the repository
 	var allTags []*github.RepositoryTag
@@ -180,16 +173,15 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		opts.Page = resp.NextPage
 	}
 
-	// Parse and filter both the new calendar-style tags and the legacy nextgen tags.
+	// Parse and filter both the new >=v26.0.0 semver tags and the legacy nextgen tags.
 	legacyPattern := regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
-	calendarPattern := regexp.MustCompile(`^v([2-9][0-9])\.(1[0-2]|[1-9])\.(\d+)$`)
 	var legacyTags []tagInfo
-	var calendarTags []calendarTagInfo
+	var newTags []string
 
 	for _, tag := range allTags {
 		name := tag.GetName()
 
-		if (legacyPattern.MatchString(name) || calendarPattern.MatchString(name)) &&
+		if (legacyPattern.MatchString(name) || isNewTidbxGitTag(name)) &&
 			tag.Commit != nil && tag.Commit.SHA != nil && *tag.Commit.SHA == commitSHA {
 			return "", &hotfix.HTTPError{
 				Code:    http.StatusBadRequest,
@@ -197,30 +189,12 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 			}
 		}
 
-		matches := calendarPattern.FindStringSubmatch(name)
-		if len(matches) == 4 {
-			year, err := strconv.Atoi(matches[1])
-			if err != nil {
-				continue
-			}
-			month, err := strconv.Atoi(matches[2])
-			if err != nil {
-				continue
-			}
-			patch, err := strconv.Atoi(matches[3])
-			if err != nil {
-				continue
-			}
-			calendarTags = append(calendarTags, calendarTagInfo{
-				name:  name,
-				year:  year,
-				month: month,
-				patch: patch,
-			})
+		if isNewTidbxGitTag(name) {
+			newTags = append(newTags, name)
 			continue
 		}
 
-		matches = legacyPattern.FindStringSubmatch(name)
+		matches := legacyPattern.FindStringSubmatch(name)
 		if len(matches) == 4 {
 			seq, err := strconv.Atoi(matches[3])
 			if err != nil {
@@ -235,19 +209,13 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
-	if len(calendarTags) > 0 {
-		sort.Slice(calendarTags, func(i, j int) bool {
-			if calendarTags[i].year != calendarTags[j].year {
-				return calendarTags[i].year > calendarTags[j].year
-			}
-			if calendarTags[i].month != calendarTags[j].month {
-				return calendarTags[i].month > calendarTags[j].month
-			}
-			return calendarTags[i].patch > calendarTags[j].patch
+	if len(newTags) > 0 {
+		sort.Slice(newTags, func(i, j int) bool {
+			return semver.Compare(newTags[i], newTags[j]) > 0
 		})
 
-		latest := calendarTags[0]
-		comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest.name, commitSHA, nil)
+		latest := newTags[0]
+		comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest, commitSHA, nil)
 		if err != nil {
 			return "", &hotfix.HTTPError{
 				Code:    http.StatusInternalServerError,
@@ -257,17 +225,26 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		if comparison.GetStatus() == "behind" {
 			return "", &hotfix.HTTPError{
 				Code:    http.StatusBadRequest,
-				Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest.name),
+				Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest),
 			}
 		}
-		return fmt.Sprintf("v%d.%d.%d", latest.year, latest.month, latest.patch+1), nil
+
+		parts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
+		patch, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusInternalServerError,
+				Message: fmt.Sprintf("failed to parse patch from tag %s: %v", latest, err),
+			}
+		}
+		return fmt.Sprintf("v%s.%s.%d", parts[0], parts[1], patch+1), nil
 	}
 
 	// If no matching tags exist, we cannot determine the version to use.
 	if len(legacyTags) == 0 {
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
-			Message: "no existing tags found matching pattern vYY.M.N or vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
+			Message: "no existing tags found matching pattern >=v26.0.0 or vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
 		}
 	}
 
