@@ -571,13 +571,13 @@ definitions:
             image:
                 type: string
                 description: container image with tag
-                example: xxx.com/component:v8.5.4
+                example: xxx.com/component:v26.3.1-nextgen
         example:
             github:
                 commit_sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
                 full_repo: pingcap/tidb
                 ref: refs/heads/master
-            image: xxx.com/component:v8.5.4
+            image: xxx.com/component:v26.3.1-nextgen
         required:
             - image
     TidbcloudAddTidbxImageTagInTcmsResponseBody:
@@ -587,11 +587,11 @@ definitions:
             branch:
                 type: string
                 description: github branch or tag name
-                example: release-nextgen-20251011
+                example: v26.3.1
             imageTag:
                 type: string
                 description: image tag
-                example: release-nextgen-20251011-031069d
+                example: v26.3.1-nextgen
             repo:
                 type: string
                 description: github full repo
@@ -601,8 +601,8 @@ definitions:
                 description: github commit sha in the repo
                 example: 031069dfc0c70e839d996c9e1cf3d34930fc662f
         example:
-            branch: release-nextgen-20251011
-            imageTag: release-nextgen-20251011-031069d
+            branch: v26.3.1
+            imageTag: v26.3.1-nextgen
             repo: pingcap/tidb
             sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
     TidbcloudOpsTicket:
@@ -654,13 +654,13 @@ definitions:
             image:
                 type: string
                 description: container image with tag
-                example: xxx.com/component:v8.5.4
+                example: xxx.com/component:v26.3.1-nextgen
             stage:
                 type: string
                 description: env stage
                 example: prod
         example:
-            image: xxx.com/component:v8.5.4
+            image: xxx.com/component:v26.3.1-nextgen
             stage: prod
         required:
             - stage

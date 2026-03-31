@@ -363,6 +363,7 @@ func getBranchForCommit(ctx context.Context, client GHClient, owner, repo, commi
 
 func fillWithDefaults(req *DevBuild) {
 	spec := &req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
@@ -431,6 +432,7 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	if !slices.Contains(allProducts, spec.Product) {
 		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
 	}

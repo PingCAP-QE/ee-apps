@@ -30,9 +30,10 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	commitSha := getGhRefSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
 
 	// 3. create the entity
+	edition := normalizeEdition(p.Request.Edition)
 	create := s.dbClient.DevBuild.Create().
 		SetProduct(p.Request.Product).
-		SetEdition(p.Request.Edition).
+		SetEdition(edition).
 		SetVersion(p.Request.Version).
 		SetGithubRepo(githubFullRepo).
 		SetGitRef(p.Request.GitRef).

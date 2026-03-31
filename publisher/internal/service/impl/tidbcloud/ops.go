@@ -11,6 +11,8 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+var supportedNextgenImageTagRegexp = regexp.MustCompile(`^(v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+|v[1-9][0-9]+\.\d+\.\d+-nextgen)$`)
+
 // UpdateComponentVersionInCloudconfig implements
 // update-component-version-in-cloudconfig.
 func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context, p *tidbcloud.UpdateComponentVersionInCloudconfigPayload) (res *tidbcloud.UpdateComponentVersionInCloudconfigResult, err error) {
@@ -37,11 +39,11 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 		return nil, err
 	}
 
-	// Fast return if imageTag is not in format: vX.Y.Z-nextgen.YYDDMM.N
-	// Example: v7.5.0-nextgen.240101.1
-	re := regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
-	if !re.MatchString(imageTag) {
-		s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Str("image_tag", imageTag).Msg("skip update: image_tag is not in expected format vX.Y.Z-nextgen.YYDDMM.N")
+	// Fast return unless the image tag is one of:
+	// - legacy nextgen git/image tags: v7.5.0-nextgen.240101.1
+	// - calendar-style nextgen image tags: v26.3.1-nextgen
+	if !isSupportedNextgenImageTag(imageTag) {
+		s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Str("image_tag", imageTag).Msg("skip update: image_tag is not a supported nextgen release tag")
 		return res, nil
 	}
 
@@ -172,4 +174,8 @@ func opsInstanceURL(stage string, instanceID int) string {
 		return fmt.Sprintf("https://ops.tidbcloud.com/operations/%d", instanceID)
 	}
 	return fmt.Sprintf("https://ops-%s.tidbcloud.com/operations/%d", stage, instanceID)
+}
+
+func isSupportedNextgenImageTag(tag string) bool {
+	return supportedNextgenImageTagRegexp.MatchString(tag)
 }

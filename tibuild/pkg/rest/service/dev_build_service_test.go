@@ -542,6 +542,23 @@ func TestValidateReq(t *testing.T) {
 			errMsg:  "edition is not valid for tekton engine",
 		},
 		{
+			name: "legacy next-gen edition stays valid for tekton",
+			req: DevBuild{
+				Meta: DevBuildMeta{
+					CreatedBy: "some@pingcap.com",
+				},
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        EditionNextGenOld,
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "invalid pipeline engine",
 			req: DevBuild{
 				Spec: DevBuildSpec{

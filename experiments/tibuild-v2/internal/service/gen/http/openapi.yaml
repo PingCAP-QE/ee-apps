@@ -1031,13 +1031,14 @@ definitions:
                 example: Dolore vitae molestias.
             edition:
                 type: string
-                example: fips
+                example: experiment
                 enum:
                     - enterprise
                     - community
                     - fips
                     - failpoint
                     - experiment
+                    - nextgen
                     - next-gen
             features:
                 type: string
@@ -1118,7 +1119,7 @@ definitions:
         example:
             build_env: Perferendis quos et.
             builder_img: Omnis suscipit.
-            edition: experiment
+            edition: nextgen
             features: Occaecati deserunt.
             git_ref: Ducimus molestias dolores est enim qui.
             git_sha: Maiores vel magnam maiores dolore iure.
@@ -1371,7 +1372,7 @@ definitions:
             request:
                 build_env: Consequuntur fuga tempore.
                 builder_img: Veniam quia minus odio neque incidunt.
-                edition: experiment
+                edition: community
                 features: Ea ullam beatae.
                 git_ref: Omnis voluptas cumque sunt laboriosam velit.
                 git_sha: Autem natus molestiae quia.

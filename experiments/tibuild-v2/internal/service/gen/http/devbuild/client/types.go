@@ -1050,8 +1050,8 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "nextgen" || *body.Edition == "next-gen") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 		}
 	}
 	if body.Platform != nil {
@@ -1274,8 +1274,8 @@ func ValidateOciArtifactResponse(body *OciArtifactResponse) (err error) {
 // ValidateDevBuildSpecRequestBody runs the validations defined on
 // DevBuildSpecRequestBody
 func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) {
-	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment" || body.Edition == "next-gen") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment" || body.Edition == "nextgen" || body.Edition == "next-gen") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 	}
 	if !(body.Platform == "all" || body.Platform == "linux" || body.Platform == "darwin" || body.Platform == "linux/amd64" || body.Platform == "linux/arm64" || body.Platform == "darwin/amd64" || body.Platform == "darwin/arm64") {
 		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.platform", body.Platform, []any{"all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}))
@@ -1331,8 +1331,8 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "nextgen" || *body.Edition == "next-gen") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 		}
 	}
 	if body.Platform != nil {

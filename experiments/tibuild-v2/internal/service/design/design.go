@@ -245,7 +245,7 @@ var _ = Service("hotfix", func() {
 				Example("pingcap/tidb")
 			})
 			Attribute("tag", String, "Tag name of the GitHub repo", func() {
-				Example("v8.5.4-nextgen-202510.1")
+				Example("v26.3.1-nextgen")
 			})
 			Required("repo", "tag")
 		})
@@ -292,7 +292,7 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("build_env", String)
 	Attribute("builder_img", String)
 	Attribute("edition", String, func() {
-		Enum("enterprise", "community", "fips", "failpoint", "experiment", "next-gen")
+		Enum("enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen")
 	})
 	Attribute("platform", String, func() {
 		Default("all")

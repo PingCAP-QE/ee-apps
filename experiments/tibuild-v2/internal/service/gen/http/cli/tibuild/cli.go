@@ -346,7 +346,7 @@ Example:
       "request": {
          "build_env": "Consequuntur fuga tempore.",
          "builder_img": "Veniam quia minus odio neque incidunt.",
-         "edition": "experiment",
+         "edition": "community",
          "features": "Ea ullam beatae.",
          "git_ref": "Omnis voluptas cumque sunt laboriosam velit.",
          "git_sha": "Autem natus molestiae quia.",
@@ -710,6 +710,6 @@ Query tag info of tidbx repo
     -tag STRING:
 
 Example:
-    %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v8.5.4-nextgen-202510.1"
+    %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v26.3.1-nextgen"
 `, os.Args[0])
 }
