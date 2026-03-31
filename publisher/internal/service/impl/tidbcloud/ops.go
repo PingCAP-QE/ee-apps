@@ -41,7 +41,7 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 
 	// Fast return unless the image tag is one of:
 	// - legacy nextgen git/image tags: v7.5.0-nextgen.240101.1
-	// - calendar-style nextgen image tags: v26.3.1-nextgen
+	// - calendar-semver nextgen image tags: v26.3.0-nextgen
 	if !isSupportedNextgenImageTag(imageTag) {
 		s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Str("image_tag", imageTag).Msg("skip update: image_tag is not a supported nextgen release tag")
 		return res, nil

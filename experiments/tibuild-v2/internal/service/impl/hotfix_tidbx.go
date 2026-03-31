@@ -157,8 +157,9 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 
 // computeNewTagNameForTidbx computes the next tag name based on existing tags,
 // and fails if the provided commit already has a tidbx-style tag.
-// Tags prefer the calendar-style pattern vYY.M.N and fall back to the legacy
-// pattern vX.Y.Z-nextgen.YYYYMM.N for older repositories.
+// Tags prefer the calendar-semver pattern vYY.M.N where N is an incrementing
+// patch sequence that may start at 0, and fall back to the legacy pattern
+// vX.Y.Z-nextgen.YYYYMM.N for older repositories.
 func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string) (string, error) {
 	// Get all tags from the repository
 	var allTags []*github.RepositoryTag
