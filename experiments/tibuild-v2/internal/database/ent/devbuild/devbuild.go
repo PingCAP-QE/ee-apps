@@ -41,6 +41,8 @@ const (
 	FieldTargetImg = "target_img"
 	// FieldPipelineEngine holds the string denoting the pipeline_engine field in the database.
 	FieldPipelineEngine = "pipeline_engine"
+	// FieldPlatform holds the string denoting the platform field in the database.
+	FieldPlatform = "platform"
 	// FieldBuilderImg holds the string denoting the builder_img field in the database.
 	FieldBuilderImg = "builder_img"
 	// FieldBuildEnv holds the string denoting the build_env field in the database.
@@ -86,6 +88,7 @@ var Columns = []string{
 	FieldIsPushGcr,
 	FieldTargetImg,
 	FieldPipelineEngine,
+	FieldPlatform,
 	FieldBuilderImg,
 	FieldBuildEnv,
 	FieldFeatures,
@@ -141,6 +144,8 @@ var (
 	DefaultPipelineEngine string
 	// PipelineEngineValidator is a validator for the "pipeline_engine" field. It is called by the builders before save.
 	PipelineEngineValidator func(string) error
+	// DefaultPlatform holds the default value on creation for the "platform" field.
+	DefaultPlatform string
 	// BuilderImgValidator is a validator for the "builder_img" field. It is called by the builders before save.
 	BuilderImgValidator func(string) error
 	// BuildEnvValidator is a validator for the "build_env" field. It is called by the builders before save.
@@ -235,6 +240,11 @@ func ByTargetImg(opts ...sql.OrderTermOption) OrderOption {
 // ByPipelineEngine orders the results by the pipeline_engine field.
 func ByPipelineEngine(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPipelineEngine, opts...).ToFunc()
+}
+
+// ByPlatform orders the results by the platform field.
+func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
 }
 
 // ByBuilderImg orders the results by the builder_img field.

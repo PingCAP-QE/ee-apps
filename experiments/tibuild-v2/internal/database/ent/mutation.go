@@ -47,6 +47,7 @@ type DevBuildMutation struct {
 	is_push_gcr          *bool
 	target_img           *string
 	pipeline_engine      *string
+	platform             *string
 	builder_img          *string
 	build_env            *string
 	features             *string
@@ -811,6 +812,55 @@ func (m *DevBuildMutation) ResetPipelineEngine() {
 	delete(m.clearedFields, devbuild.FieldPipelineEngine)
 }
 
+// SetPlatform sets the "platform" field.
+func (m *DevBuildMutation) SetPlatform(s string) {
+	m.platform = &s
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *DevBuildMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the DevBuild entity.
+// If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DevBuildMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ClearPlatform clears the value of the "platform" field.
+func (m *DevBuildMutation) ClearPlatform() {
+	m.platform = nil
+	m.clearedFields[devbuild.FieldPlatform] = struct{}{}
+}
+
+// PlatformCleared returns if the "platform" field was cleared in this mutation.
+func (m *DevBuildMutation) PlatformCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldPlatform]
+	return ok
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *DevBuildMutation) ResetPlatform() {
+	m.platform = nil
+	delete(m.clearedFields, devbuild.FieldPlatform)
+}
+
 // SetBuilderImg sets the "builder_img" field.
 func (m *DevBuildMutation) SetBuilderImg(s string) {
 	m.builder_img = &s
@@ -1454,7 +1504,7 @@ func (m *DevBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DevBuildMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.created_by != nil {
 		fields = append(fields, devbuild.FieldCreatedBy)
 	}
@@ -1496,6 +1546,9 @@ func (m *DevBuildMutation) Fields() []string {
 	}
 	if m.pipeline_engine != nil {
 		fields = append(fields, devbuild.FieldPipelineEngine)
+	}
+	if m.platform != nil {
+		fields = append(fields, devbuild.FieldPlatform)
 	}
 	if m.builder_img != nil {
 		fields = append(fields, devbuild.FieldBuilderImg)
@@ -1569,6 +1622,8 @@ func (m *DevBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.TargetImg()
 	case devbuild.FieldPipelineEngine:
 		return m.PipelineEngine()
+	case devbuild.FieldPlatform:
+		return m.Platform()
 	case devbuild.FieldBuilderImg:
 		return m.BuilderImg()
 	case devbuild.FieldBuildEnv:
@@ -1630,6 +1685,8 @@ func (m *DevBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldTargetImg(ctx)
 	case devbuild.FieldPipelineEngine:
 		return m.OldPipelineEngine(ctx)
+	case devbuild.FieldPlatform:
+		return m.OldPlatform(ctx)
 	case devbuild.FieldBuilderImg:
 		return m.OldBuilderImg(ctx)
 	case devbuild.FieldBuildEnv:
@@ -1760,6 +1817,13 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPipelineEngine(v)
+		return nil
+	case devbuild.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
 		return nil
 	case devbuild.FieldBuilderImg:
 		v, ok := value.(string)
@@ -1923,6 +1987,9 @@ func (m *DevBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(devbuild.FieldPipelineEngine) {
 		fields = append(fields, devbuild.FieldPipelineEngine)
 	}
+	if m.FieldCleared(devbuild.FieldPlatform) {
+		fields = append(fields, devbuild.FieldPlatform)
+	}
 	if m.FieldCleared(devbuild.FieldBuilderImg) {
 		fields = append(fields, devbuild.FieldBuilderImg)
 	}
@@ -2005,6 +2072,9 @@ func (m *DevBuildMutation) ClearField(name string) error {
 		return nil
 	case devbuild.FieldPipelineEngine:
 		m.ClearPipelineEngine()
+		return nil
+	case devbuild.FieldPlatform:
+		m.ClearPlatform()
 		return nil
 	case devbuild.FieldBuilderImg:
 		m.ClearBuilderImg()
@@ -2091,6 +2161,9 @@ func (m *DevBuildMutation) ResetField(name string) error {
 		return nil
 	case devbuild.FieldPipelineEngine:
 		m.ResetPipelineEngine()
+		return nil
+	case devbuild.FieldPlatform:
+		m.ResetPlatform()
 		return nil
 	case devbuild.FieldBuilderImg:
 		m.ResetBuilderImg()

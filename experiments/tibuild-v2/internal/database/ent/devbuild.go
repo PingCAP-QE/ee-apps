@@ -46,6 +46,8 @@ type DevBuild struct {
 	TargetImg string `json:"target_img,omitempty"`
 	// Pipeline engine used
 	PipelineEngine string `json:"pipeline_engine,omitempty"`
+	// Build for target platforms
+	Platform string `json:"platform,omitempty"`
 	// Builder image used
 	BuilderImg string `json:"builder_img,omitempty"`
 	// Build environment
@@ -84,7 +86,7 @@ func (*DevBuild) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case devbuild.FieldID, devbuild.FieldPipelineBuildID:
 			values[i] = new(sql.NullInt64)
-		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitSha, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
+		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitSha, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldPlatform, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
 			values[i] = new(sql.NullString)
 		case devbuild.FieldCreatedAt, devbuild.FieldUpdatedAt, devbuild.FieldPipelineStartAt, devbuild.FieldPipelineEndAt:
 			values[i] = new(sql.NullTime)
@@ -192,6 +194,12 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field pipeline_engine", values[i])
 			} else if value.Valid {
 				_m.PipelineEngine = value.String
+			}
+		case devbuild.FieldPlatform:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field platform", values[i])
+			} else if value.Valid {
+				_m.Platform = value.String
 			}
 		case devbuild.FieldBuilderImg:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -346,6 +354,9 @@ func (_m *DevBuild) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("pipeline_engine=")
 	builder.WriteString(_m.PipelineEngine)
+	builder.WriteString(", ")
+	builder.WriteString("platform=")
+	builder.WriteString(_m.Platform)
 	builder.WriteString(", ")
 	builder.WriteString("builder_img=")
 	builder.WriteString(_m.BuilderImg)

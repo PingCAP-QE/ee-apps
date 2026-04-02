@@ -282,6 +282,26 @@ func (_u *DevBuildUpdate) ClearPipelineEngine() *DevBuildUpdate {
 	return _u
 }
 
+// SetPlatform sets the "platform" field.
+func (_u *DevBuildUpdate) SetPlatform(v string) *DevBuildUpdate {
+	_u.mutation.SetPlatform(v)
+	return _u
+}
+
+// SetNillablePlatform sets the "platform" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillablePlatform(v *string) *DevBuildUpdate {
+	if v != nil {
+		_u.SetPlatform(*v)
+	}
+	return _u
+}
+
+// ClearPlatform clears the value of the "platform" field.
+func (_u *DevBuildUpdate) ClearPlatform() *DevBuildUpdate {
+	_u.mutation.ClearPlatform()
+	return _u
+}
+
 // SetBuilderImg sets the "builder_img" field.
 func (_u *DevBuildUpdate) SetBuilderImg(v string) *DevBuildUpdate {
 	_u.mutation.SetBuilderImg(v)
@@ -731,6 +751,12 @@ func (_u *DevBuildUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.PipelineEngineCleared() {
 		_spec.ClearField(devbuild.FieldPipelineEngine, field.TypeString)
 	}
+	if value, ok := _u.mutation.Platform(); ok {
+		_spec.SetField(devbuild.FieldPlatform, field.TypeString, value)
+	}
+	if _u.mutation.PlatformCleared() {
+		_spec.ClearField(devbuild.FieldPlatform, field.TypeString)
+	}
 	if value, ok := _u.mutation.BuilderImg(); ok {
 		_spec.SetField(devbuild.FieldBuilderImg, field.TypeString, value)
 	}
@@ -1077,6 +1103,26 @@ func (_u *DevBuildUpdateOne) SetNillablePipelineEngine(v *string) *DevBuildUpdat
 // ClearPipelineEngine clears the value of the "pipeline_engine" field.
 func (_u *DevBuildUpdateOne) ClearPipelineEngine() *DevBuildUpdateOne {
 	_u.mutation.ClearPipelineEngine()
+	return _u
+}
+
+// SetPlatform sets the "platform" field.
+func (_u *DevBuildUpdateOne) SetPlatform(v string) *DevBuildUpdateOne {
+	_u.mutation.SetPlatform(v)
+	return _u
+}
+
+// SetNillablePlatform sets the "platform" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillablePlatform(v *string) *DevBuildUpdateOne {
+	if v != nil {
+		_u.SetPlatform(*v)
+	}
+	return _u
+}
+
+// ClearPlatform clears the value of the "platform" field.
+func (_u *DevBuildUpdateOne) ClearPlatform() *DevBuildUpdateOne {
+	_u.mutation.ClearPlatform()
 	return _u
 }
 
@@ -1558,6 +1604,12 @@ func (_u *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, err 
 	}
 	if _u.mutation.PipelineEngineCleared() {
 		_spec.ClearField(devbuild.FieldPipelineEngine, field.TypeString)
+	}
+	if value, ok := _u.mutation.Platform(); ok {
+		_spec.SetField(devbuild.FieldPlatform, field.TypeString, value)
+	}
+	if _u.mutation.PlatformCleared() {
+		_spec.ClearField(devbuild.FieldPlatform, field.TypeString)
 	}
 	if value, ok := _u.mutation.BuilderImg(); ok {
 		_spec.SetField(devbuild.FieldBuilderImg, field.TypeString, value)

@@ -216,6 +216,20 @@ func (_c *DevBuildCreate) SetNillablePipelineEngine(v *string) *DevBuildCreate {
 	return _c
 }
 
+// SetPlatform sets the "platform" field.
+func (_c *DevBuildCreate) SetPlatform(v string) *DevBuildCreate {
+	_c.mutation.SetPlatform(v)
+	return _c
+}
+
+// SetNillablePlatform sets the "platform" field if the given value is not nil.
+func (_c *DevBuildCreate) SetNillablePlatform(v *string) *DevBuildCreate {
+	if v != nil {
+		_c.SetPlatform(*v)
+	}
+	return _c
+}
+
 // SetBuilderImg sets the "builder_img" field.
 func (_c *DevBuildCreate) SetBuilderImg(v string) *DevBuildCreate {
 	_c.mutation.SetBuilderImg(v)
@@ -419,6 +433,10 @@ func (_c *DevBuildCreate) defaults() {
 		v := devbuild.DefaultPipelineEngine
 		_c.mutation.SetPipelineEngine(v)
 	}
+	if _, ok := _c.mutation.Platform(); !ok {
+		v := devbuild.DefaultPlatform
+		_c.mutation.SetPlatform(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := devbuild.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -602,6 +620,10 @@ func (_c *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.PipelineEngine(); ok {
 		_spec.SetField(devbuild.FieldPipelineEngine, field.TypeString, value)
 		_node.PipelineEngine = value
+	}
+	if value, ok := _c.mutation.Platform(); ok {
+		_spec.SetField(devbuild.FieldPlatform, field.TypeString, value)
+		_node.Platform = value
 	}
 	if value, ok := _c.mutation.BuilderImg(); ok {
 		_spec.SetField(devbuild.FieldBuilderImg, field.TypeString, value)
