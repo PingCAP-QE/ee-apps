@@ -13,9 +13,12 @@ import (
 )
 
 const (
-	ceTypeFakeGHPushDevBuild   = "net.pingcap.tibuild.devbuild.push"
-	ceTypeFakeGHPRDevBuild     = "net.pingcap.tibuild.devbuild.pull_request"
-	ceTypeFakeGHCreateDevBuild = "net.pingcap.tibuild.devbuild.create"
+	ceTypeFakeGHPushDevBuild      = "net.pingcap.tibuild.devbuild.push"
+	ceTypeFakeGHPrDevBuild        = "net.pingcap.tibuild.devbuild.pull_request"
+	ceTypeFakeGHCreateDevBuild    = "net.pingcap.tibuild.devbuild.create"
+	ceTypeFakeGHPushHotfixBuild   = "net.pingcap.tibuild.hotfix.push"
+	ceTypeFakeGHPrHotfixBuild     = "net.pingcap.tibuild.hotfix.pull_request"
+	ceTypeFakeGHCreateHotfixBuild = "net.pingcap.tibuild.hotfix.create"
 
 	// Platforms
 	LinuxAmd64  = "linux/amd64"
@@ -70,14 +73,26 @@ func newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.
 	switch {
 	case strings.HasPrefix(record.GitRef, "branch/"):
 		ref := strings.Replace(record.GitRef, "branch/", "refs/heads/", 1)
-		event.SetType(ceTypeFakeGHPushDevBuild)
+		if record.IsHotfix {
+			event.SetType(ceTypeFakeGHPushHotfixBuild)
+		} else {
+			event.SetType(ceTypeFakeGHPushDevBuild)
+		}
 		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, record.GitSha)
 	case strings.HasPrefix(record.GitRef, "tag/"):
 		ref := strings.Replace(record.GitRef, "tag/", "refs/tags/", 1)
-		event.SetType(ceTypeFakeGHCreateDevBuild)
+		if record.IsHotfix {
+			event.SetType(ceTypeFakeGHCreateHotfixBuild)
+		} else {
+			event.SetType(ceTypeFakeGHCreateDevBuild)
+		}
 		eventData = newFakeGitHubTagCreateEventPayload(record.GithubRepo, ref)
 	case strings.HasPrefix(record.GitRef, "pull/"):
-		event.SetType(ceTypeFakeGHPRDevBuild)
+		if record.IsHotfix {
+			event.SetType(ceTypeFakeGHPrHotfixBuild)
+		} else {
+			event.SetType(ceTypeFakeGHPrDevBuild)
+		}
 		prNumberStr := strings.TrimPrefix(record.GitRef, "pull/")
 		prNumber, err := strconv.Atoi(prNumberStr)
 		if err != nil {

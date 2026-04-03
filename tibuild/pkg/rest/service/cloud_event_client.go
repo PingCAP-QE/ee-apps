@@ -13,8 +13,12 @@ import (
 
 const (
 	ceTypeFakeGHPushDevBuild   = "net.pingcap.tibuild.devbuild.push"
-	ceTypeFakeGHPRDevBuild     = "net.pingcap.tibuild.devbuild.pull_request"
+	ceTypeFakeGHPrDevBuild     = "net.pingcap.tibuild.devbuild.pull_request"
 	ceTypeFakeGHCreateDevBuild = "net.pingcap.tibuild.devbuild.create"
+
+	ceTypeFakeGHPushHotfixBuild   = "net.pingcap.tibuild.hotfix.push"
+	ceTypeFakeGHPrHotfixBuild     = "net.pingcap.tibuild.hotfix.pull_request"
+	ceTypeFakeGHCreateHotfixBuild = "net.pingcap.tibuild.hotfix.create"
 )
 
 type BuildTrigger interface {
@@ -63,13 +67,22 @@ func newDevBuildCloudEvents(dev DevBuild) ([]cloudevents.Event, error) {
 	case strings.HasPrefix(dev.Spec.GitRef, "branch/"):
 		ref := strings.Replace(dev.Spec.GitRef, "branch/", "refs/heads/", 1)
 		eventType = ceTypeFakeGHPushDevBuild
+		if dev.Spec.IsHotfix {
+			eventType = ceTypeFakeGHPushHotfixBuild
+		}
 		eventData = newFakeGitHubPushEventPayload(repo.Owner, repo.Repo, ref, dev.Spec.GitHash)
 	case strings.HasPrefix(dev.Spec.GitRef, "tag/"):
 		ref := strings.Replace(dev.Spec.GitRef, "tag/", "refs/tags/", 1)
 		eventType = ceTypeFakeGHCreateDevBuild
+		if dev.Spec.IsHotfix {
+			eventType = ceTypeFakeGHCreateHotfixBuild
+		}
 		eventData = newFakeGitHubTagCreateEventPayload(repo.Owner, repo.Repo, ref)
 	case strings.HasPrefix(dev.Spec.GitRef, "pull/"):
-		eventType = ceTypeFakeGHPRDevBuild
+		eventType = ceTypeFakeGHPrDevBuild
+		if dev.Spec.IsHotfix {
+			eventType = ceTypeFakeGHPrHotfixBuild
+		}
 		eventData = newFakeGitHubPullRequestPayload(repo.Owner, repo.Repo, dev.Spec.prBaseRef,
 			dev.Spec.GitHash, dev.Spec.prNumber)
 	default:
@@ -85,7 +98,6 @@ func newDevBuildCloudEvents(dev DevBuild) ([]cloudevents.Event, error) {
 		event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(dev.ID))
 		event.SetExtension("user", dev.Meta.CreatedBy)
 		event.SetExtension("paramProfile", NormalizeEdition(string(dev.Spec.Edition)))
-		event.SetExtension("paramIsHotfix", dev.Spec.IsHotfix)
 		event.SetExtension("paramIsPushGcr", dev.Spec.IsPushGCR)
 		if dev.Spec.GithubRepo != "" {
 			event.SetExtension("paramGithubRepo", dev.Spec.GithubRepo)
