@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"gorm.io/gorm"
 
 	. "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
@@ -76,6 +77,8 @@ func (m DevBuildRepo) List(ctx context.Context, option DevBuildListOption) ([]De
 }
 
 func intoDB(entity *DevBuild) (err error) {
+	deduplicateImagesInReport(entity)
+
 	js, err := json.Marshal(entity.Status.BuildReport)
 	if err != nil {
 		return err
@@ -103,7 +106,15 @@ func outofDB(entity *DevBuild) (err error) {
 	}
 	entity.Status.TektonStatus, _ = tekton.(*TektonStatus)
 	entity.Status.TektonStatusJson = nil
+
+	deduplicateImagesInReport(entity)
 	return
+}
+
+func deduplicateImagesInReport(req *DevBuild) {
+	if req.Status.BuildReport != nil && len(req.Status.BuildReport.Images) > 0 {
+		req.Status.BuildReport.Images = mapset.NewSet(req.Status.BuildReport.Images...).ToSlice()
+	}
 }
 
 func fromRawMessage(js json.RawMessage, target any) (any, error) {

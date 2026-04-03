@@ -10,7 +10,6 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	mapset "github.com/deckarep/golang-set/v2"
 	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"gopkg.in/yaml.v3"
 
@@ -195,7 +194,7 @@ type TektonImageStruct struct {
 }
 
 func parseTektonImage(results []tekton.PipelineRunResult) ([]rest.ImageArtifact, error) {
-	imageSet := mapset.NewSet[rest.ImageArtifact]()
+	var rt []rest.ImageArtifact
 	for _, r := range results {
 		if r.Name == "pushed-images" {
 			images := TektonImageStruct{}
@@ -205,16 +204,15 @@ func parseTektonImage(results []tekton.PipelineRunResult) ([]rest.ImageArtifact,
 			}
 			for _, image := range images.Images {
 				imgURL := fmt.Sprintf("%s:%s", image.Repo, image.Tag)
-				imageSet.Add(rest.ImageArtifact{URL: imgURL, Platform: image.Platform})
+				rt = append(rt, rest.ImageArtifact{URL: imgURL, Platform: image.Platform})
 
 				// if it has multi arch tags, then we append the multi-arch image with the first tag.
 				if len(image.MultiArchTags) > 0 {
 					multiArchImgURL := fmt.Sprintf("%s:%s", image.Repo, image.MultiArchTags[0])
-					imageSet.Add(rest.ImageArtifact{URL: multiArchImgURL, Platform: rest.MultiArch})
+					rt = append(rt, rest.ImageArtifact{URL: multiArchImgURL, Platform: rest.MultiArch})
 				}
 			}
 		}
 	}
-
-	return imageSet.ToSlice(), nil
+	return rt, nil
 }
