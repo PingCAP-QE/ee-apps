@@ -35,25 +35,4 @@ spec:
           port: {{ $svcPort }}
           weight: 1
     {{- end }}
----
-{{- if .Values.httpRoute.securityPolicy.enabled }}
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: SecurityPolicy
-metadata:
-  name: {{ $fullName }}
-  labels:
-    {{- include "cloudevents-server.labels" . | nindent 4 }}
-  {{- with .Values.httpRoute.securityPolicy.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: {{ $fullName }}
-  basicAuth:
-    users:
-      name: {{ required "httpRoute.securityPolicy.basicAuth.secretName is required when httpRoute.securityPolicy.enabled=true" .Values.httpRoute.securityPolicy.basicAuth.secretName | quote }}
-{{- end }}
 {{- end }}

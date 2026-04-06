@@ -87,11 +87,6 @@ httpRoute:
   #         path:
   #           type: ReplacePrefixMatch
   #           replacePrefixMatch: /
-  securityPolicy:
-    enabled: false
-    annotations: {}
-    basicAuth:
-      secretName: ""
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
