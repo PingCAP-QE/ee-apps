@@ -65,6 +65,34 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
+# -- Expose the service via gateway-api HTTPRoute.
+# Requires Gateway API resources and a suitable controller installed in the cluster.
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      sectionName: http
+      # namespace: default
+  hostnames:
+    - chart-example.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+  #   filters:
+  #     - type: URLRewrite
+  #       urlRewrite:
+  #         path:
+  #           type: ReplacePrefixMatch
+  #           replacePrefixMatch: /
+  securityPolicy:
+    enabled: false
+    annotations: {}
+    basicAuth:
+      secretName: ""
+
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
