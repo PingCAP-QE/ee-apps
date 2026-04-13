@@ -79,7 +79,7 @@ ingress:
 httpRoute:
   # HTTPRoute enabled.
   enabled: false
-  # HTTPRoute extra labels.
+  # Additional labels to apply to the HTTPRoute resource.
   labels: {}
   # HTTPRoute annotations.
   annotations: {}
