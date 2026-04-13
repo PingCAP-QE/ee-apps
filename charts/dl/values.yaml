@@ -79,6 +79,7 @@ ingress:
 # Requires Gateway API resources and a suitable controller installed in the cluster.
 httpRoute:
   enabled: false
+  labels: {}
   annotations: {}
   parentRefs:
     - name: gateway
@@ -97,6 +98,9 @@ httpRoute:
   #         path:
   #           type: ReplacePrefixMatch
   #           replacePrefixMatch: /
+  #   # -- For long-lived downloads/streaming routes, disable or tune the request timeout:
+  #   timeouts:
+  #     request: 0s
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

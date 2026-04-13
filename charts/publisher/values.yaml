@@ -79,6 +79,8 @@ ingress:
 httpRoute:
   # HTTPRoute enabled.
   enabled: false
+  # HTTPRoute extra labels.
+  labels: {}
   # HTTPRoute annotations.
   annotations: {}
   # Which Gateways this Route is attached to.
@@ -103,6 +105,9 @@ httpRoute:
   #         value: this-is-the-only-value
   #       remove:
   #       - User-Agent
+  #   # -- For long-lived downloads/streaming routes, disable or tune the request timeout:
+  #   timeouts:
+  #     request: 0s
   # - matches:
   #   - path:
   #       type: PathPrefix
