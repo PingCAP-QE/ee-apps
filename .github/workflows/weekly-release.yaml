@@ -22,10 +22,11 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           # Fetch all history for proper comparison
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check for changes since last release
         id: check-changes
@@ -58,9 +59,11 @@ jobs:
 
       - name: Create new tag and release
         if: steps.check-changes.outputs.has_changes == 'true'
+        env:
+          RELEASE_DATE: ${{ steps.date.outputs.date }}
         run: |
           # Create tag name with date
-          TAG_NAME="v${{ steps.date.outputs.date }}"
+          TAG_NAME="v${RELEASE_DATE}"
 
           # Check if the tag already exists
           if git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME$"; then
@@ -72,6 +75,7 @@ jobs:
             git tag -a $TAG_NAME -m "Weekly release $TAG_NAME"
 
             # Push the tag
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
             git push origin $TAG_NAME
 
             # Create GitHub release
