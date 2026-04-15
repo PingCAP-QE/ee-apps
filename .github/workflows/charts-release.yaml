@@ -21,22 +21,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
           sparse-checkout: |
             charts
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.18.3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
       - name: Release charts
         working-directory: charts
         run: |
-          echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
           for chart in cloudevents-server dl publisher publisher-worker chatops-lark tibuild-v2; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
             if helm show values oci://ghcr.io/pingcap-qe/ee-apps/charts/$chart --version $CHART_VERSION > /dev/null; then
