@@ -21,21 +21,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
           sparse-checkout: |
             charts
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
         with:
           version: v3.18.3
 
       - name: Release charts
         working-directory: charts
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
         run: |
-          echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          set -euo pipefail
+
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
           for chart in cloudevents-server dl publisher publisher-worker chatops-lark tibuild-v2; do
             CHART_VERSION=$(grep 'version:' $chart/Chart.yaml | tail -n1 | awk '{ print $2 }')
