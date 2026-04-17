@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS ci_l1_pr_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  repo VARCHAR(255) NOT NULL,
+  pr_number BIGINT NOT NULL,
+  event_key VARCHAR(128) NOT NULL,
+  event_time DATETIME NOT NULL,
+  event_type VARCHAR(32) NOT NULL,
+  actor_login VARCHAR(255) NULL,
+  comment_id BIGINT NULL,
+  comment_body TEXT NULL,
+  retest_event TINYINT(1) NOT NULL DEFAULT 0,
+  commit_sha CHAR(64) NULL,
+  target_branch VARCHAR(255) NULL,
+  head_ref VARCHAR(255) NULL,
+  head_sha CHAR(64) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_ci_l1_pr_events_repo_pr_event_key (repo, pr_number, event_key),
+  KEY idx_ci_l1_pr_events_repo_pr_time (repo, pr_number, event_time),
+  KEY idx_ci_l1_pr_events_repo_branch_time (repo, target_branch, event_time),
+  KEY idx_ci_l1_pr_events_commit_sha (commit_sha)
+);
