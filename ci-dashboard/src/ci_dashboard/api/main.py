@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -26,8 +27,29 @@ def readyz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _resolve_frontend_static_dir() -> Path:
+    configured_dir = (os.environ.get("CI_DASHBOARD_STATIC_DIR") or "").strip()
+    if configured_dir:
+        return Path(configured_dir).expanduser().resolve()
+
+    module_path = Path(__file__).resolve()
+    candidates: list[Path] = [
+        *((parent / "web" / "dist") for parent in module_path.parents),
+        Path.cwd() / "web" / "dist",
+    ]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_dir():
+            return resolved
+    return (Path.cwd() / "web" / "dist").resolve()
+
+
 def _attach_frontend(app: FastAPI) -> None:
-    static_dir = (Path(__file__).resolve().parents[3] / "web" / "dist").resolve()
+    static_dir = _resolve_frontend_static_dir()
     assets_dir = static_dir / "assets"
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")

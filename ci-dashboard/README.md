@@ -68,6 +68,7 @@ Notes:
 - production-style DB config still uses `TIDB_*`
 - local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
+- set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs

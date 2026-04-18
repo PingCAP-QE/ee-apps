@@ -602,6 +602,22 @@ def test_frontend_blocks_path_traversal_outside_dist(tmp_path: Path, monkeypatch
     app.dependency_overrides.clear()
 
 
+def test_frontend_uses_configured_static_dir(tmp_path: Path, monkeypatch) -> None:
+    dist_dir = tmp_path / "custom-dist"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.html").write_text("<html>configured-spa</html>", encoding="utf-8")
+    (dist_dir / "configured.txt").write_text("configured-ok", encoding="utf-8")
+
+    monkeypatch.setenv("CI_DASHBOARD_STATIC_DIR", str(dist_dir))
+
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/configured.txt")
+
+    assert response.status_code == 200
+    assert response.text == "configured-ok"
+
+
 def test_status_and_filter_endpoints(api_client: TestClient) -> None:
     freshness = api_client.get("/api/v1/status/freshness")
     assert freshness.status_code == 200

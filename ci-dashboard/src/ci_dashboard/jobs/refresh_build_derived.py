@@ -399,11 +399,7 @@ def _collect_impacted_groups(
             rows = list(_fetch_impacted_groups(connection, build_id_chunk))
         for row in rows:
             group = _normalize_group(row)
-            group_key = (
-                str(group["repo_full_name"]),
-                int(group["pr_number"]),
-                str(group["job_name"]),
-            )
+            group_key = _group_key(group)
             if group_key in seen_group_keys:
                 continue
             seen_group_keys.add(group_key)
@@ -417,6 +413,14 @@ def _normalize_group(group: Mapping[str, Any]) -> dict[str, Any]:
         "pr_number": int(group["pr_number"]),
         "job_name": str(group["job_name"]),
     }
+
+
+def _group_key(group: Mapping[str, Any]) -> tuple[str, int, str]:
+    return (
+        str(group["repo_full_name"]),
+        int(group["pr_number"]),
+        str(group["job_name"]),
+    )
 
 
 def _resolve_chunk_size(settings: Settings | None) -> int:
@@ -536,10 +540,11 @@ def _phase_b_flaky_flags_for_groups(
         pr_keys = sorted({(group["repo_full_name"], group["pr_number"]) for group in groups})
         retest_times_by_pr = _fetch_retest_times(connection, pr_keys)
 
+    builds_by_group = _fetch_group_builds_for_groups(connection, groups)
     payload: list[dict[str, int]] = []
     updated_build_ids: set[int] = set()
     for group in groups:
-        builds = list(_fetch_group_builds(connection, group))
+        builds = builds_by_group.get(_group_key(group), [])
         flags = compute_group_flags(
             [
                 BuildAttempt(
@@ -722,26 +727,45 @@ def _fetch_impacted_groups(connection: Connection, impacted_build_ids: list[int]
     ).mappings()
 
 
-def _fetch_group_builds(connection: Connection, group: Mapping[str, Any]):
-    return connection.execute(
+def _fetch_group_builds_for_groups(
+    connection: Connection,
+    groups: list[Mapping[str, Any]],
+) -> dict[tuple[str, int, str], list[Mapping[str, Any]]]:
+    if not groups:
+        return {}
+
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    for index, group in enumerate(groups):
+        clauses.append(
+            "("
+            f"repo_full_name = :repo_full_name_{index} "
+            f"AND pr_number = :pr_number_{index} "
+            f"AND job_name = :job_name_{index}"
+            ")"
+        )
+        params[f"repo_full_name_{index}"] = group["repo_full_name"]
+        params[f"pr_number_{index}"] = group["pr_number"]
+        params[f"job_name_{index}"] = group["job_name"]
+
+    rows = connection.execute(
         text(
-            """
-            SELECT id, state, head_sha, start_time
+            f"""
+            SELECT id, repo_full_name, pr_number, job_name, state, head_sha, start_time
             FROM ci_l1_builds
-            WHERE repo_full_name = :repo_full_name
-              AND pr_number = :pr_number
-              AND job_name = :job_name
+            WHERE ({' OR '.join(clauses)})
               AND head_sha IS NOT NULL
               AND head_sha <> ''
-            ORDER BY start_time, id
+            ORDER BY repo_full_name, pr_number, job_name, start_time, id
             """
         ),
-        {
-            "repo_full_name": group["repo_full_name"],
-            "pr_number": group["pr_number"],
-            "job_name": group["job_name"],
-        },
+        params,
     ).mappings()
+
+    builds_by_group: dict[tuple[str, int, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        builds_by_group.setdefault(_group_key(row), []).append(row)
+    return builds_by_group
 
 
 def _fetch_retest_times(

@@ -7,6 +7,7 @@ from sqlalchemy import text
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.refresh_build_derived import (
     _execute_statement_in_batches,
+    _fetch_group_builds_for_groups,
     _resolve_refresh_group_chunk_size,
     run_refresh_flaky_signals_for_time_window,
     run_refresh_build_derived,
@@ -160,6 +161,62 @@ def test_execute_statement_in_batches_splits_large_payload() -> None:
 def test_refresh_group_chunk_size_caps_flaky_group_transactions() -> None:
     assert _resolve_refresh_group_chunk_size(_settings(batch_size=200)) == 25
     assert _resolve_refresh_group_chunk_size(_settings(batch_size=20)) == 20
+
+
+def test_fetch_group_builds_for_groups_batches_and_buckets_rows(sqlite_engine) -> None:
+    first_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-100",
+        pr_number=101,
+        job_name="unit-test",
+        head_sha="sha-100",
+        start_time="2026-04-13 10:00:00",
+    )
+    second_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-101",
+        pr_number=101,
+        job_name="unit-test",
+        head_sha="sha-101",
+        start_time="2026-04-13 10:05:00",
+    )
+    third_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-102",
+        pr_number=102,
+        job_name="integration-test",
+        head_sha="sha-102",
+        start_time="2026-04-13 11:00:00",
+    )
+    _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-103",
+        pr_number=102,
+        job_name="integration-test",
+        head_sha="",
+        start_time="2026-04-13 11:05:00",
+    )
+
+    with sqlite_engine.begin() as connection:
+        builds_by_group = _fetch_group_builds_for_groups(
+            connection,
+            [
+                {"repo_full_name": "pingcap/tidb", "pr_number": 101, "job_name": "unit-test"},
+                {"repo_full_name": "pingcap/tidb", "pr_number": 102, "job_name": "integration-test"},
+            ],
+        )
+
+    assert sorted(builds_by_group) == [
+        ("pingcap/tidb", 101, "unit-test"),
+        ("pingcap/tidb", 102, "integration-test"),
+    ]
+    assert [int(row["id"]) for row in builds_by_group[("pingcap/tidb", 101, "unit-test")]] == [
+        first_id,
+        second_id,
+    ]
+    assert [
+        int(row["id"]) for row in builds_by_group[("pingcap/tidb", 102, "integration-test")]
+    ] == [third_id]
 
 
 def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:

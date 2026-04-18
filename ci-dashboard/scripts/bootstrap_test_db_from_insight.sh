@@ -111,10 +111,35 @@ for key in "${required_source_vars[@]}"; do
   fi
 done
 
+resolve_binary() {
+  local env_var_name="$1"
+  local default_name="$2"
+  local configured_path="${!env_var_name:-}"
+
+  if [[ -n "${configured_path}" ]]; then
+    if [[ ! -x "${configured_path}" ]]; then
+      echo "${env_var_name} is set but not executable: ${configured_path}" >&2
+      exit 1
+    fi
+    printf '%s\n' "${configured_path}"
+    return
+  fi
+
+  if ! command -v "${default_name}" >/dev/null 2>&1; then
+    echo "required command not found in PATH: ${default_name} (or set ${env_var_name})" >&2
+    exit 1
+  fi
+
+  command -v "${default_name}"
+}
+
+mysql_bin=$(resolve_binary MYSQL_BIN mysql)
+mysqldump_bin=$(resolve_binary MYSQLDUMP_BIN mysqldump)
+
 source_db="${TIDB_DB}"
-source_mysql=(/opt/homebrew/opt/mysql-client/bin/mysql --connect-timeout=10 --host="${TIDB_HOST}" --port="${TIDB_PORT}" --user="${TIDB_USER}" --ssl-ca="${TIDB_SSL_CA}")
-source_dump=(/opt/homebrew/opt/mysql-client/bin/mysqldump --host="${TIDB_HOST}" --port="${TIDB_PORT}" --user="${TIDB_USER}" --ssl-ca="${TIDB_SSL_CA}" --single-transaction --skip-lock-tables --skip-triggers --compact)
-target_mysql=(/opt/homebrew/opt/mysql-client/bin/mysql --connect-timeout=10 --host="${target_host}" --port="${target_port}" --user="${target_user}" --ssl-ca="${target_ssl_ca}")
+source_mysql=("${mysql_bin}" --connect-timeout=10 --host="${TIDB_HOST}" --port="${TIDB_PORT}" --user="${TIDB_USER}" --ssl-ca="${TIDB_SSL_CA}")
+source_dump=("${mysqldump_bin}" --host="${TIDB_HOST}" --port="${TIDB_PORT}" --user="${TIDB_USER}" --ssl-ca="${TIDB_SSL_CA}" --single-transaction --skip-lock-tables --skip-triggers --compact)
+target_mysql=("${mysql_bin}" --connect-timeout=10 --host="${target_host}" --port="${target_port}" --user="${target_user}" --ssl-ca="${target_ssl_ca}")
 
 prow_where="startTime >= '${start_date} 00:00:00'"
 case_where="report_time >= '${start_date} 00:00:00'"
