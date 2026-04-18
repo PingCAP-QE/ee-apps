@@ -5,7 +5,7 @@
 Goal: explain weekly-value differences for the same issue between dashboard and Feishu reference table, then quantify what is still unexplained.
 
 Compared datasets:
-- Feishu-side reference artifact:  
+- Feishu-side reference artifact:
   `/Users/dillon/workspace/ci_metrics_sample/reports/adhoc_tidb_master/flaky_issue_desc_branch_master_table_20260410_135636.md`
 - Dashboard API/TiDB logic (`issue-weekly-rates`) from current backend code.
 

@@ -4,7 +4,7 @@
 
 - Question: under `repo=pingcap/tidb`, `branch=master`, `issue_status=closed`, why do issue rows differ from the Feishu table.
 - Backend baseline: local API endpoint `GET /api/v1/flaky/issue-weekly-rates` with real TiDB data.
-- Comparison baseline (Feishu-side artifact in local env):  
+- Comparison baseline (Feishu-side artifact in local env):
   `/Users/dillon/workspace/ci_metrics_sample/reports/adhoc_tidb_master/flaky_issue_desc_branch_master_table_20260410_135636.md`
 - Time window used for apples-to-apples row-set check: `start_date=2026-03-02`, `end_date=2026-04-06` (same week columns as that Feishu table artifact).
 
