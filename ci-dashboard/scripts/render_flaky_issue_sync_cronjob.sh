@@ -2,7 +2,7 @@
 set -euo pipefail
 
 namespace="apps"
-image="ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:latest"
+image="ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest"
 cronjob_name="ci-dashboard-sync-flaky-issues"
 schedule="0 2 * * *"
 time_zone="Asia/Shanghai"
@@ -34,7 +34,7 @@ Usage:
 
 Optional:
   --namespace NAME             Kubernetes namespace. Default: apps
-  --image IMAGE                Jobs image. Default: ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:latest
+  --image IMAGE                Jobs image. Default: ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest
   --cronjob-name NAME          CronJob name. Default: ci-dashboard-sync-flaky-issues
   --schedule CRON              Cron expression. Default: "0 2 * * *"
   --time-zone TZ               CronJob timeZone. Default: Asia/Shanghai

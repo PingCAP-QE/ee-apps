@@ -114,3 +114,28 @@ Notes:
 - you can verify the chain with:
   - `curl http://127.0.0.1:8000/api/v1/status/freshness`
   - `curl http://127.0.0.1:5173/api/v1/status/freshness`
+
+## Container Builds
+
+This project now provides two container entrypoints:
+
+- `Dockerfile.app` for the FastAPI + React dashboard app
+- `Dockerfile.jobs` for CLI-driven sync and backfill jobs
+
+Recommended image repositories:
+
+- `ghcr.io/pingcap-qe/ee-apps/ci-dashboard`
+- `ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs`
+
+Repository-local image build wiring is defined in `skaffold.yaml`:
+
+```bash
+cd ci-dashboard
+skaffold build --push=false --default-repo ghcr.io/pingcap-qe/ee-apps
+```
+
+Notes:
+
+- `Dockerfile.app` builds the frontend with production base path `/dashboard/`
+- `Dockerfile.jobs` now installs directly from source and no longer depends on a prebuilt wheel in `dist/`
+- local-only files under `.local/` are excluded from the Docker build context and are not baked into images

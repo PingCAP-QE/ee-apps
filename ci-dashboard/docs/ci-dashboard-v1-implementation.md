@@ -7,6 +7,9 @@ Last updated: 2026-04-13
 Companion design document:
 - `/Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard/docs/ci-dashboard-v1-design.md`
 
+Deployment design document:
+- `/Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard/docs/deploy-design.md`
+
 ## 1. Purpose
 
 This document translates the V1 design into concrete implementation choices:
@@ -42,6 +45,8 @@ V1 implementation must respect the following constraints:
   - one deployable app
 - V1 data jobs stay independent from the dashboard app
 - raw build ingestion remains all-repo and all-branch
+- credentials and secrets must not be baked into source code, Docker images, or committed deployment values
+- runtime credentials must be injected from Kubernetes Secret objects
 - `github_tickets` is a best-effort enrichment source:
   - missing rows must not fail `ci-sync-pr-events`
   - missing rows may leave `target_branch` and related PR metadata null

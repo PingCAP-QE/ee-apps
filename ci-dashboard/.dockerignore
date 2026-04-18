@@ -1,5 +1,6 @@
 .coverage
 .git
+.local
 .pytest_cache
 .ruff_cache
 .venv
@@ -7,4 +8,3 @@ __pycache__
 tests
 web/dist
 web/node_modules
-

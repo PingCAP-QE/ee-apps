@@ -137,6 +137,7 @@ The deployment approach should follow existing `ee-apps` chart patterns rather t
 ### NFR-04: Security
 
 - upstream data sources remain read-only from this project
+- credentials and secrets must not be embedded in source code, Docker images, committed config files, or chart default values
 - database credentials must be provided via Kubernetes secrets or equivalent runtime configuration
 - TiDB connections must continue to use TLS
 

@@ -5,11 +5,20 @@ on:
     branches:
       - main
     paths:
-      - .github/workflows/release.yml
-      - "**/Dockerfile"
+      - .github/workflows/ci.yaml
+      - .github/workflows/release.yaml
+      - "**/Dockerfile*"
+      - "**/skaffold.yaml"
+      - "**/skaffold.yml"
+      - "**/*.py"
+      - "**/*.toml"
+      - "**/*.sql"
       - "**/*.go"
       - "**/*.gomod"
+      - "**/*.html"
       - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.css"
       - "**/package.json"
       - "**/package-lock.json"
 env:
@@ -43,6 +52,8 @@ jobs:
         id: changes
         with:
           filters: |
+            ci-dashboard:
+              - 'ci-dashboard/**'
             cloudevents-server:
               - 'cloudevents-server/**'
             tibuild:
@@ -81,6 +92,14 @@ jobs:
       - name: Build image - cloudevents-server
         if: steps.changes.outputs.cloudevents-server == 'true'
         working-directory: cloudevents-server
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - ci-dashboard
+        if: steps.changes.outputs.ci-dashboard == 'true'
+        working-directory: ci-dashboard
         run: |
           skaffold build \
             --push=false \

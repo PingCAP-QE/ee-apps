@@ -23,8 +23,8 @@ From the project root:
 
 ```bash
 cd /Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard
-docker build -f Dockerfile.jobs -t ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:<tag> .
-docker push ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:<tag>
+docker build -f Dockerfile.jobs -t ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> .
+docker push ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag>
 ```
 
 ## 2. Create The DB Secret
@@ -49,7 +49,7 @@ This example backfills everything starting on `2025-12-01`:
 cd /Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard
 ./scripts/render_backfill_job.sh \
   --start-date 2025-12-01 \
-  --image ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:<tag> \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
   --db-secret ci-dashboard-backfill-db \
   --ca-secret ci-dashboard-backfill-ca \
   > /tmp/ci-dashboard-backfill.yaml
@@ -65,7 +65,7 @@ If you want to backfill a closed date range instead of open-ended import:
 ./scripts/render_backfill_job.sh \
   --start-date 2025-12-01 \
   --end-date 2025-12-31 \
-  --image ghcr.io/pingcap-qe/ee-apps/exp-ci-dashboard-jobs:<tag> \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
   --db-secret ci-dashboard-backfill-db \
   > /tmp/ci-dashboard-backfill.yaml
 ```

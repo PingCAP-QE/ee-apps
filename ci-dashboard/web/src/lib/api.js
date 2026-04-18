@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+function normalizePrefix(value) {
+  if (!value || value === "/") {
+    return "";
+  }
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
+  return trimmed ? `/${trimmed}` : "";
+}
+
+const API_BASE = normalizePrefix(import.meta.env.VITE_API_BASE_URL || import.meta.env.BASE_URL);
 
 export function getDefaultDateRange() {
   const end = new Date();
