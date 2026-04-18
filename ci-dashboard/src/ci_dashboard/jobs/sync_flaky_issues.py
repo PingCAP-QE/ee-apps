@@ -3,12 +3,13 @@ from __future__ import annotations
 import html
 import json
 import logging
+import os
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -30,6 +31,8 @@ DEFAULT_FLAKY_ISSUE_REPOS = ("pingcap/tidb",)
 TITLE_PATTERN = "Flaky test:%"
 CASE_NAME_PATTERN = re.compile(r"^Flaky test:\s*(.+?)\s+in\s+.+$")
 BRANCH_PATTERN = re.compile(r"- Branch:\s*([^\n<\"]+)")
+GITHUB_API_BASE_URL = "https://api.github.com"
+BOT_AUTHORS = {"ti-chi-bot", "ti-chi-bot[bot]"}
 
 
 @dataclass(frozen=True)
@@ -109,30 +112,49 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
         raise
 
 
-def fetch_issue_body_via_gh(*, repo: str, issue_number: int) -> str:
-    gh_path = shutil.which("gh")
-    if gh_path is None:
-        raise RuntimeError("gh CLI is not available in PATH")
-
-    result = subprocess.run(
-        [
-            gh_path,
-            "issue",
-            "view",
-            str(issue_number),
-            "--repo",
-            repo,
-            "--json",
-            "body",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
+def fetch_issue_details_via_github_api(
+    *,
+    repo: str,
+    issue_number: int,
+) -> tuple[str, list[dict[str, Any]]]:
+    issue_payload = _fetch_github_api_json(
+        f"{GITHUB_API_BASE_URL}/repos/{repo}/issues/{issue_number}"
     )
-    payload = json.loads(result.stdout)
-    body = payload.get("body")
-    return str(body) if body is not None else ""
+    if not isinstance(issue_payload, dict):
+        raise RuntimeError("GitHub issue payload is not an object")
+
+    body = str(issue_payload.get("body") or "")
+    comments: list[dict[str, Any]] = []
+    comments_url = issue_payload.get("comments_url")
+    comments_count = issue_payload.get("comments")
+    if isinstance(comments_url, str) and comments_url and int(comments_count or 0) > 0:
+        comments_payload = _fetch_github_api_json(comments_url)
+        if isinstance(comments_payload, list):
+            comments = [item for item in comments_payload if isinstance(item, dict)]
+    return body, comments
+
+
+def _fetch_github_api_json(url: str) -> Any:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "ci-dashboard-sync-flaky-issues",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    request = urllib_request.Request(url, headers=headers)
+    try:
+        with urllib_request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"GitHub API request failed for {url}: HTTP {exc.code}: {body}"
+        ) from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"GitHub API request failed for {url}: {exc.reason}") from exc
 
 
 def parse_issue_branch(issue_body: str) -> str | None:
@@ -143,27 +165,60 @@ def parse_issue_branch(issue_body: str) -> str | None:
     return match.group(1).strip() or None
 
 
+def parse_issue_branch_from_comments(comments_payload: Any) -> str | None:
+    try:
+        comments = _normalize_issue_comments(comments_payload)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not comments:
+        return None
+
+    for preferred_authors in (BOT_AUTHORS, None):
+        for comment in reversed(comments):
+            author = _extract_comment_author(comment)
+            if preferred_authors is not None and author not in preferred_authors:
+                continue
+            branch = parse_issue_branch(_extract_comment_body(comment))
+            if branch:
+                return branch
+    return None
+
+
 def _resolve_issue_branch(
     row: dict[str, Any],
     existing: dict[str, Any] | None,
 ) -> tuple[str | None, str, bool, bool]:
+    source_comments_branch = parse_issue_branch_from_comments(row.get("comments"))
+    if source_comments_branch:
+        return source_comments_branch, "ticket_comments", False, False
+
     ticket_body = str(row.get("body") or "")
     body_branch = parse_issue_branch(ticket_body)
     if body_branch:
         return body_branch, "ticket_body", False, False
 
+    reused_branch, reused_source = _reuse_existing_issue_branch_if_fresh(row, existing)
+    if reused_branch:
+        return reused_branch, reused_source, False, False
+
     repo = str(row["repo"])
     issue_number = int(row["number"])
     try:
-        gh_body = fetch_issue_body_via_gh(repo=repo, issue_number=issue_number)
-        gh_branch = parse_issue_branch(gh_body)
-        if gh_branch:
-            return gh_branch, "gh_cli_body", True, False
+        github_body, github_comments = fetch_issue_details_via_github_api(
+            repo=repo,
+            issue_number=issue_number,
+        )
+        github_comments_branch = parse_issue_branch_from_comments(github_comments)
+        if github_comments_branch:
+            return github_comments_branch, "github_api_comments", True, False
+        github_body_branch = parse_issue_branch(github_body)
+        if github_body_branch:
+            return github_body_branch, "github_api_body", True, False
         fallback_branch, fallback_source = _fallback_issue_branch(existing)
         return fallback_branch, fallback_source, True, False
     except Exception as exc:
         LOG.warning(
-            "failed to fetch flaky issue body via gh",
+            "failed to fetch flaky issue details via GitHub API",
             extra={
                 "repo": repo,
                 "issue_number": issue_number,
@@ -178,6 +233,52 @@ def _fallback_issue_branch(existing: dict[str, Any] | None) -> tuple[str | None,
     if existing and existing.get("issue_branch"):
         return existing["issue_branch"], str(existing.get("branch_source") or "existing")
     return None, "unknown"
+
+
+def _reuse_existing_issue_branch_if_fresh(
+    row: dict[str, Any],
+    existing: dict[str, Any] | None,
+) -> tuple[str | None, str]:
+    if not existing or not existing.get("issue_branch"):
+        return None, ""
+
+    source_updated_at = _parse_datetime(row["updated_at"])
+    existing_updated_at_raw = existing.get("source_ticket_updated_at")
+    if existing_updated_at_raw is None:
+        return None, ""
+    existing_updated_at = _parse_datetime(existing_updated_at_raw)
+    if _normalize_datetime_key(existing_updated_at) != _normalize_datetime_key(source_updated_at):
+        return None, ""
+    return str(existing["issue_branch"]), str(existing.get("branch_source") or "existing")
+
+
+def _normalize_issue_comments(comments_payload: Any) -> list[dict[str, Any]]:
+    if comments_payload is None:
+        return []
+    if isinstance(comments_payload, list):
+        return [item for item in comments_payload if isinstance(item, dict)]
+    if isinstance(comments_payload, str):
+        parsed = json.loads(comments_payload)
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+    raise ValueError(f"Unsupported issue comments payload: {comments_payload!r}")
+
+
+def _extract_comment_author(comment: dict[str, Any]) -> str:
+    author = comment.get("author")
+    if isinstance(author, str):
+        return author
+    user = comment.get("user")
+    if isinstance(user, dict):
+        login = user.get("login")
+        if isinstance(login, str):
+            return login
+    return ""
+
+
+def _extract_comment_body(comment: dict[str, Any]) -> str:
+    body = comment.get("body")
+    return str(body) if body is not None else ""
 
 
 def _load_watermark(connection: Connection) -> dict[str, Any]:
@@ -204,6 +305,7 @@ def _fetch_source_issue_rows(
               number,
               title,
               body,
+              comments,
               state,
               created_at,
               updated_at,
@@ -226,7 +328,7 @@ def _load_existing_issue_rows(
     rows = connection.execute(
         text(
             """
-            SELECT repo, issue_number, issue_branch, branch_source
+            SELECT repo, issue_number, issue_branch, branch_source, source_ticket_updated_at
             FROM ci_l1_flaky_issues
             """
         )
@@ -317,6 +419,12 @@ def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, str):
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     raise ValueError(f"Unsupported datetime value: {value!r}")
+
+
+def _normalize_datetime_key(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _upsert_flaky_issues(connection: Connection, rows: list[FlakyIssueRow]) -> None:

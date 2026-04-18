@@ -7,6 +7,8 @@ cronjob_name="ci-dashboard-sync-flaky-issues"
 schedule="0 2 * * *"
 time_zone="Asia/Shanghai"
 db_secret="ci-dashboard-backfill-db"
+github_secret="prow-github"
+github_token_key="token"
 batch_size="200"
 log_level="INFO"
 image_pull_policy="IfNotPresent"
@@ -39,6 +41,8 @@ Optional:
   --schedule CRON              Cron expression. Default: "0 2 * * *"
   --time-zone TZ               CronJob timeZone. Default: Asia/Shanghai
   --db-secret NAME             Secret containing TIDB_* or CI_DASHBOARD_DB_URL. Default: ci-dashboard-backfill-db
+  --github-secret NAME         Secret containing GitHub API token. Default: prow-github
+  --github-token-key NAME      Key inside GitHub secret. Default: token
   --batch-size N               CI_DASHBOARD_BATCH_SIZE override. Default: 200
   --log-level LEVEL            CI_DASHBOARD_LOG_LEVEL override. Default: INFO
   --image-pull-policy P        Image pull policy. Default: IfNotPresent
@@ -84,6 +88,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --db-secret)
       db_secret="${2:-}"
+      shift 2
+      ;;
+    --github-secret)
+      github_secret="${2:-}"
+      shift 2
+      ;;
+    --github-token-key)
+      github_token_key="${2:-}"
       shift 2
       ;;
     --batch-size)
@@ -251,6 +263,11 @@ ${service_account_block}
               env:
                 - name: PYTHONUNBUFFERED
                   value: "1"
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${github_secret}
+                      key: ${github_token_key}
                 - name: CI_DASHBOARD_BATCH_SIZE
                   value: "${batch_size}"
                 - name: CI_DASHBOARD_LOG_LEVEL

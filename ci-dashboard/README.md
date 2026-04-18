@@ -9,9 +9,11 @@ Current scope in this scaffold:
 - job state persistence helpers
 - build URL normalization and exact retest parsing helpers
 - implemented data jobs:
-  - `ci-sync-builds`
-  - `ci-sync-pr-events`
-  - `ci-sync-flaky-issues`
+- `ci-sync-builds`
+- `ci-sync-pr-events`
+- `ci-sync-flaky-issues`
+
+`sync-flaky-issues` may call the GitHub API to recover branch metadata for flaky issues when the read-only `github_tickets` source omits the issue body or branch details. In Kubernetes, inject a `GITHUB_TOKEN` runtime secret for that job.
   - `ci-refresh-build-derived`
   - `backfill-range` for idempotent date-window re-imports
   - one-off Kubernetes backfill helpers under `k8s/backfill/`

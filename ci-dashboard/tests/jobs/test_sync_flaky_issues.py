@@ -6,7 +6,11 @@ from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.state_store import get_job_state
-from ci_dashboard.jobs.sync_flaky_issues import parse_issue_branch, run_sync_flaky_issues
+from ci_dashboard.jobs.sync_flaky_issues import (
+    parse_issue_branch,
+    parse_issue_branch_from_comments,
+    run_sync_flaky_issues,
+)
 
 
 def _settings(batch_size: int = 100) -> Settings:
@@ -33,6 +37,7 @@ def _insert_issue_ticket(
     number: int,
     title: str,
     body: str | None = None,
+    comments: list[dict[str, object]] | None = None,
     state: str,
     created_at: str,
     updated_at: str,
@@ -43,9 +48,9 @@ def _insert_issue_ticket(
             text(
                 """
                 INSERT INTO github_tickets (
-                  id, type, repo, number, title, body, state, created_at, updated_at, timeline, branches
+                  id, type, repo, number, title, body, comments, state, created_at, updated_at, timeline, branches
                 ) VALUES (
-                  :ticket_id, 'issue', :repo, :number, :title, :body, :state, :created_at, :updated_at,
+                  :ticket_id, 'issue', :repo, :number, :title, :body, :comments, :state, :created_at, :updated_at,
                   :timeline, NULL
                 )
                 """
@@ -56,6 +61,7 @@ def _insert_issue_ticket(
                 "number": number,
                 "title": title,
                 "body": body,
+                "comments": json.dumps(comments) if comments is not None else None,
                 "state": state,
                 "created_at": created_at,
                 "updated_at": updated_at,
@@ -94,8 +100,10 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     )
 
     monkeypatch.setattr(
-        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_body_via_gh",
-        lambda **_: (_ for _ in ()).throw(AssertionError("gh should not be called when ticket body has branch")),
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called when source ticket has branch")
+        ),
     )
 
     summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=1))
@@ -187,7 +195,10 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     assert total_rows["count"] == 1
 
 
-def test_sync_flaky_issues_uses_gh_body_when_ticket_body_missing(sqlite_engine, monkeypatch) -> None:
+def test_sync_flaky_issues_uses_github_api_comments_when_ticket_body_missing(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
     _insert_issue_ticket(
         sqlite_engine,
         ticket_id=3,
@@ -195,6 +206,7 @@ def test_sync_flaky_issues_uses_gh_body_when_ticket_body_missing(sqlite_engine, 
         number=70000,
         title="Flaky test: TestExample in nightly",
         body=None,
+        comments=None,
         state="open",
         created_at="2026-04-10T08:00:00Z",
         updated_at="2026-04-15T09:00:00Z",
@@ -202,8 +214,16 @@ def test_sync_flaky_issues_uses_gh_body_when_ticket_body_missing(sqlite_engine, 
     )
 
     monkeypatch.setattr(
-        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_body_via_gh",
-        lambda **_: "Automated flaky test report.\n- Branch: release-8.5\n",
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (
+            "Automated flaky test report.\n- Branch: master\n",
+            [
+                {
+                    "user": {"login": "ti-chi-bot"},
+                    "body": "Automated flaky test report update.\n- Branch: release-8.5\n",
+                }
+            ],
+        ),
     )
 
     summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
@@ -223,9 +243,108 @@ def test_sync_flaky_issues_uses_gh_body_when_ticket_body_missing(sqlite_engine, 
         ).mappings().one()
 
     assert row["issue_branch"] == "release-8.5"
-    assert row["branch_source"] == "gh_cli_body"
+    assert row["branch_source"] == "github_api_comments"
+
+
+def test_sync_flaky_issues_reuses_existing_branch_when_ticket_is_unchanged(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=4,
+        repo="pingcap/tidb",
+        number=70001,
+        title="Flaky test: TestExampleStable in nightly",
+        body=None,
+        comments=None,
+        state="open",
+        created_at="2026-04-10T08:00:00Z",
+        updated_at="2026-04-15T09:00:00Z",
+        timeline=[],
+    )
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_issues (
+                  repo,
+                  issue_number,
+                  issue_url,
+                  issue_title,
+                  case_name,
+                  issue_status,
+                  issue_branch,
+                  branch_source,
+                  issue_created_at,
+                  issue_updated_at,
+                  issue_closed_at,
+                  last_reopened_at,
+                  reopen_count,
+                  source_ticket_id,
+                  source_ticket_updated_at,
+                  created_at,
+                  updated_at
+                ) VALUES (
+                  'pingcap/tidb',
+                  70001,
+                  'https://github.com/pingcap/tidb/issues/70001',
+                  'Flaky test: TestExampleStable in nightly',
+                  'TestExampleStable',
+                  'open',
+                  'master',
+                  'github_api_body',
+                  '2026-04-10 08:00:00',
+                  '2026-04-15 09:00:00',
+                  NULL,
+                  NULL,
+                  0,
+                  4,
+                  '2026-04-15 09:00:00',
+                  CURRENT_TIMESTAMP,
+                  CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for unchanged issue rows")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.branch_fetch_attempted == 0
+    assert summary.branch_fetch_failed == 0
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT issue_branch, branch_source
+                FROM ci_l1_flaky_issues
+                WHERE repo = 'pingcap/tidb' AND issue_number = 70001
+                """
+            )
+        ).mappings().one()
+
+    assert row["issue_branch"] == "master"
+    assert row["branch_source"] == "github_api_body"
 
 
 def test_parse_issue_branch_handles_plain_body_and_escaped_newlines() -> None:
     issue_body = '{"body":"Automated flaky test report.\\n- Branch: release-8.5\\n- Other: value"}'
     assert parse_issue_branch(issue_body) == "release-8.5"
+
+
+def test_parse_issue_branch_from_comments_prefers_latest_bot_comment() -> None:
+    comments = [
+        {"author": "someone", "body": "No branch here"},
+        {"author": "ti-chi-bot", "body": "Automated flaky test report update.\n- Branch: master\n"},
+        {"author": "ti-chi-bot", "body": "Automated flaky test report update.\n- Branch: release-8.5\n"},
+    ]
+    assert parse_issue_branch_from_comments(comments) == "release-8.5"
