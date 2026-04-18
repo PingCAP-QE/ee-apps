@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from ci_dashboard.api.dependencies import get_engine
-from ci_dashboard.api.main import app
+from ci_dashboard.api.main import app, create_app
 
 
 def _insert_build(
@@ -555,6 +556,49 @@ def api_client(sqlite_engine, monkeypatch):
     app.dependency_overrides[get_engine] = lambda: sqlite_engine
     with TestClient(app) as client:
         yield client
+
+
+def test_frontend_serves_static_file_within_dist(tmp_path: Path, monkeypatch) -> None:
+    repo_root = tmp_path / "repo"
+    app_root = repo_root / "ci-dashboard"
+    dist_dir = app_root / "web" / "dist"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    (dist_dir / "dashboard.txt").write_text("dashboard-ok", encoding="utf-8")
+
+    fake_main = app_root / "src" / "ci_dashboard" / "api" / "main.py"
+    fake_main.parent.mkdir(parents=True)
+    fake_main.write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr("ci_dashboard.api.main.__file__", str(fake_main))
+
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/dashboard.txt")
+
+    assert response.status_code == 200
+    assert response.text == "dashboard-ok"
+
+
+def test_frontend_blocks_path_traversal_outside_dist(tmp_path: Path, monkeypatch) -> None:
+    repo_root = tmp_path / "repo"
+    app_root = repo_root / "ci-dashboard"
+    dist_dir = app_root / "web" / "dist"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.html").write_text("<html>spa-shell</html>", encoding="utf-8")
+    (app_root / "secret.txt").write_text("top-secret", encoding="utf-8")
+
+    fake_main = app_root / "src" / "ci_dashboard" / "api" / "main.py"
+    fake_main.parent.mkdir(parents=True)
+    fake_main.write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr("ci_dashboard.api.main.__file__", str(fake_main))
+
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/..%2Fsecret.txt")
+
+    assert response.status_code == 200
+    assert response.text == "<html>spa-shell</html>"
+    assert response.text != "top-secret"
     app.dependency_overrides.clear()
 
 

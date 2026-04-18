@@ -27,7 +27,7 @@ def readyz() -> dict[str, str]:
 
 
 def _attach_frontend(app: FastAPI) -> None:
-    static_dir = Path(__file__).resolve().parents[3] / "web" / "dist"
+    static_dir = (Path(__file__).resolve().parents[3] / "web" / "dist").resolve()
     assets_dir = static_dir / "assets"
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
@@ -38,8 +38,8 @@ def _attach_frontend(app: FastAPI) -> None:
             raise HTTPException(status_code=404, detail="Not found")
 
         if full_path:
-            candidate = static_dir / full_path
-            if candidate.is_file():
+            candidate = (static_dir / full_path).resolve()
+            if candidate.is_file() and candidate.is_relative_to(static_dir):
                 return FileResponse(candidate)
 
         index_file = static_dir / "index.html"
