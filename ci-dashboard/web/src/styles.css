@@ -648,6 +648,7 @@ select {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .runtime-compare-card {
@@ -657,6 +658,7 @@ select {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(49, 87, 114, 0.08);
+  align-content: start;
 }
 
 .runtime-compare-card--improved {
@@ -687,6 +689,46 @@ select {
 .runtime-compare-list {
   display: grid;
   gap: 0.8rem;
+  align-content: start;
+}
+
+.runtime-compare-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  padding: 0.72rem 0.82rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(49, 87, 114, 0.08);
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.runtime-compare-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.runtime-compare-legend__swatch {
+  width: 1.6rem;
+  height: 0.32rem;
+  border-radius: 999px;
+}
+
+.runtime-compare-legend__swatch--improved {
+  background: rgba(42, 157, 143, 0.45);
+}
+
+.runtime-compare-legend__swatch--regressed {
+  background: rgba(209, 73, 91, 0.45);
+}
+
+.runtime-compare-legend__caption {
+  flex: 1 1 220px;
 }
 
 .runtime-compare-item {
@@ -807,6 +849,15 @@ select {
 
 .runtime-compare-track__dot--regressed {
   background: #d1495b;
+}
+
+.runtime-compare-legend__item .runtime-compare-legend__dot {
+  position: static;
+  transform: none;
+  display: inline-block;
+  width: 0.72rem;
+  height: 0.72rem;
+  box-shadow: none;
 }
 
 .runtime-compare-item__meta {

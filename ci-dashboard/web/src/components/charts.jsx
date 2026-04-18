@@ -916,6 +916,21 @@ function RuntimeChangeList({
         </span>
       </header>
 
+      <div className="runtime-compare-legend">
+        <span className="runtime-compare-legend__item">
+          <span className="runtime-compare-track__dot runtime-compare-track__dot--baseline runtime-compare-legend__dot" />
+          IDC baseline
+        </span>
+        <span className="runtime-compare-legend__item">
+          <span className={`runtime-compare-track__dot runtime-compare-track__dot--${tone} runtime-compare-legend__dot`} />
+          GCP recent
+        </span>
+        <span className={`runtime-compare-legend__swatch runtime-compare-legend__swatch--${tone}`} />
+        <span className="runtime-compare-legend__caption">
+          Colored segment = delta between the two averages. Left is shorter runtime, right is longer.
+        </span>
+      </div>
+
       {!items?.length ? (
         <EmptyState message={emptyMessage} compact />
       ) : (
