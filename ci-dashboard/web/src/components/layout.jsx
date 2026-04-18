@@ -19,7 +19,7 @@ export function DashboardLayout({
 
         <nav className="sidebar-nav" aria-label="Primary">
           <NavItem to="/" label="Overview" caption="Signal at a glance" />
-          <NavItem to="/build-trend" label="CI Status" caption="Volume and duration" />
+          <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
           <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
         </nav>
 

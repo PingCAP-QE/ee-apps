@@ -769,9 +769,11 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     assert top_jobs.status_code == 200
     top_jobs_body = top_jobs.json()
     assert [item["name"] for item in top_jobs_body["items"]] == ["job-a", "job-c"]
-    assert top_jobs_body["items"][0]["value"] == 2
+    assert top_jobs_body["items"][0]["value"] == 100.0
+    assert top_jobs_body["items"][0]["noisy_build_count"] == 2
     assert top_jobs_body["items"][0]["noisy_rate_pct"] == 100.0
     assert top_jobs_body["meta"]["limit"] == 2
+    assert top_jobs_body["meta"]["value_key"] == "noisy_rate_pct"
 
     period_comparison = api_client.get(
         "/api/v1/flaky/period-comparison",
@@ -1184,8 +1186,8 @@ def test_page_routes(api_client: TestClient) -> None:
     assert overview_groups["period_a"]["noisy_build_count"] == 3
     assert overview_groups["period_b"]["total_build_count"] == 0
 
-    build_trend = api_client.get(
-        "/api/v1/pages/build-trend",
+    ci_status = api_client.get(
+        "/api/v1/pages/ci-status",
         params={
             "repo": "pingcap/tidb",
             "branch": "master",
@@ -1193,15 +1195,11 @@ def test_page_routes(api_client: TestClient) -> None:
             "end_date": "2026-04-15",
         },
     )
-    assert build_trend.status_code == 200
-    build_trend_body = build_trend.json()
+    assert ci_status.status_code == 200
+    build_trend_body = ci_status.json()
     assert build_trend_body["scope"]["branch"] == "master"
-    cloud_posture_series = {
-        item["key"]: item for item in build_trend_body["cloud_posture_trend"]["series"]
-    }
     assert build_trend_body["cloud_posture_trend"]["meta"]["bucket_granularity"] == "week"
-    assert cloud_posture_series["gcp_build_count"]["points"] == [["2026-04-06", 4]]
-    assert cloud_posture_series["idc_build_count"]["points"] == [["2026-04-06", 1]]
+    assert build_trend_body["cloud_posture_trend"]["series"] == []
     assert build_trend_body["longest_avg_success_jobs"]["items"] == [
         {
             "name": "job-b",
@@ -1243,7 +1241,7 @@ def test_page_routes(api_client: TestClient) -> None:
     assert build_trend_body["migration_runtime_comparison"]["meta"]["improved_limit"] == 10
 
     build_trend_all = api_client.get(
-        "/api/v1/pages/build-trend",
+        "/api/v1/pages/ci-status",
         params={"start_date": "2026-04-10", "end_date": "2026-04-11"},
     )
     assert build_trend_all.status_code == 200
@@ -1280,7 +1278,7 @@ def test_page_routes(api_client: TestClient) -> None:
     ]
 
     build_trend_repo_filtered = api_client.get(
-        "/api/v1/pages/build-trend",
+        "/api/v1/pages/ci-status",
         params={
             "repo": "pingcap/tidb",
             "start_date": "2026-04-10",
@@ -1301,7 +1299,7 @@ def test_page_routes(api_client: TestClient) -> None:
     ]
 
     build_trend_cloud_filtered = api_client.get(
-        "/api/v1/pages/build-trend",
+        "/api/v1/pages/ci-status",
         params={
             "start_date": "2026-04-10",
             "end_date": "2026-04-11",
@@ -1314,20 +1312,8 @@ def test_page_routes(api_client: TestClient) -> None:
         item["cloud_phase"]: item
         for item in build_trend_cloud_filtered_body["cloud_repo_share"]["clouds"]
     }
-    assert build_trend_cloud_filtered_body["cloud_posture_trend"]["series"] == [
-        {
-            "key": "gcp_build_count",
-            "label": "GCP builds",
-            "type": "bar",
-            "points": [["2026-04-06", 4]],
-        },
-        {
-            "key": "idc_build_count",
-            "label": "IDC builds",
-            "type": "bar",
-            "points": [["2026-04-06", 0]],
-        },
-    ]
+    assert build_trend_cloud_filtered_body["cloud_posture_trend"]["series"] == []
+
     assert cloud_repo_share_with_cloud_filter["GCP"]["total_builds"] == 4
     assert cloud_repo_share_with_cloud_filter["IDC"]["total_builds"] == 3
 
@@ -1391,3 +1377,48 @@ def test_page_routes(api_client: TestClient) -> None:
     assert flaky_with_open_issues_body["failure_category_share"] == flaky_body["failure_category_share"]
     assert flaky_with_open_issues_body["failure_category_trend"] == flaky_body["failure_category_trend"]
     assert flaky_with_open_issues_body["period_comparison"] == flaky_body["period_comparison"]
+
+
+def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> None:
+    outcome = api_client.get(
+        "/api/v1/builds/outcome-trend",
+        params={
+            "repo": "pingcap/tidb",
+            "branch": "master",
+            "granularity": "week",
+            "start_date": "2026-03-01",
+            "end_date": "2026-04-15",
+        },
+    )
+    assert outcome.status_code == 200
+    outcome_series = {item["key"]: item for item in outcome.json()["series"]}
+    assert outcome_series["total_count"]["points"] == [["2026-03-30", 8], ["2026-04-06", 7]]
+    assert outcome_series["success_count"]["points"] == [["2026-03-30", 8], ["2026-04-06", 3]]
+    assert outcome_series["failure_count"]["points"] == [["2026-03-30", 0], ["2026-04-06", 4]]
+    assert outcome_series["success_rate_pct"]["points"] == [
+        ["2026-03-30", 100.0],
+        ["2026-04-06", 42.86],
+    ]
+
+    ci_status = api_client.get(
+        "/api/v1/pages/ci-status",
+        params={
+            "repo": "pingcap/tidb",
+            "branch": "master",
+            "granularity": "week",
+            "start_date": "2026-03-01",
+            "end_date": "2026-04-15",
+        },
+    )
+    assert ci_status.status_code == 200
+    cloud_posture_series = {
+        item["key"]: item for item in ci_status.json()["cloud_posture_trend"]["series"]
+    }
+    assert cloud_posture_series["gcp_build_count"]["points"] == [
+        ["2026-03-30", 8],
+        ["2026-04-06", 6],
+    ]
+    assert cloud_posture_series["idc_build_count"]["points"] == [
+        ["2026-03-30", 0],
+        ["2026-04-06", 1],
+    ]

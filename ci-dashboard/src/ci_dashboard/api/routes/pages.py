@@ -24,8 +24,8 @@ def overview_page(
     return get_overview_page(engine, filters)
 
 
-@router.get("/build-trend")
-def build_trend_page(
+@router.get("/ci-status")
+def ci_status_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:

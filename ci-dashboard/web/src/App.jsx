@@ -13,6 +13,7 @@ const BRANCH_OPTIONS = [
   { value: "master", label: "master" },
   { value: "release-8.5", label: "release-8.5" },
 ];
+const CI_STATUS_PATH = "/ci-status";
 
 function buildDefaultFilters(defaultRange, pathname) {
   const baseFilters = {
@@ -21,7 +22,7 @@ function buildDefaultFilters(defaultRange, pathname) {
     job_name: "",
     cloud_phase: "",
     issue_status: "",
-    granularity: pathname === "/build-trend" ? "week" : "day",
+    granularity: pathname === CI_STATUS_PATH ? "week" : "day",
     start_date: defaultRange.start_date,
     end_date: defaultRange.end_date,
   };
@@ -63,7 +64,7 @@ export default function App() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== "/build-trend") {
+    if (location.pathname !== CI_STATUS_PATH) {
       return;
     }
 
@@ -130,7 +131,7 @@ export default function App() {
     >
       <Routes>
         <Route path="/" element={<OverviewPage filters={filters} />} />
-        <Route path="/build-trend" element={<BuildTrendPage filters={filters} />} />
+        <Route path={CI_STATUS_PATH} element={<BuildTrendPage filters={filters} />} />
         <Route path="/flaky" element={<FlakyPage filters={filters} />} />
       </Routes>
     </DashboardLayout>

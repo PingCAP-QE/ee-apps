@@ -19,7 +19,7 @@ import {
 } from "../components/charts";
 
 export default function BuildTrendPage({ filters }) {
-  const page = useApiData("/api/v1/pages/build-trend", filters);
+  const page = useApiData("/api/v1/pages/ci-status", filters);
   const [selectedRepoSlice, setSelectedRepoSlice] = useState(null);
 
   const totalBuilds = sumSeriesPoints(page.data?.outcome_trend?.series, "total_count");
@@ -57,7 +57,7 @@ export default function BuildTrendPage({ filters }) {
   return (
     <div className="page-stack">
       <PageIntro
-        eyebrow="Build Trend"
+        eyebrow="CI Status"
         title="Capacity and reliability trends before we start diagnosing root causes"
         description="This page is for answering whether CI is slowing down, failing more often, or drifting between cloud environments."
       />

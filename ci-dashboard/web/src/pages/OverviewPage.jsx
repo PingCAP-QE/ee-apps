@@ -116,11 +116,14 @@ export default function OverviewPage({ filters }) {
 
         <Panel
           title="Top noisy jobs"
-          subtitle="Jobs with the highest combined flaky and blind-retry-loop signal."
+          subtitle="Jobs ranked by noisy rate, so high-frequency jobs do not win by volume alone."
           loading={page.loading}
           error={page.error}
         >
-          <RankingList items={page.data?.top_noisy_jobs?.items} />
+          <RankingList
+            items={page.data?.top_noisy_jobs?.items}
+            valueFormatter={formatPercent}
+          />
         </Panel>
 
         <Panel
@@ -141,7 +144,10 @@ export default function OverviewPage({ filters }) {
           loading={page.loading}
           error={page.error}
         >
-          <PeriodComparisonTable groups={page.data?.period_comparison?.groups} />
+          <PeriodComparisonTable
+            groups={page.data?.period_comparison?.groups}
+            meta={page.data?.period_comparison?.meta}
+          />
         </Panel>
       </div>
     </div>

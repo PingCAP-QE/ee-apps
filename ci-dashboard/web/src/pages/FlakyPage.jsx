@@ -5,9 +5,11 @@ import {
   useApiData,
 } from "../lib/api";
 import {
+  BLIND_RETRY_LOOP_HINT,
   PageIntro,
   Panel,
   DistinctCaseCountTable,
+  InfoHint,
   IssueWeeklyRateTable,
   PeriodComparisonTable,
   RankingList,
@@ -134,18 +136,30 @@ export default function FlakyPage({ filters }) {
       </Panel>
 
       <div className="scope-note">
-        <strong>Job-level scope below this point</strong>
-        <span>
-          Summary cards and the charts below use repo, branch, job, cloud, and time only.
-          The issue status filter applies only to the issue-filtered panels above.
-        </span>
+        <span className="scope-note__eyebrow">Scope switch</span>
+        <div className="scope-note__grid">
+          <div className="scope-note__block">
+            <strong>Above: issue-filtered, case-level panels</strong>
+            <span>
+              The two issue panels use the tracked GitHub issue set in the current repo, branch,
+              time range, and issue status.
+            </span>
+          </div>
+          <div className="scope-note__block">
+            <strong>Below: job-level, build-based panels</strong>
+            <span>
+              Summary cards and charts below ignore issue status. They use repo, branch, job,
+              cloud, and time only.
+            </span>
+          </div>
+        </div>
       </div>
 
       <section className="stats-grid">
         <StatCard
-          label="Flaky Noisy Rate"
+          label="Flaky Rate"
           value={formatPercent(currentPeriod?.flaky_rate_pct || 0)}
-          detail={`${formatNumber(currentPeriod?.flaky_build_count || 0)} / ${formatNumber(failureLikeBuildCount)}`}
+          detail={`${formatNumber(currentPeriod?.flaky_build_count || 0)} flaky / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="rose"
           delta={
             currentPeriod && previousPeriod
@@ -154,9 +168,14 @@ export default function FlakyPage({ filters }) {
           }
         />
         <StatCard
-          label="Blind-retry-loop Rate"
+          label={(
+            <span className="stat-card__label-row">
+              <span>Blind-retry-loop Rate</span>
+              <InfoHint text={BLIND_RETRY_LOOP_HINT} />
+            </span>
+          )}
           value={formatPercent(currentPeriod?.retry_loop_rate_pct || 0)}
-          detail={`${formatNumber(currentPeriod?.retry_loop_build_count || 0)} / ${formatNumber(failureLikeBuildCount)}`}
+          detail={`${formatNumber(currentPeriod?.retry_loop_build_count || 0)} blind-retry-loop / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="amber"
           delta={
             currentPeriod && previousPeriod
@@ -171,7 +190,7 @@ export default function FlakyPage({ filters }) {
         <StatCard
           label="Combined Noisy Rate"
           value={formatPercent(currentPeriod?.noisy_rate_pct || 0)}
-          detail={`${formatNumber(currentPeriod?.noisy_build_count || 0)} / ${formatNumber(failureLikeBuildCount)}`}
+          detail={`${formatNumber(currentPeriod?.noisy_build_count || 0)} noisy / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="teal"
           delta={
             currentPeriod && previousPeriod
@@ -200,7 +219,7 @@ export default function FlakyPage({ filters }) {
       <div className="page-grid page-grid--two-column">
         <Panel
           title="Flaky rate trend"
-          subtitle="Flaky rate alongside total failure-like volume."
+          subtitle="Flaky rate as flaky builds divided by failure-like builds, alongside total failure-like volume."
           loading={page.loading}
           error={page.error}
         >
@@ -213,7 +232,7 @@ export default function FlakyPage({ filters }) {
 
         <Panel
           title="Signal composition"
-          subtitle="Flaky, blind-retry-loop, and noisy rates together in one view."
+          subtitle="Flaky, blind-retry-loop, and noisy rates together, each using failure-like builds as the denominator."
           loading={page.loading}
           error={page.error}
         >
@@ -226,11 +245,14 @@ export default function FlakyPage({ filters }) {
 
         <Panel
           title="Top noisy jobs"
-          subtitle="Jobs where pilot-style noisy behavior is most concentrated."
+          subtitle="Jobs ranked by noisy rate, with raw noisy and failure-like build counts kept visible for context."
           loading={page.loading}
           error={page.error}
         >
-          <RankingList items={page.data?.top_jobs?.items} />
+          <RankingList
+            items={page.data?.top_jobs?.items}
+            valueFormatter={formatPercent}
+          />
         </Panel>
 
         <Panel
@@ -260,7 +282,10 @@ export default function FlakyPage({ filters }) {
           loading={page.loading}
           error={page.error}
         >
-          <PeriodComparisonTable groups={page.data?.period_comparison?.groups} />
+          <PeriodComparisonTable
+            groups={page.data?.period_comparison?.groups}
+            meta={page.data?.period_comparison?.meta}
+          />
         </Panel>
       </div>
     </div>

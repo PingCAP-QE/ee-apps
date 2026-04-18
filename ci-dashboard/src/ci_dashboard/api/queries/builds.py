@@ -11,6 +11,7 @@ from ci_dashboard.api.queries.base import (
     branch_expr,
     bucket_expr,
     build_common_where,
+    filter_complete_week_rows,
     failure_like_expr,
     isoformat_utc,
     rate_pct,
@@ -47,12 +48,19 @@ def get_outcome_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
             ),
             params,
         ).mappings()
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
 
         total_points: list[list[Any]] = []
         success_points: list[list[Any]] = []
         failure_points: list[list[Any]] = []
         rate_points: list[list[Any]] = []
-        for row in rows:
+        for row in data_rows:
             bucket_start = str(row["bucket_start"])
             total = int(row["total_count"] or 0)
             success = int(row["success_count"] or 0)
@@ -95,11 +103,18 @@ def get_duration_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
             ),
             params,
         ).mappings()
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
 
         queue_points: list[list[Any]] = []
         run_points: list[list[Any]] = []
         total_points: list[list[Any]] = []
-        for row in rows:
+        for row in data_rows:
             bucket_start = str(row["bucket_start"])
             queue_points.append([bucket_start, round(float(row["queue_avg_s"] or 0))])
             run_points.append([bucket_start, round(float(row["run_avg_s"] or 0))])
@@ -203,10 +218,15 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
             ),
             params,
         ).mappings()
+        data_rows = filter_complete_week_rows(
+            [dict(row) for row in rows],
+            start_date=filters.start_date,
+            end_date=filters.end_date,
+        )
 
         weekly_counts = {"GCP": {}, "IDC": {}}
         buckets: set[str] = set()
-        for row in rows:
+        for row in data_rows:
             bucket_start = str(row["bucket_start"])
             cloud_phase = str(row["cloud_phase"])
             buckets.add(bucket_start)

@@ -5,7 +5,12 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, build_common_where
+from ci_dashboard.api.queries.base import (
+    CommonFilters,
+    bucket_expr,
+    build_common_where,
+    filter_complete_week_rows,
+)
 
 
 def get_failure_category_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -31,10 +36,17 @@ def get_failure_category_trend(engine: Engine, filters: CommonFilters) -> dict[s
             ),
             params,
         ).mappings()
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
 
         flaky_points: list[list[Any]] = []
         unclassified_points: list[list[Any]] = []
-        for row in rows:
+        for row in data_rows:
             bucket_start = str(row["bucket_start"])
             flaky_points.append([bucket_start, int(row["flaky_test_count"] or 0)])
             unclassified_points.append([bucket_start, int(row["unclassified_count"] or 0)])

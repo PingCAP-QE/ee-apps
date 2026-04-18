@@ -1,9 +1,15 @@
+import { useId } from "react";
+
 import {
   formatCompact,
+  formatDateRangeLabel,
   formatNumber,
   formatPercent,
   formatSeconds,
 } from "../lib/api";
+
+export const BLIND_RETRY_LOOP_HINT =
+  "On the Same Revision, if a job experiences 1 or more consecutive failures eventually followed by a new commit, the builds starting from the 2nd attempt onwards (up to the new commit) are classified as a blind retry loop.";
 
 const DONUT_COLORS = [
   "#315772",
@@ -60,6 +66,26 @@ export function StatCard({ label, value, detail, delta, tone = "default" }) {
         {delta ? <span className="stat-card__delta">{delta}</span> : null}
       </div>
     </article>
+  );
+}
+
+export function InfoHint({ text }) {
+  const tooltipId = useId();
+
+  return (
+    <span className="info-hint">
+      <button
+        type="button"
+        className="info-hint__button"
+        aria-label="Show metric definition"
+        aria-describedby={tooltipId}
+      >
+        i
+      </button>
+      <span id={tooltipId} role="tooltip" className="info-hint__tooltip">
+        {text}
+      </span>
+    </span>
   );
 }
 
@@ -438,7 +464,13 @@ function buildDefaultRankingMeta(item) {
   if ("noisy_rate_pct" in item) {
     meta.push(<span key="noisy-rate">Noisy rate {formatPercent(item.noisy_rate_pct)}</span>);
   }
-  if ("failure_like_build_count" in item) {
+  if ("noisy_build_count" in item && "failure_like_build_count" in item) {
+    meta.push(
+      <span key="noisy-build-count">
+        {formatNumber(item.noisy_build_count)} noisy / {formatNumber(item.failure_like_build_count)} failure-like builds
+      </span>,
+    );
+  } else if ("failure_like_build_count" in item) {
     meta.push(
       <span key="failure-like-build-count">
         {formatNumber(item.failure_like_build_count)} failure-like builds
@@ -658,7 +690,7 @@ export function FreshnessStrip({ jobs, generatedAt }) {
   );
 }
 
-export function PeriodComparisonTable({ groups }) {
+export function PeriodComparisonTable({ groups, meta }) {
   if (!groups?.length) {
     return <EmptyState message="No period comparison data yet." />;
   }
@@ -669,6 +701,11 @@ export function PeriodComparisonTable({ groups }) {
         <article key={group.name} className="period-card">
           <header>
             <span>{group.name === "period_a" ? "Current window" : "Previous window"}</span>
+            <p className="period-card__range">
+              {group.name === "period_a"
+                ? formatDateRangeLabel(meta?.period_a_start, meta?.period_a_end)
+                : formatDateRangeLabel(meta?.period_b_start, meta?.period_b_end)}
+            </p>
             <strong>{formatPercent(group.values.noisy_rate_pct)}</strong>
             <p>noisy rate</p>
           </header>
@@ -686,7 +723,10 @@ export function PeriodComparisonTable({ groups }) {
               <dd>{formatCompact(group.values.flaky_build_count)}</dd>
             </div>
             <div>
-              <dt>Blind-retry-loop</dt>
+              <dt>
+                Blind-retry-loop
+                <InfoHint text={BLIND_RETRY_LOOP_HINT} />
+              </dt>
               <dd>{formatCompact(group.values.retry_loop_build_count)}</dd>
             </div>
           </dl>

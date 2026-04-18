@@ -161,6 +161,35 @@ export function formatPercent(value) {
   return `${Number(value || 0).toFixed(1)}%`;
 }
 
+export function formatDateRangeLabel(start, end) {
+  if (!start || !end) {
+    return "Date range unavailable";
+  }
+
+  const startDate = parseIsoDate(start);
+  const endDate = parseIsoDate(end);
+  if (!startDate || !endDate) {
+    return `${start} - ${end}`;
+  }
+
+  const shortFormatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const longFormatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+  if (startDate.getUTCFullYear() === endDate.getUTCFullYear()) {
+    return `${shortFormatter.format(startDate)} - ${longFormatter.format(endDate)}`;
+  }
+  return `${longFormatter.format(startDate)} - ${longFormatter.format(endDate)}`;
+}
+
 export function formatSeconds(value) {
   const seconds = Number(value || 0);
   if (seconds >= 3600) {
@@ -177,6 +206,17 @@ export function formatDelta(current, previous, suffix = "") {
   const sign = delta > 0 ? "+" : "";
   const value = Math.abs(delta) >= 100 ? Math.round(delta) : delta.toFixed(1);
   return `${sign}${value}${suffix}`;
+}
+
+function parseIsoDate(value) {
+  if (!value) {
+    return null;
+  }
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
 export function buildScopeLabel(filters) {

@@ -132,6 +132,66 @@ def bucket_expr(connection: Connection, column_name: str, granularity: str) -> s
     return f"DATE_SUB(DATE({column_name}), INTERVAL WEEKDAY({column_name}) DAY)"
 
 
+def filter_complete_week_rows(
+    rows: list[dict[str, Any]],
+    *,
+    start_date: date | None,
+    end_date: date | None,
+    bucket_key: str = "bucket_start",
+) -> list[dict[str, Any]]:
+    if start_date is None or end_date is None:
+        return rows
+
+    first_complete_week_start, last_complete_week_start = complete_week_bounds(
+        start_date,
+        end_date,
+    )
+    if first_complete_week_start is None or last_complete_week_start is None:
+        return []
+
+    filtered_rows: list[dict[str, Any]] = []
+    for row in rows:
+        bucket_start = _coerce_bucket_date(row.get(bucket_key))
+        if bucket_start is None:
+            continue
+        if first_complete_week_start <= bucket_start <= last_complete_week_start:
+            filtered_rows.append(row)
+    return filtered_rows
+
+
+def complete_week_bounds(
+    start_date: date,
+    end_date: date,
+) -> tuple[date | None, date | None]:
+    first_complete_week_start = start_date + timedelta(
+        days=(7 - start_date.weekday()) % 7
+    )
+    last_complete_week_start = end_date - timedelta(days=end_date.weekday())
+    if end_date.weekday() != 6:
+        last_complete_week_start -= timedelta(days=7)
+
+    if first_complete_week_start > last_complete_week_start:
+        return None, None
+    return first_complete_week_start, last_complete_week_start
+
+
+def _coerce_bucket_date(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if len(raw) >= 10:
+            try:
+                return date.fromisoformat(raw[:10])
+            except ValueError:
+                return None
+    return None
+
+
 def failure_like_expr(table_alias: str = "") -> str:
     prefix = f"{table_alias}." if table_alias else ""
     states = ", ".join(f"'{state}'" for state in FAILURE_LIKE_STATES)

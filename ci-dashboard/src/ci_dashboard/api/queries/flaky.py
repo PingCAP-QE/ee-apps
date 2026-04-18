@@ -10,6 +10,7 @@ from ci_dashboard.api.queries.base import (
     CommonFilters,
     MAX_RANKING_LIMIT,
     bucket_expr,
+    filter_complete_week_rows,
     failure_like_expr,
     rate_pct,
     to_number,
@@ -84,17 +85,31 @@ def get_flaky_top_jobs(
         rows = connection.execute(
             text(
                 f"""
+                WITH job_stats AS (
+                  SELECT
+                    b.job_name,
+                    SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) AS failure_like_build_count,
+                    SUM(CASE WHEN {failure_like} AND b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+                    SUM(CASE WHEN {failure_like} AND b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
+                    SUM(CASE WHEN {failure_like} AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count
+                  FROM ci_l1_builds b
+                  WHERE {where_clause}
+                  GROUP BY b.job_name
+                )
                 SELECT
-                  b.job_name,
-                  SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) AS failure_like_build_count,
-                  SUM(CASE WHEN {failure_like} AND b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
-                  SUM(CASE WHEN {failure_like} AND b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-                  SUM(CASE WHEN {failure_like} AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count
-                FROM ci_l1_builds b
-                WHERE {where_clause}
-                GROUP BY b.job_name
-                HAVING SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) > 0
-                ORDER BY noisy_build_count DESC, failure_like_build_count DESC, b.job_name ASC
+                  job_name,
+                  failure_like_build_count,
+                  flaky_build_count,
+                  retry_loop_build_count,
+                  noisy_build_count,
+                  CASE
+                    WHEN failure_like_build_count > 0
+                    THEN noisy_build_count * 100.0 / failure_like_build_count
+                    ELSE 0
+                  END AS noisy_rate_pct
+                FROM job_stats
+                WHERE failure_like_build_count > 0
+                ORDER BY noisy_rate_pct DESC, noisy_build_count DESC, failure_like_build_count DESC, job_name ASC
                 LIMIT :limit
                 """
             ),
@@ -108,17 +123,18 @@ def get_flaky_top_jobs(
             items.append(
                 {
                     "name": row["job_name"],
-                    "value": noisy_build_count,
+                    "value": to_number(row["noisy_rate_pct"]),
                     "failure_like_build_count": failure_like_build_count,
                     "flaky_build_count": int(row["flaky_build_count"] or 0),
                     "retry_loop_build_count": int(row["retry_loop_build_count"] or 0),
-                    "noisy_rate_pct": rate_pct(noisy_build_count, failure_like_build_count),
+                    "noisy_build_count": noisy_build_count,
+                    "noisy_rate_pct": to_number(row["noisy_rate_pct"]),
                 }
             )
 
     meta = filters.meta()
     meta["limit"] = effective_limit
-    meta["value_key"] = "noisy_build_count"
+    meta["value_key"] = "noisy_rate_pct"
     return {"items": items, "meta": meta}
 
 
@@ -422,7 +438,14 @@ def _query_bucketed_flaky_metrics(
             ),
             params,
         ).mappings()
-        return [dict(row) for row in rows]
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
+        return data_rows
 
 
 def _query_period_summary(
