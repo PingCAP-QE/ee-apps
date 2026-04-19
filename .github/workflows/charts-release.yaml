@@ -8,7 +8,7 @@ on:
       - main
     paths:
       - ".github/workflows/charts-release.yaml"
-      - "charts/**"
+      - "charts/*/Chart.yaml"
 
 jobs:
   release:
