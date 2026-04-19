@@ -1,0 +1,15 @@
+1. Get the application URL by running these commands:
+{{- if .Values.httpRoute.enabled }}
+{{- if .Values.httpRoute.hostnames }}
+    export APP_HOSTNAME={{ .Values.httpRoute.hostnames | first }}
+{{- else }}
+    export APP_HOSTNAME=$(kubectl get --namespace {{ (first .Values.httpRoute.parentRefs).namespace | default .Release.Namespace }} gateway/{{ (first .Values.httpRoute.parentRefs).name }} -o jsonpath="{.spec.listeners[0].hostname}")
+{{- end }}
+{{- if and .Values.httpRoute.rules (first .Values.httpRoute.rules).matches (first (first .Values.httpRoute.rules).matches).path.value }}
+    echo "Visit https://$APP_HOSTNAME{{ (first (first .Values.httpRoute.rules).matches).path.value }} to use the dashboard"
+{{- end }}
+{{- else }}
+    export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "ci-dashboard.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+    kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:{{ .Values.containerPort }}
+    echo "Visit http://127.0.0.1:8080/"
+{{- end }}

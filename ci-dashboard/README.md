@@ -1,0 +1,129 @@
+# CI Dashboard
+
+This directory contains the first implementation slice for the CI dashboard V1 project.
+
+Current scope in this scaffold:
+
+- SQL migrations for the three V1-owned tables
+- shared Python config and database helpers
+- job state persistence helpers
+- build URL normalization and exact retest parsing helpers
+- implemented data jobs:
+- `ci-sync-builds`
+- `ci-sync-pr-events`
+- `ci-sync-flaky-issues`
+
+`sync-flaky-issues` may call the GitHub API to recover branch metadata for flaky issues when the read-only `github_tickets` source omits the issue body or branch details. In Kubernetes, inject a `GITHUB_TOKEN` runtime secret for that job.
+  - `ci-refresh-build-derived`
+  - `backfill-range` for idempotent date-window re-imports
+  - one-off Kubernetes backfill helpers under `k8s/backfill/`
+  - recurring flaky issue sync helper under `k8s/cronjobs/`
+- implemented read-only FastAPI query endpoints for:
+  - `/api/v1/status/freshness`
+  - `/api/v1/filters/*`
+  - `/api/v1/builds/*`
+  - `/api/v1/flaky/trend`
+  - `/api/v1/flaky/composition`
+  - `/api/v1/flaky/distinct-case-counts`
+  - `/api/v1/flaky/issue-weekly-rates`
+  - `/api/v1/flaky/top-jobs`
+  - `/api/v1/flaky/period-comparison`
+  - `/api/v1/failures/*`
+- first React dashboard shell under `web/`, including:
+  - `Overview`
+  - `Build Trend`
+  - `Flaky`
+- project docs under `docs/`, including `functional-design/`
+
+Not implemented yet:
+
+- deeper build/failure drill-down pages and richer table views
+- infra / Jenkins specific pages
+
+## Local Test Run
+
+This scaffold supports local unit tests with sqlite and does not require a remote TiDB instance.
+
+Recommended local setup:
+
+```bash
+cd ci-dashboard
+python3 -m venv .venv
+./.venv/bin/pip install fastapi uvicorn SQLAlchemy PyMySQL pytest pytest-cov ruff coverage httpx
+PYTHONPATH=src ./.venv/bin/python -m pytest --cov=src/ci_dashboard --cov-report=term-missing
+make sync-builds
+make sync-pr-events
+make sync-flaky-issues
+make refresh-build-derived
+./.venv/bin/python -m ci_dashboard.jobs.cli backfill-range --start-date 2025-12-01 --end-date 2025-12-07
+make api
+make web-install
+make web-dev
+make web-build
+```
+
+Notes:
+
+- tests use sqlite fixtures and run locally
+- production-style DB config still uses `TIDB_*`
+- local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`
+- FastAPI serves the built frontend from `web/dist` after `make web-build`
+- set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
+- during UI iteration, run `make api` and `make web-dev` in separate terminals
+- `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
+- `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs
+- `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
+
+## Local Frontend Against TiDB
+
+For local UI iteration with real TiDB data:
+
+```bash
+cd ci-dashboard
+make prepare-local-tidb-env
+make PYTHON=./.venv/bin/python api-tidb
+```
+
+In a second terminal:
+
+```bash
+cd ci-dashboard
+make web-install
+make web-dev
+```
+
+Notes:
+
+- `make prepare-local-tidb-env` reads the current Kubernetes secrets:
+  - `apps/ci-dashboard-backfill-db`
+  - `apps/ci-dashboard-backfill-ca`
+- it writes local-only files under `ci-dashboard/.local/`
+- Vite proxies `/api/*` to `http://127.0.0.1:8000`, so the browser still talks only to the local dev server
+- you can verify the chain with:
+  - `curl http://127.0.0.1:8000/api/v1/status/freshness`
+  - `curl http://127.0.0.1:5173/api/v1/status/freshness`
+
+## Container Builds
+
+This project now provides two container entrypoints:
+
+- `Dockerfile.app` for the FastAPI + React dashboard app
+- `Dockerfile.jobs` for CLI-driven sync and backfill jobs
+
+Recommended image repositories:
+
+- `ghcr.io/pingcap-qe/ee-apps/ci-dashboard`
+- `ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs`
+
+Repository-local image build wiring is defined in `skaffold.yaml`:
+
+```bash
+cd ci-dashboard
+skaffold build --push=false --default-repo ghcr.io/pingcap-qe/ee-apps
+```
+
+Notes:
+
+- `Dockerfile.app` builds the frontend with production base path `/dashboard/`
+- `Dockerfile.jobs` now installs directly from source and no longer depends on a prebuilt wheel in `dist/`
+- local-only files under `.local/` are excluded from the Docker build context and are not baked into images
