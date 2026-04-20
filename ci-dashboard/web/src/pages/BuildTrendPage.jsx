@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 
 import {
   formatCompact,
+  formatDelta,
   formatPercent,
+  formatRoundedThousands,
   formatSeconds,
   sumSeriesPoints,
   useApiData,
@@ -30,6 +32,18 @@ export default function BuildTrendPage({ filters }) {
   const avgQueue = Number(durationSummary.queue_avg_s || 0);
   const avgRun = Number(durationSummary.run_avg_s || 0);
   const avgTotal = Number(durationSummary.total_avg_s || 0);
+  const successRateDelta = computeSeriesDelta(
+    page.data?.outcome_trend?.series,
+    "success_rate_pct",
+  );
+  const queueDeltaSeconds = computeSeriesDelta(
+    page.data?.duration_trend?.series,
+    "queue_avg_s",
+  );
+  const totalDeltaSeconds = computeSeriesDelta(
+    page.data?.duration_trend?.series,
+    "total_avg_s",
+  );
   const cloudPostureAnnotations = buildCloudPostureAnnotations(page.data?.cloud_posture_trend?.series);
   const cloudRepoShare = page.data?.cloud_repo_share?.clouds || [];
   const gcpRepoShare = limitRepoShareItems(
@@ -73,18 +87,21 @@ export default function BuildTrendPage({ filters }) {
           value={formatPercent(successRate)}
           detail="Counted from build outcomes in the current view"
           tone="teal"
+          delta={successRateDelta == null ? null : formatDelta(successRateDelta + 0, 0, "%")}
         />
         <StatCard
           label="Success avg queue wait"
           value={formatSeconds(avgQueue)}
           detail={`Success avg run time ${formatSeconds(avgRun)}`}
           tone="amber"
+          delta={queueDeltaSeconds == null ? null : formatDelta(queueDeltaSeconds + 0, 0, "s")}
         />
         <StatCard
           label="Success avg total duration"
           value={formatSeconds(avgTotal)}
           detail="Simple average across successful builds"
           tone="default"
+          delta={totalDeltaSeconds == null ? null : formatDelta(totalDeltaSeconds + 0, 0, "s")}
         />
       </section>
 
@@ -114,14 +131,23 @@ export default function BuildTrendPage({ filters }) {
 
       <Panel
         title="Migration status"
-        subtitle="Weekly build counts on IDC versus GCP, with each week labeled by GCP as a share of total builds."
+        subtitle="Weekly build counts on IDC versus GCP. The value shown above each bar is GCP build count % of total builds in that week."
         loading={page.loading}
         error={page.error}
       >
         <TrendChart
           series={page.data?.cloud_posture_trend?.series}
+          yFormatter={formatRoundedThousands}
           bucketAnnotations={cloudPostureAnnotations}
           height={188}
+          stackBars
+          yTickMode="thousands-rounded"
+          axisLabelSize={9}
+          bottomLabelSize={10}
+          annotationLabelSize={9}
+          barGroupWidthFactor={0.3}
+          barMaxWidth={16}
+          leftPadding={64}
         />
       </Panel>
 
@@ -305,4 +331,14 @@ function limitRepoShareItems(cloudShare, maxItems = 10) {
       },
     ],
   };
+}
+
+function computeSeriesDelta(series, key) {
+  const target = series?.find((item) => item.key === key);
+  if (!target?.points || target.points.length < 2) {
+    return null;
+  }
+  const current = Number(target.points[target.points.length - 1][1] || 0);
+  const previous = Number(target.points[target.points.length - 2][1] || 0);
+  return current - previous;
 }

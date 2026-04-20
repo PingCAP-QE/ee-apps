@@ -12,9 +12,8 @@ export function DashboardLayout({
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-mark">
-          <span className="brand-mark__eyebrow">CI Metrics</span>
-          <h1>Dashboard Studio</h1>
-          <p>Build health, flaky patterns, and drift across repos and clouds.</p>
+          <h1>CI Dashboard</h1>
+          <p>Build health, flaky patterns, and migration status,</p>
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">

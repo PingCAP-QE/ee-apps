@@ -819,6 +819,124 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     }
 
 
+def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: TestClient) -> None:
+    weeks = [
+        "2026-03-02",
+        "2026-03-09",
+        "2026-03-16",
+        "2026-03-23",
+        "2026-03-30",
+    ]
+    build_keys = [
+        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1001",
+        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1002",
+        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1003",
+        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1004",
+        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1005",
+    ]
+
+    for index, week in enumerate(weeks, start=1):
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=2000 + index,
+            source_prow_job_id=f"v2-flow-{index}",
+            repo_full_name="pingcap/tidb",
+            target_branch="release-v2-test",
+            base_ref="release-v2-test",
+            job_name="job-v2-flow",
+            state="failure",
+            cloud_phase="GCP",
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=f"{week} 08:00:00",
+            pr_number=8800 + index,
+            normalized_build_key=build_keys[index - 1],
+            build_id=f"build-v2-{index}",
+        )
+        _insert_pr_event(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            pr_number=8800 + index,
+            target_branch="release-v2-test",
+            event_key=f"v2-pr-{index}",
+            event_time=f"{week} 07:55:00",
+        )
+
+    # Case A: present in week1 + week2 -> "new" confirmed at week2.
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="release-v2-test",
+        case_name="CaseA",
+        build_url=f"https://prow.tidb.net{build_keys[0]}",
+        flaky=1,
+        report_time="2026-03-02 08:10:00",
+    )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="release-v2-test",
+        case_name="CaseA",
+        build_url=f"https://prow.tidb.net{build_keys[1]}",
+        flaky=1,
+        report_time="2026-03-09 08:10:00",
+    )
+
+    # Case C: present in week2 + week3 then absent in week4 + week5 -> "resolved" at week5.
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="release-v2-test",
+        case_name="CaseC",
+        build_url=f"https://prow.tidb.net{build_keys[1]}",
+        flaky=1,
+        report_time="2026-03-09 08:11:00",
+    )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="release-v2-test",
+        case_name="CaseC",
+        build_url=f"https://prow.tidb.net{build_keys[2]}",
+        flaky=1,
+        report_time="2026-03-16 08:11:00",
+    )
+
+    response = api_client.get(
+        "/api/v1/flaky/case-flow-v2",
+        params={
+            "repo": "pingcap/tidb",
+            "branch": "release-v2-test",
+            "start_date": "2026-03-02",
+            "end_date": "2026-03-30",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["weeks"] == weeks
+
+    series = {item["key"]: item for item in body["series"]}
+    assert series["new_case_count"]["points"] == [
+        ["2026-03-02", 0],
+        ["2026-03-09", 1],
+        ["2026-03-16", 1],
+        ["2026-03-23", 0],
+        ["2026-03-30", 0],
+    ]
+    assert series["resolved_case_count"]["points"] == [
+        ["2026-03-02", 0],
+        ["2026-03-09", 0],
+        ["2026-03-16", 0],
+        ["2026-03-23", 1],
+        ["2026-03-30", 1],
+    ]
+
+    summary_by_week = {row["week_start"]: row for row in body["summary"]}
+    assert summary_by_week["2026-03-09"]["net_case_count"] == 1
+    assert summary_by_week["2026-03-30"]["net_case_count"] == -1
+
+
 def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,
@@ -1422,3 +1540,71 @@ def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> No
         ["2026-03-30", 0],
         ["2026-04-06", 1],
     ]
+
+
+def test_flaky_page_issue_lifecycle_snapshot_ignores_issue_status_filter(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70001,
+        case_name="LifecycleCaseOne",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-04-13 10:00:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70002,
+        case_name="LifecycleCaseTwo",
+        issue_branch="master",
+        issue_status="closed",
+        issue_created_at="2026-04-14 10:00:00",
+        issue_closed_at="2026-04-16 11:00:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70003,
+        case_name="LifecycleCaseThree",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-04-01 10:00:00",
+        last_reopened_at="2026-04-17 09:00:00",
+        reopen_count=1,
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/flaky",
+        params={
+            "repo": "pingcap/tidb",
+            "branch": "master",
+            "issue_status": "open",
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-20",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    lifecycle = body["issue_lifecycle"]
+    assert lifecycle["meta"]["latest_full_week_start"] == "2026-04-13"
+    assert lifecycle["meta"]["latest_full_week_end"] == "2026-04-19"
+    assert lifecycle["meta"]["ignores_issue_status"] is True
+    assert lifecycle["latest_week_created_count"] == 2
+    assert lifecycle["latest_week_created_open_count"] == 1
+    assert lifecycle["latest_week_created_closed_count"] == 1
+    assert lifecycle["latest_week_closed_count"] == 1
+    assert lifecycle["latest_week_reopened_count"] == 1
+
+    weekly_series = {item["key"]: item["points"] for item in body["issue_lifecycle_weekly"]["series"]}
+    created_by_week = {week: count for week, count in weekly_series["issue_created_count"]}
+    closed_by_week = {week: count for week, count in weekly_series["issue_closed_count"]}
+    reopened_by_week = {week: count for week, count in weekly_series["issue_reopened_count"]}
+
+    assert created_by_week["2026-03-30"] >= 1
+    assert created_by_week["2026-04-13"] >= 2
+    assert closed_by_week["2026-04-13"] >= 1
+    assert reopened_by_week["2026-04-13"] >= 1

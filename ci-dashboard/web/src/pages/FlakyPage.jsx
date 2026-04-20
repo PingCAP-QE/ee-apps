@@ -20,12 +20,23 @@ import {
 
 export default function FlakyPage({ filters }) {
   const page = useApiData("/api/v1/pages/flaky", filters);
+  const weeklyFlakyTrend = useApiData("/api/v1/flaky/composition", {
+    repo: filters.repo,
+    branch: filters.branch,
+    job_name: filters.job_name,
+    cloud_phase: filters.cloud_phase,
+    issue_status: "",
+    start_date: filters.start_date,
+    end_date: filters.end_date,
+    granularity: "week",
+  });
   const showPanelActions = !page.loading && !page.error;
   const currentPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
   const previousPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_b")?.values;
   const distinctRows = page.data?.distinct_flaky_case_counts?.rows || [];
   const issueWeeks = page.data?.issue_case_weekly_rates?.weeks || [];
   const issueRows = page.data?.issue_case_weekly_rates?.rows || [];
+  const issueLifecycle = page.data?.issue_lifecycle || {};
   const latestDistinctTotal = distinctRows.reduce(
     (sum, row) => sum + Number(row.values?.[row.values.length - 1] || 0),
     0,
@@ -41,12 +52,8 @@ export default function FlakyPage({ filters }) {
   const latestIssueWeekLabel = issueWeeks[issueWeeks.length - 1] || "latest bucket";
   const failureLikeBuildCount = Number(currentPeriod?.failure_like_build_count || 0);
   const totalPrCount = Number(currentPeriod?.total_pr_count || 0);
-  const unclassifiedFailureCount = Number(
-    (page.data?.failure_category_share?.groups || []).reduce(
-      (sum, group) => sum + (group.values?.[1] || 0),
-      0,
-    ),
-  );
+  const latestFullWeekLabel = issueLifecycle?.meta?.latest_full_week_start || "latest full week";
+  const latestFullWeekDisplay = `${latestFullWeekLabel} week`;
 
   return (
     <div className="page-stack">
@@ -78,6 +85,19 @@ export default function FlakyPage({ filters }) {
           weeks={page.data?.distinct_flaky_case_counts?.weeks}
           rows={page.data?.distinct_flaky_case_counts?.rows}
           scrollClassName="table-scroll--compact-y"
+        />
+      </Panel>
+
+      <Panel
+        title="Issue lifecycle by week"
+        subtitle="Weekly created, closed, and reopened issue counts in the current repo and branch scope."
+        loading={page.loading}
+        error={page.error}
+      >
+        <TrendChart
+          series={page.data?.issue_lifecycle_weekly?.series}
+          yFormatter={formatNumber}
+          height={220}
         />
       </Panel>
 
@@ -210,38 +230,32 @@ export default function FlakyPage({ filters }) {
           }
         />
         <StatCard
-          label="Unclassified failures"
-          value={formatNumber(unclassifiedFailureCount)}
-          detail="A reminder that V1 keeps taxonomy intentionally conservative"
+          label={`Issues created (${latestFullWeekDisplay})`}
+          value={formatNumber(issueLifecycle.latest_week_created_count || 0)}
+          detail={`${formatNumber(issueLifecycle.scoped_open_count || 0)} open now (current status)`}
+          tone="rose"
+        />
+        <StatCard
+          label={`Issues closed (${latestFullWeekDisplay})`}
+          value={formatNumber(issueLifecycle.latest_week_closed_count || 0)}
+          detail={`${formatNumber(issueLifecycle.latest_week_reopened_count || 0)} reopened this week`}
+          tone="teal"
         />
       </section>
 
       <div className="page-grid page-grid--two-column">
         <Panel
           title="Flaky rate trend"
-          subtitle="Flaky rate as flaky builds divided by failure-like builds, alongside total failure-like volume."
-          loading={page.loading}
-          error={page.error}
-        >
-          <TrendChart
-            series={page.data?.trend?.series}
-            rightYFormatter={formatPercent}
-            rightYMax={100}
-          />
-        </Panel>
-
-        <Panel
-          title="Signal composition"
           subtitle="Flaky, blind-retry-loop, and noisy rates together, each using failure-like builds as the denominator."
-          loading={page.loading}
-          error={page.error}
+          loading={weeklyFlakyTrend.loading}
+          error={weeklyFlakyTrend.error}
         >
-          <TrendChart
-            series={page.data?.composition?.series}
-            rightYFormatter={formatPercent}
-            rightYMax={100}
-          />
-        </Panel>
+        <TrendChart
+          series={weeklyFlakyTrend.data?.series}
+          rightYFormatter={formatPercent}
+          compactY
+        />
+      </Panel>
 
         <Panel
           title="Top noisy jobs"

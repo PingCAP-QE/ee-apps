@@ -37,6 +37,11 @@ const SERIES_COLORS = {
   flaky_rate_pct: "#d1495b",
   retry_loop_rate_pct: "#e9c46a",
   noisy_rate_pct: "#2a9d8f",
+  new_case_count: "#d1495b",
+  resolved_case_count: "#2a9d8f",
+  issue_created_count: "#d1495b",
+  issue_closed_count: "#2a9d8f",
+  issue_reopened_count: "#e9c46a",
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",
   FLAKY_TEST: "#d1495b",
@@ -114,6 +119,15 @@ export function TrendChart({
   rightYMax = null,
   bucketAnnotations = null,
   height = 280,
+  compactY = false,
+  stackBars = false,
+  yTickMode = "default",
+  axisLabelSize = 11,
+  bottomLabelSize = 11,
+  annotationLabelSize = 10,
+  barGroupWidthFactor = 0.66,
+  barMaxWidth = 46,
+  leftPadding = 52,
 }) {
   if (!series?.length) {
     return <EmptyState message="No chart data for the current filters." />;
@@ -135,13 +149,35 @@ export function TrendChart({
   );
   const leftSeries = series.filter((item) => item.axis !== "right");
   const rightSeries = series.filter((item) => item.axis === "right");
-  const leftValues = leftSeries.flatMap((item) =>
+  const leftLineSeries = leftSeries.filter((item) => item.type !== "bar");
+  const leftBarSeries = leftSeries.filter((item) => item.type === "bar");
+  const leftLineValues = leftLineSeries.flatMap((item) =>
     labels.map((label) => pointMaps.get(item.key)?.get(label) ?? 0),
   );
+  const leftBarValues = stackBars
+    ? labels.map((label) =>
+        leftBarSeries.reduce(
+          (sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0),
+          0,
+        ),
+      )
+    : leftBarSeries.flatMap((item) =>
+        labels.map((label) => pointMaps.get(item.key)?.get(label) ?? 0),
+      );
+  const leftValues = [...leftLineValues, ...leftBarValues];
   const rightValues = rightSeries.flatMap((item) =>
     labels.map((label) => pointMaps.get(item.key)?.get(label) ?? 0),
   );
-  const leftMaxValue = yMax ?? Math.max(...leftValues, 1);
+  const rawLeftMaxValue = yMax ?? Math.max(...leftValues, 1);
+  let leftMaxValue = rawLeftMaxValue;
+  let leftTickValues = [0, leftMaxValue * 0.25, leftMaxValue * 0.5, leftMaxValue * 0.75, leftMaxValue];
+  if (yTickMode === "thousands-rounded") {
+    const segments = 4;
+    const rawStep = rawLeftMaxValue / segments;
+    const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
+    leftMaxValue = step * segments;
+    leftTickValues = Array.from({ length: segments + 1 }, (_, index) => index * step);
+  }
   const resolvedRightYMax = rightYMax ?? Math.max(...rightValues, 1);
   const maxBottomLabels = 8;
   const bottomLabelStep =
@@ -153,10 +189,10 @@ export function TrendChart({
     (bucketAnnotations || []).map((annotation) => [annotation.label, annotation.text]),
   );
   const padding = {
-    top: annotationMap.size ? 34 : 20,
+    top: annotationMap.size ? 34 : compactY ? 6 : 20,
     right: hasRightAxis ? 58 : 20,
-    bottom: 42,
-    left: 52,
+    bottom: compactY ? 22 : 42,
+    left: leftPadding,
   };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
@@ -167,12 +203,11 @@ export function TrendChart({
   return (
     <div className="trend-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend chart">
-        {[0, 1, 2, 3, 4].map((grid) => {
-          const ratio = grid / 4;
+        {leftTickValues.map((value) => {
+          const ratio = leftMaxValue > 0 ? value / leftMaxValue : 0;
           const y = padding.top + plotHeight - plotHeight * ratio;
-          const value = leftMaxValue * ratio;
           return (
-            <g key={grid}>
+            <g key={value}>
               <line
                 x1={padding.left}
                 x2={padding.left + plotWidth}
@@ -180,7 +215,13 @@ export function TrendChart({
                 y2={y}
                 className="chart-grid"
               />
-              <text x={padding.left - 8} y={y + 4} textAnchor="end" className="chart-axis-label">
+              <text
+                x={padding.left - 8}
+                y={y + 4}
+                textAnchor="end"
+                className="chart-axis-label"
+                style={{ fontSize: `${axisLabelSize}px` }}
+              >
                 {yFormatter(value)}
               </text>
               {hasRightAxis ? (
@@ -189,6 +230,7 @@ export function TrendChart({
                   y={y + 4}
                   textAnchor="end"
                   className="chart-axis-label"
+                  style={{ fontSize: `${axisLabelSize}px` }}
                 >
                   {rightYFormatter(resolvedRightYMax * ratio)}
                 </text>
@@ -200,13 +242,30 @@ export function TrendChart({
         {barSeries.map((item, seriesIndex) =>
           labels.map((label, index) => {
             const value = pointMaps.get(item.key)?.get(label) ?? 0;
-            const groupWidth = Math.min(46, xStep * 0.66 || 46);
-            const barWidth = Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
+            const groupWidth = Math.min(barMaxWidth, xStep * barGroupWidthFactor || barMaxWidth);
+            const stackedSeries = stackBars
+              ? barSeries.filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+              : [];
+            const axisSeriesIndex = stackBars
+              ? stackedSeries.findIndex((candidate) => candidate.key === item.key)
+              : seriesIndex;
+            const barWidth = stackBars
+              ? Math.max(groupWidth - 4, 10)
+              : Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
             const groupStart = padding.left + index * xStep - groupWidth / 2;
-            const x = groupStart + seriesIndex * (barWidth + 6);
+            const x = stackBars
+              ? padding.left + index * xStep - barWidth / 2
+              : groupStart + seriesIndex * (barWidth + 6);
             const axisMax = item.axis === "right" ? resolvedRightYMax : leftMaxValue;
-            const barHeight = (value / axisMax) * plotHeight;
-            const y = padding.top + plotHeight - barHeight;
+            const baseValue = stackBars
+              ? stackedSeries
+                  .slice(0, Math.max(axisSeriesIndex, 0))
+                  .reduce((sum, candidate) => sum + (pointMaps.get(candidate.key)?.get(label) ?? 0), 0)
+              : 0;
+            const barHeight = axisMax > 0 ? (value / axisMax) * plotHeight : 0;
+            const y = stackBars
+              ? padding.top + plotHeight - ((baseValue + value) / axisMax) * plotHeight
+              : padding.top + plotHeight - barHeight;
             return (
               <rect
                 key={`${item.key}-${label}`}
@@ -214,7 +273,7 @@ export function TrendChart({
                 y={y}
                 width={barWidth}
                 height={barHeight}
-                rx={6}
+                rx={stackBars ? 2 : 6}
                 fill={seriesColor(item.key)}
                 opacity="0.78"
               />
@@ -284,6 +343,7 @@ export function TrendChart({
               x={x}
               y={annotationY}
               className="chart-axis-label chart-axis-label--annotation"
+              style={{ fontSize: `${annotationLabelSize}px` }}
             >
               {annotation}
             </text>
@@ -291,14 +351,23 @@ export function TrendChart({
         })}
 
         {labels.map((label, index) => {
+          const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
           const shouldShowLabel = isLastLabel || index % bottomLabelStep === 0;
           if (!shouldShowLabel) {
             return null;
           }
           const x = padding.left + index * xStep;
+          const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
           return (
-            <text key={label} x={x} y={height - 14} className="chart-axis-label chart-axis-label--bottom">
+            <text
+              key={label}
+              x={x}
+              y={height - 14}
+              textAnchor={textAnchor}
+              className="chart-axis-label chart-axis-label--bottom"
+              style={{ fontSize: `${bottomLabelSize}px` }}
+            >
               {label}
             </text>
           );
