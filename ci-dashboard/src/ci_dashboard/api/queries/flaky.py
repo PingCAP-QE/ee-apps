@@ -9,6 +9,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import (
     CommonFilters,
     MAX_RANKING_LIMIT,
+    branch_match_expr,
     bucket_expr,
     filter_complete_week_rows,
     failure_like_expr,
@@ -1283,9 +1284,7 @@ def _build_build_where(
         params["repo"] = filters.repo
 
     if filters.branch:
-        conditions.append(
-            f"COALESCE(NULLIF({prefix}target_branch, ''), {prefix}base_ref) = :branch"
-        )
+        conditions.append(branch_match_expr(table_alias))
         params["branch"] = filters.branch
 
     if filters.job_name:
