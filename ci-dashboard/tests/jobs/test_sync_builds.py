@@ -4,7 +4,6 @@ from datetime import datetime
 import pytest
 from sqlalchemy import text
 
-import ci_dashboard.jobs.sync_builds as sync_builds_module
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_builds import (
@@ -382,7 +381,7 @@ def test_sync_builds_marks_failure_state_on_fetch_error(sqlite_engine, monkeypat
     def _boom(*_args, **_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(sync_builds_module, "fetch_source_rows", _boom)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_builds.fetch_source_rows", _boom)
 
     with pytest.raises(RuntimeError, match="boom"):
         run_sync_builds(sqlite_engine, settings)

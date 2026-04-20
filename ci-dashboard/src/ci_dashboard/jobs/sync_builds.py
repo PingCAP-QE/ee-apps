@@ -347,6 +347,8 @@ def _required(mapping: Mapping[str, Any], *keys: str) -> Any:
 
 def _get_first(mapping: Mapping[str, Any], *keys: str) -> Any:
     for key in keys:
+        if not isinstance(key, str):
+            continue
         if key in mapping:
             return mapping[key]
     return None
