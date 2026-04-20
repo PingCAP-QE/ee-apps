@@ -132,16 +132,16 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			name: "AlphaPromoteToGA",
 			pages: [][]string{
 				{
-					"v26.4.2-alpha",
+					"v26.4.0-alpha",
 				},
 			},
-			expected: "v26.4.2",
+			expected: "v26.4.0",
 		},
 		{
 			name: "AlphaPromoteToGACommitBehind",
 			pages: [][]string{
 				{
-					"v26.4.2-alpha",
+					"v26.4.2",
 				},
 			},
 			compareStatus: "behind",
