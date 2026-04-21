@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime
+from urllib import error as urllib_error
 
+import pytest
 from sqlalchemy import text
 
 from ci_dashboard.jobs.sync_pods import _load_target_namespaces
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.state_store import get_job_state
-from ci_dashboard.jobs.sync_pods import PodMetadataSnapshot, run_sync_pods
+from ci_dashboard.jobs.sync_pods import (
+    PodMetadataSnapshot,
+    _extract_build_number_from_jenkins_label,
+    _get_json,
+    _post_json,
+    run_sync_pods,
+)
 
 
 def _settings(batch_size: int = 100) -> Settings:
@@ -43,6 +51,61 @@ def _pod_metadata(
         annotations=annotations or {},
         observed_at=datetime(2026, 4, 21, 9, 45, 0),
     )
+
+
+class _FakeHTTPResponse:
+    def __init__(self, body: str) -> None:
+        self._body = body.encode("utf-8")
+
+    def __enter__(self) -> _FakeHTTPResponse:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def test_post_json_retries_transient_url_errors(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_urlopen(request, timeout=0, context=None):
+        del request, timeout, context
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise urllib_error.URLError("temporary")
+        return _FakeHTTPResponse('{"ok": true}')
+
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods.urllib_request.urlopen", fake_urlopen)
+
+    assert _post_json("https://logging.googleapis.com/v2/entries:list", {"foo": "bar"}, headers={}) == {
+        "ok": True
+    }
+    assert calls["count"] == 3
+
+
+def test_get_json_wraps_invalid_json_response(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods.urllib_request.urlopen",
+        lambda request, timeout=0, context=None: _FakeHTTPResponse("<html>temporarily unavailable</html>"),
+    )
+
+    with pytest.raises(RuntimeError, match="Kubernetes API returned invalid JSON"):
+        _get_json("https://kubernetes.invalid/api/v1/pods", headers={}, ca_file=None)
+
+
+def test_extract_build_number_from_jenkins_label_requires_non_numeric_suffix() -> None:
+    assert _extract_build_number_from_jenkins_label(
+        "idb_pull_integration_realcluster_test_next_gen_1029-kz725"
+    ) == "1029"
+    assert _extract_build_number_from_jenkins_label(
+        "idb_pull_integration_realcluster_test_next_gen_1029-12345"
+    ) is None
+    assert _extract_build_number_from_jenkins_label(
+        "idb_pull_integration_realcluster_test_next_gen_1029"
+    ) is None
 
 
 def test_load_target_namespaces_defaults_to_ci_namespaces_for_apps_namespace(

@@ -4,6 +4,7 @@ import json
 import os
 import re
 import ssl
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -50,6 +51,9 @@ DEFAULT_POD_EVENT_NAMESPACES = (
 )
 
 NUMERIC_SEGMENT_RE = re.compile(r"^\d+$")
+RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+API_RETRY_ATTEMPTS = 3
+API_RETRY_BASE_DELAY_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -315,6 +319,49 @@ def _get_google_access_token() -> str:
     raise RuntimeError("Metadata server token response missing access_token")
 
 
+def _sleep_before_retry(attempt: int) -> None:
+    time.sleep(API_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)))
+
+
+def _decode_json_object(body: bytes, *, error_context: str) -> dict[str, Any]:
+    decoded = body.decode("utf-8", errors="replace")
+    try:
+        payload = json.loads(decoded)
+    except json.JSONDecodeError as exc:
+        snippet = " ".join(decoded.split())
+        if snippet == "":
+            snippet = "<empty body>"
+        raise RuntimeError(f"{error_context} returned invalid JSON: {snippet[:200]}") from exc
+    if isinstance(payload, dict):
+        return payload
+    raise RuntimeError(f"{error_context} response is not an object")
+
+
+def _request_json(
+    request: urllib_request.Request,
+    *,
+    timeout: int,
+    error_context: str,
+    context: ssl.SSLContext | None = None,
+) -> dict[str, Any]:
+    for attempt in range(1, API_RETRY_ATTEMPTS + 1):
+        try:
+            with urllib_request.urlopen(request, timeout=timeout, context=context) as response:
+                return _decode_json_object(response.read(), error_context=error_context)
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            if attempt < API_RETRY_ATTEMPTS and exc.code in RETRYABLE_HTTP_STATUS_CODES:
+                _sleep_before_retry(attempt)
+                continue
+            raise RuntimeError(f"{error_context} request failed: HTTP {exc.code}: {body}") from exc
+        except urllib_error.URLError as exc:
+            if attempt < API_RETRY_ATTEMPTS:
+                _sleep_before_retry(attempt)
+                continue
+            raise RuntimeError(f"{error_context} request failed: {exc.reason}") from exc
+    raise AssertionError("unreachable")
+
+
 def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
     request = urllib_request.Request(
         url,
@@ -327,17 +374,7 @@ def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> di
         },
         data=json.dumps(payload).encode("utf-8"),
     )
-    try:
-        with urllib_request.urlopen(request, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            if isinstance(data, dict):
-                return data
-            raise RuntimeError("Logging API response is not an object")
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Logging API request failed: HTTP {exc.code}: {body}") from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"Logging API request failed: {exc.reason}") from exc
+    return _request_json(request, timeout=30, error_context="Logging API")
 
 
 def _normalize_logging_entry(entry: dict[str, Any]) -> NormalizedPodEvent | None:
@@ -988,17 +1025,12 @@ def _get_json(url: str, *, headers: dict[str, str], ca_file: str | None) -> dict
         },
     )
     context = ssl.create_default_context(cafile=ca_file) if ca_file else None
-    try:
-        with urllib_request.urlopen(request, timeout=30, context=context) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            if isinstance(payload, dict):
-                return payload
-            raise RuntimeError("Kubernetes API response is not an object")
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Kubernetes API request failed: HTTP {exc.code}: {body}") from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"Kubernetes API request failed: {exc.reason}") from exc
+    return _request_json(
+        request,
+        timeout=30,
+        error_context="Kubernetes API",
+        context=context,
+    )
 
 
 def _extract_jenkins_build_url_key_from_metadata(pod_metadata: PodMetadataSnapshot) -> str | None:
@@ -1066,10 +1098,16 @@ def _extract_build_number_from_jenkins_label(value: str | None) -> str | None:
     if raw is None:
         return None
     segments = [segment for segment in re.split(r"[_-]+", raw) if segment]
-    for segment in reversed(segments):
-        if NUMERIC_SEGMENT_RE.fullmatch(segment):
-            return segment
-    return None
+    if len(segments) < 2:
+        return None
+    candidate = segments[-2]
+    suffix = segments[-1]
+    if not NUMERIC_SEGMENT_RE.fullmatch(candidate):
+        return None
+    # Be conservative for fallback matching: a trailing numeric suffix is ambiguous.
+    if NUMERIC_SEGMENT_RE.fullmatch(suffix):
+        return None
+    return candidate
 
 
 def _upsert_pod_lifecycle(connection: Connection, rows: list[dict[str, Any]]) -> None:
