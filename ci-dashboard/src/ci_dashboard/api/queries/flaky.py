@@ -847,7 +847,7 @@ def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> 
 def _case_cloud_phase_expr(column_name: str) -> str:
     return (
         "CASE "
-        f"WHEN COALESCE({column_name}, '') LIKE 'https://prow.tidb.net/jenkins/%' THEN 'GCP' "
+        f"WHEN COALESCE({column_name}, '') LIKE 'https://prow.tidb.net/%' THEN 'GCP' "
         "ELSE 'IDC' "
         "END"
     )

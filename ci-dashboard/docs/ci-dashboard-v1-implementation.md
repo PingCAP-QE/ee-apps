@@ -248,7 +248,7 @@ Field derivation rules:
 - `run_seconds = completion_time - pending_time` when both exist
 - `total_seconds = completion_time - start_time` when both exist
 - `cloud_phase`:
-  - `GCP` when `url` starts with `https://prow.tidb.net/jenkins/`
+  - `GCP` when `url` starts with `https://prow.tidb.net/`
   - `IDC` otherwise
 - `failure_category`:
   - `FLAKY_TEST` when `is_flaky = 1 OR is_retry_loop = 1`

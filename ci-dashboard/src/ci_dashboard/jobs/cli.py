@@ -18,6 +18,7 @@ from ci_dashboard.jobs.sync_pr_events import (
     run_sync_pr_events_for_time_window,
 )
 from ci_dashboard.jobs.sync_flaky_issues import run_sync_flaky_issues
+from ci_dashboard.jobs.sync_pods import run_sync_pods
 
 
 def _parse_iso_date(value: str) -> date:
@@ -37,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "sync-flaky-issues",
         help="Sync flaky GitHub issues into ci_l1_flaky_issues",
+    )
+    subparsers.add_parser(
+        "sync-pods",
+        help="Sync Kubernetes pod lifecycle events into ci_l1_pod_* tables",
     )
     subparsers.add_parser(
         "refresh-build-derived",
@@ -114,6 +119,15 @@ def main() -> int:
         summary = run_sync_flaky_issues(engine, settings)
         logging.getLogger(__name__).info(
             "sync-flaky-issues finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
+    if args.command == "sync-pods":
+        engine = build_engine(settings)
+        summary = run_sync_pods(engine, settings)
+        logging.getLogger(__name__).info(
+            "sync-pods finished",
             extra={"summary": summary.__dict__},
         )
         return 0

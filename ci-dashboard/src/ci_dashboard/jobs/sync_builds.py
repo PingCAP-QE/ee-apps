@@ -10,7 +10,11 @@ from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import NormalizedBuildRow, SyncBuildsSummary
-from ci_dashboard.jobs.build_url_matcher import classify_cloud_phase, normalize_build_url
+from ci_dashboard.jobs.build_url_matcher import (
+    classify_build_system,
+    classify_cloud_phase,
+    normalize_build_url,
+)
 from ci_dashboard.jobs.state_store import (
     get_job_state,
     mark_job_failed,
@@ -82,6 +86,7 @@ _UPSERT_COLUMNS = (
     "head_sha",
     "target_branch",
     "cloud_phase",
+    "build_system",
     "is_flaky",
     "is_retry_loop",
     "has_flaky_case_match",
@@ -204,6 +209,7 @@ def map_build_row(row: Mapping[str, Any]) -> NormalizedBuildRow:
         head_sha=spec_fields["head_sha"],
         target_branch=None,
         cloud_phase=classify_cloud_phase(url),
+        build_system=classify_build_system(url),
         is_flaky=False,
         is_retry_loop=False,
         has_flaky_case_match=False,

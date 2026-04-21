@@ -5,6 +5,7 @@ from ci_dashboard.common.models import (
     RefreshBuildDerivedSummary,
     SyncBuildsSummary,
     SyncFlakyIssuesSummary,
+    SyncPodsSummary,
     SyncPrEventsSummary,
 )
 from ci_dashboard.jobs import cli
@@ -79,6 +80,23 @@ def test_cli_sync_flaky_issues_dispatch(monkeypatch) -> None:
     assert cli.main() == 0
     assert called["engine"] == "engine"
     assert isinstance(called["summary"], SyncFlakyIssuesSummary)
+
+
+def test_cli_sync_pods_dispatch(monkeypatch) -> None:
+    called: dict[str, object] = {}
+    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
+    monkeypatch.setattr(cli, "configure_logging", lambda level: None)
+    monkeypatch.setattr(
+        cli,
+        "run_sync_pods",
+        lambda engine, settings: called.setdefault("summary", SyncPodsSummary(event_rows_written=5)),
+    )
+    monkeypatch.setattr("sys.argv", ["ci-dashboard", "sync-pods"])
+
+    assert cli.main() == 0
+    assert called["engine"] == "engine"
+    assert isinstance(called["summary"], SyncPodsSummary)
 
 
 def test_cli_refresh_build_derived_dispatch(monkeypatch) -> None:

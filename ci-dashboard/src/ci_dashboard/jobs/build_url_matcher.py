@@ -9,7 +9,11 @@ URL_PREFIXES = (
 
 IDC_HOST = "https://do.pingcap.net"
 GCP_HOST = "https://prow.tidb.net"
-GCP_PREFIX = "https://prow.tidb.net/jenkins/"
+PROW_NATIVE_PREFIX = "https://prow.tidb.net/view/gs/"
+JENKINS_PREFIXES = (
+    "https://prow.tidb.net/jenkins/",
+    "https://do.pingcap.net/",
+)
 TRAILING_BUILD_NUMBER_RE = re.compile(r"/\d+$")
 
 
@@ -39,9 +43,19 @@ def normalized_job_path_from_key(normalized_build_key: str | None) -> str | None
 
 
 def classify_cloud_phase(url: str | None) -> str:
-    if url and url.startswith(GCP_PREFIX):
+    if url and url.startswith(GCP_HOST):
         return "GCP"
     return "IDC"
+
+
+def classify_build_system(url: str | None) -> str:
+    if not url:
+        return "UNKNOWN"
+    if url.startswith(PROW_NATIVE_PREFIX):
+        return "PROW_NATIVE"
+    if any(url.startswith(prefix) for prefix in JENKINS_PREFIXES):
+        return "JENKINS"
+    return "UNKNOWN"
 
 
 def build_job_url(normalized_job_path: str | None, cloud_phase: str | None) -> str | None:

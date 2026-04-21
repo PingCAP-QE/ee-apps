@@ -38,6 +38,7 @@ class NormalizedBuildRow:
     head_sha: str | None
     target_branch: str | None
     cloud_phase: str
+    build_system: str
     is_flaky: bool
     is_retry_loop: bool
     has_flaky_case_match: bool
@@ -102,3 +103,13 @@ class SyncFlakyIssuesSummary:
     branch_fetch_attempted: int = 0
     branch_fetch_failed: int = 0
     last_ticket_updated_at: str | None = None
+
+
+@dataclass
+class SyncPodsSummary:
+    batches_processed: int = 0
+    source_rows_scanned: int = 0
+    event_rows_written: int = 0
+    lifecycle_rows_upserted: int = 0
+    pods_touched: int = 0
+    last_receive_timestamp: str | None = None
