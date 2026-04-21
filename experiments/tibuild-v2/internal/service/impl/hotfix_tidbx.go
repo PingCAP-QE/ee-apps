@@ -347,7 +347,7 @@ func (s *hotfixsrvc) getLatestNextgenReleaseBranchForCommit(ctx context.Context,
 	}
 
 	releaseBranches := slices.DeleteFunc(branchNames, func(b string) bool {
-		return releaseNextgenBranchPattern.MatchString(b)
+		return !releaseNextgenBranchPattern.MatchString(b)
 	})
 	if len(releaseBranches) == 0 {
 		return ""
