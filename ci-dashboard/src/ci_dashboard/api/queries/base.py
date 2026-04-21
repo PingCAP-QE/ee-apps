@@ -149,6 +149,14 @@ def builds_table_expr(
     *,
     alias: str = "b",
 ) -> str:
+    """Build the ci_l1_builds table reference with the narrowest useful TiDB hint.
+
+    We intentionally keep FORCE INDEX here because several page-level time-range
+    aggregations regressed to table scans in TiDB without a strong hint. This
+    helper centralizes the tradeoff: use the repo+time index when the query can
+    narrow by repo, otherwise fall back to the generic time-range index. SQLite
+    keeps the plain table reference so local tests stay portable.
+    """
     table = f"ci_l1_builds {alias}"
     if connection.dialect.name == "sqlite":
         return table
