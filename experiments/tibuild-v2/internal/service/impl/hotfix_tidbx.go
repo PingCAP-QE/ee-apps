@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,9 +22,10 @@ type tidbxGitTagMeta struct {
 }
 
 var (
-	legacyTidbxTagPattern        = regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
-	alphaTidbxTagPattern         = regexp.MustCompile(`^(v\d+\.\d+\.\d+)-alpha$`)
-	releaseNextgenBranchPattern  = regexp.MustCompile(`^release-nextgen-(\d{4})(\d{2})(?:\d{2})?$`)
+	legacyTidbxTagPattern       = regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
+	alphaTidbxTagPattern        = regexp.MustCompile(`^(v\d+\.\d+\.\d+)-alpha$`)
+	releaseNextgenBranchPattern = regexp.MustCompile(`^release-nextgen-(\d{4})(\d{2})(?:\d{2})?$`)
+	releaseNextgenDailyBranch   = regexp.MustCompile(`^release-nextgen-\d{8}$`)
 )
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
@@ -224,6 +226,13 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
+	headBranch := ""
+	if branch != nil {
+		headBranch = *branch
+	} else {
+		headBranch = s.getLatestNextgenReleaseBranchForCommit(ctx, owner, repo, commitSHA)
+	}
+
 	if len(newTags) > 0 {
 		sort.Slice(newTags, func(i, j int) bool {
 			return semver.Compare(newTags[i], newTags[j]) > 0
@@ -281,8 +290,8 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		return latestAlphaBase, nil
 	}
 
-	// If only legacy tags exist, keep legacy bump behavior.
-	if len(legacyTags) > 0 {
+	// If only legacy tags exist and the commit's head branch is legacy style, keep legacy bump behavior.
+	if len(legacyTags) > 0 && releaseNextgenDailyBranch.MatchString(headBranch) {
 		sort.Slice(legacyTags, func(i, j int) bool {
 			if legacyTags[i].yearMonth != legacyTags[j].yearMonth {
 				return legacyTags[i].yearMonth > legacyTags[j].yearMonth
@@ -314,8 +323,8 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 
 	// If there are no tags, and caller provides a release-nextgen branch in new style,
 	// bootstrap the first patch version: vYY.M.0.
-	if branch != nil {
-		if bootstrapTag, ok := buildBootstrapTagFromReleaseBranch(*branch); ok {
+	if headBranch != "" {
+		if bootstrapTag, ok := buildBootstrapTagFromReleaseBranch(headBranch); ok {
 			return bootstrapTag, nil
 		}
 	}
@@ -324,6 +333,26 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		Code:    http.StatusBadRequest,
 		Message: "no existing tags found matching new-style/legacy patterns, and branch does not match bootstrap rule release-nextgen-YYYYMM[/DD]",
 	}
+}
+
+func (s *hotfixsrvc) getLatestNextgenReleaseBranchForCommit(ctx context.Context, owner, repo, commitSHA string) string {
+	ret, _, err := s.ghClient.Repositories.ListBranchesHeadCommit(ctx, owner, repo, commitSHA)
+	if err != nil {
+		s.logger.Err(err).Msg("fetch commit's head branches failed")
+	}
+
+	var branchNames []string
+	for _, b := range ret {
+		branchNames = append(branchNames, b.GetName())
+	}
+
+	releaseBranches := slices.DeleteFunc(branchNames, func(b string) bool {
+		return releaseNextgenBranchPattern.MatchString(b)
+	})
+	if len(releaseBranches) == 0 {
+		return ""
+	}
+	return slices.Max(releaseBranches)
 }
 
 func parseTidbxAlphaTag(tag string) (string, bool) {
