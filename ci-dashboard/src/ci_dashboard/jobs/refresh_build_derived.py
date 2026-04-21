@@ -189,28 +189,31 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
             "pending_target_pr_event_updated_at": None,
             "pending_target_case_report_time": None,
         }
-    return {
-        "last_processed_build_id": _normalize_optional_int(
-            state.watermark.get("last_processed_build_id"),
-            default=0,
-        ),
-        "last_processed_pr_event_updated_at": _normalize_optional_string(
-            state.watermark.get("last_processed_pr_event_updated_at")
-        ),
-        "last_processed_case_report_time": _normalize_optional_string(
-            state.watermark.get("last_processed_case_report_time")
-        ),
-        "pending_refresh": bool(state.watermark.get("pending_refresh", False)),
-        "pending_target_build_id": _normalize_optional_int(
-            state.watermark.get("pending_target_build_id")
-        ),
-        "pending_target_pr_event_updated_at": _normalize_optional_string(
-            state.watermark.get("pending_target_pr_event_updated_at")
-        ),
-        "pending_target_case_report_time": _normalize_optional_string(
-            state.watermark.get("pending_target_case_report_time")
-        ),
-    }
+    try:
+        return {
+            "last_processed_build_id": _normalize_optional_int(
+                state.watermark.get("last_processed_build_id"),
+                default=0,
+            ),
+            "last_processed_pr_event_updated_at": _normalize_optional_string(
+                state.watermark.get("last_processed_pr_event_updated_at")
+            ),
+            "last_processed_case_report_time": _normalize_optional_string(
+                state.watermark.get("last_processed_case_report_time")
+            ),
+            "pending_refresh": bool(state.watermark.get("pending_refresh", False)),
+            "pending_target_build_id": _normalize_optional_int(
+                state.watermark.get("pending_target_build_id")
+            ),
+            "pending_target_pr_event_updated_at": _normalize_optional_string(
+                state.watermark.get("pending_target_pr_event_updated_at")
+            ),
+            "pending_target_case_report_time": _normalize_optional_string(
+                state.watermark.get("pending_target_case_report_time")
+            ),
+        }
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {JOB_NAME} watermark: {state.watermark!r}") from exc
 
 
 def _load_selection_watermarks(connection: Connection) -> dict[str, Any]:
