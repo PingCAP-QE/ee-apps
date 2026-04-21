@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS ci_l1_builds (
   head_sha CHAR(40) NULL,
   target_branch VARCHAR(255) NULL,
   cloud_phase VARCHAR(16) NOT NULL DEFAULT 'IDC',
+  build_system VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',
   is_flaky TINYINT(1) NOT NULL DEFAULT 0,
   is_retry_loop TINYINT(1) NOT NULL DEFAULT 0,
   has_flaky_case_match TINYINT(1) NOT NULL DEFAULT 0,
@@ -43,5 +44,6 @@ CREATE TABLE IF NOT EXISTS ci_l1_builds (
   KEY idx_ci_l1_builds_repo_time (repo_full_name, start_time),
   KEY idx_ci_l1_builds_repo_branch_time (repo_full_name, target_branch, start_time),
   KEY idx_ci_l1_builds_repo_pr_job_sha (repo_full_name, pr_number, job_name, head_sha, start_time),
+  KEY idx_ci_l1_builds_pod_name_time (pod_name, start_time),
   KEY idx_ci_l1_builds_normalized_build_key (normalized_build_key(768))
 );

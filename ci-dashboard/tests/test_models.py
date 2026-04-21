@@ -38,6 +38,7 @@ def test_normalized_build_row_as_db_params_converts_booleans() -> None:
         head_sha=None,
         target_branch=None,
         cloud_phase="IDC",
+        build_system="JENKINS",
         is_flaky=False,
         is_retry_loop=True,
         has_flaky_case_match=False,

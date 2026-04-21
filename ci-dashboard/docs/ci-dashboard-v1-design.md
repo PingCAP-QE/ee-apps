@@ -517,7 +517,7 @@ Notes:
 
 - `target_branch` is null for builds that cannot be aligned to a PR target branch
 - `cloud_phase` is a derived business field using the V1 rule below:
-  - `GCP` when `url` starts with `https://prow.tidb.net/jenkins/`
+  - `GCP` when `url` starts with `https://prow.tidb.net/`
   - `IDC` for all other URLs
 - `has_flaky_case_match` is a stricter evidence field derived from `problem_case_runs` by:
   - normalized `build_url` match
@@ -1116,7 +1116,7 @@ Operational validation:
 | PR import scope | build-linked PRs only | Keeps V1 focused on CI data instead of full PR workflow analytics |
 | Imported PR event types | committed + exact retest commands, plus one synthetic `pr_snapshot` row per tracked PR | Keep the event scope minimal while preserving branch metadata for every tracked PR |
 | Retest parsing rule | exact command match, not substring match | Avoid counting bot instruction comments as actual retest actions |
-| `cloud_phase` rule in V1 | `GCP` for URLs starting with `https://prow.tidb.net/jenkins/`, otherwise `IDC` | Matches the current environment split needed for migration comparison |
+| `cloud_phase` rule in V1 | `GCP` for URLs starting with `https://prow.tidb.net/`, otherwise `IDC` | Keeps environment classification aligned with actual prow-hosted GCP execution, including Prow-native jobs |
 | `failure_category` rule in V1 | set `FLAKY_TEST` from build-level pilot signals (`is_flaky` / `is_retry_loop`); leave unsupported cases null | Strict case-level matching alone is too narrow for V1 coverage |
 | Flaky case evidence in V1 | store `has_flaky_case_match` separately from `failure_category` | Preserve stricter evidence without replacing broader pilot coverage |
 | Update job cadence | hourly | Sufficient for V1 dashboard freshness |

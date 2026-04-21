@@ -90,7 +90,7 @@ The validation cases below are derived from:
 | `DV-B03` | `BR-01` is_pr_build | `is_pr_build = 1` iff `pr_number IS NOT NULL` | SQL mismatch query | zero mismatches |
 | `DV-B04` | `BR-01` timing fields | `queue_wait_seconds`, `run_seconds`, `total_seconds` match timestamp deltas where inputs exist | sampled SQL recomputation | mismatch count is zero or explained by null input fields |
 | `DV-B05` | `BR-02` normalized_build_key | URL normalization follows design | sampled URL normalization check across GCP and IDC URLs | sampled outputs match expected normalized path |
-| `DV-B06` | `BR-03` cloud_phase | `prow.tidb.net/jenkins/` => `GCP`, otherwise `IDC` | SQL classification check | zero mismatches |
+| `DV-B06` | `BR-03` cloud_phase | any `prow.tidb.net` URL => `GCP`, otherwise `IDC` | SQL classification check | zero mismatches |
 | `DV-B07` | uniqueness | one row per `prowJobId` | group-by duplicate check | zero duplicate `source_prow_job_id` |
 | `DV-B08` | freshness shape | newest `ci_l1_builds.start_time` tracks newest source `startTime` within expected lag | max timestamp comparison | lag is acceptable and explainable |
 
@@ -405,8 +405,8 @@ HAVING COUNT(*) > 1;
 
 SELECT COUNT(*) AS cloud_phase_mismatch
 FROM ci_l1_builds
-WHERE (cloud_phase = 'GCP' AND url NOT LIKE 'https://prow.tidb.net/jenkins/%')
-   OR (cloud_phase = 'IDC' AND url LIKE 'https://prow.tidb.net/jenkins/%');
+WHERE (cloud_phase = 'GCP' AND url NOT LIKE 'https://prow.tidb.net/%')
+   OR (cloud_phase = 'IDC' AND url LIKE 'https://prow.tidb.net/%');
 
 SELECT MAX(startTime) AS source_max_start_time FROM prow_jobs;
 SELECT MAX(start_time) AS target_max_start_time FROM ci_l1_builds;

@@ -98,6 +98,7 @@ def test_map_build_row_derives_v1_fields() -> None:
     assert build.pr_number == 123
     assert build.normalized_build_key == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299"
     assert build.cloud_phase == "GCP"
+    assert build.build_system == "JENKINS"
     assert build.head_sha == "0123456789abcdef0123456789abcdef01234567"
     assert build.queue_wait_seconds == 120
     assert build.run_seconds == 780
@@ -128,6 +129,29 @@ def test_map_build_row_allows_missing_optional_status_fields() -> None:
     assert build.build_id is None
     assert build.pod_name is None
     assert build.cloud_phase == "IDC"
+    assert build.build_system == "JENKINS"
+
+
+def test_map_build_row_recognizes_prow_native_gcp_jobs() -> None:
+    row = {
+        "id": 202,
+        "prowJobId": "job-202",
+        "namespace": "prow",
+        "jobName": "pull-check-deps",
+        "type": "presubmit",
+        "state": "success",
+        "org": "pingcap",
+        "repo": "tidb",
+        "url": "https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/pingcap_tidb/67929/pull-check-deps/2046433013478199296",
+        "startTime": "2026-04-13T10:00:00Z",
+        "status": {},
+        "spec": {},
+    }
+
+    build = map_build_row(row)
+
+    assert build.cloud_phase == "GCP"
+    assert build.build_system == "PROW_NATIVE"
 
 
 def test_normalize_build_batch_skips_malformed_rows() -> None:
@@ -266,6 +290,7 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
                 text(
                     """
                     SELECT source_prow_job_id, repo_full_name, is_pr_build, cloud_phase, normalized_build_key
+                        , build_system
                     FROM ci_l1_builds
                     ORDER BY source_prow_row_id
                     """
@@ -278,7 +303,9 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
     assert rows[0]["repo_full_name"] == "pingcap/tidb"
     assert rows[0]["is_pr_build"] == 1
     assert rows[0]["cloud_phase"] == "GCP"
+    assert rows[0]["build_system"] == "JENKINS"
     assert rows[1]["cloud_phase"] == "IDC"
+    assert rows[1]["build_system"] == "JENKINS"
     assert rows[1]["normalized_build_key"] == "/jenkins/job/pingcap/job/tidb/job/nightly/2"
     assert state is not None
     assert state.last_status == "succeeded"
