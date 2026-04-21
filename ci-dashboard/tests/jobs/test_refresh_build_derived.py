@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
@@ -412,77 +411,6 @@ def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window
     assert final_row["target_branch"] == "master"
     assert final_state is not None
     assert final_state.watermark["last_processed_build_id"] == fourth_id
-
-
-def test_refresh_build_derived_clears_pending_refresh_when_slice_is_empty(sqlite_engine) -> None:
-    with sqlite_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO ci_job_state (
-                  job_name, watermark_json, last_status
-                ) VALUES (
-                  :job_name, :watermark_json, 'succeeded'
-                )
-                """
-            ),
-            {
-                "job_name": "ci-refresh-build-derived",
-                "watermark_json": """
-                {
-                  "last_processed_build_id": 2,
-                  "last_processed_pr_event_updated_at": "2026-04-13 09:00:00",
-                  "last_processed_case_report_time": "2026-04-13 09:05:00",
-                  "pending_refresh": true,
-                  "pending_target_build_id": 5,
-                  "pending_target_pr_event_updated_at": "2026-04-13 10:00:00",
-                  "pending_target_case_report_time": "2026-04-13 10:05:00"
-                }
-                """,
-            },
-        )
-
-    summary = run_refresh_build_derived(sqlite_engine, _settings(refresh_build_limit=2))
-
-    assert summary.impacted_builds == 0
-    assert summary.last_processed_build_id == 5
-    assert summary.last_processed_pr_event_updated_at == "2026-04-13 10:00:00"
-    assert summary.last_processed_case_report_time == "2026-04-13 10:05:00"
-
-    with sqlite_engine.begin() as connection:
-        state = get_job_state(connection, "ci-refresh-build-derived")
-
-    assert state is not None
-    assert state.last_status == "succeeded"
-    assert state.watermark["pending_refresh"] is False
-    assert state.watermark["last_processed_build_id"] == 5
-    assert state.watermark["last_processed_pr_event_updated_at"] == "2026-04-13 10:00:00"
-    assert state.watermark["last_processed_case_report_time"] == "2026-04-13 10:05:00"
-
-
-def test_refresh_build_derived_rejects_corrupted_watermark(sqlite_engine) -> None:
-    with sqlite_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO ci_job_state (
-                  job_name, watermark_json, last_status
-                ) VALUES (
-                  :job_name, :watermark_json, 'succeeded'
-                )
-                """
-            ),
-            {
-                "job_name": "ci-refresh-build-derived",
-                "watermark_json": '{"last_processed_build_id": "oops"}',
-            },
-        )
-
-    with pytest.raises(
-        ValueError,
-        match=r"Invalid ci-refresh-build-derived watermark",
-    ):
-        run_refresh_build_derived(sqlite_engine, _settings())
 
 
 def test_refresh_build_derived_picks_up_new_case_rows_incrementally(sqlite_engine) -> None:

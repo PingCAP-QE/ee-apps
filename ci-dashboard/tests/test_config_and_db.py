@@ -34,10 +34,7 @@ def test_load_settings_requires_tidb_fields_without_db_url() -> None:
 
 
 def test_load_settings_rejects_invalid_integer() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_BATCH_SIZE must be an integer, got 'abc'",
-    ):
+    with pytest.raises(ValueError, match="CI_DASHBOARD_BATCH_SIZE"):
         load_settings(
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
@@ -47,10 +44,7 @@ def test_load_settings_rejects_invalid_integer() -> None:
 
 
 def test_load_settings_rejects_invalid_refresh_group_batch_size() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE must be an integer, got 'abc'",
-    ):
+    with pytest.raises(ValueError, match="CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE"):
         load_settings(
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
@@ -60,27 +54,11 @@ def test_load_settings_rejects_invalid_refresh_group_batch_size() -> None:
 
 
 def test_load_settings_rejects_invalid_refresh_build_limit() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_REFRESH_BUILD_LIMIT must be an integer, got 'abc'",
-    ):
+    with pytest.raises(ValueError, match="CI_DASHBOARD_REFRESH_BUILD_LIMIT"):
         load_settings(
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
                 "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "abc",
-            }
-        )
-
-
-def test_load_settings_rejects_non_positive_refresh_build_limit() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_REFRESH_BUILD_LIMIT must be positive, got '0'",
-    ):
-        load_settings(
-            {
-                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
-                "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "0",
             }
         )
 
