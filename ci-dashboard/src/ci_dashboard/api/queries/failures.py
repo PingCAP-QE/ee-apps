@@ -8,7 +8,9 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.api.queries.base import (
     CommonFilters,
     bucket_expr,
+    builds_table_expr,
     build_common_where,
+    failure_like_expr,
     filter_complete_week_rows,
 )
 
@@ -16,19 +18,21 @@ from ci_dashboard.api.queries.base import (
 def get_failure_category_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
+        failure_like_where = failure_like_expr("b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT
                   {bucket} AS bucket_start,
-                  SUM(CASE WHEN LOWER(b.state) IN ('failure', 'error', 'timeout', 'timed_out', 'aborted')
+                  SUM(CASE WHEN {failure_like_where}
                              AND b.failure_category = 'FLAKY_TEST'
                            THEN 1 ELSE 0 END) AS flaky_test_count,
-                  SUM(CASE WHEN LOWER(b.state) IN ('failure', 'error', 'timeout', 'timed_out', 'aborted')
+                  SUM(CASE WHEN {failure_like_where}
                              AND b.failure_category IS NULL
                            THEN 1 ELSE 0 END) AS unclassified_count
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                 GROUP BY bucket_start
                 ORDER BY bucket_start
@@ -63,18 +67,20 @@ def get_failure_category_trend(engine: Engine, filters: CommonFilters) -> dict[s
 def get_failure_category_share(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        failure_like_where = failure_like_expr("b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT
                   b.cloud_phase,
-                  SUM(CASE WHEN LOWER(b.state) IN ('failure', 'error', 'timeout', 'timed_out', 'aborted')
+                  SUM(CASE WHEN {failure_like_where}
                              AND b.failure_category = 'FLAKY_TEST'
                            THEN 1 ELSE 0 END) AS flaky_test_count,
-                  SUM(CASE WHEN LOWER(b.state) IN ('failure', 'error', 'timeout', 'timed_out', 'aborted')
+                  SUM(CASE WHEN {failure_like_where}
                              AND b.failure_category IS NULL
                            THEN 1 ELSE 0 END) AS unclassified_count
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                 GROUP BY b.cloud_phase
                 ORDER BY b.cloud_phase

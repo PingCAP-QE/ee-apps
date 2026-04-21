@@ -5,7 +5,12 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from ci_dashboard.api.queries.base import CommonFilters, branch_expr, build_common_where
+from ci_dashboard.api.queries.base import (
+    CommonFilters,
+    branch_expr,
+    builds_table_expr,
+    build_common_where,
+)
 
 
 def list_repos(
@@ -15,14 +20,15 @@ def list_repos(
     end_date: date | None = None,
 ) -> dict[str, object]:
     filters = CommonFilters(start_date=start_date, end_date=end_date)
-    where_clause, params = build_common_where(filters)
+    where_clause, params = build_common_where(filters, table_alias="b")
 
     with engine.begin() as connection:
+        builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT DISTINCT repo_full_name
-                FROM ci_l1_builds
+                FROM {builds_table}
                 WHERE {where_clause}
                 ORDER BY repo_full_name
                 """
@@ -45,15 +51,16 @@ def list_branches(
     repo: str | None = None,
 ) -> dict[str, object]:
     filters = CommonFilters(repo=repo)
-    where_clause, params = build_common_where(filters)
-    effective_branch = branch_expr()
+    where_clause, params = build_common_where(filters, table_alias="b")
 
     with engine.begin() as connection:
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        effective_branch = branch_expr("b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT DISTINCT {effective_branch} AS branch_name
-                FROM ci_l1_builds
+                FROM {builds_table}
                 WHERE {where_clause}
                   AND {effective_branch} IS NOT NULL
                   AND {effective_branch} <> ''
@@ -79,14 +86,15 @@ def list_jobs(
     branch: str | None = None,
 ) -> dict[str, object]:
     filters = CommonFilters(repo=repo, branch=branch)
-    where_clause, params = build_common_where(filters)
+    where_clause, params = build_common_where(filters, table_alias="b")
 
     with engine.begin() as connection:
+        builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT DISTINCT job_name
-                FROM ci_l1_builds
+                FROM {builds_table}
                 WHERE {where_clause}
                 ORDER BY job_name
                 """
@@ -104,14 +112,16 @@ def list_jobs(
 
 
 def list_cloud_phases(engine: Engine) -> dict[str, object]:
+    filters = CommonFilters()
     with engine.begin() as connection:
+        builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
-                """
+                f"""
                 SELECT DISTINCT cloud_phase
-                FROM ci_l1_builds
-                WHERE cloud_phase IS NOT NULL
-                  AND cloud_phase <> ''
+                FROM {builds_table}
+                WHERE b.cloud_phase IS NOT NULL
+                  AND b.cloud_phase <> ''
                 ORDER BY cloud_phase
                 """
             )
