@@ -157,6 +157,17 @@ export function formatCompact(value) {
   }).format(value || 0);
 }
 
+export function formatRoundedThousands(value) {
+  const numeric = Number(value || 0);
+  if (numeric === 0) {
+    return "0";
+  }
+  if (Math.abs(numeric) >= 1000) {
+    return `${Math.round(numeric / 1000)}K`;
+  }
+  return formatNumber(numeric);
+}
+
 export function formatPercent(value) {
   return `${Number(value || 0).toFixed(1)}%`;
 }

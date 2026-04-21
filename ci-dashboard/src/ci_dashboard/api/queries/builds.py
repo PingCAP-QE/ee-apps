@@ -9,6 +9,7 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.api.queries.base import (
     CommonFilters,
     branch_expr,
+    builds_table_expr,
     bucket_expr,
     build_common_where,
     filter_complete_week_rows,
@@ -29,6 +30,7 @@ BUILD_TREND_JOB_RANKING_LIMIT = 10
 def get_outcome_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
         success_where = success_expr("b")
         failure_like_where = failure_like_expr("b")
@@ -40,7 +42,7 @@ def get_outcome_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
                   COUNT(*) AS total_count,
                   SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_count,
                   SUM(CASE WHEN {failure_like_where} THEN 1 ELSE 0 END) AS failure_count
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                 GROUP BY bucket_start
                 ORDER BY bucket_start
@@ -84,6 +86,7 @@ def get_outcome_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
 def get_duration_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
         success_where = success_expr("b")
         rows = connection.execute(
@@ -94,7 +97,7 @@ def get_duration_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
                   AVG(CASE WHEN {success_where} THEN b.queue_wait_seconds END) AS queue_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.run_seconds END) AS run_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS total_avg_s
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                   AND b.total_seconds IS NOT NULL
                 GROUP BY bucket_start
@@ -127,7 +130,7 @@ def get_duration_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
                   AVG(CASE WHEN {success_where} THEN b.queue_wait_seconds END) AS queue_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.run_seconds END) AS run_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS total_avg_s
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                   AND b.total_seconds IS NOT NULL
                 """
@@ -155,6 +158,7 @@ def get_duration_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
 def get_cloud_comparison(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         success_where = success_expr("b")
         rows = connection.execute(
             text(
@@ -166,7 +170,7 @@ def get_cloud_comparison(engine: Engine, filters: CommonFilters) -> dict[str, An
                   AVG(CASE WHEN {success_where} THEN b.queue_wait_seconds END) AS queue_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.run_seconds END) AS run_avg_s,
                   AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS total_avg_s
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                 GROUP BY b.cloud_phase
                 ORDER BY b.cloud_phase
@@ -201,6 +205,7 @@ def get_cloud_comparison(engine: Engine, filters: CommonFilters) -> dict[str, An
 def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", "week")
         rows = connection.execute(
             text(
@@ -209,7 +214,7 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
                   {bucket} AS bucket_start,
                   UPPER(COALESCE(b.cloud_phase, '')) AS cloud_phase,
                   COUNT(*) AS build_count
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                   AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
                 GROUP BY bucket_start, UPPER(COALESCE(b.cloud_phase, ''))
@@ -274,6 +279,7 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
 def get_longest_avg_success_jobs(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         success_where = success_expr("b")
         normalized_job_path = _normalized_job_path_expr(connection, "b")
         rows = connection.execute(
@@ -287,7 +293,7 @@ def get_longest_avg_success_jobs(engine: Engine, filters: CommonFilters) -> dict
                     {normalized_job_path} AS normalized_job_path,
                     CASE WHEN {success_where} THEN 1 ELSE 0 END AS success_flag,
                     b.run_seconds
-                  FROM ci_l1_builds b
+                  FROM {builds_table}
                   WHERE {where_clause}
                 ),
                 latest_job_links AS (
@@ -354,6 +360,7 @@ def get_longest_avg_success_jobs(engine: Engine, filters: CommonFilters) -> dict
 def get_lowest_success_rate_jobs(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         success_where = success_expr("b")
         normalized_job_path = _normalized_job_path_expr(connection, "b")
         rows = connection.execute(
@@ -367,7 +374,7 @@ def get_lowest_success_rate_jobs(engine: Engine, filters: CommonFilters) -> dict
                     {normalized_job_path} AS normalized_job_path,
                     CASE WHEN {success_where} THEN 1 ELSE 0 END AS success_flag,
                     b.run_seconds
-                  FROM ci_l1_builds b
+                  FROM {builds_table}
                   WHERE {where_clause}
                 ),
                 latest_job_links AS (
@@ -433,6 +440,7 @@ def get_lowest_success_rate_jobs(engine: Engine, filters: CommonFilters) -> dict
 def get_cloud_repo_share(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         branch_name = f"COALESCE(NULLIF({branch_expr('b')}, ''), '(unknown branch)')"
         rows = connection.execute(
             text(
@@ -442,7 +450,7 @@ def get_cloud_repo_share(engine: Engine, filters: CommonFilters) -> dict[str, An
                   b.repo_full_name AS repo_name,
                   {branch_name} AS branch_name,
                   COUNT(*) AS build_count
-                FROM ci_l1_builds b
+                FROM {builds_table}
                 WHERE {where_clause}
                   AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
                 GROUP BY UPPER(COALESCE(b.cloud_phase, '')), b.repo_full_name, {branch_name}
@@ -527,6 +535,7 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
 
     with engine.begin() as connection:
         where_clause, params = build_common_where(scope_filters, table_alias="b")
+        builds_table = builds_table_expr(connection, scope_filters, alias="b")
         success_where = success_expr("b")
         normalized_job_path = _normalized_job_path_expr(connection, "b")
         anchor_end_date = filters.end_date or _find_latest_gcp_success_date(
@@ -565,7 +574,7 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                     UPPER(COALESCE(b.cloud_phase, '')) AS cloud_phase,
                     b.start_time,
                     b.run_seconds
-                  FROM ci_l1_builds b
+                  FROM {builds_table}
                   WHERE {where_clause}
                     AND {success_where}
                     AND b.run_seconds IS NOT NULL
@@ -688,7 +697,7 @@ def _find_latest_gcp_success_date(
         text(
             f"""
             SELECT MAX(DATE(b.start_time)) AS anchor_end_date
-            FROM ci_l1_builds b
+            FROM {builds_table_expr(connection, CommonFilters(), alias='b')}
             WHERE {where_clause}
               AND {success_where}
               AND UPPER(COALESCE(b.cloud_phase, '')) = 'GCP'

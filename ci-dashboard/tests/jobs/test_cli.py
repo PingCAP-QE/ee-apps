@@ -29,7 +29,7 @@ def _settings() -> Settings:
 def test_cli_sync_builds_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: "engine")
     monkeypatch.setattr(
         cli,
@@ -46,7 +46,7 @@ def test_cli_sync_builds_dispatch(monkeypatch) -> None:
 
 def test_cli_sync_pr_events_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(
@@ -63,7 +63,7 @@ def test_cli_sync_pr_events_dispatch(monkeypatch) -> None:
 
 def test_cli_sync_flaky_issues_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(
@@ -83,7 +83,7 @@ def test_cli_sync_flaky_issues_dispatch(monkeypatch) -> None:
 
 def test_cli_refresh_build_derived_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(
@@ -103,7 +103,7 @@ def test_cli_refresh_build_derived_dispatch(monkeypatch) -> None:
 
 def test_cli_refresh_build_derived_range_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(
@@ -133,7 +133,7 @@ def test_cli_refresh_build_derived_range_dispatch(monkeypatch) -> None:
 
 def test_cli_refresh_flaky_signals_range_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(
@@ -163,7 +163,7 @@ def test_cli_refresh_flaky_signals_range_dispatch(monkeypatch) -> None:
 
 def test_cli_backfill_range_dispatch(monkeypatch) -> None:
     called: dict[str, object] = {}
-    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "get_settings", _settings)
     monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
     monkeypatch.setattr(

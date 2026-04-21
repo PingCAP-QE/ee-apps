@@ -599,10 +599,6 @@ select {
   fill: #6a7f89;
 }
 
-.chart-axis-label--bottom {
-  text-anchor: middle;
-}
-
 .chart-axis-label--annotation {
   text-anchor: middle;
   font-size: 10px;

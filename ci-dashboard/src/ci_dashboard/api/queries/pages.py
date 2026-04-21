@@ -24,6 +24,8 @@ from ci_dashboard.api.queries.filters import list_repos
 from ci_dashboard.api.queries.flaky import (
     get_distinct_flaky_case_counts_by_branch,
     get_flaky_composition,
+    get_issue_lifecycle_snapshot,
+    get_issue_lifecycle_weekly,
     get_flaky_period_comparison,
     get_flaky_top_jobs,
     get_flaky_trend,
@@ -91,10 +93,22 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
 def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     previous_start, previous_end = _get_previous_date_range(filters)
     build_scope_filters = filters.without_issue_status()
+    build_scope_filters_weekly = CommonFilters(
+        repo=build_scope_filters.repo,
+        branch=build_scope_filters.branch,
+        job_name=build_scope_filters.job_name,
+        cloud_phase=build_scope_filters.cloud_phase,
+        issue_status=None,
+        start_date=build_scope_filters.start_date,
+        end_date=build_scope_filters.end_date,
+        granularity="week",
+    )
     issue_case_rates = get_issue_filtered_weekly_case_rates(engine, filters)
     return {
         "scope": filters.meta(),
         "distinct_flaky_case_counts": get_distinct_flaky_case_counts_by_branch(engine, filters),
+        "issue_lifecycle": get_issue_lifecycle_snapshot(engine, filters),
+        "issue_lifecycle_weekly": get_issue_lifecycle_weekly(engine, filters),
         "issue_case_weekly_rates": {
             "weeks": issue_case_rates["weeks"],
             "rows": issue_case_rates["rows"],
@@ -102,7 +116,7 @@ def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
         },
         "issue_filtered_weekly_trend": issue_case_rates["trend"],
         "trend": get_flaky_trend(engine, build_scope_filters),
-        "composition": get_flaky_composition(engine, build_scope_filters),
+        "composition": get_flaky_composition(engine, build_scope_filters_weekly),
         "top_jobs": get_flaky_top_jobs(engine, build_scope_filters, limit=8),
         "failure_category_share": get_failure_category_share(engine, build_scope_filters),
         "failure_category_trend": get_failure_category_trend(engine, build_scope_filters),

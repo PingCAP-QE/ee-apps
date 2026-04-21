@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -9,6 +9,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import (
     CommonFilters,
     MAX_RANKING_LIMIT,
+    branch_match_expr,
     bucket_expr,
     filter_complete_week_rows,
     failure_like_expr,
@@ -308,6 +309,120 @@ def get_distinct_flaky_case_counts_by_branch(
     }
 
 
+def get_flaky_case_flow_v2(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    """V2: confirm state changes using two consecutive weeks to reduce jitter."""
+    effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    with engine.begin() as connection:
+        presence_rows = _fetch_weekly_flaky_case_presence(connection, filters, effective_repo)
+
+    week_columns = _week_columns(filters.start_date, filters.end_date, presence_rows)
+    presence_by_case: dict[tuple[str, str], set[str]] = {}
+    for row in presence_rows:
+        key = (str(row["branch"]), str(row["case_name"]))
+        presence_by_case.setdefault(key, set()).add(str(row["week_start"]))
+
+    new_by_week = {week: 0 for week in week_columns}
+    resolved_by_week = {week: 0 for week in week_columns}
+    new_by_branch_week: dict[str, dict[str, int]] = {}
+    resolved_by_branch_week: dict[str, dict[str, int]] = {}
+
+    for (branch, _case_name), presence_weeks in presence_by_case.items():
+        presence_bits = [week in presence_weeks for week in week_columns]
+        for index, week in enumerate(week_columns):
+            # Confirm "new" on the 2nd consecutive flaky week.
+            # A missing week before range start is treated as non-flaky.
+            is_new = (
+                index >= 1
+                and presence_bits[index]
+                and presence_bits[index - 1]
+                and (index < 2 or not presence_bits[index - 2])
+            )
+            if is_new:
+                new_by_week[week] += 1
+                new_by_branch_week.setdefault(branch, {}).setdefault(week, 0)
+                new_by_branch_week[branch][week] += 1
+
+            # Confirm "resolved" on the 2nd consecutive non-flaky week
+            # after the case was flaky in the preceding week.
+            is_resolved = (
+                index >= 2
+                and not presence_bits[index]
+                and not presence_bits[index - 1]
+                and presence_bits[index - 2]
+            )
+            if is_resolved:
+                resolved_by_week[week] += 1
+                resolved_by_branch_week.setdefault(branch, {}).setdefault(week, 0)
+                resolved_by_branch_week[branch][week] += 1
+
+    net_by_week = {
+        week: new_by_week.get(week, 0) - resolved_by_week.get(week, 0)
+        for week in week_columns
+    }
+
+    summary_rows = [
+        {
+            "week_start": week,
+            "new_case_count": new_by_week.get(week, 0),
+            "resolved_case_count": resolved_by_week.get(week, 0),
+            "net_case_count": net_by_week.get(week, 0),
+        }
+        for week in week_columns
+    ]
+
+    branch_rows = [
+        {
+            "branch": branch,
+            "new_values": [new_by_branch_week.get(branch, {}).get(week, 0) for week in week_columns],
+            "resolved_values": [
+                resolved_by_branch_week.get(branch, {}).get(week, 0) for week in week_columns
+            ],
+        }
+        for branch in _ordered_branches(
+            {branch for branch, _case_name in presence_by_case.keys()},
+            filters.branch,
+        )
+    ]
+
+    meta = filters.meta()
+    meta.update(
+        {
+            "requested_repo": filters.repo,
+            "effective_repo": effective_repo,
+            "bucket_granularity": "week",
+            "defaulted_repo": filters.repo is None,
+            "confirmation_rule": "2_consecutive_weeks",
+            "week_count": len(week_columns),
+            "case_count_in_scope": len(presence_by_case),
+        }
+    )
+    return {
+        "weeks": week_columns,
+        "series": [
+            {
+                "key": "new_case_count",
+                "label": "New (2-week confirmed)",
+                "type": "bar",
+                "axis": "left",
+                "points": [[week, new_by_week.get(week, 0)] for week in week_columns],
+            },
+            {
+                "key": "resolved_case_count",
+                "label": "Resolved (2-week confirmed)",
+                "type": "bar",
+                "axis": "left",
+                "points": [[week, resolved_by_week.get(week, 0)] for week in week_columns],
+            },
+        ],
+        "summary": summary_rows,
+        "rows": branch_rows,
+        "meta": meta,
+    }
+
+
 def get_issue_filtered_weekly_case_rates(
     engine: Engine,
     filters: CommonFilters,
@@ -409,6 +524,203 @@ def get_issue_filtered_weekly_case_rates(
             "summary": summary_rows,
             "meta": meta,
         },
+        "meta": meta,
+    }
+
+
+def get_issue_lifecycle_snapshot(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    latest_full_week_start = _latest_complete_week_start(filters.end_date)
+    latest_full_week_end = (
+        latest_full_week_start + timedelta(days=6)
+        if latest_full_week_start is not None
+        else None
+    )
+
+    with engine.begin() as connection:
+        issue_rows = _fetch_issue_latest_rows(connection, filters, effective_repo)
+
+    scoped_issue_rows = [
+        row
+        for row in issue_rows
+        if _issue_overlaps_window(
+            row,
+            start_date=filters.start_date,
+            end_date=filters.end_date,
+        )
+    ]
+
+    week_start_dt = (
+        datetime.combine(latest_full_week_start, datetime.min.time())
+        if latest_full_week_start is not None
+        else None
+    )
+    week_end_exclusive_dt = (
+        week_start_dt + timedelta(days=7) if week_start_dt is not None else None
+    )
+
+    created_this_week = [
+        row
+        for row in scoped_issue_rows
+        if week_start_dt is not None
+        and _parse_datetime_value(row.get("issue_created_at")) is not None
+        and week_start_dt
+        <= _parse_datetime_value(row.get("issue_created_at"))
+        < week_end_exclusive_dt
+    ]
+    closed_this_week = [
+        row
+        for row in scoped_issue_rows
+        if week_start_dt is not None
+        and _parse_datetime_value(row.get("issue_closed_at")) is not None
+        and week_start_dt
+        <= _parse_datetime_value(row.get("issue_closed_at"))
+        < week_end_exclusive_dt
+    ]
+    reopened_this_week = [
+        row
+        for row in scoped_issue_rows
+        if int(row.get("reopen_count") or 0) > 0
+        and week_start_dt is not None
+        and _parse_datetime_value(row.get("last_reopened_at")) is not None
+        and week_start_dt
+        <= _parse_datetime_value(row.get("last_reopened_at"))
+        < week_end_exclusive_dt
+    ]
+
+    meta = filters.meta()
+    meta.update(
+        {
+            "requested_repo": filters.repo,
+            "effective_repo": effective_repo,
+            "defaulted_repo": filters.repo is None,
+            "latest_full_week_start": (
+                latest_full_week_start.isoformat() if latest_full_week_start else None
+            ),
+            "latest_full_week_end": (
+                latest_full_week_end.isoformat() if latest_full_week_end else None
+            ),
+            "ignores_issue_status": True,
+        }
+    )
+
+    return {
+        "meta": meta,
+        "scoped_issue_count": len(scoped_issue_rows),
+        "scoped_open_count": sum(
+            1
+            for row in scoped_issue_rows
+            if str(row.get("issue_status") or "").lower() == "open"
+        ),
+        "scoped_closed_count": sum(
+            1
+            for row in scoped_issue_rows
+            if str(row.get("issue_status") or "").lower() == "closed"
+        ),
+        "latest_week_created_count": len(created_this_week),
+        "latest_week_created_open_count": sum(
+            1
+            for row in created_this_week
+            if str(row.get("issue_status") or "").lower() == "open"
+        ),
+        "latest_week_created_closed_count": sum(
+            1
+            for row in created_this_week
+            if str(row.get("issue_status") or "").lower() == "closed"
+        ),
+        "latest_week_closed_count": len(closed_this_week),
+        "latest_week_reopened_count": len(reopened_this_week),
+    }
+
+
+def get_issue_lifecycle_weekly(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    with engine.begin() as connection:
+        issue_rows = _fetch_issue_latest_rows(connection, filters, effective_repo)
+
+    scoped_issue_rows = [
+        row
+        for row in issue_rows
+        if _issue_overlaps_window(
+            row,
+            start_date=filters.start_date,
+            end_date=filters.end_date,
+        )
+    ]
+
+    weeks = _week_columns(
+        filters.start_date,
+        filters.end_date,
+        [
+            {"week_start": _week_start_iso_from_datetime(_parse_datetime_value(row.get("issue_created_at")))}
+            for row in scoped_issue_rows
+            if _parse_datetime_value(row.get("issue_created_at")) is not None
+        ],
+    )
+    created_by_week = {week: 0 for week in weeks}
+    closed_by_week = {week: 0 for week in weeks}
+    reopened_by_week = {week: 0 for week in weeks}
+
+    for row in scoped_issue_rows:
+        created_at = _parse_datetime_value(row.get("issue_created_at"))
+        if created_at is not None:
+            week = _week_start_iso_from_datetime(created_at)
+            if week in created_by_week:
+                created_by_week[week] += 1
+
+        closed_at = _parse_datetime_value(row.get("issue_closed_at"))
+        if closed_at is not None:
+            week = _week_start_iso_from_datetime(closed_at)
+            if week in closed_by_week:
+                closed_by_week[week] += 1
+
+        reopened_at = _parse_datetime_value(row.get("last_reopened_at"))
+        if int(row.get("reopen_count") or 0) > 0 and reopened_at is not None:
+            week = _week_start_iso_from_datetime(reopened_at)
+            if week in reopened_by_week:
+                reopened_by_week[week] += 1
+
+    meta = filters.meta()
+    meta.update(
+        {
+            "requested_repo": filters.repo,
+            "effective_repo": effective_repo,
+            "defaulted_repo": filters.repo is None,
+            "bucket_granularity": "week",
+            "ignores_issue_status": True,
+        }
+    )
+    return {
+        "weeks": weeks,
+        "series": [
+            {
+                "key": "issue_created_count",
+                "label": "Created issues",
+                "type": "bar",
+                "axis": "left",
+                "points": [[week, created_by_week.get(week, 0)] for week in weeks],
+            },
+            {
+                "key": "issue_closed_count",
+                "label": "Closed issues",
+                "type": "bar",
+                "axis": "left",
+                "points": [[week, closed_by_week.get(week, 0)] for week in weeks],
+            },
+            {
+                "key": "issue_reopened_count",
+                "label": "Reopened issues",
+                "type": "bar",
+                "axis": "left",
+                "points": [[week, reopened_by_week.get(week, 0)] for week in weeks],
+            },
+        ],
         "meta": meta,
     }
 
@@ -691,9 +1003,95 @@ def _fetch_issue_weekly_rate_rows(
     return [dict(row) for row in rows]
 
 
+def _fetch_weekly_flaky_case_presence(
+    connection: Connection,
+    filters: CommonFilters,
+    effective_repo: str,
+) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        text(
+            f"""
+            WITH target_prs AS (
+              SELECT DISTINCT repo, pr_number, target_branch
+              FROM ci_l1_pr_events
+              WHERE repo = :repo
+                AND pr_number IS NOT NULL
+                AND target_branch IS NOT NULL
+                AND target_branch <> ''
+                {_optional_clause(filters.branch, "AND target_branch = :branch")}
+            ),
+            build_scope AS (
+              SELECT DISTINCT
+                p.target_branch AS branch,
+                {bucket_expr(connection, "b.start_time", "week")} AS week_start,
+                b.start_time,
+                b.normalized_build_key,
+                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
+              FROM ci_l1_builds b
+              JOIN target_prs p
+                ON p.repo = b.repo_full_name
+               AND p.pr_number = b.pr_number
+              WHERE b.repo_full_name = :repo
+                AND b.pr_number IS NOT NULL
+                AND b.normalized_build_key IS NOT NULL
+                {_optional_clause(filters.job_name, "AND b.job_name = :job_name")}
+                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
+                {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
+                {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
+            ),
+            case_runs_raw AS (
+              SELECT
+                pcr.branch,
+                pcr.case_name,
+                {_normalize_case_build_key_expr(connection, "pcr.build_url")} AS build_key,
+                {_case_cloud_phase_expr("pcr.build_url")} AS cloud_phase,
+                pcr.report_time,
+                CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
+              FROM problem_case_runs pcr
+              WHERE pcr.repo = :repo
+                AND pcr.branch IS NOT NULL
+                AND pcr.branch <> ''
+                AND pcr.case_name IS NOT NULL
+                AND pcr.case_name <> ''
+                {_optional_clause(filters.branch, "AND pcr.branch = :branch")}
+                {_optional_clause(filters.start_date, "AND pcr.report_time >= :case_report_time_from")}
+                {_optional_clause(filters.end_date, "AND pcr.report_time < :case_report_time_to")}
+            ),
+            case_runs AS (
+              SELECT
+                branch,
+                case_name,
+                build_key,
+                cloud_phase,
+                report_time,
+                MAX(flaky_flag) AS flaky_flag
+              FROM case_runs_raw
+              GROUP BY branch, case_name, build_key, cloud_phase, report_time
+            )
+            SELECT DISTINCT
+              bs.branch,
+              bs.week_start,
+              cr.case_name
+            FROM build_scope bs
+            JOIN case_runs cr
+              ON cr.build_key = bs.normalized_build_key
+             AND cr.branch = bs.branch
+             AND cr.cloud_phase = bs.cloud_phase
+             AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
+            WHERE cr.flaky_flag = 1
+            ORDER BY bs.branch, cr.case_name, bs.week_start
+            """
+        ),
+        _distinct_case_params(filters, effective_repo),
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
 def _build_issue_scope_ctes(
     filters: CommonFilters,
     effective_repo: str,
+    *,
+    include_issue_status: bool = True,
 ) -> tuple[str, dict[str, Any]]:
     conditions = [
         "fi.repo = :repo",
@@ -709,7 +1107,7 @@ def _build_issue_scope_ctes(
         conditions.append("fi.issue_branch IS NOT NULL")
         conditions.append("fi.issue_branch <> ''")
 
-    if filters.issue_status:
+    if include_issue_status and filters.issue_status:
         conditions.append("LOWER(fi.issue_status) = :issue_status")
         params["issue_status"] = filters.issue_status.lower()
 
@@ -765,6 +1163,113 @@ def _build_issue_scope_ctes(
     return ctes, params
 
 
+def _fetch_issue_latest_rows(
+    connection: Connection,
+    filters: CommonFilters,
+    effective_repo: str,
+) -> list[dict[str, Any]]:
+    conditions = [
+        "fi.repo = :repo",
+        "fi.issue_number IS NOT NULL",
+    ]
+    params: dict[str, Any] = {"repo": effective_repo}
+
+    if filters.branch:
+        conditions.append("fi.issue_branch = :branch")
+        params["branch"] = filters.branch
+    else:
+        conditions.append("fi.issue_branch IS NOT NULL")
+        conditions.append("fi.issue_branch <> ''")
+
+    rows = connection.execute(
+        text(
+            f"""
+            WITH ranked_issues AS (
+              SELECT
+                fi.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY fi.repo, fi.issue_number
+                  ORDER BY fi.issue_updated_at DESC, fi.updated_at DESC, fi.id DESC
+                ) AS rn
+              FROM ci_l1_flaky_issues fi
+              WHERE {' AND '.join(conditions)}
+            )
+            SELECT
+              repo,
+              issue_number,
+              issue_status,
+              issue_branch,
+              issue_created_at,
+              issue_closed_at,
+              last_reopened_at,
+              reopen_count
+            FROM ranked_issues
+            WHERE rn = 1
+            """
+        ),
+        params,
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def _latest_complete_week_start(end_date: date | None) -> date | None:
+    if end_date is None:
+        return None
+    week_start = end_date - timedelta(days=end_date.weekday())
+    if end_date >= week_start + timedelta(days=6):
+        return week_start
+    return week_start - timedelta(days=7)
+
+
+def _parse_datetime_value(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    raw = str(value).strip()
+    if raw == "":
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _week_start_iso_from_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    week_start = value.date() - timedelta(days=value.date().weekday())
+    return week_start.isoformat()
+
+
+def _issue_overlaps_window(
+    row: dict[str, Any],
+    *,
+    start_date: date | None,
+    end_date: date | None,
+) -> bool:
+    created_at = _parse_datetime_value(row.get("issue_created_at"))
+    if created_at is None:
+        return False
+
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_exclusive_dt = (
+        datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        if end_date
+        else None
+    )
+    closed_at = _parse_datetime_value(row.get("issue_closed_at"))
+    status = str(row.get("issue_status") or "").lower()
+
+    if end_exclusive_dt and created_at >= end_exclusive_dt:
+        return False
+    if start_dt:
+        if status != "closed" or closed_at is None:
+            return True
+        return closed_at >= start_dt
+    return True
+
+
 def _build_build_where(
     filters: CommonFilters,
     *,
@@ -779,9 +1284,7 @@ def _build_build_where(
         params["repo"] = filters.repo
 
     if filters.branch:
-        conditions.append(
-            f"COALESCE(NULLIF({prefix}target_branch, ''), {prefix}base_ref) = :branch"
-        )
+        conditions.append(branch_match_expr(table_alias))
         params["branch"] = filters.branch
 
     if filters.job_name:

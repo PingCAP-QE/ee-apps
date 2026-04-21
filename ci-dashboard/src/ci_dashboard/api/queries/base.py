@@ -88,7 +88,7 @@ def build_common_where(
         params["repo"] = filters.repo
 
     if filters.branch:
-        conditions.append(f"{branch_expr(table_alias)} = :branch")
+        conditions.append(branch_match_expr(table_alias))
         params["branch"] = filters.branch
 
     if filters.job_name:
@@ -115,6 +115,17 @@ def branch_expr(table_alias: str = "") -> str:
     return f"COALESCE(NULLIF({prefix}target_branch, ''), {prefix}base_ref)"
 
 
+def branch_match_expr(table_alias: str = "", *, bind_name: str = "branch") -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    bind = f":{bind_name}"
+    # Keep branch filtering semantically equivalent to COALESCE(NULLIF(target_branch,''), base_ref) = :branch,
+    # while avoiding a function-wrapped column predicate that can disable index selection in TiDB.
+    return (
+        f"({prefix}target_branch = {bind} OR "
+        f"(({prefix}target_branch IS NULL OR {prefix}target_branch = '') AND {prefix}base_ref = {bind}))"
+    )
+
+
 def bucket_expr(connection: Connection, column_name: str, granularity: str) -> str:
     if granularity == "day":
         return f"DATE({column_name})"
@@ -130,6 +141,34 @@ def bucket_expr(connection: Connection, column_name: str, granularity: str) -> s
         )
 
     return f"DATE_SUB(DATE({column_name}), INTERVAL WEEKDAY({column_name}) DAY)"
+
+
+def builds_table_expr(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    alias: str = "b",
+) -> str:
+    """Build the ci_l1_builds table reference with the narrowest useful TiDB hint.
+
+    We intentionally keep FORCE INDEX here because several page-level time-range
+    aggregations regressed to table scans in TiDB without a strong hint. This
+    helper centralizes the tradeoff: use the repo+time index when the query can
+    narrow by repo, otherwise fall back to the generic time-range index. SQLite
+    keeps the plain table reference so local tests stay portable.
+    """
+    table = f"ci_l1_builds {alias}"
+    if connection.dialect.name == "sqlite":
+        return table
+
+    # TiDB may choose table full scan for time-range aggregations without a strong hint.
+    # Pick the narrowest existing index based on available filters.
+    has_time_window = filters.start_date is not None or filters.end_date is not None
+    if filters.repo and has_time_window:
+        return f"{table} FORCE INDEX(idx_ci_l1_builds_repo_time)"
+    if has_time_window:
+        return f"{table} FORCE INDEX(idx_ci_l1_builds_start_time_id)"
+    return table
 
 
 def filter_complete_week_rows(

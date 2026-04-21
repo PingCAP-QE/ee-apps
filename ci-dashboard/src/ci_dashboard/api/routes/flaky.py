@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.queries.base import CommonFilters, MAX_RANKING_LIMIT
 from ci_dashboard.api.queries.flaky import (
+    get_flaky_case_flow_v2,
     get_distinct_flaky_case_counts_by_branch,
     get_flaky_composition,
     get_flaky_period_comparison,
@@ -43,6 +44,14 @@ def distinct_flaky_case_counts(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_distinct_flaky_case_counts_by_branch(engine, filters)
+
+
+@router.get("/case-flow-v2")
+def flaky_case_flow_v2(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_flaky_case_flow_v2(engine, filters)
 
 
 @router.get("/issue-weekly-rates")
