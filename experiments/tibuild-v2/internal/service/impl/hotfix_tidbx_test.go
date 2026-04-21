@@ -24,17 +24,20 @@ func newServiceWithClient(client *github.Client) *hotfixsrvc {
 
 func TestComputeNewTagNameForTidbx(t *testing.T) {
 	type testCase struct {
-		name             string
-		pages            [][]string
-		branch           *string
-		expected         string
-		taggedCommitTag  string
-		compareStatus    string
-		expectErr        bool
-		errCode          int
+		name            string
+		pages           [][]string
+		branch          *string
+		expected        string
+		taggedCommitTag string
+		compareStatus   string
+		expectErr       bool
+		errCode         int
 	}
 
 	testCommitSHA := "a9814602ed087838d71095efd35bd221ab0bf5a9"
+	legacyBranch202410 := "release-nextgen-20241015"
+	legacyBranch202510 := "release-nextgen-20251015"
+	legacyBranch202601 := "release-nextgen-20260115"
 	bootstrapBranch := "release-nextgen-202604"
 	bootstrapBranchWithDate := "release-nextgen-20260415"
 	invalidBootstrapBranch := "release-nextgen-202512"
@@ -50,6 +53,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"random-tag",
 				},
 			},
+			branch:   &legacyBranch202510,
 			expected: "v8.5.4-nextgen.202510.4",
 		},
 		{
@@ -61,6 +65,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v7.1.0-nextgen.202409.3",
 				},
 			},
+			branch:   &legacyBranch202410,
 			expected: "v7.1.0-nextgen.202410.11",
 		},
 		{
@@ -91,6 +96,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v9.0.0-nextgen.202601.0",
 				},
 			},
+			branch:   &legacyBranch202601,
 			expected: "v9.0.0-nextgen.202601.1",
 		},
 		{
@@ -113,6 +119,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v8.5.4-nextgen.202510.2",
 				},
 			},
+			branch:        &legacyBranch202510,
 			compareStatus: "behind",
 			expectErr:     true,
 			errCode:       http.StatusBadRequest,
@@ -217,7 +224,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			}
 
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("unexpected error: %#v", err)
 			}
 			if tag != tc.expected {
 				t.Fatalf("expected %s, got %s", tc.expected, tag)
@@ -244,7 +251,7 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 		},
 	)
 
-	branch := "main"
+	branch := "release-nextgen-20260115"
 	commit := "abc123"
 	expectedTag := "v9.0.0-nextgen.202601.1"
 
@@ -286,6 +293,19 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 
 			httpClient := mock.NewMockedHTTPClient(
 				respTags,
+				mock.WithRequestMatchHandler(
+					mock.GetReposCommitsBranchesWhereHeadByOwnerByRepoByCommitSha,
+					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+						_, _ = w.Write(mock.MustMarshal([]*github.BranchCommit{
+							{
+								Name: github.Ptr(branch),
+								Commit: &github.Commit{
+									SHA: github.Ptr(commit),
+								},
+							},
+						}))
+					}),
+				),
 				mock.WithRequestMatch(
 					mock.GetReposCommitsByOwnerByRepoByRef,
 					&github.RepositoryCommit{
@@ -358,17 +378,17 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 			// call the api
 			result, err := svc.BumpTagForTidbx(tt.Context(), apiCallPayload)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				tt.Fatalf("unexpected error: %#v", err)
 			}
 
 			if result.Repo != test.args.fullRepo {
-				t.Fatalf("expected repo %s, got %s", test.args.fullRepo, result.Repo)
+				tt.Fatalf("expected repo %s, got %s", test.args.fullRepo, result.Repo)
 			}
 			if result.Commit != commit {
-				t.Fatalf("expected commit %s, got %s", commit, result.Commit)
+				tt.Fatalf("expected commit %s, got %s", commit, result.Commit)
 			}
 			if result.Tag != test.expectTag {
-				t.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
+				tt.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
 			}
 		})
 	}
