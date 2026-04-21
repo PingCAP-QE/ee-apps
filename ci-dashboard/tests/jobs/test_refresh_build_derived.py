@@ -47,6 +47,7 @@ def _insert_build(
     head_sha: str = "sha-1",
     normalized_build_key: str | None = None,
     start_time: str = "2026-04-13 10:00:00",
+    target_branch: str | None = None,
 ) -> int:
     org, repo = repo_full_name.split("/", 1)
     with sqlite_engine.begin() as connection:
@@ -65,7 +66,7 @@ def _insert_build(
                   0, 1, :org, :repo, :repo_full_name, 'master', :pr_number, 1,
                   'unit-test', 'https://prow.tidb.net/jenkins/job/x/1/display/redirect',
                   :normalized_build_key, 'alice', 0, 'guid', '1', NULL, NULL, :start_time,
-                  :start_time, 0, 0, 0, :head_sha, NULL, 'GCP', 0, 0, 0, NULL, NULL
+                  :start_time, 0, 0, 0, :head_sha, :target_branch, 'GCP', 0, 0, 0, NULL, NULL
                 )
                 """
             ),
@@ -81,6 +82,7 @@ def _insert_build(
                 "normalized_build_key": normalized_build_key or f"/jenkins/job/{source_prow_job_id}",
                 "head_sha": head_sha,
                 "start_time": start_time,
+                "target_branch": target_branch,
             },
         )
         return int(result.lastrowid)
@@ -412,6 +414,38 @@ def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window
     assert final_row["target_branch"] == "master"
     assert final_state is not None
     assert final_state.watermark["last_processed_build_id"] == fourth_id
+
+
+def test_refresh_build_derived_updates_stale_target_branch(sqlite_engine) -> None:
+    build_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-250",
+        start_time="2026-04-13 09:00:00",
+        target_branch="release-7.5",
+    )
+    _insert_pr_snapshot(
+        sqlite_engine,
+        pr_number=101,
+        target_branch="master",
+        updated_at="2026-04-13 09:30:00",
+    )
+
+    summary = run_refresh_build_derived(sqlite_engine, _settings(batch_size=10))
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT target_branch
+                FROM ci_l1_builds
+                WHERE id = :id
+                """
+            ),
+            {"id": build_id},
+        ).mappings().one()
+
+    assert summary.branch_rows_updated == 1
+    assert row["target_branch"] == "master"
 
 
 def test_refresh_build_derived_clears_pending_refresh_when_slice_is_empty(sqlite_engine) -> None:

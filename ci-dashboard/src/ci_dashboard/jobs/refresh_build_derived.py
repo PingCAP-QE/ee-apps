@@ -626,6 +626,8 @@ def _phase_a_branch_enrichment(
     *,
     write_batch_size: int,
 ) -> int:
+    # We intentionally re-read all impacted PR builds in the slice so stale
+    # target_branch values can be corrected from the latest snapshot rows.
     pr_build_rows = connection.execute(
         text(
             f"""
@@ -660,10 +662,11 @@ def _phase_a_branch_enrichment(
 
     payload = []
     for row in build_rows:
-        if row["target_branch"] not in {None, ""}:
-            continue
         branch = snapshots.get((str(row["repo_full_name"]), int(row["pr_number"])))
         if not branch:
+            continue
+        current_branch = _normalize_optional_string(row["target_branch"])
+        if current_branch == branch:
             continue
         payload.append({"id": int(row["id"]), "target_branch": branch})
 
