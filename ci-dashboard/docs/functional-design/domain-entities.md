@@ -92,7 +92,7 @@ Watermark shapes:
 
 - `ci-sync-builds`: `{"last_source_prow_row_id": N}`
 - `ci-sync-pr-events`: `{"last_ticket_updated_at": "...", "last_build_source_prow_row_id_seen": N}`
-- `ci-refresh-build-derived`: `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": "...", "last_processed_case_report_time": "..."}`
+- `ci-refresh-build-derived`: `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": "...", "last_processed_case_report_time": "...", "pending_refresh": false, "pending_target_build_id": null, "pending_target_pr_event_updated_at": null, "pending_target_case_report_time": null}`
 
 Current implementation status:
 

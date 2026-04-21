@@ -18,9 +18,9 @@ def _read_int(environ: Mapping[str, str], key: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(f"{key} must be an integer") from exc
+        raise ValueError(f"{key} must be an integer, got {raw!r}") from exc
     if value <= 0:
-        raise ValueError(f"{key} must be positive")
+        raise ValueError(f"{key} must be positive, got {raw!r}")
     return value
 
 
@@ -39,6 +39,7 @@ class DatabaseSettings:
 class JobSettings:
     batch_size: int = 1000
     refresh_group_batch_size: int = 25
+    refresh_build_limit: int = 5000
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,11 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
                 env,
                 "CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE",
                 25,
+            ),
+            refresh_build_limit=_read_int(
+                env,
+                "CI_DASHBOARD_REFRESH_BUILD_LIMIT",
+                5000,
             ),
         ),
         log_level=(env.get("CI_DASHBOARD_LOG_LEVEL") or "INFO").upper(),
