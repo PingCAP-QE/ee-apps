@@ -342,7 +342,7 @@ def _get_build_ids_in_time_window(
             SELECT id
             FROM ci_l1_builds
             WHERE start_time >= :start_time_from
-            ORDER BY start_time, id
+            ORDER BY id
             """
         )
         params = {"start_time_from": start_time_from}
@@ -353,7 +353,7 @@ def _get_build_ids_in_time_window(
             FROM ci_l1_builds
             WHERE start_time >= :start_time_from
               AND start_time < :start_time_to
-            ORDER BY start_time, id
+            ORDER BY id
             """
         )
         params = {
@@ -626,6 +626,8 @@ def _phase_a_branch_enrichment(
     *,
     write_batch_size: int,
 ) -> int:
+    # We intentionally re-read all impacted PR builds in the slice so stale
+    # target_branch values can be corrected from the latest snapshot rows.
     pr_build_rows = connection.execute(
         text(
             f"""
@@ -633,7 +635,6 @@ def _phase_a_branch_enrichment(
             FROM ci_l1_builds
             WHERE is_pr_build = 1
               AND pr_number IS NOT NULL
-              AND (target_branch IS NULL OR target_branch = '')
               AND {_build_in_filter(impacted_build_ids, "build_id")}
             """
         ),
@@ -661,10 +662,11 @@ def _phase_a_branch_enrichment(
 
     payload = []
     for row in build_rows:
-        if row["target_branch"] not in {None, ""}:
-            continue
         branch = snapshots.get((str(row["repo_full_name"]), int(row["pr_number"])))
         if not branch:
+            continue
+        current_branch = _normalize_optional_string(row["target_branch"])
+        if current_branch == branch:
             continue
         payload.append({"id": int(row["id"]), "target_branch": branch})
 
@@ -765,30 +767,8 @@ def _phase_c_case_evidence(
     matched_rows = connection.execute(_case_match_query(connection, impacted_build_ids), params).mappings()
     matched_build_ids = {int(row["id"]) for row in matched_rows}
 
-    current_rows = connection.execute(
-        text(
-            f"""
-            SELECT id, has_flaky_case_match
-            FROM ci_l1_builds
-            WHERE {_build_in_filter(impacted_build_ids, "current_id")}
-            """
-        ),
-        _build_id_params(impacted_build_ids, "current_id"),
-    ).mappings()
-    current_values = {
-        int(row["id"]): int(row["has_flaky_case_match"] or 0)
-        for row in current_rows
-    }
-
-    update_payload = []
-    for build_id in impacted_build_ids:
-        desired_value = 1 if build_id in matched_build_ids else 0
-        current_value = current_values.get(build_id, 0)
-        if current_value == desired_value:
-            continue
-        update_payload.append({"id": build_id, "has_flaky_case_match": desired_value})
-
-    if update_payload:
+    reset_payload = [{"id": build_id, "has_flaky_case_match": 0} for build_id in impacted_build_ids]
+    if reset_payload:
         _execute_statement_in_batches(
             connection,
             text(
@@ -798,12 +778,30 @@ def _phase_c_case_evidence(
                 WHERE id = :id
                 """
             ),
-            update_payload,
+            reset_payload,
             batch_size=write_batch_size,
         )
 
-    LOG.info("case evidence updated %s rows", len(update_payload))
-    return len(update_payload)
+    match_payload = [
+        {"id": build_id, "has_flaky_case_match": 1}
+        for build_id in sorted(matched_build_ids)
+    ]
+    if match_payload:
+        _execute_statement_in_batches(
+            connection,
+            text(
+                """
+                UPDATE ci_l1_builds
+                SET has_flaky_case_match = :has_flaky_case_match
+                WHERE id = :id
+                """
+            ),
+            match_payload,
+            batch_size=write_batch_size,
+        )
+
+    LOG.info("case evidence updated %s matched rows", len(match_payload))
+    return len(match_payload)
 
 
 def _phase_d_failure_category(
