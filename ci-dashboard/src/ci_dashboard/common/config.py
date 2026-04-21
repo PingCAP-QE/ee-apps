@@ -18,9 +18,9 @@ def _read_int(environ: Mapping[str, str], key: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(f"{key} must be an integer") from exc
+        raise ValueError(f"{key} must be an integer, got {raw!r}") from exc
     if value <= 0:
-        raise ValueError(f"{key} must be positive")
+        raise ValueError(f"{key} must be positive, got {raw!r}")
     return value
 
 
