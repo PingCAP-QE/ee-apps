@@ -71,6 +71,7 @@ Notes:
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
+- `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run
 - `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 

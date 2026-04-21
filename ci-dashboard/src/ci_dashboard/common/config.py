@@ -39,6 +39,7 @@ class DatabaseSettings:
 class JobSettings:
     batch_size: int = 1000
     refresh_group_batch_size: int = 25
+    refresh_build_limit: int = 5000
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,11 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
                 env,
                 "CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE",
                 25,
+            ),
+            refresh_build_limit=_read_int(
+                env,
+                "CI_DASHBOARD_REFRESH_BUILD_LIMIT",
+                5000,
             ),
         ),
         log_level=(env.get("CI_DASHBOARD_LOG_LEVEL") or "INFO").upper(),

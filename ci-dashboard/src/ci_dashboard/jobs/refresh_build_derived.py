@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 import logging
 from typing import Any, Mapping
@@ -23,6 +24,13 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "ci-refresh-build-derived"
 REQUIRE_RETEST_FOR_RETRY_LOOP = False
 DEFAULT_WRITE_BATCH_SIZE = 100
+DEFAULT_REFRESH_BUILD_LIMIT = 5000
+
+
+@dataclass(frozen=True)
+class ImpactedBuildSelection:
+    build_ids: list[int]
+    has_more: bool
 
 
 def run_refresh_build_derived(
@@ -37,20 +45,20 @@ def run_refresh_build_derived(
     chunk_size = _resolve_chunk_size(settings)
     group_chunk_size = _resolve_refresh_group_chunk_size(settings)
     write_batch_size = _resolve_write_batch_size(settings)
+    refresh_build_limit = _resolve_refresh_build_limit(settings)
 
     try:
         with engine.begin() as connection:
-            selection_watermarks = _load_selection_watermarks(connection)
-            impacted_build_ids = _get_impacted_build_ids(connection, watermark)
+            selection_watermarks = _resolve_selection_watermarks(connection, watermark)
+            impacted_selection = _get_impacted_build_ids(
+                connection,
+                watermark,
+                selection_watermarks,
+                max_builds=refresh_build_limit,
+            )
+            impacted_build_ids = impacted_selection.build_ids
 
         summary.impacted_builds = len(impacted_build_ids)
-        summary.last_processed_build_id = selection_watermarks["last_processed_build_id"]
-        summary.last_processed_pr_event_updated_at = selection_watermarks[
-            "last_processed_pr_event_updated_at"
-        ]
-        summary.last_processed_case_report_time = selection_watermarks[
-            "last_processed_case_report_time"
-        ]
 
         if impacted_build_ids:
             _apply_refresh_phases(
@@ -62,8 +70,21 @@ def run_refresh_build_derived(
                 write_batch_size=write_batch_size,
             )
 
+        next_watermark = _build_success_watermark(
+            watermark,
+            selection_watermarks,
+            impacted_selection,
+        )
+        summary.last_processed_build_id = int(next_watermark["last_processed_build_id"] or 0)
+        summary.last_processed_pr_event_updated_at = _normalize_optional_string(
+            next_watermark.get("last_processed_pr_event_updated_at")
+        )
+        summary.last_processed_case_report_time = _normalize_optional_string(
+            next_watermark.get("last_processed_case_report_time")
+        )
+
         with engine.begin() as connection:
-            mark_job_succeeded(connection, JOB_NAME, selection_watermarks)
+            mark_job_succeeded(connection, JOB_NAME, next_watermark)
 
         return summary
     except Exception as exc:
@@ -163,13 +184,32 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
             "last_processed_build_id": 0,
             "last_processed_pr_event_updated_at": None,
             "last_processed_case_report_time": None,
+            "pending_refresh": False,
+            "pending_target_build_id": None,
+            "pending_target_pr_event_updated_at": None,
+            "pending_target_case_report_time": None,
         }
     return {
-        "last_processed_build_id": int(state.watermark.get("last_processed_build_id", 0) or 0),
-        "last_processed_pr_event_updated_at": state.watermark.get(
-            "last_processed_pr_event_updated_at"
+        "last_processed_build_id": _normalize_optional_int(
+            state.watermark.get("last_processed_build_id"),
+            default=0,
         ),
-        "last_processed_case_report_time": state.watermark.get("last_processed_case_report_time"),
+        "last_processed_pr_event_updated_at": _normalize_optional_string(
+            state.watermark.get("last_processed_pr_event_updated_at")
+        ),
+        "last_processed_case_report_time": _normalize_optional_string(
+            state.watermark.get("last_processed_case_report_time")
+        ),
+        "pending_refresh": bool(state.watermark.get("pending_refresh", False)),
+        "pending_target_build_id": _normalize_optional_int(
+            state.watermark.get("pending_target_build_id")
+        ),
+        "pending_target_pr_event_updated_at": _normalize_optional_string(
+            state.watermark.get("pending_target_pr_event_updated_at")
+        ),
+        "pending_target_case_report_time": _normalize_optional_string(
+            state.watermark.get("pending_target_case_report_time")
+        ),
     }
 
 
@@ -191,48 +231,100 @@ def _load_selection_watermarks(connection: Connection) -> dict[str, Any]:
     }
 
 
+def _resolve_selection_watermarks(
+    connection: Connection,
+    watermark: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not bool(watermark.get("pending_refresh", False)):
+        return _load_selection_watermarks(connection)
+
+    return {
+        "last_processed_build_id": _normalize_optional_int(
+            watermark.get("pending_target_build_id"),
+            default=_normalize_optional_int(watermark.get("last_processed_build_id"), default=0),
+        ),
+        "last_processed_pr_event_updated_at": _normalize_optional_string(
+            watermark.get("pending_target_pr_event_updated_at")
+        ),
+        "last_processed_case_report_time": _normalize_optional_string(
+            watermark.get("pending_target_case_report_time")
+        ),
+    }
+
+
 def _get_impacted_build_ids(
     connection: Connection,
     watermark: Mapping[str, Any],
-) -> list[int]:
+    selection_watermarks: Mapping[str, Any],
+    *,
+    max_builds: int,
+) -> ImpactedBuildSelection:
     impacted_ids: set[int] = set()
+    selection_limit = max_builds + 1
+    pending_refresh = bool(watermark.get("pending_refresh", False))
+    last_processed_build_id = _normalize_optional_int(
+        watermark.get("last_processed_build_id"),
+        default=0,
+    )
+    has_more = False
 
-    rows = connection.execute(
-        text("SELECT id FROM ci_l1_builds WHERE id > :last_processed_build_id"),
-        {"last_processed_build_id": watermark["last_processed_build_id"]},
-    ).mappings()
-    impacted_ids.update(int(row["id"]) for row in rows)
+    new_build_ids = _fetch_new_build_ids(
+        connection,
+        lower_build_id=last_processed_build_id,
+        upper_build_id=_normalize_optional_int(
+            selection_watermarks.get("last_processed_build_id"),
+            default=last_processed_build_id,
+        ),
+        selection_limit=selection_limit,
+    )
+    if len(new_build_ids) == selection_limit:
+        has_more = True
+    impacted_ids.update(new_build_ids)
 
-    last_pr_event_updated_at = watermark.get("last_processed_pr_event_updated_at")
-    if last_pr_event_updated_at:
-        rows = connection.execute(
-            text(
-                """
-                SELECT DISTINCT b.id
-                FROM ci_l1_builds b
-                JOIN ci_l1_pr_events e
-                  ON e.repo = b.repo_full_name
-                 AND e.pr_number = b.pr_number
-                WHERE b.is_pr_build = 1
-                  AND e.updated_at > :last_processed_pr_event_updated_at
-                """
-            ),
-            {"last_processed_pr_event_updated_at": last_pr_event_updated_at},
-        ).mappings()
-        impacted_ids.update(int(row["id"]) for row in rows)
+    pr_event_build_ids = _fetch_pr_event_impacted_build_ids(
+        connection,
+        last_processed_pr_event_updated_at=_normalize_optional_string(
+            watermark.get("last_processed_pr_event_updated_at")
+        ),
+        target_pr_event_updated_at=_normalize_optional_string(
+            selection_watermarks.get("last_processed_pr_event_updated_at")
+        ),
+        upper_build_id=_normalize_optional_int(
+            selection_watermarks.get("last_processed_build_id"),
+            default=last_processed_build_id,
+        ),
+        after_build_id=last_processed_build_id if pending_refresh else 0,
+        selection_limit=selection_limit,
+    )
+    if len(pr_event_build_ids) == selection_limit:
+        has_more = True
+    impacted_ids.update(pr_event_build_ids)
 
-    last_case_report_time = watermark.get("last_processed_case_report_time")
-    if last_case_report_time:
-        rows = connection.execute(
-            _case_impact_query(connection, last_case_report_time),
-            {"last_processed_case_report_time": last_case_report_time},
-        ).mappings()
-        impacted_ids.update(int(row["id"]) for row in rows)
-    else:
-        rows = connection.execute(_case_impact_query(connection, None)).mappings()
-        impacted_ids.update(int(row["id"]) for row in rows)
+    case_build_ids = _fetch_case_impacted_build_ids(
+        connection,
+        last_processed_case_report_time=_normalize_optional_string(
+            watermark.get("last_processed_case_report_time")
+        ),
+        target_case_report_time=_normalize_optional_string(
+            selection_watermarks.get("last_processed_case_report_time")
+        ),
+        upper_build_id=_normalize_optional_int(
+            selection_watermarks.get("last_processed_build_id"),
+            default=last_processed_build_id,
+        ),
+        after_build_id=last_processed_build_id if pending_refresh else 0,
+        selection_limit=selection_limit,
+    )
+    if len(case_build_ids) == selection_limit:
+        has_more = True
+    impacted_ids.update(case_build_ids)
 
-    return sorted(impacted_ids)
+    build_ids = sorted(impacted_ids)
+    if len(build_ids) > max_builds:
+        has_more = True
+        build_ids = build_ids[:max_builds]
+
+    return ImpactedBuildSelection(build_ids=build_ids, has_more=has_more)
 
 
 def _get_build_ids_in_time_window(
@@ -435,6 +527,12 @@ def _resolve_refresh_group_chunk_size(settings: Settings | None) -> int:
     return max(1, min(settings.jobs.batch_size, settings.jobs.refresh_group_batch_size))
 
 
+def _resolve_refresh_build_limit(settings: Settings | None) -> int:
+    if settings is None:
+        return DEFAULT_REFRESH_BUILD_LIMIT
+    return settings.jobs.refresh_build_limit
+
+
 def _resolve_write_batch_size(settings: Settings | None) -> int:
     if settings is None:
         return DEFAULT_WRITE_BATCH_SIZE
@@ -460,6 +558,63 @@ def _assign_failure_category_rows_updated(
     rows_updated: int,
 ) -> None:
     summary.failure_category_rows_updated += rows_updated
+
+
+def _build_success_watermark(
+    watermark: Mapping[str, Any],
+    selection_watermarks: Mapping[str, Any],
+    impacted_selection: ImpactedBuildSelection,
+) -> dict[str, Any]:
+    if impacted_selection.has_more and impacted_selection.build_ids:
+        return {
+            "last_processed_build_id": impacted_selection.build_ids[-1],
+            "last_processed_pr_event_updated_at": _normalize_optional_string(
+                watermark.get("last_processed_pr_event_updated_at")
+            ),
+            "last_processed_case_report_time": _normalize_optional_string(
+                watermark.get("last_processed_case_report_time")
+            ),
+            "pending_refresh": True,
+            "pending_target_build_id": _normalize_optional_int(
+                selection_watermarks.get("last_processed_build_id")
+            ),
+            "pending_target_pr_event_updated_at": _normalize_optional_string(
+                selection_watermarks.get("last_processed_pr_event_updated_at")
+            ),
+            "pending_target_case_report_time": _normalize_optional_string(
+                selection_watermarks.get("last_processed_case_report_time")
+            ),
+        }
+
+    return {
+        "last_processed_build_id": _normalize_optional_int(
+            selection_watermarks.get("last_processed_build_id"),
+            default=0,
+        ),
+        "last_processed_pr_event_updated_at": _normalize_optional_string(
+            selection_watermarks.get("last_processed_pr_event_updated_at")
+        ),
+        "last_processed_case_report_time": _normalize_optional_string(
+            selection_watermarks.get("last_processed_case_report_time")
+        ),
+        "pending_refresh": False,
+        "pending_target_build_id": None,
+        "pending_target_pr_event_updated_at": None,
+        "pending_target_case_report_time": None,
+    }
+
+
+def _normalize_optional_int(value: Any, *, default: int | None = None) -> int | None:
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def _normalize_optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def _phase_a_branch_enrichment(
@@ -652,38 +807,133 @@ def _phase_d_failure_category(
     if not build_ids:
         return 0
 
-    rows = connection.execute(
+    connection.execute(
         text(
             f"""
-            SELECT id, is_flaky, is_retry_loop
-            FROM ci_l1_builds
+            UPDATE ci_l1_builds
+            SET failure_category = CASE
+                WHEN COALESCE(is_flaky, 0) = 1 OR COALESCE(is_retry_loop, 0) = 1 THEN 'FLAKY_TEST'
+                ELSE NULL
+            END
             WHERE {_build_in_filter(build_ids, "failure_id")}
             """
         ),
         _build_id_params(build_ids, "failure_id"),
+    )
+
+    LOG.info("failure category refreshed for %s rows", len(build_ids))
+    return len(build_ids)
+
+
+def _fetch_new_build_ids(
+    connection: Connection,
+    *,
+    lower_build_id: int,
+    upper_build_id: int,
+    selection_limit: int,
+) -> list[int]:
+    if upper_build_id <= lower_build_id:
+        return []
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT id
+            FROM ci_l1_builds
+            WHERE id > :lower_build_id
+              AND id <= :upper_build_id
+            ORDER BY id
+            LIMIT :selection_limit
+            """
+        ),
+        {
+            "lower_build_id": lower_build_id,
+            "upper_build_id": upper_build_id,
+            "selection_limit": selection_limit,
+        },
     ).mappings()
+    return [int(row["id"]) for row in rows]
 
-    payload = []
-    for row in rows:
-        category = "FLAKY_TEST" if int(row["is_flaky"] or 0) == 1 or int(row["is_retry_loop"] or 0) == 1 else None
-        payload.append({"id": int(row["id"]), "failure_category": category})
 
-    if payload:
-        _execute_statement_in_batches(
+def _fetch_pr_event_impacted_build_ids(
+    connection: Connection,
+    *,
+    last_processed_pr_event_updated_at: str | None,
+    target_pr_event_updated_at: str | None,
+    upper_build_id: int,
+    after_build_id: int,
+    selection_limit: int,
+) -> list[int]:
+    if target_pr_event_updated_at is None or target_pr_event_updated_at == last_processed_pr_event_updated_at:
+        return []
+
+    params: dict[str, Any] = {
+        "target_pr_event_updated_at": target_pr_event_updated_at,
+        "upper_build_id": upper_build_id,
+        "selection_limit": selection_limit,
+    }
+    lower_bound_clause = ""
+    if last_processed_pr_event_updated_at is not None:
+        lower_bound_clause = "AND e.updated_at > :last_processed_pr_event_updated_at"
+        params["last_processed_pr_event_updated_at"] = last_processed_pr_event_updated_at
+
+    build_cursor_clause = ""
+    if after_build_id > 0:
+        build_cursor_clause = "AND b.id > :after_build_id"
+        params["after_build_id"] = after_build_id
+
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT DISTINCT b.id
+            FROM ci_l1_builds b
+            JOIN ci_l1_pr_events e
+              ON e.repo = b.repo_full_name
+             AND e.pr_number = b.pr_number
+            WHERE b.is_pr_build = 1
+              AND b.id <= :upper_build_id
+              AND e.updated_at <= :target_pr_event_updated_at
+              {lower_bound_clause}
+              {build_cursor_clause}
+            ORDER BY b.id
+            LIMIT :selection_limit
+            """
+        ),
+        params,
+    ).mappings()
+    return [int(row["id"]) for row in rows]
+
+
+def _fetch_case_impacted_build_ids(
+    connection: Connection,
+    *,
+    last_processed_case_report_time: str | None,
+    target_case_report_time: str | None,
+    upper_build_id: int,
+    after_build_id: int,
+    selection_limit: int,
+) -> list[int]:
+    if target_case_report_time is None or target_case_report_time == last_processed_case_report_time:
+        return []
+
+    rows = connection.execute(
+        _case_impact_query(
             connection,
-            text(
-                """
-                UPDATE ci_l1_builds
-                SET failure_category = :failure_category
-                WHERE id = :id
-                """
-            ),
-            payload,
-            batch_size=write_batch_size,
-        )
-
-    LOG.info("failure category refreshed for %s rows", len(payload))
-    return len(payload)
+            last_processed_case_report_time=last_processed_case_report_time,
+            target_case_report_time=target_case_report_time,
+            upper_build_id=upper_build_id,
+            after_build_id=after_build_id,
+            selection_limit=selection_limit,
+        ),
+        _case_impact_query_params(
+            last_processed_case_report_time=last_processed_case_report_time,
+            target_case_report_time=target_case_report_time,
+            upper_build_id=upper_build_id,
+            after_build_id=after_build_id,
+            selection_limit=selection_limit,
+        ),
+    ).mappings()
+    return [int(row["id"]) for row in rows]
 
 
 def _fetch_snapshot_rows(
@@ -807,11 +1057,22 @@ def _fetch_retest_times(
 
 def _case_impact_query(
     connection: Connection,
-    last_case_report_time: str | None,
+    *,
+    last_processed_case_report_time: str | None,
+    target_case_report_time: str,
+    upper_build_id: int,
+    after_build_id: int,
+    selection_limit: int,
 ) -> Any:
-    where_clause = ""
-    if last_case_report_time is not None:
-        where_clause = "WHERE p.report_time > :last_processed_case_report_time"
+    where_clauses = [
+        "p.report_time <= :target_case_report_time",
+        "b.id <= :upper_build_id",
+    ]
+    if last_processed_case_report_time is not None:
+        where_clauses.append("p.report_time > :last_processed_case_report_time")
+    if after_build_id > 0:
+        where_clauses.append("b.id > :after_build_id")
+    where_clause = "WHERE " + " AND ".join(where_clauses)
 
     if connection.dialect.name == "sqlite":
         return text(
@@ -824,6 +1085,8 @@ def _case_impact_query(
              AND {_sqlite_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
              AND p.report_time BETWEEN b.start_time AND datetime(b.start_time, '+24 hours')
             {where_clause}
+            ORDER BY b.id
+            LIMIT :selection_limit
             """
         )
 
@@ -837,8 +1100,30 @@ def _case_impact_query(
          AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
          AND p.report_time BETWEEN b.start_time AND b.start_time + INTERVAL 24 HOUR
         {where_clause}
+        ORDER BY b.id
+        LIMIT :selection_limit
         """
     )
+
+
+def _case_impact_query_params(
+    *,
+    last_processed_case_report_time: str | None,
+    target_case_report_time: str,
+    upper_build_id: int,
+    after_build_id: int,
+    selection_limit: int,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "target_case_report_time": target_case_report_time,
+        "upper_build_id": upper_build_id,
+        "selection_limit": selection_limit,
+    }
+    if last_processed_case_report_time is not None:
+        params["last_processed_case_report_time"] = last_processed_case_report_time
+    if after_build_id > 0:
+        params["after_build_id"] = after_build_id
+    return params
 
 
 def _case_match_query(connection: Connection, impacted_build_ids: list[int]) -> Any:

@@ -15,6 +15,7 @@ def test_load_settings_supports_db_url() -> None:
             "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
             "CI_DASHBOARD_BATCH_SIZE": "12",
             "CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE": "7",
+            "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "3456",
             "CI_DASHBOARD_LOG_LEVEL": "debug",
         }
     )
@@ -23,6 +24,7 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.database.host is None
     assert settings.jobs.batch_size == 12
     assert settings.jobs.refresh_group_batch_size == 7
+    assert settings.jobs.refresh_build_limit == 3456
     assert settings.log_level == "DEBUG"
 
 
@@ -47,6 +49,16 @@ def test_load_settings_rejects_invalid_refresh_group_batch_size() -> None:
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
                 "CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE": "abc",
+            }
+        )
+
+
+def test_load_settings_rejects_invalid_refresh_build_limit() -> None:
+    with pytest.raises(ValueError, match="CI_DASHBOARD_REFRESH_BUILD_LIMIT"):
+        load_settings(
+            {
+                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
+                "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "abc",
             }
         )
 

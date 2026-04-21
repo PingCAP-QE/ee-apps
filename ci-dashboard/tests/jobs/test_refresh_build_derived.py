@@ -16,7 +16,7 @@ from ci_dashboard.jobs.refresh_build_derived import (
 from ci_dashboard.jobs.state_store import get_job_state
 
 
-def _settings(*, batch_size: int = 100) -> Settings:
+def _settings(*, batch_size: int = 100, refresh_build_limit: int = 5000) -> Settings:
     return Settings(
         database=DatabaseSettings(
             url="sqlite+pysqlite:///:memory:",
@@ -27,7 +27,10 @@ def _settings(*, batch_size: int = 100) -> Settings:
             database=None,
             ssl_ca=None,
         ),
-        jobs=JobSettings(batch_size=batch_size),
+        jobs=JobSettings(
+            batch_size=batch_size,
+            refresh_build_limit=refresh_build_limit,
+        ),
         log_level="INFO",
     )
 
@@ -319,6 +322,95 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
     assert state is not None
     assert state.last_status == "succeeded"
     assert state.watermark["last_processed_build_id"] == next_sha
+
+
+def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window(sqlite_engine) -> None:
+    first_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-200",
+        normalized_build_key="/jenkins/job/prow-job-200",
+        start_time="2026-04-13 09:00:00",
+    )
+    second_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-201",
+        normalized_build_key="/jenkins/job/prow-job-201",
+        start_time="2026-04-13 09:05:00",
+    )
+    third_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-202",
+        normalized_build_key="/jenkins/job/prow-job-202",
+        start_time="2026-04-13 09:10:00",
+    )
+    _insert_pr_snapshot(
+        sqlite_engine,
+        pr_number=101,
+        target_branch="master",
+        updated_at="2026-04-13 09:30:00",
+    )
+
+    settings = _settings(batch_size=10, refresh_build_limit=2)
+
+    first_summary = run_refresh_build_derived(sqlite_engine, settings)
+    assert first_summary.impacted_builds == 2
+
+    fourth_id = _insert_build(
+        sqlite_engine,
+        source_prow_job_id="prow-job-203",
+        normalized_build_key="/jenkins/job/prow-job-203",
+        start_time="2026-04-13 09:15:00",
+    )
+
+    second_summary = run_refresh_build_derived(sqlite_engine, settings)
+    assert second_summary.impacted_builds == 1
+
+    with sqlite_engine.begin() as connection:
+        rows = list(
+            connection.execute(
+                text(
+                    """
+                    SELECT id, target_branch
+                    FROM ci_l1_builds
+                    WHERE id IN (:first_id, :second_id, :third_id, :fourth_id)
+                    ORDER BY id
+                    """
+                ),
+                {
+                    "first_id": first_id,
+                    "second_id": second_id,
+                    "third_id": third_id,
+                    "fourth_id": fourth_id,
+                },
+            ).mappings()
+        )
+        state_after_second_run = get_job_state(connection, "ci-refresh-build-derived")
+
+    assert [row["target_branch"] for row in rows[:3]] == ["master", "master", "master"]
+    assert rows[3]["target_branch"] is None
+    assert state_after_second_run is not None
+    assert state_after_second_run.watermark["pending_refresh"] is False
+    assert state_after_second_run.watermark["last_processed_build_id"] == third_id
+
+    third_summary = run_refresh_build_derived(sqlite_engine, settings)
+    assert third_summary.impacted_builds == 1
+
+    with sqlite_engine.begin() as connection:
+        final_row = connection.execute(
+            text(
+                """
+                SELECT target_branch
+                FROM ci_l1_builds
+                WHERE id = :id
+                """
+            ),
+            {"id": fourth_id},
+        ).mappings().one()
+        final_state = get_job_state(connection, "ci-refresh-build-derived")
+
+    assert final_row["target_branch"] == "master"
+    assert final_state is not None
+    assert final_state.watermark["last_processed_build_id"] == fourth_id
 
 
 def test_refresh_build_derived_picks_up_new_case_rows_incrementally(sqlite_engine) -> None:
