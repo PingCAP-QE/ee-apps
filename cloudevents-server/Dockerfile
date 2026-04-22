@@ -2,7 +2,7 @@ FROM golang:1.25.5 AS builder
 COPY . /app
 RUN cd /app && go build -o server ./cmd/server
 
-FROM debian:13
+FROM debian:trixie-20260421
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/PingCAP-QE/ee-apps"
 
