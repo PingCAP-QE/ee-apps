@@ -323,16 +323,16 @@ func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, 
 	case "ahead":
 		newTag, err := aheadFn(lastTag)
 		if err != nil {
-			errMsg := fmt.Sprintf("failed to parse patch from tag %s: %v", lastTag, err)
+			errMsg := fmt.Sprintf("failed to generate next tag from %s: %v", lastTag, err)
 			s.logger.Error().Msg(errMsg)
 			return "", &hotfix.HTTPError{
 				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("failed to parse patch from tag %s: %v", lastTag, err),
+				Message: errMsg,
 			}
 		}
 		return newTag, nil
 	default:
-		errMsg := fmt.Sprintf("unkown compare status: '%s'", status)
+		errMsg := fmt.Sprintf("unknown compare status: '%s'", status)
 		s.logger.Error().Msg(errMsg)
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusInternalServerError,
@@ -430,7 +430,10 @@ func newStyleTidbxTagGenerator(latest string) (string, error) {
 }
 
 func newStyleTidbxTagGeneratorFromAlphaTag(latestAlpha string) (string, error) {
-	tag, _ := parseTidbxAlphaTag(latestAlpha)
+	tag, ok := parseTidbxAlphaTag(latestAlpha)
+	if !ok {
+		return "", fmt.Errorf("invalid alpha tag: %s", latestAlpha)
+	}
 	return tag, nil
 }
 
@@ -441,7 +444,7 @@ func legacyTidbxTagGenerator(name string) (string, error) {
 	}
 	seq, err := strconv.Atoi(matches[3])
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	semVer := matches[1]
