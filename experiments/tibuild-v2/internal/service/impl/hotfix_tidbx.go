@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -440,7 +439,7 @@ func newStyleTidbxTagGeneratorFromAlphaTag(latestAlpha string) (string, error) {
 func legacyTidbxTagGenerator(name string) (string, error) {
 	matches := legacyTidbxTagPattern.FindStringSubmatch(name)
 	if len(matches) != 4 {
-		return "", errors.New("not match legacy tidbx tag pattern")
+		return "", fmt.Errorf("tag %s does not match legacy tidbx tag pattern", name)
 	}
 	seq, err := strconv.Atoi(matches[3])
 	if err != nil {
