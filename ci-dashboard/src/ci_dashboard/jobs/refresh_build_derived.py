@@ -11,6 +11,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import RefreshBuildDerivedSummary
 from ci_dashboard.common.sql_helpers import chunked
+from ci_dashboard.jobs.build_url_matcher import classify_cloud_phase, normalize_build_url
 from ci_dashboard.jobs.flaky import BuildAttempt, compute_group_flags, parse_datetime
 from ci_dashboard.jobs.state_store import (
     get_job_state,
@@ -25,6 +26,7 @@ JOB_NAME = "ci-refresh-build-derived"
 REQUIRE_RETEST_FOR_RETRY_LOOP = False
 DEFAULT_WRITE_BATCH_SIZE = 100
 DEFAULT_REFRESH_BUILD_LIMIT = 5000
+CASE_RUN_DERIVED_WATERMARK_KEY = "last_processed_case_run_derived_id"
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,15 @@ def run_refresh_build_derived(
 
     try:
         with engine.begin() as connection:
+            case_run_derived_watermark = _refresh_problem_case_run_derived_columns(
+                connection,
+                last_processed_case_run_derived_id=_normalize_optional_int(
+                    watermark.get(CASE_RUN_DERIVED_WATERMARK_KEY),
+                    default=0,
+                ),
+                batch_size=chunk_size,
+                write_batch_size=write_batch_size,
+            )
             selection_watermarks = _resolve_selection_watermarks(connection, watermark)
             impacted_selection = _get_impacted_build_ids(
                 connection,
@@ -74,6 +85,7 @@ def run_refresh_build_derived(
             watermark,
             selection_watermarks,
             impacted_selection,
+            case_run_derived_watermark=case_run_derived_watermark,
         )
         summary.last_processed_build_id = int(next_watermark["last_processed_build_id"] or 0)
         summary.last_processed_pr_event_updated_at = _normalize_optional_string(
@@ -184,6 +196,7 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
             "last_processed_build_id": 0,
             "last_processed_pr_event_updated_at": None,
             "last_processed_case_report_time": None,
+            CASE_RUN_DERIVED_WATERMARK_KEY: 0,
             "pending_refresh": False,
             "pending_target_build_id": None,
             "pending_target_pr_event_updated_at": None,
@@ -200,6 +213,10 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
             ),
             "last_processed_case_report_time": _normalize_optional_string(
                 state.watermark.get("last_processed_case_report_time")
+            ),
+            CASE_RUN_DERIVED_WATERMARK_KEY: _normalize_optional_int(
+                state.watermark.get(CASE_RUN_DERIVED_WATERMARK_KEY),
+                default=0,
             ),
             "pending_refresh": bool(state.watermark.get("pending_refresh", False)),
             "pending_target_build_id": _normalize_optional_int(
@@ -567,6 +584,8 @@ def _build_success_watermark(
     watermark: Mapping[str, Any],
     selection_watermarks: Mapping[str, Any],
     impacted_selection: ImpactedBuildSelection,
+    *,
+    case_run_derived_watermark: int,
 ) -> dict[str, Any]:
     if impacted_selection.has_more and impacted_selection.build_ids:
         return {
@@ -587,6 +606,7 @@ def _build_success_watermark(
             "pending_target_case_report_time": _normalize_optional_string(
                 selection_watermarks.get("last_processed_case_report_time")
             ),
+            CASE_RUN_DERIVED_WATERMARK_KEY: case_run_derived_watermark,
         }
 
     return {
@@ -604,6 +624,7 @@ def _build_success_watermark(
         "pending_target_build_id": None,
         "pending_target_pr_event_updated_at": None,
         "pending_target_case_report_time": None,
+        CASE_RUN_DERIVED_WATERMARK_KEY: case_run_derived_watermark,
     }
 
 
@@ -618,6 +639,74 @@ def _normalize_optional_string(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _refresh_problem_case_run_derived_columns(
+    connection: Connection,
+    *,
+    last_processed_case_run_derived_id: int,
+    batch_size: int,
+    write_batch_size: int,
+) -> int:
+    rows = list(
+        connection.execute(
+            text(
+                """
+                SELECT id, build_url
+                FROM problem_case_runs
+                WHERE id > :after_id
+                  AND (
+                    normalized_build_key IS NULL
+                    OR normalized_build_key = ''
+                    OR cloud_phase IS NULL
+                    OR cloud_phase = ''
+                  )
+                ORDER BY id
+                LIMIT :batch_size
+                """
+            ),
+            {"after_id": last_processed_case_run_derived_id, "batch_size": batch_size},
+        ).mappings()
+    )
+    if not rows:
+        max_problem_case_run_id = connection.execute(
+            text("SELECT COALESCE(MAX(id), 0) FROM problem_case_runs")
+        ).scalar_one()
+        return int(max_problem_case_run_id or last_processed_case_run_derived_id)
+
+    payload: list[dict[str, Any]] = []
+    next_watermark = last_processed_case_run_derived_id
+    for row in rows:
+        problem_case_run_id = int(row["id"])
+        raw_build_url = _normalize_optional_string(row["build_url"])
+        payload.append(
+            {
+                "id": problem_case_run_id,
+                "normalized_build_key": normalize_build_url(raw_build_url),
+                "cloud_phase": classify_cloud_phase(raw_build_url),
+            }
+        )
+        next_watermark = problem_case_run_id
+
+    _execute_statement_in_batches(
+        connection,
+        text(
+            """
+            UPDATE problem_case_runs
+            SET normalized_build_key = :normalized_build_key,
+                cloud_phase = :cloud_phase
+            WHERE id = :id
+            """
+        ),
+        payload,
+        batch_size=write_batch_size,
+    )
+    LOG.info(
+        "problem_case_runs derived columns updated %s rows up to id %s",
+        len(payload),
+        next_watermark,
+    )
+    return next_watermark
 
 
 def _phase_a_branch_enrichment(
