@@ -139,6 +139,8 @@ def _create_test_schema(engine: Engine) -> None:
           timecost_ms INTEGER NULL,
           report_time TEXT NULL,
           build_url TEXT NULL,
+          normalized_build_key TEXT NULL,
+          cloud_phase TEXT NULL,
           reason TEXT NULL
         )
         """,

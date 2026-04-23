@@ -225,6 +225,43 @@ def test_fetch_group_builds_for_groups_batches_and_buckets_rows(sqlite_engine) -
     ] == [third_id]
 
 
+def test_refresh_build_derived_enriches_problem_case_run_derived_columns(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO problem_case_runs (
+                  repo, branch, suite_name, case_name, flaky, timecost_ms, report_time, build_url, reason
+                ) VALUES (
+                  'pingcap/tidb', 'master', 'unit', 'case-a', 1, 10, '2026-04-13 10:15:00',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/123/display/redirect',
+                  'flake'
+                )
+                """
+            )
+        )
+
+    summary = run_refresh_build_derived(sqlite_engine, _settings(batch_size=5))
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT normalized_build_key, cloud_phase
+                FROM problem_case_runs
+                WHERE case_name = 'case-a'
+                """
+            )
+        ).mappings().one()
+        state = get_job_state(connection, "ci-refresh-build-derived")
+
+    assert summary.impacted_builds == 0
+    assert row["normalized_build_key"] == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/123"
+    assert row["cloud_phase"] == "GCP"
+    assert state is not None
+    assert int(state.watermark["last_processed_case_run_derived_id"]) > 0
+
+
 def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,
