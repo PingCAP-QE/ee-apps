@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: ci-dashboard
-Version: 0.1.0
+Version: 0.1.2
 Summary: CI dashboard jobs and API scaffold
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown

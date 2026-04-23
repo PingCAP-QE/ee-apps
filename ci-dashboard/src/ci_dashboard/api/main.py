@@ -71,7 +71,7 @@ def _attach_frontend(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CI Dashboard", version="0.1.0")
+    app = FastAPI(title="CI Dashboard", version="0.1.2")
 
     app.include_router(status_router)
     app.include_router(filters_router)
