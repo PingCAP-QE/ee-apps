@@ -56,6 +56,8 @@ API_RETRY_ATTEMPTS = 3
 API_RETRY_BASE_DELAY_SECONDS = 1.0
 POD_NAME_BUILD_NUMBER_MIN_DIGITS = 2
 POD_LINK_RECONCILE_WINDOW_HOURS = 72
+POD_LINK_RECONCILE_BATCH_SIZE = 1000
+JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,7 @@ class JenkinsPodNameBuildRef:
 
 def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
     summary = SyncPodsSummary()
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None
     with engine.begin() as connection:
         watermark = _load_watermark(connection)
         mark_job_started(connection, JOB_NAME, watermark)
@@ -159,12 +162,17 @@ def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
 
         if affected_pods:
             pod_metadata_by_identity = _load_pod_metadata_snapshots(sorted(affected_pods))
+            if any(_infer_pod_build_system(namespace_name) == "JENKINS" for _, namespace_name, _, _ in affected_pods):
+                with engine.begin() as connection:
+                    # Learn the prefix mapping once per run instead of rescanning build history per lifecycle batch.
+                    jenkins_pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
             for group in chunked(sorted(affected_pods), settings.jobs.batch_size):
                 with engine.begin() as connection:
                     lifecycle_rows = _build_lifecycle_rows(
                         connection,
                         group,
                         pod_metadata_by_identity=pod_metadata_by_identity,
+                        jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
                     )
                     if lifecycle_rows:
                         _upsert_pod_lifecycle(connection, lifecycle_rows)
@@ -172,7 +180,11 @@ def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
             summary.pods_touched = len(affected_pods)
 
         with engine.begin() as connection:
-            summary.reconciled_rows_updated = _reconcile_recent_lifecycle_rows(connection)
+            summary.reconciled_rows_updated = _reconcile_recent_lifecycle_rows(
+                connection,
+                batch_size=settings.jobs.batch_size,
+                jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
+            )
 
         new_watermark = {
             "last_receive_timestamp": summary.last_receive_timestamp or watermark.get("last_receive_timestamp"),
@@ -191,6 +203,7 @@ def run_reconcile_pod_linkage_for_time_window(
     *,
     start_time_from: datetime,
     start_time_to: datetime | None = None,
+    batch_size: int | None = None,
 ) -> SyncPodsSummary:
     summary = SyncPodsSummary()
     with engine.begin() as connection:
@@ -198,6 +211,7 @@ def run_reconcile_pod_linkage_for_time_window(
             connection,
             start_time_from=start_time_from,
             start_time_to=start_time_to,
+            batch_size=batch_size,
         )
     return summary
 
@@ -594,6 +608,7 @@ def _build_lifecycle_rows(
     pods: list[tuple[str, str | None, str | None, str | None]],
     *,
     pod_metadata_by_identity: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot],
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     lifecycle_rows = _load_lifecycle_aggregates(connection, pods)
     if not lifecycle_rows:
@@ -603,6 +618,7 @@ def _build_lifecycle_rows(
         connection,
         lifecycle_rows,
         pod_metadata_by_identity=pod_metadata_by_identity,
+        jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
     )
     rows: list[dict[str, Any]] = []
     for lifecycle in lifecycle_rows:
@@ -714,6 +730,7 @@ def _load_build_metadata_map(
     lifecycle_rows: list[dict[str, Any]],
     *,
     pod_metadata_by_identity: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot],
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
 ) -> dict[tuple[str, str | None, str | None, str | None], dict[str, Any]]:
     prow_identities: dict[tuple[str, str | None, str | None, str | None], str] = {}
     jenkins_rows_by_identity: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
@@ -750,7 +767,9 @@ def _load_build_metadata_map(
                 results[identity] = direct_by_pod_name[pod_name]
 
     if jenkins_rows_by_identity:
-        pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
+        pod_name_url_prefixes = jenkins_pod_name_url_prefixes
+        if pod_name_url_prefixes is None:
+            pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
         candidate_urls_by_identity: dict[tuple[str, str | None, str | None, str | None], list[str]] = {}
         for identity, payload in jenkins_rows_by_identity.items():
             candidate_urls: list[str] = []
@@ -885,6 +904,11 @@ def _load_build_candidates_by_normalized_url(
 
 
 def _load_jenkins_pod_name_url_prefix_map(connection: Connection) -> dict[str, str]:
+    lookback_days = _read_int_env(
+        "CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS",
+        JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS,
+    )
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=lookback_days)
     rows = connection.execute(
         text(
             """
@@ -896,9 +920,11 @@ def _load_jenkins_pod_name_url_prefix_map(connection: Connection) -> dict[str, s
             WHERE build_system = 'JENKINS'
               AND pod_name IS NOT NULL
               AND normalized_build_url IS NOT NULL
+              AND start_time >= :cutoff
             ORDER BY start_time DESC
             """
-        )
+        ),
+        {"cutoff": cutoff},
     ).mappings()
 
     candidates_by_prefix: dict[str, dict[str, tuple[int, datetime | None]]] = defaultdict(dict)
@@ -1273,13 +1299,20 @@ def _upsert_pod_lifecycle(connection: Connection, rows: list[dict[str, Any]]) ->
     connection.execute(statement, rows)
 
 
-def _reconcile_recent_lifecycle_rows(connection: Connection) -> int:
+def _reconcile_recent_lifecycle_rows(
+    connection: Connection,
+    *,
+    batch_size: int | None = None,
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
+) -> int:
     window_hours = _read_int_env("CI_DASHBOARD_POD_LINK_RECONCILE_WINDOW_HOURS", POD_LINK_RECONCILE_WINDOW_HOURS)
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=window_hours)
     return _reconcile_lifecycle_rows_in_time_window(
         connection,
         start_time_from=cutoff,
         start_time_to=None,
+        batch_size=batch_size,
+        jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
     )
 
 
@@ -1288,83 +1321,106 @@ def _reconcile_lifecycle_rows_in_time_window(
     *,
     start_time_from: datetime,
     start_time_to: datetime | None,
+    batch_size: int | None = None,
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
 ) -> int:
-    lifecycle_rows = _load_lifecycle_rows_for_reconcile(
-        connection,
-        start_time_from=start_time_from,
-        start_time_to=start_time_to,
+    resolved_batch_size = batch_size or _read_int_env(
+        "CI_DASHBOARD_POD_LINK_RECONCILE_BATCH_SIZE",
+        POD_LINK_RECONCILE_BATCH_SIZE,
     )
-    if not lifecycle_rows:
-        return 0
+    after_lifecycle_id = 0
+    total_updated = 0
+    cached_prefix_map = jenkins_pod_name_url_prefixes
 
-    pod_metadata_by_identity = _deserialize_pod_metadata_snapshots_from_lifecycle_rows(lifecycle_rows)
-    build_metadata_by_identity = _load_build_metadata_map(
-        connection,
-        lifecycle_rows,
-        pod_metadata_by_identity=pod_metadata_by_identity,
-    )
+    while True:
+        lifecycle_rows = _load_lifecycle_rows_for_reconcile(
+            connection,
+            start_time_from=start_time_from,
+            start_time_to=start_time_to,
+            after_lifecycle_id=after_lifecycle_id,
+            limit=resolved_batch_size,
+        )
+        if not lifecycle_rows:
+            break
 
-    payload: list[dict[str, Any]] = []
-    for lifecycle in lifecycle_rows:
-        identity = _pod_identity_from_values(
-            source_project=_coerce_str(lifecycle.get("source_project")) or "",
-            namespace_name=_coerce_str(lifecycle.get("namespace_name")),
-            pod_uid=_coerce_str(lifecycle.get("pod_uid")),
-            pod_name=_coerce_str(lifecycle.get("pod_name")),
-        )
-        build_meta = build_metadata_by_identity.get(identity, {})
-        current_build_system = _coerce_str(lifecycle.get("build_system")) or _infer_pod_build_system(
-            _coerce_str(lifecycle.get("namespace_name"))
-        )
-        resolved_build_system = build_meta.get("build_system") or current_build_system
-        resolved_normalized_build_url = build_meta.get("normalized_build_url") or _coerce_str(
-            lifecycle.get("normalized_build_url")
-        )
-        resolved_source_prow_job_id = build_meta.get("source_prow_job_id") or _coerce_str(
-            lifecycle.get("source_prow_job_id")
-        )
-        resolved_repo_full_name = build_meta.get("repo_full_name") or _coerce_str(lifecycle.get("repo_full_name"))
-        resolved_job_name = build_meta.get("job_name") or _coerce_str(lifecycle.get("job_name"))
-
-        if (
-            resolved_build_system == _coerce_str(lifecycle.get("build_system"))
-            and resolved_normalized_build_url == _coerce_str(lifecycle.get("normalized_build_url"))
-            and resolved_source_prow_job_id == _coerce_str(lifecycle.get("source_prow_job_id"))
-            and resolved_repo_full_name == _coerce_str(lifecycle.get("repo_full_name"))
-            and resolved_job_name == _coerce_str(lifecycle.get("job_name"))
+        after_lifecycle_id = max(int(lifecycle["id"]) for lifecycle in lifecycle_rows)
+        if cached_prefix_map is None and any(
+            _infer_pod_build_system(_coerce_str(lifecycle.get("namespace_name"))) == "JENKINS"
+            for lifecycle in lifecycle_rows
         ):
+            cached_prefix_map = _load_jenkins_pod_name_url_prefix_map(connection)
+
+        pod_metadata_by_identity = _deserialize_pod_metadata_snapshots_from_lifecycle_rows(lifecycle_rows)
+        build_metadata_by_identity = _load_build_metadata_map(
+            connection,
+            lifecycle_rows,
+            pod_metadata_by_identity=pod_metadata_by_identity,
+            jenkins_pod_name_url_prefixes=cached_prefix_map,
+        )
+
+        payload: list[dict[str, Any]] = []
+        for lifecycle in lifecycle_rows:
+            identity = _pod_identity_from_values(
+                source_project=_coerce_str(lifecycle.get("source_project")) or "",
+                namespace_name=_coerce_str(lifecycle.get("namespace_name")),
+                pod_uid=_coerce_str(lifecycle.get("pod_uid")),
+                pod_name=_coerce_str(lifecycle.get("pod_name")),
+            )
+            build_meta = build_metadata_by_identity.get(identity, {})
+            current_build_system = _coerce_str(lifecycle.get("build_system")) or _infer_pod_build_system(
+                _coerce_str(lifecycle.get("namespace_name"))
+            )
+            resolved_build_system = build_meta.get("build_system") or current_build_system
+            resolved_normalized_build_url = build_meta.get("normalized_build_url") or _coerce_str(
+                lifecycle.get("normalized_build_url")
+            )
+            resolved_source_prow_job_id = build_meta.get("source_prow_job_id") or _coerce_str(
+                lifecycle.get("source_prow_job_id")
+            )
+            resolved_repo_full_name = build_meta.get("repo_full_name") or _coerce_str(lifecycle.get("repo_full_name"))
+            resolved_job_name = build_meta.get("job_name") or _coerce_str(lifecycle.get("job_name"))
+
+            if (
+                resolved_build_system == _coerce_str(lifecycle.get("build_system"))
+                and resolved_normalized_build_url == _coerce_str(lifecycle.get("normalized_build_url"))
+                and resolved_source_prow_job_id == _coerce_str(lifecycle.get("source_prow_job_id"))
+                and resolved_repo_full_name == _coerce_str(lifecycle.get("repo_full_name"))
+                and resolved_job_name == _coerce_str(lifecycle.get("job_name"))
+            ):
+                continue
+
+            payload.append(
+                {
+                    "id": lifecycle["id"],
+                    "build_system": resolved_build_system,
+                    "normalized_build_url": resolved_normalized_build_url,
+                    "source_prow_job_id": resolved_source_prow_job_id,
+                    "repo_full_name": resolved_repo_full_name,
+                    "job_name": resolved_job_name,
+                }
+            )
+
+        if not payload:
             continue
 
-        payload.append(
-            {
-                "id": lifecycle["id"],
-                "build_system": resolved_build_system,
-                "normalized_build_url": resolved_normalized_build_url,
-                "source_prow_job_id": resolved_source_prow_job_id,
-                "repo_full_name": resolved_repo_full_name,
-                "job_name": resolved_job_name,
-            }
+        connection.execute(
+            text(
+                """
+                UPDATE ci_l1_pod_lifecycle
+                SET build_system = :build_system,
+                    normalized_build_url = :normalized_build_url,
+                    source_prow_job_id = :source_prow_job_id,
+                    repo_full_name = :repo_full_name,
+                    job_name = :job_name,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+                """
+            ),
+            payload,
         )
+        total_updated += len(payload)
 
-    if not payload:
-        return 0
-
-    connection.execute(
-        text(
-            """
-            UPDATE ci_l1_pod_lifecycle
-            SET build_system = :build_system,
-                normalized_build_url = :normalized_build_url,
-                source_prow_job_id = :source_prow_job_id,
-                repo_full_name = :repo_full_name,
-                job_name = :job_name,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = :id
-            """
-        ),
-        payload,
-    )
-    return len(payload)
+    return total_updated
 
 
 def _load_lifecycle_rows_for_reconcile(
@@ -1372,8 +1428,14 @@ def _load_lifecycle_rows_for_reconcile(
     *,
     start_time_from: datetime,
     start_time_to: datetime | None,
+    after_lifecycle_id: int,
+    limit: int,
 ) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"start_time_from": start_time_from}
+    params: dict[str, Any] = {
+        "start_time_from": start_time_from,
+        "after_lifecycle_id": after_lifecycle_id,
+        "limit": limit,
+    }
     end_clause = ""
     if start_time_to is not None:
         end_clause = "  AND scheduled_at < :start_time_to\n"
@@ -1399,13 +1461,15 @@ def _load_lifecycle_rows_for_reconcile(
               job_name
             FROM ci_l1_pod_lifecycle
             WHERE scheduled_at >= :start_time_from
-{end_clause}              AND (
+{end_clause}              AND id > :after_lifecycle_id
+              AND (
                 source_prow_job_id IS NULL
                 OR source_prow_job_id = ''
                 OR normalized_build_url IS NULL
                 OR normalized_build_url = ''
               )
-            ORDER BY scheduled_at DESC, id DESC
+            ORDER BY id ASC
+            LIMIT :limit
             """
         ),
         params,

@@ -14,6 +14,7 @@ from ci_dashboard.jobs.sync_pods import (
     PodMetadataSnapshot,
     _extract_build_number_from_jenkins_label,
     _get_json,
+    _load_jenkins_pod_name_url_prefix_map,
     _post_json,
     run_reconcile_pod_linkage_for_time_window,
     run_sync_pods,
@@ -957,6 +958,193 @@ def test_sync_pods_links_jenkins_pod_from_pod_name_parse_when_live_metadata_is_m
     assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
 
 
+def test_load_jenkins_pod_name_url_prefix_map_ignores_old_builds(sqlite_engine, monkeypatch) -> None:
+    monkeypatch.setenv("CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS", "30")
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  pod_name, start_time, cloud_phase, build_system
+                ) VALUES (
+                  7, 'prow-job-jenkins-old-1', 'apps',
+                  'pull_integration_realcluster_test_next_gen',
+                  'presubmit', 'success',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1030/',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1030/',
+                  'tidb-ci-pull-integration-realcluster-test-next-gen-1030-abcde', '2000-01-01 00:00:00', 'GCP', 'JENKINS'
+                )
+                """
+            )
+        )
+
+        assert _load_jenkins_pod_name_url_prefix_map(connection) == {}
+
+
+def test_sync_pods_loads_jenkins_prefix_map_once_per_run(sqlite_engine, monkeypatch) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  pod_name, start_time, cloud_phase, build_system
+                ) VALUES
+                  (
+                    8, 'prow-job-jenkins-2050', 'apps',
+                    'pull_integration_realcluster_test_next_gen',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2050/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2050/',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2050-oldaa', '2026-04-21T12:14:18Z', 'GCP', 'JENKINS'
+                  ),
+                  (
+                    9, 'prow-job-jenkins-2051', 'apps',
+                    'pull_integration_realcluster_test_next_gen',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2051/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2051/',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2051-oldbb', '2026-04-21T12:15:18Z', 'GCP', 'JENKINS'
+                  )
+                """
+            )
+        )
+
+    entries = [
+        {
+            "insertId": "jenkins-cache-1",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-21T12:14:20Z",
+            "receiveTimestamp": "2026-04-21T12:14:24Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "tidb-ci-pull-integration-realcluster-test-next-gen-2050-z9k2m",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Scheduled",
+                "type": "Normal",
+                "message": "Successfully assigned",
+                "reportingComponent": "default-scheduler",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-cache-1"},
+                "firstTimestamp": "2026-04-21T12:14:20Z",
+                "lastTimestamp": "2026-04-21T12:14:20Z",
+            },
+        },
+        {
+            "insertId": "jenkins-cache-2",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-21T12:14:40Z",
+            "receiveTimestamp": "2026-04-21T12:14:44Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "tidb-ci-pull-integration-realcluster-test-next-gen-2050-z9k2m",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Started",
+                "type": "Normal",
+                "message": "Started container test",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-cache-1"},
+                "firstTimestamp": "2026-04-21T12:14:40Z",
+                "lastTimestamp": "2026-04-21T12:14:40Z",
+            },
+        },
+        {
+            "insertId": "jenkins-cache-3",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-21T12:15:20Z",
+            "receiveTimestamp": "2026-04-21T12:15:24Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "tidb-ci-pull-integration-realcluster-test-next-gen-2051-x8y7z",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Scheduled",
+                "type": "Normal",
+                "message": "Successfully assigned",
+                "reportingComponent": "default-scheduler",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-cache-2"},
+                "firstTimestamp": "2026-04-21T12:15:20Z",
+                "lastTimestamp": "2026-04-21T12:15:20Z",
+            },
+        },
+        {
+            "insertId": "jenkins-cache-4",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-21T12:15:40Z",
+            "receiveTimestamp": "2026-04-21T12:15:44Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "tidb-ci-pull-integration-realcluster-test-next-gen-2051-x8y7z",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Started",
+                "type": "Normal",
+                "message": "Started container test",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-cache-2"},
+                "firstTimestamp": "2026-04-21T12:15:40Z",
+                "lastTimestamp": "2026-04-21T12:15:40Z",
+            },
+        },
+    ]
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._fetch_pod_event_entries",
+        lambda **_: entries,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_pod_metadata_snapshots",
+        lambda _pods: {},
+    )
+
+    calls = {"count": 0}
+
+    def fake_load_jenkins_pod_name_url_prefix_map(_connection):
+        calls["count"] += 1
+        return {
+            "tidb-ci-pull-integration-realcluster-test-next-gen": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/"
+            )
+        }
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_jenkins_pod_name_url_prefix_map",
+        fake_load_jenkins_pod_name_url_prefix_map,
+    )
+
+    run_sync_pods(sqlite_engine, _settings(batch_size=1))
+
+    assert calls["count"] == 1
+
+
 def test_reconcile_pod_linkage_range_backfills_rows_after_build_arrives(sqlite_engine) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -1018,3 +1206,96 @@ def test_reconcile_pod_linkage_range_backfills_rows_after_build_arrives(sqlite_e
     )
     assert row["repo_full_name"] == "pingcap/tidb"
     assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
+
+
+def test_reconcile_pod_linkage_range_processes_multiple_batches(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_pod_lifecycle (
+                  source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
+                  build_system, scheduled_at, first_started_at, last_event_at
+                ) VALUES
+                  (
+                    'pingcap-testing-account', 'prow', 'us-central1-c', 'jenkins-tidb',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2052-abcde', 'uid-reconcile-b1',
+                    'JENKINS', '2026-04-21 12:14:20', '2026-04-21 12:14:40', '2026-04-21 12:14:40'
+                  ),
+                  (
+                    'pingcap-testing-account', 'prow', 'us-central1-c', 'jenkins-tidb',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2053-fghij', 'uid-reconcile-b2',
+                    'JENKINS', '2026-04-21 12:15:20', '2026-04-21 12:15:40', '2026-04-21 12:15:40'
+                  )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  pod_name, start_time, cloud_phase, build_system
+                ) VALUES
+                  (
+                    10, 'prow-job-jenkins-2052', 'apps',
+                    'pull_integration_realcluster_test_next_gen',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2052/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2052/',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2052-qwert', '2026-04-21T12:14:18Z', 'GCP', 'JENKINS'
+                  ),
+                  (
+                    11, 'prow-job-jenkins-2053', 'apps',
+                    'pull_integration_realcluster_test_next_gen',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2053/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2053/',
+                    'tidb-ci-pull-integration-realcluster-test-next-gen-2053-asdfg', '2026-04-21T12:15:18Z', 'GCP', 'JENKINS'
+                  )
+                """
+            )
+        )
+
+    summary = run_reconcile_pod_linkage_for_time_window(
+        sqlite_engine,
+        start_time_from=datetime(2026, 4, 21, 0, 0, 0),
+        start_time_to=datetime(2026, 4, 22, 0, 0, 0),
+        batch_size=1,
+    )
+
+    assert summary.reconciled_rows_updated == 2
+
+    with sqlite_engine.begin() as connection:
+        rows = list(
+            connection.execute(
+                text(
+                    """
+                    SELECT pod_uid, source_prow_job_id, normalized_build_url
+                    FROM ci_l1_pod_lifecycle
+                    WHERE pod_uid IN ('uid-reconcile-b1', 'uid-reconcile-b2')
+                    ORDER BY pod_uid
+                    """
+                )
+            ).mappings()
+        )
+
+    assert rows == [
+        {
+            "pod_uid": "uid-reconcile-b1",
+            "source_prow_job_id": "prow-job-jenkins-2052",
+            "normalized_build_url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2052/"
+            ),
+        },
+        {
+            "pod_uid": "uid-reconcile-b2",
+            "source_prow_job_id": "prow-job-jenkins-2053",
+            "normalized_build_url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2053/"
+            ),
+        },
+    ]
