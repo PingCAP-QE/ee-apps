@@ -20,14 +20,14 @@ def _insert_build(
                 INSERT INTO ci_l1_builds (
                   source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_key, author, retest, event_guid, build_id,
+                  context, url, normalized_build_url, author, retest, event_guid, build_id,
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
                   is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory
                 ) VALUES (
                   :source_prow_row_id, :source_prow_job_id, 'prow', 'unit-test', 'presubmit', 'success',
                   0, 1, 'pingcap', 'tidb', 'pingcap/tidb', :base_ref, 100, 1,
-                  'unit-test', :url, :normalized_build_key, 'alice', 0, 'guid', '1',
+                  'unit-test', :url, :normalized_build_url, 'alice', 0, 'guid', '1',
                   NULL, NULL, '2026-04-20T00:00:00Z', '2026-04-20T00:00:00Z', 0,
                   0, 0, 'sha', :target_branch, 'GCP', 0,
                   0, 0, NULL, NULL
@@ -39,7 +39,7 @@ def _insert_build(
                 "source_prow_job_id": source_prow_job_id,
                 "base_ref": base_ref,
                 "url": f"https://prow.tidb.net/jenkins/job/{source_prow_job_id}/display/redirect",
-                "normalized_build_key": f"/jenkins/job/{source_prow_job_id}",
+                "normalized_build_url": f"https://prow.tidb.net/jenkins/job/{source_prow_job_id}/",
                 "target_branch": target_branch,
             },
         )

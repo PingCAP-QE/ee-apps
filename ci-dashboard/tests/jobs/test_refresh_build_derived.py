@@ -45,7 +45,7 @@ def _insert_build(
     job_name: str = "unit-test",
     state: str = "failure",
     head_sha: str = "sha-1",
-    normalized_build_key: str | None = None,
+    normalized_build_url: str | None = None,
     start_time: str = "2026-04-13 10:00:00",
     target_branch: str | None = None,
 ) -> int:
@@ -57,7 +57,7 @@ def _insert_build(
                 INSERT INTO ci_l1_builds (
                   source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_key, author, retest, event_guid, build_id,
+                  context, url, normalized_build_url, author, retest, event_guid, build_id,
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
                   is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory
@@ -65,7 +65,7 @@ def _insert_build(
                   :source_prow_row_id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   0, 1, :org, :repo, :repo_full_name, 'master', :pr_number, 1,
                   'unit-test', 'https://prow.tidb.net/jenkins/job/x/1/display/redirect',
-                  :normalized_build_key, 'alice', 0, 'guid', '1', NULL, NULL, :start_time,
+                  :normalized_build_url, 'alice', 0, 'guid', '1', NULL, NULL, :start_time,
                   :start_time, 0, 0, 0, :head_sha, :target_branch, 'GCP', 0, 0, 0, NULL, NULL
                 )
                 """
@@ -79,7 +79,7 @@ def _insert_build(
                 "repo": repo,
                 "repo_full_name": repo_full_name,
                 "pr_number": pr_number,
-                "normalized_build_key": normalized_build_key or f"/jenkins/job/{source_prow_job_id}",
+                "normalized_build_url": normalized_build_url or f"https://prow.tidb.net/jenkins/job/{source_prow_job_id}/",
                 "head_sha": head_sha,
                 "start_time": start_time,
                 "target_branch": target_branch,
@@ -256,7 +256,7 @@ def test_refresh_build_derived_enriches_problem_case_run_derived_columns(sqlite_
         state = get_job_state(connection, "ci-refresh-build-derived")
 
     assert summary.impacted_builds == 0
-    assert row["normalized_build_key"] == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/123"
+    assert row["normalized_build_key"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/123/"
     assert row["cloud_phase"] == "GCP"
     assert state is not None
     assert int(state.watermark["last_processed_case_run_derived_id"]) > 0
@@ -268,7 +268,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         source_prow_job_id="prow-job-1",
         head_sha="sha-1",
         state="failure",
-        normalized_build_key="/jenkins/job/prow-job-1",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-1/",
         start_time="2026-04-13 10:00:00",
     )
     _insert_build(
@@ -276,7 +276,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         source_prow_job_id="prow-job-2",
         head_sha="sha-1",
         state="failure",
-        normalized_build_key="/jenkins/job/prow-job-2",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-2/",
         start_time="2026-04-13 10:05:00",
     )
     _insert_build(
@@ -284,7 +284,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         source_prow_job_id="prow-job-3",
         head_sha="sha-1",
         state="success",
-        normalized_build_key="/jenkins/job/prow-job-3",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-3/",
         start_time="2026-04-13 10:10:00",
     )
     _insert_build(
@@ -293,7 +293,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         pr_number=102,
         head_sha="sha-retry-1",
         state="failure",
-        normalized_build_key="/jenkins/job/prow-job-4",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-4/",
         start_time="2026-04-13 11:00:00",
     )
     _insert_build(
@@ -302,7 +302,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         pr_number=102,
         head_sha="sha-retry-1",
         state="failure",
-        normalized_build_key="/jenkins/job/prow-job-5",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-5/",
         start_time="2026-04-13 11:05:00",
     )
     next_sha = _insert_build(
@@ -311,7 +311,7 @@ def test_refresh_build_derived_end_to_end(sqlite_engine) -> None:
         pr_number=102,
         head_sha="sha-retry-2",
         state="failure",
-        normalized_build_key="/jenkins/job/prow-job-6",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-6/",
         start_time="2026-04-13 11:10:00",
     )
 
@@ -368,19 +368,19 @@ def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window
     first_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-200",
-        normalized_build_key="/jenkins/job/prow-job-200",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-200/",
         start_time="2026-04-13 09:00:00",
     )
     second_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-201",
-        normalized_build_key="/jenkins/job/prow-job-201",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-201/",
         start_time="2026-04-13 09:05:00",
     )
     third_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-202",
-        normalized_build_key="/jenkins/job/prow-job-202",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-202/",
         start_time="2026-04-13 09:10:00",
     )
     _insert_pr_snapshot(
@@ -398,7 +398,7 @@ def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window
     fourth_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-203",
-        normalized_build_key="/jenkins/job/prow-job-203",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-203/",
         start_time="2026-04-13 09:15:00",
     )
 
@@ -560,7 +560,7 @@ def test_refresh_build_derived_picks_up_new_case_rows_incrementally(sqlite_engin
     build_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-20",
-        normalized_build_key="/jenkins/job/prow-job-20",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-20/",
         start_time="2026-04-13 13:00:00",
     )
     _insert_pr_snapshot(sqlite_engine, pr_number=101, target_branch="master", updated_at="2026-04-13 13:30:00")
@@ -598,14 +598,14 @@ def test_refresh_build_derived_time_window_is_repeatable(sqlite_engine) -> None:
     in_window_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-30",
-        normalized_build_key="/jenkins/job/prow-job-30",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-30/",
         start_time="2026-04-13 10:00:00",
     )
     _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-31",
         pr_number=202,
-        normalized_build_key="/jenkins/job/prow-job-31",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-31/",
         start_time="2026-04-12 23:59:59",
     )
     _insert_pr_snapshot(sqlite_engine, pr_number=101, target_branch="master", updated_at="2026-04-13 11:00:00")
@@ -654,21 +654,21 @@ def test_refresh_flaky_signals_time_window_skips_branch_and_case_phases(sqlite_e
     first_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-40",
-        normalized_build_key="/jenkins/job/prow-job-40",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-40/",
         start_time="2026-04-13 10:00:00",
         state="failure",
     )
     second_id = _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-41",
-        normalized_build_key="/jenkins/job/prow-job-41",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-41/",
         start_time="2026-04-13 10:05:00",
         state="failure",
     )
     _insert_build(
         sqlite_engine,
         source_prow_job_id="prow-job-42",
-        normalized_build_key="/jenkins/job/prow-job-42",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/prow-job-42/",
         start_time="2026-04-13 10:10:00",
         state="success",
     )

@@ -96,7 +96,7 @@ def test_map_build_row_derives_v1_fields() -> None:
     assert build.repo_full_name == "pingcap/tidb"
     assert build.is_pr_build is True
     assert build.pr_number == 123
-    assert build.normalized_build_key == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299"
+    assert build.normalized_build_url == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299/"
     assert build.cloud_phase == "GCP"
     assert build.build_system == "JENKINS"
     assert build.head_sha == "0123456789abcdef0123456789abcdef01234567"
@@ -289,7 +289,7 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
             connection.execute(
                 text(
                     """
-                    SELECT source_prow_job_id, repo_full_name, is_pr_build, cloud_phase, normalized_build_key
+                    SELECT source_prow_job_id, repo_full_name, is_pr_build, cloud_phase, normalized_build_url
                         , build_system
                     FROM ci_l1_builds
                     ORDER BY source_prow_row_id
@@ -306,7 +306,7 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
     assert rows[0]["build_system"] == "JENKINS"
     assert rows[1]["cloud_phase"] == "IDC"
     assert rows[1]["build_system"] == "JENKINS"
-    assert rows[1]["normalized_build_key"] == "/jenkins/job/pingcap/job/tidb/job/nightly/2"
+    assert rows[1]["normalized_build_url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/nightly/2/"
     assert state is not None
     assert state.last_status == "succeeded"
     assert state.watermark == {"last_source_prow_row_id": 2}

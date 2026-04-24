@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS ci_l1_builds (
   is_pr_build TINYINT(1) NOT NULL DEFAULT 0,
   context VARCHAR(255) NULL,
   url VARCHAR(1024) NOT NULL,
-  normalized_build_key VARCHAR(1024) NULL,
+  normalized_build_url VARCHAR(1024) NULL,
   author VARCHAR(255) NULL,
   retest TINYINT(1) NULL,
   event_guid VARCHAR(255) NULL,
@@ -45,5 +45,5 @@ CREATE TABLE IF NOT EXISTS ci_l1_builds (
   KEY idx_ci_l1_builds_repo_branch_time (repo_full_name, target_branch, start_time),
   KEY idx_ci_l1_builds_repo_pr_job_sha (repo_full_name, pr_number, job_name, head_sha, start_time),
   KEY idx_ci_l1_builds_pod_name_time (pod_name, start_time),
-  KEY idx_ci_l1_builds_normalized_build_key (normalized_build_key(768))
+  KEY idx_ci_l1_builds_normalized_build_url (normalized_build_url(768))
 );

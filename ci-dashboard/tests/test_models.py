@@ -23,7 +23,7 @@ def test_normalized_build_row_as_db_params_converts_booleans() -> None:
         is_pr_build=True,
         context=None,
         url="https://example.test",
-        normalized_build_key="/job/1",
+        normalized_build_url="https://prow.tidb.net/job/1/",
         author="alice",
         retest=True,
         event_guid=None,

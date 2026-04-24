@@ -23,7 +23,7 @@ class NormalizedBuildRow:
     is_pr_build: bool
     context: str | None
     url: str
-    normalized_build_key: str | None
+    normalized_build_url: str | None
     author: str | None
     retest: bool | None
     event_guid: str | None
@@ -111,5 +111,6 @@ class SyncPodsSummary:
     source_rows_scanned: int = 0
     event_rows_written: int = 0
     lifecycle_rows_upserted: int = 0
+    reconciled_rows_updated: int = 0
     pods_touched: int = 0
     last_receive_timestamp: str | None = None
