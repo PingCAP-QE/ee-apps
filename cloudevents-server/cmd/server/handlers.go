@@ -39,34 +39,29 @@ func healthzHandler(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
 }
 
-func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
-	producer, err := handler.NewEventProducer(cfg.Kafka)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create broker handler")
-	}
-
+func newEventsHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 	return newStructuredEventsHandlerFunc(producer)
 }
 
-func newJenkinsEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
-	producer, err := handler.NewEventProducer(cfg.Kafka)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create broker handler")
-	}
-
+func newJenkinsEventsHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 	return newJenkinsSinkHandlerFunc(producer)
 }
 
 func newStructuredEventsHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		p, err := cloudevents.NewHTTP()
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to create protocol")
+	p, err := cloudevents.NewHTTP()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create cloudevents protocol")
+		return func(c *gin.Context) {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to create protocol"})
 		}
+	}
 
+	return func(c *gin.Context) {
 		ceh, err := cloudevents.NewHTTPReceiveHandler(c, p, producer.HandleCloudEvent)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create handler")
+			log.Error().Err(err).Msg("failed to create cloudevents receive handler")
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to create handler"})
+			return
 		}
 
 		ceh.ServeHTTP(c.Writer, c.Request)
