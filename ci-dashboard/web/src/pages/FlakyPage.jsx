@@ -102,35 +102,6 @@ export default function FlakyPage({ filters }) {
       </Panel>
 
       <Panel
-        title="Filtered-issue flaky rate"
-        subtitle="Weekly flaky rate for the testcase set currently tracked by flaky GitHub issues in this scope."
-        loading={page.loading}
-        error={page.error}
-        actions={showPanelActions ? (
-          <div className="panel-badge-row">
-            <span className="panel-badge">
-              <strong>{formatNumber(issueRows.length)}</strong>
-              <span>tracked cases</span>
-            </span>
-            <span className="panel-badge">
-              <strong>{formatNumber(openIssueCount)}</strong>
-              <span>open issues</span>
-            </span>
-            <span className="panel-badge">
-              <strong>{formatNumber(reopenedIssueCount)}</strong>
-              <span>reopened</span>
-            </span>
-          </div>
-        ) : null}
-      >
-        <TrendChart
-          series={page.data?.issue_filtered_weekly_trend?.series}
-          yFormatter={formatPercent}
-          height={188}
-        />
-      </Panel>
-
-      <Panel
         title="Filtered-issue weekly case table"
         subtitle="Each row keeps the issue link and shows weekly rate as rate (flaky runs / estimated runs)."
         loading={page.loading}
@@ -266,6 +237,35 @@ export default function FlakyPage({ filters }) {
           <RankingList
             items={page.data?.top_jobs?.items}
             valueFormatter={formatPercent}
+          />
+        </Panel>
+
+        <Panel
+          title="Filtered-issue flaky rate"
+          subtitle="Weekly flaky rate for the testcase set currently tracked by flaky GitHub issues in this scope."
+          loading={page.loading}
+          error={page.error}
+          actions={showPanelActions ? (
+            <div className="panel-badge-row">
+              <span className="panel-badge">
+                <strong>{formatNumber(issueRows.length)}</strong>
+                <span>tracked cases</span>
+              </span>
+              <span className="panel-badge">
+                <strong>{formatNumber(openIssueCount)}</strong>
+                <span>open issues</span>
+              </span>
+              <span className="panel-badge">
+                <strong>{formatNumber(reopenedIssueCount)}</strong>
+                <span>reopened</span>
+              </span>
+            </div>
+          ) : null}
+        >
+          <TrendChart
+            series={page.data?.issue_filtered_weekly_trend?.series}
+            yFormatter={formatPercent}
+            height={188}
           />
         </Panel>
 
