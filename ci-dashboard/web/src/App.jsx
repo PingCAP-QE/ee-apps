@@ -80,11 +80,24 @@ export default function App() {
     });
   }, [location.pathname]);
 
-  const jobs = useApiData("/api/v1/filters/jobs", {
+  const shouldLoadJobs = Boolean(filters.repo);
+  const jobs = useApiData(
+    "/api/v1/filters/jobs",
+    {
+      repo: filters.repo,
+      branch: filters.branch,
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+    },
+    shouldLoadJobs,
+  );
+  const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
     branch: filters.branch,
+    job_name: filters.job_name,
+    start_date: filters.start_date,
+    end_date: filters.end_date,
   });
-  const cloudPhases = useApiData("/api/v1/filters/cloud-phases");
 
   function handleFilterChange(key, value) {
     setFilters((current) => {

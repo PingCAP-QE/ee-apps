@@ -84,8 +84,15 @@ def list_jobs(
     *,
     repo: str | None = None,
     branch: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict[str, object]:
-    filters = CommonFilters(repo=repo, branch=branch)
+    filters = CommonFilters(
+        repo=repo,
+        branch=branch,
+        start_date=start_date,
+        end_date=end_date,
+    )
     where_clause, params = build_common_where(filters, table_alias="b")
 
     with engine.begin() as connection:
@@ -111,8 +118,23 @@ def list_jobs(
     return {"items": items}
 
 
-def list_cloud_phases(engine: Engine) -> dict[str, object]:
-    filters = CommonFilters()
+def list_cloud_phases(
+    engine: Engine,
+    *,
+    repo: str | None = None,
+    branch: str | None = None,
+    job_name: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> dict[str, object]:
+    filters = CommonFilters(
+        repo=repo,
+        branch=branch,
+        job_name=job_name,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    where_clause, params = build_common_where(filters, table_alias="b")
     with engine.begin() as connection:
         builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
@@ -120,11 +142,13 @@ def list_cloud_phases(engine: Engine) -> dict[str, object]:
                 f"""
                 SELECT DISTINCT cloud_phase
                 FROM {builds_table}
-                WHERE b.cloud_phase IS NOT NULL
+                WHERE {where_clause}
+                  AND b.cloud_phase IS NOT NULL
                   AND b.cloud_phase <> ''
                 ORDER BY cloud_phase
                 """
-            )
+            ),
+            params,
         ).mappings()
 
         items = [

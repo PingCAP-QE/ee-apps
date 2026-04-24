@@ -529,7 +529,7 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
         cloud_phase=None,
         issue_status=None,
         start_date=None,
-        end_date=None,
+        end_date=filters.end_date,
         granularity=filters.granularity,
     )
 
@@ -579,6 +579,7 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                     AND {success_where}
                     AND b.run_seconds IS NOT NULL
                     AND b.start_time < :anchor_end_exclusive
+                    AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
                     AND {normalized_job_path} IS NOT NULL
                 ),
                 first_gcp AS (
@@ -720,10 +721,19 @@ def _normalized_job_path_expr(connection, table_alias: str = "") -> str:
     if connection.dialect.name == "sqlite":
         return f"normalized_job_path_from_key({base_key})"
 
+    trimmed_key = f"TRIM(TRAILING '/' FROM {base_key})"
+    last_segment = f"SUBSTRING_INDEX({trimmed_key}, '/', -1)"
+    job_path = (
+        "CASE "
+        f"WHEN {last_segment} REGEXP '^[0-9]+$' "
+        f"THEN LEFT({trimmed_key}, CHAR_LENGTH({trimmed_key}) - CHAR_LENGTH({last_segment}) - 1) "
+        f"ELSE {trimmed_key} "
+        "END"
+    )
     return (
         "CASE "
         f"WHEN {base_key} IS NULL THEN NULL "
-        f"ELSE CONCAT(NULLIF(REGEXP_REPLACE(REGEXP_REPLACE({base_key}, '/[0-9]+/?$', ''), '/+$', ''), ''), '/') "
+        f"ELSE CONCAT(NULLIF({job_path}, ''), '/') "
         "END"
     )
 

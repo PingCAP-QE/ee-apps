@@ -85,14 +85,23 @@ export async function fetchJson(path, params = {}, signal) {
   return response.json();
 }
 
-export function useApiData(path, params = {}) {
+export function useApiData(path, params = {}, enabled = true) {
   const [state, setState] = useState({
     data: null,
-    loading: true,
+    loading: enabled,
     error: null,
   });
 
   useEffect(() => {
+    if (!enabled) {
+      setState({
+        data: null,
+        loading: false,
+        error: null,
+      });
+      return undefined;
+    }
+
     const controller = new AbortController();
     setState((current) => ({
       data: current.data,
@@ -120,7 +129,7 @@ export function useApiData(path, params = {}) {
       });
 
     return () => controller.abort();
-  }, [path, JSON.stringify(params)]);
+  }, [enabled, path, JSON.stringify(params)]);
 
   return state;
 }
