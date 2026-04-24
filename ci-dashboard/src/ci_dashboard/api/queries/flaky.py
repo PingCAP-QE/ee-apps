@@ -10,6 +10,7 @@ from ci_dashboard.api.queries.base import (
     CommonFilters,
     MAX_RANKING_LIMIT,
     branch_match_expr,
+    builds_table_expr,
     bucket_expr,
     filter_complete_week_rows,
     failure_like_expr,
@@ -79,22 +80,24 @@ def get_flaky_top_jobs(
     limit: int = 10,
 ) -> dict[str, Any]:
     effective_limit = min(limit, MAX_RANKING_LIMIT)
-    where_clause, params = _build_build_where(filters, table_alias="b")
     failure_like = failure_like_expr("b")
 
     with engine.begin() as connection:
+        where_clause, params = _build_build_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
                 f"""
                 WITH job_stats AS (
                   SELECT
                     b.job_name,
-                    SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) AS failure_like_build_count,
-                    SUM(CASE WHEN {failure_like} AND b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
-                    SUM(CASE WHEN {failure_like} AND b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-                    SUM(CASE WHEN {failure_like} AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count
-                  FROM ci_l1_builds b
+                    COUNT(*) AS failure_like_build_count,
+                    SUM(CASE WHEN b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+                    SUM(CASE WHEN b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
+                    SUM(CASE WHEN b.is_flaky = 1 OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
+                  FROM {builds_table}
                   WHERE {where_clause}
+                    AND {failure_like}
                   GROUP BY b.job_name
                 )
                 SELECT
@@ -733,17 +736,19 @@ def _query_bucketed_flaky_metrics(
         where_clause, params = _build_build_where(filters, table_alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
         failure_like = failure_like_expr("b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
                 f"""
                 SELECT
                   {bucket} AS bucket_start,
-                  SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) AS total_failure_like_count,
-                  SUM(CASE WHEN {failure_like} AND b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
-                  SUM(CASE WHEN {failure_like} AND b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-                  SUM(CASE WHEN {failure_like} AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count
-                FROM ci_l1_builds b
+                  COUNT(*) AS total_failure_like_count,
+                  SUM(CASE WHEN b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+                  SUM(CASE WHEN b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
+                  SUM(CASE WHEN b.is_flaky = 1 OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
+                FROM {builds_table}
                 WHERE {where_clause}
+                  AND {failure_like}
                 GROUP BY bucket_start
                 ORDER BY bucket_start
                 """
@@ -766,7 +771,8 @@ def _query_period_summary(
 ) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = _build_build_where(filters, table_alias="b")
-        summary = _fetch_period_summary(connection, where_clause, params)
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        summary = _fetch_period_summary(connection, builds_table, where_clause, params)
 
     total_build_count = int(summary["total_build_count"] or 0)
     failure_like_build_count = int(summary["failure_like_build_count"] or 0)
@@ -793,6 +799,7 @@ def _query_period_summary(
 
 def _fetch_period_summary(
     connection: Connection,
+    builds_table: str,
     where_clause: str,
     params: dict[str, Any],
 ) -> dict[str, Any]:
@@ -811,7 +818,7 @@ def _fetch_period_summary(
               COUNT(DISTINCT CASE
                 WHEN b.pr_number IS NOT NULL AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN {distinct_pr_key}
               END) AS affected_pr_count
-            FROM ci_l1_builds b
+            FROM {builds_table}
             WHERE {where_clause}
             """
         ),

@@ -38,11 +38,33 @@ def branches(
 def jobs(
     repo: str | None = None,
     branch: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return list_jobs(engine, repo=repo, branch=branch)
+    return list_jobs(
+        engine,
+        repo=repo,
+        branch=branch,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @router.get("/cloud-phases")
-def cloud_phases(engine: Engine = Depends(get_engine)) -> dict[str, object]:
-    return list_cloud_phases(engine)
+def cloud_phases(
+    repo: str | None = None,
+    branch: str | None = None,
+    job_name: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return list_cloud_phases(
+        engine,
+        repo=repo,
+        branch=branch,
+        job_name=job_name,
+        start_date=start_date,
+        end_date=end_date,
+    )
