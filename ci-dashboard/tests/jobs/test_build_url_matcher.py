@@ -9,7 +9,7 @@ from ci_dashboard.jobs.build_url_matcher import (
 
 def test_normalize_build_url_strips_known_prefix_and_redirect() -> None:
     raw = "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299/display/redirect"
-    assert normalize_build_url(raw) == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299"
+    assert normalize_build_url(raw) == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299/"
 
 
 def test_normalize_build_url_handles_none_and_blank() -> None:
@@ -43,7 +43,7 @@ def test_build_job_url_uses_cloud_phase_host() -> None:
 
 def test_normalized_job_path_from_key_strips_only_numeric_build_suffix() -> None:
     assert (
-        normalized_job_path_from_key("/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1061")
-        == "/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test"
+        normalized_job_path_from_key("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1061/")
+        == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/"
     )
-    assert normalized_job_path_from_key("/jenkins/job/job-4") == "/jenkins/job/job-4"
+    assert normalized_job_path_from_key("https://prow.tidb.net/jenkins/job/job-4/") == "https://prow.tidb.net/jenkins/job/job-4/"

@@ -1177,7 +1177,7 @@ def _case_impact_query(
             JOIN problem_case_runs p
               ON p.flaky = 1
              AND p.repo = b.repo_full_name
-             AND {_sqlite_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
+             AND {_sqlite_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
              AND p.report_time BETWEEN b.start_time AND datetime(b.start_time, '+24 hours')
             {where_clause}
             ORDER BY b.id
@@ -1192,7 +1192,7 @@ def _case_impact_query(
         JOIN problem_case_runs p
           ON p.flaky = 1
          AND p.repo = b.repo_full_name
-         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
+         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
          AND p.report_time BETWEEN b.start_time AND b.start_time + INTERVAL 24 HOUR
         {where_clause}
         ORDER BY b.id
@@ -1232,7 +1232,7 @@ def _case_match_query(connection: Connection, impacted_build_ids: list[int]) -> 
             JOIN problem_case_runs p
               ON p.flaky = 1
              AND p.repo = b.repo_full_name
-             AND {_sqlite_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
+             AND {_sqlite_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
              AND p.report_time BETWEEN b.start_time AND datetime(b.start_time, '+24 hours')
             WHERE {build_filter}
             """
@@ -1245,7 +1245,7 @@ def _case_match_query(connection: Connection, impacted_build_ids: list[int]) -> 
         JOIN problem_case_runs p
           ON p.flaky = 1
          AND p.repo = b.repo_full_name
-         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_key
+         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
          AND p.report_time BETWEEN b.start_time AND b.start_time + INTERVAL 24 HOUR
         WHERE {build_filter}
         """
@@ -1277,20 +1277,43 @@ def _execute_statement_in_batches(
 
 
 def _sqlite_normalized_build_url_sql(column_name: str) -> str:
-    stripped = (
-        f"RTRIM(REPLACE(REPLACE(REPLACE(COALESCE({column_name}, ''), "
-        "'https://do.pingcap.net', ''), "
-        "'https://prow.tidb.net', ''), "
-        "'/display/redirect', ''), '/')"
-    )
-    return f"CASE WHEN {stripped} = '' THEN '/' ELSE {stripped} END"
+    return f"normalize_build_url({column_name})"
 
 
 def _mysql_normalized_build_url_sql(column_name: str) -> str:
-    stripped = (
-        f"TRIM(TRAILING '/' FROM REPLACE(REPLACE(REPLACE(COALESCE({column_name}, ''), "
-        "'https://do.pingcap.net', ''), "
-        "'https://prow.tidb.net', ''), "
-        "'/display/redirect', ''))"
+    trimmed = f"TRIM(COALESCE({column_name}, ''))"
+    without_redirect = f"REPLACE({trimmed}, '/display/redirect', '')"
+    stripped_known_host = (
+        "CASE "
+        f"WHEN {without_redirect} = '' THEN NULL "
+        f"WHEN {without_redirect} REGEXP '^https?://prow\\\\.tidb\\\\.net/' "
+        f"THEN REGEXP_REPLACE({without_redirect}, '^https?://prow\\\\.tidb\\\\.net', '') "
+        f"WHEN {without_redirect} REGEXP '^https?://do\\\\.pingcap\\\\.net/' "
+        f"THEN REGEXP_REPLACE({without_redirect}, '^https?://do\\\\.pingcap\\\\.net', '') "
+        f"WHEN {without_redirect} REGEXP '^https?://jenkins\\\\.jenkins\\\\.svc\\\\.cluster\\\\.local(:[0-9]+)?/' "
+        f"THEN REGEXP_REPLACE({without_redirect}, '^https?://jenkins\\\\.jenkins\\\\.svc\\\\.cluster\\\\.local(:[0-9]+)?', '') "
+        f"ELSE {without_redirect} "
+        "END"
     )
-    return f"CASE WHEN {stripped} = '' THEN '/' ELSE {stripped} END"
+    normalized_path = (
+        "CASE "
+        f"WHEN {stripped_known_host} IS NULL OR {stripped_known_host} = '' THEN NULL "
+        f"WHEN LEFT({stripped_known_host}, 1) = '/' THEN {stripped_known_host} "
+        f"ELSE CONCAT('/', TRIM(LEADING '/' FROM {stripped_known_host})) "
+        "END"
+    )
+    canonical_path = (
+        "CASE "
+        f"WHEN {normalized_path} IS NULL THEN NULL "
+        f"WHEN {normalized_path} LIKE '/job/%' THEN CONCAT('/jenkins', {normalized_path}) "
+        f"ELSE {normalized_path} "
+        "END"
+    )
+    return (
+        "CASE "
+        f"WHEN {canonical_path} IS NULL OR {canonical_path} = '' THEN NULL "
+        f"WHEN {canonical_path} LIKE '/jenkins/job/%' OR {canonical_path} LIKE '/view/gs/%' "
+        f"THEN CONCAT('https://prow.tidb.net', REGEXP_REPLACE({canonical_path}, '/+$', ''), '/') "
+        "ELSE NULL "
+        "END"
+    )

@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app, create_app
+from ci_dashboard.jobs.build_url_matcher import normalize_build_url
 
 
 def _insert_build(
@@ -30,11 +31,12 @@ def _insert_build(
     run_seconds: int = 0,
     total_seconds: int = 0,
     pr_number: int = 100,
-    normalized_build_key: str | None = None,
+    normalized_build_url: str | None = None,
     build_id: str = "1",
 ) -> None:
     org, repo = repo_full_name.split("/", 1)
-    build_key = normalized_build_key or f"/jenkins/job/{source_prow_job_id}"
+    build_url = normalize_build_url(normalized_build_url or f"/jenkins/job/{source_prow_job_id}")
+    assert build_url is not None
     with sqlite_engine.begin() as connection:
         connection.execute(
             text(
@@ -42,7 +44,7 @@ def _insert_build(
                 INSERT INTO ci_l1_builds (
                   source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_key, author, retest, event_guid, build_id,
+                  context, url, normalized_build_url, author, retest, event_guid, build_id,
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
                   is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory
@@ -50,7 +52,7 @@ def _insert_build(
                   :source_prow_row_id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   0, 1, :org, :repo, :repo_full_name, :base_ref, :pr_number, 1,
                   'unit-test', :url,
-                  :normalized_build_key, 'alice', 0, 'guid', :build_id, NULL, NULL, :start_time,
+                  :normalized_build_url, 'alice', 0, 'guid', :build_id, NULL, NULL, :start_time,
                   :start_time, :queue_wait_seconds, :run_seconds, :total_seconds, 'sha', :target_branch, :cloud_phase, :is_flaky,
                   :is_retry_loop, 0, :failure_category, NULL
                 )
@@ -66,8 +68,8 @@ def _insert_build(
                 "repo_full_name": repo_full_name,
                 "base_ref": base_ref,
                 "pr_number": pr_number,
-                "url": f"https://prow.tidb.net{build_key}/display/redirect",
-                "normalized_build_key": build_key,
+                "url": f"{build_url}display/redirect",
+                "normalized_build_url": build_url,
                 "build_id": build_id,
                 "start_time": start_time,
                 "queue_wait_seconds": queue_wait_seconds,
@@ -114,7 +116,7 @@ def _insert_success_run_series(
             run_seconds=run_seconds,
             total_seconds=run_seconds + max(run_seconds // 10, 1),
             pr_number=300 + start_source_prow_row_id + index,
-            normalized_build_key=f"{normalized_job_path}/{start_source_prow_row_id + index}",
+            normalized_build_url=f"{normalized_job_path.rstrip('/')}/{start_source_prow_row_id + index}/",
             build_id=f"prow-{start_source_prow_row_id + index}",
         )
 
@@ -828,11 +830,11 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
         "2026-03-30",
     ]
     build_keys = [
-        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1001",
-        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1002",
-        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1003",
-        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1004",
-        "/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1005",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1001/",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1002/",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1003/",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1004/",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-v2-flow/1005/",
     ]
 
     for index, week in enumerate(weeks, start=1):
@@ -851,7 +853,7 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
             failure_category=None,
             start_time=f"{week} 08:00:00",
             pr_number=8800 + index,
-            normalized_build_key=build_keys[index - 1],
+            normalized_build_url=build_keys[index - 1],
             build_id=f"build-v2-{index}",
         )
         _insert_pr_event(
@@ -869,7 +871,7 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
         repo="pingcap/tidb",
         branch="release-v2-test",
         case_name="CaseA",
-        build_url=f"https://prow.tidb.net{build_keys[0]}",
+        build_url=build_keys[0],
         flaky=1,
         report_time="2026-03-02 08:10:00",
     )
@@ -878,7 +880,7 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
         repo="pingcap/tidb",
         branch="release-v2-test",
         case_name="CaseA",
-        build_url=f"https://prow.tidb.net{build_keys[1]}",
+        build_url=build_keys[1],
         flaky=1,
         report_time="2026-03-09 08:10:00",
     )
@@ -889,7 +891,7 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
         repo="pingcap/tidb",
         branch="release-v2-test",
         case_name="CaseC",
-        build_url=f"https://prow.tidb.net{build_keys[1]}",
+        build_url=build_keys[1],
         flaky=1,
         report_time="2026-03-09 08:11:00",
     )
@@ -898,7 +900,7 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
         repo="pingcap/tidb",
         branch="release-v2-test",
         case_name="CaseC",
-        build_url=f"https://prow.tidb.net{build_keys[2]}",
+        build_url=build_keys[2],
         flaky=1,
         report_time="2026-03-16 08:11:00",
     )
@@ -953,7 +955,7 @@ def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_e
         failure_category=None,
         start_time="2026-04-10 12:00:00",
         pr_number=900,
-        normalized_build_key="/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/944",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/944/",
         build_id="prow-live",
     )
     _insert_pr_event(
@@ -999,7 +1001,7 @@ def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_e
         failure_category=None,
         start_time="2026-04-10 13:00:00",
         pr_number=901,
-        normalized_build_key="/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/943",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/943/",
         build_id="prow-ghost-cloud",
     )
     _insert_pr_event(
@@ -1045,7 +1047,7 @@ def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_e
         failure_category=None,
         start_time="2026-04-10 14:00:00",
         pr_number=902,
-        normalized_build_key="/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/945",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_next_gen/945/",
         build_id="prow-ghost-time",
     )
     _insert_pr_event(
@@ -1224,7 +1226,7 @@ def test_build_routes(api_client: TestClient) -> None:
     assert migration_body["improved"] == [
         {
             "job_name": "job-fast",
-            "normalized_job_path": "/jenkins/job/pingcap/job/tidb/job/job-fast",
+            "normalized_job_path": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-fast/",
             "idc_baseline_avg_run_s": 600,
             "gcp_recent_avg_run_s": 300,
             "delta_run_s": -300,
@@ -1237,7 +1239,7 @@ def test_build_routes(api_client: TestClient) -> None:
     assert migration_body["regressed"] == [
         {
             "job_name": "job-slow",
-            "normalized_job_path": "/jenkins/job/pingcap/job/tidb/job/job-slow",
+            "normalized_job_path": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-slow/",
             "idc_baseline_avg_run_s": 200,
             "gcp_recent_avg_run_s": 500,
             "delta_run_s": 300,
@@ -1325,7 +1327,7 @@ def test_page_routes(api_client: TestClient) -> None:
             "total_build_count": 2,
             "success_build_count": 1,
             "success_rate_pct": 50.0,
-            "job_url": "https://prow.tidb.net/jenkins/job/job-4",
+            "job_url": "https://prow.tidb.net/jenkins/job/job-4/",
         }
     ]
     assert build_trend_body["lowest_success_rate_jobs"]["items"] == [
@@ -1335,7 +1337,7 @@ def test_page_routes(api_client: TestClient) -> None:
             "total_build_count": 2,
             "success_build_count": 0,
             "success_avg_run_s": 0,
-            "job_url": "https://do.pingcap.net/jenkins/job/job-2",
+            "job_url": "https://prow.tidb.net/jenkins/job/job-2/",
         },
         {
             "name": "job-c",
@@ -1343,7 +1345,7 @@ def test_page_routes(api_client: TestClient) -> None:
             "total_build_count": 1,
             "success_build_count": 0,
             "success_avg_run_s": 0,
-            "job_url": "https://prow.tidb.net/jenkins/job/job-5",
+            "job_url": "https://prow.tidb.net/jenkins/job/job-5/",
         },
         {
             "name": "job-b",
@@ -1351,7 +1353,7 @@ def test_page_routes(api_client: TestClient) -> None:
             "total_build_count": 2,
             "success_build_count": 1,
             "success_avg_run_s": 600,
-            "job_url": "https://prow.tidb.net/jenkins/job/job-4",
+            "job_url": "https://prow.tidb.net/jenkins/job/job-4/",
         },
     ]
     assert build_trend_body["migration_runtime_comparison"]["improved"][0]["job_name"] == "job-fast"

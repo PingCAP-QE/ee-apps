@@ -18,7 +18,7 @@ from ci_dashboard.jobs.sync_pr_events import (
     run_sync_pr_events_for_time_window,
 )
 from ci_dashboard.jobs.sync_flaky_issues import run_sync_flaky_issues
-from ci_dashboard.jobs.sync_pods import run_sync_pods
+from ci_dashboard.jobs.sync_pods import run_reconcile_pod_linkage_for_time_window, run_sync_pods
 
 
 def _parse_iso_date(value: str) -> date:
@@ -76,6 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--end-date",
         type=_parse_iso_date,
         help="Inclusive build date in YYYY-MM-DD; defaults to open-ended",
+    )
+    pod_link_reconcile_range_parser = subparsers.add_parser(
+        "reconcile-pod-linkage-range",
+        help="Reconcile pod lifecycle rows against build rows for an inclusive scheduled date range",
+    )
+    pod_link_reconcile_range_parser.add_argument(
+        "--start-date",
+        required=True,
+        type=_parse_iso_date,
+        help="Inclusive pod scheduled date in YYYY-MM-DD",
+    )
+    pod_link_reconcile_range_parser.add_argument(
+        "--end-date",
+        type=_parse_iso_date,
+        help="Inclusive pod scheduled date in YYYY-MM-DD; defaults to open-ended",
     )
     backfill_parser = subparsers.add_parser(
         "backfill-range",
@@ -183,6 +198,30 @@ def main() -> int:
         )
         logging.getLogger(__name__).info(
             "refresh-flaky-signals-range finished",
+            extra={
+                "start_time_from": start_time_from.isoformat(sep=" "),
+                "start_time_to": start_time_to.isoformat(sep=" ") if start_time_to else None,
+                "summary": summary.__dict__,
+            },
+        )
+        return 0
+
+    if args.command == "reconcile-pod-linkage-range":
+        if args.end_date is not None and args.start_date > args.end_date:
+            parser.error("--start-date must be on or before --end-date")
+
+        start_time_from, start_time_to = _build_time_window(
+            start_date=args.start_date,
+            end_date=args.end_date,
+        )
+        engine = build_engine(settings)
+        summary = run_reconcile_pod_linkage_for_time_window(
+            engine,
+            start_time_from=start_time_from,
+            start_time_to=start_time_to,
+        )
+        logging.getLogger(__name__).info(
+            "reconcile-pod-linkage-range finished",
             extra={
                 "start_time_from": start_time_from.isoformat(sep=" "),
                 "start_time_to": start_time_to.isoformat(sep=" ") if start_time_to else None,

@@ -715,7 +715,7 @@ def _find_latest_gcp_success_date(
 
 def _normalized_job_path_expr(connection, table_alias: str = "") -> str:
     prefix = f"{table_alias}." if table_alias else ""
-    base_key = f"NULLIF({prefix}normalized_build_key, '')"
+    base_key = f"NULLIF({prefix}normalized_build_url, '')"
 
     if connection.dialect.name == "sqlite":
         return f"normalized_job_path_from_key({base_key})"
@@ -723,7 +723,7 @@ def _normalized_job_path_expr(connection, table_alias: str = "") -> str:
     return (
         "CASE "
         f"WHEN {base_key} IS NULL THEN NULL "
-        f"ELSE NULLIF(REGEXP_REPLACE({base_key}, '/[0-9]+$', ''), '') "
+        f"ELSE CONCAT(NULLIF(REGEXP_REPLACE(REGEXP_REPLACE({base_key}, '/[0-9]+/?$', ''), '/+$', ''), ''), '/') "
         "END"
     )
 

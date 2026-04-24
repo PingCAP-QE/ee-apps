@@ -48,7 +48,7 @@ def _insert_build(
                 INSERT INTO ci_l1_builds (
                   source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_key, author, retest, event_guid, build_id,
+                  context, url, normalized_build_url, author, retest, event_guid, build_id,
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
                   is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory
@@ -56,7 +56,7 @@ def _insert_build(
                   :source_prow_row_id, :source_prow_job_id, 'prow', 'unit-test', 'presubmit', 'failure',
                   0, 1, :org, :repo, :repo_full_name, 'master', :pr_number, 1,
                   'unit-test', 'https://prow.tidb.net/jenkins/job/x/1/display/redirect',
-                  '/jenkins/job/x/1', 'alice', 0, 'guid', '1', NULL, NULL, '2026-04-13 10:00:00',
+                  'https://prow.tidb.net/jenkins/job/x/1/', 'alice', 0, 'guid', '1', NULL, NULL, '2026-04-13 10:00:00',
                   '2026-04-13 10:10:00', 10, 600, 610, 'abc123', NULL, 'GCP', 0, 0, 0, NULL, NULL
                 )
                 """

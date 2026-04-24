@@ -17,9 +17,8 @@ CREATE TABLE IF NOT EXISTS ci_l1_pod_lifecycle (
   jenkins_label_digest VARCHAR(255) NULL,
   jenkins_controller VARCHAR(255) NULL,
   ci_job VARCHAR(255) NULL,
-  jenkins_build_url_key VARCHAR(512) NULL,
   source_prow_job_id VARCHAR(128) NULL,
-  normalized_build_key VARCHAR(512) NULL,
+  normalized_build_url VARCHAR(1024) NULL,
   repo_full_name VARCHAR(255) NULL,
   job_name VARCHAR(255) NULL,
   scheduled_at DATETIME NULL,
@@ -37,7 +36,7 @@ CREATE TABLE IF NOT EXISTS ci_l1_pod_lifecycle (
   KEY idx_ci_l1_pod_lifecycle_pod_name (pod_name),
   KEY idx_ci_l1_pod_lifecycle_build_system_time (build_system, scheduled_at),
   KEY idx_ci_l1_pod_lifecycle_build_key_time (source_prow_job_id, scheduled_at),
-  KEY idx_ci_l1_pod_lifecycle_jenkins_build_key (jenkins_build_url_key),
+  KEY idx_ci_l1_pod_lifecycle_normalized_build_url (normalized_build_url(768)),
   KEY idx_ci_l1_pod_lifecycle_job_time (job_name, scheduled_at),
   KEY idx_ci_l1_pod_lifecycle_repo_time (repo_full_name, scheduled_at)
 );

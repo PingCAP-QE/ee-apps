@@ -213,7 +213,7 @@ def get_distinct_flaky_case_counts_by_branch(
                     p.target_branch AS branch,
                     {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                     b.start_time,
-                    b.normalized_build_key,
+                    b.normalized_build_url,
                     UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
                   FROM ci_l1_builds b
                   JOIN target_prs p
@@ -221,7 +221,7 @@ def get_distinct_flaky_case_counts_by_branch(
                    AND p.pr_number = b.pr_number
                   WHERE b.repo_full_name = :repo
                     AND b.pr_number IS NOT NULL
-                    AND b.normalized_build_key IS NOT NULL
+                    AND b.normalized_build_url IS NOT NULL
                     {_optional_clause(filters.job_name, "AND b.job_name = :job_name")}
                     {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
                     {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
@@ -262,7 +262,7 @@ def get_distinct_flaky_case_counts_by_branch(
                   COUNT(DISTINCT cr.case_name) AS distinct_flaky_case_count
                 FROM build_scope bs
                 JOIN case_runs cr
-                  ON cr.build_key = bs.normalized_build_key
+                  ON cr.build_key = bs.normalized_build_url
                  AND cr.branch = bs.branch
                  AND cr.cloud_phase = bs.cloud_phase
                  AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -876,7 +876,7 @@ def _fetch_issue_weekly_rate_rows(
                 p.target_branch AS branch,
                 {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                 b.start_time,
-                b.normalized_build_key,
+                b.normalized_build_url,
                 b.job_name,
                 UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
               FROM ci_l1_builds b
@@ -885,7 +885,7 @@ def _fetch_issue_weekly_rate_rows(
                AND p.pr_number = b.pr_number
               WHERE b.repo_full_name = :repo
                 AND b.pr_number IS NOT NULL
-                AND b.normalized_build_key IS NOT NULL
+                AND b.normalized_build_url IS NOT NULL
                 {_optional_clause(filters.job_name, "AND b.job_name = :job_name")}
                 {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
                 {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
@@ -937,7 +937,7 @@ def _fetch_issue_weekly_rate_rows(
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
               JOIN build_scope bs
-                ON bs.normalized_build_key = cr.build_key
+                ON bs.normalized_build_url = cr.build_key
                AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -954,7 +954,7 @@ def _fetch_issue_weekly_rate_rows(
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
               JOIN build_scope bs
-                ON bs.normalized_build_key = cr.build_key
+                ON bs.normalized_build_url = cr.build_key
                AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -965,7 +965,7 @@ def _fetch_issue_weekly_rate_rows(
                 cjs.case_name,
                 cjs.issue_branch,
                 bs.week_start,
-                COUNT(DISTINCT bs.normalized_build_key) AS total_runs_est
+                COUNT(DISTINCT bs.normalized_build_url) AS total_runs_est
               FROM case_job_scope cjs
               JOIN build_scope bs
                 ON bs.branch = cjs.issue_branch
@@ -1025,7 +1025,7 @@ def _fetch_weekly_flaky_case_presence(
                 p.target_branch AS branch,
                 {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                 b.start_time,
-                b.normalized_build_key,
+                b.normalized_build_url,
                 UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
               FROM ci_l1_builds b
               JOIN target_prs p
@@ -1033,7 +1033,7 @@ def _fetch_weekly_flaky_case_presence(
                AND p.pr_number = b.pr_number
               WHERE b.repo_full_name = :repo
                 AND b.pr_number IS NOT NULL
-                AND b.normalized_build_key IS NOT NULL
+                AND b.normalized_build_url IS NOT NULL
                 {_optional_clause(filters.job_name, "AND b.job_name = :job_name")}
                 {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
                 {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
@@ -1074,7 +1074,7 @@ def _fetch_weekly_flaky_case_presence(
               cr.case_name
             FROM build_scope bs
             JOIN case_runs cr
-              ON cr.build_key = bs.normalized_build_key
+              ON cr.build_key = bs.normalized_build_url
              AND cr.branch = bs.branch
              AND cr.cloud_phase = bs.cloud_phase
              AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -1335,16 +1335,27 @@ def _optional_clause(value: object | None, clause: str) -> str:
 
 
 def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> str:
-    stripped = (
-        "REPLACE(REPLACE(REPLACE("
-        f"{column_name}, "
-        "'https://do.pingcap.net', ''), "
-        "'https://prow.tidb.net', ''), "
-        "'/display/redirect', '')"
-    )
     if connection.dialect.name == "sqlite":
-        return f"RTRIM({stripped}, '/')"
-    return f"TRIM(TRAILING '/' FROM {stripped})"
+        return f"normalize_build_url({column_name})"
+
+    trimmed = f"TRIM(COALESCE({column_name}, ''))"
+    without_redirect = f"REPLACE({trimmed}, '/display/redirect', '')"
+    canonical = (
+        "CASE "
+        f"WHEN {without_redirect} = '' THEN NULL "
+        f"WHEN {without_redirect} LIKE 'https://do.pingcap.net/%' "
+        f"THEN CONCAT('https://prow.tidb.net', SUBSTRING({without_redirect}, CHAR_LENGTH('https://do.pingcap.net') + 1)) "
+        f"WHEN {without_redirect} LIKE 'https://prow.tidb.net/%' THEN {without_redirect} "
+        f"ELSE {without_redirect} "
+        "END"
+    )
+    return (
+        "CASE "
+        f"WHEN {canonical} IS NULL OR {canonical} = '' THEN NULL "
+        f"WHEN RIGHT({canonical}, 1) = '/' THEN {canonical} "
+        f"ELSE CONCAT({canonical}, '/') "
+        "END"
+    )
 
 
 def _case_cloud_phase_expr(column_name: str) -> str:
