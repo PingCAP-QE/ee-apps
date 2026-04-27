@@ -71,12 +71,10 @@ type EventProducer struct {
 
 func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents.Event) cloudevents.Result {
 	eventType := event.Type()
-	topic, ok := eb.topicMapping[eventType]
-
-	// Use default topic if not found in mapping
-	if !ok {
-		log.Debug().Str("event-type", eventType).Msg("No topic found for event type, using default topic")
-		topic = eb.unknowEventTopic
+	topic, ignore := eb.resolveTopic(eventType)
+	if ignore {
+		log.Debug().Str("event-type", eventType).Str("ce-id", event.ID()).Msg("Ignoring unsupported Jenkins CDEvent type")
+		return cloudevents.ResultACK
 	}
 
 	cloudEventBytes, err := event.MarshalJSON()
