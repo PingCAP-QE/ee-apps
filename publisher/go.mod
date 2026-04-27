@@ -6,7 +6,7 @@ toolchain go1.26.1
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20250828141640-8dda9c968d09
+	github.com/PingCAP-QE/ee-apps/dl v0.0.0-20260427081451-506b7704243f
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/go-redis/redis/v8 v8.11.5
@@ -19,6 +19,7 @@ require (
 	goa.design/clue v1.2.3
 	goa.design/goa/v3 v3.23.2
 	goa.design/plugins/v3 v3.23.0
+	golang.org/x/mod v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.5.0
 )
@@ -41,7 +42,6 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
-	golang.org/x/mod v0.30.0 // indirect
 )
 
 require (
