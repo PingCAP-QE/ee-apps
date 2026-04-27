@@ -683,14 +683,14 @@ def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
         return None
 
     repo_full_name = _coerce_str(build_meta.get("repo_full_name"))
+    if repo_full_name is None:
+        org = _coerce_str(build_meta.get("org"))
+        repo = _coerce_str(build_meta.get("repo"))
+        if org and repo:
+            repo_full_name = f"{org}/{repo}"
+
     if repo_full_name:
         prefix = f"{repo_full_name}/"
-        return job_name if job_name.startswith(prefix) else f"{prefix}{job_name}"
-
-    org = _coerce_str(build_meta.get("org"))
-    repo = _coerce_str(build_meta.get("repo"))
-    if org and repo:
-        prefix = f"{org}/{repo}/"
         return job_name if job_name.startswith(prefix) else f"{prefix}{job_name}"
 
     return job_name if "/" in job_name else None
