@@ -634,6 +634,131 @@ def test_sync_pods_links_jenkins_pod_from_build_url_annotation_with_opaque_name(
     assert "buildUrl" in row["pod_annotations_json"]
 
 
+def test_sync_pods_supplements_sparse_jenkins_runtime_metadata_from_build(sqlite_engine, monkeypatch) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  author, pod_name, start_time, cloud_phase, build_system
+                ) VALUES (
+                  31, 'prow-job-jenkins-supplement-1718', 'apps',
+                  'pull_integration_realcluster_test_next_gen',
+                  'presubmit', 'success',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1718/',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1718/',
+                  'teru01',
+                  '93d66f6a-25c1-4431-987e-f86351d415c0', '2026-04-22T12:50:00Z', 'GCP', 'JENKINS'
+                )
+                """
+            )
+        )
+
+    entries = [
+        {
+            "insertId": "jenkins-supplement-1",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-22T12:53:49Z",
+            "receiveTimestamp": "2026-04-22T12:53:54Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "opaque-runtime-agent-pod",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Scheduled",
+                "type": "Normal",
+                "message": "Successfully assigned",
+                "reportingComponent": "default-scheduler",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-supplement-1"},
+                "firstTimestamp": "2026-04-22T12:53:49Z",
+                "lastTimestamp": "2026-04-22T12:53:49Z",
+            },
+        },
+        {
+            "insertId": "jenkins-supplement-2",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-22T12:54:05Z",
+            "receiveTimestamp": "2026-04-22T12:54:06Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "jenkins-tidb",
+                    "pod_name": "opaque-runtime-agent-pod",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Started",
+                "type": "Normal",
+                "message": "Started container test",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-supplement-1"},
+                "firstTimestamp": "2026-04-22T12:54:05Z",
+                "lastTimestamp": "2026-04-22T12:54:05Z",
+            },
+        },
+    ]
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._fetch_pod_event_entries",
+        lambda **_: entries,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_pod_metadata_snapshots",
+        lambda _pods: {
+            _pod_identity("jenkins-tidb", "uid-supplement-1", "opaque-runtime-agent-pod"): _pod_metadata(
+                pod_uid="uid-supplement-1",
+                labels={
+                    "jenkins/label": "idb_pull_integration_realcluster_test_next_gen_1718-kz725",
+                    "jenkins/label-digest": "digest-supplement",
+                    "kubernetes.jenkins.io/controller": "http___jenkins_jenkins_svc_cluster_local_80_jenkinsx",
+                },
+                annotations={
+                    "buildUrl": "http://jenkins.jenkins.svc.cluster.local:80/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1718/",
+                    "runUrl": "job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1718/",
+                },
+            ),
+        },
+    )
+
+    run_sync_pods(sqlite_engine, _settings(batch_size=2))
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT
+                  pod_author,
+                  pod_org,
+                  pod_repo,
+                  ci_job,
+                  source_prow_job_id,
+                  normalized_build_url
+                FROM ci_l1_pod_lifecycle
+                WHERE pod_uid = 'uid-supplement-1'
+                """
+            )
+        ).mappings().one()
+
+    assert row["pod_author"] == "teru01"
+    assert row["pod_org"] == "pingcap"
+    assert row["pod_repo"] == "tidb"
+    assert row["ci_job"] == "pingcap/tidb/pull_integration_realcluster_test_next_gen"
+    assert row["source_prow_job_id"] == "prow-job-jenkins-supplement-1718"
+    assert row["normalized_build_url"] == (
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1718/"
+    )
+
+
 def test_sync_pods_links_jenkins_pod_from_label_and_ci_job_fallback(
     sqlite_engine,
     monkeypatch,
@@ -1206,6 +1331,110 @@ def test_reconcile_pod_linkage_range_backfills_rows_after_build_arrives(sqlite_e
     )
     assert row["repo_full_name"] == "pingcap/tidb"
     assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
+
+
+def test_reconcile_pod_linkage_range_supplements_missing_jenkins_pod_fields(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_pod_lifecycle (
+                  source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
+                  build_system, pod_author, pod_org, pod_repo, ci_job,
+                  source_prow_job_id, normalized_build_url, repo_full_name, job_name,
+                  scheduled_at, first_started_at, last_event_at
+                ) VALUES
+                  (
+                    'pingcap-testing-account', 'prow', 'us-central1-c', 'jenkins-tidb',
+                    'opaque-runtime-agent-pod-a', 'uid-reconcile-supplement-a',
+                    'JENKINS', NULL, NULL, NULL, NULL,
+                    'prow-job-jenkins-supplement-a',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/1510/',
+                    'pingcap/tidb', 'pull_unit_test_ddlv1',
+                    '2026-04-21 13:14:20', '2026-04-21 13:14:40', '2026-04-21 13:14:40'
+                  ),
+                  (
+                    'pingcap-testing-account', 'prow', 'us-central1-c', 'jenkins-tidb',
+                    'opaque-runtime-agent-pod-b', 'uid-reconcile-supplement-b',
+                    'JENKINS', NULL, 'pingcap', 'tidb', 'pingcap/tidb/pull_build_next_gen',
+                    'prow-job-jenkins-supplement-b',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_build_next_gen/1601/',
+                    'pingcap/tidb', 'pull_build_next_gen',
+                    '2026-04-21 14:14:20', '2026-04-21 14:14:40', '2026-04-21 14:14:40'
+                  )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  author, pod_name, start_time, cloud_phase, build_system
+                ) VALUES
+                  (
+                    32, 'prow-job-jenkins-supplement-a', 'apps',
+                    'pull_unit_test_ddlv1',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/1510/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/1510/',
+                    'terry1purcell',
+                    'opaque-runtime-agent-build-a', '2026-04-21T13:14:18Z', 'GCP', 'JENKINS'
+                  ),
+                  (
+                    33, 'prow-job-jenkins-supplement-b', 'apps',
+                    'pull_build_next_gen',
+                    'presubmit', 'success',
+                    0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_build_next_gen/1601/',
+                    'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_build_next_gen/1601/',
+                    'dveeden',
+                    'opaque-runtime-agent-build-b', '2026-04-21T14:14:18Z', 'GCP', 'JENKINS'
+                  )
+                """
+            )
+        )
+
+    summary = run_reconcile_pod_linkage_for_time_window(
+        sqlite_engine,
+        start_time_from=datetime(2026, 4, 21, 0, 0, 0),
+        start_time_to=datetime(2026, 4, 22, 0, 0, 0),
+    )
+
+    assert summary.reconciled_rows_updated == 2
+
+    with sqlite_engine.begin() as connection:
+        rows = list(
+            connection.execute(
+                text(
+                    """
+                    SELECT pod_uid, pod_author, pod_org, pod_repo, ci_job
+                    FROM ci_l1_pod_lifecycle
+                    WHERE pod_uid IN ('uid-reconcile-supplement-a', 'uid-reconcile-supplement-b')
+                    ORDER BY pod_uid
+                    """
+                )
+            ).mappings()
+        )
+
+    assert rows == [
+        {
+            "pod_uid": "uid-reconcile-supplement-a",
+            "pod_author": "terry1purcell",
+            "pod_org": "pingcap",
+            "pod_repo": "tidb",
+            "ci_job": "pingcap/tidb/pull_unit_test_ddlv1",
+        },
+        {
+            "pod_uid": "uid-reconcile-supplement-b",
+            "pod_author": "dveeden",
+            "pod_org": "pingcap",
+            "pod_repo": "tidb",
+            "ci_job": "pingcap/tidb/pull_build_next_gen",
+        },
+    ]
 
 
 def test_reconcile_pod_linkage_range_processes_multiple_batches(sqlite_engine) -> None:

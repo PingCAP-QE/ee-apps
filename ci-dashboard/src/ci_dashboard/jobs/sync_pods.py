@@ -640,6 +640,11 @@ def _build_lifecycle_rows(
             "repo_full_name": build_meta.get("repo_full_name"),
             "job_name": build_meta.get("job_name"),
         }
+        _supplement_jenkins_pod_fields_from_build_metadata(
+            merged,
+            build_meta,
+            build_system=_coerce_str(merged.get("build_system")),
+        )
         schedule_at = _parse_datetime(merged.get("scheduled_at"))
         started_at = _parse_datetime(merged.get("first_started_at"))
         merged["scheduled_at"] = schedule_at
@@ -650,6 +655,45 @@ def _build_lifecycle_rows(
             merged["schedule_to_started_seconds"] = None
         rows.append(merged)
     return rows
+
+
+def _supplement_jenkins_pod_fields_from_build_metadata(
+    lifecycle_row: dict[str, Any],
+    build_meta: dict[str, Any],
+    *,
+    build_system: str | None,
+) -> None:
+    if build_system != "JENKINS":
+        return
+
+    supplemental_fields = {
+        "pod_author": _coerce_str(build_meta.get("author")),
+        "pod_org": _coerce_str(build_meta.get("org")),
+        "pod_repo": _coerce_str(build_meta.get("repo")),
+        "ci_job": _build_ci_job_from_build_metadata(build_meta),
+    }
+    for field_name, field_value in supplemental_fields.items():
+        if _coerce_str(lifecycle_row.get(field_name)) is None and field_value is not None:
+            lifecycle_row[field_name] = field_value
+
+
+def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
+    job_name = _coerce_str(build_meta.get("job_name"))
+    if job_name is None:
+        return None
+
+    repo_full_name = _coerce_str(build_meta.get("repo_full_name"))
+    if repo_full_name is None:
+        org = _coerce_str(build_meta.get("org"))
+        repo = _coerce_str(build_meta.get("repo"))
+        if org and repo:
+            repo_full_name = f"{org}/{repo}"
+
+    if repo_full_name:
+        prefix = f"{repo_full_name}/"
+        return job_name if job_name.startswith(prefix) else f"{prefix}{job_name}"
+
+    return job_name if "/" in job_name else None
 
 
 def _load_lifecycle_aggregates(
@@ -832,8 +876,11 @@ def _load_direct_build_metadata_map(
               pod_name,
               source_prow_job_id,
               normalized_build_url,
+              org,
+              repo,
               repo_full_name,
               job_name,
+              author,
               url,
               start_time
             FROM ci_l1_builds
@@ -855,8 +902,11 @@ def _load_direct_build_metadata_map(
             "build_system": build_system,
             "source_prow_job_id": payload.get("source_prow_job_id"),
             "normalized_build_url": payload.get("normalized_build_url"),
+            "org": payload.get("org"),
+            "repo": payload.get("repo"),
             "repo_full_name": payload.get("repo_full_name"),
             "job_name": payload.get("job_name"),
+            "author": payload.get("author"),
         }
     return metadata_by_pod_name
 
@@ -882,8 +932,11 @@ def _load_build_candidates_by_normalized_url(
             SELECT
               source_prow_job_id,
               normalized_build_url,
+              org,
+              repo,
               repo_full_name,
               job_name,
+              author,
               start_time
             FROM ci_l1_builds
             WHERE normalized_build_url IS NOT NULL
@@ -985,8 +1038,11 @@ def _resolve_jenkins_build_metadata(
             "build_system": "JENKINS",
             "normalized_build_url": selected_url,
             "source_prow_job_id": selected_build.get("source_prow_job_id"),
+            "org": selected_build.get("org"),
+            "repo": selected_build.get("repo"),
             "repo_full_name": selected_build.get("repo_full_name"),
             "job_name": selected_build.get("job_name"),
+            "author": selected_build.get("author"),
         }
 
     if normalized_candidates:
@@ -1379,6 +1435,17 @@ def _reconcile_lifecycle_rows_in_time_window(
             )
             resolved_repo_full_name = build_meta.get("repo_full_name") or _coerce_str(lifecycle.get("repo_full_name"))
             resolved_job_name = build_meta.get("job_name") or _coerce_str(lifecycle.get("job_name"))
+            resolved_pod_fields = {
+                "pod_author": _coerce_str(lifecycle.get("pod_author")),
+                "pod_org": _coerce_str(lifecycle.get("pod_org")),
+                "pod_repo": _coerce_str(lifecycle.get("pod_repo")),
+                "ci_job": _coerce_str(lifecycle.get("ci_job")),
+            }
+            _supplement_jenkins_pod_fields_from_build_metadata(
+                resolved_pod_fields,
+                build_meta,
+                build_system=resolved_build_system,
+            )
 
             if (
                 resolved_build_system == _coerce_str(lifecycle.get("build_system"))
@@ -1386,6 +1453,10 @@ def _reconcile_lifecycle_rows_in_time_window(
                 and resolved_source_prow_job_id == _coerce_str(lifecycle.get("source_prow_job_id"))
                 and resolved_repo_full_name == _coerce_str(lifecycle.get("repo_full_name"))
                 and resolved_job_name == _coerce_str(lifecycle.get("job_name"))
+                and resolved_pod_fields["pod_author"] == _coerce_str(lifecycle.get("pod_author"))
+                and resolved_pod_fields["pod_org"] == _coerce_str(lifecycle.get("pod_org"))
+                and resolved_pod_fields["pod_repo"] == _coerce_str(lifecycle.get("pod_repo"))
+                and resolved_pod_fields["ci_job"] == _coerce_str(lifecycle.get("ci_job"))
             ):
                 continue
 
@@ -1397,6 +1468,10 @@ def _reconcile_lifecycle_rows_in_time_window(
                     "source_prow_job_id": resolved_source_prow_job_id,
                     "repo_full_name": resolved_repo_full_name,
                     "job_name": resolved_job_name,
+                    "pod_author": resolved_pod_fields["pod_author"],
+                    "pod_org": resolved_pod_fields["pod_org"],
+                    "pod_repo": resolved_pod_fields["pod_repo"],
+                    "ci_job": resolved_pod_fields["ci_job"],
                 }
             )
 
@@ -1412,6 +1487,10 @@ def _reconcile_lifecycle_rows_in_time_window(
                     source_prow_job_id = :source_prow_job_id,
                     repo_full_name = :repo_full_name,
                     job_name = :job_name,
+                    pod_author = :pod_author,
+                    pod_org = :pod_org,
+                    pod_repo = :pod_repo,
+                    ci_job = :ci_job,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = :id
                 """
@@ -1455,6 +1534,10 @@ def _load_lifecycle_rows_for_reconcile(
               pod_annotations_json,
               metadata_observed_at,
               scheduled_at,
+              pod_author,
+              pod_org,
+              pod_repo,
+              ci_job,
               source_prow_job_id,
               normalized_build_url,
               repo_full_name,
@@ -1467,6 +1550,19 @@ def _load_lifecycle_rows_for_reconcile(
                 OR source_prow_job_id = ''
                 OR normalized_build_url IS NULL
                 OR normalized_build_url = ''
+                OR (
+                  (build_system = 'JENKINS' OR namespace_name LIKE 'jenkins-%')
+                  AND (
+                    pod_author IS NULL
+                    OR pod_author = ''
+                    OR pod_org IS NULL
+                    OR pod_org = ''
+                    OR pod_repo IS NULL
+                    OR pod_repo = ''
+                    OR ci_job IS NULL
+                    OR ci_job = ''
+                  )
+                )
               )
             ORDER BY id ASC
             LIMIT :limit
