@@ -73,7 +73,7 @@ func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents
 	eventType := event.Type()
 	topic, ignore := eb.resolveTopic(eventType)
 	if ignore {
-		log.Debug().Str("event-type", eventType).Msg("Ignoring unsupported Jenkins CDEvent type")
+		log.Debug().Str("event-type", eventType).Str("ce-id", event.ID()).Msg("Ignoring unsupported Jenkins CDEvent type")
 		return cloudevents.ResultACK
 	}
 
