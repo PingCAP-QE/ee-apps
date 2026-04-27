@@ -70,20 +70,13 @@ type EventProducer struct {
 }
 
 func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents.Event) cloudevents.Result {
-	return eb.HandleCloudEventWithTopic(ctx, event, "")
-}
-
-func (eb *EventProducer) HandleCloudEventWithTopic(ctx context.Context, event cloudevents.Event, topic string) cloudevents.Result {
 	eventType := event.Type()
-	if topic == "" {
-		var ok bool
-		topic, ok = eb.topicMapping[eventType]
+	topic, ok := eb.topicMapping[eventType]
 
-		// Use default topic if not found in mapping
-		if !ok {
-			log.Debug().Str("event-type", eventType).Msg("No topic found for event type, using default topic")
-			topic = eb.unknowEventTopic
-		}
+	// Use default topic if not found in mapping
+	if !ok {
+		log.Debug().Str("event-type", eventType).Msg("No topic found for event type, using default topic")
+		topic = eb.unknowEventTopic
 	}
 
 	cloudEventBytes, err := event.MarshalJSON()

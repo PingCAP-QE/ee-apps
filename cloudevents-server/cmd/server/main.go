@@ -112,5 +112,4 @@ func setRouters(r gin.IRoutes, cfg *config.Config) {
 	r.GET("/", indexHandler)
 	r.GET("/healthz", healthzHandler)
 	r.POST("/events", newEventsHandlerFunc(cfg))
-	r.POST("/jenkins-event", newJenkinsEventsHandlerFunc(cfg))
 }
