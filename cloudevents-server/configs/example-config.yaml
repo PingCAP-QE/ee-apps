@@ -31,7 +31,8 @@ kafka:
   #   user: username
   #   password: password
   producer:
-    topic_mapping: {}
+    topic_mapping:
+      dev.cdevents.pipelinerun.finished.0.1.0: jenkins-event
     default_topic: test-topic
   consumer:
     group_id: consumer-group-1
