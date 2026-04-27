@@ -25,10 +25,7 @@ ALTER TABLE ci_l1_builds
   ADD COLUMN IF NOT EXISTS log_gcs_uri VARCHAR(512) NULL AFTER build_params_json;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS log_archived_at DATETIME NULL AFTER log_gcs_uri;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS error_l1_category VARCHAR(32) NULL AFTER log_archived_at;
+  ADD COLUMN IF NOT EXISTS error_l1_category VARCHAR(32) NULL AFTER log_gcs_uri;
 
 ALTER TABLE ci_l1_builds
   ADD COLUMN IF NOT EXISTS error_l2_subcategory VARCHAR(64) NULL AFTER error_l1_category;

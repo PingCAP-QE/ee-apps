@@ -325,7 +325,7 @@ archive-error-logs job
   3. keep bounded tail in memory
   4. sanitize in memory
   5. upload one redacted artifact to GCS
-  6. update log_gcs_uri + log_archived_at on ci_l1_builds
+  6. update log_gcs_uri on ci_l1_builds
 
 analyze-errors job
   1. scan builds where log_gcs_uri is present
@@ -508,8 +508,7 @@ ALTER TABLE ci_l1_builds
   ADD COLUMN source_jenkins_result VARCHAR(32) NULL AFTER source_jenkins_job_url,
   ADD COLUMN build_params_json JSON NULL AFTER source_jenkins_result,
   ADD COLUMN log_gcs_uri VARCHAR(512) NULL AFTER build_params_json,
-  ADD COLUMN log_archived_at DATETIME NULL AFTER log_gcs_uri,
-  ADD COLUMN error_l1_category VARCHAR(32) NULL AFTER log_archived_at,
+  ADD COLUMN error_l1_category VARCHAR(32) NULL AFTER log_gcs_uri,
   ADD COLUMN error_l2_subcategory VARCHAR(64) NULL AFTER error_l1_category,
   ADD COLUMN revise_error_l1_category VARCHAR(32) NULL AFTER error_l2_subcategory,
   ADD COLUMN revise_error_l2_subcategory VARCHAR(64) NULL AFTER revise_error_l1_category;
@@ -693,7 +692,7 @@ Important consequences:
 
 - raw console text is not persisted in GCS in the first slice
 - sanitization happens in memory before durable storage
-- rerun overwrites the effective GCS object and updates `log_archived_at`
+- rerun overwrites the effective GCS object at the same path
 
 ### 9.3 Initial Redaction Rule Set
 
@@ -821,8 +820,8 @@ Recommended precedence:
 - archive dedup:
   - `log_gcs_uri` already exists unless explicit overwrite rerun is requested
 - classification refresh:
-  - AI fields update only when missing, stale relative to `log_archived_at`, or
-    an explicit rerun is requested
+  - machine classification updates only when missing or an explicit rerun is
+    requested
 
 ## 11. Console Log Handling
 
@@ -913,7 +912,6 @@ Responsibilities:
 5. upload one redacted artifact to GCS
 6. update:
 - `log_gcs_uri`
-- `log_archived_at`
 
 Failure behavior:
 
@@ -936,8 +934,7 @@ Archive rerun should support explicit overwrite.
 Recommended rule:
 
 - scheduled job skips rows with existing `log_gcs_uri`
-- manual rerun may force overwrite of the same GCS object path and refresh
-  `log_archived_at`
+- manual rerun may force overwrite of the same GCS object path
 
 ### 12.3 Error Analysis Job
 

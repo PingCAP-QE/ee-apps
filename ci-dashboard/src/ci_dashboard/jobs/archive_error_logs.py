@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from sqlalchemy import bindparam, text
@@ -34,7 +33,6 @@ UPDATE_ARCHIVE_FIELDS = text(
     """
     UPDATE ci_l1_builds
     SET log_gcs_uri = :log_gcs_uri,
-        log_archived_at = :log_archived_at,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = :id
     """
@@ -178,11 +176,6 @@ def _archive_single_build(
             {
                 "id": int(build["id"]),
                 "log_gcs_uri": log_gcs_uri,
-                "log_archived_at": _utcnow_naive(),
             },
         )
     return True
-
-
-def _utcnow_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)

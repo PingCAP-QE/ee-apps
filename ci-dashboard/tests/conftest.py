@@ -87,7 +87,6 @@ def _create_test_schema(engine: Engine) -> None:
           source_jenkins_result TEXT NULL,
           build_params_json TEXT NULL,
           log_gcs_uri TEXT NULL,
-          log_archived_at TEXT NULL,
           error_l1_category TEXT NULL,
           error_l2_subcategory TEXT NULL,
           revise_error_l1_category TEXT NULL,

@@ -151,11 +151,10 @@ def test_run_archive_error_logs_archives_failed_jenkins_build(sqlite_engine) -> 
 
     with sqlite_engine.begin() as connection:
         row = connection.execute(
-            text("SELECT log_gcs_uri, log_archived_at FROM ci_l1_builds WHERE id = 101")
+            text("SELECT log_gcs_uri FROM ci_l1_builds WHERE id = 101")
         ).mappings().one()
 
     assert row["log_gcs_uri"] == "gcs://ci-dashboard-test/ci-dashboard/v3/jenkins-logs/build-101.log"
-    assert row["log_archived_at"] is not None
 
 
 def test_run_archive_error_logs_skips_existing_archive_without_force(sqlite_engine) -> None:

@@ -81,7 +81,6 @@ Migration `014_alter_ci_l1_builds_for_v3_jenkins.sql` should:
   - `source_jenkins_result`
   - `build_params_json`
   - `log_gcs_uri`
-  - `log_archived_at`
   - `error_l1_category`
   - `error_l2_subcategory`
   - `revise_error_l1_category`
@@ -200,7 +199,7 @@ The archive job should:
 - retain only bounded tail bytes
 - sanitize text in memory
 - upload one redacted artifact to GCS
-- update `log_gcs_uri` and `log_archived_at`
+- update `log_gcs_uri`
 
 ### 5.3 Concurrency And Retry Rules
 
