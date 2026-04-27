@@ -82,18 +82,10 @@ Migration `014_alter_ci_l1_builds_for_v3_jenkins.sql` should:
   - `build_params_json`
   - `log_gcs_uri`
   - `log_archived_at`
-  - `ai_error_l1_category`
-  - `ai_error_l2_subcategory`
-  - `ai_classification_source`
-  - `ai_classification_confidence`
-  - `ai_classified_at`
-  - `ai_provider_name`
-  - `ai_model_name`
-  - `ai_evidence_text`
-  - `human_error_l1_category`
-  - `human_error_l2_subcategory`
-  - `human_reviewed_at`
-  - `human_reviewer`
+  - `error_l1_category`
+  - `error_l2_subcategory`
+  - `revise_error_l1_category`
+  - `revise_error_l2_subcategory`
 
 Migration `015_create_ci_l1_jenkins_build_events.sql` should:
 
@@ -248,11 +240,11 @@ ci-dashboard archive-error-logs --build-id 12345 --force
 The analysis job should:
 
 - read rows with `log_gcs_uri IS NOT NULL`
-- skip rows with `human_reviewed_at IS NOT NULL`
-- refresh AI fields only when missing or stale relative to `log_archived_at`
+- skip rows where either revise field is already present
+- refresh machine-classification fields only when missing
 - run deterministic rules first
 - call LLM only on rule miss
-- write AI results directly back onto `ci_l1_builds`
+- write machine-classification results directly back onto `ci_l1_builds`
 
 ### 6.3 Human Revise Responsibilities
 
@@ -261,10 +253,8 @@ The first slice should not build a review UI.
 Minimum viable path:
 
 - one CLI command or internal admin path that updates:
-  - `human_error_l1_category`
-  - `human_error_l2_subcategory`
-  - `human_reviewed_at`
-  - `human_reviewer`
+  - `revise_error_l1_category`
+  - `revise_error_l2_subcategory`
 
 ### 6.4 CLI Shape
 
@@ -273,7 +263,7 @@ Recommended commands:
 ```bash
 ci-dashboard analyze-errors
 ci-dashboard analyze-errors --limit 100
-ci-dashboard review-error --build-id 12345 --l1 INFRA --l2 NETWORK --reviewer dillon
+ci-dashboard review-error --build-id 12345 --l1 INFRA --l2 NETWORK
 ```
 
 ### 6.5 Exit Criteria
@@ -371,7 +361,7 @@ Expected existing-job changes:
 - run `sync-builds` with canonical-key-first merge enabled
 - run one sampled Jenkins event through worker -> archive -> analyze
 - verify rerun overwrite behavior for archived logs
-- verify reanalysis skips `human_reviewed_at IS NOT NULL`
+- verify reanalysis skips rows where revise fields are already present
 
 ### 9.3 Regression
 

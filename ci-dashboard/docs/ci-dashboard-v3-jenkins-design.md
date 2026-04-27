@@ -295,9 +295,7 @@ Initial supported provider family:
 
 Design implication:
 
-- provider choice is runtime configuration, not schema identity
-- AI classification fields must record both `ai_provider_name` and
-  `ai_model_name`
+- provider choice is runtime configuration, not first-slice schema identity
 
 ## 5. High-Level Architecture
 
@@ -511,24 +509,11 @@ ALTER TABLE ci_l1_builds
   ADD COLUMN build_params_json JSON NULL AFTER source_jenkins_result,
   ADD COLUMN log_gcs_uri VARCHAR(512) NULL AFTER build_params_json,
   ADD COLUMN log_archived_at DATETIME NULL AFTER log_gcs_uri,
-  ADD COLUMN ai_error_l1_category VARCHAR(32) NULL AFTER log_archived_at,
-  ADD COLUMN ai_error_l2_subcategory VARCHAR(64) NULL AFTER ai_error_l1_category,
-  ADD COLUMN ai_classification_source VARCHAR(32) NULL AFTER ai_error_l2_subcategory,
-  ADD COLUMN ai_classification_confidence DECIMAL(4,3) NULL AFTER ai_classification_source,
-  ADD COLUMN ai_classified_at DATETIME NULL AFTER ai_classification_confidence,
-  ADD COLUMN ai_provider_name VARCHAR(64) NULL AFTER ai_classified_at,
-  ADD COLUMN ai_model_name VARCHAR(64) NULL AFTER ai_provider_name,
-  ADD COLUMN ai_evidence_text TEXT NULL AFTER ai_model_name,
-  ADD COLUMN human_error_l1_category VARCHAR(32) NULL AFTER ai_evidence_text,
-  ADD COLUMN human_error_l2_subcategory VARCHAR(64) NULL AFTER human_error_l1_category,
-  ADD COLUMN human_reviewed_at DATETIME NULL AFTER human_error_l2_subcategory,
-  ADD COLUMN human_reviewer VARCHAR(128) NULL AFTER human_reviewed_at;
+  ADD COLUMN error_l1_category VARCHAR(32) NULL AFTER log_archived_at,
+  ADD COLUMN error_l2_subcategory VARCHAR(64) NULL AFTER error_l1_category,
+  ADD COLUMN revise_error_l1_category VARCHAR(32) NULL AFTER error_l2_subcategory,
+  ADD COLUMN revise_error_l2_subcategory VARCHAR(64) NULL AFTER revise_error_l1_category;
 ```
-
-Application constraint:
-
-- `ai_classification_confidence` is semantically constrained to `0.0` through
-  `1.0` even though `DECIMAL(4,3)` can store larger values
 
 #### 8.1.1 Jenkins-First Column Fill Strategy
 
@@ -653,8 +638,8 @@ Reason:
 Effective-query pattern:
 
 ```sql
-COALESCE(human_error_l1_category, ai_error_l1_category)
-COALESCE(human_error_l2_subcategory, ai_error_l2_subcategory)
+COALESCE(revise_error_l1_category, error_l1_category)
+COALESCE(revise_error_l2_subcategory, error_l2_subcategory)
 ```
 
 ### 8.4 Relationship To Existing `failure_category` Fields
@@ -796,17 +781,17 @@ redacted log tail
 rule engine (taxonomy file)
   |
   |-- match
-  |   -> update ai_classification_source = 'RULE'
+  |   -> update error_l1_category / error_l2_subcategory
   |
   `-- no match
       -> LLM classification on sanitized input
-      -> update ai_classification_source = 'AI'
+      -> update error_l1_category / error_l2_subcategory
 
 human review
-  -> optionally update human revise fields
+  -> optionally update revise fields
 
 effective query
-  -> human revise if present, otherwise AI judgment
+  -> revise if present, otherwise machine judgment
 ```
 
 ### 10.3 Provider Strategy
@@ -820,17 +805,12 @@ Provider is selected by runtime config and may be:
 - Gemini
 - Qianwen
 
-Machine-classification fields must record:
-
-- `ai_provider_name`
-- `ai_model_name`
-
 ### 10.4 Effective Verdict Rule
 
 Recommended precedence:
 
-1. human revise if present
-2. otherwise AI judgment
+1. revise if present
+2. otherwise machine judgment
 
 ### 10.5 Idempotency
 
@@ -969,19 +949,19 @@ Responsibilities:
 
 1. query builds where:
 - `log_gcs_uri IS NOT NULL`
-- `human_reviewed_at IS NULL`
-- `ai_classified_at IS NULL` or `ai_classified_at < log_archived_at`
+- `revise_error_l1_category IS NULL`
+- `revise_error_l2_subcategory IS NULL`
 2. load the redacted artifact
 3. run rule engine first
 4. call LLM only when rule engine misses
-5. update AI classification fields on `ci_l1_builds`
-6. never overwrite human revise fields
+5. update machine classification fields on `ci_l1_builds`
+6. never overwrite revise fields
 
 Default query rule:
 
 - `log_gcs_uri IS NOT NULL`
-- `human_reviewed_at IS NULL`
-- `ai_classified_at IS NULL` or `ai_classified_at < log_archived_at`
+- `revise_error_l1_category IS NULL`
+- `revise_error_l2_subcategory IS NULL`
 
 ### 12.4 Human Review Path
 
@@ -1169,7 +1149,7 @@ Exit criteria:
   - provider and model identity when applicable
 - verify human revise can be added independently
 - verify effective verdict prefers human revise when present
-- verify scheduled AI refresh skips rows where `human_reviewed_at IS NOT NULL`
+- verify scheduled AI refresh skips rows where revise fields are already present
 
 ### 17.5 Security And Access Validation
 

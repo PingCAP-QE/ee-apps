@@ -28,37 +28,13 @@ ALTER TABLE ci_l1_builds
   ADD COLUMN IF NOT EXISTS log_archived_at DATETIME NULL AFTER log_gcs_uri;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_error_l1_category VARCHAR(32) NULL AFTER log_archived_at;
+  ADD COLUMN IF NOT EXISTS error_l1_category VARCHAR(32) NULL AFTER log_archived_at;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_error_l2_subcategory VARCHAR(64) NULL AFTER ai_error_l1_category;
+  ADD COLUMN IF NOT EXISTS error_l2_subcategory VARCHAR(64) NULL AFTER error_l1_category;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_classification_source VARCHAR(32) NULL AFTER ai_error_l2_subcategory;
+  ADD COLUMN IF NOT EXISTS revise_error_l1_category VARCHAR(32) NULL AFTER error_l2_subcategory;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_classification_confidence DECIMAL(4,3) NULL AFTER ai_classification_source;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_classified_at DATETIME NULL AFTER ai_classification_confidence;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_provider_name VARCHAR(64) NULL AFTER ai_classified_at;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_model_name VARCHAR(64) NULL AFTER ai_provider_name;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS ai_evidence_text TEXT NULL AFTER ai_model_name;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS human_error_l1_category VARCHAR(32) NULL AFTER ai_evidence_text;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS human_error_l2_subcategory VARCHAR(64) NULL AFTER human_error_l1_category;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS human_reviewed_at DATETIME NULL AFTER human_error_l2_subcategory;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS human_reviewer VARCHAR(128) NULL AFTER human_reviewed_at;
+  ADD COLUMN IF NOT EXISTS revise_error_l2_subcategory VARCHAR(64) NULL AFTER revise_error_l1_category;
