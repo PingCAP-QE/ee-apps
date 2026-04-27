@@ -10,6 +10,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import NormalizedBuildRow, SyncBuildsSummary
+from ci_dashboard.jobs.build_merge import fetch_existing_build_targets, resolve_merge_target_id
 from ci_dashboard.jobs.build_url_matcher import (
     classify_build_system,
     classify_cloud_phase,
@@ -92,6 +93,18 @@ _UPSERT_COLUMNS = (
     "has_flaky_case_match",
     "failure_category",
     "failure_subcategory",
+)
+
+_DERIVED_ONLY_COLUMNS = {
+    "is_flaky",
+    "is_retry_loop",
+    "has_flaky_case_match",
+    "failure_category",
+    "failure_subcategory",
+}
+
+_MERGE_UPDATE_COLUMNS = tuple(
+    column for column in _UPSERT_COLUMNS if column not in _DERIVED_ONLY_COLUMNS
 )
 
 def load_watermark(connection: Connection) -> int:
@@ -221,9 +234,34 @@ def map_build_row(row: Mapping[str, Any]) -> NormalizedBuildRow:
 def upsert_build_batch(connection: Connection, rows: list[NormalizedBuildRow]) -> int:
     if not rows:
         return 0
-    payload = [row.as_db_params() for row in rows]
-    connection.execute(_build_upsert_statement(connection), payload)
-    return len(payload)
+    existing_by_prow_job_id, existing_by_build_url = fetch_existing_build_targets(
+        connection,
+        normalized_build_urls=sorted({row.normalized_build_url for row in rows if row.normalized_build_url}),
+        source_prow_job_ids=sorted({row.source_prow_job_id for row in rows if row.source_prow_job_id}),
+    )
+
+    rows_to_update: list[dict[str, Any]] = []
+    rows_to_upsert: list[dict[str, Any]] = []
+    for row in rows:
+        payload = row.as_db_params()
+        target_id = resolve_merge_target_id(
+            normalized_build_url=row.normalized_build_url,
+            source_prow_job_id=row.source_prow_job_id,
+            existing_by_prow_job_id=existing_by_prow_job_id,
+            existing_by_build_url=existing_by_build_url,
+            log_context={"job_name": JOB_NAME},
+        )
+        if target_id is None:
+            rows_to_upsert.append(payload)
+            continue
+        payload["id"] = target_id
+        rows_to_update.append(payload)
+
+    if rows_to_update:
+        connection.execute(_build_update_by_id_statement(), rows_to_update)
+    if rows_to_upsert:
+        connection.execute(_build_upsert_by_prow_job_id_statement(connection), rows_to_upsert)
+    return len(rows)
 
 
 def normalize_build_batch(source_rows: list[Mapping[str, Any]]) -> tuple[list[NormalizedBuildRow], int]:
@@ -446,13 +484,29 @@ def _coerce_optional_bool(value: Any) -> bool | None:
     raise ValueError(f"Unsupported boolean value: {value!r}")
 
 
-def _build_upsert_statement(connection: Connection):
+def _build_update_by_id_statement():
+    assignments = ",\n      ".join(
+        f"{column} = :{column}"
+        for column in _MERGE_UPDATE_COLUMNS
+    )
+    return text(
+        f"""
+        UPDATE ci_l1_builds
+        SET
+          {assignments},
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = :id
+        """
+    )
+
+
+def _build_upsert_by_prow_job_id_statement(connection: Connection):
     value_list = ", ".join(f":{column}" for column in _UPSERT_COLUMNS)
     if connection.dialect.name == "sqlite":
         assignments = ",\n      ".join(
             f"{column} = excluded.{column}"
-            for column in _UPSERT_COLUMNS
-            if column not in {"source_prow_job_id", "is_flaky", "is_retry_loop", "has_flaky_case_match", "failure_category", "failure_subcategory"}
+            for column in _MERGE_UPDATE_COLUMNS
+            if column != "source_prow_job_id"
         )
         return text(
             f"""
@@ -468,8 +522,8 @@ def _build_upsert_statement(connection: Connection):
         )
     assignments = ",\n      ".join(
         f"{column} = VALUES({column})"
-        for column in _UPSERT_COLUMNS
-        if column not in {"source_prow_job_id", "is_flaky", "is_retry_loop", "has_flaky_case_match", "failure_category", "failure_subcategory"}
+        for column in _MERGE_UPDATE_COLUMNS
+        if column != "source_prow_job_id"
     )
     return text(
         f"""

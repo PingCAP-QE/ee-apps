@@ -2,6 +2,60 @@
 
 This directory documents recurring jobs for the CI dashboard.
 
+## Jenkins Event Worker
+
+`consume-jenkins-events` is the long-running V3 worker that consumes Kafka topic
+`jenkins-event`, writes event audit rows into `ci_l1_jenkins_build_events`, and
+creates or enriches canonical rows in `ci_l1_builds`.
+
+Render a Deployment manifest:
+
+```bash
+cd ci-dashboard
+./scripts/render_jenkins_worker_deployment.sh \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
+  --db-secret ci-dashboard-eq-prd-insight-db \
+  --kafka-bootstrap-servers cluster-cd-kafka-bootstrap:9092 \
+  --service-account ci-dashboard \
+  > /tmp/ci-dashboard-jenkins-worker.yaml
+```
+
+Apply it:
+
+```bash
+kubectl apply -f /tmp/ci-dashboard-jenkins-worker.yaml
+```
+
+Recommended first bring-up:
+
+```bash
+kubectl -n apps rollout status deployment/ci-dashboard-jenkins-worker
+kubectl -n apps logs deployment/ci-dashboard-jenkins-worker --follow
+```
+
+Useful overrides:
+
+- `--kafka-topic jenkins-event` keeps the dedicated Jenkins topic.
+- `--kafka-group-id ci-dashboard-v3-jenkins-worker` keeps consumer identity explicit.
+- `--finished-event-type dev.cdevents.pipelinerun.finished.0.1.0` pins the accepted finished event family.
+- `--replicas 1` is the safest first production rollout.
+
+Validation:
+
+```bash
+kubectl -n apps get deployment ci-dashboard-jenkins-worker
+kubectl -n apps get pods -l app.kubernetes.io/name=ci-dashboard-jenkins-worker
+kubectl -n apps logs deployment/ci-dashboard-jenkins-worker --tail=200
+```
+
+Notes:
+
+- The Deployment should only be rolled out after the jobs image includes the V3 `consume-jenkins-events` command.
+- The worker is safe to restart because dedup happens by `event_id` in `ci_l1_jenkins_build_events`.
+- Current cluster values we already verified:
+  - Kafka bootstrap service: `cluster-cd-kafka-bootstrap:9092`
+  - Jenkins service DNS for internal callers: `http://jenkins.jenkins.svc.cluster.local`
+
 ## Hourly Pod Sync
 
 `sync-pods` incrementally reads Cloud Logging `k8s_pod` events and writes:
@@ -103,3 +157,59 @@ Notes:
 
 - The job is idempotent: rerunning the same issue set updates existing rows in `ci_l1_flaky_issues`.
 - Existing source tables remain read-only; only `ci_l1_flaky_issues` and `ci_job_state` are written.
+
+## Jenkins Error Log Archive
+
+`archive-error-logs` scans terminal non-success Jenkins builds, fetches a
+bounded log tail through Jenkins progressive text, redacts it in memory, and
+uploads one effective artifact to GCS.
+
+Render a CronJob manifest:
+
+```bash
+cd ci-dashboard
+./scripts/render_archive_error_logs_cronjob.sh \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
+  --db-secret ci-dashboard-eq-prd-insight-db \
+  --service-account ci-dashboard \
+  --gcs-bucket <gcs-bucket> \
+  --jenkins-internal-base-url http://jenkins.jenkins.svc.cluster.local \
+  --suspend true \
+  > /tmp/ci-dashboard-archive-error-logs.yaml
+```
+
+Apply it:
+
+```bash
+kubectl apply -f /tmp/ci-dashboard-archive-error-logs.yaml
+```
+
+Recommended first bring-up:
+
+```bash
+kubectl -n apps create job --from=cronjob/ci-dashboard-archive-error-logs ci-dashboard-archive-error-logs-smoke-$(date +%s)
+kubectl -n apps logs job/<smoke-job-name> --follow
+```
+
+Useful overrides:
+
+- `--schedule "35 * * * *"` keeps the default hourly archive cadence.
+- `--build-limit 100` caps one run's Jenkins and GCS load.
+- `--log-tail-bytes 262144` keeps the default tail size at 256 KiB.
+- `--gcs-prefix ci-dashboard/v3/jenkins-logs` keeps artifacts under one dedicated prefix.
+- `--jenkins-secret <secret>` enables server-side Jenkins auth if console access is later restricted.
+- `--suspend true` is recommended until GCS write permission is confirmed.
+
+Validation:
+
+```bash
+kubectl -n apps get cronjob ci-dashboard-archive-error-logs
+kubectl -n apps create job --from=cronjob/ci-dashboard-archive-error-logs ci-dashboard-archive-error-logs-smoke-$(date +%s)
+kubectl -n apps logs job/<smoke-job-name>
+```
+
+Notes:
+
+- The CronJob should only be rolled out after the jobs image includes the V3 `archive-error-logs` command.
+- The current `ci-dashboard` GKE service account does not yet appear to have confirmed GCS write access, so bucket IAM must be granted before unsuspending the recurring CronJob.
+- The first slice is intentionally serial: no fetch concurrency flag is required for bring-up.
