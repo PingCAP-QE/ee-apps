@@ -71,7 +71,7 @@ func TestParseJenkinsPluginCloudEvent(t *testing.T) {
 	}
 }
 
-func TestJenkinsSinkHandlerFunc(t *testing.T) {
+func TestJenkinsSinkHandlerFuncAcceptedPipelineRunFinished(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	producer := &stubCloudEventProducer{}
@@ -81,7 +81,7 @@ func TestJenkinsSinkHandlerFunc(t *testing.T) {
 	body := buildJenkinsPluginBody(
 		"af50c5d5-a0eb-45e1-9547-a4d6015e8b78",
 		"job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1796/",
-		"dev.cdevents.taskrun.finished.0.1.0",
+		jenkinsPipelineRunFinishedEventType,
 		"application/json",
 		time.Date(2026, 4, 24, 6, 43, 16, 387488262, time.UTC),
 		[]byte(`{"status":"ERROR"}`),
@@ -110,6 +110,42 @@ func TestJenkinsSinkHandlerFunc(t *testing.T) {
 	}
 	if got, want := producer.events[0].ID(), "af50c5d5-a0eb-45e1-9547-a4d6015e8b78"; got != want {
 		t.Fatalf("producer event id = %q, want %q", got, want)
+	}
+}
+
+func TestJenkinsSinkHandlerFuncIgnoredNonFinishedEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	producer := &stubCloudEventProducer{}
+	router := gin.New()
+	router.POST("/jenkins-event", newJenkinsSinkHandlerFunc(producer))
+
+	body := buildJenkinsPluginBody(
+		"af50c5d5-a0eb-45e1-9547-a4d6015e8b78",
+		"job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1796/",
+		"dev.cdevents.taskrun.finished.0.1.0",
+		"application/json",
+		time.Date(2026, 4, 24, 6, 43, 16, 387488262, time.UTC),
+		[]byte(`{"status":"ERROR"}`),
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/jenkins-event", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("response code = %d, want %d, body = %s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"status":"ignored"`) {
+		t.Fatalf("response body = %s, want ignored json", resp.Body.String())
+	}
+	if len(producer.events) != 0 {
+		t.Fatalf("producer events = %d, want 0", len(producer.events))
+	}
+	if len(producer.topics) != 0 {
+		t.Fatalf("producer topics = %d, want 0", len(producer.topics))
 	}
 }
 

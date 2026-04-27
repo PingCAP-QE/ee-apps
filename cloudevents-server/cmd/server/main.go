@@ -50,12 +50,7 @@ func main() {
 	ginEngine := gin.Default()
 	_ = ginEngine.SetTrustedProxies(nil)
 
-	producer, err := handler.NewEventProducer(cfg.Kafka)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create event producer")
-	}
-
-	setRouters(ginEngine, producer)
+	setRouters(ginEngine, cfg)
 
 	hd, err := newCloudEventsHandler(cfg)
 	if err != nil {
@@ -113,9 +108,9 @@ func startServices(srv *http.Server, cg handler.EventConsumerGroup) {
 	log.Warn().Msg("server gracefully stopped")
 }
 
-func setRouters(r gin.IRoutes, producer cloudEventProducer) {
+func setRouters(r gin.IRoutes, cfg *config.Config) {
 	r.GET("/", indexHandler)
 	r.GET("/healthz", healthzHandler)
-	r.POST("/events", newEventsHandlerFunc(producer))
-	r.POST("/jenkins-event", newJenkinsEventsHandlerFunc(producer))
+	r.POST("/events", newEventsHandlerFunc(cfg))
+	r.POST("/jenkins-event", newJenkinsEventsHandlerFunc(cfg))
 }

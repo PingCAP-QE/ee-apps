@@ -25,6 +25,7 @@ import (
 var jenkinsPluginCloudEventRegexp = regexp.MustCompile(`^CloudEvent\{id='([^']+)', source=([^,]+), type='([^']+)', datacontenttype='([^']*)', time=([^,]+), data=BytesCloudEventData\{value=\[([^\]]*)\]\}, extensions=\{.*\}\}$`)
 
 const jenkinsEventTopic = "jenkins-event"
+const jenkinsPipelineRunFinishedEventType = "dev.cdevents.pipelinerun.finished.0.1.0"
 
 type cloudEventProducer interface {
 	HandleCloudEvent(context.Context, cloudevents.Event) cloudevents.Result
@@ -39,11 +40,21 @@ func healthzHandler(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
 }
 
-func newEventsHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
+func newEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
+	producer, err := handler.NewEventProducer(cfg.Kafka)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create broker handler")
+	}
+
 	return newStructuredEventsHandlerFunc(producer)
 }
 
-func newJenkinsEventsHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
+func newJenkinsEventsHandlerFunc(cfg *config.Config) gin.HandlerFunc {
+	producer, err := handler.NewEventProducer(cfg.Kafka)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create broker handler")
+	}
+
 	return newJenkinsSinkHandlerFunc(producer)
 }
 
@@ -81,6 +92,19 @@ func newJenkinsSinkHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 		if err != nil {
 			log.Warn().Err(err).Str("payload", truncateLogPayload(string(body))).Msg("failed to parse jenkins event payload")
 			c.JSON(http.StatusBadRequest, gin.H{"status": "invalid", "error": err.Error()})
+			return
+		}
+
+		if event.Type() != jenkinsPipelineRunFinishedEventType {
+			log.Debug().
+				Str("ce-id", event.ID()).
+				Str("ce-type", event.Type()).
+				Msg("ignoring unsupported jenkins event type")
+			c.JSON(http.StatusOK, gin.H{
+				"status": "ignored",
+				"id":     event.ID(),
+				"type":   event.Type(),
+			})
 			return
 		}
 
