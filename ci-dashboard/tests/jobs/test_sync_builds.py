@@ -323,13 +323,11 @@ def test_sync_builds_merges_into_existing_jenkins_first_row(sqlite_engine) -> No
                 INSERT INTO ci_l1_builds (
                   source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_url, start_time, cloud_phase, build_system,
-                  source_jenkins_event_id
+                  context, url, normalized_build_url, start_time, cloud_phase, build_system
                 ) VALUES (
                   NULL, NULL, NULL, 'ghpr_unit_test', NULL, 'failure',
                   0, 1, NULL, NULL, NULL, 'master', 300, 1,
-                  'unit', :url, :normalized_build_url, NULL, 'GCP', 'JENKINS',
-                  'evt-300'
+                  'unit', :url, :normalized_build_url, NULL, 'GCP', 'JENKINS'
                 )
                 """
             ),
@@ -403,7 +401,7 @@ def test_sync_builds_merges_into_existing_jenkins_first_row(sqlite_engine) -> No
                 text(
                     """
                     SELECT id, source_prow_row_id, source_prow_job_id, namespace, job_name, job_type,
-                           org, repo, repo_full_name, start_time, source_jenkins_event_id
+                           org, repo, repo_full_name, start_time
                     FROM ci_l1_builds
                     ORDER BY id
                     """
@@ -423,7 +421,6 @@ def test_sync_builds_merges_into_existing_jenkins_first_row(sqlite_engine) -> No
     assert row["repo"] == "tidb"
     assert row["repo_full_name"] == "pingcap/tidb"
     assert str(row["start_time"]).startswith("2026-04-13 10:00:00")
-    assert row["source_jenkins_event_id"] == "evt-300"
 
 
 def test_sync_builds_skips_malformed_rows_and_keeps_progress(sqlite_engine) -> None:

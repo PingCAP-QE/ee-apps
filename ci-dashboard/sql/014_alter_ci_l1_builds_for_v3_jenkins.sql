@@ -10,19 +10,7 @@ ALTER TABLE ci_l1_builds
   MODIFY COLUMN start_time DATETIME NULL;
 
 ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS source_jenkins_event_id VARCHAR(128) NULL AFTER build_system;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS source_jenkins_job_url VARCHAR(1024) NULL AFTER source_jenkins_event_id;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS source_jenkins_result VARCHAR(32) NULL AFTER source_jenkins_job_url;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS build_params_json JSON NULL AFTER source_jenkins_result;
-
-ALTER TABLE ci_l1_builds
-  ADD COLUMN IF NOT EXISTS log_gcs_uri VARCHAR(512) NULL AFTER build_params_json;
+  ADD COLUMN IF NOT EXISTS log_gcs_uri VARCHAR(512) NULL AFTER build_system;
 
 ALTER TABLE ci_l1_builds
   ADD COLUMN IF NOT EXISTS error_l1_category VARCHAR(32) NULL AFTER log_gcs_uri;

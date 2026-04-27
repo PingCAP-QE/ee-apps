@@ -62,7 +62,7 @@ def test_parse_jenkins_finished_event_extracts_canonical_fields() -> None:
     assert parsed.normalized_build_url == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
     assert parsed.build_url == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
     assert parsed.state == "failure"
-    assert parsed.source_jenkins_result == "FAILURE"
+    assert parsed.jenkins_result == "FAILURE"
     assert parsed.job_name == "ghpr_unit_test"
     assert parsed.repo_full_name == "pingcap/tidb"
     assert parsed.pr_number == 301
@@ -71,14 +71,6 @@ def test_parse_jenkins_finished_event_extracts_canonical_fields() -> None:
     assert parsed.total_seconds == 1200
     assert parsed.start_time == datetime(2026, 4, 24, 10, 0, 0)
     assert parsed.completion_time == datetime(2026, 4, 24, 10, 20, 0)
-    assert json.loads(parsed.build_params_json or "{}") == {
-        "author": "alice",
-        "branch": "master",
-        "commit": "0123456789abcdef0123456789abcdef01234567",
-        "org": "pingcap",
-        "pr": "301",
-        "repo": "tidb",
-    }
 
 
 def test_process_jenkins_event_message_inserts_build_and_audit(sqlite_engine) -> None:
@@ -90,8 +82,7 @@ def test_process_jenkins_event_message_inserts_build_and_audit(sqlite_engine) ->
         build = connection.execute(
             text(
                 """
-                SELECT source_prow_job_id, source_jenkins_event_id, source_jenkins_result, state,
-                       normalized_build_url, repo_full_name, pr_number, is_pr_build, build_params_json
+                SELECT source_prow_job_id, state, normalized_build_url, repo_full_name, pr_number, is_pr_build
                 FROM ci_l1_builds
                 """
             )
@@ -106,15 +97,11 @@ def test_process_jenkins_event_message_inserts_build_and_audit(sqlite_engine) ->
         ).mappings().one()
 
     assert build["source_prow_job_id"] is None
-    assert build["source_jenkins_event_id"] == "evt-1"
-    assert build["source_jenkins_result"] == "FAILURE"
     assert build["state"] == "failure"
     assert build["normalized_build_url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
     assert build["repo_full_name"] == "pingcap/tidb"
     assert build["pr_number"] == 301
     assert build["is_pr_build"] == 1
-    assert json.loads(build["build_params_json"])["repo"] == "tidb"
-    assert "unsafe_token" not in json.loads(build["build_params_json"])
 
     assert audit["event_id"] == "evt-1"
     assert audit["processing_status"] == "PROCESSED"
@@ -154,7 +141,7 @@ def test_process_jenkins_event_message_enriches_existing_prow_row_without_cleari
                 text(
                     """
                     SELECT source_prow_row_id, source_prow_job_id, namespace, job_name, job_type,
-                           repo_full_name, source_jenkins_event_id, source_jenkins_result
+                           repo_full_name, state
                     FROM ci_l1_builds
                     """
                 )
@@ -169,8 +156,7 @@ def test_process_jenkins_event_message_enriches_existing_prow_row_without_cleari
     assert row["job_name"] == "ghpr_unit_test"
     assert row["job_type"] == "presubmit"
     assert row["repo_full_name"] == "pingcap/tidb"
-    assert row["source_jenkins_event_id"] == "evt-1"
-    assert row["source_jenkins_result"] == "FAILURE"
+    assert row["state"] == "failure"
 
 
 def test_process_jenkins_event_message_skips_duplicate_processed_event(sqlite_engine) -> None:

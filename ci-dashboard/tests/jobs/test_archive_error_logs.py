@@ -75,7 +75,7 @@ def _insert_build(
                   id, source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
                   context, url, normalized_build_url, author, start_time, completion_time,
-                  total_seconds, target_branch, cloud_phase, build_system, source_jenkins_job_url, log_gcs_uri
+                  total_seconds, target_branch, cloud_phase, build_system, log_gcs_uri
                 ) VALUES (
                   :id, NULL, NULL, NULL, 'ghpr_unit_test', NULL, :state,
                   0, 1, 'pingcap', 'tidb', 'pingcap/tidb', 'master', :pr_number, 1,
@@ -83,7 +83,7 @@ def _insert_build(
                   :url,
                   :normalized_build_url,
                   'alice', '2026-04-24 10:00:00', '2026-04-24 10:20:00',
-                  1200, 'master', 'GCP', :build_system, :source_jenkins_job_url, :log_gcs_uri
+                  1200, 'master', 'GCP', :build_system, :log_gcs_uri
                 )
                 """
             ),
@@ -96,7 +96,6 @@ def _insert_build(
                     f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/{build_id}/"
                 ),
                 "build_system": build_system,
-                "source_jenkins_job_url": f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/{build_id}/",
                 "log_gcs_uri": log_gcs_uri,
             },
         )
@@ -143,7 +142,7 @@ def test_run_archive_error_logs_archives_failed_jenkins_build(sqlite_engine) -> 
     assert summary.builds_archived == 1
     assert summary.builds_failed == 0
     assert fetcher.calls == [
-        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/101/", 1024)
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/101/display/redirect", 1024)
     ]
     assert uploader.calls[0][0] == "ci-dashboard-test"
     assert uploader.calls[0][1] == "ci-dashboard/v3/jenkins-logs/build-101.log"

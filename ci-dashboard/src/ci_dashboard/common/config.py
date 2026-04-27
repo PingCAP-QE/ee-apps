@@ -70,20 +70,6 @@ class JenkinsSettings:
 @dataclass(frozen=True)
 class JenkinsIngestSettings:
     finished_event_type: str = "dev.cdevents.pipelinerun.finished.0.1.0"
-    param_allowlist: tuple[str, ...] = (
-        "org",
-        "repo",
-        "repo_full_name",
-        "pull",
-        "pr",
-        "pr_number",
-        "branch",
-        "target_branch",
-        "commit",
-        "sha",
-        "head_sha",
-        "author",
-    )
 
 
 @dataclass(frozen=True)
@@ -168,11 +154,6 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             finished_event_type=(
                 env.get("CI_DASHBOARD_JENKINS_FINISHED_EVENT_TYPE")
                 or "dev.cdevents.pipelinerun.finished.0.1.0"
-            ),
-            param_allowlist=_read_csv(
-                env,
-                "CI_DASHBOARD_JENKINS_PARAM_ALLOWLIST",
-                JenkinsIngestSettings.param_allowlist,
             ),
         ),
         archive=ArchiveSettings(

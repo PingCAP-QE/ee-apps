@@ -130,11 +130,7 @@ INSERT_BUILD_FROM_JENKINS = text(
       head_sha,
       target_branch,
       cloud_phase,
-      build_system,
-      source_jenkins_event_id,
-      source_jenkins_job_url,
-      source_jenkins_result,
-      build_params_json
+      build_system
     ) VALUES (
       :source_prow_row_id,
       :source_prow_job_id,
@@ -167,11 +163,7 @@ INSERT_BUILD_FROM_JENKINS = text(
       :head_sha,
       :target_branch,
       :cloud_phase,
-      :build_system,
-      :source_jenkins_event_id,
-      :source_jenkins_job_url,
-      :source_jenkins_result,
-      :build_params_json
+      :build_system
     )
     """
 )
@@ -179,11 +171,7 @@ INSERT_BUILD_FROM_JENKINS = text(
 UPDATE_BUILD_FROM_JENKINS = text(
     """
     UPDATE ci_l1_builds
-    SET source_jenkins_event_id = :source_jenkins_event_id,
-        source_jenkins_job_url = :source_jenkins_job_url,
-        source_jenkins_result = :source_jenkins_result,
-        build_params_json = :build_params_json,
-        state = :state,
+    SET state = :state,
         url = COALESCE(url, :url),
         normalized_build_url = COALESCE(normalized_build_url, :normalized_build_url),
         job_name = COALESCE(job_name, :job_name),
@@ -234,7 +222,7 @@ class ParsedJenkinsFinishedEvent:
     event_time: datetime | None
     build_url: str
     normalized_build_url: str
-    source_jenkins_result: str | None
+    jenkins_result: str | None
     state: str
     job_name: str | None
     job_type: str | None
@@ -255,7 +243,6 @@ class ParsedJenkinsFinishedEvent:
     target_branch: str | None
     cloud_phase: str
     build_system: str
-    build_params_json: str | None
 
     def as_build_row_params(self) -> dict[str, Any]:
         return {
@@ -292,10 +279,6 @@ class ParsedJenkinsFinishedEvent:
             "target_branch": self.target_branch,
             "cloud_phase": self.cloud_phase,
             "build_system": self.build_system,
-            "source_jenkins_event_id": self.event_id,
-            "source_jenkins_job_url": self.build_url,
-            "source_jenkins_result": self.source_jenkins_result,
-            "build_params_json": self.build_params_json,
         }
 
     def as_audit_params(self, *, payload_json: str, status: str, last_error: str | None = None) -> dict[str, Any]:
@@ -305,7 +288,7 @@ class ParsedJenkinsFinishedEvent:
             "event_time": self.event_time,
             "normalized_build_url": self.normalized_build_url,
             "build_url": self.build_url,
-            "result": self.source_jenkins_result,
+            "result": self.jenkins_result,
             "payload_json": payload_json,
             "processing_status": status,
             "last_error": last_error,
@@ -409,7 +392,7 @@ def process_jenkins_event_message(engine: Engine, settings: Settings, raw_value:
                     "event_time": parsed.event_time if parsed else envelope.event_time,
                     "normalized_build_url": parsed.normalized_build_url if parsed else None,
                     "build_url": parsed.build_url if parsed else None,
-                    "result": parsed.source_jenkins_result if parsed else None,
+                    "result": parsed.jenkins_result if parsed else None,
                     "payload_json": payload_json,
                     "processing_status": AUDIT_STATUS_FAILED,
                     "last_error": str(exc),
@@ -454,8 +437,8 @@ def parse_jenkins_finished_event(
         _extract_job_name_from_build_url(normalized_build_url),
     )
 
-    source_jenkins_result = _extract_result(data, custom_data)
-    state = map_jenkins_result_to_state(source_jenkins_result)
+    jenkins_result = _extract_result(data, custom_data)
+    state = map_jenkins_result_to_state(jenkins_result)
 
     org = _first_non_empty_str(
         custom_data.get("org"),
@@ -519,16 +502,13 @@ def parse_jenkins_finished_event(
         custom_data.get("buildId"),
         _extract_build_number_from_url(normalized_build_url),
     )
-    filtered_params = _filter_allowed_build_params(custom_data, settings.jenkins_ingest.param_allowlist)
-    build_params_json = json.dumps(filtered_params, sort_keys=True) if filtered_params else None
-
     return ParsedJenkinsFinishedEvent(
         event_id=envelope.event_id,
         event_type=envelope.event_type or settings.jenkins_ingest.finished_event_type,
         event_time=envelope.event_time,
         build_url=build_url,
         normalized_build_url=normalized_build_url,
-        source_jenkins_result=source_jenkins_result,
+        jenkins_result=jenkins_result,
         state=state,
         job_name=job_name,
         job_type=None,
@@ -555,7 +535,6 @@ def parse_jenkins_finished_event(
         target_branch=target_branch,
         cloud_phase=classify_cloud_phase(build_url),
         build_system=classify_build_system(build_url),
-        build_params_json=build_params_json,
     )
 
 
@@ -702,17 +681,6 @@ def _extract_result(data: Mapping[str, Any], custom_data: Mapping[str, Any]) -> 
         custom_data.get("status"),
         _nested_get(data, "pipelineRun", "result"),
     )
-
-
-def _filter_allowed_build_params(params: Mapping[str, Any], allowlist: tuple[str, ...]) -> dict[str, Any]:
-    allowed = {key for key in allowlist}
-    filtered: dict[str, Any] = {}
-    for key, value in params.items():
-        if key not in allowed:
-            continue
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            filtered[str(key)] = value
-    return filtered
 
 
 def _extract_repo_from_build_url(normalized_build_url: str) -> tuple[str | None, str | None]:

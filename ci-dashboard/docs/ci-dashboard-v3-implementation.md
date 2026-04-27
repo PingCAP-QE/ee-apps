@@ -75,11 +75,7 @@ Migration `014_alter_ci_l1_builds_for_v3_jenkins.sql` should:
   - `repo`
   - `repo_full_name`
   - `start_time`
-- add V3 Jenkins evidence fields:
-  - `source_jenkins_event_id`
-  - `source_jenkins_job_url`
-  - `source_jenkins_result`
-  - `build_params_json`
+- add V3 Jenkins fields that the current pipeline actually uses:
   - `log_gcs_uri`
   - `error_l1_category`
   - `error_l2_subcategory`

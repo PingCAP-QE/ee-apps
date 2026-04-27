@@ -18,7 +18,7 @@ FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
 
 FETCH_CANDIDATE_BUILDS = text(
     """
-    SELECT id, url, source_jenkins_job_url, normalized_build_url, log_gcs_uri, state, build_system
+    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
       AND state IN :failure_states
@@ -154,7 +154,7 @@ def _archive_single_build(
     if not force and build.get("log_gcs_uri"):
         return False
 
-    build_url = str(build.get("source_jenkins_job_url") or build.get("url") or "").strip()
+    build_url = str(build.get("url") or "").strip()
     if not build_url:
         raise ValueError(f"build {build['id']} is missing Jenkins build URL")
 

@@ -25,7 +25,6 @@ def test_load_settings_supports_db_url() -> None:
             "CI_DASHBOARD_JENKINS_API_TOKEN": "token-1",
             "CI_DASHBOARD_JENKINS_HTTP_TIMEOUT_SECONDS": "45",
             "CI_DASHBOARD_JENKINS_PROGRESSIVE_PROBE_START": "999999",
-            "CI_DASHBOARD_JENKINS_PARAM_ALLOWLIST": "org,repo,branch,commit",
             "CI_DASHBOARD_ARCHIVE_BUILD_LIMIT": "77",
             "CI_DASHBOARD_ARCHIVE_LOG_TAIL_BYTES": "65536",
             "CI_DASHBOARD_GCS_BUCKET": "ci-dashboard-prod",
@@ -48,7 +47,6 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.jenkins.api_token == "token-1"
     assert settings.jenkins.http_timeout_seconds == 45
     assert settings.jenkins.progressive_probe_start == 999999
-    assert settings.jenkins_ingest.param_allowlist == ("org", "repo", "branch", "commit")
     assert settings.archive.build_limit == 77
     assert settings.archive.log_tail_bytes == 65536
     assert settings.archive.gcs_bucket == "ci-dashboard-prod"

@@ -449,7 +449,6 @@ When the Jenkins Event Worker processes a finished event:
 - create a new canonical row with:
   - `source_prow_row_id = NULL`
   - `source_prow_job_id = NULL`
-  - `source_jenkins_event_id` populated
   - existing timing fields filled from Jenkins event when available
 
 ### 7.4 `sync-builds` Merge Rules
@@ -503,11 +502,7 @@ ALTER TABLE ci_l1_builds
   MODIFY COLUMN repo VARCHAR(63) NULL,
   MODIFY COLUMN repo_full_name VARCHAR(127) NULL,
   MODIFY COLUMN start_time DATETIME NULL,
-  ADD COLUMN source_jenkins_event_id VARCHAR(128) NULL AFTER build_system,
-  ADD COLUMN source_jenkins_job_url VARCHAR(1024) NULL AFTER source_jenkins_event_id,
-  ADD COLUMN source_jenkins_result VARCHAR(32) NULL AFTER source_jenkins_job_url,
-  ADD COLUMN build_params_json JSON NULL AFTER source_jenkins_result,
-  ADD COLUMN log_gcs_uri VARCHAR(512) NULL AFTER build_params_json,
+  ADD COLUMN log_gcs_uri VARCHAR(512) NULL AFTER build_system,
   ADD COLUMN error_l1_category VARCHAR(32) NULL AFTER log_gcs_uri,
   ADD COLUMN error_l2_subcategory VARCHAR(64) NULL AFTER error_l1_category,
   ADD COLUMN revise_error_l1_category VARCHAR(32) NULL AFTER error_l2_subcategory,
@@ -527,8 +522,8 @@ column that cannot be guaranteed by the CDEvent payload.
 | `job_name` | normalize from Jenkins pipeline name when available, otherwise `NULL` and backfill later |
 | `job_type` | `NULL` in the first slice |
 | `state` | mapped from Jenkins result into existing build-state vocabulary |
-| `org` | parse from allowlisted build params when present, otherwise `NULL` |
-| `repo` | parse from allowlisted build params when present, otherwise `NULL` |
+| `org` | parse from Jenkins event data or build URL when present, otherwise `NULL` |
+| `repo` | parse from Jenkins event data or build URL when present, otherwise `NULL` |
 | `repo_full_name` | derive from `org` and `repo` when both are known, otherwise `NULL` |
 | `url` | Jenkins build URL from event payload |
 | `start_time` | use Jenkins-reported start time when present; otherwise allow `NULL` and backfill later |
@@ -543,7 +538,7 @@ Other existing fields continue using current behavior:
 
 #### 8.1.2 Jenkins Result Versus Existing `state`
 
-- `source_jenkins_result` preserves the original Jenkins result string for audit
+- raw Jenkins result stays in `ci_l1_jenkins_build_events.result`
 - `state` continues using the existing build-state vocabulary
 
 Recommended mapping:
