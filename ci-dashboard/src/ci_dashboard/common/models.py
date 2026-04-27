@@ -7,17 +7,17 @@ from typing import Any
 
 @dataclass(frozen=True)
 class NormalizedBuildRow:
-    source_prow_row_id: int
-    source_prow_job_id: str
-    namespace: str
-    job_name: str
-    job_type: str
+    source_prow_row_id: int | None
+    source_prow_job_id: str | None
+    namespace: str | None
+    job_name: str | None
+    job_type: str | None
     state: str
     optional: bool
     report: bool
-    org: str
-    repo: str
-    repo_full_name: str
+    org: str | None
+    repo: str | None
+    repo_full_name: str | None
     base_ref: str | None
     pr_number: int | None
     is_pr_build: bool
@@ -30,7 +30,7 @@ class NormalizedBuildRow:
     build_id: str | None
     pod_name: str | None
     pending_time: datetime | None
-    start_time: datetime
+    start_time: datetime | None
     completion_time: datetime | None
     queue_wait_seconds: int | None
     run_seconds: int | None
@@ -114,3 +114,20 @@ class SyncPodsSummary:
     reconciled_rows_updated: int = 0
     pods_touched: int = 0
     last_receive_timestamp: str | None = None
+
+
+@dataclass
+class ConsumeJenkinsEventsSummary:
+    messages_polled: int = 0
+    events_processed: int = 0
+    events_skipped: int = 0
+    events_failed: int = 0
+    build_rows_written: int = 0
+
+
+@dataclass
+class ArchiveErrorLogsSummary:
+    builds_scanned: int = 0
+    builds_archived: int = 0
+    builds_skipped: int = 0
+    builds_failed: int = 0

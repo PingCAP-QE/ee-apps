@@ -7,11 +7,13 @@ from datetime import date, datetime, time, timedelta
 from ci_dashboard.common.config import get_settings
 from ci_dashboard.common.db import build_engine
 from ci_dashboard.common.logging import configure_logging
+from ci_dashboard.jobs.archive_error_logs import run_archive_error_logs
 from ci_dashboard.jobs.refresh_build_derived import (
     run_refresh_build_derived,
     run_refresh_build_derived_for_time_window,
     run_refresh_flaky_signals_for_time_window,
 )
+from ci_dashboard.jobs.jenkins_worker import run_consume_jenkins_events
 from ci_dashboard.jobs.sync_builds import run_sync_builds, run_sync_builds_for_time_window
 from ci_dashboard.jobs.sync_pr_events import (
     run_sync_pr_events,
@@ -34,6 +36,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CI dashboard job runner")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("sync-builds", help="Sync prow_jobs into ci_l1_builds")
+    consume_jenkins_parser = subparsers.add_parser(
+        "consume-jenkins-events",
+        help="Consume Jenkins finished events from Kafka into ci_l1_builds",
+    )
+    consume_jenkins_parser.add_argument(
+        "--max-messages",
+        type=int,
+        help="Stop after processing at most this many Kafka messages",
+    )
+    consume_jenkins_parser.add_argument(
+        "--group-id",
+        help="Override the Kafka consumer group id for this run",
+    )
+    consume_jenkins_parser.add_argument(
+        "--topic",
+        help="Override the Kafka topic name for this run",
+    )
     subparsers.add_parser("sync-pr-events", help="Sync github_tickets into ci_l1_pr_events")
     subparsers.add_parser(
         "sync-flaky-issues",
@@ -46,6 +65,25 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "refresh-build-derived",
         help="Refresh derived fields on ci_l1_builds",
+    )
+    archive_logs_parser = subparsers.add_parser(
+        "archive-error-logs",
+        help="Archive redacted Jenkins error console tails to GCS",
+    )
+    archive_logs_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Archive at most this many candidate builds",
+    )
+    archive_logs_parser.add_argument(
+        "--build-id",
+        type=int,
+        help="Archive a specific ci_l1_builds row id",
+    )
+    archive_logs_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing archived log for the selected build(s)",
     )
     refresh_range_parser = subparsers.add_parser(
         "refresh-build-derived-range",
@@ -123,6 +161,23 @@ def main() -> int:
         logging.getLogger(__name__).info("sync-builds finished", extra={"summary": summary.__dict__})
         return 0
 
+    if args.command == "consume-jenkins-events":
+        if args.max_messages is not None and args.max_messages <= 0:
+            parser.error("--max-messages must be positive")
+        engine = build_engine(settings)
+        summary = run_consume_jenkins_events(
+            engine,
+            settings,
+            max_messages=args.max_messages,
+            topic=args.topic,
+            group_id=args.group_id,
+        )
+        logging.getLogger(__name__).info(
+            "consume-jenkins-events finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
     if args.command == "sync-pr-events":
         engine = build_engine(settings)
         summary = run_sync_pr_events(engine, settings)
@@ -152,6 +207,25 @@ def main() -> int:
         summary = run_refresh_build_derived(engine, settings)
         logging.getLogger(__name__).info(
             "refresh-build-derived finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
+    if args.command == "archive-error-logs":
+        if args.limit is not None and args.limit <= 0:
+            parser.error("--limit must be positive")
+        if args.build_id is not None and args.build_id <= 0:
+            parser.error("--build-id must be positive")
+        engine = build_engine(settings)
+        summary = run_archive_error_logs(
+            engine,
+            settings,
+            limit=args.limit,
+            build_id=args.build_id,
+            force=args.force,
+        )
+        logging.getLogger(__name__).info(
+            "archive-error-logs finished",
             extra={"summary": summary.__dict__},
         )
         return 0

@@ -74,6 +74,8 @@ Notes:
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes
 - `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
+- `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest
+- `scripts/render_archive_error_logs_cronjob.sh` renders the V3 Jenkins error-log archive CronJob manifest
 
 ## Local Frontend Against TiDB
 

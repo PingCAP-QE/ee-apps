@@ -312,6 +312,120 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
     assert state.watermark == {"last_source_prow_row_id": 2}
 
 
+def test_sync_builds_merges_into_existing_jenkins_first_row(sqlite_engine) -> None:
+    build_url = "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/300/display/redirect"
+    normalized_build_url = "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/300/"
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
+                  context, url, normalized_build_url, start_time, cloud_phase, build_system,
+                  source_jenkins_event_id
+                ) VALUES (
+                  NULL, NULL, NULL, 'ghpr_unit_test', NULL, 'failure',
+                  0, 1, NULL, NULL, NULL, 'master', 300, 1,
+                  'unit', :url, :normalized_build_url, NULL, 'GCP', 'JENKINS',
+                  'evt-300'
+                )
+                """
+            ),
+            {"url": build_url, "normalized_build_url": normalized_build_url},
+        )
+        existing_id = connection.execute(
+            text("SELECT id FROM ci_l1_builds WHERE normalized_build_url = :normalized_build_url"),
+            {"normalized_build_url": normalized_build_url},
+        ).scalar_one()
+        connection.execute(
+            text(
+                """
+                INSERT INTO prow_jobs (
+                  id, prowJobId, namespace, jobName, type, state, optional, report,
+                  org, repo, base_ref, pull, context, url, author, retest, event_guid,
+                  startTime, completionTime, spec, status
+                ) VALUES (
+                  :id, :prowJobId, :namespace, :jobName, :type, :state, :optional, :report,
+                  :org, :repo, :base_ref, :pull, :context, :url, :author, :retest, :event_guid,
+                  :startTime, :completionTime, :spec, :status
+                )
+                """
+            ),
+            {
+                "id": 300,
+                "prowJobId": "prow-job-300",
+                "namespace": "prow",
+                "jobName": "ghpr_unit_test",
+                "type": "presubmit",
+                "state": "failure",
+                "optional": 0,
+                "report": 1,
+                "org": "pingcap",
+                "repo": "tidb",
+                "base_ref": "master",
+                "pull": 300,
+                "context": "unit",
+                "url": build_url,
+                "author": "alice",
+                "retest": 0,
+                "event_guid": "guid-300",
+                "startTime": "2026-04-13T10:00:00Z",
+                "completionTime": "2026-04-13T10:20:00Z",
+                "spec": json.dumps({}),
+                "status": json.dumps({"pendingTime": "2026-04-13T10:01:00Z"}),
+            },
+        )
+
+    settings = Settings(
+        database=DatabaseSettings(
+            url="sqlite+pysqlite:///:memory:",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            ssl_ca=None,
+        ),
+        jobs=JobSettings(batch_size=10),
+        log_level="INFO",
+    )
+
+    summary = run_sync_builds(sqlite_engine, settings)
+
+    assert summary.rows_written == 1
+    assert summary.rows_skipped == 0
+
+    with sqlite_engine.begin() as connection:
+        rows = list(
+            connection.execute(
+                text(
+                    """
+                    SELECT id, source_prow_row_id, source_prow_job_id, namespace, job_name, job_type,
+                           org, repo, repo_full_name, start_time, source_jenkins_event_id
+                    FROM ci_l1_builds
+                    ORDER BY id
+                    """
+                )
+            ).mappings()
+        )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == existing_id
+    assert row["source_prow_row_id"] == 300
+    assert row["source_prow_job_id"] == "prow-job-300"
+    assert row["namespace"] == "prow"
+    assert row["job_name"] == "ghpr_unit_test"
+    assert row["job_type"] == "presubmit"
+    assert row["org"] == "pingcap"
+    assert row["repo"] == "tidb"
+    assert row["repo_full_name"] == "pingcap/tidb"
+    assert str(row["start_time"]).startswith("2026-04-13 10:00:00")
+    assert row["source_jenkins_event_id"] == "evt-300"
+
+
 def test_sync_builds_skips_malformed_rows_and_keeps_progress(sqlite_engine) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
