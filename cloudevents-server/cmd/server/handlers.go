@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -124,7 +125,25 @@ func newJenkinsSinkHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 }
 
 func parseJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
-	body = []byte(strings.TrimSpace(string(body)))
+	body = bytes.TrimSpace(body)
+	if event, err := parseStructuredJenkinsCloudEvent(body); err == nil {
+		return event, nil
+	}
+	return parseLegacyJenkinsPluginCloudEvent(body)
+}
+
+func parseStructuredJenkinsCloudEvent(body []byte) (cloudevents.Event, error) {
+	var event cloudevents.Event
+	if err := json.Unmarshal(body, &event); err != nil {
+		return cloudevents.Event{}, fmt.Errorf("decode structured jenkins cloud event json: %w", err)
+	}
+	if err := event.Validate(); err != nil {
+		return cloudevents.Event{}, fmt.Errorf("validate structured jenkins cloud event: %w", err)
+	}
+	return event, nil
+}
+
+func parseLegacyJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
 	matches := jenkinsPluginCloudEventRegexp.FindSubmatch(body)
 	if matches == nil {
 		return cloudevents.Event{}, fmt.Errorf("payload does not match Jenkins CD Events HTTP sink format")
