@@ -16,9 +16,9 @@ func TestResolveTopic(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		eventType string
-		wantTopic string
+		name       string
+		eventType  string
+		wantTopic  string
 		wantIgnore bool
 	}{
 		{

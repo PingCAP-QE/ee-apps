@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -70,8 +69,6 @@ type EventProducer struct {
 	topicMapping     map[string]string // Map event type to Kafka topic
 }
 
-const jenkinsCloudEventTypePrefix = "dev.cdevents."
-
 func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents.Event) cloudevents.Result {
 	eventType := event.Type()
 	topic, ignore := eb.resolveTopic(eventType)
@@ -104,19 +101,6 @@ func (eb *EventProducer) HandleCloudEvent(ctx context.Context, event cloudevents
 		Dur("duration", time.Since(startTime)).
 		Msg("message written to Kafka")
 	return cloudevents.ResultACK
-}
-
-func (eb *EventProducer) resolveTopic(eventType string) (string, bool) {
-	if topic, ok := eb.topicMapping[eventType]; ok {
-		return topic, false
-	}
-
-	if strings.HasPrefix(eventType, jenkinsCloudEventTypePrefix) {
-		return "", true
-	}
-
-	log.Debug().Str("event-type", eventType).Msg("No topic found for event type, using default topic")
-	return eb.unknowEventTopic, false
 }
 
 type EventConsumerGroup map[string]*EventConsumer
