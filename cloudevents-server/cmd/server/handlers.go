@@ -1,16 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/gin-gonic/gin"
@@ -22,8 +17,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
 )
-
-var jenkinsPluginCloudEventRegexp = regexp.MustCompile(`^CloudEvent\{id='([^']+)', source=([^,]+), type='([^']+)', datacontenttype='([^']*)', time=([^,]+), data=BytesCloudEventData\{value=\[([^\]]*)\]\}, extensions=\{.*\}\}$`)
 
 const jenkinsEventTopic = "jenkins-event"
 const jenkinsPipelineRunFinishedEventType = "dev.cdevents.pipelinerun.finished.0.1.0"
@@ -125,11 +118,7 @@ func newJenkinsSinkHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 }
 
 func parseJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
-	body = bytes.TrimSpace(body)
-	if event, err := parseStructuredJenkinsCloudEvent(body); err == nil {
-		return event, nil
-	}
-	return parseLegacyJenkinsPluginCloudEvent(body)
+	return parseStructuredJenkinsCloudEvent(body)
 }
 
 func parseStructuredJenkinsCloudEvent(body []byte) (cloudevents.Event, error) {
@@ -141,83 +130,6 @@ func parseStructuredJenkinsCloudEvent(body []byte) (cloudevents.Event, error) {
 		return cloudevents.Event{}, fmt.Errorf("validate structured jenkins cloud event: %w", err)
 	}
 	return event, nil
-}
-
-func parseLegacyJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
-	matches := jenkinsPluginCloudEventRegexp.FindSubmatch(body)
-	if matches == nil {
-		return cloudevents.Event{}, fmt.Errorf("payload does not match Jenkins CD Events HTTP sink format")
-	}
-
-	payloadBytes, err := parseSignedByteArray(string(matches[6]))
-	if err != nil {
-		return cloudevents.Event{}, fmt.Errorf("parse jenkins event data bytes: %w", err)
-	}
-
-	event := cloudevents.NewEvent()
-	event.SetID(string(matches[1]))
-	event.SetSource(string(matches[2]))
-	event.SetType(string(matches[3]))
-
-	dataContentType := string(matches[4])
-	if dataContentType != "" {
-		event.SetDataContentType(dataContentType)
-	}
-
-	if len(matches[5]) > 0 {
-		eventTime, err := time.Parse(time.RFC3339Nano, string(matches[5]))
-		if err != nil {
-			return cloudevents.Event{}, fmt.Errorf("parse jenkins event time: %w", err)
-		}
-		event.SetTime(eventTime)
-	}
-
-	if len(payloadBytes) > 0 {
-		if strings.Contains(strings.ToLower(dataContentType), "json") {
-			var data any
-			if err := json.Unmarshal(payloadBytes, &data); err != nil {
-				return cloudevents.Event{}, fmt.Errorf("decode jenkins event data json: %w", err)
-			}
-			if err := event.SetData(dataContentType, data); err != nil {
-				return cloudevents.Event{}, fmt.Errorf("set jenkins event data: %w", err)
-			}
-		} else {
-			if err := event.SetData(dataContentType, payloadBytes); err != nil {
-				return cloudevents.Event{}, fmt.Errorf("set jenkins event data: %w", err)
-			}
-		}
-	}
-
-	if err := event.Validate(); err != nil {
-		return cloudevents.Event{}, fmt.Errorf("validate jenkins cloud event: %w", err)
-	}
-
-	return event, nil
-}
-
-func parseSignedByteArray(raw string) ([]byte, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(raw, ",")
-	buf := make([]byte, 0, len(parts))
-	for _, part := range parts {
-		value, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil {
-			return nil, err
-		}
-		if value < -128 || value > 255 {
-			return nil, fmt.Errorf("byte value %d out of range", value)
-		}
-		if value < 0 {
-			value += 256
-		}
-		buf = append(buf, byte(value))
-	}
-
-	return buf, nil
 }
 
 func truncateLogPayload(payload string) string {
