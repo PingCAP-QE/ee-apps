@@ -124,28 +124,29 @@ func newJenkinsSinkHandlerFunc(producer cloudEventProducer) gin.HandlerFunc {
 }
 
 func parseJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
-	raw := strings.TrimSpace(string(body))
-	matches := jenkinsPluginCloudEventRegexp.FindStringSubmatch(raw)
+	body = []byte(strings.TrimSpace(string(body)))
+	matches := jenkinsPluginCloudEventRegexp.FindSubmatch(body)
 	if matches == nil {
 		return cloudevents.Event{}, fmt.Errorf("payload does not match Jenkins CD Events HTTP sink format")
 	}
 
-	payloadBytes, err := parseSignedByteArray(matches[6])
+	payloadBytes, err := parseSignedByteArray(string(matches[6]))
 	if err != nil {
 		return cloudevents.Event{}, fmt.Errorf("parse jenkins event data bytes: %w", err)
 	}
 
 	event := cloudevents.NewEvent()
-	event.SetID(matches[1])
-	event.SetSource(matches[2])
-	event.SetType(matches[3])
+	event.SetID(string(matches[1]))
+	event.SetSource(string(matches[2]))
+	event.SetType(string(matches[3]))
 
-	if matches[4] != "" {
-		event.SetDataContentType(matches[4])
+	dataContentType := string(matches[4])
+	if dataContentType != "" {
+		event.SetDataContentType(dataContentType)
 	}
 
-	if matches[5] != "" {
-		eventTime, err := time.Parse(time.RFC3339Nano, matches[5])
+	if len(matches[5]) > 0 {
+		eventTime, err := time.Parse(time.RFC3339Nano, string(matches[5]))
 		if err != nil {
 			return cloudevents.Event{}, fmt.Errorf("parse jenkins event time: %w", err)
 		}
@@ -153,16 +154,16 @@ func parseJenkinsPluginCloudEvent(body []byte) (cloudevents.Event, error) {
 	}
 
 	if len(payloadBytes) > 0 {
-		if strings.Contains(strings.ToLower(matches[4]), "json") {
+		if strings.Contains(strings.ToLower(dataContentType), "json") {
 			var data any
 			if err := json.Unmarshal(payloadBytes, &data); err != nil {
 				return cloudevents.Event{}, fmt.Errorf("decode jenkins event data json: %w", err)
 			}
-			if err := event.SetData(matches[4], data); err != nil {
+			if err := event.SetData(dataContentType, data); err != nil {
 				return cloudevents.Event{}, fmt.Errorf("set jenkins event data: %w", err)
 			}
 		} else {
-			if err := event.SetData(matches[4], payloadBytes); err != nil {
+			if err := event.SetData(dataContentType, payloadBytes); err != nil {
 				return cloudevents.Event{}, fmt.Errorf("set jenkins event data: %w", err)
 			}
 		}
