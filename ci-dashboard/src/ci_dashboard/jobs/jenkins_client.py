@@ -94,11 +94,17 @@ def canonicalize_build_url(build_url: str) -> str:
 def rewrite_build_url_host(build_url: str, *, internal_base_url: str) -> str:
     source = urlsplit(build_url)
     target = urlsplit(internal_base_url)
+    source_path = source.path or "/"
+    target_path = target.path.rstrip("/")
+    if target_path and not (
+        source_path == target_path or source_path.startswith(f"{target_path}/")
+    ):
+        source_path = f"{target_path}{source_path if source_path.startswith('/') else '/' + source_path}"
     rewritten = urlunsplit(
         (
             target.scheme or source.scheme,
             target.netloc or source.netloc,
-            source.path,
+            source_path,
             source.query,
             source.fragment,
         )

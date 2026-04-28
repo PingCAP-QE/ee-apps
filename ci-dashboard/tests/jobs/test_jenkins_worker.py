@@ -5,8 +5,9 @@ from datetime import datetime
 
 from sqlalchemy import text
 
-from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
+from ci_dashboard.common.config import DatabaseSettings, JobSettings, KafkaSettings, Settings
 from ci_dashboard.jobs.jenkins_worker import (
+    _build_kafka_consumer,
     map_jenkins_result_to_state,
     parse_jenkins_finished_event,
     process_jenkins_event_message,
@@ -174,7 +175,33 @@ def test_process_jenkins_event_message_skips_duplicate_processed_event(sqlite_en
     assert audit_count == 1
 
 
-def test_run_consume_jenkins_events_commits_only_successful_records(sqlite_engine) -> None:
+def test_process_jenkins_event_message_marks_audited_failures_without_raising(sqlite_engine) -> None:
+    payload = _finished_event_payload()
+    payload["type"] = "dev.cdevents.pipelinerun.started.0.1.0"
+
+    result = process_jenkins_event_message(sqlite_engine, _settings(), payload)
+
+    assert result == "failed"
+
+    with sqlite_engine.begin() as connection:
+        build_count = connection.execute(text("SELECT COUNT(*) FROM ci_l1_builds")).scalar_one()
+        audit = connection.execute(
+            text(
+                """
+                SELECT event_id, event_type, processing_status, last_error
+                FROM ci_l1_jenkins_build_events
+                """
+            )
+        ).mappings().one()
+
+    assert build_count == 0
+    assert audit["event_id"] == "evt-1"
+    assert audit["event_type"] == "dev.cdevents.pipelinerun.started.0.1.0"
+    assert audit["processing_status"] == "FAILED"
+    assert "unsupported CloudEvent type" in str(audit["last_error"])
+
+
+def test_run_consume_jenkins_events_commits_audited_failures(sqlite_engine) -> None:
     class _Record:
         def __init__(self, value: bytes) -> None:
             self.value = value
@@ -190,7 +217,9 @@ def test_run_consume_jenkins_events_commits_only_successful_records(sqlite_engin
             if self._poll_count == 1:
                 return {("jenkins-event", 0): [_Record(json.dumps(_finished_event_payload()).encode("utf-8"))]}
             if self._poll_count == 2:
-                return {("jenkins-event", 0): [_Record(b"{not-json")]}
+                failed_payload = _finished_event_payload(event_id="evt-2")
+                failed_payload["type"] = "dev.cdevents.pipelinerun.started.0.1.0"
+                return {("jenkins-event", 0): [_Record(json.dumps(failed_payload).encode("utf-8"))]}
             return {}
 
         def commit(self) -> None:
@@ -212,7 +241,79 @@ def test_run_consume_jenkins_events_commits_only_successful_records(sqlite_engin
     assert summary.events_failed == 1
     assert summary.events_skipped == 0
     assert summary.build_rows_written == 1
+    assert consumer.commits == 2
+
+
+def test_run_consume_jenkins_events_respects_max_messages_across_partitions(sqlite_engine) -> None:
+    class _Record:
+        def __init__(self, value: bytes) -> None:
+            self.value = value
+
+    class _Consumer:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        def poll(self, timeout_ms: int, max_records: int):
+            del timeout_ms, max_records
+            return {
+                ("jenkins-event", 0): [_Record(json.dumps(_finished_event_payload(event_id="evt-10")).encode("utf-8"))],
+                ("jenkins-event", 1): [_Record(json.dumps(_finished_event_payload(event_id="evt-11")).encode("utf-8"))],
+            }
+
+        def commit(self) -> None:
+            self.commits += 1
+
+        def close(self) -> None:
+            return None
+
+    consumer = _Consumer()
+    summary = run_consume_jenkins_events(
+        sqlite_engine,
+        _settings(),
+        max_messages=1,
+        consumer=consumer,
+    )
+
+    assert summary.messages_polled == 1
+    assert summary.events_processed == 1
+    assert summary.events_failed == 0
+    assert summary.build_rows_written == 1
     assert consumer.commits == 1
+
+
+def test_build_kafka_consumer_uses_earliest_offset(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeKafkaConsumer:
+        def __init__(self, *args, **kwargs) -> None:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "kafka", types.SimpleNamespace(KafkaConsumer=_FakeKafkaConsumer))
+
+    settings = Settings(
+        database=DatabaseSettings(
+            url="sqlite+pysqlite:///:memory:",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            ssl_ca=None,
+        ),
+        jobs=JobSettings(batch_size=10),
+        kafka=KafkaSettings(bootstrap_servers=("kafka-a:9092",)),
+        log_level="INFO",
+    )
+
+    _build_kafka_consumer(settings, topic="jenkins-event", group_id="ci-dashboard-test")
+
+    assert captured["args"] == ("jenkins-event",)
+    assert captured["kwargs"]["auto_offset_reset"] == "earliest"
+    assert captured["kwargs"]["group_id"] == "ci-dashboard-test"
 
 
 def test_map_jenkins_result_to_state() -> None:

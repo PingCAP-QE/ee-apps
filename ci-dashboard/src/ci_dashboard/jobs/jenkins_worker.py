@@ -329,7 +329,7 @@ def run_consume_jenkins_events(
             for records in records_by_partition.values():
                 for record in records:
                     if max_messages is not None and summary.messages_polled >= max_messages:
-                        break
+                        return summary
 
                     summary.messages_polled += 1
                     try:
@@ -344,6 +344,8 @@ def run_consume_jenkins_events(
 
                     if result == "skipped":
                         summary.events_skipped += 1
+                    elif result == "failed":
+                        summary.events_failed += 1
                     else:
                         summary.events_processed += 1
                         summary.build_rows_written += 1
@@ -398,7 +400,7 @@ def process_jenkins_event_message(engine: Engine, settings: Settings, raw_value:
                     "last_error": str(exc),
                 },
             )
-        raise
+        return "failed"
 
 
 def parse_jenkins_finished_event(
@@ -613,7 +615,7 @@ def _build_kafka_consumer(settings: Settings, *, topic: str, group_id: str) -> A
         bootstrap_servers=list(settings.kafka.bootstrap_servers),
         group_id=group_id,
         enable_auto_commit=False,
-        auto_offset_reset="latest",
+        auto_offset_reset="earliest",
         value_deserializer=lambda value: value,
         key_deserializer=lambda value: value,
     )

@@ -42,6 +42,24 @@ def test_rewrite_build_url_host_preserves_path() -> None:
     )
 
 
+def test_rewrite_build_url_host_applies_internal_base_subpath_without_duplication() -> None:
+    assert (
+        rewrite_build_url_host(
+            "https://external.example.com/job/pingcap/job/tidb/job/ghpr_unit_test/301/",
+            internal_base_url="http://jenkins.jenkins.svc.cluster.local:80/jenkins",
+        )
+        == "http://jenkins.jenkins.svc.cluster.local:80/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
+    )
+
+    assert (
+        rewrite_build_url_host(
+            "https://external.example.com/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/",
+            internal_base_url="http://jenkins.jenkins.svc.cluster.local:80/jenkins",
+        )
+        == "http://jenkins.jenkins.svc.cluster.local:80/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
+    )
+
+
 def test_jenkins_client_fetch_console_tail_uses_progressive_text_probe_then_tail() -> None:
     full_log = "0123456789abcdefghijklmnopqrstuvwxyz"
     chunk_size = 8
