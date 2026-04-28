@@ -9,7 +9,7 @@ import httpx
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.common.models import ErrorClassification
 
-DEFAULT_LLM_TIMEOUT_SECONDS = 60
+DEFAULT_LLM_TIMEOUT_SECONDS = 180
 DEFAULT_LLM_MAX_INPUT_CHARS = 24000
 
 

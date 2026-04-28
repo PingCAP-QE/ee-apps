@@ -199,6 +199,7 @@ def test_build_llm_classifier_passes_reasoning_effort() -> None:
     assert isinstance(classifier, OpenAICompatibleLLMClassifier)
     assert classifier.model == "gpt-5.4"
     assert classifier.reasoning_effort == "high"
+    assert classifier.timeout_seconds == 180
 
 
 def test_build_llm_classifier_rejects_invalid_reasoning_effort() -> None:
