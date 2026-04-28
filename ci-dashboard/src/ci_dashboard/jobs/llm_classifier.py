@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Iterator, Mapping, Protocol
 
 import httpx
 
@@ -198,14 +198,12 @@ def _collect_stream_content(response: httpx.Response) -> str:
     return content
 
 
-def _iter_sse_data_payloads(response: httpx.Response) -> list[str]:
-    payloads: list[str] = []
+def _iter_sse_data_payloads(response: httpx.Response) -> Iterator[str]:
     data_lines: list[str] = []
-    for raw_line in response.iter_lines():
-        line = raw_line.strip()
+    for line in response.iter_lines():
         if not line:
             if data_lines:
-                payloads.append("\n".join(data_lines))
+                yield "\n".join(data_lines)
                 data_lines = []
             continue
         if line.startswith(":"):
@@ -217,8 +215,7 @@ def _iter_sse_data_payloads(response: httpx.Response) -> list[str]:
             data_line = data_line[1:]
         data_lines.append(data_line)
     if data_lines:
-        payloads.append("\n".join(data_lines))
-    return payloads
+        yield "\n".join(data_lines)
 
 
 def _extract_stream_choice_content(payload: Mapping[str, Any]) -> list[str]:

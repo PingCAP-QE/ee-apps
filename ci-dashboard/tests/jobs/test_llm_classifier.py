@@ -6,7 +6,11 @@ import httpx
 import pytest
 
 from ci_dashboard.common.config import LLMSettings
-from ci_dashboard.jobs.llm_classifier import OpenAICompatibleLLMClassifier, build_llm_classifier
+from ci_dashboard.jobs.llm_classifier import (
+    OpenAICompatibleLLMClassifier,
+    _iter_sse_data_payloads,
+    build_llm_classifier,
+)
 
 
 def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None:
@@ -147,6 +151,20 @@ def test_openai_compatible_llm_classifier_ignores_reasoning_only_chunks() -> Non
 
     assert result.l1_category == "OTHERS"
     assert result.l2_subcategory == "UNCLASSIFIED"
+
+
+def test_iter_sse_data_payloads_preserves_significant_whitespace() -> None:
+    response = httpx.Response(
+        200,
+        text=(
+            ": keep-alive\n"
+            "data:  first line  \n"
+            "data: second line\n\n"
+            "data: [DONE]\n\n"
+        ),
+    )
+
+    assert list(_iter_sse_data_payloads(response)) == [" first line  \nsecond line", "[DONE]"]
 
 
 def test_build_llm_classifier_requires_base_url_for_codex() -> None:
