@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+import ci_dashboard.jobs.llm_classifier as llm_classifier_module
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.jobs.llm_classifier import (
     OpenAICompatibleLLMClassifier,
@@ -151,6 +152,54 @@ def test_openai_compatible_llm_classifier_ignores_reasoning_only_chunks() -> Non
 
     assert result.l1_category == "OTHERS"
     assert result.l2_subcategory == "UNCLASSIFIED"
+
+
+def test_openai_compatible_llm_classifier_retries_on_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+    sleep_calls: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(
+                429,
+                request=request,
+                headers={"Retry-After": "7"},
+                text="rate limited",
+            )
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"OTHERS\\",\\"l2\\":\\"UNCLASSIFIED\\"}"}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+
+    monkeypatch.setattr(llm_classifier_module.time, "sleep", sleep_calls.append)
+
+    classifier = OpenAICompatibleLLMClassifier(
+        provider_name="codex",
+        base_url="https://api-vip.codex-for.me/v1",
+        model="gpt-5-codex",
+        api_key="test-key",
+        reasoning_effort=None,
+        default_l1_category="OTHERS",
+        default_l2_subcategory="UNCLASSIFIED",
+        allowed_classifications=(("INFRA", "NETWORK"), ("OTHERS", "UNCLASSIFIED")),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = classifier.classify(log_text="unknown failure", build={})
+
+    assert result.l1_category == "OTHERS"
+    assert result.l2_subcategory == "UNCLASSIFIED"
+    assert attempts == 2
+    assert sleep_calls == [7.0]
 
 
 def test_iter_sse_data_payloads_preserves_significant_whitespace() -> None:

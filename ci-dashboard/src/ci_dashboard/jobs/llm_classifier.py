@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Iterator, Mapping, Protocol
 
@@ -9,8 +11,13 @@ import httpx
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.common.models import ErrorClassification
 
+LOG = logging.getLogger(__name__)
+
 DEFAULT_LLM_TIMEOUT_SECONDS = 180
 DEFAULT_LLM_MAX_INPUT_CHARS = 24000
+DEFAULT_LLM_RATE_LIMIT_RETRIES = 4
+DEFAULT_LLM_RATE_LIMIT_BACKOFF_SECONDS = 5.0
+MAX_LLM_RATE_LIMIT_BACKOFF_SECONDS = 60.0
 
 
 class LLMClassifier(Protocol):
@@ -77,9 +84,31 @@ class OpenAICompatibleLLMClassifier:
             timeout=self.timeout_seconds,
             transport=self.transport,
         ) as client:
-            with client.stream("POST", endpoint, headers=headers, json=request_payload) as response:
-                response.raise_for_status()
-                return _collect_stream_content(response)
+            for attempt in range(DEFAULT_LLM_RATE_LIMIT_RETRIES + 1):
+                try:
+                    with client.stream(
+                        "POST",
+                        endpoint,
+                        headers=headers,
+                        json=request_payload,
+                    ) as response:
+                        response.raise_for_status()
+                        return _collect_stream_content(response)
+                except httpx.HTTPStatusError as exc:
+                    if not _should_retry_rate_limit(exc.response, attempt=attempt):
+                        raise
+                    delay_seconds = _resolve_rate_limit_backoff_seconds(exc.response, attempt=attempt)
+                    LOG.warning(
+                        "LLM provider rate limited classification request; retrying",
+                        extra={
+                            "provider_name": self.provider_name,
+                            "model": self.model,
+                            "attempt": attempt + 1,
+                            "delay_seconds": delay_seconds,
+                        },
+                    )
+                    time.sleep(delay_seconds)
+        raise RuntimeError("LLM classification request retries exhausted")
 
 
 def build_llm_classifier(
@@ -181,6 +210,35 @@ def _normalize_reasoning_effort(value: str | None) -> str | None:
             "CI_DASHBOARD_LLM_REASONING_EFFORT must be one of: minimal, low, medium, high"
         )
     return resolved
+
+
+def _should_retry_rate_limit(response: httpx.Response, *, attempt: int) -> bool:
+    return (
+        response.status_code == httpx.codes.TOO_MANY_REQUESTS
+        and attempt < DEFAULT_LLM_RATE_LIMIT_RETRIES
+    )
+
+
+def _resolve_rate_limit_backoff_seconds(response: httpx.Response, *, attempt: int) -> float:
+    retry_after = _parse_retry_after_seconds(response.headers.get("Retry-After"))
+    if retry_after is not None:
+        return retry_after
+    return min(
+        DEFAULT_LLM_RATE_LIMIT_BACKOFF_SECONDS * (2**attempt),
+        MAX_LLM_RATE_LIMIT_BACKOFF_SECONDS,
+    )
+
+
+def _parse_retry_after_seconds(value: str | None) -> float | None:
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return None
 
 
 def _collect_stream_content(response: httpx.Response) -> str:
