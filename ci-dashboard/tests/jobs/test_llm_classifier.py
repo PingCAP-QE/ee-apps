@@ -18,15 +18,14 @@ def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None
         captured["body"] = json.loads(request.content.decode("utf-8"))
         return httpx.Response(
             200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"l1":"INFRA","l2":"NETWORK"}',
-                        }
-                    }
-                ]
-            },
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"reasoning_content":"checking failure"}}]}\n\n'
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"INFRA\\","}}]}\n\n'
+                'data: {"choices":[{"delta":{"content":"\\"l2\\":\\"NETWORK\\"}"}}]}\n\n'
+                'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
         )
 
     classifier = OpenAICompatibleLLMClassifier(
@@ -60,6 +59,7 @@ def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None
     assert captured["body"] == {
         "model": "gpt-5-codex",
         "reasoning_effort": "high",
+        "stream": True,
         "messages": [
             {
                 "role": "system",
@@ -94,15 +94,11 @@ def test_openai_compatible_llm_classifier_rejects_unknown_label() -> None:
         del request
         return httpx.Response(
             200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"l1":"NEW","l2":"CATEGORY"}',
-                        }
-                    }
-                ]
-            },
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"NEW\\",\\"l2\\":\\"CATEGORY\\"}"}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
         )
 
     classifier = OpenAICompatibleLLMClassifier(
@@ -119,6 +115,38 @@ def test_openai_compatible_llm_classifier_rejects_unknown_label() -> None:
 
     with pytest.raises(ValueError, match="unsupported classification"):
         classifier.classify(log_text="unknown failure", build={})
+
+
+def test_openai_compatible_llm_classifier_ignores_reasoning_only_chunks() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n'
+                'data: {"choices":[{"delta":{"reasoning_content":"still thinking"}}]}\n\n'
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"OTHERS\\",\\"l2\\":\\"UNCLASSIFIED\\"}"}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+
+    classifier = OpenAICompatibleLLMClassifier(
+        provider_name="codex",
+        base_url="https://api-vip.codex-for.me/v1",
+        model="gpt-5-codex",
+        api_key="test-key",
+        reasoning_effort=None,
+        default_l1_category="OTHERS",
+        default_l2_subcategory="UNCLASSIFIED",
+        allowed_classifications=(("INFRA", "NETWORK"), ("OTHERS", "UNCLASSIFIED")),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = classifier.classify(log_text="unknown failure", build={})
+
+    assert result.l1_category == "OTHERS"
+    assert result.l2_subcategory == "UNCLASSIFIED"
 
 
 def test_build_llm_classifier_requires_base_url_for_codex() -> None:

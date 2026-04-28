@@ -47,7 +47,7 @@ class OpenAICompatibleLLMClassifier:
     transport: httpx.BaseTransport | None = None
 
     def classify(self, *, log_text: str, build: Mapping[str, Any]) -> ErrorClassification:
-        response_payload = self._post_chat_completion(
+        response_content = self._post_chat_completion(
             _build_chat_payload(
                 model=self.model,
                 reasoning_effort=self.reasoning_effort,
@@ -58,26 +58,28 @@ class OpenAICompatibleLLMClassifier:
                 build=build,
             )
         )
-        parsed = _parse_classification_response(response_payload)
+        parsed = _extract_json_object(response_content)
         return _validate_classification(
             parsed,
             allowed_classifications=self.allowed_classifications,
             provider_name=self.provider_name,
         )
 
-    def _post_chat_completion(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    def _post_chat_completion(self, payload: Mapping[str, Any]) -> str:
         endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        request_payload = dict(payload)
+        request_payload["stream"] = True
         with httpx.Client(
             timeout=self.timeout_seconds,
             transport=self.transport,
         ) as client:
-            response = client.post(endpoint, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()
+            with client.stream("POST", endpoint, headers=headers, json=request_payload) as response:
+                response.raise_for_status()
+                return _collect_stream_content(response)
 
 
 def build_llm_classifier(
@@ -181,18 +183,60 @@ def _normalize_reasoning_effort(value: str | None) -> str | None:
     return resolved
 
 
-def _parse_classification_response(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+def _collect_stream_content(response: httpx.Response) -> str:
+    parts: list[str] = []
+    for event_payload in _iter_sse_data_payloads(response):
+        if event_payload == "[DONE]":
+            continue
+        parsed = json.loads(event_payload)
+        if not isinstance(parsed, Mapping):
+            raise ValueError("LLM stream event JSON must be an object")
+        parts.extend(_extract_stream_choice_content(parsed))
+    content = "".join(parts).strip()
+    if not content:
+        raise ValueError("LLM stream did not contain content")
+    return content
+
+
+def _iter_sse_data_payloads(response: httpx.Response) -> list[str]:
+    payloads: list[str] = []
+    data_lines: list[str] = []
+    for raw_line in response.iter_lines():
+        line = raw_line.strip()
+        if not line:
+            if data_lines:
+                payloads.append("\n".join(data_lines))
+                data_lines = []
+            continue
+        if line.startswith(":"):
+            continue
+        if not line.startswith("data:"):
+            continue
+        data_line = line[5:]
+        if data_line.startswith(" "):
+            data_line = data_line[1:]
+        data_lines.append(data_line)
+    if data_lines:
+        payloads.append("\n".join(data_lines))
+    return payloads
+
+
+def _extract_stream_choice_content(payload: Mapping[str, Any]) -> list[str]:
     choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError("LLM response did not contain choices")
-    first_choice = choices[0]
-    if not isinstance(first_choice, Mapping):
-        raise ValueError("LLM response choice is malformed")
-    message = first_choice.get("message")
-    if not isinstance(message, Mapping):
-        raise ValueError("LLM response message is missing")
-    content = _coerce_message_content(message.get("content"))
-    return _extract_json_object(content)
+    if not isinstance(choices, list):
+        return []
+    parts: list[str] = []
+    for choice in choices:
+        if not isinstance(choice, Mapping):
+            continue
+        delta = choice.get("delta")
+        if not isinstance(delta, Mapping):
+            continue
+        content = delta.get("content")
+        if content is None:
+            continue
+        parts.append(_coerce_message_content(content))
+    return parts
 
 
 def _coerce_message_content(content: Any) -> str:
