@@ -1,21 +1,51 @@
 from __future__ import annotations
 
+import io
+import json
 from datetime import datetime
+from datetime import UTC
+from types import SimpleNamespace
 from urllib import error as urllib_error
 
 import pytest
 from sqlalchemy import text
 
-from ci_dashboard.jobs.sync_pods import _load_target_namespaces
-
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_pods import (
+    JenkinsPodNameBuildRef,
     PodMetadataSnapshot,
+    _build_ci_job_from_build_metadata,
+    _build_requested_pods_relation,
+    _build_jenkins_url_from_label_and_ci_job,
+    _coerce_str_mapping,
+    _compute_start_from,
+    _decode_json_object,
+    _extract_normalized_build_url_from_metadata,
+    _extract_normalized_build_url_from_pod_name,
+    _extract_project_from_log_name,
     _extract_build_number_from_jenkins_label,
+    _fetch_pod_event_entries,
+    _format_rfc3339,
     _get_json,
+    _get_kubernetes_api_ca_file,
+    _get_kubernetes_api_token,
+    _get_kubernetes_api_url,
+    _infer_pod_build_system,
+    _json_dumps_or_none,
+    _list_namespace_pod_metadata,
     _load_jenkins_pod_name_url_prefix_map,
+    _load_target_namespaces,
+    _max_receive_timestamp,
+    _normalize_logging_entry,
+    _normalize_jenkins_runtime_url,
+    _null_safe_equals_sql,
+    _parse_jenkins_pod_name_build_ref,
     _post_json,
+    _read_int_env,
+    _request_json,
+    _resolve_jenkins_build_metadata,
+    _upsert_pod_events,
     run_reconcile_pod_linkage_for_time_window,
     run_sync_pods,
 )
@@ -142,6 +172,305 @@ def test_load_target_namespaces_uses_env_override(sqlite_engine, monkeypatch) ->
         namespaces = _load_target_namespaces(connection)
 
     assert namespaces == ["prow-test-pods", "custom-ns"]
+
+
+def test_sync_pod_helper_functions_cover_common_edge_cases(sqlite_engine, monkeypatch) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, pod_name, start_time, normalized_build_url, build_system
+                ) VALUES (
+                  101, 'prow-job-extra', 'custom-ns', 'job-a', 'presubmit', 'success',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-a/101/',
+                  'pod-a', '2026-04-20T12:00:00Z',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-a/101/',
+                  'JENKINS'
+                )
+                """
+            )
+        )
+        assert _load_target_namespaces(connection) == [
+            "prow-test-pods",
+            "jenkins-tidb",
+            "jenkins-tiflow",
+            "custom-ns",
+        ]
+        _upsert_pod_events(connection, [])
+
+    monkeypatch.delenv("CI_DASHBOARD_POD_SYNC_OVERLAP_MINUTES", raising=False)
+    monkeypatch.delenv("CI_DASHBOARD_POD_SYNC_LOOKBACK_MINUTES", raising=False)
+    assert _compute_start_from({}, datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)) == datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)
+    assert _compute_start_from({"last_receive_timestamp": "invalid"}, datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)) == datetime(
+        2026, 4, 20, 10, 0, 0, tzinfo=UTC
+    )
+
+    monkeypatch.setenv("TEST_INT_ENV", "")
+    assert _read_int_env("TEST_INT_ENV", 9) == 9
+    monkeypatch.setenv("TEST_INT_ENV", "oops")
+    assert _read_int_env("TEST_INT_ENV", 9) == 9
+    monkeypatch.setenv("TEST_INT_ENV", "0")
+    assert _read_int_env("TEST_INT_ENV", 9) == 9
+    monkeypatch.setenv("TEST_INT_ENV", "12")
+    assert _read_int_env("TEST_INT_ENV", 9) == 12
+
+    assert _extract_project_from_log_name("projects/pingcap-testing-account/logs/events") == "pingcap-testing-account"
+    assert _extract_project_from_log_name("bad-log-name") is None
+    assert _coerce_str_mapping({"a": " 1 ", "": "bad", "b": None, 3: "x"}) == {"a": "1", "3": "x"}
+    assert _json_dumps_or_none({}) is None
+    assert _json_dumps_or_none({"b": "2", "a": "1"}) == '{"a":"1","b":"2"}'
+    assert _format_rfc3339(datetime(2026, 4, 20, 12, 0, 0)) == "2026-04-20T12:00:00Z"
+    assert _max_receive_timestamp([]) is None
+    assert _null_safe_equals_sql("a", "b", "sqlite") == "a IS b"
+    assert _null_safe_equals_sql("a", "b", "mysql") == "a <=> b"
+    relation_sql, params = _build_requested_pods_relation([("p1", "ns", "uid", "pod")])
+    assert "UNION ALL" not in relation_sql
+    assert params == {
+        "source_project_0": "p1",
+        "namespace_name_0": "ns",
+        "pod_uid_0": "uid",
+        "pod_name_0": "pod",
+    }
+
+
+def test_sync_pods_http_and_kubernetes_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _decode_json_object(b'{"ok": true}', error_context="Logging API") == {"ok": True}
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        _decode_json_object(b"<html>bad</html>", error_context="Logging API")
+    with pytest.raises(RuntimeError, match="response is not an object"):
+        _decode_json_object(b"[1,2,3]", error_context="Logging API")
+
+    class _RetryHTTPError(urllib_error.HTTPError):
+        def __init__(self, code: int, body: str) -> None:
+            super().__init__("https://example.test", code, "error", hdrs=None, fp=io.BytesIO(body.encode("utf-8")))
+            self._body = body.encode("utf-8")
+
+        def read(self) -> bytes:
+            return self._body
+
+    attempts = {"count": 0}
+
+    def fake_urlopen_retry(request, timeout=0, context=None):
+        del request, timeout, context
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise _RetryHTTPError(503, "retry me")
+        return _FakeHTTPResponse('{"ok": true}')
+
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods.urllib_request.urlopen", fake_urlopen_retry)
+    request = __import__("urllib.request", fromlist=["Request"]).Request("https://example.test")
+    assert _request_json(request, timeout=1, error_context="Logging API") == {"ok": True}
+    assert attempts["count"] == 2
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods.urllib_request.urlopen",
+        lambda request, timeout=0, context=None: (_ for _ in ()).throw(urllib_error.URLError("down")),
+    )
+    with pytest.raises(RuntimeError, match="down"):
+        _request_json(request, timeout=1, error_context="Logging API")
+
+    monkeypatch.setenv("CI_DASHBOARD_GCP_PROJECT", "pingcap-testing-account")
+    monkeypatch.setenv("CI_DASHBOARD_GCP_ACCESS_TOKEN", "token")
+    pages = iter(
+        [
+            {"entries": [{"id": 1}], "nextPageToken": "next"},
+            {"entries": [{"id": 2}]},
+        ]
+    )
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._post_json", lambda *args, **kwargs: next(pages))
+    assert _fetch_pod_event_entries(
+        start_from=datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC),
+        end_time=datetime(2026, 4, 20, 13, 0, 0, tzinfo=UTC),
+        namespaces=["prow-test-pods"],
+    ) == [{"id": 1}, {"id": 2}]
+
+    monkeypatch.setenv("CI_DASHBOARD_KUBERNETES_API_URL", "https://k8s.internal/")
+    assert _get_kubernetes_api_url() == "https://k8s.internal"
+    monkeypatch.delenv("CI_DASHBOARD_KUBERNETES_API_URL", raising=False)
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT_HTTPS", "6443")
+    assert _get_kubernetes_api_url() == "https://10.0.0.1:6443"
+    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+    with pytest.raises(RuntimeError, match="Unable to resolve Kubernetes API host"):
+        _get_kubernetes_api_url()
+
+    monkeypatch.setenv("CI_DASHBOARD_KUBERNETES_BEARER_TOKEN", "inline-token")
+    assert _get_kubernetes_api_token() == "inline-token"
+    monkeypatch.delenv("CI_DASHBOARD_KUBERNETES_BEARER_TOKEN", raising=False)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._read_text_file", lambda path: "file-token")
+    assert _get_kubernetes_api_token() == "file-token"
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._read_text_file", lambda path: (_ for _ in ()).throw(OSError("missing")))
+    with pytest.raises(RuntimeError, match="Unable to read Kubernetes service account token"):
+        _get_kubernetes_api_token()
+
+    monkeypatch.setenv("CI_DASHBOARD_KUBERNETES_CA_FILE", "/tmp/ca.pem")
+    assert _get_kubernetes_api_ca_file() == "/tmp/ca.pem"
+    monkeypatch.delenv("CI_DASHBOARD_KUBERNETES_CA_FILE", raising=False)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods.os.path.exists", lambda path: False)
+    assert _get_kubernetes_api_ca_file() is None
+
+
+def test_sync_pods_build_matching_helpers_cover_jenkins_paths(sqlite_engine, monkeypatch) -> None:
+    assert _normalize_jenkins_runtime_url("https://do.pingcap.net/jenkins/job/a/1/") is None
+    assert _normalize_jenkins_runtime_url("https://prow.tidb.net/jenkins/job/a/1/") == "https://prow.tidb.net/jenkins/job/a/1/"
+    assert _infer_pod_build_system("jenkins-tidb") == "JENKINS"
+    assert _infer_pod_build_system("prow-test-pods") == "PROW_NATIVE"
+    assert _infer_pod_build_system("apps") == "UNKNOWN"
+
+    assert _parse_jenkins_pod_name_build_ref("jenkins-agent-1413-abcd") == JenkinsPodNameBuildRef(
+        pod_prefix="jenkins-agent",
+        build_number="1413",
+    )
+    assert _parse_jenkins_pod_name_build_ref("jenkins-agent-a-b") is None
+    assert _extract_normalized_build_url_from_pod_name(
+        "jenkins-agent-1413-abcd",
+        {"jenkins-agent": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test/"},
+    ) == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test/1413/"
+
+    metadata = _pod_metadata(
+        annotations={"buildUrl": "http://jenkins.jenkins.svc.cluster.local/job/pingcap/job/tidb/job/test/1413/"},
+    )
+    assert (
+        _extract_normalized_build_url_from_metadata(metadata)
+        == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test/1413/"
+    )
+    metadata_from_label = _pod_metadata(
+        labels={"org": "pingcap", "repo": "tidb", "jenkins/label": "ghpr-unit-test_1413-abcd"},
+        annotations={"ci_job": "pingcap/tidb/ghpr_unit_test"},
+    )
+    assert (
+        _extract_normalized_build_url_from_metadata(metadata_from_label)
+        == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1413/"
+    )
+    assert _build_jenkins_url_from_label_and_ci_job(org=None, repo="tidb", ci_job="pingcap/tidb/job", jenkins_label="x_1-a") is None
+    assert _build_jenkins_url_from_label_and_ci_job(org="pingcap", repo="tidb", ci_job="other/job", jenkins_label="x_1-a") is None
+    assert _build_jenkins_url_from_label_and_ci_job(org="pingcap", repo="tidb", ci_job="pingcap/tidb/", jenkins_label="x_1-a") is None
+    assert _extract_build_number_from_jenkins_label(None) is None
+    assert _extract_build_number_from_jenkins_label("only-one-segment") is None
+
+    assert _build_ci_job_from_build_metadata({"job_name": "ghpr_unit_test", "repo_full_name": "pingcap/tidb"}) == "pingcap/tidb/ghpr_unit_test"
+    assert _build_ci_job_from_build_metadata({"job_name": "pingcap/tidb/ghpr_unit_test"}) == "pingcap/tidb/ghpr_unit_test"
+    assert _build_ci_job_from_build_metadata({"job_name": "ghpr_unit_test"}) is None
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, pod_name, start_time, normalized_build_url, build_system
+                ) VALUES
+                (
+                  201, 'prow-job-201', 'jenkins-tidb', 'test-a', 'presubmit', 'success',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/',
+                  'jenkins-agent-1413-abcd', '2026-04-20T12:00:00Z',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/',
+                  'JENKINS'
+                ),
+                (
+                  202, 'prow-job-202', 'jenkins-tidb', 'test-a', 'presubmit', 'success',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1414/',
+                  'jenkins-agent-1413-abcd', '2026-04-19T12:00:00Z',
+                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1414/',
+                  'JENKINS'
+                )
+                """
+            )
+        )
+        prefix_map = _load_jenkins_pod_name_url_prefix_map(connection)
+
+    assert prefix_map["jenkins-agent"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/"
+    resolved = _resolve_jenkins_build_metadata(
+        scheduled_at=datetime(2026, 4, 20, 12, 1, 0),
+        candidate_urls=[
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/",
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/9999/",
+        ],
+        build_candidates_by_url={
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/": [
+                {
+                    "source_prow_job_id": "prow-job-201",
+                    "org": "pingcap",
+                    "repo": "tidb",
+                    "repo_full_name": "pingcap/tidb",
+                    "job_name": "test-a",
+                    "author": "alice",
+                    "start_time": "2026-04-20T12:00:00Z",
+                }
+            ]
+        },
+    )
+    assert resolved["source_prow_job_id"] == "prow-job-201"
+    assert _resolve_jenkins_build_metadata(
+        scheduled_at=None,
+        candidate_urls=["https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/"],
+        build_candidates_by_url={},
+    ) == {
+        "build_system": "JENKINS",
+        "normalized_build_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/1413/",
+    }
+
+
+def test_sync_pods_metadata_fetch_and_logging_entry_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _normalize_logging_entry({"logName": "projects/a/logs/events"}) is None
+    assert _normalize_logging_entry({"insertId": "1", "logName": "projects/a/logs/events", "jsonPayload": {}}) is None
+    normalized = _normalize_logging_entry(
+        {
+            "insertId": "ins-1",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "receiveTimestamp": "2026-04-20T12:53:54Z",
+            "resource": {"labels": {"namespace_name": "prow-test-pods", "pod_name": "pod-a"}},
+            "jsonPayload": {
+                "reason": "Scheduled",
+                "type": "Normal",
+                "message": "assigned",
+                "involvedObject": {"uid": "uid-a"},
+                "lastTimestamp": "2026-04-20T12:53:49Z",
+            },
+        }
+    )
+    assert normalized is not None
+    assert normalized.source_project == "pingcap-testing-account"
+    assert normalized.event_timestamp == datetime(2026, 4, 20, 12, 53, 49)
+
+    observed_at = datetime(2026, 4, 20, 13, 0, 0)
+    pages = iter(
+        [
+            {
+                "items": [
+                    {
+                        "metadata": {
+                            "name": "pod-a",
+                            "uid": "uid-a",
+                            "labels": {"author": "alice"},
+                            "annotations": {"ci_job": "pingcap/tidb/test-a"},
+                        }
+                    },
+                    "ignore-me",
+                ],
+                "metadata": {"continue": "next"},
+            },
+            {"items": [], "metadata": {}},
+        ]
+    )
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._get_json", lambda *args, **kwargs: next(pages))
+    snapshots = _list_namespace_pod_metadata(
+        namespace_name="jenkins-tidb",
+        requested_pod_names={"pod-a"},
+        base_url="https://k8s.internal",
+        token="token",
+        ca_file=None,
+        observed_at=observed_at,
+    )
+    assert snapshots["pod-a"].pod_uid == "uid-a"
+    assert snapshots["pod-a"].labels == {"author": "alice"}
+    assert snapshots["pod-a"].annotations == {"ci_job": "pingcap/tidb/test-a"}
 
 
 def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None:

@@ -12,6 +12,27 @@ from ci_dashboard.api.main import app, create_app
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
 
 
+def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ci_dashboard.api import dependencies as dependencies_module
+
+    sentinel = object()
+    calls = {"count": 0}
+
+    dependencies_module._cached_engine.cache_clear()
+
+    def fake_build_engine():
+        calls["count"] += 1
+        return sentinel
+
+    monkeypatch.setattr("ci_dashboard.api.dependencies.build_engine", fake_build_engine)
+
+    assert get_engine() is sentinel
+    assert get_engine() is sentinel
+    assert calls["count"] == 1
+
+    dependencies_module._cached_engine.cache_clear()
+
+
 def _insert_build(
     sqlite_engine,
     *,

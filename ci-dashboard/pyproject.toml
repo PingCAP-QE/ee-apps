@@ -43,3 +43,9 @@ src = ["src", "tests"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/ci_dashboard"]
+
+[tool.coverage.report]
+fail_under = 90

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 
 from ci_dashboard.common.config import get_settings, load_settings
-from ci_dashboard.common.db import build_engine
+from ci_dashboard.common.db import _build_connect_args, build_engine, install_sqlite_functions
 from ci_dashboard.common.logging import configure_logging
 
 
@@ -151,6 +152,75 @@ def test_build_engine_supports_sqlite_url() -> None:
     settings = load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///:memory:"})
     engine = build_engine(settings)
     assert engine.dialect.name == "sqlite"
+    with engine.begin() as connection:
+        assert (
+            connection.exec_driver_sql(
+                "SELECT normalize_build_url('https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/unit/1/display/redirect')"
+            ).scalar_one()
+            == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/unit/1/"
+        )
+        assert (
+            connection.exec_driver_sql(
+                "SELECT normalized_job_path_from_key('https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/unit/1/')"
+            ).scalar_one()
+            == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/unit/"
+        )
+
+
+def test_build_connect_args_supports_optional_ssl_ca() -> None:
+    without_ssl = load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///:memory:"})
+    assert _build_connect_args(without_ssl.database) == {}
+
+    with_ssl = load_settings(
+        {
+            "TIDB_HOST": "db.example.com",
+            "TIDB_PORT": "4000",
+            "TIDB_USER": "ci",
+            "TIDB_PASSWORD": "secret",
+            "TIDB_DB": "dashboard",
+            "TIDB_SSL_CA": "/etc/certs/ca.pem",
+        }
+    )
+    assert _build_connect_args(with_ssl.database) == {"ssl": {"ca": "/etc/certs/ca.pem"}}
+
+
+def test_install_sqlite_functions_is_noop_for_non_sqlite_engine() -> None:
+    install_sqlite_functions(SimpleNamespace(dialect=SimpleNamespace(name="mysql")))
+
+
+def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_create_engine(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+
+    install_calls: list[object] = []
+    monkeypatch.setattr("ci_dashboard.common.db.create_engine", fake_create_engine)
+    monkeypatch.setattr("ci_dashboard.common.db.install_sqlite_functions", install_calls.append)
+
+    settings = load_settings(
+        {
+            "TIDB_HOST": "db.example.com",
+            "TIDB_PORT": "4000",
+            "TIDB_USER": "ci",
+            "TIDB_PASSWORD": "secret",
+            "TIDB_DB": "dashboard",
+            "TIDB_SSL_CA": "/etc/certs/ca.pem",
+        }
+    )
+
+    engine = build_engine(settings)
+
+    assert engine.dialect.name == "mysql"
+    assert str(captured["url"]) == "mysql+pymysql://ci:***@db.example.com:4000/dashboard?charset=utf8mb4"
+    assert captured["kwargs"] == {
+        "pool_pre_ping": True,
+        "future": True,
+        "connect_args": {"ssl": {"ca": "/etc/certs/ca.pem"}},
+    }
+    assert install_calls == [engine]
 
 
 def test_configure_logging_sets_root_level() -> None:
