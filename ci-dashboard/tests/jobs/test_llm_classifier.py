@@ -405,11 +405,12 @@ def test_openai_compatible_llm_classifier_rate_limit_failures_surface_cleanly(
     )
     monkeypatch.setattr(llm_classifier_module.time, "sleep", sleep_calls.append)
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(RuntimeError, match="retries exhausted after 5 attempts") as exc_info:
         classifier.classify(log_text="rate limited", build={})
 
     assert attempts["count"] == 5
     assert sleep_calls == [5.0, 10.0, 20.0, 40.0]
+    assert isinstance(exc_info.value.__cause__, httpx.HTTPStatusError)
 
 
 def test_openai_compatible_llm_classifier_does_not_retry_non_429_errors() -> None:

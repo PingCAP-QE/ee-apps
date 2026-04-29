@@ -95,8 +95,13 @@ class OpenAICompatibleLLMClassifier:
                         response.raise_for_status()
                         return _collect_stream_content(response)
                 except httpx.HTTPStatusError as exc:
-                    if not _should_retry_rate_limit(exc.response, attempt=attempt):
+                    if exc.response.status_code != httpx.codes.TOO_MANY_REQUESTS:
                         raise
+                    if attempt >= DEFAULT_LLM_RATE_LIMIT_RETRIES:
+                        raise RuntimeError(
+                            "LLM classification request retries exhausted "
+                            f"after {DEFAULT_LLM_RATE_LIMIT_RETRIES + 1} attempts"
+                        ) from exc
                     delay_seconds = _resolve_rate_limit_backoff_seconds(exc.response, attempt=attempt)
                     LOG.warning(
                         "LLM provider rate limited classification request; retrying",
@@ -108,7 +113,7 @@ class OpenAICompatibleLLMClassifier:
                         },
                     )
                     time.sleep(delay_seconds)
-        raise RuntimeError("LLM classification request retries exhausted")
+        raise AssertionError("unreachable")
 
 
 def build_llm_classifier(
