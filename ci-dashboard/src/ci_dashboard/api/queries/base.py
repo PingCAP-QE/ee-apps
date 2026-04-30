@@ -192,6 +192,12 @@ def bucket_expr(connection: Connection, column_name: str, granularity: str) -> s
     return f"DATE_SUB(DATE({column_name}), INTERVAL WEEKDAY({column_name}) DAY)"
 
 
+def timediff_seconds_expr(connection: Connection, start_col: str, end_col: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"CAST(ROUND((julianday({end_col}) - julianday({start_col})) * 86400) AS INTEGER)"
+    return f"TIMESTAMPDIFF(SECOND, {start_col}, {end_col})"
+
+
 def builds_table_expr(
     connection: Connection,
     filters: CommonFilters,

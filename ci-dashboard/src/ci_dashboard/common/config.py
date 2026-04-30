@@ -75,7 +75,7 @@ class JenkinsIngestSettings:
 @dataclass(frozen=True)
 class ArchiveSettings:
     build_limit: int = 100
-    log_tail_bytes: int = 262144
+    log_tail_bytes: int = 524288
     gcs_bucket: str | None = None
     gcs_prefix: str = ""
 
@@ -168,7 +168,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ),
         archive=ArchiveSettings(
             build_limit=_read_int(env, "CI_DASHBOARD_ARCHIVE_BUILD_LIMIT", 100),
-            log_tail_bytes=_read_int(env, "CI_DASHBOARD_ARCHIVE_LOG_TAIL_BYTES", 262144),
+            log_tail_bytes=_read_int(env, "CI_DASHBOARD_ARCHIVE_LOG_TAIL_BYTES", 524288),
             gcs_bucket=env.get("CI_DASHBOARD_GCS_BUCKET") or None,
             gcs_prefix=(env.get("CI_DASHBOARD_GCS_PREFIX") or "").strip("/"),
         ),

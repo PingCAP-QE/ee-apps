@@ -1,7 +1,9 @@
 from ci_dashboard.jobs.build_url_matcher import (
     build_job_url,
+    canonicalize_job_name,
     classify_build_system,
     classify_cloud_phase,
+    full_job_name_to_normalized_jenkins_job_path,
     normalize_build_url,
     normalized_job_path_from_key,
 )
@@ -76,3 +78,21 @@ def test_normalized_job_path_from_key_strips_only_numeric_build_suffix() -> None
     assert normalized_job_path_from_key("https://prow.tidb.net/jenkins/job/job-4/") == "https://prow.tidb.net/jenkins/job/job-4/"
     assert normalized_job_path_from_key(None) is None
     assert normalized_job_path_from_key("https://example.test/not-a-build") is None
+
+
+def test_canonicalize_job_name_prefixes_short_names_with_repo() -> None:
+    assert canonicalize_job_name("pull-check-deps", repo_full_name="pingcap/tidb") == "pingcap/tidb/pull-check-deps"
+    assert canonicalize_job_name("pingcap/tidb/pull-check-deps", repo_full_name="pingcap/tidb") == "pingcap/tidb/pull-check-deps"
+    assert canonicalize_job_name("  ", repo_full_name="pingcap/tidb") is None
+
+
+def test_full_job_name_to_normalized_jenkins_job_path_builds_nested_job_path() -> None:
+    assert (
+        full_job_name_to_normalized_jenkins_job_path("pingcap/tidb/pull_br_integration_test")
+        == "/jenkins/job/pingcap/job/tidb/job/pull_br_integration_test/"
+    )
+    assert (
+        full_job_name_to_normalized_jenkins_job_path("pingcap/tidb/folder/pull_br_integration_test")
+        == "/jenkins/job/pingcap/job/tidb/job/folder/job/pull_br_integration_test/"
+    )
+    assert full_job_name_to_normalized_jenkins_job_path("pull-check-deps") is None

@@ -10,6 +10,7 @@ import httpx
 
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.common.models import ErrorClassification
+from ci_dashboard.jobs.error_classification_guidance import ERROR_CLASSIFICATION_GUIDANCE
 
 LOG = logging.getLogger(__name__)
 
@@ -188,6 +189,7 @@ def _build_chat_payload(
         "Choose the best category from the allowed list below.\n\n"
         "Allowed categories:\n"
         f"{allowed_lines}\n\n"
+        f"{ERROR_CLASSIFICATION_GUIDANCE}\n\n"
         "Build context:\n"
         f"- job_name: {job_name or '<unknown>'}\n"
         f"- url: {url or '<unknown>'}\n\n"

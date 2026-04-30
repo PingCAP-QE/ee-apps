@@ -10,6 +10,7 @@ from ci_dashboard.common.models import (
     ArchiveErrorLogsSummary,
     BackfillFlakyIssuePrLinksSummary,
     ConsumeJenkinsEventsSummary,
+    RepairJobNamesSummary,
     RefreshBuildDerivedSummary,
     ReviewErrorSummary,
     SyncBuildsSummary,
@@ -211,6 +212,23 @@ def test_cli_sync_pods_dispatch(monkeypatch) -> None:
     assert cli.main() == 0
     assert called["engine"] == "engine"
     assert isinstance(called["summary"], SyncPodsSummary)
+
+
+def test_cli_repair_job_names_dispatch(monkeypatch) -> None:
+    called: dict[str, object] = {}
+    monkeypatch.setattr(cli, "get_settings", lambda: _settings())
+    monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
+    monkeypatch.setattr(cli, "configure_logging", lambda level: None)
+    monkeypatch.setattr(
+        cli,
+        "run_repair_job_names",
+        lambda engine: called.setdefault("summary", RepairJobNamesSummary(build_rows_updated=3, pod_rows_updated=5)),
+    )
+    monkeypatch.setattr("sys.argv", ["ci-dashboard", "repair-job-names"])
+
+    assert cli.main() == 0
+    assert called["engine"] == "engine"
+    assert isinstance(called["summary"], RepairJobNamesSummary)
 
 
 def test_cli_refresh_build_derived_dispatch(monkeypatch) -> None:

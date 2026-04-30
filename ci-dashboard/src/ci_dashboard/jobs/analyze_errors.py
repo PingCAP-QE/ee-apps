@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Engine
 
 from ci_dashboard.common.config import Settings
@@ -14,12 +14,15 @@ from ci_dashboard.jobs.rule_engine import RuleEngine
 
 LOG = logging.getLogger(__name__)
 
+FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
+
 FETCH_CANDIDATE_BUILDS = text(
     """
     SELECT id, job_name, url, log_gcs_uri, error_l1_category, error_l2_subcategory,
            revise_error_l1_category, revise_error_l2_subcategory
     FROM ci_l1_builds
     WHERE log_gcs_uri IS NOT NULL
+      AND state IN :failure_states
       AND revise_error_l1_category IS NULL
       AND revise_error_l2_subcategory IS NULL
       AND (:build_id IS NULL OR id = :build_id)
@@ -27,7 +30,7 @@ FETCH_CANDIDATE_BUILDS = text(
     ORDER BY start_time DESC, id DESC
     LIMIT :limit_value
     """
-)
+).bindparams(bindparam("failure_states", expanding=True))
 
 UPDATE_MACHINE_CLASSIFICATION = text(
     """
@@ -71,6 +74,7 @@ def run_analyze_errors(
             connection.execute(
                 FETCH_CANDIDATE_BUILDS,
                 {
+                    "failure_states": FAILURE_LIKE_STATES,
                     "build_id": build_id,
                     "force": 1 if force else 0,
                     "limit_value": resolved_limit,

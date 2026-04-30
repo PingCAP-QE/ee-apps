@@ -17,6 +17,7 @@ src/ci_dashboard/api/queries/failures.py
 src/ci_dashboard/api/queries/filters.py
 src/ci_dashboard/api/queries/flaky.py
 src/ci_dashboard/api/queries/pages.py
+src/ci_dashboard/api/queries/runtime.py
 src/ci_dashboard/api/queries/status.py
 src/ci_dashboard/api/routes/__init__.py
 src/ci_dashboard/api/routes/builds.py
@@ -34,16 +35,22 @@ src/ci_dashboard/common/logging.py
 src/ci_dashboard/common/models.py
 src/ci_dashboard/common/sql_helpers.py
 src/ci_dashboard/jobs/__init__.py
+src/ci_dashboard/jobs/analyze_errors.py
 src/ci_dashboard/jobs/archive_error_logs.py
 src/ci_dashboard/jobs/build_merge.py
 src/ci_dashboard/jobs/build_url_matcher.py
 src/ci_dashboard/jobs/cli.py
+src/ci_dashboard/jobs/error_classification_guidance.py
+src/ci_dashboard/jobs/error_taxonomy.json
 src/ci_dashboard/jobs/flaky.py
 src/ci_dashboard/jobs/gcs_client.py
 src/ci_dashboard/jobs/jenkins_client.py
 src/ci_dashboard/jobs/jenkins_worker.py
+src/ci_dashboard/jobs/llm_classifier.py
 src/ci_dashboard/jobs/refresh_build_derived.py
+src/ci_dashboard/jobs/repair_job_names.py
 src/ci_dashboard/jobs/retest_parser.py
+src/ci_dashboard/jobs/rule_engine.py
 src/ci_dashboard/jobs/state_store.py
 src/ci_dashboard/jobs/sync_builds.py
 src/ci_dashboard/jobs/sync_flaky_issues.py
@@ -54,3 +61,4 @@ tests/test_config_and_db.py
 tests/test_models.py
 tests/test_query_base.py
 tests/test_sql_helpers.py
+tests/test_status_query.py

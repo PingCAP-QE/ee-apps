@@ -6,6 +6,261 @@
   },
   "rules": [
     {
+      "name": "others_abort_by_admin",
+      "l1": "OTHERS",
+      "l2": "ABORT_BY_ADMIN",
+      "text_patterns": [
+        "^Aborted by [^\\r\\n]+"
+      ]
+    },
+    {
+      "name": "others_code_conflict",
+      "l1": "OTHERS",
+      "l2": "CODE_CONFLICT",
+      "text_patterns": [
+        "CONFLICT \\([^\\r\\n]+\\): Merge conflict in ",
+        "Automatic merge failed; fix conflicts and then commit the result\\.",
+        "error: could not apply [0-9a-f]+"
+      ]
+    },
+    {
+      "name": "infra_disk_full",
+      "l1": "INFRA",
+      "l2": "DISK_FULL",
+      "text_patterns": [
+        "java\\.io\\.IOException: No space left on device",
+        "No space left on device",
+        "disk quota exceeded"
+      ]
+    },
+    {
+      "name": "infra_k8s_oomkilled",
+      "l1": "INFRA",
+      "l2": "OOMKILLED",
+      "text_patterns": [
+        "Container \\[[^\\]]+\\] terminated \\[OOMKilled\\]",
+        "Pod \\[Failed\\]\\[[^\\]]*OOMKilled[^\\]]*\\]",
+        "Reason: OOMKilled"
+      ]
+    },
+    {
+      "name": "infra_k8s_kubelet_eviction",
+      "l1": "INFRA",
+      "l2": "K8S_MEMORY_EVICTION",
+      "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] The node was low on resource: memory",
+        "The node was low on resource: memory\\.[\\s\\S]*Container .* was using .* request is .* larger consumption of memory",
+        "Container .* was using .* request is .* larger consumption of memory"
+      ]
+    },
+    {
+      "name": "unit_mysql_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_mysql_test$",
+        "(^|/)pull_mysql_test(_next_gen)?$",
+        "(^|_)ghpr_mysql_test($|_)",
+        "(^|_)pull_mysql_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "tests failed",
+        "run test \\[[^\\]]+\\] err:",
+        "but got\\(",
+        "diff:"
+      ]
+    },
+    {
+      "name": "unit_bazel_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "Testing //[^\\r\\n]+ failed: Test failed",
+        "Test cases: finished with [^\\r\\n]*[1-9][0-9]* failing",
+        "Build completed, [1-9][0-9]* test FAILED",
+        "Executed [0-9]+ out of [0-9]+ test: [^\\r\\n]*fails locally",
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: bazel_ci_test\\] Error [0-9]+",
+        "--- FAIL: "
+      ]
+    },
+    {
+      "name": "integration_test_timeout",
+      "l1": "IT",
+      "l2": "TIMEOUT",
+      "job_name_patterns": [
+        "(^|/)pull_dm_integration_test(_next_gen)?$",
+        "(^|/)pull_cdc_integration_storage_test$",
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|/)merged_integration_.*_test$",
+        "(^|/).*integration.*test.*$",
+        "(^|_)pull_dm_integration_test(_next_gen)?($|_)",
+        "(^|_)pull_cdc_integration_storage_test($|_)",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)",
+        "(^|_)merged_integration_.*_test($|_)",
+        "(^|_)integration(_|$)",
+        "realcluster",
+        "lightning",
+        "br_"
+      ],
+      "text_patterns": [
+        "Timeout has been exceeded",
+        "Cancelling nested steps due to timeout"
+      ]
+    },
+    {
+      "name": "dm_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_dm_integration_test(_next_gen)?$",
+        "(^|_)pull_dm_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: dm_integration_test_in_group\\] Error [0-9]+",
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+      ]
+    },
+    {
+      "name": "cdc_integration_storage_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_integration_storage_test$",
+        "(^|_)pull_cdc_integration_storage_test($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "merged_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "Test fail: Outputs are not matching\\.",
+        "Test summary\\([^\\r\\n]+\\): Test case FAIL",
+        "push_down_test_bin exit code is [1-9][0-9]*",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: push-down-test\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "br_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: br_integration_test[^\\r\\n]*\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "build_go_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "text_patterns": [
+        "\\.go:[0-9]+:[0-9]+: undefined:",
+        "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
+        "\\.go:[0-9]+:[0-9]+: .* does not implement .*",
+        "\\.go:[0-9]+:[0-9]+: too many arguments in call to",
+        "\\.go:[0-9]+:[0-9]+: not enough arguments in call to",
+        "plugin\\.Open\\([^\\r\\n]+\\): plugin was built with a different version of package "
+      ]
+    },
+    {
+      "name": "build_codegen_failure",
+      "l1": "BUILD",
+      "l2": "CODEGEN",
+      "job_name_patterns": [
+        "(^|/)ghpr_check$",
+        "(^|_)ghpr_check($|_)"
+      ],
+      "text_patterns": [
+        "Your commit is changed after running go generate \\./\\.\\.\\., it should not happen\\.",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: gogenerate\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "build_lint_failure",
+      "l1": "BUILD",
+      "l2": "LINT",
+      "job_name_patterns": [
+        "(^|/)ghpr_check$",
+        "(^|_)ghpr_check($|_)"
+      ],
+      "text_patterns": [
+        "https://revive\\.run/r#",
+        "problems \\([0-9]+ errors, [0-9]+ warnings\\)",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: lint\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "infra_jenkins_cache",
+      "l1": "INFRA",
+      "l2": "JENKINS_CACHE",
+      "text_patterns": [
+        "jenkins-pipeline-cache//io\\.jenkins\\.plugins\\.pipeline\\.cache",
+        "CacheStep\\$CacheStepExecution\\.start\\(CacheStep\\.java",
+        "io\\.jenkins\\.plugins\\.pipeline\\.cache\\.agent\\.RestoreCallable\\.invoke",
+        "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*jenkins-pipeline-cache",
+        "org\\.apache\\.http\\.ConnectionClosedException: Premature end of Content-Length delimited message body[\\s\\S]*jenkins-pipeline-cache"
+      ]
+    },
+    {
+      "name": "infra_network_websocket",
+      "l1": "INFRA",
+      "l2": "NETWORK",
+      "text_patterns": [
+        "Failed to start websocket connection",
+        "okhttp3\\.internal\\.ws\\.WebSocketReader",
+        "okhttp3\\.internal\\.ws\\.RealWebSocket",
+        "java\\.io\\.EOFException[\\s\\S]*okhttp3\\.internal\\.ws",
+        "ERROR: Process exited immediately after creation\\.[\\s\\S]*websocket"
+      ]
+    },
+    {
+      "name": "infra_jenkins_groovy",
+      "l1": "INFRA",
+      "l2": "JENKINS_GROOVY",
+      "text_patterns": [
+        "groovy\\.lang\\.(MissingPropertyException|MissingMethodException|GroovyRuntimeException):",
+        "No such DSL method",
+        "No such property: .* for class: groovy\\.lang\\.Binding",
+        "WorkflowScript\\.run\\(WorkflowScript:[0-9]+\\)",
+        "com\\.cloudbees\\.groovy\\.cps",
+        "org\\.jenkinsci\\.plugins\\.workflow\\.cps\\.CpsCompilationErrorsException"
+      ]
+    },
+    {
+      "name": "infra_k8s_runtime",
+      "l1": "INFRA",
+      "l2": "K8S",
+      "text_patterns": [
+        "Pod \\[Failed\\]\\[[^\\]]*Evicted[^\\]]*\\]",
+        "Container \\[[^\\]]+\\] terminated \\[Evicted\\]",
+        "Reason: Evicted"
+      ]
+    },
+    {
       "name": "infra_jenkins_remoting",
       "l1": "INFRA",
       "l2": "JENKINS",
@@ -15,18 +270,6 @@
         "agent .* went offline",
         "cannot contact .*: java\\.io\\.IOException",
         "closedchannelexception"
-      ]
-    },
-    {
-      "name": "infra_k8s_runtime",
-      "l1": "INFRA",
-      "l2": "K8S",
-      "text_patterns": [
-        "FailedScheduling",
-        "OOMKilled",
-        "Evicted",
-        "pod has unbound immediate PersistentVolumeClaims",
-        "node had taint"
       ]
     },
     {
@@ -47,8 +290,6 @@
       "l1": "INFRA",
       "l2": "STORAGE",
       "text_patterns": [
-        "no space left on device",
-        "disk quota exceeded",
         "read-only file system",
         "input/output error"
       ]
@@ -106,11 +347,11 @@
       "l1": "BUILD",
       "l2": "PIPELINE_CONFIG",
       "text_patterns": [
-        "No such DSL method",
-        "MissingPropertyException",
-        "WorkflowScript",
+        "Jenkinsfile validation failed",
+        "Declarative Pipeline.*syntax error",
+        "WorkflowScript:[0-9]+: unexpected token:",
         "Jenkinsfile",
-        "No such property:"
+        "MultipleCompilationErrorsException"
       ]
     },
     {
@@ -137,7 +378,6 @@
         "integration",
         "realcluster",
         "lightning",
-        "mysql_test",
         "br_"
       ],
       "text_patterns": [

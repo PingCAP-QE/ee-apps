@@ -195,7 +195,12 @@ def _archive_single_build(
         build_url,
         max_bytes=settings.archive.log_tail_bytes,
     )
-    redacted_tail = redact_console_log(raw_tail)
+    raw_log = _append_failed_node_logs(
+        raw_tail,
+        build_url=build_url,
+        fetcher=fetcher,
+    )
+    redacted_tail = redact_console_log(raw_log)
     bucket, object_name = build_archive_object_ref(build, settings, force=force)
     log_gcs_uri = uploader.upload_text(
         bucket=bucket,
@@ -212,3 +217,13 @@ def _archive_single_build(
             },
         )
     return True
+
+
+def _append_failed_node_logs(raw_tail: str, *, build_url: str, fetcher: Any) -> str:
+    fetch_failed_node_logs = getattr(fetcher, "fetch_failed_node_logs", None)
+    if not callable(fetch_failed_node_logs):
+        return raw_tail
+    failed_node_logs = fetch_failed_node_logs(build_url)
+    if not str(failed_node_logs or "").strip():
+        return raw_tail
+    return f"{raw_tail.rstrip()}\n{failed_node_logs}"

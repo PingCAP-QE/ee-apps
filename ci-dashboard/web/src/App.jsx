@@ -6,6 +6,7 @@ import OverviewPage from "./pages/OverviewPage";
 import BuildTrendPage from "./pages/BuildTrendPage";
 import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
+import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import { buildScopeLabel, getDefaultDateRange, useApiData } from "./lib/api";
 
 const REPO_OPTIONS = [{ value: "pingcap/tidb", label: "pingcap/tidb" }];
@@ -16,7 +17,8 @@ const BRANCH_OPTIONS = [
 ];
 const CI_STATUS_PATH = "/ci-status";
 const MIGRATE_STATUS_PATH = "/migrate-status";
-const WEEK_GRANULARITY_PATHS = new Set([CI_STATUS_PATH, MIGRATE_STATUS_PATH]);
+const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
+const WEEK_GRANULARITY_PATHS = new Set([CI_STATUS_PATH, MIGRATE_STATUS_PATH, RUNTIME_INSIGHTS_PATH]);
 
 function buildDefaultFilters(defaultRange, pathname) {
   const baseFilters = {
@@ -142,6 +144,7 @@ export default function App() {
         <Route path="/" element={<OverviewPage filters={filters} />} />
         <Route path={CI_STATUS_PATH} element={<BuildTrendPage filters={filters} />} />
         <Route path={MIGRATE_STATUS_PATH} element={<MigrateStatusPage filters={filters} />} />
+        <Route path={RUNTIME_INSIGHTS_PATH} element={<RuntimeInsightsPage filters={filters} />} />
         <Route path="/flaky" element={<FlakyPage filters={filters} />} />
       </Routes>
     </DashboardLayout>

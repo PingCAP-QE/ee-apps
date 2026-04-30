@@ -19,7 +19,12 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import SyncPodsSummary
 from ci_dashboard.common.sql_helpers import chunked
-from ci_dashboard.jobs.build_url_matcher import classify_build_system, normalize_build_url, normalized_job_path_from_key
+from ci_dashboard.jobs.build_url_matcher import (
+    canonicalize_job_name,
+    classify_build_system,
+    normalize_build_url,
+    normalized_job_path_from_key,
+)
 from ci_dashboard.jobs.state_store import (
     get_job_state,
     mark_job_failed,
@@ -42,6 +47,10 @@ POD_EVENT_REASONS = (
     "Created",
     "Started",
     "FailedScheduling",
+    "Failed",
+    "BackOff",
+    "ErrImagePull",
+    "ImagePullBackOff",
 )
 
 DEFAULT_POD_EVENT_NAMESPACES = (
@@ -106,12 +115,14 @@ class PodMetadataSnapshot:
     labels: dict[str, str]
     annotations: dict[str, str]
     observed_at: datetime
+    creation_timestamp: datetime | None = None
 
     def as_lifecycle_fields(self) -> dict[str, Any]:
         return {
             "pod_labels_json": _json_dumps_or_none(self.labels),
             "pod_annotations_json": _json_dumps_or_none(self.annotations),
             "metadata_observed_at": self.observed_at,
+            "pod_created_at": self.creation_timestamp,
             "pod_author": _coerce_str(self.labels.get("author")),
             "pod_org": _coerce_str(self.labels.get("org")),
             "pod_repo": _coerce_str(self.labels.get("repo")),
@@ -638,7 +649,10 @@ def _build_lifecycle_rows(
             "source_prow_job_id": build_meta.get("source_prow_job_id"),
             "normalized_build_url": build_meta.get("normalized_build_url"),
             "repo_full_name": build_meta.get("repo_full_name"),
-            "job_name": build_meta.get("job_name"),
+            "job_name": canonicalize_job_name(
+                _coerce_str(build_meta.get("job_name")),
+                repo_full_name=_coerce_str(build_meta.get("repo_full_name")),
+            ),
         }
         _supplement_jenkins_pod_fields_from_build_metadata(
             merged,
@@ -678,10 +692,6 @@ def _supplement_jenkins_pod_fields_from_build_metadata(
 
 
 def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
-    job_name = _coerce_str(build_meta.get("job_name"))
-    if job_name is None:
-        return None
-
     repo_full_name = _coerce_str(build_meta.get("repo_full_name"))
     if repo_full_name is None:
         org = _coerce_str(build_meta.get("org"))
@@ -689,11 +699,11 @@ def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
         if org and repo:
             repo_full_name = f"{org}/{repo}"
 
-    if repo_full_name:
-        prefix = f"{repo_full_name}/"
-        return job_name if job_name.startswith(prefix) else f"{prefix}{job_name}"
-
-    return job_name if "/" in job_name else None
+    canonicalized = canonicalize_job_name(
+        _coerce_str(build_meta.get("job_name")),
+        repo_full_name=repo_full_name,
+    )
+    return canonicalized if canonicalized and "/" in canonicalized else None
 
 
 def _load_lifecycle_aggregates(
@@ -1139,6 +1149,7 @@ def _empty_pod_metadata_fields() -> dict[str, Any]:
         "pod_labels_json": None,
         "pod_annotations_json": None,
         "metadata_observed_at": None,
+        "pod_created_at": None,
         "pod_author": None,
         "pod_org": None,
         "pod_repo": None,
@@ -1269,6 +1280,7 @@ def _list_namespace_pod_metadata(
                     labels=_coerce_str_mapping(metadata.get("labels")),
                     annotations=_coerce_str_mapping(metadata.get("annotations")),
                     observed_at=observed_at,
+                    creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
                 )
         metadata_obj = response.get("metadata")
         continue_token = None
@@ -1434,7 +1446,10 @@ def _reconcile_lifecycle_rows_in_time_window(
                 lifecycle.get("source_prow_job_id")
             )
             resolved_repo_full_name = build_meta.get("repo_full_name") or _coerce_str(lifecycle.get("repo_full_name"))
-            resolved_job_name = build_meta.get("job_name") or _coerce_str(lifecycle.get("job_name"))
+            resolved_job_name = canonicalize_job_name(
+                _coerce_str(build_meta.get("job_name")) or _coerce_str(lifecycle.get("job_name")),
+                repo_full_name=resolved_repo_full_name,
+            )
             resolved_pod_fields = {
                 "pod_author": _coerce_str(lifecycle.get("pod_author")),
                 "pod_org": _coerce_str(lifecycle.get("pod_org")),
@@ -1594,6 +1609,7 @@ def _deserialize_pod_metadata_snapshots_from_lifecycle_rows(
             labels=labels,
             annotations=annotations,
             observed_at=observed_at,
+            creation_timestamp=_parse_datetime(lifecycle.get("pod_created_at")),
         )
     return snapshots
 
@@ -1615,14 +1631,14 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
             """
             INSERT INTO ci_l1_pod_lifecycle (
               source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
-              build_system, pod_labels_json, pod_annotations_json, metadata_observed_at,
+              build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
               pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
               source_prow_job_id, normalized_build_url, repo_full_name, job_name,
               scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
               last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
             ) VALUES (
               :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
-              :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at,
+              :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
               :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
               :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
               :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
@@ -1635,6 +1651,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
               pod_labels_json = excluded.pod_labels_json,
               pod_annotations_json = excluded.pod_annotations_json,
               metadata_observed_at = excluded.metadata_observed_at,
+              pod_created_at = excluded.pod_created_at,
               pod_author = excluded.pod_author,
               pod_org = excluded.pod_org,
               pod_repo = excluded.pod_repo,
@@ -1662,14 +1679,14 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
         """
         INSERT INTO ci_l1_pod_lifecycle (
           source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
-          build_system, pod_labels_json, pod_annotations_json, metadata_observed_at,
+          build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
           pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
           source_prow_job_id, normalized_build_url, repo_full_name, job_name,
           scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
           last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
         ) VALUES (
           :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
-          :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at,
+          :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
           :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
           :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
           :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
@@ -1682,6 +1699,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
           pod_labels_json = VALUES(pod_labels_json),
           pod_annotations_json = VALUES(pod_annotations_json),
           metadata_observed_at = VALUES(metadata_observed_at),
+          pod_created_at = VALUES(pod_created_at),
           pod_author = VALUES(pod_author),
           pod_org = VALUES(pod_org),
           pod_repo = VALUES(pod_repo),

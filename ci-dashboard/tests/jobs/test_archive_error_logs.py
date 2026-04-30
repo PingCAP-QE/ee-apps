@@ -50,6 +50,17 @@ class _FakeFetcher:
         return self.text
 
 
+class _FakeFetcherWithFailedNodes(_FakeFetcher):
+    def __init__(self, text: str, failed_node_text: str) -> None:
+        super().__init__(text)
+        self.failed_node_text = failed_node_text
+        self.failed_node_calls: list[str] = []
+
+    def fetch_failed_node_logs(self, build_url: str) -> str:
+        self.failed_node_calls.append(build_url)
+        return self.failed_node_text
+
+
 class _FakeUploader:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
@@ -162,6 +173,34 @@ def test_run_archive_error_logs_archives_failed_jenkins_build(sqlite_engine) -> 
         ).mappings().one()
 
     assert row["log_gcs_uri"] == "gcs://ci-dashboard-test/2604/101.log"
+
+
+def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine) -> None:
+    _insert_build(sqlite_engine, build_id=151)
+    fetcher = _FakeFetcherWithFailedNodes(
+        "root tail with Connection reset by peer\n",
+        (
+            "===== Jenkins failed pipeline node log =====\n"
+            "parameter: run_real_tikv_tests.sh bazel_importintotest\n"
+            "INFO: Build completed, 1 test FAILED, 5247 total actions\n"
+        ),
+    )
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine,
+        _settings(),
+        build_id=151,
+        fetcher=fetcher,
+        uploader=uploader,
+    )
+
+    assert summary.builds_archived == 1
+    assert fetcher.failed_node_calls == [
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/151/display/redirect"
+    ]
+    assert "Connection reset by peer" in uploader.calls[0][2]
+    assert "Build completed, 1 test FAILED" in uploader.calls[0][2]
 
 
 def test_run_archive_error_logs_skips_existing_archive_without_force(sqlite_engine) -> None:

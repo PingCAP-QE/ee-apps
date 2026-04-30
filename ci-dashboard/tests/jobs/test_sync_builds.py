@@ -96,6 +96,7 @@ def test_map_build_row_derives_v1_fields() -> None:
     assert build.repo_full_name == "pingcap/tidb"
     assert build.is_pr_build is True
     assert build.pr_number == 123
+    assert build.job_name == "pingcap/tidb/ghpr_unit_test"
     assert build.normalized_build_url == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299/"
     assert build.cloud_phase == "GCP"
     assert build.build_system == "JENKINS"
@@ -126,6 +127,7 @@ def test_map_build_row_allows_missing_optional_status_fields() -> None:
 
     build = map_build_row(row)
 
+    assert build.job_name == "pingcap/tidb/unit"
     assert build.normalized_build_url == "https://do.pingcap.net/jenkins/job/abc/"
     assert build.build_id is None
     assert build.pod_name is None
@@ -151,6 +153,7 @@ def test_map_build_row_recognizes_prow_native_gcp_jobs() -> None:
 
     build = map_build_row(row)
 
+    assert build.job_name == "pingcap/tidb/pull-check-deps"
     assert build.cloud_phase == "GCP"
     assert build.build_system == "PROW_NATIVE"
 
@@ -416,7 +419,7 @@ def test_sync_builds_merges_into_existing_jenkins_first_row(sqlite_engine) -> No
     assert row["source_prow_row_id"] == 300
     assert row["source_prow_job_id"] == "prow-job-300"
     assert row["namespace"] == "prow"
-    assert row["job_name"] == "ghpr_unit_test"
+    assert row["job_name"] == "pingcap/tidb/ghpr_unit_test"
     assert row["job_type"] == "presubmit"
     assert row["org"] == "pingcap"
     assert row["repo"] == "tidb"

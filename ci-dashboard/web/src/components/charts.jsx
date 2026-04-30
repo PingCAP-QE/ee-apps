@@ -47,6 +47,31 @@ const SERIES_COLORS = {
   issue_open_count: "#315772",
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",
+  scheduling_wait_avg_s: "#bc6c25",
+  scheduling_failure_rate_pct: "#d1495b",
+  pull_image_avg_s: "#0f7c82",
+  pull_image_success_rate_pct: "#d1495b",
+  INFRA: "#d1495b",
+  BUILD: "#bc6c25",
+  UT: "#2a9d8f",
+  IT: "#315772",
+  OTHERS: "#7d8597",
+  JENKINS: "#315772",
+  JENKINS_CACHE: "#457b9d",
+  JENKINS_GROOVY: "#8d5a97",
+  K8S: "#d1495b",
+  K8S_MEMORY_EVICTION: "#9d0208",
+  OOMKILLED: "#6d1a36",
+  NETWORK: "#0f7c82",
+  DISK_FULL: "#bc6c25",
+  STORAGE: "#bc6c25",
+  EXTERNAL_DEP: "#8d5a97",
+  COMPILE: "#bc6c25",
+  TIMEOUT: "#d88b3d",
+  classified_count: "#2a9d8f",
+  unclassified_count: "#7d8597",
+  machine_only: "#315772",
+  human_revised: "#d1495b",
   FLAKY_TEST: "#d1495b",
   UNCLASSIFIED: "#7d8597",
 };
@@ -126,8 +151,11 @@ export function TrendChart({
   series,
   yFormatter = formatNumber,
   rightYFormatter = formatNumber,
+  rightYMin = null,
   yMax = null,
   rightYMax = null,
+  rightYAutoPad = false,
+  rightYPadRatio = 0.12,
   bucketAnnotations = null,
   height = 280,
   compactY = false,
@@ -198,12 +226,13 @@ export function TrendChart({
     leftMaxValue = step * segments;
     leftTickValues = Array.from({ length: segments + 1 }, (_, index) => index * step);
   }
-  const resolvedRightYMax = rightYMax ?? Math.max(...rightValues, 1);
-  const maxBottomLabels = 8;
-  const bottomLabelStep =
-    labels.length > maxBottomLabels
-      ? Math.ceil((labels.length - 1) / (maxBottomLabels - 1))
-      : 1;
+  const { min: resolvedRightYMin, max: resolvedRightYMax } = resolveAxisDomain({
+    values: rightValues,
+    explicitMin: rightYMin,
+    explicitMax: rightYMax,
+    autoPad: rightYAutoPad,
+    padRatio: rightYPadRatio,
+  });
   const width = 760;
   const annotationMap = new Map(
     (bucketAnnotations || []).map((annotation) => [annotation.label, annotation.text]),
@@ -216,7 +245,24 @@ export function TrendChart({
   };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
+  const displayLabels = labels.map((label) => formatBottomAxisLabel(label));
+  const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
+  const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
+  const maxBottomLabels = Math.max(2, Math.floor(plotWidth / estimatedBottomLabelWidth));
+  const bottomLabelStep =
+    labels.length > maxBottomLabels
+      ? Math.ceil((labels.length - 1) / Math.max(maxBottomLabels - 1, 1))
+      : 1;
   const xStep = labels.length > 1 ? plotWidth / (labels.length - 1) : plotWidth;
+  const minBottomLabelIndexGap = Math.max(
+    1,
+    Math.ceil(estimatedBottomLabelWidth / Math.max(xStep, 1)),
+  );
+  const visibleBottomLabelIndices = buildVisibleBottomLabelIndices(
+    labels.length,
+    bottomLabelStep,
+    minBottomLabelIndexGap,
+  );
   const barSeries = series.filter((item) => item.type === "bar");
   const lineSeries = series.filter((item) => item.type === "line");
 
@@ -252,7 +298,7 @@ export function TrendChart({
                   className="chart-axis-label"
                   style={{ fontSize: `${axisLabelSize}px` }}
                 >
-                  {rightYFormatter(resolvedRightYMax * ratio)}
+                  {rightYFormatter(resolvedRightYMin + (resolvedRightYMax - resolvedRightYMin) * ratio)}
                 </text>
               ) : null}
             </g>
@@ -276,15 +322,21 @@ export function TrendChart({
             const x = stackBars
               ? padding.left + index * xStep - barWidth / 2
               : groupStart + seriesIndex * (barWidth + 6);
-            const axisMax = item.axis === "right" ? resolvedRightYMax : leftMaxValue;
+            const axisRange =
+              item.axis === "right"
+                ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+                : leftMaxValue;
+            const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
             const baseValue = stackBars
               ? stackedSeries
                   .slice(0, Math.max(axisSeriesIndex, 0))
                   .reduce((sum, candidate) => sum + (pointMaps.get(candidate.key)?.get(label) ?? 0), 0)
               : 0;
-            const barHeight = axisMax > 0 ? (value / axisMax) * plotHeight : 0;
+            const normalizedValue = Math.max(value - axisMin, 0);
+            const normalizedBaseValue = Math.max(baseValue - axisMin, 0);
+            const barHeight = axisRange > 0 ? (normalizedValue / axisRange) * plotHeight : 0;
             const y = stackBars
-              ? padding.top + plotHeight - ((baseValue + value) / axisMax) * plotHeight
+              ? padding.top + plotHeight - ((normalizedBaseValue + normalizedValue) / axisRange) * plotHeight
               : padding.top + plotHeight - barHeight;
             return (
               <rect
@@ -302,7 +354,11 @@ export function TrendChart({
         )}
 
         {lineSeries.map((item) => {
-          const axisMax = item.axis === "right" ? resolvedRightYMax : leftMaxValue;
+          const axisRange =
+            item.axis === "right"
+              ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+              : leftMaxValue;
+          const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
           const segments = [];
           let currentSegment = [];
 
@@ -317,7 +373,7 @@ export function TrendChart({
             }
 
             const x = padding.left + index * xStep;
-            const y = padding.top + plotHeight - (value / axisMax) * plotHeight;
+            const y = padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
             currentSegment.push({ label, x, y });
           });
 
@@ -366,6 +422,7 @@ export function TrendChart({
             series,
             pointMaps,
             leftMaxValue,
+            resolvedRightYMin,
             resolvedRightYMax,
             padding,
             plotHeight,
@@ -385,12 +442,11 @@ export function TrendChart({
         })}
 
         {labels.map((label, index) => {
-          const isFirstLabel = index === 0;
-          const isLastLabel = index === labels.length - 1;
-          const shouldShowLabel = isLastLabel || index % bottomLabelStep === 0;
-          if (!shouldShowLabel) {
+          if (!visibleBottomLabelIndices.has(index)) {
             return null;
           }
+          const isFirstLabel = index === 0;
+          const isLastLabel = index === labels.length - 1;
           const x = padding.left + index * xStep;
           const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
           return (
@@ -402,7 +458,7 @@ export function TrendChart({
               className="chart-axis-label chart-axis-label--bottom"
               style={{ fontSize: `${bottomLabelSize}px` }}
             >
-              {label}
+              {displayLabels[index]}
             </text>
           );
         })}
@@ -518,6 +574,7 @@ export function RankingList({
   valueKey = "value",
   valueFormatter = formatNumber,
   renderMeta = null,
+  onItemSelect = null,
 }) {
   if (!items?.length) {
     return <EmptyState message="No ranking data for the current scope." />;
@@ -530,8 +587,25 @@ export function RankingList({
       {items.map((item, index) => {
         const value = Number(item[valueKey] || 0);
         const metaContent = renderMeta ? renderMeta(item) : buildDefaultRankingMeta(item);
+        const interactive = typeof onItemSelect === "function";
         return (
-          <article key={item.name} className="ranking-list__item">
+          <article
+            key={item.name}
+            className="ranking-list__item"
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : undefined}
+            onClick={interactive ? () => onItemSelect(item) : undefined}
+            onKeyDown={
+              interactive
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onItemSelect(item);
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="ranking-list__header">
               <span className="ranking-list__rank">{String(index + 1).padStart(2, "0")}</span>
               <div className="ranking-list__title">
@@ -542,6 +616,7 @@ export function RankingList({
                     rel="noreferrer"
                     className="ranking-list__link"
                     title={item.job_url}
+                    onClick={(event) => event.stopPropagation()}
                   >
                     {item.name}
                   </a>
@@ -664,7 +739,7 @@ export function DonutShareChart({
               const value = Number(item.value || 0);
               const angle = (value / total) * Math.PI * 2;
               const endAngle = startAngle + angle;
-              const fill = donutColor(index);
+              const fill = donutColor(item.name, index);
               const path = describeDonutArc(center, center, innerRadius, radius, startAngle, endAngle);
               const percent = Number(item.share_pct || 0);
               const key = `${title}-${item.name}`;
@@ -714,7 +789,7 @@ export function DonutShareChart({
                   className="donut-legend__item"
                   onClick={() => onItemSelect(item)}
                 >
-                  <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(index) }} />
+                  <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
                   <span className="donut-legend__name">{item.name}</span>
                   <span className="donut-legend__value">{formatCompact(item.value)}</span>
                   <span className="donut-legend__share">{formatPercent(item.share_pct)}</span>
@@ -727,7 +802,7 @@ export function DonutShareChart({
                 key={`${title}-${item.name}-legend`}
                 className="donut-legend__item donut-legend__item--static"
               >
-                <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(index) }} />
+                <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
                 <span className="donut-legend__name">{item.name}</span>
                 <span className="donut-legend__value">{formatCompact(item.value)}</span>
                 <span className="donut-legend__share">{formatPercent(item.share_pct)}</span>
@@ -948,7 +1023,10 @@ function seriesColor(key) {
   return SERIES_COLORS[key] || "#315772";
 }
 
-function donutColor(index) {
+function donutColor(name, index) {
+  if (name && SERIES_COLORS[name]) {
+    return SERIES_COLORS[name];
+  }
   return DONUT_COLORS[index % DONUT_COLORS.length];
 }
 
@@ -960,6 +1038,41 @@ function formatSeriesLabel(key) {
     .replaceAll("retry loop", "Blind-retry-loop")
     .replaceAll("FLAKY TEST", "Flaky test")
     .replaceAll("UNCLASSIFIED", "Unclassified");
+}
+
+function formatBottomAxisLabel(label) {
+  const text = String(label || "");
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return text;
+  }
+  const [, _year, month, day] = match;
+  return `${month}-${day}`;
+}
+
+function buildVisibleBottomLabelIndices(labelCount, step, minGap) {
+  if (labelCount <= 0) {
+    return new Set();
+  }
+
+  const indices = [];
+  for (let index = 0; index < labelCount; index += step) {
+    indices.push(index);
+  }
+  if (indices[indices.length - 1] !== labelCount - 1) {
+    indices.push(labelCount - 1);
+  }
+
+  while (indices.length >= 2) {
+    const lastIndex = indices[indices.length - 1];
+    const previousIndex = indices[indices.length - 2];
+    if (lastIndex - previousIndex >= minGap) {
+      break;
+    }
+    indices.splice(indices.length - 2, 1);
+  }
+
+  return new Set(indices);
 }
 
 function formatUtcCloseTime(isoValue) {
@@ -1135,16 +1248,52 @@ function getAnnotationY({
   series,
   pointMaps,
   leftMaxValue,
+  resolvedRightYMin,
   resolvedRightYMax,
   padding,
   plotHeight,
 }) {
   const ys = series.map((item) => {
     const value = pointMaps.get(item.key)?.get(label) ?? 0;
-    const axisMax = item.axis === "right" ? resolvedRightYMax : leftMaxValue;
-    return padding.top + plotHeight - (value / axisMax) * plotHeight;
+    const axisRange =
+      item.axis === "right"
+        ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+        : leftMaxValue;
+    const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
+    return padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
   });
 
   const topMostPoint = Math.min(...ys);
   return Math.max(padding.top - 10, topMostPoint - 8);
+}
+
+function resolveAxisDomain({
+  values,
+  explicitMin = null,
+  explicitMax = null,
+  autoPad = false,
+  padRatio = 0.12,
+}) {
+  const numericValues = values.filter((value) => Number.isFinite(value));
+  let min = explicitMin ?? (numericValues.length ? Math.min(...numericValues) : 0);
+  let max = explicitMax ?? (numericValues.length ? Math.max(...numericValues) : 1);
+
+  if (explicitMin == null && explicitMax == null && autoPad && numericValues.length) {
+    if (min === max) {
+      const basePad = Math.max((Math.abs(max) || 1) * Math.min(padRatio, 0.04), 0.5);
+      min -= basePad;
+      max += basePad;
+    } else {
+      const span = max - min;
+      const pad = Math.max(span * padRatio, 0.5);
+      min -= pad;
+      max += pad;
+    }
+  }
+
+  if (max <= min) {
+    max = min + 1;
+  }
+
+  return { min, max };
 }

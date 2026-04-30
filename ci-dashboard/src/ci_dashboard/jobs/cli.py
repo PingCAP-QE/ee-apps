@@ -14,6 +14,7 @@ from ci_dashboard.jobs.refresh_build_derived import (
     run_refresh_build_derived_for_time_window,
     run_refresh_flaky_signals_for_time_window,
 )
+from ci_dashboard.jobs.repair_job_names import run_repair_job_names
 from ci_dashboard.jobs.jenkins_worker import run_consume_jenkins_events
 from ci_dashboard.jobs.sync_builds import run_sync_builds, run_sync_builds_for_time_window
 from ci_dashboard.jobs.sync_pr_events import (
@@ -69,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "sync-pods",
         help="Sync Kubernetes pod lifecycle events into ci_l1_pod_* tables",
+    )
+    subparsers.add_parser(
+        "repair-job-names",
+        help="Backfill short job_name values in ci_l1_builds and ci_l1_pod_lifecycle to full repo/job form",
     )
     subparsers.add_parser(
         "refresh-build-derived",
@@ -254,6 +259,15 @@ def main() -> int:
         summary = run_sync_pods(engine, settings)
         logging.getLogger(__name__).info(
             "sync-pods finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
+    if args.command == "repair-job-names":
+        engine = build_engine(settings)
+        summary = run_repair_job_names(engine)
+        logging.getLogger(__name__).info(
+            "repair-job-names finished",
             extra={"summary": summary.__dict__},
         )
         return 0

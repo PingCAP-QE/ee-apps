@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import io
-import json
 from datetime import datetime
 from datetime import UTC
-from types import SimpleNamespace
 from urllib import error as urllib_error
 
 import pytest
@@ -14,6 +12,7 @@ from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_pods import (
     JenkinsPodNameBuildRef,
+    POD_EVENT_REASONS,
     PodMetadataSnapshot,
     _build_ci_job_from_build_metadata,
     _build_requested_pods_relation,
@@ -76,12 +75,14 @@ def _pod_metadata(
     labels: dict[str, str] | None = None,
     annotations: dict[str, str] | None = None,
     pod_uid: str | None = None,
+    creation_timestamp: datetime | None = None,
 ) -> PodMetadataSnapshot:
     return PodMetadataSnapshot(
         pod_uid=pod_uid,
         labels=labels or {},
         annotations=annotations or {},
         observed_at=datetime(2026, 4, 21, 9, 45, 0),
+        creation_timestamp=creation_timestamp,
     )
 
 
@@ -226,6 +227,7 @@ def test_sync_pod_helper_functions_cover_common_edge_cases(sqlite_engine, monkey
     assert _max_receive_timestamp([]) is None
     assert _null_safe_equals_sql("a", "b", "sqlite") == "a IS b"
     assert _null_safe_equals_sql("a", "b", "mysql") == "a <=> b"
+    assert {"Failed", "BackOff", "ErrImagePull", "ImagePullBackOff"}.issubset(POD_EVENT_REASONS)
     relation_sql, params = _build_requested_pods_relation([("p1", "ns", "uid", "pod")])
     assert "UNION ALL" not in relation_sql
     assert params == {
@@ -448,6 +450,7 @@ def test_sync_pods_metadata_fetch_and_logging_entry_normalization(monkeypatch: p
                         "metadata": {
                             "name": "pod-a",
                             "uid": "uid-a",
+                            "creationTimestamp": "2026-04-20T12:49:30Z",
                             "labels": {"author": "alice"},
                             "annotations": {"ci_job": "pingcap/tidb/test-a"},
                         }
@@ -471,6 +474,7 @@ def test_sync_pods_metadata_fetch_and_logging_entry_normalization(monkeypatch: p
     assert snapshots["pod-a"].pod_uid == "uid-a"
     assert snapshots["pod-a"].labels == {"author": "alice"}
     assert snapshots["pod-a"].annotations == {"ci_job": "pingcap/tidb/test-a"}
+    assert snapshots["pod-a"].creation_timestamp == datetime(2026, 4, 20, 12, 49, 30)
 
 
 def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None:
@@ -616,7 +620,7 @@ def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None
     assert lifecycle["source_prow_job_id"] == "prow-job-1"
     assert lifecycle["normalized_build_url"] == "https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/pingcap_tidb/66206/ghpr_unit_test/1/"
     assert lifecycle["repo_full_name"] == "pingcap/tidb"
-    assert lifecycle["job_name"] == "ghpr_unit_test"
+    assert lifecycle["job_name"] == "pingcap/tidb/ghpr_unit_test"
     assert str(lifecycle["scheduled_at"]).startswith("2026-04-20 12:53:49")
     assert str(lifecycle["first_started_at"]).startswith("2026-04-20 12:53:51")
     assert lifecycle["failed_scheduling_count"] == 1
@@ -754,6 +758,7 @@ def test_sync_pods_links_jenkins_pods_from_annotations_and_preserves_fanout(sqli
         lambda _pods: {
             _pod_identity("jenkins-tidb", "uid-j-1", "opaque-agent-pod-a"): _pod_metadata(
                 pod_uid="uid-j-1",
+                creation_timestamp=datetime(2026, 4, 20, 12, 52, 10),
                 labels={
                     "author": "tester-a",
                     "org": "pingcap",
@@ -770,6 +775,7 @@ def test_sync_pods_links_jenkins_pods_from_annotations_and_preserves_fanout(sqli
             ),
             _pod_identity("jenkins-tidb", "uid-j-2", "opaque-agent-pod-b"): _pod_metadata(
                 pod_uid="uid-j-2",
+                creation_timestamp=datetime(2026, 4, 20, 12, 52, 20),
                 labels={
                     "author": "tester-b",
                     "org": "pingcap",
@@ -806,6 +812,7 @@ def test_sync_pods_links_jenkins_pods_from_annotations_and_preserves_fanout(sqli
                       pod_repo,
                       jenkins_label,
                       ci_job,
+                      pod_created_at,
                       source_prow_job_id,
                       normalized_build_url,
                       repo_full_name,
@@ -831,7 +838,11 @@ def test_sync_pods_links_jenkins_pods_from_annotations_and_preserves_fanout(sqli
         "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1413/"
     }
     assert {row["repo_full_name"] for row in rows} == {"pingcap/tidb"}
-    assert {row["job_name"] for row in rows} == {"ghpr_unit_test"}
+    assert {row["job_name"] for row in rows} == {"pingcap/tidb/ghpr_unit_test"}
+    assert {str(row["pod_created_at"]) for row in rows} == {
+        "2026-04-20 12:52:10",
+        "2026-04-20 12:52:20",
+    }
     assert {row["schedule_to_started_seconds"] for row in rows} == {16, 20}
 
 
@@ -959,7 +970,7 @@ def test_sync_pods_links_jenkins_pod_from_build_url_annotation_with_opaque_name(
         "https://prow.tidb.net/jenkins/job/pingcap/job/tiflow/job/pull_dm_integration_test/299/"
     )
     assert row["repo_full_name"] == "pingcap/tiflow"
-    assert row["job_name"] == "pull_dm_integration_test"
+    assert row["job_name"] == "pingcap/tiflow/pull_dm_integration_test"
     assert "buildUrl" in row["pod_annotations_json"]
 
 
@@ -1206,7 +1217,7 @@ def test_sync_pods_links_jenkins_pod_from_label_and_ci_job_fallback(
         "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/1029/"
     )
     assert row["repo_full_name"] == "pingcap/tidb"
-    assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
+    assert row["job_name"] == "pingcap/tidb/pull_integration_realcluster_test_next_gen"
 
 
 def test_sync_pods_keeps_jenkins_pod_without_annotation_or_label_build_key_unresolved(
@@ -1409,7 +1420,7 @@ def test_sync_pods_links_jenkins_pod_from_pod_name_parse_when_live_metadata_is_m
         "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2048/"
     )
     assert row["repo_full_name"] == "pingcap/tidb"
-    assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
+    assert row["job_name"] == "pingcap/tidb/pull_integration_realcluster_test_next_gen"
 
 
 def test_load_jenkins_pod_name_url_prefix_map_ignores_old_builds(sqlite_engine, monkeypatch) -> None:
@@ -1659,7 +1670,7 @@ def test_reconcile_pod_linkage_range_backfills_rows_after_build_arrives(sqlite_e
         "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/2049/"
     )
     assert row["repo_full_name"] == "pingcap/tidb"
-    assert row["job_name"] == "pull_integration_realcluster_test_next_gen"
+    assert row["job_name"] == "pingcap/tidb/pull_integration_realcluster_test_next_gen"
 
 
 def test_reconcile_pod_linkage_range_supplements_missing_jenkins_pod_fields(sqlite_engine) -> None:

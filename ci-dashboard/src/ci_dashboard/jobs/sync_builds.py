@@ -12,6 +12,7 @@ from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import NormalizedBuildRow, SyncBuildsSummary
 from ci_dashboard.jobs.build_merge import fetch_existing_build_targets, resolve_merge_target_id
 from ci_dashboard.jobs.build_url_matcher import (
+    canonicalize_job_name,
     classify_build_system,
     classify_cloud_phase,
     normalize_build_url,
@@ -175,12 +176,13 @@ def map_build_row(row: Mapping[str, Any]) -> NormalizedBuildRow:
     source_prow_row_id = _coerce_int(_required(row, "id"))
     source_prow_job_id = _coerce_str(_required(row, "prowJobId", "prow_job_id"))
     namespace = _coerce_str(_required(row, "namespace"))
-    job_name = _coerce_str(_required(row, "jobName", "job_name"))
+    raw_job_name = _coerce_str(_required(row, "jobName", "job_name"))
     job_type = _coerce_str(_required(row, "type", "job_type"))
     state = _coerce_str(_required(row, "state"))
     org = _coerce_str(_required(row, "org"))
     repo = _coerce_str(_required(row, "repo"))
     repo_full_name = f"{org}/{repo}"
+    job_name = canonicalize_job_name(raw_job_name, repo_full_name=repo_full_name)
     pr_number = _coerce_optional_int(_get_first(row, "pull", "pr_number"))
     is_pr_build = pr_number is not None
     url = _coerce_str(_required(row, "url"))

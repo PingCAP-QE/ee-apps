@@ -7,6 +7,7 @@ import pytest
 
 import ci_dashboard.jobs.llm_classifier as llm_classifier_module
 from ci_dashboard.common.config import LLMSettings
+from ci_dashboard.jobs.error_classification_guidance import ERROR_CLASSIFICATION_GUIDANCE
 from ci_dashboard.jobs.llm_classifier import (
     NoopLLMClassifier,
     OpenAICompatibleLLMClassifier,
@@ -95,6 +96,7 @@ def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None
                     "Allowed categories:\n"
                     "- INFRA/NETWORK\n"
                     "- OTHERS/UNCLASSIFIED\n\n"
+                    f"{ERROR_CLASSIFICATION_GUIDANCE}\n\n"
                     "Build context:\n"
                     "- job_name: ghpr_check2\n"
                     "- url: https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/101/\n\n"
@@ -323,6 +325,7 @@ def test_chat_payload_and_content_parsing_helpers() -> None:
     assert payload["model"] == "gpt-5.4"
     assert "reasoning_effort" not in payload
     assert "<unknown>" in payload["messages"][1]["content"]
+    assert ERROR_CLASSIFICATION_GUIDANCE in payload["messages"][1]["content"]
 
     assert _extract_stream_choice_content({"choices": [{"delta": {"content": "hello"}}]}) == ["hello"]
     assert _extract_stream_choice_content({"choices": [{"delta": {"content": [{"text": "line-1"}, {"text": "line-2"}]}}]}) == [

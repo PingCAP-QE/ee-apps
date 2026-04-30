@@ -250,6 +250,7 @@ def _create_test_schema(engine: Engine) -> None:
           pod_labels_json TEXT NULL,
           pod_annotations_json TEXT NULL,
           metadata_observed_at TEXT NULL,
+          pod_created_at TEXT NULL,
           pod_author TEXT NULL,
           pod_org TEXT NULL,
           pod_repo TEXT NULL,

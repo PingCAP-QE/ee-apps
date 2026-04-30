@@ -75,8 +75,7 @@ select {
 .brand-mark__eyebrow,
 .filter-bar__eyebrow,
 .page-intro__eyebrow,
-.comparison-card__eyebrow,
-.sidebar-note__label {
+.comparison-card__eyebrow {
   display: inline-flex;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -155,7 +154,9 @@ select {
   background: rgba(255, 255, 255, 0.07);
 }
 
-.sidebar-note__label {
+.sidebar-note__version {
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
   color: rgba(244, 241, 235, 0.74);
 }
 
@@ -689,6 +690,15 @@ select {
   min-width: 0;
 }
 
+.panel--error-builds .panel__body {
+  display: grid;
+  align-content: start;
+}
+
+.error-builds-list {
+  align-content: start;
+}
+
 .trend-chart svg {
   width: 100%;
   height: auto;
@@ -750,6 +760,11 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   align-items: start;
+}
+
+.runtime-coverage-stack {
+  display: grid;
+  gap: 1rem;
 }
 
 .runtime-compare-card {

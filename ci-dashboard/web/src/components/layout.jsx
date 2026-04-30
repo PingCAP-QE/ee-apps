@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
+import packageInfo from "../../package.json";
 
 export function DashboardLayout({
   filters,
@@ -7,6 +8,8 @@ export function DashboardLayout({
   filterOptions,
   children,
 }) {
+  const currentVersion = packageInfo.version;
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -18,16 +21,17 @@ export function DashboardLayout({
         <nav className="sidebar-nav" aria-label="Primary">
           <NavItem to="/" label="Overview" caption="Signal at a glance" />
           <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
+          <NavItem to="/runtime-insights" label="Runtime Insights" caption="Pod and Jenkins diagnosis" />
           <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
           <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
         </nav>
 
         <div className="sidebar-note">
-          <span className="sidebar-note__label">V1 scope</span>
           <p>
             Build ingestion stays all-repo. PR metadata is best effort and can lag a little
             behind source activity.
           </p>
+          <p className="sidebar-note__version">Version {currentVersion}</p>
         </div>
       </aside>
 

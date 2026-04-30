@@ -99,6 +99,41 @@ def build_job_url(normalized_job_path: str | None, cloud_phase: str | None) -> s
     return f"{host}{path}"
 
 
+def canonicalize_job_name(value: str | None, *, repo_full_name: str | None = None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip().strip("/")
+    if normalized == "":
+        return None
+    if "/" in normalized:
+        return normalized
+    if repo_full_name and " " not in normalized:
+        repo_prefix = repo_full_name.strip().strip("/")
+        if repo_prefix:
+            return f"{repo_prefix}/{normalized}"
+    return normalized
+
+
+def full_job_name_to_normalized_jenkins_job_path(full_job_name: str | None) -> str | None:
+    normalized = canonicalize_job_name(full_job_name)
+    if normalized is None:
+        return None
+
+    segments = [segment for segment in normalized.split("/") if segment]
+    if len(segments) < 3:
+        return None
+
+    org, repo, *job_segments = segments
+    if not job_segments:
+        return None
+
+    path_segments = ["jenkins", "job", org, "job", repo]
+    for segment in job_segments:
+        path_segments.extend(("job", segment))
+    return "/" + "/".join(path_segments) + "/"
+
+
 def _canonical_full_url(path: str, *, canonical_host: str) -> str:
     normalized_path = path.rstrip("/")
     if normalized_path == "":

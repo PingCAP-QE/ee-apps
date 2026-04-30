@@ -163,3 +163,13 @@ class AnalyzeErrorsSummary:
 @dataclass
 class ReviewErrorSummary:
     rows_updated: int = 0
+
+
+@dataclass
+class RepairJobNamesSummary:
+    build_rows_updated: int = 0
+    pod_rows_updated: int = 0
+    build_short_before: int = 0
+    build_short_after: int = 0
+    pod_short_before: int = 0
+    pod_short_after: int = 0
