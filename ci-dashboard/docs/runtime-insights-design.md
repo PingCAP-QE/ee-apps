@@ -11,10 +11,6 @@ Reference inputs:
 - `ci-dashboard/sql/005_create_ci_l1_pod_events.sql`
 - `ci-dashboard/sql/006_create_ci_l1_pod_lifecycle.sql`
 - `ci-dashboard/sql/014_alter_ci_l1_builds_for_v3_jenkins.sql`
-- `/Users/dillon/workspace/ee-apps-worktrees/v4-UI-improve/aidlc-docs/inception/application-design/design.md`
-- `/Users/dillon/workspace/ee-apps-worktrees/v4-UI-improve/aidlc-docs/inception/application-design/design-review.md`
-- `/Users/dillon/workspace/Skills-collection/local-skills/ci_job_debug.skills/SKILL.md`
-- `/Users/dillon/workspace/Skills-collection/local-skills/ee-prd-Database.SKILL.md`
 
 ## 1. Background
 
