@@ -193,7 +193,7 @@ export default function RuntimeInsightsPage({ filters }) {
         >
           <RankingList
             items={page.data?.scheduling_failure_jobs?.items}
-            valueFormatter={(value) => `${formatOneDecimal(value)} final scheduling failures`}
+            valueFormatter={(value) => `${formatCompact(value)} final scheduling failures`}
             renderMeta={(item) => [
               item.recent_failure_builds?.length ? (
                 <span key={`${item.name}-build-links`} className="build-link-list">
