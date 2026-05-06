@@ -385,11 +385,13 @@ def test_runtime_error_builds_returns_build_links_sorted_by_completion_time(sqli
             "name": "1002",
             "build_number": "1002",
             "build_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1002/",
+            "completion_time": "2026-04-22T11:00:00Z",
         },
         {
             "name": "1001",
             "build_number": "1001",
             "build_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1001/",
+            "completion_time": "2026-04-22T10:00:00Z",
         },
     ]
 
@@ -608,22 +610,14 @@ def test_runtime_insights_rolls_pods_to_builds_and_uses_effective_categories(sql
     ]
 
     scheduling_failures = body["scheduling_failure_jobs"]["items"]
-    assert scheduling_failures == [
-        {
-            "name": "pingcap/tidb/job-beta",
-            "value": 1,
-            "linked_build_count": 1,
-            "final_failure_count": 1,
-            "job_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-beta/",
-        }
-    ]
+    assert scheduling_failures == []
 
     pull_failures = body["pull_image_failure_jobs"]["items"]
     assert pull_failures[0]["name"] == "pingcap/tidb/job-alpha"
     assert pull_failures[0]["value"] == 1
     assert pull_failures[0]["linked_build_count"] == 2
     assert pull_failures[0]["job_url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-alpha/"
-    assert body["pull_image_failure_reasons"]["items"] == [{"name": "ErrImagePull", "value": 1}]
+    assert "pull_image_failure_reasons" not in body
 
     l1_items = {item["name"]: item for item in body["error_l1_share"]["items"]}
     assert l1_items["INFRA"]["value"] == 1
@@ -657,6 +651,73 @@ def test_runtime_insights_rolls_pods_to_builds_and_uses_effective_categories(sql
         "no_jenkins_log_count": 0,
         "missing_jenkins_log_count": 0,
     }
+
+
+def test_scheduling_failure_jobs_include_latest_ten_failure_build_links(sqlite_engine) -> None:
+    for index in range(12):
+        build_number = 3000 + index
+        start_hour = 1 + index
+        build_url = f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-gamma/{build_number}/"
+        _insert_build(
+            sqlite_engine,
+            build_id=800 + index,
+            source_prow_job_id=f"runtime-gamma-{index}",
+            job_name="job-gamma",
+            state="failure",
+            start_time=f"2026-04-23 {start_hour:02d}:00:00",
+            normalized_build_url=build_url,
+        )
+        _insert_pod_lifecycle(
+            sqlite_engine,
+            pod_name=f"pod-gamma-{index}",
+            pod_uid=f"pod-gamma-{index}-uid",
+            normalized_build_url=build_url,
+            source_prow_job_id=f"runtime-gamma-{index}",
+            job_name="job-gamma",
+            scheduled_at=None,
+            first_pulling_at=None,
+            first_pulled_at=None,
+            last_failed_scheduling_at=f"2026-04-23 {start_hour:02d}:05:00",
+            failed_scheduling_count=1,
+            last_event_at=f"2026-04-23 {start_hour:02d}:05:00",
+        )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-23",
+                    "end_date": "2026-04-23",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    scheduling_failures = body["scheduling_failure_jobs"]["items"]
+    assert scheduling_failures[0]["name"] == "pingcap/tidb/job-gamma"
+    assert scheduling_failures[0]["final_failure_count"] == 12
+    assert [item["build_number"] for item in scheduling_failures[0]["recent_failure_builds"]] == [
+        "3011",
+        "3010",
+        "3009",
+        "3008",
+        "3007",
+        "3006",
+        "3005",
+        "3004",
+        "3003",
+        "3002",
+    ]
+    assert (
+        scheduling_failures[0]["recent_failure_builds"][0]["build_url"]
+        == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-gamma/3011/"
+    )
 
 
 def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_engine) -> None:
@@ -723,6 +784,135 @@ def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_eng
     assert scheduling_points["final_scheduling_failure_count"] == [["2026-04-20", 0]]
     assert pull_points["pull_image_avg_s"] == [["2026-04-20", 20.0]]
     assert pull_points["pull_image_success_rate_pct"] == [["2026-04-20", 100.0]]
+
+
+def test_pull_image_slowest_jobs_include_slowest_image_url(sqlite_engine) -> None:
+    build_url_1 = "https://prow.tidb.net/jenkins/job/runtime-pull-image/1/"
+    build_url_2 = "https://prow.tidb.net/jenkins/job/runtime-pull-image/2/"
+    build_url_3 = "https://prow.tidb.net/jenkins/job/runtime-pull-image/3/"
+
+    _insert_build(
+        sqlite_engine,
+        build_id=901,
+        source_prow_job_id="runtime-pull-image-1",
+        job_name="job-pull-image",
+        state="failure",
+        start_time="2026-04-24 10:00:00",
+        normalized_build_url=build_url_1,
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=902,
+        source_prow_job_id="runtime-pull-image-2",
+        job_name="job-pull-image",
+        state="failure",
+        start_time="2026-04-24 11:00:00",
+        normalized_build_url=build_url_2,
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=903,
+        source_prow_job_id="runtime-pull-image-3",
+        job_name="job-pull-image",
+        state="failure",
+        start_time="2026-04-24 12:00:00",
+        normalized_build_url=build_url_3,
+    )
+
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-image-fast",
+        pod_uid="pod-pull-image-fast-uid",
+        normalized_build_url=build_url_1,
+        source_prow_job_id="runtime-pull-image-1",
+        job_name="job-pull-image",
+        scheduled_at="2026-04-24 10:00:40",
+        first_pulling_at="2026-04-24 10:01:00",
+        first_pulled_at="2026-04-24 10:01:20",
+        failed_scheduling_count=0,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-image-slow",
+        pod_uid="pod-pull-image-slow-uid",
+        normalized_build_url=build_url_2,
+        source_prow_job_id="runtime-pull-image-2",
+        job_name="job-pull-image",
+        scheduled_at="2026-04-24 11:00:30",
+        first_pulling_at="2026-04-24 11:01:00",
+        first_pulled_at="2026-04-24 11:02:30",
+        failed_scheduling_count=0,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-image-mid",
+        pod_uid="pod-pull-image-mid-uid",
+        normalized_build_url=build_url_2,
+        source_prow_job_id="runtime-pull-image-2",
+        job_name="job-pull-image",
+        scheduled_at="2026-04-24 11:02:40",
+        first_pulling_at="2026-04-24 11:03:00",
+        first_pulled_at="2026-04-24 11:03:40",
+        failed_scheduling_count=0,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-image-third",
+        pod_uid="pod-pull-image-third-uid",
+        normalized_build_url=build_url_3,
+        source_prow_job_id="runtime-pull-image-3",
+        job_name="job-pull-image",
+        scheduled_at="2026-04-24 12:00:20",
+        first_pulling_at="2026-04-24 12:01:00",
+        first_pulled_at="2026-04-24 12:01:30",
+        failed_scheduling_count=0,
+    )
+
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pod-pull-image-fast",
+        pod_uid="pod-pull-image-fast-uid",
+        event_reason="Pulled",
+        event_timestamp="2026-04-24 10:01:20",
+        event_message='Successfully pulled image "registry.example.com/fast:v1" in 20.5s (20.5s including waiting). Image size: 123 bytes.',
+    )
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pod-pull-image-slow",
+        pod_uid="pod-pull-image-slow-uid",
+        event_reason="Pulled",
+        event_timestamp="2026-04-24 11:02:30",
+        event_message='Successfully pulled image "registry.example.com/slow:v9" in 90.1s (90.1s including waiting). Image size: 456 bytes.',
+    )
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pod-pull-image-third",
+        pod_uid="pod-pull-image-third-uid",
+        event_reason="Pulled",
+        event_timestamp="2026-04-24 12:01:30",
+        event_message='Successfully pulled image "registry.example.com/third:v3" in 30.0s (30.0s including waiting). Image size: 789 bytes.',
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-24",
+                    "end_date": "2026-04-24",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    slowest_jobs = body["pull_image_slowest_jobs"]["items"]
+    assert slowest_jobs[0]["name"] == "pingcap/tidb/job-pull-image"
+    assert slowest_jobs[0]["slowest_pull_image"] == "registry.example.com/slow:v9"
 
 
 def test_runtime_hides_scheduling_wait_when_pod_created_at_is_unavailable(

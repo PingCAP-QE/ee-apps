@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  formatBrowserDateTime,
   formatCompact,
   formatNumber,
   formatPercent,
@@ -20,6 +21,7 @@ import {
 
 const EMPTY_ITEMS = [];
 const EMPTY_DETAILS = {};
+const formatOneDecimal = (value) => Number(value || 0).toFixed(1);
 
 export default function RuntimeInsightsPage({ filters }) {
   const page = useApiData("/api/v1/pages/runtime-insights", filters);
@@ -118,7 +120,7 @@ export default function RuntimeInsightsPage({ filters }) {
   return (
     <div className="page-stack">
       <PageIntro
-        eyebrow="Runtime Insights"
+        eyebrow="CI details insight"
         title="Find the runtime bottlenecks hiding between Jenkins and Kubernetes"
         description="An experimental tab for pod scheduling, image pull, and Jenkins error taxonomy signals. Useful panels can graduate into CI Status once the signal proves stable."
         kicker={classificationCoverage.latest_pod_event_at ? `Latest pod event ${classificationCoverage.latest_pod_event_at}` : null}
@@ -179,7 +181,7 @@ export default function RuntimeInsightsPage({ filters }) {
             series={page.data?.pull_image_trend?.series}
             yFormatter={formatSeconds}
             rightYFormatter={formatPercent}
-            rightYAutoPad
+            rightYMax={100}
           />
         </Panel>
 
@@ -191,11 +193,31 @@ export default function RuntimeInsightsPage({ filters }) {
         >
           <RankingList
             items={page.data?.scheduling_failure_jobs?.items}
-            valueFormatter={formatCompact}
+            valueFormatter={(value) => `${formatOneDecimal(value)} final scheduling failures`}
             renderMeta={(item) => [
-              <span key={`${item.name}-final-failures`}>
-                {formatCompact(item.final_failure_count)} final scheduling failures
-              </span>,
+              item.recent_failure_builds?.length ? (
+                <span key={`${item.name}-build-links`} className="build-link-list">
+                  Latest failed builds:
+                  {item.recent_failure_builds.map((build) =>
+                    build.build_url ? (
+                      <a
+                        key={`${item.name}-${build.build_number}`}
+                        href={build.build_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ranking-list__link build-link-list__link"
+                        title={build.build_url}
+                      >
+                        #{build.build_number}
+                      </a>
+                    ) : (
+                      <span key={`${item.name}-${build.build_number}`}>
+                        #{build.build_number}
+                      </span>
+                    ),
+                  )}
+                </span>
+              ) : null,
             ]}
           />
         </Panel>
@@ -212,7 +234,7 @@ export default function RuntimeInsightsPage({ filters }) {
         >
           <RankingList
             items={page.data?.scheduling_slowest_jobs?.items}
-            valueFormatter={formatSeconds}
+            valueFormatter={(value) => `${formatOneDecimal(value)}s`}
             renderMeta={(item) => [
               <span key={`${item.name}-samples`}>
                 {formatCompact(item.valid_sample_count)} scheduled samples
@@ -249,27 +271,24 @@ export default function RuntimeInsightsPage({ filters }) {
         >
           <RankingList
             items={page.data?.pull_image_slowest_jobs?.items}
-            valueFormatter={formatSeconds}
+            valueFormatter={() => ""}
             renderMeta={(item) => [
-              <span key={`${item.name}-samples`}>
-                {formatCompact(item.valid_sample_count)} pull samples
+              <span key={`${item.name}-summary`} className="runtime-meta-summary">
+                {formatCompact(item.valid_sample_count)} pull samples avg {formatSeconds(item.value)}
               </span>,
+              item.slowest_pull_image ? (
+                <span
+                  key={`${item.name}-slowest-image`}
+                  className="runtime-image-url"
+                  title={item.slowest_pull_image}
+                >
+                  Slowest image: {item.slowest_pull_image}
+                </span>
+              ) : null,
             ]}
           />
         </Panel>
       </div>
-
-      <Panel
-        title="Image pull failure reasons"
-        subtitle="Counts distinct builds by Kubernetes image-pull event reason or message pattern."
-        loading={page.loading}
-        error={page.error}
-      >
-        <RankingList
-          items={page.data?.pull_image_failure_reasons?.items}
-          valueFormatter={formatCompact}
-        />
-      </Panel>
 
       <div className="page-grid page-grid--two-column">
         <Panel
@@ -380,6 +399,11 @@ export default function RuntimeInsightsPage({ filters }) {
                       )}
                     </div>
                   </div>
+                  {item.completion_time ? (
+                    <div className="ranking-list__meta">
+                      <span>Completed {formatBrowserDateTime(item.completion_time)}</span>
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

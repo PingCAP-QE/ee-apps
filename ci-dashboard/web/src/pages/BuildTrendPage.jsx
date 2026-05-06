@@ -43,6 +43,10 @@ export default function BuildTrendPage({ filters }) {
     page.data?.outcome_trend?.series,
     "success_rate_pct",
   );
+  const outcomeRightAxisMin = computeCenteredPercentAxisMin(
+    page.data?.outcome_trend?.series,
+    "success_rate_pct",
+  );
   const queueDeltaSeconds = computeSeriesDelta(
     page.data?.duration_trend?.series,
     "queue_avg_s",
@@ -121,6 +125,7 @@ export default function BuildTrendPage({ filters }) {
           <TrendChart
             series={page.data?.outcome_trend?.series}
             rightYFormatter={formatPercent}
+            rightYMin={outcomeRightAxisMin}
             rightYMax={100}
           />
         </Panel>
@@ -176,7 +181,7 @@ export default function BuildTrendPage({ filters }) {
 
       <Panel
         title="Build Count Rate grouped by Repo"
-        subtitle="Compare repo build-count share on GCP and IDC. Each chart keeps the top 10 repos, merges the rest into Others, ignores repo and cloud filters, and lets you drill into repo branch mix."
+        subtitle="Compare repo build-count share on GCP and IDC. Each chart merges repos below 1% into Others, then keeps the top 10 slices, ignores repo and cloud filters, and lets you drill into repo branch mix."
         loading={page.loading}
         error={page.error}
       >
@@ -251,33 +256,52 @@ export default function BuildTrendPage({ filters }) {
   );
 }
 
-function limitRepoShareItems(cloudShare, maxItems = 10) {
+function limitRepoShareItems(cloudShare, maxItems = 10, minSharePct = 1) {
   if (!cloudShare) {
     return cloudShare;
   }
 
   const items = cloudShare.items || [];
-  if (items.length <= maxItems) {
+  if (!items.length) {
     return cloudShare;
   }
 
   const totalValue = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const topItems = items.slice(0, maxItems);
-  const otherItems = items.slice(maxItems);
+  const largeItems = [];
+  const smallItems = [];
+
+  items.forEach((item) => {
+    if (Number(item.share_pct || 0) < minSharePct) {
+      smallItems.push(item);
+      return;
+    }
+    largeItems.push(item);
+  });
+
+  const topItems = largeItems.slice(0, maxItems);
+  const overflowItems = largeItems.slice(maxItems);
+  const otherItems = [...smallItems, ...overflowItems];
+
+  if (!otherItems.length && topItems.length === items.length) {
+    return cloudShare;
+  }
+
   const otherValue = otherItems.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const mergedItems = [...topItems];
+
+  if (otherValue > 0) {
+    mergedItems.push({
+      name: "Others",
+      value: otherValue,
+      share_pct: totalValue ? (otherValue * 100) / totalValue : 0,
+      branches: [],
+      interactive: false,
+    });
+  }
 
   return {
     ...cloudShare,
-    items: [
-      ...topItems,
-      {
-        name: "Others",
-        value: otherValue,
-        share_pct: totalValue ? (otherValue * 100) / totalValue : 0,
-        branches: [],
-        interactive: false,
-      },
-    ],
+    items: mergedItems,
   };
 }
 
@@ -289,6 +313,26 @@ function computeSeriesDelta(series, key) {
   const current = Number(target.points[target.points.length - 1][1] || 0);
   const previous = Number(target.points[target.points.length - 2][1] || 0);
   return current - previous;
+}
+
+function computeCenteredPercentAxisMin(series, key, fixedMax = 100) {
+  const target = series?.find((item) => item.key === key);
+  const values =
+    target?.points
+      ?.map((point) => Number(point[1]))
+      .filter((value) => Number.isFinite(value)) || [];
+
+  if (!values.length) {
+    return 0;
+  }
+
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const minValue = Math.min(...values);
+  const centeredMin = average * 2 - fixedMax;
+  const visibilityPadding = Math.max(Math.min((fixedMax - minValue) * 0.08, 3), 1);
+  const maxVisibleMin = Math.max(0, minValue - visibilityPadding);
+
+  return Number(Math.max(0, Math.min(centeredMin, maxVisibleMin)).toFixed(2));
 }
 
 function buildSelectedJobTrendSubtitle(jobName) {

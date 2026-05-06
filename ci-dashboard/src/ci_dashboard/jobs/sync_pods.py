@@ -712,6 +712,8 @@ def _load_lifecycle_aggregates(
 ) -> list[dict[str, Any]]:
     if not pods:
         return []
+    if len(pods) == 1:
+        return _load_single_lifecycle_aggregate(connection, pods[0])
 
     requested_pods_sql, params = _build_requested_pods_relation(pods)
     statement = text(
@@ -750,6 +752,54 @@ def _load_lifecycle_aggregates(
         """
     )
     rows = connection.execute(statement, params).mappings()
+    return [dict(row) for row in rows]
+
+
+def _load_single_lifecycle_aggregate(
+    connection: Connection,
+    pod: tuple[str, str | None, str | None, str | None],
+) -> list[dict[str, Any]]:
+    source_project, namespace_name, pod_uid, pod_name = pod
+    statement = text(
+        f"""
+        SELECT
+          events.source_project,
+          events.cluster_name,
+          events.location,
+          events.namespace_name,
+          events.pod_name,
+          events.pod_uid,
+          MIN(CASE WHEN events.event_reason = 'Scheduled' THEN events.event_timestamp END) AS scheduled_at,
+          MIN(CASE WHEN events.event_reason = 'Pulling' THEN events.event_timestamp END) AS first_pulling_at,
+          MIN(CASE WHEN events.event_reason = 'Pulled' THEN events.event_timestamp END) AS first_pulled_at,
+          MIN(CASE WHEN events.event_reason = 'Created' THEN events.event_timestamp END) AS first_created_at,
+          MIN(CASE WHEN events.event_reason = 'Started' THEN events.event_timestamp END) AS first_started_at,
+          MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
+          SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
+          MAX(events.event_timestamp) AS last_event_at
+        FROM ci_l1_pod_events AS events
+        WHERE events.source_project = :source_project
+          AND {_null_safe_equals_sql('events.namespace_name', ':namespace_name', connection.dialect.name)}
+          AND {_null_safe_equals_sql('events.pod_uid', ':pod_uid', connection.dialect.name)}
+          AND {_null_safe_equals_sql('events.pod_name', ':pod_name', connection.dialect.name)}
+        GROUP BY
+          events.source_project,
+          events.cluster_name,
+          events.location,
+          events.namespace_name,
+          events.pod_name,
+          events.pod_uid
+        """
+    )
+    rows = connection.execute(
+        statement,
+        {
+            "source_project": source_project,
+            "namespace_name": namespace_name,
+            "pod_uid": pod_uid,
+            "pod_name": pod_name,
+        },
+    ).mappings()
     return [dict(row) for row in rows]
 
 

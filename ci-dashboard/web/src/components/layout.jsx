@@ -23,15 +23,15 @@ export function DashboardLayout({
         <nav className="sidebar-nav" aria-label="Primary">
           <NavItem to="/" label="Overview" caption="Signal at a glance" />
           <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
+          <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
+          <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
           {showRuntimeInsights && (
             <NavItem
               to="/runtime-insights"
-              label="Runtime Insights"
+              label="CI details insight"
               caption="Pod and Jenkins diagnosis"
             />
           )}
-          <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
-          <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
         </nav>
 
         <div className="sidebar-note">

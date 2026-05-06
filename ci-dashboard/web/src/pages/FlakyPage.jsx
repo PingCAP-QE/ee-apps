@@ -298,6 +298,7 @@ export default function FlakyPage({ filters }) {
             <TrendChart
               series={weeklyFlakyTrend.data?.series}
               rightYFormatter={formatPercent}
+              rightYMax={100}
               compactY
               height={208}
             />
@@ -328,6 +329,7 @@ export default function FlakyPage({ filters }) {
             <TrendChart
               series={page.data?.issue_filtered_weekly_trend?.series}
               yFormatter={formatPercent}
+              yMax={100}
               compactY
               height={188}
             />

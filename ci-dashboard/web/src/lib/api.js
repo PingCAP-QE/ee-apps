@@ -228,6 +228,24 @@ export function formatSeconds(value) {
   return `${Math.round(seconds)}s`;
 }
 
+export function formatBrowserDateTime(value) {
+  if (!value) {
+    return "";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(parsed);
+}
+
 export function formatDelta(current, previous, suffix = "") {
   const delta = Number(current || 0) - Number(previous || 0);
   const sign = delta > 0 ? "+" : "";

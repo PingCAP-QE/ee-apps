@@ -154,9 +154,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<OverviewPage filters={filters} />} />
         <Route path={CI_STATUS_PATH} element={<BuildTrendPage filters={filters} />} />
+        <Route path="/flaky" element={<FlakyPage filters={filters} />} />
         <Route path={MIGRATE_STATUS_PATH} element={<MigrateStatusPage filters={filters} />} />
         <Route path={RUNTIME_INSIGHTS_PATH} element={runtimeInsightsRoute} />
-        <Route path="/flaky" element={<FlakyPage filters={filters} />} />
       </Routes>
     </DashboardLayout>
   );

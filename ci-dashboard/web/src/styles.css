@@ -653,6 +653,7 @@ select {
 .panel {
   display: grid;
   gap: 0.9rem;
+  align-content: start;
   padding: 1rem 1.05rem 1.1rem;
   border-radius: 28px;
   min-width: 0;
@@ -687,6 +688,8 @@ select {
 }
 
 .panel__body {
+  display: grid;
+  align-content: start;
   min-width: 0;
 }
 
@@ -747,6 +750,7 @@ select {
 .period-grid {
   display: grid;
   gap: 0.85rem;
+  align-content: start;
 }
 
 .donut-grid {
@@ -1206,6 +1210,7 @@ select {
 .share-bars {
   display: grid;
   gap: 0.95rem;
+  align-content: start;
 }
 
 .share-bars__group {
@@ -1233,6 +1238,7 @@ select {
 .ranking-list {
   display: grid;
   gap: 0.85rem;
+  align-content: start;
 }
 
 .ranking-list__item {
@@ -1244,7 +1250,7 @@ select {
   display: grid;
   grid-template-columns: 2.1rem minmax(0, 1fr);
   gap: 0.75rem;
-  align-items: center;
+  align-items: start;
 }
 
 .ranking-list__rank {
@@ -1262,7 +1268,12 @@ select {
 .ranking-list__title {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 0.65rem;
+}
+
+.ranking-list__title > :last-child:empty {
+  display: none;
 }
 
 .ranking-list__link {
@@ -1279,10 +1290,37 @@ select {
 
 .ranking-list__meta {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 0.75rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.build-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.build-link-list__link {
+  font-weight: 600;
+}
+
+.runtime-image-url {
+  display: block;
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.runtime-meta-summary {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .freshness-strip {

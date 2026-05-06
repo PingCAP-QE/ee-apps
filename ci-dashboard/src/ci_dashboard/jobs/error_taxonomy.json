@@ -6,6 +6,54 @@
   },
   "rules": [
     {
+      "name": "others_superseded_by_prow_newer_build",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "build_field_patterns": {
+        "prow_state": [
+          "^aborted$"
+        ],
+        "prow_status_description": [
+          "^Aborted as the newer version of this job is running\\.$"
+        ],
+        "has_newer_pr_job_version": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
+      "name": "others_superseded_by_trigger_plugin_newer_sha",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "build_field_patterns": {
+        "prow_state": [
+          "^aborted$"
+        ],
+        "prow_status_description": [
+          "^Aborted by trigger plugin\\.$"
+        ],
+        "has_newer_pr_job_version_with_different_sha": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
+      "name": "others_superseded_by_admin_abort_newer_sha",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "text_patterns": [
+        "^Aborted by [^\\r\\n]+"
+      ],
+      "build_field_patterns": {
+        "prow_state": [
+          "^(aborted)?$"
+        ],
+        "has_newer_pr_job_version_with_different_sha": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
       "name": "others_abort_by_admin",
       "l1": "OTHERS",
       "l2": "ABORT_BY_ADMIN",
@@ -68,6 +116,20 @@
         "run test \\[[^\\]]+\\] err:",
         "but got\\(",
         "diff:"
+      ]
+    },
+    {
+      "name": "unit_format_check_nogo_failure",
+      "l1": "UT",
+      "l2": "FORMAT_CHECK",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|/)pull_build_next_gen$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_build_next_gen($|_)"
+      ],
+      "text_patterns": [
+        "Validating nogo output for //[^\\r\\n]+ failed"
       ]
     },
     {
@@ -179,6 +241,7 @@
       "l2": "COMPILE",
       "text_patterns": [
         "\\.go:[0-9]+:[0-9]+: undefined:",
+        "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
         "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
         "\\.go:[0-9]+:[0-9]+: .* does not implement .*",
         "\\.go:[0-9]+:[0-9]+: too many arguments in call to",
@@ -221,6 +284,8 @@
         "jenkins-pipeline-cache//io\\.jenkins\\.plugins\\.pipeline\\.cache",
         "CacheStep\\$CacheStepExecution\\.start\\(CacheStep\\.java",
         "io\\.jenkins\\.plugins\\.pipeline\\.cache\\.agent\\.RestoreCallable\\.invoke",
+        "hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)[\\s\\S]*Caused: java\\.io\\.IOException: Failed to extract input stream",
+        "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)",
         "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*jenkins-pipeline-cache",
         "org\\.apache\\.http\\.ConnectionClosedException: Premature end of Content-Length delimited message body[\\s\\S]*jenkins-pipeline-cache"
       ]
@@ -235,6 +300,17 @@
         "okhttp3\\.internal\\.ws\\.RealWebSocket",
         "java\\.io\\.EOFException[\\s\\S]*okhttp3\\.internal\\.ws",
         "ERROR: Process exited immediately after creation\\.[\\s\\S]*websocket"
+      ]
+    },
+    {
+      "name": "infra_git_checkout_failure",
+      "l1": "INFRA",
+      "l2": "GIT",
+      "text_patterns": [
+        "ERROR: Error cloning remote repo 'origin'",
+        "hudson\\.plugins\\.git\\.GitException: Command \"git fetch [^\"]+\" returned status code 128",
+        "fatal: unable to access 'https://github\\.com/[^']+': The requested URL returned error: 5[0-9]{2}",
+        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}"
       ]
     },
     {
@@ -323,6 +399,10 @@
       "l1": "BUILD",
       "l2": "DEPENDENCY",
       "text_patterns": [
+        "go: updates to go\\.mod needed; to update it:",
+        "compilepkg: missing strict dependencies:",
+        "No dependencies were provided\\.",
+        "Check that imports in Go sources match importpath attributes in deps\\.",
         "no required module provides package",
         "cannot find module",
         "No matching distribution found",

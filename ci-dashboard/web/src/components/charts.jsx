@@ -48,6 +48,7 @@ const SERIES_COLORS = {
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",
   scheduling_wait_avg_s: "#bc6c25",
+  final_scheduling_failure_count: "#d1495b",
   scheduling_failure_rate_pct: "#d1495b",
   pull_image_avg_s: "#0f7c82",
   pull_image_success_rate_pct: "#d1495b",
@@ -195,6 +196,8 @@ export function TrendChart({
   const rightSeries = series.filter((item) => item.axis === "right");
   const leftLineSeries = leftSeries.filter((item) => item.type !== "bar");
   const leftBarSeries = leftSeries.filter((item) => item.type === "bar");
+  const leftAxisIsPercent = yFormatter === formatPercent;
+  const rightAxisIsPercent = rightYFormatter === formatPercent;
   const leftLineValues = leftLineSeries.flatMap((item) =>
     labels
       .map((label) => pointMaps.get(item.key)?.get(label))
@@ -216,7 +219,7 @@ export function TrendChart({
       .map((label) => pointMaps.get(item.key)?.get(label))
       .filter((value) => value != null),
   );
-  const rawLeftMaxValue = yMax ?? Math.max(...leftValues, 1);
+  const rawLeftMaxValue = yMax ?? (leftAxisIsPercent ? 100 : Math.max(...leftValues, 1));
   let leftMaxValue = rawLeftMaxValue;
   let leftTickValues = [0, leftMaxValue * 0.25, leftMaxValue * 0.5, leftMaxValue * 0.75, leftMaxValue];
   if (yTickMode === "thousands-rounded") {
@@ -229,7 +232,7 @@ export function TrendChart({
   const { min: resolvedRightYMin, max: resolvedRightYMax } = resolveAxisDomain({
     values: rightValues,
     explicitMin: rightYMin,
-    explicitMax: rightYMax,
+    explicitMax: rightYMax ?? (rightAxisIsPercent ? 100 : null),
     autoPad: rightYAutoPad,
     padRatio: rightYPadRatio,
   });

@@ -143,6 +143,58 @@ def test_rule_engine_prefers_ghpr_check2_bazel_test_failure_over_network_noise()
     assert classification.source == "rule:unit_bazel_test_failure"
 
 
+def test_rule_engine_classifies_ghpr_check2_nogo_failure_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Validating nogo output for //pkg/statistics:statistics failed\n"
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pkg/statistics/BUILD.bazel:3:11: "
+            "GoCompilePkg pkg/statistics/statistics.a failed\n"
+            "script returned exit code 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2645/console",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:unit_format_check_nogo_failure"
+
+
+def test_rule_engine_classifies_pull_build_next_gen_nogo_failure_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pull_build_next_gen/tidb/"
+            "pkg/executor/BUILD.bazel:3:11: Validating nogo output for "
+            "//pkg/executor:executor failed: (Exit 1): builder failed\n"
+            "nogo: errors found by nogo during build-time code analysis:\n"
+            "pkg/executor/adapter.go:1315:14: confusing-results: unnamed results of "
+            "the same type may be confusing, consider using named results (revive)\n"
+            "make: *** [Makefile:744: bazel_build] Error 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/1990/console"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:unit_format_check_nogo_failure"
+
+
 def test_rule_engine_prefers_code_conflict_over_pipeline_config_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -578,6 +630,28 @@ def test_rule_engine_prefers_jenkins_cache_over_groovy_and_remoting_noise() -> N
     assert classification.source == "rule:infra_jenkins_cache"
 
 
+def test_rule_engine_classifies_read_from_tar_extract_stream_failure_as_jenkins_cache() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "org.jenkinsci.plugins.workflow.actions.ErrorAction$ErrorId: 42\n"
+            "at hudson.FilePath.readFromTar(FilePath.java:3111)\n"
+            "Caused: java.io.IOException: Failed to extract input stream\n"
+            "at hudson.FilePath.readFromTar(FilePath.java:3121)\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_mysql_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_mysql_test/2627/console",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS_CACHE"
+    assert classification.source == "rule:infra_jenkins_cache"
+
+
 def test_rule_engine_prefers_websocket_network_error_over_jenkins_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -604,6 +678,36 @@ def test_rule_engine_prefers_websocket_network_error_over_jenkins_noise() -> Non
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "NETWORK"
     assert classification.source == "rule:infra_network_websocket"
+
+
+def test_rule_engine_classifies_jenkins_git_http_500_as_infra_git() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: Error cloning remote repo 'origin'\n"
+            "hudson.plugins.git.GitException: Command \"git fetch --tags --force --progress "
+            "--depth=1 -- https://github.com/PingCAP-QE/ci.git "
+            "+refs/heads/*:refs/remotes/origin/*\" returned status code 128:\n"
+            "stdout:\n"
+            "stderr: error: RPC failed; HTTP 500 curl 22 The requested URL returned error: 500\n"
+            "fatal: expected flush after ref listing\n"
+            "ERROR: Maximum checkout retry attempts reached, aborting\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_mysql_integration_light",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_mysql_integration_light/1867/console"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
 
 
 def test_rule_engine_prefers_go_compile_error_over_jenkins_remoting_warning() -> None:
@@ -634,6 +738,92 @@ def test_rule_engine_prefers_go_compile_error_over_jenkins_remoting_warning() ->
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "COMPILE"
     assert classification.source == "rule:build_go_compile_failure"
+
+
+def test_rule_engine_matches_go_missing_field_compile_error_shape() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "CGO_ENABLED=1 GO111MODULE=on go build -o 'bin/tidb-server' ./cmd/tidb-server\n"
+            "# github.com/pingcap/tidb/pkg/sessionctx/stmtctx\n"
+            "pkg/sessionctx/stmtctx/stmtctx.go:670:5: "
+            "sc.AlternativeLogicalPlanPreferCorrelate undefined "
+            "(type *StatementContext has no field or method AlternativeLogicalPlanPreferCorrelate)\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test/1768/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_go_compile_failure"
+
+
+def test_rule_engine_matches_go_mod_tidy_dependency_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "CGO_ENABLED=1 GO111MODULE=on go build -tags codes,nextgen "
+            "-o 'bin/tidb-server' ./cmd/tidb-server\n"
+            "go: updates to go.mod needed; to update it:\n"
+            "\tgo mod tidy\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/1511/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pull_build_next_gen/tidb/"
+            "pkg/sessionctx/stmtctx/BUILD.bazel:38:8: "
+            "GoCompilePkg pkg/sessionctx/stmtctx/importer.recompile1498.a failed\n"
+            "compilepkg: missing strict dependencies:\n"
+            "\t/home/jenkins/.../pkg/executor/importer/import.go: import of "
+            "\"github.com/pingcap/tidb/pkg/util/timeutil\"\n"
+            "No dependencies were provided.\n"
+            "Check that imports in Go sources match importpath attributes in deps.\n"
+            "make: *** [Makefile:744: bazel_build] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2012/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
 
 
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
@@ -787,6 +977,123 @@ def test_rule_engine_prefers_admin_abort_over_downstream_noise() -> None:
         build={
             "job_name": "pingcap/tidb/ghpr_check2",
             "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2153/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "ABORT_BY_ADMIN"
+    assert classification.source == "rule:others_abort_by_admin"
+
+
+def test_rule_engine_prefers_superseded_abort_metadata_over_log_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WorkflowScript: 42: unexpected token: foo\n"
+            "Aborted by Flare Zuo\n"
+            "script returned exit code 143\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2598/",
+            "prow_state": "aborted",
+            "prow_status_description": "Aborted as the newer version of this job is running.",
+            "has_newer_pr_job_version": "1",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "SUPERSEDED_BY_NEWER_BUILD"
+    assert classification.source == "rule:others_superseded_by_prow_newer_build"
+
+
+def test_rule_engine_classifies_trigger_plugin_abort_with_newer_sha() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text="",
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2641/",
+            "prow_state": "aborted",
+            "prow_status_description": "Aborted by trigger plugin.",
+            "has_newer_pr_job_version_with_different_sha": "1",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "SUPERSEDED_BY_NEWER_BUILD"
+    assert classification.source == "rule:others_superseded_by_trigger_plugin_newer_sha"
+
+
+def test_rule_engine_classifies_generic_admin_abort_with_newer_sha_evidence() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Aborted by Flare Zuo\n"
+            "Sending interrupt signal to process\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2630/",
+            "prow_state": "aborted",
+            "prow_status_description": "Jenkins job aborted.",
+            "has_newer_pr_job_version_with_different_sha": "1",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "SUPERSEDED_BY_NEWER_BUILD"
+    assert classification.source == "rule:others_superseded_by_admin_abort_newer_sha"
+
+
+def test_rule_engine_keeps_failed_prow_admin_abort_as_admin_even_with_newer_sha() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Aborted by Flare Zuo\n"
+            "Sending interrupt signal to process\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2669/",
+            "prow_state": "failure",
+            "prow_status_description": "Jenkins job failed.",
+            "has_newer_pr_job_version_with_different_sha": "1",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "ABORT_BY_ADMIN"
+    assert classification.source == "rule:others_abort_by_admin"
+
+
+def test_rule_engine_does_not_call_admin_abort_superseded_without_newer_build_evidence() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Aborted by Flare Zuo\n"
+            "script returned exit code 143\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2598/",
+            "prow_state": "aborted",
+            "prow_status_description": "Aborted as the newer version of this job is running.",
+            "has_newer_pr_job_version": "0",
         },
     )
 

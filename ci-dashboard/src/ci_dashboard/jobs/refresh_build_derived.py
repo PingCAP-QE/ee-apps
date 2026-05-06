@@ -1192,7 +1192,7 @@ def _case_impact_query(
         JOIN problem_case_runs p
           ON p.flaky = 1
          AND p.repo = b.repo_full_name
-         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
+         AND p.normalized_build_key = b.normalized_build_url
          AND p.report_time BETWEEN b.start_time AND b.start_time + INTERVAL 24 HOUR
         {where_clause}
         ORDER BY b.id
@@ -1245,7 +1245,7 @@ def _case_match_query(connection: Connection, impacted_build_ids: list[int]) -> 
         JOIN problem_case_runs p
           ON p.flaky = 1
          AND p.repo = b.repo_full_name
-         AND {_mysql_normalized_build_url_sql('p.build_url')} = b.normalized_build_url
+         AND p.normalized_build_key = b.normalized_build_url
          AND p.report_time BETWEEN b.start_time AND b.start_time + INTERVAL 24 HOUR
         WHERE {build_filter}
         """

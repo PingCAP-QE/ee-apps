@@ -23,12 +23,14 @@ class CompiledRule:
     text_patterns: tuple[re.Pattern[str], ...]
     job_name_patterns: tuple[re.Pattern[str], ...]
     url_patterns: tuple[re.Pattern[str], ...]
+    build_field_patterns: Mapping[str, tuple[re.Pattern[str], ...]]
 
-    def matches(self, *, text: str, job_name: str, url: str) -> bool:
+    def matches(self, *, text: str, job_name: str, url: str, build: Mapping[str, Any]) -> bool:
         return (
             _matches_any(self.text_patterns, text)
             and _matches_any(self.job_name_patterns, job_name)
             and _matches_any(self.url_patterns, url)
+            and _matches_build_fields(self.build_field_patterns, build)
         )
 
 
@@ -77,8 +79,9 @@ class RuleEngine:
     ) -> ErrorClassification | None:
         job_name = str((build or {}).get("job_name") or "")
         url = str((build or {}).get("url") or "")
+        build_fields = build or {}
         for rule in self._taxonomy.rules:
-            if rule.matches(text=log_text, job_name=job_name, url=url):
+            if rule.matches(text=log_text, job_name=job_name, url=url, build=build_fields):
                 return ErrorClassification(
                     l1_category=rule.l1_category,
                     l2_subcategory=rule.l2_subcategory,
@@ -121,6 +124,10 @@ def _compile_rule(raw_rule: Mapping[str, Any], *, index: int) -> CompiledRule:
             field_name=f"{name}.job_name_patterns",
         ),
         url_patterns=_compile_patterns(raw_rule.get("url_patterns"), field_name=f"{name}.url_patterns"),
+        build_field_patterns=_compile_build_field_patterns(
+            raw_rule.get("build_field_patterns"),
+            field_name=f"{name}.build_field_patterns",
+        ),
     )
 
 
@@ -142,6 +149,34 @@ def _matches_any(patterns: tuple[re.Pattern[str], ...], value: str) -> bool:
     if not patterns:
         return True
     return any(pattern.search(value) for pattern in patterns)
+
+
+def _compile_build_field_patterns(
+    raw_patterns: Any,
+    *,
+    field_name: str,
+) -> Mapping[str, tuple[re.Pattern[str], ...]]:
+    if raw_patterns is None:
+        return {}
+    if not isinstance(raw_patterns, Mapping):
+        raise ValueError(f"{field_name} must be an object of field names to regex string lists")
+    compiled: dict[str, tuple[re.Pattern[str], ...]] = {}
+    for raw_field, raw_field_patterns in raw_patterns.items():
+        field = str(raw_field or "").strip()
+        if not field:
+            raise ValueError(f"{field_name} contains an empty field name")
+        compiled[field] = _compile_patterns(raw_field_patterns, field_name=f"{field_name}.{field}")
+    return compiled
+
+
+def _matches_build_fields(
+    field_patterns: Mapping[str, tuple[re.Pattern[str], ...]],
+    build: Mapping[str, Any],
+) -> bool:
+    for field, patterns in field_patterns.items():
+        if not _matches_any(patterns, str(build.get(field) or "")):
+            return False
+    return True
 
 
 def _normalize_category(value: Any, *, field_name: str) -> str:

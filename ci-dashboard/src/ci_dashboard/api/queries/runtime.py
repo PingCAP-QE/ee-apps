@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
@@ -10,6 +11,7 @@ from ci_dashboard.api.queries.base import (
     CommonFilters,
     bucket_expr,
     build_common_where,
+    build_multi_value_clause,
     builds_table_expr,
     failure_like_expr,
     filter_complete_week_rows,
@@ -43,6 +45,7 @@ def get_runtime_summary(engine: Engine, filters: CommonFilters) -> dict[str, Any
                 f"""
                 {cte}
                 SELECT
+                  COUNT(build_scope.build_id) AS total_build_count,
                   COUNT(pod_build_rows.build_id) AS linked_build_count,
                   AVG(pod_build_rows.scheduling_wait_s) AS avg_scheduling_wait_s,
                   SUM(CASE WHEN pod_build_rows.final_scheduling_failure_hit = 1 THEN 1 ELSE 0 END)
@@ -50,13 +53,14 @@ def get_runtime_summary(engine: Engine, filters: CommonFilters) -> dict[str, Any
                   AVG(pod_build_rows.pull_image_s) AS avg_pull_image_s,
                   SUM(CASE WHEN pod_build_rows.image_pull_failure_hit = 0
                              AND (pod_build_rows.pull_attempted = 1 OR pod_build_rows.image_pull_failure_hit = 1)
-                           THEN 1 ELSE 0 END) * 100.0
+                          THEN 1 ELSE 0 END) * 100.0
                     / NULLIF(SUM(CASE WHEN pod_build_rows.pull_attempted = 1 OR pod_build_rows.image_pull_failure_hit = 1 THEN 1 ELSE 0 END), 0)
                     AS pull_image_success_rate_pct,
                   SUM(CASE WHEN pod_build_rows.scheduling_wait_s IS NOT NULL THEN 1 ELSE 0 END)
                     AS valid_scheduling_sample_count,
                   SUM(CASE WHEN pod_build_rows.pull_image_s IS NOT NULL THEN 1 ELSE 0 END)
-                    AS valid_pull_image_sample_count
+                    AS valid_pull_image_sample_count,
+                  COALESCE(SUM(pod_build_rows.linked_pod_count), 0) AS linked_pod_row_count
                 FROM build_scope
                 LEFT JOIN pod_build_rows
                   ON pod_build_rows.build_id = build_scope.build_id
@@ -64,19 +68,25 @@ def get_runtime_summary(engine: Engine, filters: CommonFilters) -> dict[str, Any
             ),
             params,
         ).mappings().one()
-        coverage = _get_pod_linkage_coverage(connection, filters)
+    total_build_count = int(row["total_build_count"] or 0)
+    linked_build_count = int(row["linked_build_count"] or 0)
 
     return {
         "avg_scheduling_wait_s": _round_or_none(row["avg_scheduling_wait_s"]),
         "final_scheduling_failure_count": int(row["final_scheduling_failure_count"] or 0),
         "avg_pull_image_s": _round_or_zero(row["avg_pull_image_s"]),
         "pull_image_success_rate_pct": _round_or_zero(row["pull_image_success_rate_pct"], digits=1),
-        "linked_build_count": int(row["linked_build_count"] or 0),
+        "linked_build_count": linked_build_count,
         "valid_scheduling_sample_count": int(row["valid_scheduling_sample_count"] or 0),
         "valid_pull_image_sample_count": int(row["valid_pull_image_sample_count"] or 0),
         "scheduling_wait_supported": capabilities["scheduling_wait_supported"],
         "scheduling_wait_source_column": capabilities["scheduling_wait_source_column"],
-        **coverage,
+        "total_build_count": total_build_count,
+        "builds_with_pod_count": linked_build_count,
+        "linked_pod_row_count": int(row["linked_pod_row_count"] or 0),
+        "pod_linkage_coverage_pct": round((linked_build_count * 100.0 / total_build_count), 1)
+        if total_build_count
+        else 0,
         "meta": filters.meta(),
     }
 
@@ -154,7 +164,7 @@ def get_scheduling_trend(engine: Engine, filters: CommonFilters) -> dict[str, An
 def get_scheduling_failure_jobs(engine: Engine, filters: CommonFilters, *, limit: int = 10) -> dict[str, Any]:
     with engine.begin() as connection:
         cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
-        params["limit"] = limit
+        params.update({"limit": limit, "min_final_failures": 3})
         rows = connection.execute(
             text(
                 f"""
@@ -168,7 +178,7 @@ def get_scheduling_failure_jobs(engine: Engine, filters: CommonFilters, *, limit
                     AS final_failure_count
                 FROM pod_build_rows
                 GROUP BY name
-                HAVING final_failure_count > 0
+                HAVING final_failure_count > :min_final_failures
                 ORDER BY value DESC, linked_build_count DESC
                 LIMIT :limit
                 """
@@ -183,13 +193,20 @@ def get_scheduling_failure_jobs(engine: Engine, filters: CommonFilters, *, limit
             )
             for row in rows
         ]
+        recent_failure_builds = _get_recent_scheduling_failure_builds(
+            connection,
+            filters,
+            job_names=tuple(str(item["name"]) for item in items),
+        )
+        for item in items:
+            item["recent_failure_builds"] = recent_failure_builds.get(str(item["name"]), [])
     return {"items": items, "meta": filters.meta()}
 
 
 def get_scheduling_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit: int = 10) -> dict[str, Any]:
     with engine.begin() as connection:
         cte, params, capabilities = _build_pod_build_rows_cte(connection, filters)
-        params.update({"limit": limit, "min_samples": 3})
+        params.update({"limit": limit, "min_samples": 3, "min_wait_seconds": 60})
         rows = connection.execute(
             text(
                 f"""
@@ -205,6 +222,7 @@ def get_scheduling_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
                 WHERE scheduling_wait_s IS NOT NULL
                 GROUP BY name
                 HAVING valid_sample_count >= :min_samples
+                   AND value > :min_wait_seconds
                 ORDER BY value DESC
                 LIMIT :limit
                 """
@@ -332,26 +350,68 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
     with engine.begin() as connection:
         cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
         params.update({"limit": limit, "min_samples": 3})
-        rows = connection.execute(
-            text(
-                f"""
-                {cte}
-                SELECT
-                  COALESCE(job_name, '(unknown job)') AS name,
-                  AVG(pull_image_s) AS value,
-                  COUNT(*) AS linked_build_count,
-                  MIN(cloud_phase) AS link_cloud_phase,
-                  SUM(CASE WHEN pull_image_s IS NOT NULL THEN 1 ELSE 0 END) AS valid_sample_count
-                FROM pod_build_rows
-                WHERE pull_image_s IS NOT NULL
-                GROUP BY name
-                HAVING valid_sample_count >= :min_samples
-                ORDER BY value DESC
-                LIMIT :limit
-                """
-            ),
-            params,
-        ).mappings()
+        rows = list(
+            connection.execute(
+                text(
+                    f"""
+                    {cte},
+                    ranked_pulls AS (
+                      SELECT
+                        COALESCE(job_name, '(unknown job)') AS name,
+                        source_project,
+                        namespace_name,
+                        pod_uid,
+                        pod_name,
+                        first_pulled_at,
+                        cloud_phase,
+                        build_id,
+                        pull_image_s,
+                        ROW_NUMBER() OVER (
+                          PARTITION BY COALESCE(job_name, '(unknown job)')
+                          ORDER BY
+                            pull_image_s DESC,
+                            CASE WHEN first_pulled_at IS NULL THEN 1 ELSE 0 END ASC,
+                            first_pulled_at DESC,
+                            build_id DESC
+                        ) AS pull_rank
+                      FROM pod_join_rows
+                      WHERE pull_image_s IS NOT NULL
+                        AND first_pulled_at IS NOT NULL
+                    ),
+                    selected_jobs AS (
+                      SELECT
+                        name,
+                        AVG(pull_image_s) AS value,
+                        COUNT(*) AS linked_build_count,
+                        MIN(cloud_phase) AS link_cloud_phase,
+                        COUNT(*) AS valid_sample_count
+                      FROM ranked_pulls
+                      GROUP BY name
+                      HAVING valid_sample_count >= :min_samples
+                      ORDER BY value DESC
+                      LIMIT :limit
+                    )
+                    SELECT
+                      selected_jobs.name,
+                      selected_jobs.value,
+                      selected_jobs.linked_build_count,
+                      selected_jobs.link_cloud_phase,
+                      selected_jobs.valid_sample_count,
+                      ranked_pulls.source_project,
+                      ranked_pulls.namespace_name,
+                      ranked_pulls.pod_uid,
+                      ranked_pulls.pod_name,
+                      ranked_pulls.first_pulled_at
+                    FROM selected_jobs
+                    LEFT JOIN ranked_pulls
+                      ON ranked_pulls.name = selected_jobs.name
+                     AND ranked_pulls.pull_rank = 1
+                    ORDER BY selected_jobs.value DESC
+                    """
+                ),
+                params,
+            ).mappings()
+        )
         items = [
             _job_ranking_item(
                 row,
@@ -360,6 +420,13 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
             )
             for row in rows
         ]
+        event_messages = _load_first_pulled_event_messages(connection, rows)
+        for index, (item, row) in enumerate(zip(items, rows, strict=True)):
+            event_message = event_messages.get(index)
+            if event_message is None:
+                event_message = _lookup_first_pulled_event_message(connection, row)
+            parsed = _extract_pulled_image_duration(event_message)
+            item["slowest_pull_image"] = parsed[0] if parsed else None
     return {"items": items, "meta": filters.meta()}
 
 
@@ -917,7 +984,7 @@ def get_error_builds(
             ),
             params,
         ).mappings()
-        items = [_error_build_item(row) for row in rows]
+        items = [_error_build_item(row, include_completion_time=True) for row in rows]
     return {"items": items, "meta": filters.meta()}
 
 
@@ -938,6 +1005,10 @@ def _build_pod_build_rows_cte(
         job_expr=resolved_job_name,
         repo_expr="pc.repo_full_name",
     )
+    normalized_url_join_hint = "/*+ INL_JOIN(p) */" if connection.dialect.name != "sqlite" else ""
+    pod_lifecycle_by_url_table = "ci_l1_pod_lifecycle p"
+    if connection.dialect.name != "sqlite":
+        pod_lifecycle_by_url_table += " USE INDEX(idx_ci_l1_pod_lifecycle_normalized_build_url)"
     return (
         f"""
         WITH build_scope AS (
@@ -953,12 +1024,13 @@ def _build_pod_build_rows_cte(
           WHERE {where_clause}
         ),
         pod_candidates AS (
-          SELECT
+          SELECT {normalized_url_join_hint}
             b.build_id,
             b.start_time,
             b.repo_full_name,
             b.build_job_name,
             b.cloud_phase,
+            b.normalized_build_url,
             p.job_name AS pod_job_name,
             p.source_project,
             p.namespace_name,
@@ -971,9 +1043,11 @@ def _build_pod_build_rows_cte(
             p.first_pulled_at,
             p.last_failed_scheduling_at,
             p.failed_scheduling_count
-          FROM ci_l1_pod_lifecycle p
-          JOIN build_scope b
-            ON p.normalized_build_url IS NOT NULL
+          FROM build_scope b
+          JOIN {pod_lifecycle_by_url_table}
+            ON b.normalized_build_url IS NOT NULL
+           AND b.normalized_build_url <> ''
+           AND p.normalized_build_url IS NOT NULL
            AND p.normalized_build_url <> ''
            AND b.normalized_build_url = p.normalized_build_url
           UNION ALL
@@ -983,6 +1057,7 @@ def _build_pod_build_rows_cte(
             b.repo_full_name,
             b.build_job_name,
             b.cloud_phase,
+            b.normalized_build_url,
             p.job_name AS pod_job_name,
             p.source_project,
             p.namespace_name,
@@ -1009,6 +1084,7 @@ def _build_pod_build_rows_cte(
             pc.repo_full_name,
             {canonical_job_name} AS job_name,
             pc.cloud_phase,
+            pc.normalized_build_url,
             pc.source_project,
             pc.namespace_name,
             pc.pod_uid,
@@ -1053,6 +1129,7 @@ def _build_pod_build_rows_cte(
             MIN(repo_full_name) AS repo_full_name,
             MIN(job_name) AS job_name,
             MIN(cloud_phase) AS cloud_phase,
+            MIN(normalized_build_url) AS normalized_build_url,
             MIN(COALESCE(pod_created_at, scheduled_at, last_failed_scheduling_at)) AS scheduling_bucket_time,
             MIN(COALESCE(first_pulling_at, first_pulled_at)) AS pull_image_bucket_time,
             COUNT(*) AS linked_pod_count,
@@ -1094,34 +1171,161 @@ def _image_pull_reason_where_clause(filters: CommonFilters, params: dict[str, An
     return " AND ".join(conditions)
 
 
-def _get_pod_linkage_coverage(connection: Connection, filters: CommonFilters) -> dict[str, Any]:
-    cte, cte_params, _capabilities = _build_pod_build_rows_cte(connection, filters)
-    row = connection.execute(
+def _get_recent_scheduling_failure_builds(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    job_names: tuple[str, ...],
+    per_job_limit: int = 10,
+) -> dict[str, list[dict[str, Any]]]:
+    if not job_names:
+        return {}
+
+    cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
+    job_clause, job_params = build_multi_value_clause(
+        "COALESCE(job_name, '(unknown job)')",
+        job_names,
+        bind_prefix="job_name",
+    )
+    params.update(job_params)
+    rows = connection.execute(
         text(
             f"""
-            {cte},
-            build_scope_count AS (
-              SELECT COUNT(*) AS total_build_count FROM build_scope
-            )
+            {cte}
             SELECT
-              build_scope_count.total_build_count,
-              COUNT(DISTINCT pod_build_rows.build_id) AS builds_with_pod_count,
-              COALESCE(SUM(pod_build_rows.linked_pod_count), 0) AS linked_pod_row_count
-            FROM build_scope_count
-            LEFT JOIN pod_build_rows ON 1=1
-            GROUP BY build_scope_count.total_build_count
+              COALESCE(job_name, '(unknown job)') AS name,
+              build_id,
+              normalized_build_url,
+              start_time
+            FROM pod_build_rows
+            WHERE final_scheduling_failure_hit = 1
+              AND {job_clause}
+            ORDER BY
+              name ASC,
+              CASE WHEN start_time IS NULL THEN 1 ELSE 0 END ASC,
+              start_time DESC,
+              build_id DESC
             """
         ),
-        cte_params,
-    ).mappings().one()
-    total = int(row["total_build_count"] or 0)
-    linked = int(row["builds_with_pod_count"] or 0)
-    return {
-        "total_build_count": total,
-        "builds_with_pod_count": linked,
-        "linked_pod_row_count": int(row["linked_pod_row_count"] or 0),
-        "pod_linkage_coverage_pct": round((linked * 100.0 / total), 1) if total else 0,
+        params,
+    ).mappings()
+
+    items_by_job: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        job_name = str(row["name"])
+        builds = items_by_job.setdefault(job_name, [])
+        if len(builds) >= per_job_limit:
+            continue
+        builds.append(_error_build_item(row))
+    return items_by_job
+
+
+def _lookup_first_pulled_event_message(connection: Connection, row: Any) -> str | None:
+    params = {
+        "source_project": row.get("source_project"),
+        "namespace_name": row.get("namespace_name"),
+        "pod_uid": row.get("pod_uid"),
+        "pod_name": row.get("pod_name"),
+        "event_timestamp": row.get("first_pulled_at"),
     }
+    dialect_name = connection.dialect.name
+    exact_event = connection.execute(
+        text(
+            f"""
+            SELECT event_message
+            FROM ci_l1_pod_events events
+            WHERE events.source_project = :source_project
+              AND {_null_safe_equals('events.namespace_name', ':namespace_name', dialect_name)}
+              AND {_null_safe_equals('events.pod_uid', ':pod_uid', dialect_name)}
+              AND {_null_safe_equals('events.pod_name', ':pod_name', dialect_name)}
+              AND events.event_timestamp = :event_timestamp
+              AND events.event_reason = 'Pulled'
+              AND COALESCE(events.event_message, '') <> ''
+            LIMIT 1
+            """
+        ),
+        params,
+    ).scalar_one_or_none()
+    if exact_event:
+        return exact_event
+
+    return connection.execute(
+        text(
+            f"""
+            SELECT event_message
+            FROM ci_l1_pod_events events
+            WHERE events.source_project = :source_project
+              AND {_null_safe_equals('events.namespace_name', ':namespace_name', dialect_name)}
+              AND {_null_safe_equals('events.pod_uid', ':pod_uid', dialect_name)}
+              AND {_null_safe_equals('events.pod_name', ':pod_name', dialect_name)}
+              AND events.event_reason = 'Pulled'
+              AND COALESCE(events.event_message, '') <> ''
+            ORDER BY events.event_timestamp ASC
+            LIMIT 1
+            """
+        ),
+        params,
+    ).scalar_one_or_none()
+
+
+def _load_first_pulled_event_messages(
+    connection: Connection,
+    rows: list[dict[str, Any]],
+) -> dict[int, str]:
+    if not rows:
+        return {}
+
+    selects: list[str] = []
+    params: dict[str, Any] = {}
+    for index, row in enumerate(rows):
+        selects.append(
+            "SELECT "
+            f":request_id_{index} AS request_id, "
+            f":source_project_{index} AS source_project, "
+            f":namespace_name_{index} AS namespace_name, "
+            f":pod_uid_{index} AS pod_uid, "
+            f":pod_name_{index} AS pod_name, "
+            f":event_timestamp_{index} AS event_timestamp"
+        )
+        params[f"request_id_{index}"] = index
+        params[f"source_project_{index}"] = row.get("source_project")
+        params[f"namespace_name_{index}"] = row.get("namespace_name")
+        params[f"pod_uid_{index}"] = row.get("pod_uid")
+        params[f"pod_name_{index}"] = row.get("pod_name")
+        params[f"event_timestamp_{index}"] = row.get("first_pulled_at")
+
+    requested_rows_sql = "\nUNION ALL\n".join(selects)
+    dialect_name = connection.dialect.name
+    query_rows = connection.execute(
+        text(
+            f"""
+            WITH requested_pulls AS (
+              {requested_rows_sql}
+            )
+            SELECT
+              requested.request_id,
+              events.event_message
+            FROM requested_pulls requested
+            JOIN ci_l1_pod_events events
+              ON events.source_project = requested.source_project
+             AND {_null_safe_equals('events.namespace_name', 'requested.namespace_name', dialect_name)}
+             AND {_null_safe_equals('events.pod_uid', 'requested.pod_uid', dialect_name)}
+             AND {_null_safe_equals('events.pod_name', 'requested.pod_name', dialect_name)}
+             AND events.event_timestamp = requested.event_timestamp
+            WHERE events.event_reason = 'Pulled'
+              AND COALESCE(events.event_message, '') <> ''
+            ORDER BY requested.request_id ASC
+            """
+        ),
+        params,
+    ).mappings()
+
+    messages: dict[int, str] = {}
+    for row in query_rows:
+        request_id = int(row["request_id"])
+        if request_id not in messages:
+            messages[request_id] = str(row["event_message"])
+    return messages
 
 
 def _effective_l1_expr(alias: str) -> str:
@@ -1158,8 +1362,43 @@ def _image_pull_failure_message_condition(alias: str) -> str:
     return " OR ".join(f"{lowered} LIKE '%{pattern}%'" for pattern in IMAGE_PULL_FAILURE_PATTERNS)
 
 
+def _null_safe_equals(left: str, right: str, dialect_name: str) -> str:
+    if dialect_name == "sqlite":
+        return f"{left} IS {right}"
+    return f"{left} <=> {right}"
+
+
 def _null_safe_join(left: str, right: str) -> str:
     return f"({left} = {right} OR ({left} IS NULL AND {right} IS NULL))"
+
+
+def _extract_image_from_event_message(message: Any) -> str | None:
+    if not isinstance(message, str):
+        return None
+    text = message.strip()
+    if not text:
+        return None
+
+    patterns = (
+        r'image\s+"([^"]+)"',
+        r"image\s+'([^']+)'",
+        r"image\s+([^\s,;]+)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _extract_pulled_image_duration(message: Any) -> tuple[str, float] | None:
+    image = _extract_image_from_event_message(message)
+    if not image or not isinstance(message, str):
+        return None
+    match = re.search(r"\s+in\s+([0-9.]+)s\b", message)
+    if not match:
+        return None
+    return image, float(match.group(1))
 
 
 def _points(rows: list[dict[str, Any]], key: str, *, digits: int = 0) -> list[list[Any]]:
@@ -1204,7 +1443,7 @@ def _job_ranking_item(row: Any, *, value_key: str, extra_keys: tuple[str, ...] =
     return item
 
 
-def _error_build_item(row: Any) -> dict[str, Any]:
+def _error_build_item(row: Any, *, include_completion_time: bool = False) -> dict[str, Any]:
     build_url = normalize_build_url(row.get("normalized_build_url")) or normalize_build_url(row.get("url"))
     build_number_from_url = _build_number_from_url(build_url)
     raw_build_number = str(row.get("build_id") or "").strip()
@@ -1215,11 +1454,14 @@ def _error_build_item(row: Any) -> dict[str, Any]:
         build_number = raw_build_number
     else:
         build_number = str(row.get("build_row_id"))
-    return {
+    item = {
         "name": build_number,
         "build_number": build_number,
         "build_url": build_url,
     }
+    if include_completion_time:
+        item["completion_time"] = _serialize_browser_datetime(row.get("completion_time"))
+    return item
 
 
 def _build_number_from_url(url: str | None) -> str | None:
@@ -1230,6 +1472,25 @@ def _build_number_from_url(url: str | None) -> str | None:
         return None
     last_segment = stripped.split("/")[-1]
     return last_segment if last_segment.isdigit() else None
+
+
+def _serialize_browser_datetime(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        normalized = value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+        return normalized.isoformat().replace("+00:00", "Z")
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+
+    normalized = parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return normalized.isoformat().replace("+00:00", "Z")
 
 
 def _round_or_zero(value: Any, *, digits: int = 0) -> int | float:
