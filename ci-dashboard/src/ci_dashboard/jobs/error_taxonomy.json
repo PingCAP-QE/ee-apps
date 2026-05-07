@@ -77,8 +77,7 @@
       "l2": "DISK_FULL",
       "text_patterns": [
         "java\\.io\\.IOException: No space left on device",
-        "No space left on device",
-        "disk quota exceeded"
+        "No space left on device"
       ]
     },
     {
@@ -99,6 +98,16 @@
         "Pod \\[Failed\\]\\[TerminationByKubelet\\] The node was low on resource: memory",
         "The node was low on resource: memory\\.[\\s\\S]*Container .* was using .* request is .* larger consumption of memory",
         "Container .* was using .* request is .* larger consumption of memory"
+      ]
+    },
+    {
+      "name": "infra_external_dependency_bazel_fetch_failure",
+      "l1": "INFRA",
+      "l2": "EXTERNAL_DEP",
+      "text_patterns": [
+        "Error in download_and_extract: java\\.io\\.IOException: Error downloading",
+        "Error computing the main repository mapping: no such package '@[^']+//': java\\.io\\.IOException: Error downloading",
+        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]*UnrecoverableHttpException GET returned (429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable)"
       ]
     },
     {
@@ -124,9 +133,15 @@
       "l2": "FORMAT_CHECK",
       "job_name_patterns": [
         "(^|/)ghpr_check2$",
+        "(^|/)ghpr_build$",
         "(^|/)pull_build_next_gen$",
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
         "(^|_)ghpr_check2($|_)",
-        "(^|_)pull_build_next_gen($|_)"
+        "(^|_)ghpr_build($|_)",
+        "(^|_)pull_build_next_gen($|_)",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)"
       ],
       "text_patterns": [
         "Validating nogo output for //[^\\r\\n]+ failed"
@@ -150,7 +165,6 @@
         "Build completed, [1-9][0-9]* test FAILED",
         "Executed [0-9]+ out of [0-9]+ test: [^\\r\\n]*fails locally",
         "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
-        "make: \\*\\*\\* \\[Makefile:[0-9]+: bazel_ci_test\\] Error [0-9]+",
         "--- FAIL: "
       ]
     },
@@ -236,6 +250,18 @@
       ]
     },
     {
+      "name": "lightning_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_lightning_integration_test$",
+        "(^|_)pull_lightning_integration_test($|_)"
+      ],
+      "text_patterns": [
+        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN"
+      ]
+    },
+    {
       "name": "build_go_compile_failure",
       "l1": "BUILD",
       "l2": "COMPILE",
@@ -246,6 +272,7 @@
         "\\.go:[0-9]+:[0-9]+: .* does not implement .*",
         "\\.go:[0-9]+:[0-9]+: too many arguments in call to",
         "\\.go:[0-9]+:[0-9]+: not enough arguments in call to",
+        "Rewrite error [^\\r\\n]+\\.go:[0-9]+:[0-9]+: expected (statement|declaration), found ",
         "plugin\\.Open\\([^\\r\\n]+\\): plugin was built with a different version of package "
       ]
     },
@@ -411,6 +438,23 @@
       ]
     },
     {
+      "name": "unit_bazel_failed_to_build",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "job_name_patterns": [
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "FAILED TO BUILD",
+        "fails to build"
+      ]
+    },
+    {
       "name": "build_packaging_failure",
       "l1": "BUILD",
       "l2": "PACKAGING",
@@ -446,7 +490,7 @@
       ],
       "text_patterns": [
         "--- FAIL:",
-        "FAIL\\s",
+        "^FAIL(?:\\s|$)",
         "test failed"
       ]
     },
@@ -462,7 +506,7 @@
       ],
       "text_patterns": [
         "--- FAIL:",
-        "FAIL\\s",
+        "^FAIL(?:\\s|$)",
         "test failed"
       ]
     }

@@ -195,6 +195,32 @@ def test_rule_engine_classifies_pull_build_next_gen_nogo_failure_as_format_check
     assert classification.source == "rule:unit_format_check_nogo_failure"
 
 
+def test_rule_engine_classifies_ghpr_build_nogo_failure_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/ghpr_build/tidb/"
+            "pkg/statistics/BUILD.bazel:64:8: Validating nogo output for "
+            "//pkg/statistics:statistics_test failed: (Exit 1): builder failed\n"
+            "nogo: errors found by nogo during build-time code analysis:\n"
+            "pkg/statistics/histogram_test.go:358:71: empty-lines: extra empty line "
+            "at the start of a block (all_revive)\n"
+            "make: *** [Makefile:744: bazel_build] Error 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_build",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2310/console",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:unit_format_check_nogo_failure"
+
+
 def test_rule_engine_prefers_code_conflict_over_pipeline_config_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -1142,3 +1168,186 @@ def test_rule_engine_returns_none_on_rule_miss() -> None:
     )
 
     assert classification is None
+
+
+def test_rule_engine_classifies_pull_unit_rewrite_error_as_build_compile() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "go: downloading github.com/pingcap/failpoint v0.0.0-20240527053858-9b3b6e34194a\n"
+            "Rewrite error /home/jenkins/agent/workspace/pingcap/tidb/release-8.5/"
+            "pull_unit_test/tidb/pkg/planner/core/find_best_task.go:2814:1: "
+            "expected statement, found '<<' (and 10 more errors)\n"
+            "make: *** [Makefile:292: failpoint-enable] Error 123\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/release-8.5/pull_unit_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "release-8.5/job/pull_unit_test/2507/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_go_compile_failure"
+
+
+def test_rule_engine_prefers_build_compile_over_bazel_unit_wrapper_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/util/etcd/source.go:31:67: undefined: rpctypes.MetadataClientSourceKey\n"
+            "pkg/util/etcd/source.go:34:22: undefined: rpctypes.MetadataClientSourceKey\n"
+            "compilepkg: error running subcommand external/go_sdk/pkg/tool/linux_amd64/compile: "
+            "exit status 2\n"
+            "//br/pkg/checkpoint:checkpoint_test FAILED TO BUILD\n"
+            "Test cases: finished with 0 passing and 0 failing out of 0 test cases\n"
+            "Executed 0 out of 530 tests: 1 fails to build and 529 were skipped.\n"
+            "make: *** [Makefile:705: bazel_ci_test] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_unit_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/3000/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_go_compile_failure"
+
+
+def test_rule_engine_classifies_pull_unit_nogo_validation_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pull_unit_test_next_gen/"
+            "tidb/pkg/inference/BUILD.bazel:3:11: Validating nogo output for "
+            "//pkg/inference:inference failed: (Exit 1): builder failed\n"
+            "pkg/inference/openai.go:139:28: unnecessary conversion (unconvert)\n"
+            "make: *** [Makefile:718: bazel_coverage_test] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_unit_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_unit_test_next_gen/1514/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:unit_format_check_nogo_failure"
+
+
+def test_rule_engine_classifies_unit_failed_to_build_without_explicit_compile_line() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "//pkg/planner/core:core_test FAILED TO BUILD\n"
+            "Test cases: finished with 5749 passing and 0 failing out of 5749 test cases\n"
+            "Executed 3 out of 528 tests: 278 tests pass, 1 fails to build and 249 were skipped.\n"
+            "make: *** [Makefile:726: bazel_coverage_test_ddlargsv1] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_unit_test_ddlv1",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_unit_test_ddlv1/853/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:unit_bazel_failed_to_build"
+
+
+def test_rule_engine_prefers_external_dependency_over_ghpr_check2_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh "
+            "bazel_pessimistictest'\n"
+            "script returned exit code 143\n"
+            "WARNING: Download from https://github.com/bazel-contrib/bazel_features/"
+            "releases/download/v1.15.0/bazel_features-v1.15.0.tar.gz failed: class "
+            "com.google.devtools.build.lib.bazel.repository.downloader."
+            "UnrecoverableHttpException GET returned 502 Bad Gateway or Proxy Error\n"
+            "ERROR: An error occurred during the fetch of repository 'bazel_features':\n"
+            "Error in download_and_extract: java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: "
+            "GET returned 502 Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@bazel_features//': java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: "
+            "GET returned 502 Bad Gateway or Proxy Error\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2523/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "EXTERNAL_DEP"
+    assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
+def test_rule_engine_does_not_treat_passed_test_names_with_fail_suffix_as_failures() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "PASSED  sessionstates.TestShowStateFail (6.4s)\n"
+            "PASSED  sessionstates.TestSQLBindingCompatibility (4.3s)\n"
+            "Finished: SUCCESS\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_unit_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/2398/",
+        },
+    )
+
+    assert classification is None
+
+
+def test_rule_engine_does_not_treat_lightning_disk_quota_grep_as_disk_full() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "+ grep -q 'disk quota exceeded' /tmp/lightning_test/lightning-disk-quota.log\n"
+            "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN "
+            "'Experiencing a wait timeout while writing to tikv'\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G08'\n"
+            "script returned exit code 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_lightning_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_lightning_integration_test/1018/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:lightning_integration_test_failure"

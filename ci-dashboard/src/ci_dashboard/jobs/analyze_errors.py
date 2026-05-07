@@ -107,6 +107,7 @@ def run_analyze_errors(
 ) -> AnalyzeErrorsSummary:
     summary = AnalyzeErrorsSummary()
     resolved_limit = limit or settings.archive.build_limit
+    pending_updates: list[dict[str, Any]] = []
 
     with engine.begin() as connection:
         candidates = list(
@@ -137,8 +138,7 @@ def run_analyze_errors(
         summary.builds_scanned += 1
         enriched_build = _enrich_build_evidence(build)
         try:
-            classified = _classify_single_build(
-                engine,
+            classification_source, classification = _classify_single_build(
                 enriched_build,
                 reader=resolved_reader,
                 rule_engine=resolved_rule_engine,
@@ -149,14 +149,32 @@ def run_analyze_errors(
             LOG.exception("failed to analyze archived Jenkins error log", extra={"build_id": build["id"]})
             continue
 
-        if classified == "rule":
+        if classification_source == "rule" and classification is not None:
+            pending_updates.append(
+                {
+                    "id": int(build["id"]),
+                    "error_l1_category": classification.l1_category,
+                    "error_l2_subcategory": classification.l2_subcategory,
+                }
+            )
             summary.builds_classified += 1
             summary.builds_rule_classified += 1
-        elif classified == "llm":
+        elif classification_source == "llm" and classification is not None:
+            pending_updates.append(
+                {
+                    "id": int(build["id"]),
+                    "error_l1_category": classification.l1_category,
+                    "error_l2_subcategory": classification.l2_subcategory,
+                }
+            )
             summary.builds_classified += 1
             summary.builds_llm_classified += 1
         else:
             summary.builds_skipped += 1
+
+    if pending_updates:
+        with engine.begin() as connection:
+            connection.execute(UPDATE_MACHINE_CLASSIFICATION, pending_updates)
 
     return summary
 
@@ -184,30 +202,20 @@ def review_error_classification(
 
 
 def _classify_single_build(
-    engine: Engine,
     build: Mapping[str, Any],
     *,
     reader: Any,
     rule_engine: RuleEngine,
     llm_classifier: LLMClassifier,
-) -> str:
+) -> tuple[str, ErrorClassification | None]:
     classification = rule_engine.classify(log_text="", build=build)
     classification_source = "rule"
     if classification is not None:
-        with engine.begin() as connection:
-            connection.execute(
-                UPDATE_MACHINE_CLASSIFICATION,
-                {
-                    "id": int(build["id"]),
-                    "error_l1_category": classification.l1_category,
-                    "error_l2_subcategory": classification.l2_subcategory,
-                },
-            )
-        return classification_source
+        return classification_source, classification
 
     object_ref = parse_gcs_uri(build.get("log_gcs_uri"))
     if object_ref is None:
-        return "skipped"
+        return "skipped", None
 
     log_text = reader.download_text(bucket=object_ref.bucket, object_name=object_ref.object_name)
     classification = rule_engine.classify(log_text=log_text, build=build)
@@ -215,16 +223,7 @@ def _classify_single_build(
         classification = llm_classifier.classify(log_text=log_text, build=build)
         classification_source = "llm"
 
-    with engine.begin() as connection:
-        connection.execute(
-            UPDATE_MACHINE_CLASSIFICATION,
-            {
-                "id": int(build["id"]),
-                "error_l1_category": classification.l1_category,
-                "error_l2_subcategory": classification.l2_subcategory,
-            },
-        )
-    return classification_source
+    return classification_source, classification
 
 
 def _enrich_build_evidence(build: Mapping[str, Any]) -> dict[str, Any]:
