@@ -62,6 +62,7 @@ DEFAULT_JENKINS_PREFIX_CACHE_SECONDS = 900
 DEFAULT_DB_BATCH_SIZE = 100
 DEFAULT_DB_RETRY_ATTEMPTS = 3
 DEFAULT_DB_RETRY_BASE_DELAY_MS = 500
+DEFAULT_DB_RETRY_MAX_DELAY_MS = 5000
 RETRYABLE_MYSQL_ERROR_CODES = frozenset({1205, 1213})
 POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
 EVENT_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
@@ -698,6 +699,10 @@ def _run_db_transaction_with_retry(
         "CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS",
         DEFAULT_DB_RETRY_BASE_DELAY_MS,
     )
+    max_delay_ms = _read_int_env(
+        "CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS",
+        DEFAULT_DB_RETRY_MAX_DELAY_MS,
+    )
     for attempt in range(1, attempts + 1):
         try:
             with engine.begin() as connection:
@@ -714,7 +719,11 @@ def _run_db_transaction_with_retry(
             )
             if on_retry is not None:
                 on_retry()
-            time.sleep((base_delay_ms / 1000.0) * (2 ** (attempt - 1)))
+            retry_delay_seconds = min(
+                (base_delay_ms / 1000.0) * (2 ** (attempt - 1)),
+                max_delay_ms / 1000.0,
+            )
+            time.sleep(retry_delay_seconds)
     raise RuntimeError("pod watcher DB retry loop exited unexpectedly")
 
 

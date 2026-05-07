@@ -631,6 +631,7 @@ def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatc
     original_upsert = watcher._upsert_pod_events
     calls = 0
     heartbeats = 0
+    sleep_calls: list[float] = []
 
     class _Orig:
         args = (1205, "Lock wait timeout exceeded; try restarting transaction")
@@ -647,7 +648,9 @@ def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatc
         heartbeats += 1
 
     monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS", "2")
-    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS", "1")
+    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS", "1000")
+    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS", "25")
+    monkeypatch.setattr(watcher.time, "sleep", sleep_calls.append)
     monkeypatch.setattr(watcher, "_upsert_pod_events", flaky_upsert)
 
     assert (
@@ -661,3 +664,4 @@ def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatc
     )
     assert calls == 2
     assert heartbeats == 2
+    assert sleep_calls == [0.025]

@@ -92,6 +92,13 @@ kubectl apply -f /tmp/ci-dashboard-pod-watcher.yaml
 kubectl -n apps rollout status deployment/ci-dashboard-pod-watcher
 ```
 
+DB persistence tuning:
+
+- `CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE` controls rows per DB write batch. Default: `100`; use a positive integer.
+- `CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS` controls retry attempts for retryable DB write errors. Default: `3`; use a positive integer.
+- `CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS` controls the first retry delay in milliseconds before exponential backoff. Default: `500`; use a positive integer.
+- `CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS` caps the exponential backoff delay in milliseconds. Default: `5000`; use a positive integer.
+
 Validation:
 
 ```bash

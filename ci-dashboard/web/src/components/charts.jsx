@@ -1332,8 +1332,11 @@ function buildAxisTicks({
 }) {
   const safeMin = Number.isFinite(min) ? min : 0;
   const safeMax = Number.isFinite(max) ? max : safeMin + 1;
+  const tickMode = ["default", "integer", "thousands-rounded"].includes(mode)
+    ? mode
+    : "default";
 
-  if (mode === "thousands-rounded") {
+  if (tickMode === "thousands-rounded") {
     const rawStep = Math.max(safeMax, 1) / segments;
     const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
     const roundedMax = step * segments;
@@ -1344,7 +1347,7 @@ function buildAxisTicks({
     };
   }
 
-  if (mode === "integer") {
+  if (tickMode === "integer") {
     const integerMin = Math.floor(safeMin);
     const integerMax = Math.ceil(safeMax);
     const span = Math.max(integerMax - integerMin, 1);
