@@ -161,9 +161,9 @@ def test_rule_engine_classifies_ghpr_check2_nogo_failure_as_format_check() -> No
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "FORMAT_CHECK"
-    assert classification.source == "rule:unit_format_check_nogo_failure"
+    assert classification.source == "rule:build_format_check_nogo_failure"
 
 
 def test_rule_engine_classifies_pull_build_next_gen_nogo_failure_as_format_check() -> None:
@@ -190,9 +190,9 @@ def test_rule_engine_classifies_pull_build_next_gen_nogo_failure_as_format_check
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "FORMAT_CHECK"
-    assert classification.source == "rule:unit_format_check_nogo_failure"
+    assert classification.source == "rule:build_format_check_nogo_failure"
 
 
 def test_rule_engine_classifies_ghpr_build_nogo_failure_as_format_check() -> None:
@@ -201,24 +201,50 @@ def test_rule_engine_classifies_ghpr_build_nogo_failure_as_format_check() -> Non
     classification = engine.classify(
         log_text=(
             "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/ghpr_build/tidb/"
-            "pkg/statistics/BUILD.bazel:64:8: Validating nogo output for "
-            "//pkg/statistics:statistics_test failed: (Exit 1): builder failed\n"
+            "pkg/executor/BUILD.bazel:3:11: Validating nogo output for "
+            "//pkg/executor:executor failed: (Exit 1): builder failed\n"
             "nogo: errors found by nogo during build-time code analysis:\n"
-            "pkg/statistics/histogram_test.go:358:71: empty-lines: extra empty line "
-            "at the start of a block (all_revive)\n"
+            "pkg/executor/adapter.go:1315:14: confusing-results: unnamed results of "
+            "the same type may be confusing, consider using named results (revive)\n"
             "make: *** [Makefile:744: bazel_build] Error 1\n"
             "Finished: FAILURE\n"
         ),
         build={
             "job_name": "pingcap/tidb/ghpr_build",
-            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2310/console",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2272/console",
         },
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "FORMAT_CHECK"
-    assert classification.source == "rule:unit_format_check_nogo_failure"
+    assert classification.source == "rule:build_format_check_nogo_failure"
+
+
+def test_rule_engine_classifies_ghpr_build_running_nogo_failure_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/ghpr_build/tidb/"
+            "pkg/session/BUILD.bazel:154:8: Running nogo on "
+            "//pkg/session:session_test failed: (Exit 1): builder failed\n"
+            "nogo: nogo: error running analyzers: 123 analyzers skipped due to "
+            "type-checking error: pkg/session/upgrade_backfill_test.go:82:19: "
+            "undefined: variable\n"
+            "make: *** [Makefile:744: bazel_build] Error 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_build",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2273/console",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:build_format_check_nogo_failure"
 
 
 def test_rule_engine_prefers_code_conflict_over_pipeline_config_noise() -> None:
@@ -848,8 +874,8 @@ def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
 
     assert classification is not None
     assert classification.l1_category == "BUILD"
-    assert classification.l2_subcategory == "DEPENDENCY"
-    assert classification.source == "rule:build_dependency_failure"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_go_compile_failure"
 
 
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
@@ -1244,9 +1270,9 @@ def test_rule_engine_classifies_pull_unit_nogo_validation_as_format_check() -> N
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "FORMAT_CHECK"
-    assert classification.source == "rule:unit_format_check_nogo_failure"
+    assert classification.source == "rule:build_format_check_nogo_failure"
 
 
 def test_rule_engine_classifies_unit_failed_to_build_without_explicit_compile_line() -> None:

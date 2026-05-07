@@ -15,6 +15,10 @@ retry_delay_seconds="5"
 health_port="8081"
 stale_after_seconds="720"
 jenkins_prefix_cache_seconds="900"
+db_batch_size="100"
+db_retry_attempts="3"
+db_retry_base_delay_ms="500"
+db_retry_max_delay_ms="5000"
 log_level="INFO"
 image_pull_policy="IfNotPresent"
 service_account=""
@@ -48,6 +52,10 @@ Optional:
   --stale-after-seconds N       Mark watch streams unhealthy after no heartbeat. Default: 720
   --jenkins-prefix-cache-seconds N
                                 Cache Jenkins pod-name prefix lookup for N seconds. Default: 900
+  --db-batch-size N            DB write batch size for watcher persistence. Default: 100
+  --db-retry-attempts N        Retry attempts for retryable DB write errors. Default: 3
+  --db-retry-base-delay-ms N   Initial retry delay for DB write errors. Default: 500
+  --db-retry-max-delay-ms N    Maximum retry delay for DB write errors. Default: 5000
   --log-level LEVEL             CI_DASHBOARD_LOG_LEVEL override. Default: INFO
   --image-pull-policy P         Image pull policy. Default: IfNotPresent
   --service-account NAME        Optional service account name.
@@ -117,6 +125,22 @@ while [[ $# -gt 0 ]]; do
       ;;
     --jenkins-prefix-cache-seconds)
       jenkins_prefix_cache_seconds="${2:-}"
+      shift 2
+      ;;
+    --db-batch-size)
+      db_batch_size="${2:-}"
+      shift 2
+      ;;
+    --db-retry-attempts)
+      db_retry_attempts="${2:-}"
+      shift 2
+      ;;
+    --db-retry-base-delay-ms)
+      db_retry_base_delay_ms="${2:-}"
+      shift 2
+      ;;
+    --db-retry-max-delay-ms)
+      db_retry_max_delay_ms="${2:-}"
       shift 2
       ;;
     --log-level)
@@ -273,6 +297,14 @@ ${service_account_block}
               value: "${stale_after_seconds}"
             - name: CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_CACHE_SECONDS
               value: "${jenkins_prefix_cache_seconds}"
+            - name: CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE
+              value: "${db_batch_size}"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS
+              value: "${db_retry_attempts}"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS
+              value: "${db_retry_base_delay_ms}"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS
+              value: "${db_retry_max_delay_ms}"
 ${cluster_env_block}${ca_env_block}
           startupProbe:
             httpGet:

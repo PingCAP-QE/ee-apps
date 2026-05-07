@@ -115,6 +115,7 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
                 migration_filters,
             ),
             "cloud_repo_share": lambda: get_cloud_repo_share(engine, repo_share_filters),
+            "error_catalog_share": lambda: get_error_l1_share(engine, filters),
         }
     )
     return {

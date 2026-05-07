@@ -9,6 +9,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.api.queries.base import (
     CommonFilters,
+    FAILURE_LIKE_STATES,
     bucket_expr,
     build_common_where,
     build_multi_value_clause,
@@ -116,12 +117,6 @@ def get_scheduling_trend(engine: Engine, filters: CommonFilters) -> dict[str, An
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
-        if filters.granularity == "week":
-            data_rows = filter_complete_week_rows(
-                data_rows,
-                start_date=filters.start_date,
-                end_date=filters.end_date,
-            )
 
     return {
         "series": (
@@ -162,9 +157,10 @@ def get_scheduling_trend(engine: Engine, filters: CommonFilters) -> dict[str, An
 
 
 def get_scheduling_failure_jobs(engine: Engine, filters: CommonFilters, *, limit: int = 10) -> dict[str, Any]:
+    min_final_failures = 3
     with engine.begin() as connection:
         cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
-        params.update({"limit": limit, "min_final_failures": 3})
+        params.update({"limit": limit, "min_final_failures": min_final_failures})
         rows = connection.execute(
             text(
                 f"""
@@ -200,13 +196,45 @@ def get_scheduling_failure_jobs(engine: Engine, filters: CommonFilters, *, limit
         )
         for item in items:
             item["recent_failure_builds"] = recent_failure_builds.get(str(item["name"]), [])
-    return {"items": items, "meta": filters.meta()}
+        counts_row = connection.execute(
+            text(
+                f"""
+                {cte}
+                SELECT
+                  COUNT(*) AS total_failure_job_count,
+                  SUM(CASE WHEN final_failure_count > :min_final_failures THEN 1 ELSE 0 END)
+                    AS shown_failure_job_count
+                FROM (
+                  SELECT
+                    COALESCE(job_name, '(unknown job)') AS name,
+                    SUM(CASE WHEN final_scheduling_failure_hit = 1 THEN 1 ELSE 0 END) AS final_failure_count
+                  FROM pod_build_rows
+                  GROUP BY name
+                  HAVING final_failure_count > 0
+                ) grouped_jobs
+                """
+            ),
+            params,
+        ).mappings().one()
+    total_failure_job_count = int(counts_row["total_failure_job_count"] or 0)
+    shown_failure_job_count = int(counts_row["shown_failure_job_count"] or 0)
+    return {
+        "items": items,
+        "meta": {
+            **filters.meta(),
+            "min_final_failures": min_final_failures,
+            "total_failure_job_count": total_failure_job_count,
+            "shown_failure_job_count": shown_failure_job_count,
+            "filtered_out_job_count": max(total_failure_job_count - shown_failure_job_count, 0),
+        },
+    }
 
 
 def get_scheduling_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit: int = 10) -> dict[str, Any]:
+    min_wait_seconds = 150
     with engine.begin() as connection:
         cte, params, capabilities = _build_pod_build_rows_cte(connection, filters)
-        params.update({"limit": limit, "min_samples": 3, "min_wait_seconds": 60})
+        params.update({"limit": limit, "min_samples": 3, "min_wait_seconds": min_wait_seconds})
         rows = connection.execute(
             text(
                 f"""
@@ -241,6 +269,7 @@ def get_scheduling_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
         "items": items,
         "meta": {
             **filters.meta(),
+            "min_wait_seconds": min_wait_seconds,
             "scheduling_wait_supported": capabilities["scheduling_wait_supported"],
             "scheduling_wait_source_column": capabilities["scheduling_wait_source_column"],
         },
@@ -274,12 +303,6 @@ def get_pull_image_trend(engine: Engine, filters: CommonFilters) -> dict[str, An
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
-        if filters.granularity == "week":
-            data_rows = filter_complete_week_rows(
-                data_rows,
-                start_date=filters.start_date,
-                end_date=filters.end_date,
-            )
 
     return {
         "series": [
@@ -412,19 +435,18 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
                 params,
             ).mappings()
         )
+        data_rows = [dict(row) for row in rows]
         items = [
             _job_ranking_item(
                 row,
                 value_key="value",
                 extra_keys=("linked_build_count", "valid_sample_count"),
             )
-            for row in rows
+            for row in data_rows
         ]
-        event_messages = _load_first_pulled_event_messages(connection, rows)
-        for index, (item, row) in enumerate(zip(items, rows, strict=True)):
+        event_messages = _load_first_pulled_event_messages(connection, data_rows)
+        for index, item in enumerate(items):
             event_message = event_messages.get(index)
-            if event_message is None:
-                event_message = _lookup_first_pulled_event_message(connection, row)
             parsed = _extract_pulled_image_duration(event_message)
             item["slowest_pull_image"] = parsed[0] if parsed else None
     return {"items": items, "meta": filters.meta()}
@@ -994,6 +1016,7 @@ def _build_pod_build_rows_cte(
 ) -> tuple[str, dict[str, Any], dict[str, bool]]:
     where_clause, params = build_common_where(filters, table_alias="b")
     params["final_scheduling_failure_cutoff_at"] = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=30)
+    failure_like_states = ", ".join(f"'{state}'" for state in FAILURE_LIKE_STATES)
     builds_table = builds_table_expr(connection, filters, alias="b")
     pod_created_column = _pod_created_column(connection)
     pod_created_select = f"p.{pod_created_column}" if pod_created_column else "NULL"
@@ -1006,15 +1029,20 @@ def _build_pod_build_rows_cte(
         repo_expr="pc.repo_full_name",
     )
     normalized_url_join_hint = "/*+ INL_JOIN(p) */" if connection.dialect.name != "sqlite" else ""
+    source_prow_join_hint = "/*+ INL_JOIN(p) */" if connection.dialect.name != "sqlite" else ""
     pod_lifecycle_by_url_table = "ci_l1_pod_lifecycle p"
+    pod_lifecycle_by_prow_table = "ci_l1_pod_lifecycle p"
     if connection.dialect.name != "sqlite":
         pod_lifecycle_by_url_table += " USE INDEX(idx_ci_l1_pod_lifecycle_normalized_build_url)"
+        pod_lifecycle_by_prow_table += " USE INDEX(idx_ci_l1_pod_lifecycle_build_key_time)"
     return (
         f"""
         WITH build_scope AS (
           SELECT
             b.id AS build_id,
             b.start_time,
+            b.completion_time,
+            b.state AS build_state,
             b.repo_full_name,
             b.job_name AS build_job_name,
             b.cloud_phase,
@@ -1027,6 +1055,8 @@ def _build_pod_build_rows_cte(
           SELECT {normalized_url_join_hint}
             b.build_id,
             b.start_time,
+            b.completion_time,
+            b.build_state,
             b.repo_full_name,
             b.build_job_name,
             b.cloud_phase,
@@ -1051,9 +1081,11 @@ def _build_pod_build_rows_cte(
            AND p.normalized_build_url <> ''
            AND b.normalized_build_url = p.normalized_build_url
           UNION ALL
-          SELECT
+          SELECT {source_prow_join_hint}
             b.build_id,
             b.start_time,
+            b.completion_time,
+            b.build_state,
             b.repo_full_name,
             b.build_job_name,
             b.cloud_phase,
@@ -1070,9 +1102,11 @@ def _build_pod_build_rows_cte(
             p.first_pulled_at,
             p.last_failed_scheduling_at,
             p.failed_scheduling_count
-          FROM ci_l1_pod_lifecycle p
-          JOIN build_scope b
-            ON (p.normalized_build_url IS NULL OR p.normalized_build_url = '')
+          FROM build_scope b
+          JOIN {pod_lifecycle_by_prow_table}
+            ON b.source_prow_job_id IS NOT NULL
+           AND b.source_prow_job_id <> ''
+           AND (p.normalized_build_url IS NULL OR p.normalized_build_url = '')
            AND p.source_prow_job_id IS NOT NULL
            AND p.source_prow_job_id <> ''
            AND b.source_prow_job_id = p.source_prow_job_id
@@ -1081,6 +1115,8 @@ def _build_pod_build_rows_cte(
           SELECT
             pc.build_id,
             pc.start_time,
+            pc.completion_time,
+            pc.build_state,
             pc.repo_full_name,
             {canonical_job_name} AS job_name,
             pc.cloud_phase,
@@ -1117,7 +1153,10 @@ def _build_pod_build_rows_cte(
             END AS final_scheduling_failure_hit,
             CASE WHEN pc.first_pulling_at IS NOT NULL THEN 1 ELSE 0 END AS pull_attempted,
             CASE
-              WHEN pc.first_pulling_at IS NOT NULL AND pc.first_pulled_at IS NULL
+              WHEN pc.first_pulling_at IS NOT NULL
+               AND pc.first_pulled_at IS NULL
+               AND pc.completion_time IS NOT NULL
+               AND LOWER(COALESCE(pc.build_state, '')) IN ({failure_like_states})
               THEN 1 ELSE 0
             END AS image_pull_failure_hit
           FROM pod_candidates pc
@@ -1229,11 +1268,14 @@ def _lookup_first_pulled_event_message(connection: Connection, row: Any) -> str 
         "event_timestamp": row.get("first_pulled_at"),
     }
     dialect_name = connection.dialect.name
+    events_table = "ci_l1_pod_events events"
+    if dialect_name != "sqlite":
+        events_table = "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
     exact_event = connection.execute(
         text(
             f"""
             SELECT event_message
-            FROM ci_l1_pod_events events
+            FROM {events_table}
             WHERE events.source_project = :source_project
               AND {_null_safe_equals('events.namespace_name', ':namespace_name', dialect_name)}
               AND {_null_safe_equals('events.pod_uid', ':pod_uid', dialect_name)}
@@ -1253,7 +1295,7 @@ def _lookup_first_pulled_event_message(connection: Connection, row: Any) -> str 
         text(
             f"""
             SELECT event_message
-            FROM ci_l1_pod_events events
+            FROM {events_table}
             WHERE events.source_project = :source_project
               AND {_null_safe_equals('events.namespace_name', ':namespace_name', dialect_name)}
               AND {_null_safe_equals('events.pod_uid', ':pod_uid', dialect_name)}
@@ -1296,25 +1338,45 @@ def _load_first_pulled_event_messages(
 
     requested_rows_sql = "\nUNION ALL\n".join(selects)
     dialect_name = connection.dialect.name
+    events_table = "ci_l1_pod_events events"
+    if dialect_name != "sqlite":
+        events_table = "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
+    exact_match_expr = _null_safe_equals(
+        "events.event_timestamp",
+        "requested.event_timestamp",
+        dialect_name,
+    )
     query_rows = connection.execute(
         text(
             f"""
             WITH requested_pulls AS (
               {requested_rows_sql}
+            ),
+            ranked_events AS (
+              SELECT
+                requested.request_id,
+                events.event_message,
+                ROW_NUMBER() OVER (
+                  PARTITION BY requested.request_id
+                  ORDER BY
+                    CASE WHEN {exact_match_expr} THEN 0 ELSE 1 END ASC,
+                    events.event_timestamp ASC
+                ) AS event_rank
+              FROM requested_pulls requested
+              JOIN {events_table}
+                ON events.source_project = requested.source_project
+               AND {_null_safe_equals('events.namespace_name', 'requested.namespace_name', dialect_name)}
+               AND {_null_safe_equals('events.pod_uid', 'requested.pod_uid', dialect_name)}
+               AND {_null_safe_equals('events.pod_name', 'requested.pod_name', dialect_name)}
+              WHERE events.event_reason = 'Pulled'
+                AND COALESCE(events.event_message, '') <> ''
             )
             SELECT
-              requested.request_id,
-              events.event_message
-            FROM requested_pulls requested
-            JOIN ci_l1_pod_events events
-              ON events.source_project = requested.source_project
-             AND {_null_safe_equals('events.namespace_name', 'requested.namespace_name', dialect_name)}
-             AND {_null_safe_equals('events.pod_uid', 'requested.pod_uid', dialect_name)}
-             AND {_null_safe_equals('events.pod_name', 'requested.pod_name', dialect_name)}
-             AND events.event_timestamp = requested.event_timestamp
-            WHERE events.event_reason = 'Pulled'
-              AND COALESCE(events.event_message, '') <> ''
-            ORDER BY requested.request_id ASC
+              request_id,
+              event_message
+            FROM ranked_events
+            WHERE event_rank = 1
+            ORDER BY request_id ASC
             """
         ),
         params,

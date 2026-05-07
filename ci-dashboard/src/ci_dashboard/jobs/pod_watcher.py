@@ -18,6 +18,7 @@ from urllib import request as urllib_request
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import OperationalError
 
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import WatchPodsSummary
@@ -58,6 +59,11 @@ DEFAULT_WATCH_RETRY_DELAY_SECONDS = 5
 DEFAULT_HEALTH_PORT = 8081
 DEFAULT_HEALTH_STALE_AFTER_SECONDS = 720
 DEFAULT_JENKINS_PREFIX_CACHE_SECONDS = 900
+DEFAULT_DB_BATCH_SIZE = 100
+DEFAULT_DB_RETRY_ATTEMPTS = 3
+DEFAULT_DB_RETRY_BASE_DELAY_MS = 500
+DEFAULT_DB_RETRY_MAX_DELAY_MS = 5000
+RETRYABLE_MYSQL_ERROR_CODES = frozenset({1205, 1213})
 POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
 EVENT_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
 
@@ -588,9 +594,9 @@ def _persist_pod_snapshots(
         return 0
 
     rows_written = 0
-    for batch in chunked(snapshots, settings.jobs.batch_size):
+    for batch in chunked(snapshots, _db_batch_size(settings)):
         batch = list(batch)
-        with engine.begin() as connection:
+        def _persist_batch(connection: Connection) -> int:
             jenkins_prefixes = _get_jenkins_prefixes_if_needed(
                 connection,
                 [snapshot.identity for snapshot in batch],
@@ -603,7 +609,13 @@ def _persist_pod_snapshots(
             )
             if lifecycle_rows:
                 _upsert_pod_lifecycle(connection, lifecycle_rows)
-                rows_written += len(lifecycle_rows)
+            return len(lifecycle_rows)
+
+        rows_written += _run_db_transaction_with_retry(
+            engine,
+            _persist_batch,
+            on_retry=on_batch_persisted,
+        )
         if on_batch_persisted is not None:
             on_batch_persisted()
     return rows_written
@@ -623,7 +635,7 @@ def _persist_pod_events(
     event_rows_written = 0
     lifecycle_rows_written = 0
     touched_pods: set[tuple[str, str | None, str | None, str | None]] = set()
-    for batch in chunked(rows, settings.jobs.batch_size):
+    for batch in chunked(rows, _db_batch_size(settings)):
         batch_identities = {
             _pod_identity_from_values(
                 source_project=row.source_project,
@@ -634,9 +646,8 @@ def _persist_pod_events(
             for row in batch
             if row.namespace_name is not None and row.pod_name is not None
         }
-        with engine.begin() as connection:
+        def _persist_batch(connection: Connection) -> int:
             _upsert_pod_events(connection, [row.as_db_params() for row in batch])
-            event_rows_written += len(batch)
             jenkins_prefixes = _get_jenkins_prefixes_if_needed(
                 connection,
                 batch_identities,
@@ -655,11 +666,72 @@ def _persist_pod_events(
             )
             if lifecycle_rows:
                 _upsert_pod_lifecycle(connection, lifecycle_rows)
-                lifecycle_rows_written += len(lifecycle_rows)
+            return len(lifecycle_rows)
+
+        lifecycle_rows_written += _run_db_transaction_with_retry(
+            engine,
+            _persist_batch,
+            on_retry=on_batch_persisted,
+        )
+        event_rows_written += len(batch)
         if on_batch_persisted is not None:
             on_batch_persisted()
         touched_pods.update(batch_identities)
     return event_rows_written, lifecycle_rows_written, len(touched_pods)
+
+
+def _db_batch_size(settings: Settings) -> int:
+    default = min(settings.jobs.batch_size, DEFAULT_DB_BATCH_SIZE)
+    return _read_int_env("CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE", default)
+
+
+def _run_db_transaction_with_retry(
+    engine: Engine,
+    operation: Callable[[Connection], Any],
+    *,
+    on_retry: Callable[[], None] | None = None,
+) -> Any:
+    attempts = _read_int_env(
+        "CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS",
+        DEFAULT_DB_RETRY_ATTEMPTS,
+    )
+    base_delay_ms = _read_int_env(
+        "CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS",
+        DEFAULT_DB_RETRY_BASE_DELAY_MS,
+    )
+    max_delay_ms = _read_int_env(
+        "CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS",
+        DEFAULT_DB_RETRY_MAX_DELAY_MS,
+    )
+    for attempt in range(1, attempts + 1):
+        try:
+            with engine.begin() as connection:
+                return operation(connection)
+        except OperationalError as exc:
+            if attempt >= attempts or not _is_retryable_db_error(exc):
+                raise
+            logger.warning(
+                "retrying pod watcher DB write after retryable DB error "
+                "(attempt %s/%s): %s",
+                attempt + 1,
+                attempts,
+                getattr(exc, "orig", exc),
+            )
+            if on_retry is not None:
+                on_retry()
+            retry_delay_seconds = min(
+                (base_delay_ms / 1000.0) * (2 ** (attempt - 1)),
+                max_delay_ms / 1000.0,
+            )
+            time.sleep(retry_delay_seconds)
+    raise RuntimeError("pod watcher DB retry loop exited unexpectedly")
+
+
+def _is_retryable_db_error(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    args = getattr(orig, "args", ())
+    code = args[0] if args and isinstance(args[0], int) else None
+    return code in RETRYABLE_MYSQL_ERROR_CODES
 
 
 def _build_lifecycle_rows_for_snapshots(
