@@ -435,16 +435,18 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
                 params,
             ).mappings()
         )
+        data_rows = [dict(row) for row in rows]
         items = [
             _job_ranking_item(
                 row,
                 value_key="value",
                 extra_keys=("linked_build_count", "valid_sample_count"),
             )
-            for row in rows
+            for row in data_rows
         ]
-        for item, row in zip(items, rows, strict=True):
-            event_message = _lookup_first_pulled_event_message(connection, row)
+        event_messages = _load_first_pulled_event_messages(connection, data_rows)
+        for index, item in enumerate(items):
+            event_message = event_messages.get(index)
             parsed = _extract_pulled_image_duration(event_message)
             item["slowest_pull_image"] = parsed[0] if parsed else None
     return {"items": items, "meta": filters.meta()}
@@ -1339,25 +1341,42 @@ def _load_first_pulled_event_messages(
     events_table = "ci_l1_pod_events events"
     if dialect_name != "sqlite":
         events_table = "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
+    exact_match_expr = _null_safe_equals(
+        "events.event_timestamp",
+        "requested.event_timestamp",
+        dialect_name,
+    )
     query_rows = connection.execute(
         text(
             f"""
             WITH requested_pulls AS (
               {requested_rows_sql}
+            ),
+            ranked_events AS (
+              SELECT
+                requested.request_id,
+                events.event_message,
+                ROW_NUMBER() OVER (
+                  PARTITION BY requested.request_id
+                  ORDER BY
+                    CASE WHEN {exact_match_expr} THEN 0 ELSE 1 END ASC,
+                    events.event_timestamp ASC
+                ) AS event_rank
+              FROM requested_pulls requested
+              JOIN {events_table}
+                ON events.source_project = requested.source_project
+               AND {_null_safe_equals('events.namespace_name', 'requested.namespace_name', dialect_name)}
+               AND {_null_safe_equals('events.pod_uid', 'requested.pod_uid', dialect_name)}
+               AND {_null_safe_equals('events.pod_name', 'requested.pod_name', dialect_name)}
+              WHERE events.event_reason = 'Pulled'
+                AND COALESCE(events.event_message, '') <> ''
             )
             SELECT
-              requested.request_id,
-              events.event_message
-            FROM requested_pulls requested
-            JOIN {events_table}
-              ON events.source_project = requested.source_project
-             AND {_null_safe_equals('events.namespace_name', 'requested.namespace_name', dialect_name)}
-             AND {_null_safe_equals('events.pod_uid', 'requested.pod_uid', dialect_name)}
-             AND {_null_safe_equals('events.pod_name', 'requested.pod_name', dialect_name)}
-             AND events.event_timestamp = requested.event_timestamp
-            WHERE events.event_reason = 'Pulled'
-              AND COALESCE(events.event_message, '') <> ''
-            ORDER BY requested.request_id ASC
+              request_id,
+              event_message
+            FROM ranked_events
+            WHERE event_rank = 1
+            ORDER BY request_id ASC
             """
         ),
         params,

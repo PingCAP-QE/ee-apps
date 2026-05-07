@@ -1043,6 +1043,48 @@ def test_pull_image_slowest_jobs_include_slowest_image_url(sqlite_engine) -> Non
     assert slowest_jobs[0]["slowest_pull_image"] == "registry.example.com/slow:v9"
 
 
+def test_load_first_pulled_event_messages_batches_exact_and_fallback(sqlite_engine) -> None:
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pod-pull-batch",
+        pod_uid="pod-pull-batch-uid",
+        event_reason="Pulled",
+        event_timestamp="2026-04-24 10:01:00",
+        event_message='Successfully pulled image "registry.example.com/fallback:v1" in 12.0s.',
+    )
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pod-pull-batch",
+        pod_uid="pod-pull-batch-uid",
+        event_reason="Pulled",
+        event_timestamp="2026-04-24 10:02:00",
+        event_message='Successfully pulled image "registry.example.com/exact:v2" in 22.0s.',
+    )
+
+    rows = [
+        {
+            "source_project": "gcp-project",
+            "namespace_name": "ci",
+            "pod_uid": "pod-pull-batch-uid",
+            "pod_name": "pod-pull-batch",
+            "first_pulled_at": "2026-04-24 10:02:00",
+        },
+        {
+            "source_project": "gcp-project",
+            "namespace_name": "ci",
+            "pod_uid": "pod-pull-batch-uid",
+            "pod_name": "pod-pull-batch",
+            "first_pulled_at": "2026-04-24 10:09:00",
+        },
+    ]
+
+    with sqlite_engine.begin() as connection:
+        messages = runtime_queries._load_first_pulled_event_messages(connection, rows)
+
+    assert "registry.example.com/exact:v2" in messages[0]
+    assert "registry.example.com/fallback:v1" in messages[1]
+
+
 def test_runtime_hides_scheduling_wait_when_pod_created_at_is_unavailable(
     sqlite_engine,
     monkeypatch,
