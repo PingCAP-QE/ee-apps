@@ -86,6 +86,7 @@ Render and apply the Deployment:
   --service-account ci-dashboard \
   --cluster-name prow \
   --location us-central1-c \
+  --db-batch-size 100 \
   > /tmp/ci-dashboard-pod-watcher.yaml
 kubectl apply -f /tmp/ci-dashboard-pod-watcher.yaml
 kubectl -n apps rollout status deployment/ci-dashboard-pod-watcher

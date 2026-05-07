@@ -56,6 +56,8 @@ def _insert_build(
     pr_number: int = 100,
     normalized_build_url: str | None = None,
     build_id: str = "1",
+    error_l1_category: str | None = None,
+    error_l2_subcategory: str | None = None,
 ) -> None:
     org, repo = repo_full_name.split("/", 1)
     build_url = normalize_build_url(normalized_build_url or f"/jenkins/job/{source_prow_job_id}")
@@ -70,14 +72,15 @@ def _insert_build(
                   context, url, normalized_build_url, author, retest, event_guid, build_id,
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
-                  is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory
+                  is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory,
+                  error_l1_category, error_l2_subcategory
                 ) VALUES (
                   :source_prow_row_id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   0, 1, :org, :repo, :repo_full_name, :base_ref, :pr_number, 1,
                   'unit-test', :url,
                   :normalized_build_url, 'alice', 0, 'guid', :build_id, NULL, NULL, :start_time,
                   :start_time, :queue_wait_seconds, :run_seconds, :total_seconds, 'sha', :target_branch, :cloud_phase, :is_flaky,
-                  :is_retry_loop, 0, :failure_category, NULL
+                  :is_retry_loop, 0, :failure_category, NULL, :error_l1_category, :error_l2_subcategory
                 )
                 """
             ),
@@ -103,6 +106,8 @@ def _insert_build(
                 "is_flaky": is_flaky,
                 "is_retry_loop": is_retry_loop,
                 "failure_category": failure_category,
+                "error_l1_category": error_l1_category,
+                "error_l2_subcategory": error_l2_subcategory,
             },
         )
 
@@ -375,6 +380,8 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=300,
         total_seconds=330,
         pr_number=100,
+        error_l1_category="INFRA",
+        error_l2_subcategory="DISK_FULL",
     )
     _insert_build(
         sqlite_engine,
@@ -394,6 +401,8 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=180,
         total_seconds=225,
         pr_number=100,
+        error_l1_category="BUILD",
+        error_l2_subcategory="COMPILE",
     )
     _insert_build(
         sqlite_engine,
@@ -432,6 +441,8 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=90,
         total_seconds=105,
         pr_number=102,
+        error_l1_category="INFRA",
+        error_l2_subcategory="JENKINS",
     )
     _insert_build(
         sqlite_engine,
@@ -451,6 +462,8 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=150,
         total_seconds=170,
         pr_number=102,
+        error_l1_category="BUILD",
+        error_l2_subcategory="COMPILE",
     )
     _insert_build(
         sqlite_engine,
@@ -470,6 +483,8 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=200,
         total_seconds=225,
         pr_number=200,
+        error_l1_category="OTHERS",
+        error_l2_subcategory="UNCLASSIFIED",
     )
     _insert_build(
         sqlite_engine,
@@ -1626,6 +1641,18 @@ def test_page_routes(api_client: TestClient) -> None:
     assert ci_status.status_code == 200
     build_trend_body = ci_status.json()
     assert build_trend_body["scope"]["branch"] == "master"
+    error_catalog_counts = {
+        item["name"]: item["value"] for item in build_trend_body["error_catalog_share"]["items"]
+    }
+    assert error_catalog_counts == {"BUILD": 2, "INFRA": 2}
+    error_details = build_trend_body["error_catalog_share"]["l2_details"]
+    assert {item["name"]: item["value"] for item in error_details["BUILD"]} == {
+        "COMPILE": 2,
+    }
+    assert {item["name"]: item["value"] for item in error_details["INFRA"]} == {
+        "DISK_FULL": 1,
+        "JENKINS": 1,
+    }
     assert build_trend_body["cloud_posture_trend"]["meta"]["bucket_granularity"] == "week"
     assert build_trend_body["cloud_posture_trend"]["series"] == []
     assert build_trend_body["longest_avg_success_jobs"]["items"] == [

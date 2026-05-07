@@ -716,6 +716,9 @@ def _load_lifecycle_aggregates(
         return _load_single_lifecycle_aggregate(connection, pods[0])
 
     requested_pods_sql, params = _build_requested_pods_relation(pods)
+    events_table = "ci_l1_pod_events AS events"
+    if connection.dialect.name != "sqlite":
+        events_table = "ci_l1_pod_events USE INDEX(idx_ci_l1_pod_events_identity_time) AS events"
     statement = text(
         f"""
         WITH requested_pods AS (
@@ -736,7 +739,7 @@ def _load_lifecycle_aggregates(
           MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
           SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
           MAX(events.event_timestamp) AS last_event_at
-        FROM ci_l1_pod_events AS events
+        FROM {events_table}
         JOIN requested_pods AS requested
           ON events.source_project = requested.source_project
          AND {_null_safe_equals_sql('events.namespace_name', 'requested.namespace_name', connection.dialect.name)}
@@ -760,6 +763,9 @@ def _load_single_lifecycle_aggregate(
     pod: tuple[str, str | None, str | None, str | None],
 ) -> list[dict[str, Any]]:
     source_project, namespace_name, pod_uid, pod_name = pod
+    events_table = "ci_l1_pod_events AS events"
+    if connection.dialect.name != "sqlite":
+        events_table = "ci_l1_pod_events USE INDEX(idx_ci_l1_pod_events_identity_time) AS events"
     statement = text(
         f"""
         SELECT
@@ -777,7 +783,7 @@ def _load_single_lifecycle_aggregate(
           MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
           SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
           MAX(events.event_timestamp) AS last_event_at
-        FROM ci_l1_pod_events AS events
+        FROM {events_table}
         WHERE events.source_project = :source_project
           AND {_null_safe_equals_sql('events.namespace_name', ':namespace_name', connection.dialect.name)}
           AND {_null_safe_equals_sql('events.pod_uid', ':pod_uid', connection.dialect.name)}

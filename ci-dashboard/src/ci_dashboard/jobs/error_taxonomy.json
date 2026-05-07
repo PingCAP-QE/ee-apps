@@ -128,8 +128,8 @@
       ]
     },
     {
-      "name": "unit_format_check_nogo_failure",
-      "l1": "UT",
+      "name": "build_format_check_nogo_failure",
+      "l1": "BUILD",
       "l2": "FORMAT_CHECK",
       "job_name_patterns": [
         "(^|/)ghpr_check2$",
@@ -144,7 +144,8 @@
         "(^|_)pull_unit_test($|_)"
       ],
       "text_patterns": [
-        "Validating nogo output for //[^\\r\\n]+ failed"
+        "Validating nogo output for //[^\\r\\n]+ failed",
+        "Running nogo on //[^\\r\\n]+ failed"
       ]
     },
     {
@@ -266,6 +267,9 @@
       "l1": "BUILD",
       "l2": "COMPILE",
       "text_patterns": [
+        "compilepkg: missing strict dependencies:",
+        "No dependencies were provided\\.",
+        "Check that imports in Go sources match importpath attributes in deps\\.",
         "\\.go:[0-9]+:[0-9]+: undefined:",
         "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
         "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
@@ -427,9 +431,6 @@
       "l2": "DEPENDENCY",
       "text_patterns": [
         "go: updates to go\\.mod needed; to update it:",
-        "compilepkg: missing strict dependencies:",
-        "No dependencies were provided\\.",
-        "Check that imports in Go sources match importpath attributes in deps\\.",
         "no required module provides package",
         "cannot find module",
         "No matching distribution found",

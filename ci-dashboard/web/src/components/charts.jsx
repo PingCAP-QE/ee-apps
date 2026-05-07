@@ -162,6 +162,7 @@ export function TrendChart({
   compactY = false,
   stackBars = false,
   yTickMode = "default",
+  rightYTickMode = "default",
   axisLabelSize = 11,
   bottomLabelSize = 11,
   annotationLabelSize = 10,
@@ -219,23 +220,35 @@ export function TrendChart({
       .map((label) => pointMaps.get(item.key)?.get(label))
       .filter((value) => value != null),
   );
+  const sharedTickSegments =
+    yTickMode === "integer" || rightYTickMode === "integer" ? 5 : 4;
   const rawLeftMaxValue = yMax ?? (leftAxisIsPercent ? 100 : Math.max(...leftValues, 1));
-  let leftMaxValue = rawLeftMaxValue;
-  let leftTickValues = [0, leftMaxValue * 0.25, leftMaxValue * 0.5, leftMaxValue * 0.75, leftMaxValue];
-  if (yTickMode === "thousands-rounded") {
-    const segments = 4;
-    const rawStep = rawLeftMaxValue / segments;
-    const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
-    leftMaxValue = step * segments;
-    leftTickValues = Array.from({ length: segments + 1 }, (_, index) => index * step);
-  }
-  const { min: resolvedRightYMin, max: resolvedRightYMax } = resolveAxisDomain({
+  const leftAxisTicks = buildAxisTicks({
+    min: 0,
+    max: rawLeftMaxValue,
+    mode: yTickMode,
+    isPercent: leftAxisIsPercent,
+    segments: sharedTickSegments,
+  });
+  const leftMaxValue = leftAxisTicks.max;
+  const leftTickValues = leftAxisTicks.ticks;
+  const rightAxisDomain = resolveAxisDomain({
     values: rightValues,
     explicitMin: rightYMin,
     explicitMax: rightYMax ?? (rightAxisIsPercent ? 100 : null),
     autoPad: rightYAutoPad,
     padRatio: rightYPadRatio,
   });
+  const rightAxisTicks = buildAxisTicks({
+    min: rightAxisDomain.min,
+    max: rightAxisDomain.max,
+    mode: rightYTickMode,
+    isPercent: rightAxisIsPercent,
+    segments: sharedTickSegments,
+  });
+  const resolvedRightYMin = rightAxisTicks.min;
+  const resolvedRightYMax = rightAxisTicks.max;
+  const rightTickValues = rightAxisTicks.ticks;
   const width = 760;
   const annotationMap = new Map(
     (bucketAnnotations || []).map((annotation) => [annotation.label, annotation.text]),
@@ -272,8 +285,9 @@ export function TrendChart({
   return (
     <div className="trend-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend chart">
-        {leftTickValues.map((value) => {
-          const ratio = leftMaxValue > 0 ? value / leftMaxValue : 0;
+        {leftTickValues.map((value, index) => {
+          const ratio =
+            leftTickValues.length > 1 ? index / (leftTickValues.length - 1) : 0;
           const y = padding.top + plotHeight - plotHeight * ratio;
           return (
             <g key={value}>
@@ -301,7 +315,7 @@ export function TrendChart({
                   className="chart-axis-label"
                   style={{ fontSize: `${axisLabelSize}px` }}
                 >
-                  {rightYFormatter(resolvedRightYMin + (resolvedRightYMax - resolvedRightYMin) * ratio)}
+                  {rightYFormatter(rightTickValues[index] ?? resolvedRightYMin)}
                 </text>
               ) : null}
             </g>
@@ -1295,8 +1309,67 @@ function resolveAxisDomain({
   }
 
   if (max <= min) {
-    max = min + 1;
+    if (explicitMax != null) {
+      max = explicitMax;
+      min = explicitMin ?? Math.min(0, explicitMax - 1);
+    } else if (explicitMin != null) {
+      min = explicitMin;
+      max = explicitMin + 1;
+    } else {
+      max = min + 1;
+    }
   }
 
   return { min, max };
+}
+
+function buildAxisTicks({
+  min,
+  max,
+  mode = "default",
+  isPercent = false,
+  segments = 4,
+}) {
+  const safeMin = Number.isFinite(min) ? min : 0;
+  const safeMax = Number.isFinite(max) ? max : safeMin + 1;
+
+  if (mode === "thousands-rounded") {
+    const rawStep = Math.max(safeMax, 1) / segments;
+    const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
+    const roundedMax = step * segments;
+    return {
+      min: 0,
+      max: roundedMax,
+      ticks: Array.from({ length: segments + 1 }, (_, index) => index * step),
+    };
+  }
+
+  if (mode === "integer") {
+    const integerMin = Math.floor(safeMin);
+    const integerMax = Math.ceil(safeMax);
+    const span = Math.max(integerMax - integerMin, 1);
+    const step = Math.max(1, Math.ceil(span / segments));
+    const roundedMax = integerMin + step * segments;
+    return {
+      min: integerMin,
+      max: roundedMax,
+      ticks: Array.from({ length: segments + 1 }, (_, index) => integerMin + index * step),
+    };
+  }
+
+  if (isPercent && safeMin === 0 && safeMax === 100) {
+    return {
+      min: 0,
+      max: 100,
+      ticks: Array.from({ length: segments + 1 }, (_, index) => (100 / segments) * index),
+    };
+  }
+
+  const resolvedMax = safeMax > safeMin ? safeMax : safeMin + 1;
+  const span = resolvedMax - safeMin;
+  return {
+    min: safeMin,
+    max: resolvedMax,
+    ticks: Array.from({ length: segments + 1 }, (_, index) => safeMin + (span * index) / segments),
+  };
 }

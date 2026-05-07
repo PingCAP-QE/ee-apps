@@ -30,6 +30,11 @@ export default function RuntimeInsightsPage({ filters }) {
   const [selectedJob, setSelectedJob] = useState("");
 
   const summary = page.data?.runtime_summary || {};
+  const schedulingFailureMeta = page.data?.scheduling_failure_jobs?.meta || {};
+  const schedulingSlowestMeta = page.data?.scheduling_slowest_jobs?.meta || {};
+  const minFinalFailures = Number(schedulingFailureMeta.min_final_failures ?? 3);
+  const filteredOutFailureJobs = Number(schedulingFailureMeta.filtered_out_job_count ?? 0);
+  const minSchedulingWaitSeconds = Number(schedulingSlowestMeta.min_wait_seconds ?? 150);
   const schedulingWaitSupported = summary.scheduling_wait_supported ?? true;
   const schedulingWaitValue =
     schedulingWaitSupported && summary.avg_scheduling_wait_s != null
@@ -122,13 +127,13 @@ export default function RuntimeInsightsPage({ filters }) {
       <PageIntro
         eyebrow="CI details insight"
         title="Find the runtime bottlenecks hiding between Jenkins and Kubernetes"
-        description="An experimental tab for pod scheduling, image pull, and Jenkins error taxonomy signals. Useful panels can graduate into CI Status once the signal proves stable."
+        description="An experimental tab for pod scheduling, image pull, and Jenkins error catalog signals. Useful panels can graduate into CI Status once the signal proves stable."
         kicker={classificationCoverage.latest_pod_event_at ? `Latest pod event ${classificationCoverage.latest_pod_event_at}` : null}
       />
 
       <section className="stats-grid">
         <StatCard
-          label="Final scheduling failures"
+          label="Scheduling failures"
           value={formatCompact(summary.final_scheduling_failure_count)}
           detail="Failed to schedule within 30m"
           tone="rose"
@@ -158,8 +163,8 @@ export default function RuntimeInsightsPage({ filters }) {
           title="Scheduling wait and final failures"
           subtitle={
             schedulingWaitSupported
-              ? "Bars show time from pod creation to Scheduled. The line counts builds whose pods failed to schedule within 30m."
-              : "Full scheduling wait needs a pod creation timestamp, so the bar series is unavailable in the current DB. The line still counts builds whose pods failed to schedule within 30m."
+              ? "Bars show time from pod creation to Scheduled. The red line and right axis show final scheduling failures, meaning builds that failed to schedule within 30m."
+              : "Full scheduling wait needs a pod creation timestamp, so the bar series is unavailable in the current DB. The red line and right axis still show final scheduling failures, meaning builds that failed to schedule within 30m."
           }
           loading={page.loading}
           error={page.error}
@@ -168,6 +173,9 @@ export default function RuntimeInsightsPage({ filters }) {
             series={page.data?.scheduling_trend?.series}
             yFormatter={formatSeconds}
             rightYFormatter={formatCompact}
+            yTickMode="integer"
+            rightYTickMode="integer"
+            rightYMin={0}
           />
         </Panel>
 
@@ -181,13 +189,14 @@ export default function RuntimeInsightsPage({ filters }) {
             series={page.data?.pull_image_trend?.series}
             yFormatter={formatSeconds}
             rightYFormatter={formatPercent}
+            rightYMin={0}
             rightYMax={100}
           />
         </Panel>
 
         <Panel
           title="Final scheduling failure jobs"
-          subtitle="Jobs ranked by builds whose linked pods failed to schedule within 30m."
+          subtitle={`Jobs ranked by builds whose linked pods failed to schedule within 30m; showing only jobs with >${minFinalFailures} failures. Filtered out ${formatCompact(filteredOutFailureJobs)} low-frequency jobs.`}
           loading={page.loading}
           error={page.error}
         >
@@ -226,7 +235,7 @@ export default function RuntimeInsightsPage({ filters }) {
           title="Longest scheduling-wait jobs"
           subtitle={
             schedulingWaitSupported
-              ? "Scheduled builds only: average time from pod creation to Scheduled, rolled up to build level."
+              ? `Scheduled builds only: average time from pod creation to Scheduled, rolled up to build level; showing only jobs above ${formatSeconds(minSchedulingWaitSeconds)}.`
               : "Requires pod_created_at to measure full scheduling wait from pod creation to Scheduled."
           }
           loading={page.loading}
@@ -292,14 +301,12 @@ export default function RuntimeInsightsPage({ filters }) {
 
       <div className="page-grid page-grid--two-column">
         <Panel
-          title="Jenkins error L1 share"
-          subtitle="Effective category uses human revision first, then machine classification, then OTHERS."
+          title="Jenkins Error Catalog Rate"
           loading={page.loading}
           error={page.error}
         >
           <DonutShareChart
-            title="L1 error category"
-            subtitle="Click a category to inspect its L2 breakdown."
+            title="Jenkins Error Catalog"
             items={l1Items}
             totalLabel="failures"
             onItemSelect={(item) => setSelectedL1(item.name)}
@@ -307,8 +314,8 @@ export default function RuntimeInsightsPage({ filters }) {
         </Panel>
 
         <Panel
-          title="Jenkins error L1 trend"
-          subtitle="Failure-like builds by effective L1 category over time."
+          title="Jenkins Error Catalog Trend"
+          subtitle="Failure-like builds by Jenkins Error Catalog over time."
           loading={page.loading}
           error={page.error}
         >
@@ -320,24 +327,24 @@ export default function RuntimeInsightsPage({ filters }) {
         </Panel>
 
         <Panel
-          title={`${selectedL1} L2 share`}
-          subtitle="Selected L1 category drilldown. INFRA is selected by default because it is the first operational target."
+          title={`${selectedL1} Error Details Rate`}
+          subtitle="Selected catalog drilldown. INFRA is selected by default because it is the first operational target."
           loading={page.loading}
           error={page.error}
         >
           <DonutShareChart
-            title={`${selectedL1} L2 category`}
-            subtitle="Effective L2 split inside the selected L1 category."
+            title={`${selectedL1} Error Details`}
+            subtitle="Error details inside the selected catalog."
             items={selectedL2Share}
             totalLabel="failures"
-            emptyMessage="No L2 share data for the selected L1 category."
+            emptyMessage="No error details data for the selected catalog."
             onItemSelect={(item) => setSelectedL2(item.name)}
           />
         </Panel>
 
         <Panel
-          title={`${selectedL1} L2 trend`}
-          subtitle="Trend of the top L2 categories inside the selected L1 bucket."
+          title={`${selectedL1} Error Details Trend`}
+          subtitle="Trend of the top error details inside the selected catalog."
           loading={page.loading}
           error={page.error}
         >

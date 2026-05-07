@@ -7,6 +7,8 @@ from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app
 from ci_dashboard.api.queries import runtime as runtime_queries
 
+DEFAULT_COMPLETION_TIME = object()
+
 
 def _insert_build(
     sqlite_engine,
@@ -23,6 +25,7 @@ def _insert_build(
     revise_error_l2_subcategory: str | None = None,
     log_gcs_uri: str | None = None,
     build_system: str = "JENKINS",
+    completion_time: str | None | object = DEFAULT_COMPLETION_TIME,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -38,7 +41,7 @@ def _insert_build(
                 ) VALUES (
                   :id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   'pingcap', 'tidb', 'pingcap/tidb', 'master', 'master', :url,
-                  :normalized_build_url, :build_ref, :start_time, :start_time,
+                  :normalized_build_url, :build_ref, :start_time, :completion_time,
                   'GCP', :build_system, :log_gcs_uri,
                   :error_l1_category, :error_l2_subcategory,
                   :revise_error_l1_category, :revise_error_l2_subcategory
@@ -54,6 +57,9 @@ def _insert_build(
                 "normalized_build_url": normalized_build_url,
                 "build_ref": str(build_id),
                 "start_time": start_time,
+                "completion_time": (
+                    start_time if completion_time is DEFAULT_COMPLETION_TIME else completion_time
+                ),
                 "error_l1_category": error_l1_category,
                 "error_l2_subcategory": error_l2_subcategory,
                 "revise_error_l1_category": revise_error_l1_category,
@@ -611,6 +617,13 @@ def test_runtime_insights_rolls_pods_to_builds_and_uses_effective_categories(sql
 
     scheduling_failures = body["scheduling_failure_jobs"]["items"]
     assert scheduling_failures == []
+    scheduling_failure_meta = body["scheduling_failure_jobs"]["meta"]
+    assert scheduling_failure_meta["min_final_failures"] == 3
+    assert scheduling_failure_meta["total_failure_job_count"] == 1
+    assert scheduling_failure_meta["shown_failure_job_count"] == 0
+    assert scheduling_failure_meta["filtered_out_job_count"] == 1
+    assert body["scheduling_slowest_jobs"]["items"] == []
+    assert body["scheduling_slowest_jobs"]["meta"]["min_wait_seconds"] == 150
 
     pull_failures = body["pull_image_failure_jobs"]["items"]
     assert pull_failures[0]["name"] == "pingcap/tidb/job-alpha"
@@ -718,6 +731,11 @@ def test_scheduling_failure_jobs_include_latest_ten_failure_build_links(sqlite_e
         scheduling_failures[0]["recent_failure_builds"][0]["build_url"]
         == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-gamma/3011/"
     )
+    scheduling_failure_meta = body["scheduling_failure_jobs"]["meta"]
+    assert scheduling_failure_meta["min_final_failures"] == 3
+    assert scheduling_failure_meta["total_failure_job_count"] == 1
+    assert scheduling_failure_meta["shown_failure_job_count"] == 1
+    assert scheduling_failure_meta["filtered_out_job_count"] == 0
 
 
 def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_engine) -> None:
@@ -752,6 +770,29 @@ def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_eng
         event_reason="FailedScheduling",
         event_timestamp="2026-04-21 08:50:00",
     )
+    build_url_partial_week = "https://prow.tidb.net/jenkins/job/runtime-shifted/2/"
+    _insert_build(
+        sqlite_engine,
+        build_id=202,
+        source_prow_job_id="runtime-shifted-2",
+        job_name="job-shifted",
+        state="failure",
+        start_time="2026-04-30 08:00:00",
+        normalized_build_url=build_url_partial_week,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-shifted-2",
+        pod_uid="pod-shifted-uid-2",
+        normalized_build_url=build_url_partial_week,
+        source_prow_job_id="runtime-shifted-2",
+        job_name="job-shifted",
+        pod_created_at="2026-04-30 08:10:00",
+        scheduled_at="2026-04-30 08:12:00",
+        first_pulling_at="2026-04-30 08:13:00",
+        first_pulled_at="2026-04-30 08:13:10",
+        failed_scheduling_count=0,
+    )
 
     app.dependency_overrides[get_engine] = lambda: sqlite_engine
     try:
@@ -780,10 +821,97 @@ def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_eng
         item["key"]: item["points"]
         for item in body["pull_image_trend"]["series"]
     }
-    assert scheduling_points["scheduling_wait_avg_s"] == [["2026-04-20", 900.0]]
-    assert scheduling_points["final_scheduling_failure_count"] == [["2026-04-20", 0]]
-    assert pull_points["pull_image_avg_s"] == [["2026-04-20", 20.0]]
-    assert pull_points["pull_image_success_rate_pct"] == [["2026-04-20", 100.0]]
+    assert scheduling_points["scheduling_wait_avg_s"] == [
+        ["2026-04-20", 900.0],
+        ["2026-04-27", 120.0],
+    ]
+    assert scheduling_points["final_scheduling_failure_count"] == [
+        ["2026-04-20", 0],
+        ["2026-04-27", 0],
+    ]
+    assert pull_points["pull_image_avg_s"] == [
+        ["2026-04-20", 20.0],
+        ["2026-04-27", 10.0],
+    ]
+    assert pull_points["pull_image_success_rate_pct"] == [
+        ["2026-04-20", 100.0],
+        ["2026-04-27", 100.0],
+    ]
+
+
+def test_pull_image_in_progress_without_failure_event_counts_as_success(sqlite_engine) -> None:
+    build_url_ok = "https://prow.tidb.net/jenkins/job/runtime-pull-ok/1/"
+    build_url_in_progress = "https://prow.tidb.net/jenkins/job/runtime-pull-in-progress/1/"
+
+    _insert_build(
+        sqlite_engine,
+        build_id=211,
+        source_prow_job_id="runtime-pull-ok",
+        job_name="job-pull-state",
+        state="success",
+        start_time="2026-04-25 10:00:00",
+        normalized_build_url=build_url_ok,
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=212,
+        source_prow_job_id="runtime-pull-in-progress",
+        job_name="job-pull-state",
+        state="running",
+        start_time="2026-04-25 10:10:00",
+        normalized_build_url=build_url_in_progress,
+        completion_time=None,
+    )
+
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-ok",
+        pod_uid="pod-pull-ok-uid",
+        normalized_build_url=build_url_ok,
+        source_prow_job_id="runtime-pull-ok",
+        job_name="job-pull-state",
+        scheduled_at="2026-04-25 10:00:20",
+        first_pulling_at="2026-04-25 10:01:00",
+        first_pulled_at="2026-04-25 10:01:20",
+        failed_scheduling_count=0,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-pull-in-progress",
+        pod_uid="pod-pull-in-progress-uid",
+        normalized_build_url=build_url_in_progress,
+        source_prow_job_id="runtime-pull-in-progress",
+        job_name="job-pull-state",
+        scheduled_at="2026-04-25 10:10:20",
+        first_pulling_at="2026-04-25 10:11:00",
+        first_pulled_at=None,
+        failed_scheduling_count=0,
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-25",
+                    "end_date": "2026-04-25",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime_summary"]["pull_image_success_rate_pct"] == 100.0
+    assert body["pull_image_failure_jobs"]["items"] == []
+    pull_points = {
+        item["key"]: item["points"]
+        for item in body["pull_image_trend"]["series"]
+    }
+    assert pull_points["pull_image_success_rate_pct"] == [["2026-04-25", 100.0]]
 
 
 def test_pull_image_slowest_jobs_include_slowest_image_url(sqlite_engine) -> None:
@@ -975,3 +1103,4 @@ def test_runtime_hides_scheduling_wait_when_pod_created_at_is_unavailable(
         }
     ]
     assert body["scheduling_slowest_jobs"]["items"] == []
+    assert body["scheduling_slowest_jobs"]["meta"]["min_wait_seconds"] == 150

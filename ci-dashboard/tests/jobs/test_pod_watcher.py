@@ -8,6 +8,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.common.models import WatchPodsSummary
@@ -21,7 +22,9 @@ from ci_dashboard.jobs.pod_watcher import (
     _ProgressRecorder,
     _build_event_source_insert_id,
     _build_lifecycle_rows_for_snapshots,
+    _db_batch_size,
     _format_watch_error,
+    _is_retryable_db_error,
     _is_resource_version_expired_watch_error,
     _load_runtime_context,
     _normalize_kubernetes_event,
@@ -153,6 +156,21 @@ def test_progress_recorder_sets_stop_event_at_max_events() -> None:
     assert summary.lifecycle_rows_upserted == 1
     assert summary.pods_touched == 2
     assert summary.watch_restarts == 1
+
+
+def test_db_batch_size_defaults_to_watcher_specific_cap(monkeypatch) -> None:
+    monkeypatch.delenv("CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE", raising=False)
+    assert _db_batch_size(_settings(batch_size=1000)) == 100
+
+    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE", "25")
+    assert _db_batch_size(_settings(batch_size=1000)) == 25
+
+
+def test_retryable_db_error_detects_tidb_lock_timeout() -> None:
+    class _Orig:
+        args = (1205, "Lock wait timeout exceeded; try restarting transaction")
+
+    assert _is_retryable_db_error(OperationalError("statement", {}, _Orig())) is True
 
 
 def test_kubernetes_client_lists_and_streams_collection(monkeypatch) -> None:
@@ -607,3 +625,39 @@ def test_persist_paths_cache_jenkins_prefixes_and_refresh_heartbeat(sqlite_engin
     )
     assert load_calls == 2
     assert heartbeats == 4
+
+
+def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatch) -> None:
+    original_upsert = watcher._upsert_pod_events
+    calls = 0
+    heartbeats = 0
+
+    class _Orig:
+        args = (1205, "Lock wait timeout exceeded; try restarting transaction")
+
+    def flaky_upsert(connection, payload):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OperationalError("statement", {}, _Orig())
+        original_upsert(connection, payload)
+
+    def heartbeat() -> None:
+        nonlocal heartbeats
+        heartbeats += 1
+
+    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS", "1")
+    monkeypatch.setattr(watcher, "_upsert_pod_events", flaky_upsert)
+
+    assert (
+        _persist_pod_events(
+            sqlite_engine,
+            _settings(),
+            [_pod_event()],
+            on_batch_persisted=heartbeat,
+        )
+        == (1, 1, 1)
+    )
+    assert calls == 2
+    assert heartbeats == 2

@@ -8,7 +8,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Engine
 
 from ci_dashboard.common.config import Settings
-from ci_dashboard.common.models import AnalyzeErrorsSummary, ReviewErrorSummary
+from ci_dashboard.common.models import AnalyzeErrorsSummary, ErrorClassification, ReviewErrorSummary
 from ci_dashboard.jobs.gcs_client import GCSReader, parse_gcs_uri
 from ci_dashboard.jobs.llm_classifier import LLMClassifier, build_llm_classifier
 from ci_dashboard.jobs.rule_engine import RuleEngine

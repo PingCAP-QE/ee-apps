@@ -14,7 +14,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Bazel/unit summaries such as "FAILED TO BUILD", "fails to build", or "0 failing out of 0 test cases" point to an upstream build problem, not a UT test failure by themselves.
 - Failpoint rewrite/parser errors such as "Rewrite error ... expected declaration/statement, found '<<'" are BUILD/COMPILE.
 - Dependency hygiene failures such as "updates to go.mod needed", "missing strict dependencies", "No dependencies were provided", or imports/deps mismatch are BUILD/DEPENDENCY.
-- Nogo or build-time static-analysis validation failures such as "Validating nogo output" are UT/FORMAT_CHECK, including ghpr_build and pull_build_next_gen jobs; do not leave them in BUILD/LINT or move them to BUILD/COMPILE.
+- Nogo or build-time static-analysis validation failures such as "Validating nogo output" or "Running nogo on //... failed" are BUILD/FORMAT_CHECK, including ghpr_build, ghpr_check2, pull_build_next_gen, and pull_unit_test jobs; do not leave them in BUILD/PIPELINE_CONFIG or move them to BUILD/COMPILE.
 - Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", or 429/502/503 while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
 - BR integration matrix TEST_GROUP failures are IT/TEST_FAILURE, even if the failed case logs local 127.0.0.1 PD/TiKV connection-refused or timeout symptoms.

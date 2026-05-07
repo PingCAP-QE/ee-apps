@@ -21,6 +21,7 @@ import {
 export default function BuildTrendPage({ filters }) {
   const page = useApiData("/api/v1/pages/ci-status", filters);
   const [selectedRepoSlice, setSelectedRepoSlice] = useState(null);
+  const [selectedErrorCatalog, setSelectedErrorCatalog] = useState("");
 
   const outcomeSummary = page.data?.outcome_trend?.meta?.summary || {};
   const totalBuilds = Number(
@@ -62,6 +63,15 @@ export default function BuildTrendPage({ filters }) {
   const idcRepoShare = limitRepoShareItems(
     cloudRepoShare.find((cloud) => cloud.cloud_phase === "IDC"),
   );
+  const errorCatalogShare = page.data?.error_catalog_share || {};
+  const errorCatalogItems = errorCatalogShare.items || [];
+  const errorDetailsItems = buildErrorDetailsShareItems(
+    errorCatalogShare.l2_details,
+    selectedErrorCatalog,
+  );
+  const errorDetailsTitle = selectedErrorCatalog
+    ? `${formatErrorCatalogName(selectedErrorCatalog)} Error Details`
+    : "Top Error Details";
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -77,6 +87,15 @@ export default function BuildTrendPage({ filters }) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedRepoSlice]);
+
+  useEffect(() => {
+    if (!selectedErrorCatalog) {
+      return;
+    }
+    if (!errorCatalogItems.some((item) => item.name === selectedErrorCatalog)) {
+      setSelectedErrorCatalog("");
+    }
+  }, [errorCatalogItems, selectedErrorCatalog]);
 
   return (
     <div className="page-stack">
@@ -116,6 +135,44 @@ export default function BuildTrendPage({ filters }) {
       </section>
 
       <div className="page-grid page-grid--two-column">
+        <Panel
+          title="Jenkins Error Catalog Rate"
+          loading={page.loading}
+          error={page.error}
+        >
+          <DonutShareChart
+            title="Jenkins Error Catalog"
+            items={errorCatalogItems}
+            totalLabel="failures"
+            emptyMessage="No Jenkins Error Catalog data for the current filters."
+            onItemSelect={(item) => setSelectedErrorCatalog(item.name)}
+          />
+        </Panel>
+
+        <Panel
+          title="Jenkins Error Details Rate"
+          loading={page.loading}
+          error={page.error}
+          actions={
+            selectedErrorCatalog ? (
+              <button
+                type="button"
+                className="ghost-button ghost-button--compact"
+                onClick={() => setSelectedErrorCatalog("")}
+              >
+                All Catalogs
+              </button>
+            ) : null
+          }
+        >
+          <DonutShareChart
+            title={errorDetailsTitle}
+            items={errorDetailsItems}
+            totalLabel="failures"
+            emptyMessage="No Jenkins Error Details data for the current filters."
+          />
+        </Panel>
+
         <Panel
           title="Outcome trend"
           subtitle="Count trend for total, success, and failure-like builds. Success rate uses the right axis."
@@ -303,6 +360,48 @@ function limitRepoShareItems(cloudShare, maxItems = 10, minSharePct = 1) {
     ...cloudShare,
     items: mergedItems,
   };
+}
+
+function buildErrorDetailsShareItems(l2Details, selectedCatalog, limit = 10) {
+  if (!l2Details) {
+    return [];
+  }
+
+  const rows = selectedCatalog
+    ? (l2Details[selectedCatalog] || []).map((item) => ({
+        name: item.name,
+        value: Number(item.value || 0),
+      }))
+    : Object.entries(l2Details).flatMap(([catalog, items]) =>
+        (items || []).map((item) => ({
+          name: `${formatErrorCatalogName(catalog)}/${item.name}`,
+          value: Number(item.value || 0),
+        })),
+      );
+
+  return rows
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+    .slice(0, selectedCatalog ? rows.length : limit)
+    .map((item, _index, visibleRows) => {
+      const total = visibleRows.reduce((sum, row) => sum + row.value, 0) || 1;
+      return {
+        ...item,
+        share_pct: (item.value * 100) / total,
+        interactive: false,
+      };
+    });
+}
+
+function formatErrorCatalogName(value) {
+  const labels = {
+    INFRA: "Infra",
+    BUILD: "Build",
+    UT: "UT",
+    IT: "IT",
+    OTHERS: "Others",
+  };
+  return labels[value] || value;
 }
 
 function computeSeriesDelta(series, key) {
