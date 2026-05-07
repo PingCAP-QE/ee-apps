@@ -1332,18 +1332,19 @@ function buildAxisTicks({
 }) {
   const safeMin = Number.isFinite(min) ? min : 0;
   const safeMax = Number.isFinite(max) ? max : safeMin + 1;
+  const safeSegments = Number.isFinite(segments) && segments > 0 ? Math.floor(segments) : 4;
   const tickMode = ["default", "integer", "thousands-rounded"].includes(mode)
     ? mode
     : "default";
 
   if (tickMode === "thousands-rounded") {
-    const rawStep = Math.max(safeMax, 1) / segments;
+    const rawStep = Math.max(safeMax, 1) / safeSegments;
     const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
-    const roundedMax = step * segments;
+    const roundedMax = step * safeSegments;
     return {
       min: 0,
       max: roundedMax,
-      ticks: Array.from({ length: segments + 1 }, (_, index) => index * step),
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => index * step),
     };
   }
 
@@ -1351,12 +1352,12 @@ function buildAxisTicks({
     const integerMin = Math.floor(safeMin);
     const integerMax = Math.ceil(safeMax);
     const span = Math.max(integerMax - integerMin, 1);
-    const step = Math.max(1, Math.ceil(span / segments));
-    const roundedMax = integerMin + step * segments;
+    const step = Math.max(1, Math.ceil(span / safeSegments));
+    const roundedMax = integerMin + step * safeSegments;
     return {
       min: integerMin,
       max: roundedMax,
-      ticks: Array.from({ length: segments + 1 }, (_, index) => integerMin + index * step),
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => integerMin + index * step),
     };
   }
 
@@ -1364,7 +1365,7 @@ function buildAxisTicks({
     return {
       min: 0,
       max: 100,
-      ticks: Array.from({ length: segments + 1 }, (_, index) => (100 / segments) * index),
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => (100 / safeSegments) * index),
     };
   }
 
@@ -1373,6 +1374,9 @@ function buildAxisTicks({
   return {
     min: safeMin,
     max: resolvedMax,
-    ticks: Array.from({ length: segments + 1 }, (_, index) => safeMin + (span * index) / segments),
+    ticks: Array.from(
+      { length: safeSegments + 1 },
+      (_, index) => safeMin + (span * index) / safeSegments,
+    ),
   };
 }
