@@ -17,7 +17,7 @@ LOG = logging.getLogger(__name__)
 
 FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
 
-FETCH_CANDIDATE_BUILDS = text(
+FETCH_CANDIDATE_BUILDS_SCAN = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
            b.pr_number, b.head_sha, b.url, b.log_gcs_uri,
@@ -64,10 +64,61 @@ FETCH_CANDIDATE_BUILDS = text(
       AND b.state IN :failure_states
       AND b.revise_error_l1_category IS NULL
       AND b.revise_error_l2_subcategory IS NULL
-      AND (:build_id IS NULL OR b.id = :build_id)
       AND (:force = 1 OR b.error_l1_category IS NULL OR b.error_l2_subcategory IS NULL)
     ORDER BY b.start_time DESC, b.id DESC
     LIMIT :limit_value
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_CANDIDATE_BUILD_BY_ID = text(
+    """
+    SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
+           b.pr_number, b.head_sha, b.url, b.log_gcs_uri,
+           b.error_l1_category, b.error_l2_subcategory,
+           b.revise_error_l1_category, b.revise_error_l2_subcategory,
+           pj.state AS prow_state, pj.status AS prow_status,
+           CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM ci_l1_builds newer
+               WHERE newer.repo_full_name = b.repo_full_name
+                 AND newer.pr_number = b.pr_number
+                 AND newer.job_name = b.job_name
+                 AND newer.start_time > b.start_time
+                 AND newer.id <> b.id
+             ) THEN 1 ELSE 0
+           END AS has_newer_pr_job_version,
+           CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM ci_l1_builds newer
+               WHERE newer.repo_full_name = b.repo_full_name
+                 AND newer.pr_number = b.pr_number
+                 AND newer.job_name = b.job_name
+                 AND newer.start_time > b.start_time
+                 AND newer.id <> b.id
+                 AND COALESCE(newer.head_sha, '') <> COALESCE(b.head_sha, '')
+             ) THEN 1 ELSE 0
+           END AS has_newer_pr_job_version_with_different_sha
+    FROM ci_l1_builds b
+    LEFT JOIN prow_jobs pj ON pj.prowJobId = b.source_prow_job_id
+    WHERE b.id = :build_id
+      AND b.state IN :failure_states
+      AND b.revise_error_l1_category IS NULL
+      AND b.revise_error_l2_subcategory IS NULL
+      AND (b.log_gcs_uri IS NOT NULL OR (
+        pj.state = 'aborted'
+        AND EXISTS (
+          SELECT 1
+          FROM ci_l1_builds newer
+          WHERE newer.repo_full_name = b.repo_full_name
+            AND newer.pr_number = b.pr_number
+            AND newer.job_name = b.job_name
+            AND newer.start_time > b.start_time
+            AND newer.id <> b.id
+        )
+      ))
+      AND (:force = 1 OR b.error_l1_category IS NULL OR b.error_l2_subcategory IS NULL)
     """
 ).bindparams(bindparam("failure_states", expanding=True))
 
@@ -110,17 +161,28 @@ def run_analyze_errors(
     pending_updates: list[dict[str, Any]] = []
 
     with engine.begin() as connection:
-        candidates = list(
-            connection.execute(
-                FETCH_CANDIDATE_BUILDS,
-                {
-                    "failure_states": FAILURE_LIKE_STATES,
-                    "build_id": build_id,
-                    "force": 1 if force else 0,
-                    "limit_value": resolved_limit,
-                },
-            ).mappings()
-        )
+        if build_id is not None:
+            candidates = list(
+                connection.execute(
+                    FETCH_CANDIDATE_BUILD_BY_ID,
+                    {
+                        "failure_states": FAILURE_LIKE_STATES,
+                        "build_id": build_id,
+                        "force": 1 if force else 0,
+                    },
+                ).mappings()
+            )
+        else:
+            candidates = list(
+                connection.execute(
+                    FETCH_CANDIDATE_BUILDS_SCAN,
+                    {
+                        "failure_states": FAILURE_LIKE_STATES,
+                        "force": 1 if force else 0,
+                        "limit_value": resolved_limit,
+                    },
+                ).mappings()
+            )
 
     if not candidates:
         return summary
