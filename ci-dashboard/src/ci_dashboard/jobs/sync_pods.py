@@ -67,6 +67,7 @@ POD_NAME_BUILD_NUMBER_MIN_DIGITS = 2
 POD_LINK_RECONCILE_WINDOW_HOURS = 72
 POD_LINK_RECONCILE_BATCH_SIZE = 1000
 JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS = 30
+BUILD_URL_LOOKBACK_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -706,6 +707,51 @@ def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
     return canonicalized if canonicalized and "/" in canonicalized else None
 
 
+_MAX_LIFECYCLE_UNION_PODS = 50
+
+_LIFECYCLE_AGGREGATE_SUFFIX = """\
+  MIN(CASE WHEN events.event_reason = 'Scheduled' THEN events.event_timestamp END) AS scheduled_at,
+  MIN(CASE WHEN events.event_reason = 'Pulling' THEN events.event_timestamp END) AS first_pulling_at,
+  MIN(CASE WHEN events.event_reason = 'Pulled' THEN events.event_timestamp END) AS first_pulled_at,
+  MIN(CASE WHEN events.event_reason = 'Created' THEN events.event_timestamp END) AS first_created_at,
+  MIN(CASE WHEN events.event_reason = 'Started' THEN events.event_timestamp END) AS first_started_at,
+  MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
+  SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
+  MAX(events.event_timestamp) AS last_event_at
+FROM {events_table}
+WHERE {where_clause}
+GROUP BY
+  events.source_project,
+  events.cluster_name,
+  events.location,
+  events.namespace_name,
+  events.pod_name,
+  events.pod_uid"""
+
+
+def _build_lifecycle_aggregate_where(
+    index: int,
+    source_project: str,
+    namespace_name: str | None,
+    pod_uid: str | None,
+    pod_name: str | None,
+) -> tuple[str, dict[str, Any]]:
+    conditions: list[str] = [f"events.source_project = :sp_{index}"]
+    params: dict[str, Any] = {f"sp_{index}": source_project}
+    for col, val in [
+        ("namespace_name", namespace_name),
+        ("pod_uid", pod_uid),
+        ("pod_name", pod_name),
+    ]:
+        if val is None:
+            conditions.append(f"events.{col} IS NULL")
+        else:
+            param = f"{col}_{index}"
+            conditions.append(f"events.{col} = :{param}")
+            params[param] = val
+    return "\n      AND ".join(conditions), params
+
+
 def _load_lifecycle_aggregates(
     connection: Connection,
     pods: list[tuple[str, str | None, str | None, str | None]],
@@ -715,45 +761,32 @@ def _load_lifecycle_aggregates(
     if len(pods) == 1:
         return _load_single_lifecycle_aggregate(connection, pods[0])
 
-    requested_pods_sql, params = _build_requested_pods_relation(pods)
+    all_rows: list[dict[str, Any]] = []
     events_table = _pod_events_table_expr(connection.dialect.name)
-    statement = text(
-        f"""
-        WITH requested_pods AS (
-          {requested_pods_sql}
-        )
-        SELECT
-          events.source_project,
-          events.cluster_name,
-          events.location,
-          events.namespace_name,
-          events.pod_name,
-          events.pod_uid,
-          MIN(CASE WHEN events.event_reason = 'Scheduled' THEN events.event_timestamp END) AS scheduled_at,
-          MIN(CASE WHEN events.event_reason = 'Pulling' THEN events.event_timestamp END) AS first_pulling_at,
-          MIN(CASE WHEN events.event_reason = 'Pulled' THEN events.event_timestamp END) AS first_pulled_at,
-          MIN(CASE WHEN events.event_reason = 'Created' THEN events.event_timestamp END) AS first_created_at,
-          MIN(CASE WHEN events.event_reason = 'Started' THEN events.event_timestamp END) AS first_started_at,
-          MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
-          SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
-          MAX(events.event_timestamp) AS last_event_at
-        FROM {events_table}
-        JOIN requested_pods AS requested
-          ON events.source_project = requested.source_project
-         AND {_null_safe_equals_sql('events.namespace_name', 'requested.namespace_name', connection.dialect.name)}
-         AND {_null_safe_equals_sql('events.pod_uid', 'requested.pod_uid', connection.dialect.name)}
-         AND {_null_safe_equals_sql('events.pod_name', 'requested.pod_name', connection.dialect.name)}
-        GROUP BY
-          events.source_project,
-          events.cluster_name,
-          events.location,
-          events.namespace_name,
-          events.pod_name,
-          events.pod_uid
-        """
-    )
-    rows = connection.execute(statement, params).mappings()
-    return [dict(row) for row in rows]
+    for offset in range(0, len(pods), _MAX_LIFECYCLE_UNION_PODS):
+        sub_batch = pods[offset : offset + _MAX_LIFECYCLE_UNION_PODS]
+        branches: list[str] = []
+        params: dict[str, Any] = {}
+        for index, (source_project, namespace_name, pod_uid, pod_name) in enumerate(sub_batch):
+            where_clause, branch_params = _build_lifecycle_aggregate_where(
+                index, source_project, namespace_name, pod_uid, pod_name
+            )
+            params.update(branch_params)
+            branches.append(
+                f"""\
+SELECT
+  events.source_project,
+  events.cluster_name,
+  events.location,
+  events.namespace_name,
+  events.pod_name,
+  events.pod_uid,
+{_LIFECYCLE_AGGREGATE_SUFFIX.format(events_table=events_table, where_clause=where_clause)}"""
+            )
+        sql = "\nUNION ALL\n".join(branches)
+        rows = connection.execute(text(sql), params).mappings()
+        all_rows.extend(dict(row) for row in rows)
+    return all_rows
 
 
 def _load_single_lifecycle_aggregate(
@@ -901,6 +934,21 @@ def _load_build_metadata_map(
             if candidate_urls:
                 candidate_urls_by_identity[identity] = candidate_urls
 
+        jenkins_scheduled_ats = [
+            payload.get("scheduled_at")
+            for payload in jenkins_rows_by_identity.values()
+            if isinstance(payload.get("scheduled_at"), datetime)
+        ]
+        if jenkins_scheduled_ats:
+            earliest_scheduled = min(jenkins_scheduled_ats)
+            lookback_days = _read_int_env(
+                "CI_DASHBOARD_BUILD_URL_LOOKBACK_DAYS",
+                BUILD_URL_LOOKBACK_DAYS,
+            )
+            start_time_cutoff = earliest_scheduled - timedelta(days=lookback_days)
+        else:
+            start_time_cutoff = None
+
         build_candidates_by_url = _load_build_candidates_by_normalized_url(
             connection,
             normalized_build_urls=sorted(
@@ -910,6 +958,7 @@ def _load_build_metadata_map(
                     for candidate_url in candidate_urls
                 }
             ),
+            start_time_cutoff=start_time_cutoff,
         )
         for identity, payload in jenkins_rows_by_identity.items():
             resolved = _resolve_jenkins_build_metadata(
@@ -984,11 +1033,19 @@ def _load_build_candidates_by_normalized_url(
     connection: Connection,
     *,
     normalized_build_urls: list[str],
+    start_time_cutoff: datetime | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     if not normalized_build_urls:
         return {}
 
-    params: dict[str, Any] = {}
+    if start_time_cutoff is None:
+        lookback_days = _read_int_env(
+            "CI_DASHBOARD_BUILD_URL_LOOKBACK_DAYS",
+            BUILD_URL_LOOKBACK_DAYS,
+        )
+        start_time_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=lookback_days)
+
+    params: dict[str, Any] = {"start_time_cutoff": start_time_cutoff}
     placeholders: list[str] = []
     for index, normalized_build_url in enumerate(normalized_build_urls):
         param_name = f"normalized_build_url_{index}"
@@ -1010,6 +1067,7 @@ def _load_build_candidates_by_normalized_url(
             FROM ci_l1_builds
             WHERE normalized_build_url IS NOT NULL
               AND normalized_build_url IN ({", ".join(placeholders)})
+              AND start_time >= :start_time_cutoff
             ORDER BY start_time DESC
             """
         ),

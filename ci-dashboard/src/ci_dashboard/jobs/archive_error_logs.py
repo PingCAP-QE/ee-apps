@@ -17,14 +17,25 @@ LOG = logging.getLogger(__name__)
 
 FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
 
-FETCH_CANDIDATE_BUILDS = text(
+FETCH_CANDIDATE_BUILD_BY_ID = text(
+    """
+    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+           start_time, completion_time
+    FROM ci_l1_builds
+    WHERE id = :build_id
+      AND build_system = 'JENKINS'
+      AND state IN :failure_states
+      AND (:force = 1 OR log_gcs_uri IS NULL)
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_CANDIDATE_BUILDS_SCAN = text(
     """
     SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
       AND state IN :failure_states
-      AND (:build_id IS NULL OR id = :build_id)
       AND (:force = 1 OR log_gcs_uri IS NULL)
     ORDER BY start_time DESC, id DESC
     LIMIT :limit_value
@@ -65,17 +76,28 @@ def run_archive_error_logs(
     resolved_limit = limit or settings.archive.build_limit
 
     with engine.begin() as connection:
-        candidates = list(
-            connection.execute(
-                FETCH_CANDIDATE_BUILDS.bindparams(),
-                {
-                    "failure_states": FAILURE_LIKE_STATES,
-                    "build_id": build_id,
-                    "force": 1 if force else 0,
-                    "limit_value": resolved_limit,
-                },
-            ).mappings()
-        )
+        if build_id is not None:
+            candidates = list(
+                connection.execute(
+                    FETCH_CANDIDATE_BUILD_BY_ID,
+                    {
+                        "build_id": build_id,
+                        "failure_states": FAILURE_LIKE_STATES,
+                        "force": 1 if force else 0,
+                    },
+                ).mappings()
+            )
+        else:
+            candidates = list(
+                connection.execute(
+                    FETCH_CANDIDATE_BUILDS_SCAN,
+                    {
+                        "failure_states": FAILURE_LIKE_STATES,
+                        "force": 1 if force else 0,
+                        "limit_value": resolved_limit,
+                    },
+                ).mappings()
+            )
 
     if not candidates:
         return summary
