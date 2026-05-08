@@ -716,9 +716,7 @@ def _load_lifecycle_aggregates(
         return _load_single_lifecycle_aggregate(connection, pods[0])
 
     requested_pods_sql, params = _build_requested_pods_relation(pods)
-    events_table = "ci_l1_pod_events AS events"
-    if connection.dialect.name != "sqlite":
-        events_table = "ci_l1_pod_events USE INDEX(idx_ci_l1_pod_events_identity_time) AS events"
+    events_table = _pod_events_table_expr(connection.dialect.name)
     statement = text(
         f"""
         WITH requested_pods AS (
@@ -763,9 +761,7 @@ def _load_single_lifecycle_aggregate(
     pod: tuple[str, str | None, str | None, str | None],
 ) -> list[dict[str, Any]]:
     source_project, namespace_name, pod_uid, pod_name = pod
-    events_table = "ci_l1_pod_events AS events"
-    if connection.dialect.name != "sqlite":
-        events_table = "ci_l1_pod_events USE INDEX(idx_ci_l1_pod_events_identity_time) AS events"
+    events_table = _pod_events_table_expr(connection.dialect.name)
     statement = text(
         f"""
         SELECT
@@ -807,6 +803,13 @@ def _load_single_lifecycle_aggregate(
         },
     ).mappings()
     return [dict(row) for row in rows]
+
+
+def _pod_events_table_expr(dialect_name: str) -> str:
+    table = "ci_l1_pod_events AS events"
+    if dialect_name != "sqlite":
+        table = "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
+    return table
 
 
 def _build_requested_pods_relation(
