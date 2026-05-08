@@ -40,6 +40,7 @@ from ci_dashboard.jobs.sync_pods import (
     _normalize_jenkins_runtime_url,
     _null_safe_equals_sql,
     _parse_jenkins_pod_name_build_ref,
+    _pod_events_table_expr,
     _post_json,
     _read_int_env,
     _request_json,
@@ -227,6 +228,8 @@ def test_sync_pod_helper_functions_cover_common_edge_cases(sqlite_engine, monkey
     assert _max_receive_timestamp([]) is None
     assert _null_safe_equals_sql("a", "b", "sqlite") == "a IS b"
     assert _null_safe_equals_sql("a", "b", "mysql") == "a <=> b"
+    assert _pod_events_table_expr("sqlite") == "ci_l1_pod_events AS events"
+    assert _pod_events_table_expr("mysql") == "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
     assert {"Failed", "BackOff", "ErrImagePull", "ImagePullBackOff"}.issubset(POD_EVENT_REASONS)
     relation_sql, params = _build_requested_pods_relation([("p1", "ns", "uid", "pod")])
     assert "UNION ALL" not in relation_sql
