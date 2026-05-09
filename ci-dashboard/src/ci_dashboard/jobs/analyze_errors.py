@@ -64,7 +64,27 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
       AND b.state IN :failure_states
       AND b.revise_error_l1_category IS NULL
       AND b.revise_error_l2_subcategory IS NULL
-      AND (:force = 1 OR b.error_l1_category IS NULL OR b.error_l2_subcategory IS NULL)
+      AND (
+        :force = 1
+        OR b.error_l1_category IS NULL
+        OR b.error_l2_subcategory IS NULL
+        OR (
+          pj.state = 'aborted'
+          AND EXISTS (
+            SELECT 1
+            FROM ci_l1_builds newer
+            WHERE newer.repo_full_name = b.repo_full_name
+              AND newer.pr_number = b.pr_number
+              AND newer.job_name = b.job_name
+              AND newer.start_time > b.start_time
+              AND newer.id <> b.id
+          )
+          AND (
+            COALESCE(b.error_l1_category, '') <> 'OTHERS'
+            OR COALESCE(b.error_l2_subcategory, '') <> 'SUPERSEDED_BY_NEWER_BUILD'
+          )
+        )
+      )
     ORDER BY b.start_time DESC, b.id DESC
     LIMIT :limit_value
     """
@@ -118,7 +138,27 @@ FETCH_CANDIDATE_BUILD_BY_ID = text(
             AND newer.id <> b.id
         )
       ))
-      AND (:force = 1 OR b.error_l1_category IS NULL OR b.error_l2_subcategory IS NULL)
+      AND (
+        :force = 1
+        OR b.error_l1_category IS NULL
+        OR b.error_l2_subcategory IS NULL
+        OR (
+          pj.state = 'aborted'
+          AND EXISTS (
+            SELECT 1
+            FROM ci_l1_builds newer
+            WHERE newer.repo_full_name = b.repo_full_name
+              AND newer.pr_number = b.pr_number
+              AND newer.job_name = b.job_name
+              AND newer.start_time > b.start_time
+              AND newer.id <> b.id
+          )
+          AND (
+            COALESCE(b.error_l1_category, '') <> 'OTHERS'
+            OR COALESCE(b.error_l2_subcategory, '') <> 'SUPERSEDED_BY_NEWER_BUILD'
+          )
+        )
+      )
     """
 ).bindparams(bindparam("failure_states", expanding=True))
 
@@ -199,6 +239,9 @@ def run_analyze_errors(
     for build in candidates:
         summary.builds_scanned += 1
         enriched_build = _enrich_build_evidence(build)
+        if not force and not _should_refresh_existing_machine_classification(enriched_build):
+            summary.builds_skipped += 1
+            continue
         try:
             classification_source, classification = _classify_single_build(
                 enriched_build,
@@ -324,6 +367,31 @@ def _parse_json_mapping(value: Any) -> Mapping[str, Any]:
         if isinstance(parsed, Mapping):
             return parsed
     return {}
+
+
+def _should_refresh_existing_machine_classification(build: Mapping[str, Any]) -> bool:
+    error_l1 = str(build.get("error_l1_category") or "").strip().upper()
+    error_l2 = str(build.get("error_l2_subcategory") or "").strip().upper()
+    if not error_l1 or not error_l2:
+        return True
+    if error_l1 == "OTHERS" and error_l2 == "SUPERSEDED_BY_NEWER_BUILD":
+        return False
+
+    prow_state = str(build.get("prow_state") or "").strip().lower()
+    if prow_state != "aborted":
+        return False
+
+    if str(build.get("has_newer_pr_job_version_with_different_sha") or "").strip().lower() in {"1", "true"}:
+        return True
+
+    status_description = str(build.get("prow_status_description") or "").strip()
+    if (
+        status_description == "Aborted as the newer version of this job is running."
+        and str(build.get("has_newer_pr_job_version") or "").strip().lower() in {"1", "true"}
+    ):
+        return True
+
+    return False
 
 
 def _normalize_review_category(value: str) -> str:
