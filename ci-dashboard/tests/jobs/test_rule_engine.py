@@ -365,6 +365,34 @@ def test_rule_engine_classifies_cdc_storage_matrix_failure_as_integration_test_f
     assert classification.source == "rule:cdc_integration_storage_test_failure"
 
 
+def test_rule_engine_classifies_cdc_mysql_integration_light_matrix_failure_as_integration_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1' (111)\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G08'\n"
+            "Error when executing failure post condition:\n"
+            "Also: java.lang.InterruptedException\n"
+            "at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl."
+            "ThrowBlock$1.receive(ThrowBlock.java:65)\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_mysql_integration_light",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_mysql_integration_light/1983/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
+
+
 def test_rule_engine_prefers_oomkilled_over_cdc_storage_matrix_failure() -> None:
     engine = RuleEngine.from_file()
 
@@ -646,6 +674,30 @@ def test_rule_engine_classifies_jenkins_dsl_error_as_groovy_infra() -> None:
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "JENKINS_GROOVY"
     assert classification.source == "rule:infra_jenkins_groovy"
+
+
+def test_rule_engine_does_not_treat_generic_workflow_cps_stack_as_groovy_infra() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Error when executing failure post condition:\n"
+            "Also: java.lang.InterruptedException\n"
+            "at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl."
+            "ThrowBlock$1.receive(ThrowBlock.java:65)\n"
+            "at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps."
+            "CpsThread.runNextChunk(CpsThread.java:188)\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_sqllogic_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_sqllogic_test/999/"
+            ),
+        },
+    )
+
+    assert classification is None
 
 
 def test_rule_engine_prefers_jenkins_cache_over_groovy_and_remoting_noise() -> None:

@@ -223,6 +223,18 @@
       ]
     },
     {
+      "name": "cdc_mysql_integration_light_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_mysql_integration_light$",
+        "(^|_)pull_cdc_mysql_integration_light($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+      ]
+    },
+    {
       "name": "merged_integration_test_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -352,8 +364,6 @@
         "groovy\\.lang\\.(MissingPropertyException|MissingMethodException|GroovyRuntimeException):",
         "No such DSL method",
         "No such property: .* for class: groovy\\.lang\\.Binding",
-        "WorkflowScript\\.run\\(WorkflowScript:[0-9]+\\)",
-        "com\\.cloudbees\\.groovy\\.cps",
         "org\\.jenkinsci\\.plugins\\.workflow\\.cps\\.CpsCompilationErrorsException"
       ]
     },

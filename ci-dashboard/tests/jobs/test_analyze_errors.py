@@ -417,6 +417,86 @@ def test_run_analyze_errors_classifies_generic_admin_abort_with_newer_sha_after_
     assert row["error_l2_subcategory"] == "SUPERSEDED_BY_NEWER_BUILD"
 
 
+def test_run_analyze_errors_overrides_existing_groovy_with_trigger_plugin_superseded(
+    sqlite_engine,
+) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=171,
+        source_prow_job_id="trigger-race-old-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        job_type="presubmit",
+        pr_number=68180,
+        head_sha="old-sha",
+        start_time="2026-05-09 02:43:50",
+        completion_time="2026-05-09 02:56:49",
+        state="failure",
+        log_gcs_uri="gcs://ci-dashboard-test/2605/171.log",
+        error_l1_category="INFRA",
+        error_l2_subcategory="JENKINS_GROOVY",
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=172,
+        source_prow_job_id="trigger-race-new-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        job_type="presubmit",
+        pr_number=68180,
+        head_sha="new-sha",
+        start_time="2026-05-09 02:55:18",
+        completion_time="2026-05-09 03:17:48",
+        state="success",
+        log_gcs_uri="gcs://ci-dashboard-test/2605/172.log",
+    )
+    _insert_prow_job(
+        sqlite_engine,
+        row_id=904,
+        prow_job_id="trigger-race-old-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        state="aborted",
+        pr_number=68180,
+        start_time="2026-05-09 02:43:50",
+        description="Aborted by trigger plugin.",
+    )
+    reader = _FakeReader(
+        {
+            (
+                "ci-dashboard-test",
+                "2605/171.log",
+            ): "groovy.lang.MissingPropertyException: No such property: WORKSPACE for class: groovy.lang.Binding\n",
+        }
+    )
+    classifier = _FakeClassifier(
+        ErrorClassification(
+            l1_category="BUILD",
+            l2_subcategory="PIPELINE_CONFIG",
+            source="llm:test",
+        )
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=reader,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=classifier,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_classified == 1
+    assert summary.builds_rule_classified == 1
+    assert reader.calls == []
+    assert classifier.calls == []
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 171")
+        ).mappings().one()
+
+    assert row["error_l1_category"] == "OTHERS"
+    assert row["error_l2_subcategory"] == "SUPERSEDED_BY_NEWER_BUILD"
+
+
 def test_run_analyze_errors_skips_success_rows_even_with_archived_log(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,
