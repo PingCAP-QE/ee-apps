@@ -170,6 +170,21 @@
       ]
     },
     {
+      "name": "br_integration_test_output_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
       "name": "integration_test_timeout",
       "l1": "IT",
       "l2": "TIMEOUT",
@@ -279,9 +294,6 @@
       "l1": "BUILD",
       "l2": "COMPILE",
       "text_patterns": [
-        "compilepkg: missing strict dependencies:",
-        "No dependencies were provided\\.",
-        "Check that imports in Go sources match importpath attributes in deps\\.",
         "\\.go:[0-9]+:[0-9]+: undefined:",
         "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
         "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
@@ -362,6 +374,7 @@
       "l2": "JENKINS_GROOVY",
       "text_patterns": [
         "groovy\\.lang\\.(MissingPropertyException|MissingMethodException|GroovyRuntimeException):",
+        "java\\.lang\\.NullPointerException:[\\s\\S]*WorkflowScript\\.run\\(WorkflowScript:[0-9]+\\)",
         "No such DSL method",
         "No such property: .* for class: groovy\\.lang\\.Binding",
         "org\\.jenkinsci\\.plugins\\.workflow\\.cps\\.CpsCompilationErrorsException"
@@ -441,8 +454,12 @@
       "l2": "DEPENDENCY",
       "text_patterns": [
         "go: updates to go\\.mod needed; to update it:",
+        "missing go\\.sum entry for module providing package",
         "no required module provides package",
         "cannot find module",
+        "compilepkg: missing strict dependencies:",
+        "No dependencies were provided\\.",
+        "Check that imports in Go sources match importpath attributes in deps\\.",
         "No matching distribution found",
         "Could not resolve dependencies",
         "failed to download module"

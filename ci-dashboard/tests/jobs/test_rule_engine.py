@@ -575,6 +575,33 @@ def test_rule_engine_classifies_br_integration_timeout_before_matrix_failure() -
     assert classification.source == "rule:integration_test_timeout"
 
 
+def test_rule_engine_prefers_br_output_failure_over_later_timeout_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "TEST FAILED: OUTPUT DOES NOT CONTAIN 'clustered index enabled'\n"
+            "check diff failed 3-th time, retry later\n"
+            "context deadline exceeded while waiting for local test service\n"
+            "Cancelling nested steps due to timeout\n"
+            "Timeout has been exceeded\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G04'\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_br_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_br_integration_test/1010/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:br_integration_test_output_failure"
+
+
 def test_rule_engine_prefers_kubelet_eviction_over_jenkins_disconnect_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -667,6 +694,33 @@ def test_rule_engine_classifies_jenkins_dsl_error_as_groovy_infra() -> None:
         build={
             "job_name": "pingcap/tidb/merged_sqllogic_test",
             "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/merged_sqllogic_test/137/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS_GROOVY"
+    assert classification.source == "rule:infra_jenkins_groovy"
+
+
+def test_rule_engine_classifies_workflowscript_null_pointer_as_groovy_infra() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Also: org.jenkinsci.plugins.workflow.actions.ErrorAction$ErrorId: cc0b3589\n"
+            "java.lang.NullPointerException: Cannot invoke method getAt() on null object\n"
+            "at org.codehaus.groovy.runtime.NullObject.invokeMethod(NullObject.java:91)\n"
+            "at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl."
+            "ArrayAccessBlock.rawGet(ArrayAccessBlock.java:20)\n"
+            "at WorkflowScript.run(WorkflowScript:11)\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_lightning_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_lightning_test/169/"
+            ),
         },
     )
 
@@ -926,8 +980,35 @@ def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
 
     assert classification is not None
     assert classification.l1_category == "BUILD"
-    assert classification.l2_subcategory == "COMPILE"
-    assert classification.source == "rule:build_go_compile_failure"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_matches_missing_go_sum_dependency_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "/go/pkg/mod/github.com/mattn/go-runewidth@v0.0.23/runewidth.go:8:2: "
+            "missing go.sum entry for module providing package "
+            "github.com/clipperhouse/uax29/v2/graphemes "
+            "(imported by github.com/mattn/go-runewidth); to add:\n"
+            "\tgo get github.com/mattn/go-runewidth@v0.0.23\n"
+            "make: *** [Makefile:279: enterprise-server-build] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2240/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
 
 
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
