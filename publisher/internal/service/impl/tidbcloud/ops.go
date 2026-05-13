@@ -61,8 +61,6 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 	}
 	slices.Sort(components)
 
-	s.Logger.Info().Interface("components", components).Msg("debug")
-
 	componentVersion := strings.SplitN(imageTag, "-", 2)[0]
 
 	for _, component := range components {
