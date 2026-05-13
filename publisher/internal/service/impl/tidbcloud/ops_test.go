@@ -12,8 +12,8 @@ func TestIsSupportedNextgenImageTag(t *testing.T) {
 		{tag: "v26.3.0-nextgen", want: true},
 		{tag: "v26.0.0-nextgen", want: true},
 		{tag: "v26.3.1-nextgen", want: true},
+		{tag: "v26.3.1", want: true},
 		{tag: "v26.3.1-2-gabcdef0-nextgen", want: false},
-		{tag: "v26.3.1", want: false},
 		{tag: "master-next-gen", want: false},
 	}
 
