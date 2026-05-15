@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from ci_dashboard import __version__
 from ci_dashboard.api.routes.builds import router as builds_router
 from ci_dashboard.api.routes.failures import router as failures_router
 from ci_dashboard.api.routes.filters import router as filters_router
@@ -71,7 +72,7 @@ def _attach_frontend(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CI Dashboard", version="0.3.1")
+    app = FastAPI(title="CI Dashboard", version=__version__)
 
     app.include_router(status_router)
     app.include_router(filters_router)

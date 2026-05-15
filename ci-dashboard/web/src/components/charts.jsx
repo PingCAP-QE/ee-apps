@@ -179,11 +179,12 @@ export function TrendChart({
     return <EmptyState message="No chart data for the current filters." />;
   }
 
-  const labels = preserveLabelOrder
-    ? series.flatMap((item) => item.points.map((point) => point[0])).filter((label, index, source) => source.indexOf(label) === index)
-    : Array.from(
-        new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
-      ).sort();
+  const labels = Array.from(
+    new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
+  );
+  if (!preserveLabelOrder) {
+    labels.sort();
+  }
   if (!labels.length) {
     return <EmptyState message="No chart data for the current filters." />;
   }
