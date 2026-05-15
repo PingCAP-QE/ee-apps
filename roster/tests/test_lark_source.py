@@ -60,6 +60,7 @@ def test_lark_roster_source_fetches_token_departments_and_users() -> None:
                             "name": "CEO",
                             "email": "ceo@example.com",
                             "employee_no": "E001",
+                            "join_time": 1704067200,
                             "leader_user_id": "",
                             "department_ids": ["od-root"],
                             "orders": [
@@ -83,6 +84,7 @@ def test_lark_roster_source_fetches_token_departments_and_users() -> None:
                             "name": "Manager",
                             "enterprise_email": "manager@example.com",
                             "employee_no": "E002",
+                            "join_time": 1706745600,
                             "leader_user_id": "ceo",
                             "department_ids": ["od-eng", "od-root"],
                             "orders": [
@@ -124,8 +126,10 @@ def test_lark_roster_source_fetches_token_departments_and_users() -> None:
     assert roster.groups[1].manager_lark_id == "manager"
     assert [employee.lark_id for employee in roster.employees] == ["ceo", "manager"]
     assert roster.employees[0].group_lark_id == "od-root"
+    assert roster.employees[0].join_time.isoformat() == "2024-01-01T00:00:00"
     assert roster.employees[1].email == "manager@example.com"
     assert roster.employees[1].github_id == "manager-gh"
+    assert roster.employees[1].join_time.isoformat() == "2024-02-01T00:00:00"
     assert roster.employees[1].manager_lark_id == "ceo"
     assert roster.employees[1].group_lark_id == "od-eng"
     assert transport.calls[0] == {
@@ -290,6 +294,7 @@ def test_lark_roster_source_maps_fallback_fields() -> None:
                             "union_id": "alice",
                             "name": "Alice",
                             "email": "alice@example.com",
+                            "join_time": 0,
                             "orders": [
                                 {"department_id": "od-a", "department_order": 20},
                                 {"department_id": "od-b", "department_order": 5},
@@ -320,6 +325,7 @@ def test_lark_roster_source_maps_fallback_fields() -> None:
 
     assert roster.employees[0].email == "alice@example.com"
     assert roster.employees[0].github_id == "alice-gh"
+    assert roster.employees[0].join_time is None
     assert roster.employees[0].group_lark_id == "od-a"
     assert roster.employees[1].github_id is None
     assert roster.employees[1].group_lark_id == "od-a"

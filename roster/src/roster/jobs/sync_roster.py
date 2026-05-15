@@ -46,6 +46,7 @@ employees_table = Table(
     Column("employee_no", String(64)),
     Column("email", String(255), unique=True),
     Column("github_id", String(255), unique=True),
+    Column("join_time", DateTime),
     Column("manager_id", BigInteger),
     Column("manager_path", String(1024)),
     Column("group_id", BigInteger),
@@ -88,6 +89,7 @@ class FetchedEmployee:
     employee_no: str | None = None
     email: str | None = None
     github_id: str | None = None
+    join_time: datetime | None = None
     manager_lark_id: str | None = None
     group_lark_id: str | None = None
 
@@ -232,6 +234,7 @@ def _employee_pass1_rows(
                 "employee_no": _nullable_text(employee.employee_no),
                 "email": None if email in duplicate_emails else email,
                 "github_id": None if github_id in duplicate_github_ids else github_id,
+                "join_time": employee.join_time,
                 "manager_id": None,
                 "manager_path": None,
                 "group_id": None,

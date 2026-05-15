@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS roster_employees (
   employee_no VARCHAR(64) NULL,
   email VARCHAR(255) NULL,
   github_id VARCHAR(255) NULL,
+  join_time DATETIME NULL,
   manager_id BIGINT NULL,
   manager_path VARCHAR(1024) NULL,
   group_id BIGINT NULL,

@@ -28,6 +28,7 @@ CREATE TABLE roster_employees (
   employee_no VARCHAR(64) NULL,
   email VARCHAR(255) NULL,
   github_id VARCHAR(255) NULL,
+  join_time DATETIME NULL,
   manager_id BIGINT NULL,
   manager_path VARCHAR(1024) NULL,
   group_id BIGINT NULL,
@@ -53,6 +54,7 @@ Field notes:
 - `employee_no`: employee number from Lark, used for HR and cost data reconciliation.
 - `email`: company email. Empty values from Lark must be normalized to `NULL`.
 - `github_id`: GitHub account value from Lark. This is expected to be the GitHub login/name if Lark stores that as the custom field.
+- `join_time`: employee join time from Lark `join_time`, stored as UTC `DATETIME`.
 - `manager_id`: direct manager, references `roster_employees.id`.
 - `manager_path`: ancestor manager chain, stored as `/ceo_id/cto_id/direct_manager_id/`. It does not include the employee's own `id`.
 - `group_id`: employee's primary/direct group, usually the leaf group from Lark.

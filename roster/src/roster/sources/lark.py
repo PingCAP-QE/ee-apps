@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib import error, parse, request
 
@@ -214,6 +215,7 @@ class LarkRosterSource(RosterSource):
             employee_no=_optional_text(item.get("employee_no")),
             email=_optional_text(item.get("enterprise_email") or item.get("email")),
             github_id=self._github_id_from_custom_attrs(item),
+            join_time=_join_time_from_epoch(item.get("join_time")),
             manager_lark_id=_optional_text(item.get("leader_user_id")),
             group_lark_id=_primary_group_id(item, fallback_group_id=fallback_group_id),
         )
@@ -278,6 +280,12 @@ def _optional_text(value: object) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _join_time_from_epoch(value: object) -> datetime | None:
+    if not isinstance(value, int) or value <= 0:
+        return None
+    return datetime.fromtimestamp(value, UTC).replace(tzinfo=None)
 
 
 def _format_lark_http_error(status_code: int, payload: str) -> str:

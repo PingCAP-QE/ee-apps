@@ -67,6 +67,7 @@ def test_run_sync_roster_writes_groups_employees_and_paths() -> None:
                     employee_no="E003",
                     email="dev@example.com",
                     github_id="dev-gh",
+                    join_time=_dt("2024-01-02T00:00:00"),
                     manager_lark_id="manager",
                     group_lark_id="db",
                 ),
@@ -101,6 +102,7 @@ def test_run_sync_roster_writes_groups_employees_and_paths() -> None:
     assert employees["dev"]["manager_path"] == f"/{employees['ceo']['id']}/{employees['manager']['id']}/"
     assert employees["dev"]["group_id"] == groups["db"]["id"]
     assert employees["dev"]["group_path"] == groups["db"]["path"]
+    assert employees["dev"]["join_time"] == _dt("2024-01-02T00:00:00")
 
 
 def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -> None:
@@ -116,6 +118,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
                     name="Alice",
                     email="alice@example.com",
                     github_id="alice",
+                    join_time=_dt("2024-01-02T00:00:00"),
                     group_lark_id="eng",
                 )
             ],
@@ -130,6 +133,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
                     name="Alice Zhang",
                     email="alice.zhang@example.com",
                     github_id="alicezhang",
+                    join_time=_dt("2024-03-04T00:00:00"),
                     group_lark_id="eng",
                 )
             ],
@@ -151,6 +155,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
     assert employee["name"] == "Alice Zhang"
     assert employee["email"] == "alice.zhang@example.com"
     assert employee["github_id"] == "alicezhang"
+    assert employee["join_time"] == _dt("2024-03-04T00:00:00")
     assert group["id"] == original_group_id
     assert group["name"] == "Engineering Platform"
 
@@ -391,6 +396,7 @@ def _stable_employee(row) -> dict[str, object]:
         "employee_no": row["employee_no"],
         "email": row["email"],
         "github_id": row["github_id"],
+        "join_time": row["join_time"],
         "manager_id": row["manager_id"],
         "manager_path": row["manager_path"],
         "group_id": row["group_id"],
