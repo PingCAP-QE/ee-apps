@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Table,
     and_,
+    bindparam,
     select,
     update,
 )
@@ -28,6 +29,7 @@ LOG = logging.getLogger(__name__)
 
 RosterSyncStatus = Literal["not_implemented", "success", "failed", "partial"]
 DEFAULT_INACTIVE_GRACE = timedelta(days=2)
+BULK_UPDATE_CHUNK_SIZE = 500
 
 metadata = MetaData()
 
@@ -304,6 +306,7 @@ def _update_group_references(
 ) -> dict[int, str]:
     group_by_lark_group_id = {group.lark_group_id: group for group in groups}
     path_by_lark_group_id: dict[str, str] = {}
+    update_rows: list[dict[str, object]] = []
 
     def build_path(lark_group_id: str, visiting: set[str] | None = None) -> str:
         if lark_group_id in path_by_lark_group_id:
@@ -335,12 +338,21 @@ def _update_group_references(
             else None
         )
         path = build_path(group.lark_group_id)
-        connection.execute(
-            update(groups_table)
-            .where(groups_table.c.id == group_id)
-            .values(parent_id=parent_id, manager_id=manager_id, path=path)
+        update_rows.append(
+            {
+                "id": group_id,
+                "parent_id": parent_id,
+                "manager_id": manager_id,
+                "path": path,
+            }
         )
 
+    _bulk_update_by_id(
+        connection,
+        groups_table,
+        update_rows,
+        value_columns=("parent_id", "manager_id", "path"),
+    )
     return {group_id_by_lark_group_id[lark_id]: path for lark_id, path in path_by_lark_group_id.items()}
 
 
@@ -354,6 +366,7 @@ def _update_employee_references(
 ) -> None:
     employee_by_lark_id = {employee.lark_id: employee for employee in employees}
     manager_path_by_lark_id: dict[str, str] = {}
+    update_rows: list[dict[str, object]] = []
 
     def build_manager_path(lark_id: str, visiting: set[str] | None = None) -> str:
         if lark_id in manager_path_by_lark_id:
@@ -387,16 +400,57 @@ def _update_employee_references(
         )
         manager_path = build_manager_path(employee.lark_id) or None
         group_path = group_path_by_id.get(group_id) if group_id else None
-        connection.execute(
-            update(employees_table)
-            .where(employees_table.c.id == employee_id)
-            .values(
-                manager_id=manager_id,
-                manager_path=manager_path,
-                group_id=group_id,
-                group_path=group_path,
-            )
+        update_rows.append(
+            {
+                "id": employee_id,
+                "manager_id": manager_id,
+                "manager_path": manager_path,
+                "group_id": group_id,
+                "group_path": group_path,
+            }
         )
+
+    _bulk_update_by_id(
+        connection,
+        employees_table,
+        update_rows,
+        value_columns=("manager_id", "manager_path", "group_id", "group_path"),
+    )
+
+
+def _bulk_update_by_id(
+    connection: Connection,
+    table: Table,
+    rows: Sequence[dict[str, object]],
+    *,
+    value_columns: Sequence[str],
+) -> None:
+    if not rows:
+        return
+
+    statement = (
+        update(table)
+        .where(table.c.id == bindparam("_target_id"))
+        .values({column: bindparam(f"_{column}") for column in value_columns})
+    )
+    for chunk in _chunks(rows, BULK_UPDATE_CHUNK_SIZE):
+        connection.execute(
+            statement,
+            [
+                {
+                    "_target_id": row["id"],
+                    **{f"_{column}": row[column] for column in value_columns},
+                }
+                for row in chunk
+            ],
+        )
+
+
+def _chunks(
+    rows: Sequence[dict[str, object]],
+    size: int,
+) -> list[Sequence[dict[str, object]]]:
+    return [rows[index : index + size] for index in range(0, len(rows), size)]
 
 
 def _mark_stale_rows_inactive(
