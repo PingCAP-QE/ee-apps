@@ -13,6 +13,7 @@ from ci_dashboard.api.queries.builds import (
     get_cloud_repo_share,
     get_duration_trend,
     get_longest_avg_success_jobs,
+    get_migration_fixed_window_comparison,
     get_migration_runtime_comparison,
     get_lowest_success_rate_jobs,
     get_outcome_trend,
@@ -23,6 +24,7 @@ from ci_dashboard.api.queries.failures import (
 )
 from ci_dashboard.api.queries.filters import list_repos
 from ci_dashboard.api.queries.flaky import (
+    get_flaky_bucketed_rate_view,
     get_distinct_flaky_case_counts_by_branch,
     get_flaky_composition,
     get_issue_fix_progress_snapshot,
@@ -114,6 +116,10 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
                 engine,
                 migration_filters,
             ),
+            "migration_fixed_window_comparison": lambda: get_migration_fixed_window_comparison(
+                engine,
+                filters,
+            ),
             "cloud_repo_share": lambda: get_cloud_repo_share(engine, repo_share_filters),
             "error_catalog_share": lambda: get_error_l1_share(engine, filters),
         }
@@ -150,6 +156,10 @@ def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
             "issue_case_rates": lambda: get_issue_filtered_weekly_case_rates(engine, filters),
             "trend": lambda: get_flaky_trend(engine, build_scope_filters),
             "composition": lambda: get_flaky_composition(engine, build_scope_filters_weekly),
+            "bucketed_flaky_rate": lambda: get_flaky_bucketed_rate_view(
+                engine,
+                build_scope_filters,
+            ),
             "top_jobs": lambda: get_flaky_top_jobs(engine, build_scope_filters, limit=8),
             "failure_category_share": lambda: get_failure_category_share(
                 engine,

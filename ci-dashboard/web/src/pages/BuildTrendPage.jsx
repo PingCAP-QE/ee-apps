@@ -519,6 +519,17 @@ function buildBucketLabels(startDate, endDate, granularity) {
     return labels;
   }
 
+  if (granularity === "month") {
+    const labels = [];
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 12, 0, 0));
+    const lastMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1, 12, 0, 0));
+    while (cursor <= lastMonth) {
+      labels.push(toIsoDate(cursor));
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+    return labels;
+  }
+
   const labels = [];
   const cursor = new Date(start);
   while (cursor <= end) {

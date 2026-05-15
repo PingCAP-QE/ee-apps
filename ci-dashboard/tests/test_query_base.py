@@ -161,13 +161,15 @@ def test_build_common_where_supports_multiple_jobs() -> None:
     assert params["job_name_1"] == "job-b"
 
 
-def test_query_base_helpers_cover_tidb_and_week_filters() -> None:
+def test_query_base_helpers_cover_tidb_and_bucket_filters() -> None:
     sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     tidb_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
 
     assert branch_expr("b") == "COALESCE(NULLIF(b.target_branch, ''), b.base_ref)"
     assert bucket_expr(sqlite_connection, "start_time", "day") == "DATE(start_time)"
+    assert bucket_expr(sqlite_connection, "start_time", "month") == "DATE(strftime('%Y-%m-01', start_time))"
     assert "strftime('%w'" in bucket_expr(sqlite_connection, "start_time", "week")
+    assert bucket_expr(tidb_connection, "start_time", "month") == "DATE_SUB(DATE(start_time), INTERVAL DAYOFMONTH(start_time) - 1 DAY)"
     assert bucket_expr(tidb_connection, "start_time", "week") == "DATE_SUB(DATE(start_time), INTERVAL WEEKDAY(start_time) DAY)"
 
     assert builds_table_expr(sqlite_connection, CommonFilters(repo="pingcap/tidb")) == "ci_l1_builds b"

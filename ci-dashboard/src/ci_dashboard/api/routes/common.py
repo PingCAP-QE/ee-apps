@@ -34,7 +34,7 @@ def get_common_filters(
 
 def validate_granularity(granularity: str) -> None:
     if granularity not in SUPPORTED_GRANULARITIES:
-        raise HTTPException(status_code=400, detail="granularity must be one of: day, week")
+        raise HTTPException(status_code=400, detail="granularity must be one of: day, week, month")
 
 
 def validate_date_range(start_date: date | None, end_date: date | None) -> None:

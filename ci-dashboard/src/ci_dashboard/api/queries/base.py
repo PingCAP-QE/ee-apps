@@ -10,7 +10,7 @@ from sqlalchemy.engine import Connection
 
 FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
 SUCCESS_STATES = ("success", "pass")
-SUPPORTED_GRANULARITIES = {"day", "week"}
+SUPPORTED_GRANULARITIES = {"day", "week", "month"}
 MAX_RANKING_LIMIT = 50
 
 
@@ -178,6 +178,11 @@ def branch_match_expr(table_alias: str = "", *, bind_name: str = "branch") -> st
 def bucket_expr(connection: Connection, column_name: str, granularity: str) -> str:
     if granularity == "day":
         return f"DATE({column_name})"
+
+    if granularity == "month":
+        if connection.dialect.name == "sqlite":
+            return f"DATE(strftime('%Y-%m-01', {column_name}))"
+        return f"DATE_SUB(DATE({column_name}), INTERVAL DAYOFMONTH({column_name}) - 1 DAY)"
 
     if connection.dialect.name == "sqlite":
         return (
