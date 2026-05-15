@@ -74,6 +74,64 @@ def get_flaky_composition(engine: Engine, filters: CommonFilters) -> dict[str, A
     }
 
 
+def get_flaky_bucketed_rate_view(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    effective_granularity = _flaky_rate_bucket_granularity(filters.granularity)
+    effective_filters = CommonFilters(
+        repo=filters.repo,
+        branch=filters.branch,
+        job_name=filters.job_name,
+        cloud_phase=filters.cloud_phase,
+        issue_status=None,
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        granularity=effective_granularity,
+    )
+    rows = _query_bucketed_flaky_metrics(
+        engine,
+        effective_filters,
+        exclude_partial_weeks=False,
+    )
+
+    points: list[list[Any]] = []
+    table_rows: list[dict[str, Any]] = []
+    previous_rate: float | None = None
+
+    for row in rows:
+        bucket_start = str(row["bucket_start"])
+        total_failure_like = int(row["total_failure_like_count"] or 0)
+        flaky_build_count = int(row["flaky_build_count"] or 0)
+        flaky_rate_pct = rate_pct(flaky_build_count, total_failure_like)
+        time_to_time_pct = _period_over_period_delta(flaky_rate_pct, previous_rate)
+
+        points.append([bucket_start, flaky_rate_pct])
+        table_rows.append(
+            {
+                "time": bucket_start,
+                "flaky_rate_pct": flaky_rate_pct,
+                "time_to_time_pct": time_to_time_pct,
+            }
+        )
+        previous_rate = flaky_rate_pct
+
+    return {
+        "series": [
+            {
+                "key": "flaky_rate_pct",
+                "label": "Flaky rate",
+                "type": "line",
+                "points": points,
+            }
+        ],
+        "rows": table_rows,
+        "meta": {
+            **filters.meta(),
+            "requested_granularity": filters.granularity,
+            "effective_granularity": effective_granularity,
+            "ignores_issue_status": True,
+        },
+    }
+
+
 def get_flaky_top_jobs(
     engine: Engine,
     filters: CommonFilters,
@@ -838,6 +896,8 @@ def get_issue_lifecycle_weekly(
 def _query_bucketed_flaky_metrics(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    exclude_partial_weeks: bool = True,
 ) -> list[dict[str, Any]]:
     with engine.begin() as connection:
         where_clause, params = _build_build_where(filters, table_alias="b")
@@ -863,13 +923,25 @@ def _query_bucketed_flaky_metrics(
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
-        if filters.granularity == "week":
+        if exclude_partial_weeks and filters.granularity == "week":
             data_rows = filter_complete_week_rows(
                 data_rows,
                 start_date=filters.start_date,
                 end_date=filters.end_date,
             )
         return data_rows
+
+
+def _flaky_rate_bucket_granularity(granularity: str) -> str:
+    if granularity == "month":
+        return "month"
+    return "week"
+
+
+def _period_over_period_delta(current: float, previous: float | None) -> float | None:
+    if previous is None:
+        return None
+    return to_number(current - previous)
 
 
 def _query_period_summary(

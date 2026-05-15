@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -25,6 +25,14 @@ MIGRATION_MIN_SUCCESS_RUNS = 5
 MIGRATION_IMPROVED_LIMIT = 10
 MIGRATION_REGRESSED_LIMIT = 10
 BUILD_TREND_JOB_RANKING_LIMIT = 10
+MIGRATION_FIXED_BASELINE_START = date(2025, 12, 15)
+MIGRATION_FIXED_BASELINE_END = date(2026, 1, 14)
+MIGRATION_FIXED_RECENT_START = date(2026, 4, 15)
+MIGRATION_FIXED_COMPARISON_SCOPES = (
+    ("all_repos", "All repos", None),
+    ("tidb", "TiDB", "pingcap/tidb"),
+    ("ticdc", "TiCDC", "pingcap/ticdc"),
+)
 
 
 def get_outcome_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -714,6 +722,61 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
     }
 
 
+def get_migration_fixed_window_comparison(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    with engine.begin() as connection:
+        success_where = success_expr("b")
+        recent_end_date = filters.end_date or _find_latest_gcp_success_date(
+            connection,
+            "1=1",
+            {},
+            success_where,
+        )
+
+        rows = [
+            {
+                "scope_key": scope_key,
+                "scope_label": scope_label,
+                "repo_full_name": repo_full_name,
+                "baseline": _fetch_migration_window_summary(
+                    connection,
+                    repo_full_name=repo_full_name,
+                    start_date=MIGRATION_FIXED_BASELINE_START,
+                    end_date=MIGRATION_FIXED_BASELINE_END,
+                    cloud_phase=None,
+                ),
+                "recent_gcp": _fetch_migration_window_summary(
+                    connection,
+                    repo_full_name=repo_full_name,
+                    start_date=MIGRATION_FIXED_RECENT_START,
+                    end_date=recent_end_date,
+                    cloud_phase="GCP",
+                ),
+            }
+            for scope_key, scope_label, repo_full_name in MIGRATION_FIXED_COMPARISON_SCOPES
+        ]
+
+    return {
+        "rows": rows,
+        "meta": {
+            **filters.meta(),
+            "baseline_start_date": MIGRATION_FIXED_BASELINE_START.isoformat(),
+            "baseline_end_date": MIGRATION_FIXED_BASELINE_END.isoformat(),
+            "recent_start_date": MIGRATION_FIXED_RECENT_START.isoformat(),
+            "recent_end_date": recent_end_date.isoformat() if recent_end_date else None,
+            "scopes": [
+                {"scope_key": scope_key, "scope_label": scope_label, "repo_full_name": repo_full_name}
+                for scope_key, scope_label, repo_full_name in MIGRATION_FIXED_COMPARISON_SCOPES
+            ],
+            "ignores_repo_filter": True,
+            "ignores_branch_filter": True,
+            "ignores_job_filter": True,
+            "ignores_start_date": True,
+            "ignores_bucket": True,
+            "ignores_cloud_phase": True,
+        },
+    }
+
+
 def _find_latest_gcp_success_date(
     connection,
     where_clause: str,
@@ -777,3 +840,56 @@ def _coerce_isoformat_utc(value: Any) -> str | None:
     if isinstance(value, str):
         return isoformat_utc(datetime.fromisoformat(value))
     return isoformat_utc(value)
+
+
+def _fetch_migration_window_summary(
+    connection,
+    *,
+    repo_full_name: str | None,
+    start_date: date,
+    end_date: date | None,
+    cloud_phase: str | None,
+) -> dict[str, Any]:
+    if end_date is None or end_date < start_date:
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat() if end_date else None,
+            "total_build_count": 0,
+            "success_count": 0,
+            "success_rate_pct": 0.0,
+            "success_avg_total_s": 0,
+        }
+
+    filters = CommonFilters(
+        repo=repo_full_name,
+        start_date=start_date,
+        end_date=end_date,
+        cloud_phase=cloud_phase,
+    )
+    where_clause, params = build_common_where(filters, table_alias="b")
+    builds_table = builds_table_expr(connection, filters, alias="b")
+    success_where = success_expr("b")
+    row = connection.execute(
+        text(
+            f"""
+            SELECT
+              COUNT(*) AS total_build_count,
+              SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_count,
+              AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS success_avg_total_s
+            FROM {builds_table}
+            WHERE {where_clause}
+            """
+        ),
+        params,
+    ).mappings().one()
+
+    total_build_count = int(row["total_build_count"] or 0)
+    success_count = int(row["success_count"] or 0)
+    return {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "total_build_count": total_build_count,
+        "success_count": success_count,
+        "success_rate_pct": rate_pct(success_count, total_build_count),
+        "success_avg_total_s": round(float(row["success_avg_total_s"] or 0)),
+    }

@@ -29,6 +29,8 @@ const SERIES_COLORS = {
   success_count: "#2a9d8f",
   failure_count: "#d1495b",
   success_rate_pct: "#f4a261",
+  baseline_avg_total_s: "#7d8597",
+  recent_gcp_avg_total_s: "#2a9d8f",
   gcp_build_count: "#315772",
   idc_build_count: "#bc6c25",
   queue_avg_s: "#7f5539",
@@ -169,14 +171,19 @@ export function TrendChart({
   barGroupWidthFactor = 0.66,
   barMaxWidth = 46,
   leftPadding = 52,
+  selectedBucketLabel = null,
+  onBucketSelect = null,
+  preserveLabelOrder = false,
 }) {
   if (!series?.length) {
     return <EmptyState message="No chart data for the current filters." />;
   }
 
-  const labels = Array.from(
-    new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
-  ).sort();
+  const labels = preserveLabelOrder
+    ? series.flatMap((item) => item.points.map((point) => point[0])).filter((label, index, source) => source.indexOf(label) === index)
+    : Array.from(
+        new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
+      ).sort();
   if (!labels.length) {
     return <EmptyState message="No chart data for the current filters." />;
   }
@@ -279,8 +286,19 @@ export function TrendChart({
     bottomLabelStep,
     minBottomLabelIndexGap,
   );
+  const interactiveBuckets = typeof onBucketSelect === "function";
+  const selectedBucketIndex = selectedBucketLabel ? labels.indexOf(selectedBucketLabel) : -1;
   const barSeries = series.filter((item) => item.type === "bar");
   const lineSeries = series.filter((item) => item.type === "line");
+  const getBucketArea = (index) => {
+    if (labels.length === 1) {
+      return { x: padding.left, width: plotWidth };
+    }
+    const center = padding.left + index * xStep;
+    const left = index === 0 ? padding.left : center - xStep / 2;
+    const right = index === labels.length - 1 ? padding.left + plotWidth : center + xStep / 2;
+    return { x: left, width: Math.max(right - left, 12) };
+  };
 
   return (
     <div className="trend-chart">
@@ -321,6 +339,17 @@ export function TrendChart({
             </g>
           );
         })}
+
+        {selectedBucketIndex >= 0 ? (
+          <rect
+            x={getBucketArea(selectedBucketIndex).x}
+            y={padding.top}
+            width={getBucketArea(selectedBucketIndex).width}
+            height={plotHeight}
+            rx="8"
+            fill="rgba(42, 157, 143, 0.09)"
+          />
+        ) : null}
 
         {barSeries.map((item, seriesIndex) =>
           labels.map((label, index) => {
@@ -417,10 +446,19 @@ export function TrendChart({
                     key={`${item.key}-${point.label}`}
                     cx={point.x}
                     cy={point.y}
-                    r="4.5"
+                    r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
                     fill={seriesColor(item.key)}
                     stroke="#fcf7ef"
-                    strokeWidth="2"
+                    strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
+                    style={interactiveBuckets ? { cursor: "pointer" } : undefined}
+                    onClick={
+                      interactiveBuckets
+                        ? () =>
+                            onBucketSelect(
+                              selectedBucketLabel === point.label ? null : point.label,
+                            )
+                        : undefined
+                    }
                   />
                 )),
               )}
@@ -479,6 +517,24 @@ export function TrendChart({
             </text>
           );
         })}
+
+        {interactiveBuckets
+          ? labels.map((label, index) => {
+              const area = getBucketArea(index);
+              return (
+                <rect
+                  key={`${label}-hit-area`}
+                  x={area.x}
+                  y={padding.top}
+                  width={area.width}
+                  height={plotHeight}
+                  fill="transparent"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => onBucketSelect(selectedBucketLabel === label ? null : label)}
+                />
+              );
+            })
+          : null}
       </svg>
 
       <div className="chart-legend">
@@ -709,6 +765,43 @@ export function RuntimeComparisonBoard({
         maxRunSeconds={maxRunSeconds}
         emptyMessage="No regressed jobs met the migration comparison threshold."
       />
+    </div>
+  );
+}
+
+export function MigrationFixedWindowComparisonTable({ rows }) {
+  if (!rows?.length) {
+    return <EmptyState message="No migration comparison rows are available yet." />;
+  }
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table data-table--compact migration-compare-table">
+        <thead>
+          <tr>
+            <th>Scope</th>
+            <th>Baseline avg duration</th>
+            <th>Baseline success count</th>
+            <th>Baseline success rate</th>
+            <th>Recent GCP avg duration</th>
+            <th>Recent GCP success count</th>
+            <th>Recent GCP success rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.scope_key}>
+              <th scope="row">{row.scope_label}</th>
+              <td>{formatSeconds(row.baseline?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.baseline?.success_count)}</td>
+              <td>{formatPercent(row.baseline?.success_rate_pct)}</td>
+              <td>{formatSeconds(row.recent_gcp?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.recent_gcp?.success_count)}</td>
+              <td>{formatPercent(row.recent_gcp?.success_rate_pct)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1019,8 +1112,86 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
   );
 }
 
+export function BucketFlakyRateTable({
+  rows,
+  effectiveGranularity,
+  selectedTime = null,
+  onSelectTime = null,
+}) {
+  if (!rows?.length) {
+    return <EmptyState message="No flaky-rate buckets matched the current build scope." compact />;
+  }
+
+  const timeLabel = effectiveGranularity === "month" ? "Time (month)" : "Time (week)";
+  const interactive = typeof onSelectTime === "function";
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table data-table--compact data-table--narrow">
+        <thead>
+          <tr>
+            <th>{timeLabel}</th>
+            <th>Flaky rate</th>
+            <th>Delta vs previous</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.time}
+              className={[
+                interactive ? "data-row--interactive" : "",
+                selectedTime === row.time ? "data-row--selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={
+                interactive
+                  ? () => onSelectTime(selectedTime === row.time ? null : row.time)
+                  : undefined
+              }
+            >
+              <th scope="row">{formatBucketTimeCell(row.time, effectiveGranularity)}</th>
+              <td>{formatPercent(row.flaky_rate_pct)}</td>
+              <td className={buildBucketDeltaClassName(row.time_to_time_pct)}>
+                {formatTimeToTimeCell(row.time_to_time_pct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function EmptyState({ message, compact = false }) {
   return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
+}
+
+function formatBucketTimeCell(value, granularity) {
+  const text = String(value || "");
+  if (granularity !== "month") {
+    return text;
+  }
+  const match = text.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!match) {
+    return text;
+  }
+  return `${match[1]}-${match[2]}`;
+}
+
+function formatTimeToTimeCell(value) {
+  if (value == null) {
+    return "--";
+  }
+  return formatSignedPercent(value);
+}
+
+function buildBucketDeltaClassName(value) {
+  if (value == null) {
+    return undefined;
+  }
+  return value > 0 ? "bucket-delta bucket-delta--up" : "bucket-delta";
 }
 
 function LoadingState() {

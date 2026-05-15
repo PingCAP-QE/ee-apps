@@ -1422,10 +1422,10 @@ def test_distinct_case_counts_match_legacy_do_host_case_runs(sqlite_engine) -> N
 def test_flaky_validation_errors(api_client: TestClient) -> None:
     invalid_granularity = api_client.get(
         "/api/v1/flaky/trend",
-        params={"granularity": "month"},
+        params={"granularity": "quarter"},
     )
     assert invalid_granularity.status_code == 400
-    assert invalid_granularity.json()["detail"] == "granularity must be one of: day, week"
+    assert invalid_granularity.json()["detail"] == "granularity must be one of: day, week, month"
 
     invalid_range = api_client.get(
         "/api/v1/flaky/composition",
@@ -1795,6 +1795,23 @@ def test_page_routes(api_client: TestClient) -> None:
             "points": [["2026-04-06", 100.0]],
         }
     ]
+    assert flaky_body["bucketed_flaky_rate"]["series"] == [
+        {
+            "key": "flaky_rate_pct",
+            "label": "Flaky rate",
+            "type": "line",
+            "points": [["2026-04-06", 50.0]],
+        }
+    ]
+    assert flaky_body["bucketed_flaky_rate"]["rows"] == [
+        {
+            "time": "2026-04-06",
+            "flaky_rate_pct": 50.0,
+            "time_to_time_pct": None,
+        }
+    ]
+    assert flaky_body["bucketed_flaky_rate"]["meta"]["requested_granularity"] == "day"
+    assert flaky_body["bucketed_flaky_rate"]["meta"]["effective_granularity"] == "week"
     assert flaky_body["issue_case_weekly_rates"]["rows"][0]["display_name"] == "TestCaseAlpha"
     assert flaky_body["issue_case_weekly_rates"]["rows"][0]["cells"] == ["100.00% (1/1)"]
     assert flaky_body["issue_case_weekly_rates"]["rows"][1]["cells"] == ["100.00% (1/1)"]
@@ -1826,12 +1843,116 @@ def test_page_routes(api_client: TestClient) -> None:
     assert [row["case_name"] for row in flaky_with_open_issues_body["issue_case_weekly_rates"]["rows"]] == [
         "TestCaseAlpha"
     ]
+    assert flaky_with_open_issues_body["bucketed_flaky_rate"] == flaky_body["bucketed_flaky_rate"]
     assert flaky_with_open_issues_body["trend"] == flaky_body["trend"]
     assert flaky_with_open_issues_body["composition"] == flaky_body["composition"]
     assert flaky_with_open_issues_body["top_jobs"] == flaky_body["top_jobs"]
     assert flaky_with_open_issues_body["failure_category_share"] == flaky_body["failure_category_share"]
     assert flaky_with_open_issues_body["failure_category_trend"] == flaky_body["failure_category_trend"]
     assert flaky_with_open_issues_body["period_comparison"] == flaky_body["period_comparison"]
+
+
+def test_migration_fixed_window_comparison_rows(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    fixtures = [
+        (2000, "baseline-tidb-success-1", "pingcap/tidb", "success", "IDC", "2025-12-20 01:00:00", 300),
+        (2001, "baseline-tidb-success-2", "pingcap/tidb", "success", "IDC", "2026-01-10 01:00:00", 420),
+        (2002, "baseline-tidb-failure", "pingcap/tidb", "failure", "IDC", "2026-01-12 01:00:00", 0),
+        (2003, "baseline-ticdc-success", "pingcap/ticdc", "success", "IDC", "2025-12-28 02:00:00", 240),
+        (2004, "baseline-ticdc-failure", "pingcap/ticdc", "failure", "IDC", "2026-01-05 02:00:00", 0),
+        (2010, "recent-tidb-success-1", "pingcap/tidb", "success", "GCP", "2026-04-20 01:00:00", 220),
+        (2011, "recent-tidb-success-2", "pingcap/tidb", "success", "GCP", "2026-05-01 01:00:00", 260),
+        (2012, "recent-tidb-failure", "pingcap/tidb", "failure", "GCP", "2026-05-03 01:00:00", 0),
+        (2013, "recent-ticdc-success", "pingcap/ticdc", "success", "GCP", "2026-04-25 02:00:00", 180),
+        (2014, "recent-ticdc-failure", "pingcap/ticdc", "failure", "GCP", "2026-05-05 02:00:00", 0),
+    ]
+    for source_prow_row_id, source_prow_job_id, repo_full_name, state, cloud_phase, start_time, total_seconds in fixtures:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=source_prow_row_id,
+            source_prow_job_id=source_prow_job_id,
+            repo_full_name=repo_full_name,
+            target_branch="master",
+            base_ref="master",
+            job_name=f"{repo_full_name.split('/')[-1]}-migration-job",
+            state=state,
+            cloud_phase=cloud_phase,
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=start_time,
+            run_seconds=max(total_seconds - 20, 0),
+            total_seconds=total_seconds,
+            pr_number=80000 + source_prow_row_id,
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/ci-status",
+        params={
+            "repo": "pingcap/tidb",
+            "end_date": "2026-05-15",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    comparison = body["migration_fixed_window_comparison"]
+    assert comparison["meta"]["baseline_start_date"] == "2025-12-15"
+    assert comparison["meta"]["baseline_end_date"] == "2026-01-14"
+    assert comparison["meta"]["recent_start_date"] == "2026-04-15"
+    assert comparison["meta"]["recent_end_date"] == "2026-05-15"
+    assert comparison["meta"]["ignores_repo_filter"] is True
+
+    rows = {row["scope_key"]: row for row in comparison["rows"]}
+    assert rows["all_repos"]["baseline"] == {
+        "start_date": "2025-12-15",
+        "end_date": "2026-01-14",
+        "total_build_count": 5,
+        "success_count": 3,
+        "success_rate_pct": 60.0,
+        "success_avg_total_s": 320,
+    }
+    assert rows["all_repos"]["recent_gcp"] == {
+        "start_date": "2026-04-15",
+        "end_date": "2026-05-15",
+        "total_build_count": 5,
+        "success_count": 3,
+        "success_rate_pct": 60.0,
+        "success_avg_total_s": 220,
+    }
+    assert rows["tidb"]["baseline"] == {
+        "start_date": "2025-12-15",
+        "end_date": "2026-01-14",
+        "total_build_count": 3,
+        "success_count": 2,
+        "success_rate_pct": 66.67,
+        "success_avg_total_s": 360,
+    }
+    assert rows["tidb"]["recent_gcp"] == {
+        "start_date": "2026-04-15",
+        "end_date": "2026-05-15",
+        "total_build_count": 3,
+        "success_count": 2,
+        "success_rate_pct": 66.67,
+        "success_avg_total_s": 240,
+    }
+    assert rows["ticdc"]["baseline"] == {
+        "start_date": "2025-12-15",
+        "end_date": "2026-01-14",
+        "total_build_count": 2,
+        "success_count": 1,
+        "success_rate_pct": 50.0,
+        "success_avg_total_s": 240,
+    }
+    assert rows["ticdc"]["recent_gcp"] == {
+        "start_date": "2026-04-15",
+        "end_date": "2026-05-15",
+        "total_build_count": 2,
+        "success_count": 1,
+        "success_rate_pct": 50.0,
+        "success_avg_total_s": 180,
+    }
 
 
 def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> None:
@@ -1889,6 +2010,71 @@ def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> No
     assert cloud_posture_series["idc_build_count"]["points"] == [
         ["2026-03-30", 0],
         ["2026-04-06", 1],
+    ]
+
+
+def test_flaky_page_bucketed_rate_supports_month_granularity(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    monthly_repo = "pingcap/flaky-monthly"
+    for build in [
+        (91001, "monthly-1", "2026-03-03T10:00:00Z", 1),
+        (91002, "monthly-2", "2026-03-18T10:00:00Z", 0),
+        (91003, "monthly-3", "2026-04-02T10:00:00Z", 1),
+        (91004, "monthly-4", "2026-04-09T10:00:00Z", 0),
+        (91005, "monthly-5", "2026-04-16T10:00:00Z", 0),
+        (91006, "monthly-6", "2026-04-24T10:00:00Z", 0),
+    ]:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build[0],
+            source_prow_job_id=build[1],
+            repo_full_name=monthly_repo,
+            target_branch="master",
+            base_ref="master",
+            job_name="monthly-flaky-job",
+            state="failure",
+            cloud_phase="GCP",
+            is_flaky=build[3],
+            is_retry_loop=0,
+            failure_category="FLAKY_TEST" if build[3] else "UNCLASSIFIED",
+            start_time=build[2],
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/flaky",
+        params={
+            "repo": monthly_repo,
+            "branch": "master",
+            "granularity": "month",
+            "start_date": "2026-03-01",
+            "end_date": "2026-04-30",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bucketed_flaky_rate"]["meta"]["requested_granularity"] == "month"
+    assert body["bucketed_flaky_rate"]["meta"]["effective_granularity"] == "month"
+    assert body["bucketed_flaky_rate"]["series"] == [
+        {
+            "key": "flaky_rate_pct",
+            "label": "Flaky rate",
+            "type": "line",
+            "points": [["2026-03-01", 50.0], ["2026-04-01", 25.0]],
+        }
+    ]
+    assert body["bucketed_flaky_rate"]["rows"] == [
+        {
+            "time": "2026-03-01",
+            "flaky_rate_pct": 50.0,
+            "time_to_time_pct": None,
+        },
+        {
+            "time": "2026-04-01",
+            "flaky_rate_pct": 25.0,
+            "time_to_time_pct": -25,
+        },
     ]
 
 

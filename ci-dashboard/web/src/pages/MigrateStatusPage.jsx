@@ -1,9 +1,11 @@
 import {
   formatPercent,
   formatRoundedThousands,
+  formatSeconds,
   useApiData,
 } from "../lib/api";
 import {
+  MigrationFixedWindowComparisonTable,
   PageIntro,
   Panel,
   RuntimeComparisonBoard,
@@ -13,6 +15,13 @@ import {
 export default function MigrateStatusPage({ filters }) {
   const page = useApiData("/api/v1/pages/ci-status", filters);
   const cloudPostureAnnotations = buildCloudPostureAnnotations(page.data?.cloud_posture_trend?.series);
+  const fixedWindowComparisonMeta = page.data?.migration_fixed_window_comparison?.meta;
+  const fixedWindowComparisonSubtitle = buildFixedWindowComparisonSubtitle(
+    fixedWindowComparisonMeta,
+  );
+  const fixedWindowDurationSeries = buildFixedWindowDurationSeries(
+    page.data?.migration_fixed_window_comparison?.rows,
+  );
 
   return (
     <div className="page-stack">
@@ -57,8 +66,59 @@ export default function MigrateStatusPage({ filters }) {
           minSuccessRuns={page.data?.migration_runtime_comparison?.meta?.min_success_runs_each_side}
         />
       </Panel>
+
+      <Panel
+        title="Pre-cloud baseline vs recent GCP"
+        subtitle={fixedWindowComparisonSubtitle}
+        loading={page.loading}
+        error={page.error}
+      >
+        <div className="chart-table-stack">
+          <TrendChart
+            series={fixedWindowDurationSeries}
+            yFormatter={formatSeconds}
+            height={220}
+            preserveLabelOrder
+          />
+          <MigrationFixedWindowComparisonTable
+            rows={page.data?.migration_fixed_window_comparison?.rows}
+          />
+        </div>
+      </Panel>
     </div>
   );
+}
+
+function buildFixedWindowComparisonSubtitle(meta) {
+  if (!meta?.baseline_start_date || !meta?.baseline_end_date || !meta?.recent_start_date) {
+    return "Fixed-window comparison for All repos, TiDB, and TiCDC.";
+  }
+
+  const recentEndDate = meta.recent_end_date || "latest GCP success date";
+  return `All repos, TiDB, and TiCDC compared side by side. Baseline uses ${meta.baseline_start_date} to ${meta.baseline_end_date} across all clouds; recent uses GCP-only builds from ${meta.recent_start_date} to ${recentEndDate}. Avg duration uses successful builds only, and this panel ignores repo, branch, job, start, bucket, and cloud filters.`;
+}
+
+function buildFixedWindowDurationSeries(rows) {
+  if (!rows?.length) {
+    return [];
+  }
+
+  return [
+    {
+      key: "baseline_avg_total_s",
+      label: "Baseline avg duration",
+      type: "bar",
+      axis: "left",
+      points: rows.map((row) => [row.scope_label, Number(row.baseline?.success_avg_total_s || 0)]),
+    },
+    {
+      key: "recent_gcp_avg_total_s",
+      label: "Recent GCP avg duration",
+      type: "bar",
+      axis: "left",
+      points: rows.map((row) => [row.scope_label, Number(row.recent_gcp?.success_avg_total_s || 0)]),
+    },
+  ];
 }
 
 function buildCloudPostureAnnotations(series) {

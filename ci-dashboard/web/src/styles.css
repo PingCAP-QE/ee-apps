@@ -693,6 +693,11 @@ select {
   min-width: 0;
 }
 
+.chart-table-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
 .panel--error-builds .panel__body {
   display: grid;
   align-content: start;
@@ -1430,6 +1435,10 @@ select {
   min-width: 560px;
 }
 
+.data-table--narrow {
+  min-width: 420px;
+}
+
 .data-table th,
 .data-table td {
   padding: 0.8rem 0.9rem;
@@ -1481,6 +1490,16 @@ select {
   background: rgba(15, 124, 130, 0.08);
 }
 
+.data-row--interactive th,
+.data-row--interactive td {
+  cursor: pointer;
+}
+
+.data-row--selected th,
+.data-row--selected td {
+  background: rgba(42, 157, 143, 0.12) !important;
+}
+
 .metric-cell {
   font-weight: 700;
 }
@@ -1491,6 +1510,15 @@ select {
 
 .metric-cell--cool {
   color: var(--accent) !important;
+}
+
+.bucket-delta {
+  font-variant-numeric: tabular-nums;
+}
+
+.bucket-delta--up {
+  color: var(--rose) !important;
+  font-weight: 700;
 }
 
 .issue-cell {

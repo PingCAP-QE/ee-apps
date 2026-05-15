@@ -1,11 +1,15 @@
+import { useEffect, useState } from "react";
+
 import {
   formatDelta,
+  formatDateRangeLabel,
   formatNumber,
   formatPercent,
   useApiData,
 } from "../lib/api";
 import {
   BLIND_RETRY_LOOP_HINT,
+  BucketFlakyRateTable,
   PageIntro,
   Panel,
   DistinctCaseCountTable,
@@ -33,6 +37,82 @@ function buildSnapshotSubtitle(meta) {
     return "Repo + branch snapshot";
   }
   return `As of ${asOfDate}, compared with ${comparisonDate}.`;
+}
+
+function buildBucketedFlakyRateSubtitle(meta) {
+  const effectiveGranularity = meta?.effective_granularity === "month" ? "month" : "week";
+  const startDate = meta?.start_date || "the selected start date";
+  const endDate = meta?.end_date || "the selected end date";
+  if (meta?.requested_granularity === "day") {
+    return `Grouped by ${effectiveGranularity} from ${startDate} to ${endDate}. Day stays rolled up to ${effectiveGranularity} here because daily buckets are too fine for this view.`;
+  }
+  return `Grouped by ${effectiveGranularity} from ${startDate} to ${endDate}, with failure-like builds as the denominator for each bucket.`;
+}
+
+function buildCenteredPercentAxisMax(rows) {
+  const values = (rows || [])
+    .map((row) => Number(row.flaky_rate_pct || 0))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) {
+    return 10;
+  }
+  const peak = Math.max(...values, 0);
+  if (peak >= 100) {
+    return 100;
+  }
+  const target = Math.max(10, Math.min(100, peak * 2));
+  return Math.ceil(target / 5) * 5;
+}
+
+function parseIsoDate(value) {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
+function toIsoDate(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function resolveSelectedBucketRange(bucketTime, meta) {
+  if (!bucketTime) {
+    return null;
+  }
+
+  const bucketStart = parseIsoDate(bucketTime);
+  const selectedStart = parseIsoDate(meta?.start_date);
+  const selectedEnd = parseIsoDate(meta?.end_date);
+  if (!bucketStart || !selectedStart || !selectedEnd) {
+    return null;
+  }
+
+  const bucketEnd = new Date(bucketStart);
+  if (meta?.effective_granularity === "month") {
+    bucketEnd.setUTCMonth(bucketEnd.getUTCMonth() + 1, 0);
+  } else {
+    bucketEnd.setUTCDate(bucketEnd.getUTCDate() + 6);
+  }
+
+  const rangeStart = bucketStart > selectedStart ? bucketStart : selectedStart;
+  const rangeEnd = bucketEnd < selectedEnd ? bucketEnd : selectedEnd;
+  if (rangeStart > rangeEnd) {
+    return null;
+  }
+
+  return {
+    time: bucketTime,
+    start_date: toIsoDate(rangeStart),
+    end_date: toIsoDate(rangeEnd),
+  };
+}
+
+function buildTopJobsSubtitle(selectedBucketRange) {
+  if (!selectedBucketRange) {
+    return "Jobs ranked by noisy rate, with raw noisy and failure-like build counts kept visible for context.";
+  }
+  return `Jobs ranked by noisy rate for ${formatDateRangeLabel(selectedBucketRange.start_date, selectedBucketRange.end_date)}. Click the selected bucket again to clear the focus.`;
 }
 
 function SnapshotProgressCard({ title, subtitle, tone = "default", items, loading, error }) {
@@ -63,16 +143,7 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
 
 export default function FlakyPage({ filters }) {
   const page = useApiData("/api/v1/pages/flaky", filters);
-  const weeklyFlakyTrend = useApiData("/api/v1/flaky/composition", {
-    repo: filters.repo,
-    branch: filters.branch,
-    job_name: filters.job_name,
-    cloud_phase: filters.cloud_phase,
-    issue_status: "",
-    start_date: filters.start_date,
-    end_date: filters.end_date,
-    granularity: "week",
-  });
+  const [selectedBucketTime, setSelectedBucketTime] = useState(null);
   const showPanelActions = !page.loading && !page.error;
   const currentPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
   const previousPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_b")?.values;
@@ -96,6 +167,41 @@ export default function FlakyPage({ filters }) {
   const totalPrCount = Number(currentPeriod?.total_pr_count || 0);
   const issueFixProgress = page.data?.issue_fix_progress || {};
   const snapshotSubtitle = buildSnapshotSubtitle(issueFixProgress.meta);
+  const bucketedFlakyRate = page.data?.bucketed_flaky_rate || {};
+  const bucketedFlakyRateRows = bucketedFlakyRate.rows || [];
+  const bucketedFlakyRateMeta = bucketedFlakyRate.meta || {};
+  const bucketedFlakyRateSubtitle = buildBucketedFlakyRateSubtitle(bucketedFlakyRateMeta);
+  const bucketedFlakyRateAxisMax = buildCenteredPercentAxisMax(bucketedFlakyRateRows);
+  const selectedBucketRange = resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta);
+  const bucketTopJobs = useApiData(
+    "/api/v1/flaky/top-jobs",
+    selectedBucketRange
+      ? {
+          repo: filters.repo,
+          branch: filters.branch,
+          job_name: filters.job_name,
+          cloud_phase: filters.cloud_phase,
+          start_date: selectedBucketRange.start_date,
+          end_date: selectedBucketRange.end_date,
+          granularity: bucketedFlakyRateMeta.effective_granularity || "week",
+          limit: 8,
+        }
+      : {},
+    Boolean(selectedBucketRange),
+  );
+  const topJobsItems = selectedBucketRange ? bucketTopJobs.data?.items : page.data?.top_jobs?.items;
+  const topJobsLoading = selectedBucketRange ? bucketTopJobs.loading : page.loading;
+  const topJobsError = selectedBucketRange ? bucketTopJobs.error : page.error;
+  const topJobsSubtitle = buildTopJobsSubtitle(selectedBucketRange);
+
+  useEffect(() => {
+    if (!selectedBucketTime) {
+      return;
+    }
+    if (!bucketedFlakyRateRows.some((row) => row.time === selectedBucketTime)) {
+      setSelectedBucketTime(null);
+    }
+  }, [bucketedFlakyRateRows, selectedBucketTime]);
 
   return (
     <div className="page-stack">
@@ -291,17 +397,35 @@ export default function FlakyPage({ filters }) {
         <div className="flaky-highlight-stack">
           <Panel
             title="Flaky rate trend"
-            subtitle="Flaky, blind-retry-loop, and noisy rates together, each using failure-like builds as the denominator."
-            loading={weeklyFlakyTrend.loading}
-            error={weeklyFlakyTrend.error}
+            subtitle={bucketedFlakyRateSubtitle}
+            loading={page.loading}
+            error={page.error}
+            actions={showPanelActions ? (
+              <div className="panel-badge-row">
+                <span className="panel-badge">
+                  <strong>{formatNumber(bucketedFlakyRateRows.length)}</strong>
+                  <span>buckets</span>
+                </span>
+              </div>
+            ) : null}
           >
-            <TrendChart
-              series={weeklyFlakyTrend.data?.series}
-              rightYFormatter={formatPercent}
-              rightYMax={100}
-              compactY
-              height={208}
-            />
+            <div className="chart-table-stack">
+              <TrendChart
+                series={bucketedFlakyRate.series}
+                yFormatter={formatPercent}
+                yMax={bucketedFlakyRateAxisMax}
+                compactY
+                height={208}
+                selectedBucketLabel={selectedBucketTime}
+                onBucketSelect={setSelectedBucketTime}
+              />
+              <BucketFlakyRateTable
+                rows={bucketedFlakyRateRows}
+                effectiveGranularity={bucketedFlakyRateMeta.effective_granularity}
+                selectedTime={selectedBucketTime}
+                onSelectTime={setSelectedBucketTime}
+              />
+            </div>
           </Panel>
 
           <Panel
@@ -338,13 +462,22 @@ export default function FlakyPage({ filters }) {
 
         <Panel
           title="Top noisy jobs"
-          subtitle="Jobs ranked by noisy rate, with raw noisy and failure-like build counts kept visible for context."
-          loading={page.loading}
-          error={page.error}
+          subtitle={topJobsSubtitle}
+          loading={topJobsLoading}
+          error={topJobsError}
+          actions={selectedBucketRange ? (
+            <button
+              type="button"
+              className="ghost-button ghost-button--compact"
+              onClick={() => setSelectedBucketTime(null)}
+            >
+              Show all buckets
+            </button>
+          ) : null}
           className="panel--full-height"
         >
           <RankingList
-            items={page.data?.top_jobs?.items}
+            items={topJobsItems}
             valueFormatter={formatPercent}
           />
         </Panel>
