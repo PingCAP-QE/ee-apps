@@ -55,6 +55,8 @@ jobs:
           filters: |
             ci-dashboard:
               - 'ci-dashboard/**'
+            roster:
+              - 'roster/**'
             cloudevents-server:
               - 'cloudevents-server/**'
             tibuild:
@@ -101,6 +103,14 @@ jobs:
       - name: Build image - ci-dashboard
         if: steps.changes.outputs.ci-dashboard == 'true'
         working-directory: ci-dashboard
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - roster
+        if: steps.changes.outputs.roster == 'true'
+        working-directory: roster
         run: |
           skaffold build \
             --push=false \
