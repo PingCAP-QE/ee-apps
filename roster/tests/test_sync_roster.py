@@ -165,6 +165,75 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
     assert group["name"] == "Engineering Platform"
 
 
+def test_run_sync_roster_preserves_existing_github_id_when_lark_value_is_empty() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+
+    first = StaticRosterSource(
+        FetchedRoster(
+            employees=[
+                FetchedEmployee(
+                    lark_id="changrui",
+                    name="Changrui",
+                    employee_no="P01398",
+                    email="changrui@example.com",
+                    github_id="changrui-ryan",
+                )
+            ],
+        )
+    )
+    second = StaticRosterSource(
+        FetchedRoster(
+            employees=[
+                FetchedEmployee(
+                    lark_id="changrui",
+                    name="Changrui",
+                    employee_no="P01398",
+                    email="changrui@example.com",
+                    github_id=None,
+                )
+            ],
+        )
+    )
+
+    run_sync_roster(engine, source=first, now=_dt("2026-05-14T08:00:00"))
+    run_sync_roster(engine, source=second, now=_dt("2026-05-14T09:00:00"))
+
+    with engine.connect() as conn:
+        employee = conn.execute(select(employees_table)).one()._mapping
+
+    assert employee["github_id"] == "changrui-ryan"
+    assert employee["last_seen_at"] == _dt("2026-05-14T09:00:00")
+
+
+def test_run_sync_roster_updates_existing_github_id_when_lark_value_is_present() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+
+    first = StaticRosterSource(
+        FetchedRoster(
+            employees=[
+                FetchedEmployee(lark_id="alice", name="Alice", github_id="alice-old")
+            ],
+        )
+    )
+    second = StaticRosterSource(
+        FetchedRoster(
+            employees=[
+                FetchedEmployee(lark_id="alice", name="Alice", github_id="alice-new")
+            ],
+        )
+    )
+
+    run_sync_roster(engine, source=first, now=_dt("2026-05-14T08:00:00"))
+    run_sync_roster(engine, source=second, now=_dt("2026-05-14T09:00:00"))
+
+    with engine.connect() as conn:
+        github_id = conn.execute(select(employees_table.c.github_id)).scalar_one()
+
+    assert github_id == "alice-new"
+
+
 def test_run_sync_roster_is_idempotent_for_same_roster() -> None:
     engine = create_engine("sqlite:///:memory:", future=True)
     metadata.create_all(engine)
