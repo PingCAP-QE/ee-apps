@@ -82,6 +82,7 @@ def test_lark_roster_source_fetches_token_departments_and_users() -> None:
                         {
                             "union_id": "manager",
                             "name": "Manager",
+                            "en_name": "Engineering Manager",
                             "enterprise_email": "manager@example.com",
                             "employee_no": "E002",
                             "join_time": 1706745600,
@@ -128,6 +129,7 @@ def test_lark_roster_source_fetches_token_departments_and_users() -> None:
     assert roster.employees[0].group_lark_id == "od-root"
     assert roster.employees[0].join_time.isoformat() == "2024-01-01T00:00:00"
     assert roster.employees[1].email == "manager@example.com"
+    assert roster.employees[1].en_name == "Engineering Manager"
     assert roster.employees[1].github_id == "manager-gh"
     assert roster.employees[1].join_time.isoformat() == "2024-02-01T00:00:00"
     assert roster.employees[1].manager_lark_id == "ceo"
@@ -293,6 +295,7 @@ def test_lark_roster_source_maps_fallback_fields() -> None:
                         {
                             "union_id": "alice",
                             "name": "Alice",
+                            "en_name": "Alice Example",
                             "email": "alice@example.com",
                             "join_time": 0,
                             "orders": [
@@ -324,6 +327,7 @@ def test_lark_roster_source_maps_fallback_fields() -> None:
     roster = source.fetch_roster()
 
     assert roster.employees[0].email == "alice@example.com"
+    assert roster.employees[0].en_name == "Alice Example"
     assert roster.employees[0].github_id == "alice-gh"
     assert roster.employees[0].join_time is None
     assert roster.employees[0].group_lark_id == "od-a"

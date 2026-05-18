@@ -25,6 +25,7 @@ CREATE TABLE roster_employees (
   id BIGINT NOT NULL AUTO_INCREMENT,
   lark_id VARCHAR(128) NOT NULL,
   name VARCHAR(255) NOT NULL,
+  en_name VARCHAR(255) NULL,
   employee_no VARCHAR(64) NULL,
   email VARCHAR(255) NULL,
   github_id VARCHAR(255) NULL,
@@ -51,6 +52,7 @@ Field notes:
 
 - `id`: internal numeric primary key for joins.
 - `lark_id`: Lark `union_id`, used for sync upsert.
+- `en_name`: English display name from Lark `en_name`, used as a readable identity hint.
 - `employee_no`: employee number from Lark, used for HR and cost data reconciliation.
 - `email`: company email. Empty values from Lark must be normalized to `NULL`.
 - `github_id`: GitHub account value from Lark. This is expected to be the GitHub login/name if Lark stores that as the custom field.

@@ -212,6 +212,7 @@ class LarkRosterSource(RosterSource):
         return FetchedEmployee(
             lark_id=lark_id,
             name=_required_text(item, "name"),
+            en_name=_optional_text(item.get("en_name")),
             employee_no=_optional_text(item.get("employee_no")),
             email=_optional_text(item.get("enterprise_email") or item.get("email")),
             github_id=self._github_id_from_custom_attrs(item),

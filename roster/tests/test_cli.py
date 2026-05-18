@@ -17,6 +17,13 @@ def test_parser_exposes_validate_lark_command() -> None:
     assert args.command == "validate-lark"
 
 
+def test_parser_exposes_validate_history_command() -> None:
+    args = cli.build_parser().parse_args(["validate-history", "--details-limit", "5"])
+
+    assert args.command == "validate-history"
+    assert args.details_limit == 5
+
+
 def test_main_runs_sync_roster(monkeypatch) -> None:
     calls: dict[str, object] = {}
     settings = SimpleNamespace(log_level="INFO", lark=SimpleNamespace(is_configured=False))
@@ -159,6 +166,33 @@ def test_main_validate_lark_prints_json(monkeypatch, capsys) -> None:
 
     assert calls == {"source": source}
     assert capsys.readouterr().out == '{\n  "employees": 3,\n  "groups": 2\n}\n'
+
+
+def test_main_validate_history_prints_json_and_disposes_engine(monkeypatch, capsys) -> None:
+    calls: dict[str, object] = {}
+    settings = SimpleNamespace(log_level="INFO", lark=SimpleNamespace(is_configured=False))
+    engine = SimpleNamespace(dispose=lambda: calls.setdefault("disposed", True))
+    report = SimpleNamespace(to_dict=lambda: {"summaries": [{"source": "pingcap-ids"}]})
+
+    monkeypatch.setattr(cli, "get_settings", lambda *args, **kwargs: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda log_level: calls.setdefault("log", log_level))
+    monkeypatch.setattr(cli, "build_engine", lambda resolved: calls.setdefault("engine", engine))
+
+    def fake_validate_historical_employees(built_engine, *, details_limit):
+        calls["validate"] = (built_engine, details_limit)
+        return report
+
+    monkeypatch.setattr(cli, "validate_historical_employees", fake_validate_historical_employees)
+
+    assert cli.main(["validate-history", "--details-limit", "3"]) == 0
+
+    assert calls == {
+        "log": "INFO",
+        "engine": engine,
+        "validate": (engine, 3),
+        "disposed": True,
+    }
+    assert capsys.readouterr().out == '{\n  "summaries": [\n    {\n      "source": "pingcap-ids"\n    }\n  ]\n}\n'
 
 
 def test_main_rejects_unknown_args() -> None:
