@@ -166,10 +166,12 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	return &ret, nil
 }
 
-func defaultEngineForProduct(s string) string {
-	if slices.Contains([]string{"tikv"}, s) {
-		return "tekton"
+func defaultEngineForProduct(product string) string {
+	peMap := map[string]string{
+		"tikv":          "tekton",
+		"tidb-operator": "tekton",
+		"tiproxy":       "tekton",
+		"tici":          "tekton",
 	}
-
-	return ""
+	return peMap[product]
 }
