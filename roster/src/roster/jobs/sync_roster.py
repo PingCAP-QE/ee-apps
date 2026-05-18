@@ -18,6 +18,7 @@ from sqlalchemy import (
     Table,
     and_,
     bindparam,
+    func,
     select,
     update,
 )
@@ -273,6 +274,7 @@ def _upsert_rows(
             for column in table.columns
             if column.name not in {"id", "created_at", *key_columns}
         }
+        _preserve_existing_github_id_when_source_is_empty(table, update_values, excluded)
         connection.execute(statement.on_conflict_do_update(index_elements=key_columns, set_=update_values))
         return
 
@@ -284,10 +286,22 @@ def _upsert_rows(
             for column in table.columns
             if column.name not in {"id", "created_at", *key_columns}
         }
+        _preserve_existing_github_id_when_source_is_empty(table, update_values, inserted)
         connection.execute(statement.on_duplicate_key_update(**update_values))
         return
 
     raise RuntimeError(f"Unsupported database dialect for roster sync: {dialect}")
+
+
+def _preserve_existing_github_id_when_source_is_empty(
+    table: Table,
+    update_values: dict[str, object],
+    incoming: Any,
+) -> None:
+    if table.name != employees_table.name or "github_id" not in update_values:
+        return
+
+    update_values["github_id"] = func.coalesce(incoming.github_id, table.c.github_id)
 
 
 def _employee_id_map(connection: Connection) -> dict[str, int]:
