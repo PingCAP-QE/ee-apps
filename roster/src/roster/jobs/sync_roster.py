@@ -43,6 +43,7 @@ employees_table = Table(
     Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
     Column("lark_id", String(128), nullable=False, unique=True),
     Column("name", String(255), nullable=False),
+    Column("en_name", String(255)),
     Column("employee_no", String(64)),
     Column("email", String(255), unique=True),
     Column("github_id", String(255), unique=True),
@@ -86,6 +87,7 @@ class SyncRosterSummary:
 class FetchedEmployee:
     lark_id: str
     name: str
+    en_name: str | None = None
     employee_no: str | None = None
     email: str | None = None
     github_id: str | None = None
@@ -231,6 +233,7 @@ def _employee_pass1_rows(
             {
                 "lark_id": employee.lark_id,
                 "name": employee.name,
+                "en_name": _nullable_text(employee.en_name),
                 "employee_no": _nullable_text(employee.employee_no),
                 "email": None if email in duplicate_emails else email,
                 "github_id": None if github_id in duplicate_github_ids else github_id,

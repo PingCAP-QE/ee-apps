@@ -19,6 +19,12 @@ Validate Lark data without writing DB:
 python -m roster.jobs.cli validate-lark
 ```
 
+Compare synced roster rows with historical employee identity tables:
+
+```bash
+python -m roster.jobs.cli validate-history --details-limit 20
+```
+
 Database configuration accepts either a SQLAlchemy URL:
 
 ```bash

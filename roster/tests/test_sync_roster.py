@@ -55,6 +55,7 @@ def test_run_sync_roster_writes_groups_employees_and_paths() -> None:
                 FetchedEmployee(
                     lark_id="manager",
                     name="Manager",
+                    en_name="Engineering Manager",
                     employee_no="E002",
                     email="manager@example.com",
                     github_id="manager-gh",
@@ -95,6 +96,7 @@ def test_run_sync_roster_writes_groups_employees_and_paths() -> None:
     assert groups["db"]["path"] == f"/{groups['root']['id']}/{groups['eng']['id']}/{groups['db']['id']}/"
 
     assert employees["manager"]["manager_id"] == employees["ceo"]["id"]
+    assert employees["manager"]["en_name"] == "Engineering Manager"
     assert employees["manager"]["manager_path"] == f"/{employees['ceo']['id']}/"
     assert employees["manager"]["group_id"] == groups["eng"]["id"]
     assert employees["manager"]["group_path"] == groups["eng"]["path"]
@@ -116,6 +118,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
                 FetchedEmployee(
                     lark_id="alice",
                     name="Alice",
+                    en_name="Alice Example",
                     email="alice@example.com",
                     github_id="alice",
                     join_time=_dt("2024-01-02T00:00:00"),
@@ -131,6 +134,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
                 FetchedEmployee(
                     lark_id="alice",
                     name="Alice Zhang",
+                    en_name="Alice Z.",
                     email="alice.zhang@example.com",
                     github_id="alicezhang",
                     join_time=_dt("2024-03-04T00:00:00"),
@@ -153,6 +157,7 @@ def test_run_sync_roster_updates_existing_rows_without_changing_internal_ids() -
 
     assert employee["id"] == original_employee_id
     assert employee["name"] == "Alice Zhang"
+    assert employee["en_name"] == "Alice Z."
     assert employee["email"] == "alice.zhang@example.com"
     assert employee["github_id"] == "alicezhang"
     assert employee["join_time"] == _dt("2024-03-04T00:00:00")
@@ -288,6 +293,7 @@ def test_run_sync_roster_normalizes_empty_join_keys_to_null() -> None:
         rows = conn.execute(select(employees_table).order_by(employees_table.c.lark_id)).all()
 
     assert [row._mapping["employee_no"] for row in rows] == [None, None]
+    assert [row._mapping["en_name"] for row in rows] == [None, None]
     assert [row._mapping["email"] for row in rows] == [None, None]
     assert [row._mapping["github_id"] for row in rows] == [None, None]
 
@@ -393,6 +399,7 @@ def _stable_employee(row) -> dict[str, object]:
         "id": row["id"],
         "lark_id": row["lark_id"],
         "name": row["name"],
+        "en_name": row["en_name"],
         "employee_no": row["employee_no"],
         "email": row["email"],
         "github_id": row["github_id"],

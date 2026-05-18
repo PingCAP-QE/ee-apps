@@ -7,6 +7,9 @@ SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "001_create_roster_tabl
 JOIN_TIME_SQL_PATH = (
     Path(__file__).resolve().parents[1] / "sql" / "002_alter_roster_employees_add_join_time.sql"
 )
+EN_NAME_SQL_PATH = (
+    Path(__file__).resolve().parents[1] / "sql" / "003_alter_roster_employees_add_en_name.sql"
+)
 
 
 def test_schema_migration_creates_expected_tables() -> None:
@@ -22,6 +25,7 @@ def test_employee_schema_has_join_keys_and_paths() -> None:
 
     assert "id BIGINT NOT NULL AUTO_INCREMENT" in sql
     assert "lark_id VARCHAR(128) NOT NULL" in sql
+    assert "en_name VARCHAR(255) NULL" in sql
     assert "employee_no VARCHAR(64) NULL" in sql
     assert "join_time DATETIME NULL" in sql
     assert "UNIQUE KEY uk_roster_employees_lark_id (lark_id)" in sql
@@ -50,3 +54,10 @@ def test_join_time_alter_sql_adds_employee_column() -> None:
 
     assert "ALTER TABLE roster_employees" in sql
     assert "ADD COLUMN join_time DATETIME NULL AFTER github_id" in sql
+
+
+def test_en_name_alter_sql_adds_employee_column() -> None:
+    sql = EN_NAME_SQL_PATH.read_text()
+
+    assert "ALTER TABLE roster_employees" in sql
+    assert "ADD COLUMN en_name VARCHAR(255) NULL AFTER name" in sql

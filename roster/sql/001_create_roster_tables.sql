@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS roster_employees (
   id BIGINT NOT NULL AUTO_INCREMENT,
   lark_id VARCHAR(128) NOT NULL,
   name VARCHAR(255) NOT NULL,
+  en_name VARCHAR(255) NULL,
   employee_no VARCHAR(64) NULL,
   email VARCHAR(255) NULL,
   github_id VARCHAR(255) NULL,
