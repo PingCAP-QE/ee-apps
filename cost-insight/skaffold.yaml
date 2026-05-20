@@ -1,0 +1,15 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: cost-insight
+
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: cost-insight-jobs
+      docker:
+        dockerfile: Dockerfile.jobs
+  local:
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0
