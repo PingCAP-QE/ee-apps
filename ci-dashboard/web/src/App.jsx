@@ -128,7 +128,10 @@ export default function App() {
 
     setFiltersByPath((current) => {
       const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
-      if (routeFilters.granularity === "week") {
+      const hasValidGranularity = location.pathname === COST_PATH
+        ? routeFilters.granularity === "week" || routeFilters.granularity === "month"
+        : routeFilters.granularity === "week";
+      if (hasValidGranularity) {
         return current;
       }
 

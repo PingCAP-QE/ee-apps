@@ -2085,7 +2085,13 @@ def test_cost_page_route(sqlite_engine, api_client: TestClient) -> None:
     assert body["cost_trend"]["meta"]["summary"]["matched_resource_cost"] == 75.0
     assert body["cost_trend"]["meta"]["summary"]["total_resource_cost"] == 75.0
     trend_series = {series["key"]: series["points"] for series in body["cost_trend"]["series"]}
-    assert trend_series["net_cost"] == [["2026-04-06", 30.0], ["2026-04-13", 30.0]]
+    assert trend_series["net_cost"] == [
+        ["2026-03-30", 0.0],
+        ["2026-04-06", 30.0],
+        ["2026-04-13", 30.0],
+        ["2026-04-20", 0.0],
+        ["2026-04-27", 0.0],
+    ]
 
     stack = body["repo_group_stack"]
     assert [item["name"] for item in stack["items"]] == [
@@ -2093,8 +2099,20 @@ def test_cost_page_route(sqlite_engine, api_client: TestClient) -> None:
         "tiflash",
     ]
     stack_series = {series["label"]: series["points"] for series in stack["series"]}
-    assert stack_series["tidb"] == [["2026-04-06", 40.0], ["2026-04-13", 0.0]]
-    assert stack_series["tiflash"] == [["2026-04-06", 0.0], ["2026-04-13", 35.0]]
+    assert stack_series["tidb"] == [
+        ["2026-03-30", 0.0],
+        ["2026-04-06", 40.0],
+        ["2026-04-13", 0.0],
+        ["2026-04-20", 0.0],
+        ["2026-04-27", 0.0],
+    ]
+    assert stack_series["tiflash"] == [
+        ["2026-03-30", 0.0],
+        ["2026-04-06", 0.0],
+        ["2026-04-13", 35.0],
+        ["2026-04-20", 0.0],
+        ["2026-04-27", 0.0],
+    ]
 
     engineering_share = body["engineering_group_share"]
     level1 = {item["name"]: item for item in engineering_share["level1"]["items"]}
@@ -2321,12 +2339,34 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
     assert trend_body["meta"]["granularity"] == "week"
     assert trend_body["meta"]["summary"]["list_cost"] == 10.0
     assert trend_body["meta"]["summary"]["net_cost"] == 8.0
+    trend_series = {series["key"]: series["points"] for series in trend_body["series"]}
+    assert trend_series["list_cost"] == [
+        ["2026-04-27", 10.0],
+        ["2026-05-04", 0.0],
+        ["2026-05-11", 0.0],
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 0.0],
+    ]
 
     stack_response = api_client.get("/api/v1/pages/cost-repo-group-stack", params=params)
     assert stack_response.status_code == 200
     stack_body = stack_response.json()
     assert stack_body["meta"]["granularity"] == "week"
     assert stack_body["items"] == [{"name": "(no repo)", "value": 10.0}]
+    assert stack_body["series"] == [
+        {
+            "key": "repo__no_repo",
+            "label": "(no repo)",
+            "type": "bar",
+            "points": [
+                ["2026-04-27", 10.0],
+                ["2026-05-04", 0.0],
+                ["2026-05-11", 0.0],
+                ["2026-05-18", 0.0],
+                ["2026-05-25", 0.0],
+            ],
+        }
+    ]
 
     share_response = api_client.get("/api/v1/pages/cost-engineering-group-share", params=params)
     assert share_response.status_code == 200
@@ -2393,6 +2433,17 @@ def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.Monkey
         "alpha": 1,
         "beta": 2,
     }
+    assert page_queries._normalize_cost_filters(
+        CommonFilters(
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 31),
+            granularity="day",
+        )
+    ) == CommonFilters(
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 31),
+        granularity="week",
+    )
 
 
 def test_get_cost_page_parallelizes_for_non_sqlite(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2494,6 +2545,98 @@ def test_cost_query_helpers_cover_edge_cases(sqlite_engine) -> None:
         == 2
     )
     assert cost_queries._parse_date("not-a-date") is None
+    assert cost_queries._bucket_starts(
+        CommonFilters(
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 31),
+            granularity="week",
+        ),
+        [],
+    ) == [
+        "2026-04-27",
+        "2026-05-04",
+        "2026-05-11",
+        "2026-05-18",
+        "2026-05-25",
+    ]
+    assert cost_queries._bucket_starts(
+        CommonFilters(
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 7, 2),
+            granularity="month",
+        ),
+        [],
+    ) == [
+        "2026-05-01",
+        "2026-06-01",
+        "2026-07-01",
+    ]
+    assert cost_queries._repo_key("(no repo)", 0) == "repo__no_repo"
+    assert cost_queries._repo_key("repo-1", 0) != cost_queries._repo_key("repo.1", 1)
+
+
+def test_cost_repo_group_stack_keeps_distinct_repo_keys_on_slug_collisions(sqlite_engine, api_client: TestClient) -> None:
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=100,
+        lark_group_id="eng",
+        name="Engineering Group",
+        path="/100/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=110,
+        lark_group_id="database",
+        name="Database",
+        parent_id=100,
+        path="/100/110/",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        repo="repo-1",
+        group_id=110,
+        net_cost=5,
+        effective_cost=5,
+        list_cost=10,
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        repo="repo.1",
+        group_id=110,
+        net_cost=7,
+        effective_cost=7,
+        list_cost=20,
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "granularity": "week",
+        },
+    )
+
+    assert response.status_code == 200
+    series = response.json()["series"]
+    assert [item["label"] for item in series] == ["repo.1", "repo-1"]
+    assert [item["key"] for item in series] == ["repo__0", "repo__1"]
+    assert series[0]["points"] == [
+        ["2026-04-27", 0.0],
+        ["2026-05-04", 20.0],
+        ["2026-05-11", 0.0],
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 0.0],
+    ]
+    assert series[1]["points"] == [
+        ["2026-04-27", 0.0],
+        ["2026-05-04", 10.0],
+        ["2026-05-11", 0.0],
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 0.0],
+    ]
 
 
 def test_migration_fixed_window_comparison_rows(

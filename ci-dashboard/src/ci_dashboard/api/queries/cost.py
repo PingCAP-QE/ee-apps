@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Mapping
 
 from sqlalchemy import text
@@ -92,19 +92,27 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     total_resource_cost = _money(coverage_row["total_resource_cost"]) if coverage_row else 0.0
     matched_resource_cost = _money(coverage_row["matched_resource_cost"]) if coverage_row else 0.0
 
+    buckets = _bucket_starts(filters, data_rows)
+    net_cost_by_bucket = {bucket: 0.0 for bucket in buckets}
+    list_cost_by_bucket = {bucket: 0.0 for bucket in buckets}
+    for row in data_rows:
+        bucket_start = str(row["bucket_start"])
+        net_cost_by_bucket[bucket_start] = _money(row["net_cost"])
+        list_cost_by_bucket[bucket_start] = _money(row["list_cost"])
+
     return {
         "series": [
             {
                 "key": "list_cost",
                 "label": "List cost",
                 "type": "bar",
-                "points": [[str(row["bucket_start"]), _money(row["list_cost"])] for row in data_rows],
+                "points": [[bucket, list_cost_by_bucket[bucket]] for bucket in buckets],
             },
             {
                 "key": "net_cost",
                 "label": "Net cost",
                 "type": "line",
-                "points": [[str(row["bucket_start"]), _money(row["net_cost"])] for row in data_rows],
+                "points": [[bucket, net_cost_by_bucket[bucket]] for bucket in buckets],
             },
         ],
         "meta": {
@@ -175,19 +183,22 @@ def get_repo_group_cost_stack(engine: Engine, filters: CommonFilters) -> dict[st
         ).mappings()
         data_rows = [dict(row) for row in rows]
 
-    buckets = sorted({str(row["bucket_start"]) for row in data_rows})
+    buckets = _bucket_starts(filters, data_rows)
     values_by_key = {
-        _repo_key(repo_name): {bucket: 0.0 for bucket in buckets}
-        for repo_name in top_repos
+        _repo_key(repo_name, index): {bucket: 0.0 for bucket in buckets}
+        for index, repo_name in enumerate(top_repos)
     }
     labels_by_key = {
-        _repo_key(repo_name): repo_name
-        for repo_name in top_repos
+        _repo_key(repo_name, index): repo_name
+        for index, repo_name in enumerate(top_repos)
+    }
+    repo_key_by_name = {
+        repo_name: _repo_key(repo_name, index)
+        for index, repo_name in enumerate(top_repos)
     }
     for row in data_rows:
-        key = _repo_key(str(row["repo_name"]))
-        values_by_key.setdefault(key, {bucket: 0.0 for bucket in buckets})
-        labels_by_key.setdefault(key, str(row["repo_name"]))
+        repo_name = str(row["repo_name"])
+        key = repo_key_by_name[repo_name]
         values_by_key[key][str(row["bucket_start"])] = _money(row["list_cost"])
 
     return {
@@ -444,12 +455,40 @@ def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str)
     return f"{value_expr} LIKE CONCAT({prefix_expr}, '%')"
 
 
-def _repo_key(repo_name: str) -> str:
-    return f"repo__{_slug(repo_name)}"
+def _repo_key(repo_name: str, index: int) -> str:
+    if repo_name == "(no repo)":
+        return "repo__no_repo"
+    return f"repo__{index}"
 
 
-def _slug(value: str) -> str:
-    return "".join(char.lower() if char.isalnum() else "_" for char in value).strip("_") or "unknown"
+def _bucket_starts(filters: CommonFilters, rows: list[dict[str, Any]]) -> list[str]:
+    if filters.start_date and filters.end_date:
+        if filters.granularity == "month":
+            return _month_bucket_starts(filters.start_date, filters.end_date)
+        return _week_bucket_starts(filters.start_date, filters.end_date)
+    return sorted({str(row["bucket_start"]) for row in rows})
+
+
+def _week_bucket_starts(start_date: date, end_date: date) -> list[str]:
+    cursor = start_date - timedelta(days=start_date.weekday())
+    buckets: list[str] = []
+    while cursor <= end_date:
+        buckets.append(cursor.isoformat())
+        cursor += timedelta(days=7)
+    return buckets
+
+
+def _month_bucket_starts(start_date: date, end_date: date) -> list[str]:
+    cursor = start_date.replace(day=1)
+    end_bucket = end_date.replace(day=1)
+    buckets: list[str] = []
+    while cursor <= end_bucket:
+        buckets.append(cursor.isoformat())
+        if cursor.month == 12:
+            cursor = cursor.replace(year=cursor.year + 1, month=1)
+        else:
+            cursor = cursor.replace(month=cursor.month + 1)
+    return buckets
 
 
 def _resource_labels(row: Mapping[str, Any]) -> str:
