@@ -23,25 +23,9 @@ export default function CostPage({ filters }) {
     granularity: filters.granularity === "month" ? "month" : "week",
   };
   const trend = useApiData("/api/v1/pages/cost-trend", costFilters);
-  const trendSettled = Boolean(trend.data) || Boolean(trend.error);
-  const repoGroupStack = useApiData(
-    "/api/v1/pages/cost-repo-group-stack",
-    costFilters,
-    trendSettled,
-  );
-  const repoStackSettled = trendSettled && (Boolean(repoGroupStack.data) || Boolean(repoGroupStack.error));
-  const engineeringGroupShare = useApiData(
-    "/api/v1/pages/cost-engineering-group-share",
-    costFilters,
-    repoStackSettled,
-  );
-  const engineeringGroupSettled = repoStackSettled
-    && (Boolean(engineeringGroupShare.data) || Boolean(engineeringGroupShare.error));
-  const unmatchedResources = useApiData(
-    "/api/v1/pages/cost-unmatched-resources",
-    costFilters,
-    engineeringGroupSettled,
-  );
+  const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costFilters);
+  const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
+  const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
   const summary = trend.data?.meta?.summary || {};
   const stackTotal = (repoGroupStack.data?.items || []).reduce(
     (sum, item) => sum + Number(item.value || 0),

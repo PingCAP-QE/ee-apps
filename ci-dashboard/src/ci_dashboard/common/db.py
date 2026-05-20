@@ -27,8 +27,8 @@ def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
         return engine_kwargs
     return {
         **engine_kwargs,
-        "pool_size": 20,
-        "max_overflow": 20,
+        "pool_size": 40,
+        "max_overflow": 40,
         "pool_timeout": 60,
     }
 

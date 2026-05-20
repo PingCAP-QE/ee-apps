@@ -280,8 +280,8 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
     assert captured["kwargs"] == {
         "pool_pre_ping": True,
         "future": True,
-        "pool_size": 20,
-        "max_overflow": 20,
+        "pool_size": 40,
+        "max_overflow": 40,
         "pool_timeout": 60,
         "connect_args": {"ssl": {"ca": "/etc/certs/ca.pem"}},
     }
