@@ -108,6 +108,7 @@ class LLMSettings:
 @dataclass(frozen=True)
 class FeatureSettings:
     runtime_insights_enabled: bool = False
+    cost_dashboard_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -205,6 +206,11 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             runtime_insights_enabled=_read_bool(
                 env,
                 "CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS",
+                False,
+            ),
+            cost_dashboard_enabled=_read_bool(
+                env,
+                "CI_DASHBOARD_ENABLE_COST_DASHBOARD",
                 False,
             ),
         ),

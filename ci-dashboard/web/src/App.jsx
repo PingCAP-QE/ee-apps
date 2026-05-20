@@ -7,6 +7,7 @@ import BuildTrendPage from "./pages/BuildTrendPage";
 import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
+import CostPage from "./pages/CostPage";
 import { buildScopeLabel, getDefaultDateRange, useApiData } from "./lib/api";
 
 const REPO_OPTIONS = [{ value: "pingcap/tidb", label: "pingcap/tidb" }];
@@ -18,9 +19,22 @@ const BRANCH_OPTIONS = [
 const CI_STATUS_PATH = "/ci-status";
 const MIGRATE_STATUS_PATH = "/migrate-status";
 const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
-const WEEK_GRANULARITY_PATHS = new Set([CI_STATUS_PATH, MIGRATE_STATUS_PATH, RUNTIME_INSIGHTS_PATH]);
+const COST_PATH = "/cost";
+const WEEK_GRANULARITY_PATHS = new Set([
+  CI_STATUS_PATH,
+  MIGRATE_STATUS_PATH,
+  RUNTIME_INSIGHTS_PATH,
+  COST_PATH,
+]);
 
 function buildDefaultFilters(defaultRange, pathname) {
+  const costRange =
+    pathname === COST_PATH
+      ? {
+          start_date: defaultRange.end_date.slice(0, 8) + "01",
+          end_date: defaultRange.end_date,
+        }
+      : defaultRange;
   const baseFilters = {
     repo: "",
     branch: "",
@@ -28,8 +42,8 @@ function buildDefaultFilters(defaultRange, pathname) {
     cloud_phase: "",
     issue_status: "",
     granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
-    start_date: defaultRange.start_date,
-    end_date: defaultRange.end_date,
+    start_date: costRange.start_date,
+    end_date: costRange.end_date,
   };
 
   if (pathname === "/flaky") {
@@ -45,12 +59,17 @@ function buildDefaultFilters(defaultRange, pathname) {
 }
 
 export default function App() {
-  const defaultRange = getDefaultDateRange();
+  const [defaultRange] = useState(() => getDefaultDateRange());
   const location = useLocation();
-  const [filters, setFilters] = useState(() => buildDefaultFilters(defaultRange, location.pathname));
+  const [filtersByPath, setFiltersByPath] = useState(() => ({
+    [location.pathname]: buildDefaultFilters(defaultRange, location.pathname),
+  }));
+  const filters = filtersByPath[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
   const navigation = useApiData("/api/v1/pages/navigation");
   const runtimeInsightsEnabled = navigation.data?.features?.runtime_insights_enabled === true;
+  const costDashboardEnabled = navigation.data?.features?.cost_dashboard_enabled === true;
   const runtimeInsightsReady = !navigation.loading;
+  const costDashboardReady = !navigation.loading;
   const runtimeInsightsRoute = runtimeInsightsEnabled ? (
     <RuntimeInsightsPage filters={filters} />
   ) : runtimeInsightsReady ? (
@@ -58,42 +77,70 @@ export default function App() {
   ) : (
     <div className="empty-state">Loading feature settings...</div>
   );
+  const costDashboardRoute = costDashboardEnabled ? (
+    <CostPage filters={filters} />
+  ) : costDashboardReady ? (
+    <Navigate to={CI_STATUS_PATH} replace />
+  ) : (
+    <div className="empty-state">Loading feature settings...</div>
+  );
+
+  useEffect(() => {
+    setFiltersByPath((current) => {
+      if (current[location.pathname]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [location.pathname]: buildDefaultFilters(defaultRange, location.pathname),
+      };
+    });
+  }, [defaultRange, location.pathname]);
 
   useEffect(() => {
     if (location.pathname !== "/flaky") {
       return;
     }
 
-    setFilters((current) => {
-      if (current.repo || current.branch || current.issue_status) {
+    setFiltersByPath((current) => {
+      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+      if (routeFilters.repo || routeFilters.branch || routeFilters.issue_status) {
         return current;
       }
 
       return {
         ...current,
-        repo: "pingcap/tidb",
-        branch: "master",
-        issue_status: "closed",
+        [location.pathname]: {
+          ...routeFilters,
+          repo: "pingcap/tidb",
+          branch: "master",
+          issue_status: "closed",
+        },
       };
     });
-  }, [location.pathname]);
+  }, [defaultRange, location.pathname]);
 
   useEffect(() => {
     if (!WEEK_GRANULARITY_PATHS.has(location.pathname)) {
       return;
     }
 
-    setFilters((current) => {
-      if (current.granularity === "week") {
+    setFiltersByPath((current) => {
+      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+      if (routeFilters.granularity === "week") {
         return current;
       }
 
       return {
         ...current,
-        granularity: "week",
+        [location.pathname]: {
+          ...routeFilters,
+          granularity: "week",
+        },
       };
     });
-  }, [location.pathname]);
+  }, [defaultRange, location.pathname]);
 
   const jobs = useApiData(
     "/api/v1/filters/jobs",
@@ -113,25 +160,35 @@ export default function App() {
   });
 
   function handleFilterChange(key, value) {
-    setFilters((current) => {
+    setFiltersByPath((current) => {
+      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
       if (key === "repo") {
         return {
           ...current,
-          repo: value,
-          branch: "",
-          job_name: "",
+          [location.pathname]: {
+            ...routeFilters,
+            repo: value,
+            branch: "",
+            job_name: "",
+          },
         };
       }
       if (key === "branch") {
         return {
           ...current,
-          branch: value,
-          job_name: "",
+          [location.pathname]: {
+            ...routeFilters,
+            branch: value,
+            job_name: "",
+          },
         };
       }
       return {
         ...current,
-        [key]: value,
+        [location.pathname]: {
+          ...routeFilters,
+          [key]: value,
+        },
       };
     });
   }
@@ -149,7 +206,7 @@ export default function App() {
       filters={filters}
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
-      features={{ runtimeInsightsEnabled }}
+      features={{ runtimeInsightsEnabled, costDashboardEnabled }}
     >
       <Routes>
         <Route path="/" element={<OverviewPage filters={filters} />} />
@@ -157,6 +214,7 @@ export default function App() {
         <Route path="/flaky" element={<FlakyPage filters={filters} />} />
         <Route path={MIGRATE_STATUS_PATH} element={<MigrateStatusPage filters={filters} />} />
         <Route path={RUNTIME_INSIGHTS_PATH} element={runtimeInsightsRoute} />
+        <Route path={COST_PATH} element={costDashboardRoute} />
       </Routes>
     </DashboardLayout>
   );

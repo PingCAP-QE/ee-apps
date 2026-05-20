@@ -725,8 +725,25 @@ select {
 .chart-axis-label--annotation {
   text-anchor: middle;
   font-size: 10px;
+  font-weight: 650;
+  fill: #526b76;
+}
+
+.chart-tooltip__box {
+  fill: rgba(18, 35, 47, 0.82);
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1;
+}
+
+.chart-tooltip__title {
+  fill: #f8fbfc;
+  font-size: 12px;
   font-weight: 700;
-  fill: var(--navy);
+}
+
+.chart-tooltip__text {
+  fill: rgba(248, 251, 252, 0.92);
+  font-size: 11px;
 }
 
 .chart-legend {
@@ -1498,6 +1515,26 @@ select {
 .data-row--selected th,
 .data-row--selected td {
   background: rgba(42, 157, 143, 0.12) !important;
+}
+
+.resource-table__name {
+  max-width: 28rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.resource-table__meta {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.data-table td.resource-table__labels {
+  min-width: 20rem;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.45;
 }
 
 .metric-cell {

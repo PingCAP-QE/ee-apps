@@ -1,7 +1,8 @@
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import {
   formatCompact,
+  formatCurrency,
   formatDateRangeLabel,
   formatNumber,
   formatPercent,
@@ -47,6 +48,11 @@ const SERIES_COLORS = {
   issue_closed_count: "#2a9d8f",
   issue_reopened_count: "#e9c46a",
   issue_open_count: "#315772",
+  net_cost: "#0f766e",
+  effective_cost: "#2a9d8f",
+  list_cost: "#d88b3d",
+  gcp_budget: "#d1495b",
+  repo__no_repo: "#c8d0d6",
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",
   scheduling_wait_avg_s: "#bc6c25",
@@ -164,6 +170,7 @@ export function TrendChart({
   compactY = false,
   stackBars = false,
   yTickMode = "default",
+  yTickSegments = null,
   rightYTickMode = "default",
   axisLabelSize = 11,
   bottomLabelSize = 11,
@@ -175,6 +182,18 @@ export function TrendChart({
   onBucketSelect = null,
   preserveLabelOrder = false,
 }) {
+  const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const hoverTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
   if (!series?.length) {
     return <EmptyState message="No chart data for the current filters." />;
   }
@@ -229,7 +248,7 @@ export function TrendChart({
       .filter((value) => value != null),
   );
   const sharedTickSegments =
-    yTickMode === "integer" || rightYTickMode === "integer" ? 5 : 4;
+    yTickSegments ?? (yTickMode === "integer" || rightYTickMode === "integer" ? 5 : 4);
   const rawLeftMaxValue = yMax ?? (leftAxisIsPercent ? 100 : Math.max(...leftValues, 1));
   const leftAxisTicks = buildAxisTicks({
     min: 0,
@@ -262,13 +281,24 @@ export function TrendChart({
     (bucketAnnotations || []).map((annotation) => [annotation.label, annotation.text]),
   );
   const padding = {
-    top: annotationMap.size ? 34 : compactY ? 6 : 20,
+    top: annotationMap.size ? 54 : compactY ? 6 : 20,
     right: hasRightAxis ? 58 : 20,
     bottom: compactY ? 22 : 42,
     left: leftPadding,
   };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
+  const barSeries = series.filter((item) => item.type === "bar");
+  const lineSeries = series.filter((item) => item.type === "line");
+  const hasBars = barSeries.length > 0;
+  const xInset =
+    hasBars && labels.length > 1
+      ? Math.min(Math.max(barMaxWidth / 2 + 8, 20), plotWidth * 0.1)
+      : 0;
+  const xRangeWidth = Math.max(plotWidth - xInset * 2, 1);
+  const xStep = labels.length > 1 ? xRangeWidth / (labels.length - 1) : plotWidth;
+  const xForIndex = (index) =>
+    labels.length > 1 ? padding.left + xInset + index * xStep : padding.left + plotWidth / 2;
   const displayLabels = labels.map((label) => formatBottomAxisLabel(label));
   const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
   const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
@@ -277,7 +307,6 @@ export function TrendChart({
     labels.length > maxBottomLabels
       ? Math.ceil((labels.length - 1) / Math.max(maxBottomLabels - 1, 1))
       : 1;
-  const xStep = labels.length > 1 ? plotWidth / (labels.length - 1) : plotWidth;
   const minBottomLabelIndexGap = Math.max(
     1,
     Math.ceil(estimatedBottomLabelWidth / Math.max(xStep, 1)),
@@ -289,16 +318,47 @@ export function TrendChart({
   );
   const interactiveBuckets = typeof onBucketSelect === "function";
   const selectedBucketIndex = selectedBucketLabel ? labels.indexOf(selectedBucketLabel) : -1;
-  const barSeries = series.filter((item) => item.type === "bar");
-  const lineSeries = series.filter((item) => item.type === "line");
   const getBucketArea = (index) => {
     if (labels.length === 1) {
       return { x: padding.left, width: plotWidth };
     }
-    const center = padding.left + index * xStep;
+    const center = xForIndex(index);
     const left = index === 0 ? padding.left : center - xStep / 2;
     const right = index === labels.length - 1 ? padding.left + plotWidth : center + xStep / 2;
     return { x: left, width: Math.max(right - left, 12) };
+  };
+  const hoveredBucket =
+    hoveredBucketIndex == null || hoveredBucketIndex < 0
+      ? null
+      : buildBucketTooltip({
+          label: labels[hoveredBucketIndex],
+          index: hoveredBucketIndex,
+          series,
+          pointMaps,
+          xForIndex,
+          yFormatter,
+          rightYFormatter,
+          width,
+          height,
+          padding,
+        });
+  const handleBucketHoverStart = (index) => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    setHoveredBucketIndex(index);
+    setTooltipVisible(false);
+    hoverTimerRef.current = window.setTimeout(() => {
+      setTooltipVisible(true);
+    }, 1000);
+  };
+  const handleBucketHoverEnd = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setTooltipVisible(false);
+    setHoveredBucketIndex(null);
   };
 
   return (
@@ -365,9 +425,10 @@ export function TrendChart({
             const barWidth = stackBars
               ? Math.max(groupWidth - 4, 10)
               : Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
-            const groupStart = padding.left + index * xStep - groupWidth / 2;
+            const centerX = xForIndex(index);
+            const groupStart = centerX - groupWidth / 2;
             const x = stackBars
-              ? padding.left + index * xStep - barWidth / 2
+              ? centerX - barWidth / 2
               : groupStart + seriesIndex * (barWidth + 6);
             const axisRange =
               item.axis === "right"
@@ -419,7 +480,7 @@ export function TrendChart({
               return;
             }
 
-            const x = padding.left + index * xStep;
+            const x = xForIndex(index);
             const y = padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
             currentSegment.push({ label, x, y });
           });
@@ -437,32 +498,35 @@ export function TrendChart({
                   fill="none"
                   stroke={seriesColor(item.key)}
                   strokeWidth="3"
+                  strokeDasharray={item.dash ? "7 6" : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
               ))}
-              {segments.flatMap((segment) =>
-                segment.map((point) => (
-                  <circle
-                    key={`${item.key}-${point.label}`}
-                    cx={point.x}
-                    cy={point.y}
-                    r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
-                    fill={seriesColor(item.key)}
-                    stroke="#fcf7ef"
-                    strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
-                    style={interactiveBuckets ? { cursor: "pointer" } : undefined}
-                    onClick={
-                      interactiveBuckets
-                        ? () =>
-                            onBucketSelect(
-                              selectedBucketLabel === point.label ? null : point.label,
-                            )
-                        : undefined
-                    }
-                  />
-                )),
-              )}
+              {item.showPoints === false
+                ? null
+                : segments.flatMap((segment) =>
+                    segment.map((point) => (
+                      <circle
+                        key={`${item.key}-${point.label}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
+                        fill={seriesColor(item.key)}
+                        stroke="#fcf7ef"
+                        strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
+                        style={interactiveBuckets ? { cursor: "pointer" } : undefined}
+                        onClick={
+                          interactiveBuckets
+                            ? () =>
+                                onBucketSelect(
+                                  selectedBucketLabel === point.label ? null : point.label,
+                                )
+                            : undefined
+                        }
+                      />
+                    )),
+                  )}
             </g>
           );
         })}
@@ -483,7 +547,8 @@ export function TrendChart({
             padding,
             plotHeight,
           });
-          const x = padding.left + index * xStep;
+          const x = xForIndex(index);
+          const annotationLines = String(annotation).split("\n");
           return (
             <text
               key={`${label}-annotation`}
@@ -492,7 +557,15 @@ export function TrendChart({
               className="chart-axis-label chart-axis-label--annotation"
               style={{ fontSize: `${annotationLabelSize}px` }}
             >
-              {annotation}
+              {annotationLines.map((line, lineIndex) => (
+                <tspan
+                  key={`${label}-annotation-line-${lineIndex}`}
+                  x={x}
+                  dy={lineIndex === 0 ? 0 : annotationLabelSize + 2}
+                >
+                  {line}
+                </tspan>
+              ))}
             </text>
           );
         })}
@@ -503,7 +576,7 @@ export function TrendChart({
           }
           const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
-          const x = padding.left + index * xStep;
+          const x = xForIndex(index);
           const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
           return (
             <text
@@ -519,23 +592,50 @@ export function TrendChart({
           );
         })}
 
-        {interactiveBuckets
-          ? labels.map((label, index) => {
-              const area = getBucketArea(index);
-              return (
-                <rect
-                  key={`${label}-hit-area`}
-                  x={area.x}
-                  y={padding.top}
-                  width={area.width}
-                  height={plotHeight}
-                  fill="transparent"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onBucketSelect(selectedBucketLabel === label ? null : label)}
-                />
-              );
-            })
-          : null}
+        {tooltipVisible && hoveredBucket ? (
+          <g className="chart-tooltip" transform={`translate(${hoveredBucket.x}, ${hoveredBucket.y})`}>
+            <rect
+              width={hoveredBucket.width}
+              height={hoveredBucket.height}
+              rx="8"
+              className="chart-tooltip__box"
+            />
+            <text x="12" y="18" className="chart-tooltip__title">
+              {formatBottomAxisLabel(hoveredBucket.label)}
+            </text>
+            {hoveredBucket.rows.map((row, index) => (
+              <g key={`${hoveredBucket.label}-${row.key}`} transform={`translate(0, ${34 + index * 18})`}>
+                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                <text x="25" y="0" className="chart-tooltip__text">
+                  {row.label}: {row.value}
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : null}
+
+        {labels.map((label, index) => {
+          const area = getBucketArea(index);
+          return (
+            <rect
+              key={`${label}-hit-area`}
+              x={area.x}
+              y={padding.top}
+              width={area.width}
+              height={plotHeight}
+              fill="transparent"
+              className="chart-hit-area"
+              style={{ cursor: interactiveBuckets ? "pointer" : "default" }}
+              onMouseEnter={() => handleBucketHoverStart(index)}
+              onMouseLeave={handleBucketHoverEnd}
+              onClick={
+                interactiveBuckets
+                  ? () => onBucketSelect(selectedBucketLabel === label ? null : label)
+                  : undefined
+              }
+            />
+          );
+        })}
       </svg>
 
       <div className="chart-legend">
@@ -1165,6 +1265,52 @@ export function BucketFlakyRateTable({
   );
 }
 
+export function UnmatchedResourceTable({ items }) {
+  if (!items?.length) {
+    return <EmptyState message="No unmatched unallocated named resources for the current filters." />;
+  }
+
+  return (
+    <div className="table-scroll table-scroll--compact-y">
+      <table className="data-table data-table--compact">
+        <thead>
+          <tr>
+            <th>Resource name</th>
+            <th>List cost</th>
+            <th>Duration</th>
+            <th>Service</th>
+            <th>SKU</th>
+            <th>Labels</th>
+            <th>Allocation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.resource_name}>
+              <th scope="row">
+                <div className="resource-table__name">{item.resource_name}</div>
+                {item.repo_name ? (
+                  <div className="resource-table__meta">repo: {item.repo_name}</div>
+                ) : null}
+              </th>
+              <td>{formatCurrency(item.list_cost)}</td>
+              <td>{formatResourceDuration(item.observed_days)}</td>
+              <td>{item.service_name || "--"}</td>
+              <td>{item.sku_name || "--"}</td>
+              <td className="resource-table__labels">{item.labels || "--"}</td>
+              <td>
+                <div className="resource-table__meta">{item.allocation_buckets || "--"}</div>
+                <div className="resource-table__meta">{item.attribution_status || "--"}</div>
+                <div className="resource-table__meta">{item.attribution_source || "--"}</div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function EmptyState({ message, compact = false }) {
   return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
 }
@@ -1208,8 +1354,60 @@ function ErrorState({ error }) {
   return <div className="empty-state empty-state--error">Could not load panel: {error}</div>;
 }
 
+function buildBucketTooltip({
+  label,
+  index,
+  series,
+  pointMaps,
+  xForIndex,
+  yFormatter,
+  rightYFormatter,
+  width,
+  height,
+  padding,
+}) {
+  const rows = series
+    .map((item) => {
+      const rawValue = pointMaps.get(item.key)?.get(label);
+      if (rawValue == null) {
+        return null;
+      }
+      const formatter = item.axis === "right" ? rightYFormatter : yFormatter;
+      return {
+        key: item.key,
+        label: item.label || formatSeriesLabel(item.key),
+        value: formatter(rawValue),
+      };
+    })
+    .filter(Boolean);
+  const longestRowLength = Math.max(
+    String(formatBottomAxisLabel(label)).length,
+    ...rows.map((row) => `${row.label}: ${row.value}`.length),
+  );
+  const tooltipWidth = Math.min(Math.max(170, longestRowLength * 7 + 42), 300);
+  const tooltipHeight = Math.max(48, 34 + rows.length * 18 + 10);
+  const preferredX = xForIndex(index) + 14;
+  const x =
+    preferredX + tooltipWidth > width - 8
+      ? Math.max(8, xForIndex(index) - tooltipWidth - 14)
+      : preferredX;
+  const y = Math.max(8, Math.min(padding.top + 8, height - tooltipHeight - 8));
+
+  return {
+    label,
+    rows,
+    x,
+    y,
+    width: tooltipWidth,
+    height: tooltipHeight,
+  };
+}
+
 function seriesColor(key) {
-  return SERIES_COLORS[key] || "#315772";
+  if (SERIES_COLORS[key]) {
+    return SERIES_COLORS[key];
+  }
+  return DONUT_COLORS[Math.abs(hashString(String(key || ""))) % DONUT_COLORS.length];
 }
 
 function donutColor(name, index) {
@@ -1237,6 +1435,14 @@ function formatBottomAxisLabel(label) {
   }
   const [, _year, month, day] = match;
   return `${month}-${day}`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
 }
 
 function buildVisibleBottomLabelIndices(labelCount, step, minGap) {
@@ -1432,6 +1638,14 @@ function formatShortDate(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatResourceDuration(value) {
+  const days = Number(value || 0);
+  if (days <= 0) {
+    return "--";
+  }
+  return `${days.toFixed(0)}d`;
+}
+
 function getAnnotationY({
   label,
   series,
@@ -1511,7 +1725,7 @@ function buildAxisTicks({
 
   if (tickMode === "thousands-rounded") {
     const rawStep = Math.max(safeMax, 1) / safeSegments;
-    const step = Math.max(1000, Math.round(rawStep / 1000) * 1000);
+    const step = niceStep(rawStep);
     const roundedMax = step * safeSegments;
     return {
       min: 0,
@@ -1551,4 +1765,26 @@ function buildAxisTicks({
       (_, index) => safeMin + (span * index) / safeSegments,
     ),
   };
+}
+
+function niceStep(value) {
+  const safeValue = Math.max(Number(value) || 0, 1);
+  const exponent = Math.floor(Math.log10(safeValue));
+  const magnitude = 10 ** exponent;
+  const normalized = safeValue / magnitude;
+  const niceNormalized =
+    normalized <= 1
+      ? 1
+      : normalized <= 1.5
+        ? 1.5
+      : normalized <= 2
+        ? 2
+        : normalized <= 3
+          ? 3
+          : normalized <= 4
+            ? 4
+            : normalized <= 5
+              ? 5
+              : 10;
+  return Math.max(1000, niceNormalized * magnitude);
 }
