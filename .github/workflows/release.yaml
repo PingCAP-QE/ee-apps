@@ -54,6 +54,8 @@ jobs:
           filters: |
             ci-dashboard:
               - 'ci-dashboard/**'
+            cost-insight:
+              - 'cost-insight/**'
             roster:
               - 'roster/**'
             cloudevents-server:
@@ -101,6 +103,11 @@ jobs:
       - name: Publish image - ci-dashboard
         if: steps.changes.outputs.ci-dashboard == 'true'
         working-directory: ci-dashboard
+        run: |
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish image - cost-insight
+        if: steps.changes.outputs.cost-insight == 'true'
+        working-directory: cost-insight
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - roster
