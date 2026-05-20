@@ -276,6 +276,75 @@ def _create_test_schema(engine: Engine) -> None:
           UNIQUE(source_project, namespace_name, pod_uid, pod_name)
         )
         """,
+        """
+        CREATE TABLE roster_groups (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          lark_group_id TEXT NOT NULL UNIQUE,
+          parent_id INTEGER NULL,
+          name TEXT NOT NULL,
+          manager_id INTEGER NULL,
+          path TEXT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          last_seen_at TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE cost_attribution_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          usage_date TEXT NOT NULL,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          service_name TEXT NULL,
+          sku_name TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          resource_name TEXT NULL,
+          author TEXT NULL,
+          owner TEXT NULL,
+          attribution_key TEXT NULL,
+          attribution_source TEXT NOT NULL,
+          attribution_status TEXT NOT NULL,
+          employee_id INTEGER NULL,
+          group_id INTEGER NULL,
+          manager_id INTEGER NULL,
+          usage_seconds REAL NULL,
+          list_cost REAL NULL,
+          effective_cost REAL NULL,
+          credit_amount REAL NULL,
+          net_cost REAL NULL,
+          source_rows INTEGER NOT NULL DEFAULT 0,
+          dimension_hash TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE cost_raw_details (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          billing_account_id TEXT NULL,
+          usage_date TEXT NOT NULL,
+          service_name TEXT NULL,
+          sku_name TEXT NULL,
+          region TEXT NULL,
+          namespace TEXT NULL,
+          author TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          resource_name TEXT NULL,
+          usage_seconds REAL NULL,
+          list_cost REAL NULL,
+          effective_cost REAL NULL,
+          credit_amount REAL NULL,
+          net_cost REAL NULL,
+          source_export_time TEXT NULL,
+          source_row_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:

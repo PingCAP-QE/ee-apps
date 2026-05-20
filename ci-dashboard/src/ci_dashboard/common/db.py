@@ -17,6 +17,22 @@ def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
     }
 
 
+def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
+    engine_kwargs = {
+        "pool_pre_ping": True,
+        "future": True,
+        "connect_args": _build_connect_args(database),
+    }
+    if database.url and database.url.startswith("sqlite"):
+        return engine_kwargs
+    return {
+        **engine_kwargs,
+        "pool_size": 40,
+        "max_overflow": 40,
+        "pool_timeout": 60,
+    }
+
+
 def install_sqlite_functions(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         return
@@ -40,8 +56,7 @@ def build_engine(settings: Settings | None = None) -> Engine:
     if resolved.database.url:
         engine = create_engine(
             resolved.database.url,
-            pool_pre_ping=True,
-            future=True,
+            **_build_engine_kwargs(resolved.database),
         )
         install_sqlite_functions(engine)
         return engine
@@ -56,9 +71,7 @@ def build_engine(settings: Settings | None = None) -> Engine:
     )
     engine = create_engine(
         url,
-        pool_pre_ping=True,
-        future=True,
-        connect_args=_build_connect_args(resolved.database),
+        **_build_engine_kwargs(resolved.database),
     )
     install_sqlite_functions(engine)
     return engine

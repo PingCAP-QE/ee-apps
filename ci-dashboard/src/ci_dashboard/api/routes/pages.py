@@ -8,6 +8,11 @@ from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
+    get_cost_engineering_group_share_page,
+    get_cost_insight_page,
+    get_cost_repo_group_stack_page,
+    get_cost_trend_page,
+    get_cost_unmatched_resources_page,
     get_flaky_page,
     get_overview_page,
     get_runtime_insights_page,
@@ -25,6 +30,7 @@ def navigation_page(settings: Settings = Depends(get_settings)) -> dict[str, obj
     return {
         "features": {
             "runtime_insights_enabled": settings.features.runtime_insights_enabled,
+            "cost_dashboard_enabled": settings.features.cost_dashboard_enabled,
         }
     }
 
@@ -59,6 +65,46 @@ def runtime_insights_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_runtime_insights_page(engine, filters)
+
+
+@router.get("/cost")
+def cost_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_insight_page(engine, filters)
+
+
+@router.get("/cost-trend")
+def cost_trend_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_trend_page(engine, filters)
+
+
+@router.get("/cost-repo-group-stack")
+def cost_repo_group_stack_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_repo_group_stack_page(engine, filters)
+
+
+@router.get("/cost-engineering-group-share")
+def cost_engineering_group_share_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_engineering_group_share_page(engine, filters)
+
+
+@router.get("/cost-unmatched-resources")
+def cost_unmatched_resources_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_unmatched_resources_page(engine, filters)
 
 
 @router.get("/runtime-error-top-jobs")

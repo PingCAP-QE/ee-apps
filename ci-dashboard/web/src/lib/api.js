@@ -173,6 +173,24 @@ export function formatCompact(value) {
   }).format(value || 0);
 }
 
+export function formatCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: Math.abs(Number(value || 0)) >= 100000 ? "compact" : "standard",
+    maximumFractionDigits: Math.abs(Number(value || 0)) >= 1000 ? 0 : 2,
+  }).format(value || 0);
+}
+
+export function formatCompactCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+}
+
 export function formatRoundedThousands(value) {
   const numeric = Number(value || 0);
   if (numeric === 0) {

@@ -36,6 +36,7 @@ def test_load_settings_supports_db_url() -> None:
             "CI_DASHBOARD_LLM_BASE_URL": "https://api-vip.codex-for.me/v1",
             "CI_DASHBOARD_LLM_REASONING_EFFORT": "high",
             "CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS": "true",
+            "CI_DASHBOARD_ENABLE_COST_DASHBOARD": "true",
             "CI_DASHBOARD_LOG_LEVEL": "debug",
         }
     )
@@ -64,12 +65,14 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.llm.base_url == "https://api-vip.codex-for.me/v1"
     assert settings.llm.reasoning_effort == "high"
     assert settings.features.runtime_insights_enabled is True
+    assert settings.features.cost_dashboard_enabled is True
     assert settings.log_level == "DEBUG"
 
 
 def test_load_settings_hides_runtime_insights_by_default() -> None:
     settings = load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db"})
     assert settings.features.runtime_insights_enabled is False
+    assert settings.features.cost_dashboard_enabled is False
 
 
 @pytest.mark.parametrize(
@@ -194,6 +197,19 @@ def test_load_settings_rejects_invalid_runtime_insights_flag() -> None:
         )
 
 
+def test_load_settings_rejects_invalid_cost_dashboard_flag() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"CI_DASHBOARD_ENABLE_COST_DASHBOARD must be a boolean .* got 'maybe'",
+    ):
+        load_settings(
+            {
+                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
+                "CI_DASHBOARD_ENABLE_COST_DASHBOARD": "maybe",
+            }
+        )
+
+
 def test_build_engine_supports_sqlite_url() -> None:
     settings = load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///:memory:"})
     engine = build_engine(settings)
@@ -264,6 +280,9 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
     assert captured["kwargs"] == {
         "pool_pre_ping": True,
         "future": True,
+        "pool_size": 40,
+        "max_overflow": 40,
+        "pool_timeout": 60,
         "connect_args": {"ssl": {"ca": "/etc/certs/ca.pem"}},
     }
     assert install_calls == [engine]

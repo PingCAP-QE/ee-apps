@@ -18,6 +18,13 @@ from ci_dashboard.api.queries.builds import (
     get_lowest_success_rate_jobs,
     get_outcome_trend,
 )
+from ci_dashboard.api.queries.cost import (
+    get_cost_page,
+    get_cost_trend,
+    get_engineering_group_share,
+    get_repo_group_cost_stack,
+    get_unmatched_resources,
+)
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
     get_failure_category_trend,
@@ -223,6 +230,46 @@ def get_runtime_insights_page(engine: Engine, filters: CommonFilters) -> dict[st
         "scope": filters.meta(),
         **sections,
     }
+
+
+def get_cost_insight_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    return get_cost_page(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_unmatched_resources_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_unmatched_resources(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_trend_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_cost_trend(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_repo_group_stack_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_repo_group_cost_stack(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_engineering_group_share_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_engineering_group_share(engine, _normalize_cost_filters(filters))
+
+
+def _normalize_cost_filters(filters: CommonFilters) -> CommonFilters:
+    return CommonFilters(
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        granularity=filters.granularity if filters.granularity in {"week", "month"} else "week",
+    )
 
 
 def _get_previous_date_range(filters: CommonFilters) -> tuple[date | None, date | None]:

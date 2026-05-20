@@ -70,6 +70,7 @@ Notes:
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - `CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS` enables the experimental Runtime Insights tab when set to `true`; accepted boolean values include `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`, it defaults to hidden, and invalid values fail startup
+- `CI_DASHBOARD_ENABLE_COST_DASHBOARD` enables the Cost tab when set to `true`; it uses the same accepted boolean values as the Runtime Insights flag, defaults to hidden, and invalid values fail startup
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes

@@ -11,6 +11,7 @@ export function DashboardLayout({
 }) {
   const currentVersion = packageInfo.version;
   const showRuntimeInsights = features.runtimeInsightsEnabled === true;
+  const showCostDashboard = features.costDashboardEnabled === true;
 
   return (
     <div className="app-shell">
@@ -25,6 +26,9 @@ export function DashboardLayout({
           <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
           <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
           <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
+          {showCostDashboard && (
+            <NavItem to="/cost" label="Cost" caption="Spend by repo and engineering ownership" />
+          )}
           {showRuntimeInsights && (
             <NavItem
               to="/runtime-insights"
@@ -110,7 +114,7 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
     <section className={isCompact ? "filter-bar filter-bar--compact" : "filter-bar"}>
       <div className="filter-bar__header">
         <div className="filter-bar__header-copy">
-          <span className="filter-bar__eyebrow">Global filters</span>
+          <span className="filter-bar__eyebrow">Page filters</span>
           <h2>{filterOptions.scopeLabel}</h2>
         </div>
       </div>
@@ -125,7 +129,7 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
       </div>
 
       <p className="filter-bar__note">
-        Ingestion stays all-repo and all-branch. These filters only narrow the dashboard view.
+        Each tab keeps its own filter state. Ingestion stays all-repo and all-branch.
       </p>
 
       <div className="filter-grid">
