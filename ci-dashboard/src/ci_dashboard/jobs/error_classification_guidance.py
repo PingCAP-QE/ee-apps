@@ -23,6 +23,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", download 404/429/502/503/504, or read-timeout while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
 - BR integration matrix TEST_GROUP failures are IT/TEST_FAILURE, even if the failed case logs local 127.0.0.1 PD/TiKV connection-refused or timeout symptoms.
+- BR restore compatibility failures such as "ErrRestoreNotFreshCluster", "ErrRestoreIncompatibleSys", "missing column in cluster data", or "incompatible column, table:" are IT/TEST_FAILURE, even if later console tail shows scatter warnings or Jenkins remoting noise.
 - Kubelet final pod failures such as `TerminationByKubelet` with `imminent node shutdown` are INFRA/K8S and should beat later Jenkins remoting or agent-offline noise.
 - Jenkins Groovy/runtime/cache/websocket/controller persistence errors are INFRA subcategories, not product BUILD failures.
 - Agent disconnect/remoting failures such as `Timeout waiting for agent to come back`, `AgentOfflineException`, or `was marked offline: Connection was broken` are INFRA/JENKINS_AGENT_OFFLINE when there is no earlier stronger root cause.

@@ -771,6 +771,40 @@ def test_rule_engine_prefers_br_output_failure_over_later_timeout_noise() -> Non
     assert classification.source == "rule:br_integration_test_output_failure"
 
 
+def test_rule_engine_classifies_br_restore_compatibility_failure_before_jenkins_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "[2026/05/18 22:36:28.082 +08:00] [ERROR] [restore.go:93] "
+            "[\"failed to restore\"] "
+            "[error=\"user db/tables: db1.t1, db1.t2: "
+            "[BR:Restore:ErrRestoreNotFreshCluster]cluster is not fresh\"]\n"
+            "[2026/05/18 22:38:30.606 +08:00] [ERROR] [main.go:43] [\"br failed\"] "
+            "[error=\"incompatible column, table: tables_priv, "
+            "col in cluster: Table_priv set('Select'), col in backup: "
+            "Table_priv set('Select','Insert','Update','Delete','Create','Drop',"
+            "'Grant','Index','Alter','Create View','Show View','Trigger',"
+            "'References'): [BR:Restore:ErrRestoreIncompatibleSys]"
+            "incompatible system table\"]\n"
+            "hudson.remoting.ChannelClosedException: channel is already closed\n"
+            "Agent pingcap-tidb-merged-integration-br-test went offline during the build\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_br_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_br_test/223/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:br_restore_compatibility_failure"
+
+
 def test_rule_engine_prefers_kubelet_eviction_over_jenkins_disconnect_noise() -> None:
     engine = RuleEngine.from_file()
 

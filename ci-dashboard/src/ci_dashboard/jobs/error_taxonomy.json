@@ -229,6 +229,23 @@
       ]
     },
     {
+      "name": "br_restore_compatibility_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|/)merged_integration_br_test$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)",
+        "(^|_)merged_integration_br_test($|_)"
+      ],
+      "text_patterns": [
+        "\\[BR:Restore:ErrRestoreNotFreshCluster\\]cluster is not fresh",
+        "\\[BR:Restore:ErrRestoreIncompatibleSys\\]incompatible system table",
+        "missing column in cluster data \\[table=user\\]",
+        "incompatible column, table:"
+      ]
+    },
+    {
       "name": "integration_test_timeout",
       "l1": "IT",
       "l2": "TIMEOUT",
