@@ -11,72 +11,106 @@ import (
 	"github.com/google/go-github/v68/github"
 )
 
-const (
-	imageTagWorkflowRunLookupTimeout = 30 * time.Second
-	imageTagWorkflowRunLookupTick    = 2 * time.Second
-	imageTagHTTPTimeout              = 30 * time.Second
+var (
+	registryImageInlineWaitTimeout      = 90 * time.Second
+	registryImageAsyncWaitTimeout       = 15 * time.Minute
+	registryImageWorkflowRunLookupTick  = 2 * time.Second
+	registryImageWorkflowStatusPollTick = 5 * time.Second
+	registryImageHTTPTimeout            = 30 * time.Second
 )
 
-var errImageTagWorkflowRunNotFound = errors.New("dispatched workflow run not found yet")
+var errRegistryImageWorkflowRunNotFound = errors.New("dispatched workflow run not found yet")
 
-type imageTagTriggerParams struct {
-	Registry string
-	Tag      string
+type registryImageQueryParams struct {
+	Repository string
+	Tag        string
+	ImageRef   string
 }
 
-func runCommandImageTagTrigger(ctx context.Context, args []string) (string, error) {
+type registryImageAsyncState struct {
+	Params       *registryImageQueryParams
+	Ref          string
+	MinRunID     int64
+	DispatchedAt time.Time
+	RunID        int64
+}
+
+func runCommandRegistryImageQuery(ctx context.Context, args []string) (string, error) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		return imageTagHelpText, NewInformationError("Requested command usage")
+		return registryImageHelpText, NewInformationError("Requested command usage")
 	}
 
-	params, err := parseCommandImageTagTrigger(args)
+	params, err := parseCommandRegistryImageQuery(args)
 	if err != nil {
 		return "", err
 	}
 
-	cfg, token, err := loadImageTagWorkflowConfig(ctx)
+	cfg, token, err := loadRegistryImageWorkflowConfig(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	gc, _ := newImageTagGitHubClient(token)
-	return triggerImageTagWorkflow(ctx, params, gc, cfg)
+	gc, httpClient := newRegistryImageGitHubClient(token)
+	return queryRegistryImage(ctx, params, gc, cfg, httpClient)
 }
 
-func parseCommandImageTagTrigger(args []string) (*imageTagTriggerParams, error) {
-	if len(args) != 2 {
-		return nil, errors.New(imageTagHelpText)
+func parseCommandRegistryImageQuery(args []string) (*registryImageQueryParams, error) {
+	switch {
+	case len(args) == 1:
+		return parseRegistryImageTaggedReference(args[0])
+	case len(args) == 3 && (args[1] == "--tag" || args[1] == "-t"):
+		return buildRegistryImageQueryParams(args[0], args[2])
+	default:
+		return nil, errors.New(registryImageHelpText)
+	}
+}
+
+func parseRegistryImageTaggedReference(imageRef string) (*registryImageQueryParams, error) {
+	imageRef = strings.TrimSpace(imageRef)
+	if imageRef == "" || strings.Contains(imageRef, "@") {
+		return nil, errors.New(registryImageHelpText)
 	}
 
-	registry := strings.TrimSpace(args[0])
-	tag := strings.TrimSpace(args[1])
-	if registry == "" || tag == "" {
-		return nil, errors.New(imageTagHelpText)
+	lastSlash := strings.LastIndex(imageRef, "/")
+	lastColon := strings.LastIndex(imageRef, ":")
+	if lastColon <= lastSlash || lastColon == len(imageRef)-1 {
+		return nil, errors.New(registryImageHelpText)
 	}
 
-	return &imageTagTriggerParams{
-		Registry: registry,
-		Tag:      tag,
+	return buildRegistryImageQueryParams(imageRef[:lastColon], imageRef[lastColon+1:])
+}
+
+func buildRegistryImageQueryParams(repository, tag string) (*registryImageQueryParams, error) {
+	repository = strings.TrimSpace(repository)
+	tag = strings.TrimSpace(tag)
+	if repository == "" || tag == "" || strings.Contains(repository, "@") {
+		return nil, errors.New(registryImageHelpText)
+	}
+
+	return &registryImageQueryParams{
+		Repository: repository,
+		Tag:        tag,
+		ImageRef:   fmt.Sprintf("%s:%s", repository, tag),
 	}, nil
 }
 
-func triggerImageTagWorkflow(ctx context.Context, params *imageTagTriggerParams, gc *github.Client, cfg imageTagWorkflowConfig) (string, error) {
-	ref, err := resolveImageTagWorkflowRef(ctx, gc, cfg)
+func queryRegistryImage(ctx context.Context, params *registryImageQueryParams, gc *github.Client, cfg registryImageWorkflowConfig, httpClient *http.Client) (string, error) {
+	ref, err := resolveRegistryImageWorkflowRef(ctx, gc, cfg)
 	if err != nil {
 		return "", err
 	}
 
-	maxRunID, err := maxImageTagWorkflowRunID(ctx, gc, cfg)
+	maxRunID, err := maxRegistryImageWorkflowRunID(ctx, gc, cfg)
 	if err != nil {
 		return "", err
 	}
 
 	dispatchedAt := time.Now().UTC()
 	inputs := map[string]interface{}{
-		"registry_url": params.Registry,
+		"registry_url": params.Repository,
 		"image_tag":    params.Tag,
 	}
-	if credentialRef := resolveImageTagCredentialRef(params.Registry, cfg.CredentialRefs); credentialRef != "" {
+	if credentialRef := resolveRegistryImageCredentialRef(params.Repository, cfg.CredentialRefs); credentialRef != "" {
 		inputs["credential_ref"] = credentialRef
 	}
 
@@ -85,19 +119,141 @@ func triggerImageTagWorkflow(ctx context.Context, params *imageTagTriggerParams,
 		Inputs: inputs,
 	})
 	if err != nil {
-		return "", fmt.Errorf("trigger image-tag workflow failed: %w", err)
+		return "", fmt.Errorf("trigger registry image workflow failed: %w", err)
 	}
 
-	run, err := waitForImageTagWorkflowRun(ctx, gc, cfg, ref, params.Registry, params.Tag, maxRunID, dispatchedAt)
+	inlineCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registryImageInlineWaitTimeout)
+	defer cancel()
+
+	run, err := waitForRegistryImageWorkflowRun(inlineCtx, gc, cfg, ref, params.Repository, params.Tag, maxRunID, dispatchedAt)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			launched := scheduleAsyncRegistryImageQueryReply(ctx, gc, cfg, httpClient, registryImageAsyncState{
+				Params:       params,
+				Ref:          ref,
+				MinRunID:     maxRunID,
+				DispatchedAt: dispatchedAt,
+			})
+			outcome := newRegistryImageRunningOutcome(
+				params.ImageRef,
+				buildWorkflowPageURL(cfg),
+				fmt.Sprintf("GitHub accepted the query, but the workflow run is not visible yet after %s.", registryImageInlineWaitTimeout),
+				launched,
+			)
+			setCommandResponseStatus(ctx, outcome.responseStatus())
+			return renderRegistryImageQueryResponse(outcome)
+		}
+
+		return "", err
+	}
+
+	completedRun, err := waitForRegistryImageWorkflowCompletion(inlineCtx, gc, cfg, run.GetID())
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			launched := scheduleAsyncRegistryImageQueryReply(ctx, gc, cfg, httpClient, registryImageAsyncState{
+				Params:       params,
+				Ref:          ref,
+				MinRunID:     maxRunID,
+				DispatchedAt: dispatchedAt,
+				RunID:        run.GetID(),
+			})
+			outcome := newRegistryImageRunningOutcome(
+				params.ImageRef,
+				buildRegistryImageRunURL(cfg, run.GetID(), run.GetHTMLURL()),
+				fmt.Sprintf("The workflow is still running after %s.", registryImageInlineWaitTimeout),
+				launched,
+			)
+			setCommandResponseStatus(ctx, outcome.responseStatus())
+			return renderRegistryImageQueryResponse(outcome)
+		}
+
+		return "", err
+	}
+
+	outcome, err := buildRegistryImageQueryOutcome(inlineCtx, gc, cfg, completedRun, httpClient)
 	if err != nil {
 		return "", err
 	}
 
-	runURL := buildImageTagRunURL(cfg, run.GetID(), run.GetHTMLURL())
-	return fmt.Sprintf("workflow run id is %d\npoll command: /image-tag poll %d\nrun: %s", run.GetID(), run.GetID(), runURL), nil
+	setCommandResponseStatus(ctx, outcome.responseStatus())
+	return renderRegistryImageQueryResponse(outcome)
 }
 
-func resolveImageTagWorkflowRef(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig) (string, error) {
+func scheduleAsyncRegistryImageQueryReply(parentCtx context.Context, gc *github.Client, cfg registryImageWorkflowConfig, httpClient *http.Client, state registryImageAsyncState) bool {
+	if !hasCommandReply(parentCtx) {
+		return false
+	}
+
+	go func() {
+		asyncCtx, cancel := context.WithTimeout(context.Background(), registryImageAsyncWaitTimeout)
+		defer cancel()
+
+		run, err := awaitRegistryImageQueryCompletion(asyncCtx, gc, cfg, state)
+		if err != nil {
+			outcome := newRegistryImageTimeoutOutcome(
+				state.Params.ImageRef,
+				"",
+				fmt.Sprintf("GitHub Actions did not finish within %s.", registryImageAsyncWaitTimeout),
+			)
+			if run != nil {
+				outcome.RunURL = buildRegistryImageRunURL(cfg, run.GetID(), run.GetHTMLURL())
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				outcome = newRegistryImageFailedOutcome(
+					state.Params.ImageRef,
+					outcome.RunURL,
+					fmt.Sprintf("Unexpected error while waiting for the GitHub Actions result: %v", err),
+				)
+			}
+			_ = sendCommandReply(parentCtx, outcome.responseStatus(), mustRenderRegistryImageQueryResponse(outcome))
+			return
+		}
+
+		outcome, err := buildRegistryImageQueryOutcome(asyncCtx, gc, cfg, run, httpClient)
+		if err != nil {
+			fallback := newRegistryImageFailedOutcome(
+				state.Params.ImageRef,
+				buildRegistryImageRunURL(cfg, run.GetID(), run.GetHTMLURL()),
+				fmt.Sprintf("Unexpected error while loading the GitHub Actions result: %v", err),
+			)
+			_ = sendCommandReply(parentCtx, fallback.responseStatus(), mustRenderRegistryImageQueryResponse(fallback))
+			return
+		}
+
+		_ = sendCommandReply(parentCtx, outcome.responseStatus(), mustRenderRegistryImageQueryResponse(outcome))
+	}()
+
+	return true
+}
+
+func awaitRegistryImageQueryCompletion(ctx context.Context, gc *github.Client, cfg registryImageWorkflowConfig, state registryImageAsyncState) (*github.WorkflowRun, error) {
+	var (
+		run *github.WorkflowRun
+		err error
+	)
+
+	if state.RunID != 0 {
+		run, err = waitForRegistryImageWorkflowCompletion(ctx, gc, cfg, state.RunID)
+		if err != nil {
+			return run, err
+		}
+		return run, nil
+	}
+
+	run, err = waitForRegistryImageWorkflowRun(ctx, gc, cfg, state.Ref, state.Params.Repository, state.Params.Tag, state.MinRunID, state.DispatchedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	run, err = waitForRegistryImageWorkflowCompletion(ctx, gc, cfg, run.GetID())
+	if err != nil {
+		return run, err
+	}
+
+	return run, nil
+}
+
+func resolveRegistryImageWorkflowRef(ctx context.Context, gc *github.Client, cfg registryImageWorkflowConfig) (string, error) {
 	if cfg.Ref != "" {
 		return cfg.Ref, nil
 	}
@@ -114,7 +270,7 @@ func resolveImageTagWorkflowRef(ctx context.Context, gc *github.Client, cfg imag
 	return repo.GetDefaultBranch(), nil
 }
 
-func maxImageTagWorkflowRunID(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig) (int64, error) {
+func maxRegistryImageWorkflowRunID(ctx context.Context, gc *github.Client, cfg registryImageWorkflowConfig) (int64, error) {
 	runs, _, err := gc.Actions.ListWorkflowRunsByFileName(ctx, cfg.Owner, cfg.Repo, cfg.Workflow, &github.ListWorkflowRunsOptions{
 		ListOptions: github.ListOptions{PerPage: 1},
 	})
@@ -129,52 +285,49 @@ func maxImageTagWorkflowRunID(ctx context.Context, gc *github.Client, cfg imageT
 	return runs.WorkflowRuns[0].GetID(), nil
 }
 
-func waitForImageTagWorkflowRun(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig, ref, registry, tag string, minRunID int64, dispatchedAt time.Time) (*github.WorkflowRun, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, imageTagWorkflowRunLookupTimeout)
-	defer cancel()
-
-	ticker := time.NewTicker(imageTagWorkflowRunLookupTick)
+func waitForRegistryImageWorkflowRun(ctx context.Context, gc *github.Client, cfg registryImageWorkflowConfig, ref, repository, tag string, minRunID int64, dispatchedAt time.Time) (*github.WorkflowRun, error) {
+	ticker := time.NewTicker(registryImageWorkflowRunLookupTick)
 	defer ticker.Stop()
 
 	for {
-		run, err := findDispatchedImageTagWorkflowRun(waitCtx, gc, cfg, ref, registry, tag, minRunID, dispatchedAt)
+		run, err := findDispatchedRegistryImageWorkflowRun(ctx, gc, cfg, ref, repository, tag, minRunID, dispatchedAt)
 		if err == nil {
 			return run, nil
 		}
-		if !errors.Is(err, errImageTagWorkflowRunNotFound) {
+		if !errors.Is(err, errRegistryImageWorkflowRunNotFound) {
 			return nil, err
 		}
 
 		select {
-		case <-waitCtx.Done():
-			return nil, fmt.Errorf("workflow dispatched but run id was not visible yet; check %s", buildWorkflowPageURL(cfg))
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-ticker.C:
 		}
 	}
 }
 
-func findDispatchedImageTagWorkflowRun(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig, ref, registry, tag string, minRunID int64, dispatchedAt time.Time) (*github.WorkflowRun, error) {
+func findDispatchedRegistryImageWorkflowRun(ctx context.Context, gc *github.Client, cfg registryImageWorkflowConfig, ref, repository, tag string, minRunID int64, dispatchedAt time.Time) (*github.WorkflowRun, error) {
 	runs, _, err := gc.Actions.ListWorkflowRunsByFileName(ctx, cfg.Owner, cfg.Repo, cfg.Workflow, &github.ListWorkflowRunsOptions{
 		Event:       "workflow_dispatch",
 		ListOptions: github.ListOptions{PerPage: 20},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list dispatched workflow runs failed: %w", err)
+		return nil, fmt.Errorf("list dispatched registry image workflow runs failed: %w", err)
 	}
 	if runs == nil {
-		return nil, errImageTagWorkflowRunNotFound
+		return nil, errRegistryImageWorkflowRunNotFound
 	}
 
-	expectedTitle := fmt.Sprintf("query-image-tag %s:%s", registry, tag)
-	run := selectImageTagWorkflowRun(runs.WorkflowRuns, ref, expectedTitle, minRunID, dispatchedAt)
+	expectedTitle := fmt.Sprintf("query-image-tag %s:%s", repository, tag)
+	run := selectRegistryImageWorkflowRun(runs.WorkflowRuns, ref, expectedTitle, minRunID, dispatchedAt)
 	if run == nil {
-		return nil, errImageTagWorkflowRunNotFound
+		return nil, errRegistryImageWorkflowRunNotFound
 	}
 
 	return run, nil
 }
 
-func selectImageTagWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle string, minRunID int64, dispatchedAt time.Time) *github.WorkflowRun {
+func selectRegistryImageWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle string, minRunID int64, dispatchedAt time.Time) *github.WorkflowRun {
 	var matched *github.WorkflowRun
 
 	for _, run := range runs {
@@ -184,7 +337,7 @@ func selectImageTagWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle st
 		if run.GetEvent() != "workflow_dispatch" {
 			continue
 		}
-		if !imageTagWorkflowRunMatchesRef(run, ref) {
+		if !registryImageWorkflowRunMatchesRef(run, ref) {
 			continue
 		}
 		if run.CreatedAt != nil && run.CreatedAt.Time.Before(dispatchedAt.Add(-1*time.Minute)) {
@@ -202,7 +355,7 @@ func selectImageTagWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle st
 	return matched
 }
 
-func imageTagWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) bool {
+func registryImageWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) bool {
 	if ref == "" {
 		return true
 	}
@@ -222,25 +375,25 @@ func imageTagWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) bool {
 	return false
 }
 
-func newImageTagGitHubClient(token string) (*github.Client, *http.Client) {
-	httpClient := &http.Client{Timeout: imageTagHTTPTimeout}
+func newRegistryImageGitHubClient(token string) (*github.Client, *http.Client) {
+	httpClient := &http.Client{Timeout: registryImageHTTPTimeout}
 	return github.NewClient(httpClient).WithAuthToken(token), httpClient
 }
 
-func resolveImageTagCredentialRef(registry string, credentialRefs map[string]string) string {
-	registry = normalizeImageTagRegistryPrefix(registry)
-	if registry == "" {
+func resolveRegistryImageCredentialRef(repository string, credentialRefs map[string]string) string {
+	repository = normalizeRegistryImagePrefix(repository)
+	if repository == "" {
 		return ""
 	}
 
 	var matchedPrefix string
 	var matchedCredentialRef string
 	for prefix, credentialRef := range credentialRefs {
-		normalizedPrefix := normalizeImageTagRegistryPrefix(prefix)
+		normalizedPrefix := normalizeRegistryImagePrefix(prefix)
 		if normalizedPrefix == "" || credentialRef == "" {
 			continue
 		}
-		if !imageTagRegistryPrefixMatches(registry, normalizedPrefix) {
+		if !registryImagePrefixMatches(repository, normalizedPrefix) {
 			continue
 		}
 		if len(normalizedPrefix) > len(matchedPrefix) {
@@ -252,22 +405,22 @@ func resolveImageTagCredentialRef(registry string, credentialRefs map[string]str
 	return matchedCredentialRef
 }
 
-func normalizeImageTagRegistryPrefix(registry string) string {
-	registry = strings.TrimSpace(strings.ToLower(registry))
-	registry = strings.TrimPrefix(registry, "https://")
-	registry = strings.TrimPrefix(registry, "http://")
-	return strings.Trim(registry, "/")
+func normalizeRegistryImagePrefix(repository string) string {
+	repository = strings.TrimSpace(strings.ToLower(repository))
+	repository = strings.TrimPrefix(repository, "https://")
+	repository = strings.TrimPrefix(repository, "http://")
+	return strings.Trim(repository, "/")
 }
 
-func imageTagRegistryPrefixMatches(registry, prefix string) bool {
-	return registry == prefix || strings.HasPrefix(registry, prefix+"/")
+func registryImagePrefixMatches(repository, prefix string) bool {
+	return repository == prefix || strings.HasPrefix(repository, prefix+"/")
 }
 
-func buildWorkflowPageURL(cfg imageTagWorkflowConfig) string {
+func buildWorkflowPageURL(cfg registryImageWorkflowConfig) string {
 	return fmt.Sprintf("https://github.com/%s/%s/actions/workflows/%s", cfg.Owner, cfg.Repo, cfg.Workflow)
 }
 
-func buildImageTagRunURL(cfg imageTagWorkflowConfig, runID int64, htmlURL string) string {
+func buildRegistryImageRunURL(cfg registryImageWorkflowConfig, runID int64, htmlURL string) string {
 	if htmlURL != "" {
 		return htmlURL
 	}

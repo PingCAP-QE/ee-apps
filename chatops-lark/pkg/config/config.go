@@ -49,16 +49,10 @@ type Config struct {
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
-	ImageTag *struct {
-		BaseCmdConfig `yaml:",inline" json:",inline"`
+	RegistryImage *RegistryImageConfig `yaml:"registry_image" json:"registry_image"`
 
-		Owner          string            `yaml:"owner" json:"owner"`
-		Repo           string            `yaml:"repo" json:"repo"`
-		Workflow       string            `yaml:"workflow" json:"workflow"`
-		Ref            string            `yaml:"ref" json:"ref"`
-		GitHubToken    string            `yaml:"github_token" json:"github_token"`
-		CredentialRefs map[string]string `yaml:"credential_refs" json:"credential_refs"`
-	} `yaml:"image_tag" json:"image_tag"`
+	// ImageTag is a deprecated compatibility alias for the old pre-merge config block name.
+	ImageTag *RegistryImageConfig `yaml:"image_tag,omitempty" json:"image_tag,omitempty"`
 
 	Hotfix *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
@@ -79,6 +73,17 @@ type Config struct {
 
 type BaseCmdConfig struct {
 	Audit *AuditConfig `yaml:"audit,omitempty" json:"audit,omitempty"`
+}
+
+type RegistryImageConfig struct {
+	BaseCmdConfig `yaml:",inline" json:",inline"`
+
+	Owner          string            `yaml:"owner" json:"owner"`
+	Repo           string            `yaml:"repo" json:"repo"`
+	Workflow       string            `yaml:"workflow" json:"workflow"`
+	Ref            string            `yaml:"ref" json:"ref"`
+	GitHubToken    string            `yaml:"github_token" json:"github_token"`
+	CredentialRefs map[string]string `yaml:"credential_refs" json:"credential_refs"`
 }
 
 type AuditConfig struct {
@@ -114,4 +119,12 @@ func (c *Config) Validate() error {
 		return errors.New("app_secret is required")
 	}
 	return nil
+}
+
+func (c Config) EffectiveRegistryImage() *RegistryImageConfig {
+	if c.RegistryImage != nil {
+		return c.RegistryImage
+	}
+
+	return c.ImageTag
 }

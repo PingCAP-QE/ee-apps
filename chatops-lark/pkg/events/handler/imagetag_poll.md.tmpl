@@ -1,5 +1,15 @@
+**Registry Image Query:** `{{ .status }}`
+{{- if .image_ref }}
 **Image Reference:** `{{ .image_ref }}`
-**Created At:** `{{ .created_at }}`
+{{- end }}
+{{- if .summary }}
+{{ .summary }}
+{{- end }}
+{{- if .is_found }}
+
+**Image Created At (OCI):** `{{ .created_at }}`
+This is OCI image metadata, not the registry push/sync time.
+
 **Digest:** `{{ .digest }}`
 **Multi-Arch:** `{{ .multi_arch }}`
 **Platforms:** {{ if .platforms }}{{ join ", " .platforms }}{{ else }}none{{ end }}
@@ -8,3 +18,8 @@
 ```yaml
 {{ toYaml .labels }}
 ```
+{{- end }}
+{{- if .run_url }}
+
+**Workflow Run:** {{ .run_url }}
+{{- end }}

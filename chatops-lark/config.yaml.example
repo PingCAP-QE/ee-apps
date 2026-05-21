@@ -36,8 +36,8 @@ devbuild:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
-# ImageTag configuration
-image_tag:
+# RegistryImage configuration
+registry_image:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   owner: "tidbcloud" # Optional, defaults to tidbcloud

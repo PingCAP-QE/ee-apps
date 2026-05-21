@@ -10,36 +10,38 @@ import (
 )
 
 const (
-	cfgKeyImageTagOwner          = "image_tag.owner"
-	cfgKeyImageTagRepo           = "image_tag.repo"
-	cfgKeyImageTagWorkflow       = "image_tag.workflow"
-	cfgKeyImageTagRef            = "image_tag.ref"
-	cfgKeyImageTagCredentialRefs = "image_tag.credential_refs"
+	cfgKeyRegistryImageOwner          = "registry_image.owner"
+	cfgKeyRegistryImageRepo           = "registry_image.repo"
+	cfgKeyRegistryImageWorkflow       = "registry_image.workflow"
+	cfgKeyRegistryImageRef            = "registry_image.ref"
+	cfgKeyRegistryImageCredentialRefs = "registry_image.credential_refs"
 
-	defaultImageTagOwner    = "tidbcloud"
-	defaultImageTagRepo     = "docker-image-controller"
-	defaultImageTagWorkflow = "query-image-tag.yml"
+	defaultRegistryImageOwner    = "tidbcloud"
+	defaultRegistryImageRepo     = "docker-image-controller"
+	defaultRegistryImageWorkflow = "query-image-tag.yml"
 )
 
-const imageTagHelpText = `Usage: /image-tag <subcommand> [args...]
+const registryImageHelpText = `Usage: /registry-image <subcommand> [args...]
 
 Subcommands:
-  trigger <registry> <tag>  - Trigger a GitHub Actions image-tag query
-  poll <runID>              - Poll a workflow run
+  query <image:tag>          - Query a cloud registry image by full tag reference
+  query <image> --tag <tag>  - Query a cloud registry image with an explicit tag
+  inspect ...                - Alias for query
 
 Examples:
-  /image-tag trigger ghcr.io/pingcap/tidb nightly
-  /image-tag trigger registry.example.com/team/image v8.5.0
-  /image-tag poll 123456789
+  /registry-image query ghcr.io/pingcap/tidb:nightly
+  /registry-image query registry.example.com/team/image --tag v8.5.0
+  /registry-image inspect tidbcloud-prod-registry.ap-southeast-1.cr.aliyuncs.com/tidbcloud/dm:v26.3.0-nextgen
 
 Notes:
-  - <registry> must be the image reference without the tag.
+  - This command checks whether the target tag exists in the cloud registry and returns OCI image metadata when found.
+  - Image Created At (OCI) is OCI image metadata, not the registry push/sync time.
   - GitHub authentication comes from backend config, never from chat input.
 
-Use '/image-tag --help' or '/image-tag -h' to see this message.
+Use '/registry-image --help' or '/registry-image -h' to see this message.
 `
 
-type imageTagWorkflowConfig struct {
+type registryImageWorkflowConfig struct {
 	Owner          string
 	Repo           string
 	Workflow       string
@@ -47,74 +49,77 @@ type imageTagWorkflowConfig struct {
 	CredentialRefs map[string]string
 }
 
-func runCommandImageTag(ctx context.Context, args []string) (string, error) {
+func runCommandRegistryImage(ctx context.Context, args []string) (string, error) {
 	if len(args) == 0 {
-		return "", errors.New(imageTagHelpText)
+		return "", errors.New(registryImageHelpText)
 	}
 
 	switch args[0] {
-	case "trigger":
-		return runCommandImageTagTrigger(ctx, args[1:])
-	case "poll":
-		return runCommandImageTagPoll(ctx, args[1:])
+	case "query", "inspect":
+		return runCommandRegistryImageQuery(ctx, args[1:])
 	case "-h", "--help":
-		return imageTagHelpText, NewInformationError("Requested command usage")
+		return registryImageHelpText, NewInformationError("Requested command usage")
 	default:
 		return "", fmt.Errorf("unknown subcommand: %s", args[0])
 	}
 }
 
-func setupCtxImageTag(ctx context.Context, cfg config.Config, _ *CommandActor) context.Context {
-	owner := strings.TrimSpace(cfg.ImageTag.Owner)
+func setupCtxRegistryImage(ctx context.Context, cfg config.Config, _ *CommandActor) context.Context {
+	registryImageCfg := cfg.EffectiveRegistryImage()
+	if registryImageCfg == nil {
+		return ctx
+	}
+
+	owner := strings.TrimSpace(registryImageCfg.Owner)
 	if owner == "" {
-		owner = defaultImageTagOwner
+		owner = defaultRegistryImageOwner
 	}
 
-	repo := strings.TrimSpace(cfg.ImageTag.Repo)
+	repo := strings.TrimSpace(registryImageCfg.Repo)
 	if repo == "" {
-		repo = defaultImageTagRepo
+		repo = defaultRegistryImageRepo
 	}
 
-	workflow := strings.TrimSpace(cfg.ImageTag.Workflow)
+	workflow := strings.TrimSpace(registryImageCfg.Workflow)
 	if workflow == "" {
-		workflow = defaultImageTagWorkflow
+		workflow = defaultRegistryImageWorkflow
 	}
 
-	nextCtx := context.WithValue(ctx, ctxKeyGithubToken, strings.TrimSpace(cfg.ImageTag.GitHubToken))
-	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagOwner, owner)
-	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagRepo, repo)
-	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagWorkflow, workflow)
-	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagRef, strings.TrimSpace(cfg.ImageTag.Ref))
-	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagCredentialRefs, normalizeImageTagCredentialRefs(cfg.ImageTag.CredentialRefs))
+	nextCtx := context.WithValue(ctx, ctxKeyGithubToken, strings.TrimSpace(registryImageCfg.GitHubToken))
+	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageOwner, owner)
+	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageRepo, repo)
+	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageWorkflow, workflow)
+	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageRef, strings.TrimSpace(registryImageCfg.Ref))
+	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageCredentialRefs, normalizeRegistryImageCredentialRefs(registryImageCfg.CredentialRefs))
 
 	return nextCtx
 }
 
-func loadImageTagWorkflowConfig(ctx context.Context) (imageTagWorkflowConfig, string, error) {
+func loadRegistryImageWorkflowConfig(ctx context.Context) (registryImageWorkflowConfig, string, error) {
 	token, ok := ctx.Value(ctxKeyGithubToken).(string)
 	if !ok || token == "" {
-		return imageTagWorkflowConfig{}, "", fmt.Errorf("GitHub token not found in context")
+		return registryImageWorkflowConfig{}, "", fmt.Errorf("GitHub token not found in context")
 	}
 
-	owner, ok := ctx.Value(cfgKeyImageTagOwner).(string)
+	owner, ok := ctx.Value(cfgKeyRegistryImageOwner).(string)
 	if !ok || owner == "" {
-		return imageTagWorkflowConfig{}, "", fmt.Errorf("image tag owner not found in context")
+		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image owner not found in context")
 	}
 
-	repo, ok := ctx.Value(cfgKeyImageTagRepo).(string)
+	repo, ok := ctx.Value(cfgKeyRegistryImageRepo).(string)
 	if !ok || repo == "" {
-		return imageTagWorkflowConfig{}, "", fmt.Errorf("image tag repo not found in context")
+		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image repo not found in context")
 	}
 
-	workflow, ok := ctx.Value(cfgKeyImageTagWorkflow).(string)
+	workflow, ok := ctx.Value(cfgKeyRegistryImageWorkflow).(string)
 	if !ok || workflow == "" {
-		return imageTagWorkflowConfig{}, "", fmt.Errorf("image tag workflow not found in context")
+		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image workflow not found in context")
 	}
 
-	ref, _ := ctx.Value(cfgKeyImageTagRef).(string)
-	credentialRefs, _ := ctx.Value(cfgKeyImageTagCredentialRefs).(map[string]string)
+	ref, _ := ctx.Value(cfgKeyRegistryImageRef).(string)
+	credentialRefs, _ := ctx.Value(cfgKeyRegistryImageCredentialRefs).(map[string]string)
 
-	return imageTagWorkflowConfig{
+	return registryImageWorkflowConfig{
 		Owner:          owner,
 		Repo:           repo,
 		Workflow:       workflow,
@@ -123,7 +128,7 @@ func loadImageTagWorkflowConfig(ctx context.Context) (imageTagWorkflowConfig, st
 	}, token, nil
 }
 
-func normalizeImageTagCredentialRefs(credentialRefs map[string]string) map[string]string {
+func normalizeRegistryImageCredentialRefs(credentialRefs map[string]string) map[string]string {
 	if len(credentialRefs) == 0 {
 		return nil
 	}

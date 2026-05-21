@@ -120,11 +120,17 @@ func (r *rootHandler) Handle(ctx context.Context, event *larkim.P2MessageReceive
 			Any("args", command.Args).
 			Str("sender", *event.Event.Sender.SenderId.OpenId).
 			Logger()
+		replyInThread := (chatType == "group")
+		responseMeta := &commandResponseMeta{Status: StatusSuccess}
+		handlerCtx := context.WithoutCancel(ctx)
+		handlerCtx = withCommandReply(handlerCtx, func(status, message string) error {
+			return r.sendResponse(messageID, replyInThread, status, message)
+		})
+		handlerCtx = withCommandResponseMeta(handlerCtx, responseMeta)
 
 		asyncLog.Info().Msg("Processing command")
-		message, err := r.handleCommand(ctx, command)
-		replyInThread := (chatType == "group")
-		r.feedbackCommandResult(messageID, replyInThread, message, err, asyncLog)
+		message, err := r.handleCommand(handlerCtx, command)
+		r.feedbackCommandResult(messageID, replyInThread, message, err, responseMeta.Status, asyncLog)
 	}()
 
 	return nil
@@ -193,12 +199,12 @@ func (r *rootHandler) initialize() error {
 			SetupContext: setupCtxDevbuild,
 		}
 	}
-	if r.Config.ImageTag != nil {
-		r.commandRegistry["/image-tag"] = CommandConfig{
-			Description:  "Query image tag metadata through GitHub Actions",
-			Handler:      runCommandImageTag,
-			Audit:        r.Config.ImageTag.Audit,
-			SetupContext: setupCtxImageTag,
+	if registryImageCfg := r.Config.EffectiveRegistryImage(); registryImageCfg != nil {
+		r.commandRegistry["/registry-image"] = CommandConfig{
+			Description:  "Query cloud registry image metadata through GitHub Actions",
+			Handler:      runCommandRegistryImage,
+			Audit:        registryImageCfg.Audit,
+			SetupContext: setupCtxRegistryImage,
 		}
 	}
 	if r.Config.Ask != nil {
@@ -229,10 +235,13 @@ func (r *rootHandler) initialize() error {
 	return nil
 }
 
-func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool, message string, err error, asyncLog zerolog.Logger) {
+func (r *rootHandler) feedbackCommandResult(messageID string, replyInThread bool, message string, err error, successStatus string, asyncLog zerolog.Logger) {
 	if err == nil {
 		asyncLog.Info().Msg("Command processed successfully")
-		r.sendResponse(messageID, replyInThread, StatusSuccess, message)
+		if successStatus == "" {
+			successStatus = StatusSuccess
+		}
+		r.sendResponse(messageID, replyInThread, successStatus, message)
 		return
 	}
 

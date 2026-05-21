@@ -9,127 +9,133 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-github/v68/github"
 )
 
-func TestPollImageTagWorkflowSuccess(t *testing.T) {
-	archiveBytes := buildImageTagArtifactArchive(t, `{
-  "image_ref": "ghcr.io/pingcap/tidb:nightly",
-  "created_at": "2026-05-21T04:00:00Z",
-  "digest": "sha256:abc123",
-  "multi_arch": true,
-  "platforms": ["linux/amd64", "linux/arm64"],
-  "labels": {"org.opencontainers.image.revision": "deadbeef"}
-}`)
-
+func TestBuildRegistryImageQueryOutcomeNotFound(t *testing.T) {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/200", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":         200,
-			"path":       ".github/workflows/query-image-tag.yml",
-			"status":     "completed",
-			"conclusion": "success",
-			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/200",
-		})
-	})
-
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/200/artifacts", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/201/jobs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"total_count": 1,
-			"artifacts": []map[string]any{
+			"jobs": []map[string]any{
 				{
-					"id":      456,
-					"name":    "result.json",
-					"expired": false,
+					"id":         301,
+					"name":       "Inspect image metadata",
+					"conclusion": "failure",
+					"steps": []map[string]any{
+						{
+							"name":       "Inspect image and write result artifact",
+							"conclusion": "failure",
+						},
+					},
 				},
 			},
 		})
 	})
 
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/artifacts/456/zip", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, server.URL+"/download/result.zip", http.StatusFound)
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/jobs/301/logs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, server.URL+"/download/not-found.log", http.StatusFound)
 	})
 
-	mux.HandleFunc("/download/result.zip", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/zip")
-		_, _ = w.Write(archiveBytes)
+	mux.HandleFunc("/download/not-found.log", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("not found: ghcr.io/pingcap/tidb:nightly"))
 	})
 
 	gc := github.NewClient(nil)
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
-	resp, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
+	outcome, err := buildRegistryImageQueryOutcome(context.Background(), gc, registryImageWorkflowConfig{
 		Owner:    "tidbcloud",
 		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
-	}, 200, server.Client())
+	}, &github.WorkflowRun{
+		ID:           github.Int64(201),
+		Path:         github.String(".github/workflows/query-image-tag.yml"),
+		Status:       github.String("completed"),
+		Conclusion:   github.String("failure"),
+		DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:nightly"),
+		HTMLURL:      github.String("https://github.com/tidbcloud/docker-image-controller/actions/runs/201"),
+	}, server.Client())
 	if err != nil {
-		t.Fatalf("pollImageTagWorkflow() error = %v", err)
+		t.Fatalf("buildRegistryImageQueryOutcome() error = %v", err)
+	}
+	if outcome.Status != registryImageQueryStatusNotFound {
+		t.Fatalf("expected NOT_FOUND outcome, got %s", outcome.Status)
 	}
 
-	for _, fragment := range []string{
-		"ghcr.io/pingcap/tidb:nightly",
-		"sha256:abc123",
-		"linux/amd64, linux/arm64",
-		"org.opencontainers.image.revision",
-	} {
-		if !strings.Contains(resp, fragment) {
-			t.Fatalf("expected response to contain %q, got:\n%s", fragment, resp)
-		}
+	resp, err := renderRegistryImageQueryResponse(outcome)
+	if err != nil {
+		t.Fatalf("renderRegistryImageQueryResponse() error = %v", err)
+	}
+	if !strings.Contains(resp, "NOT_FOUND") {
+		t.Fatalf("expected rendered response to contain NOT_FOUND, got:\n%s", resp)
 	}
 }
 
-func TestPollImageTagWorkflowFailure(t *testing.T) {
+func TestBuildRegistryImageQueryOutcomeAuthFailed(t *testing.T) {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/201", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/202/jobs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":         201,
-			"path":       ".github/workflows/query-image-tag.yml",
-			"status":     "completed",
-			"conclusion": "failure",
-			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/201",
+			"total_count": 1,
+			"jobs": []map[string]any{
+				{
+					"id":         302,
+					"name":       "Inspect image metadata",
+					"conclusion": "failure",
+					"steps": []map[string]any{
+						{
+							"name":       "Authenticate registry",
+							"conclusion": "failure",
+						},
+					},
+				},
+			},
 		})
 	})
 
 	gc := github.NewClient(nil)
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
-	_, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
+	outcome, err := buildRegistryImageQueryOutcome(context.Background(), gc, registryImageWorkflowConfig{
 		Owner:    "tidbcloud",
 		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
-	}, 201, server.Client())
-	if err == nil {
-		t.Fatal("expected pollImageTagWorkflow() to fail")
+	}, &github.WorkflowRun{
+		ID:           github.Int64(202),
+		Path:         github.String(".github/workflows/query-image-tag.yml"),
+		Status:       github.String("completed"),
+		Conclusion:   github.String("failure"),
+		DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:nightly"),
+		HTMLURL:      github.String("https://github.com/tidbcloud/docker-image-controller/actions/runs/202"),
+	}, server.Client())
+	if err != nil {
+		t.Fatalf("buildRegistryImageQueryOutcome() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "conclusion") {
-		t.Fatalf("expected failure to mention conclusion, got: %v", err)
+	if outcome.Status != registryImageQueryStatusAuthFailed {
+		t.Fatalf("expected AUTH_FAILED outcome, got %s", outcome.Status)
 	}
 }
 
-func TestPollImageTagWorkflowRejectsMismatchedWorkflow(t *testing.T) {
-	var artifactListed atomic.Bool
-
+func TestWaitForRegistryImageWorkflowCompletionRejectsMismatchedWorkflow(t *testing.T) {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/202", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/203", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":           202,
+			"id":           203,
 			"path":         ".github/workflows/release.yml",
 			"workflow_id":  999,
 			"workflow_url": server.URL + "/repos/tidbcloud/docker-image-controller/actions/workflows/999",
@@ -148,27 +154,19 @@ func TestPollImageTagWorkflowRejectsMismatchedWorkflow(t *testing.T) {
 		})
 	})
 
-	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/202/artifacts", func(w http.ResponseWriter, r *http.Request) {
-		artifactListed.Store(true)
-		http.Error(w, "artifacts should not be queried for mismatched workflows", http.StatusInternalServerError)
-	})
-
 	gc := github.NewClient(nil)
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
-	_, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
+	_, err := waitForRegistryImageWorkflowCompletion(context.Background(), gc, registryImageWorkflowConfig{
 		Owner:    "tidbcloud",
 		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
-	}, 202, server.Client())
+	}, 203)
 	if err == nil {
-		t.Fatal("expected pollImageTagWorkflow() to reject mismatched workflow")
+		t.Fatal("expected waitForRegistryImageWorkflowCompletion() to reject mismatched workflow")
 	}
 	if !strings.Contains(err.Error(), "does not belong") {
 		t.Fatalf("expected mismatched workflow error, got: %v", err)
-	}
-	if artifactListed.Load() {
-		t.Fatal("expected artifact lookup to be skipped for mismatched workflow")
 	}
 }
 
