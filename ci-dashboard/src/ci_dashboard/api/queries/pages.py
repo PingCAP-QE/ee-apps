@@ -47,16 +47,7 @@ from ci_dashboard.api.queries.runtime import (
     get_error_l1_share,
     get_error_l1_trend,
     get_error_l2_trends,
-    get_error_top_jobs,
-    get_infra_l2_share,
-    get_infra_l2_trend,
-    get_pull_image_failure_jobs,
-    get_pull_image_slowest_jobs,
-    get_pull_image_trend,
-    get_runtime_summary,
-    get_scheduling_failure_jobs,
-    get_scheduling_slowest_jobs,
-    get_scheduling_trend,
+    get_runtime_pod_sections,
 )
 from ci_dashboard.api.queries.status import get_freshness
 
@@ -210,24 +201,17 @@ def get_runtime_insights_page(engine: Engine, filters: CommonFilters) -> dict[st
     sections = _resolve_page_sections(
         engine,
         {
-            "runtime_summary": lambda: get_runtime_summary(engine, filters),
-            "scheduling_trend": lambda: get_scheduling_trend(engine, filters),
-            "scheduling_failure_jobs": lambda: get_scheduling_failure_jobs(engine, filters),
-            "scheduling_slowest_jobs": lambda: get_scheduling_slowest_jobs(engine, filters),
-            "pull_image_trend": lambda: get_pull_image_trend(engine, filters),
-            "pull_image_failure_jobs": lambda: get_pull_image_failure_jobs(engine, filters),
-            "pull_image_slowest_jobs": lambda: get_pull_image_slowest_jobs(engine, filters),
+            "pod_sections": lambda: get_runtime_pod_sections(engine, filters),
             "error_l1_share": lambda: get_error_l1_share(engine, filters),
             "error_l1_trend": lambda: get_error_l1_trend(engine, filters),
             "error_l2_trends": lambda: get_error_l2_trends(engine, filters),
-            "infra_l2_share": lambda: get_infra_l2_share(engine, filters),
-            "infra_l2_trend": lambda: get_infra_l2_trend(engine, filters),
-            "error_top_jobs": lambda: get_error_top_jobs(engine, filters),
             "classification_coverage": lambda: get_classification_coverage(engine, filters),
         },
     )
+    pod_sections = sections.pop("pod_sections")
     return {
         "scope": filters.meta(),
+        **pod_sections,
         **sections,
     }
 
