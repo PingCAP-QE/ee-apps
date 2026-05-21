@@ -68,7 +68,9 @@
       "text_patterns": [
         "CONFLICT \\([^\\r\\n]+\\): Merge conflict in ",
         "Automatic merge failed; fix conflicts and then commit the result\\.",
-        "error: could not apply [0-9a-f]+"
+        "error: could not apply [0-9a-f]+",
+        "malformed module path \\\"<<<<<<<\\\": invalid char '<'",
+        "syntax error: unexpected <<, expected [^\\r\\n]+"
       ]
     },
     {
@@ -446,6 +448,17 @@
         "syntax error",
         "error: expected",
         "fatal error:"
+      ]
+    },
+    {
+      "name": "build_internal_package_missing_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "job_name_patterns": [
+        "^pingcap/tidb/"
+      ],
+      "text_patterns": [
+        "no required module provides package github\\.com/pingcap/tidb/"
       ]
     },
     {

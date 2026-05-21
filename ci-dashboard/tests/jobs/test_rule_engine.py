@@ -277,6 +277,64 @@ def test_rule_engine_prefers_code_conflict_over_pipeline_config_noise() -> None:
     assert classification.source == "rule:others_code_conflict"
 
 
+def test_rule_engine_classifies_go_mod_conflict_markers_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "CGO_ENABLED=1 GO111MODULE=on go build -tags codes,nextgen "
+            "-o 'bin/tidb-server' ./cmd/tidb-server\n"
+            "go: errors parsing go.mod:\n"
+            "go.mod:127: malformed module path \"<<<<<<<\": invalid char '<'\n"
+            "go.mod:130: usage: require module/path v1.2.3\n"
+            "go.mod:133: usage: require module/path v1.2.3\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2605/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
+def test_rule_engine_classifies_go_source_conflict_markers_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "# github.com/pingcap/tidb/pkg/executor/importer\n"
+            "pkg/executor/importer/sampler.go:364:1: syntax error: unexpected <<, expected }\n"
+            "pkg/executor/importer/sampler.go:370:1: syntax error: unexpected ==, expected }\n"
+            "pkg/executor/importer/sampler.go:373:1: syntax error: unexpected >>, expected }\n"
+            "pkg/executor/importer/sampler.go:373:82: invalid character U+0023 '#'\n"
+            "pkg/executor/importer/sampler.go:376:3: syntax error: non-declaration statement outside function body\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2779/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
 def test_rule_engine_prefers_disk_full_over_dm_integration_and_jenkins_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -951,6 +1009,32 @@ def test_rule_engine_matches_go_mod_tidy_dependency_failure() -> None:
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "DEPENDENCY"
     assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_classifies_missing_internal_tidb_package_as_build_compile() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/server/handler/user_admin_handler.go:36:2: "
+            "no required module provides package github.com/pingcap/tidb/pkg/session/types; to add it:\n"
+            "\tgo get github.com/pingcap/tidb/pkg/session/types\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2762/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_internal_package_missing_compile_failure"
 
 
 def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
