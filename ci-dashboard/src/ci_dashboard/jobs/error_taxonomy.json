@@ -341,7 +341,9 @@
         "(^|_)pull_lightning_integration_test($|_)"
       ],
       "text_patterns": [
-        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN"
+        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
       ]
     },
     {

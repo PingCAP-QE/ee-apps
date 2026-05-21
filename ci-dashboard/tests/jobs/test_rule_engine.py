@@ -2048,3 +2048,57 @@ def test_rule_engine_does_not_treat_lightning_disk_quota_grep_as_disk_full() -> 
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
     assert classification.source == "rule:lightning_integration_test_failure"
+
+
+def test_rule_engine_classifies_lightning_output_failure_as_integration_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "TEST FAILED: OUTPUT DOES NOT CONTAIN 'pause pd scheduler of table scope'\n"
+            "TiFlash seems doesn't started, retrying...\n"
+            "context deadline exceeded while waiting for local test service\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_lightning_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_lightning_integration_test/1248/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:lightning_integration_test_failure"
+
+
+def test_rule_engine_classifies_lightning_matrix_failure_over_local_network_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "[2026/05/14 19:24:21.516 +08:00] [WARN] [retry_interceptor.go:63] "
+            "[\"retrying of unary invoker failed\"] [error=\"rpc error: code = "
+            "DeadlineExceeded desc = context deadline exceeded\"]\n"
+            "TiFlash seems doesn't started, retrying...\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G06'\n"
+            "error=\"transport: Error while dialing: dial tcp 127.0.0.1:2379: "
+            "connect: connection refused\"\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_lightning_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_lightning_integration_test/1256/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:lightning_integration_test_failure"
