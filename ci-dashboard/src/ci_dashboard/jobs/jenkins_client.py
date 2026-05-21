@@ -12,7 +12,21 @@ from ci_dashboard.common.config import JenkinsSettings
 
 DEFAULT_FAILED_NODE_LOG_LIMIT = 4
 DEFAULT_FAILED_NODE_LOG_BYTES = 64 * 1024
+DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES = 16 * 1024
+DEFAULT_CONSOLE_SIGNAL_CONTEXT_LINES = 4
+DEFAULT_CONSOLE_SIGNAL_MATCH_LIMIT = 6
 CONSOLE_OUTPUT_RE = re.compile(r'<pre class="console-output">(.*?)</pre>', flags=re.DOTALL)
+CONSOLE_SIGNAL_PATTERNS = (
+    re.compile(r"Container \[[^\]]+\] terminated \[OOMKilled\]", flags=re.IGNORECASE),
+    re.compile(r"Pod \[Failed\]\[[^\]]*OOMKilled[^\]]*\]", flags=re.IGNORECASE),
+    re.compile(r"Reason: OOMKilled", flags=re.IGNORECASE),
+    re.compile(r"Pod \[Failed\]\[TerminationByKubelet\]", flags=re.IGNORECASE),
+    re.compile(r"The node was low on resource: memory", flags=re.IGNORECASE),
+    re.compile(r"Container .* was using .* request is .* larger consumption of memory", flags=re.IGNORECASE),
+    re.compile(r"Pod \[Failed\]\[[^\]]*Evicted[^\]]*\]", flags=re.IGNORECASE),
+    re.compile(r"Container \[[^\]]+\] terminated \[Evicted\]", flags=re.IGNORECASE),
+    re.compile(r"Reason: Evicted", flags=re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -123,6 +137,21 @@ class JenkinsClient:
                 text = console_text
         return _tail_text(text, max_bytes=max_bytes)
 
+    def fetch_console_signal_excerpts(
+        self,
+        build_url: str,
+        *,
+        max_bytes: int = DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES,
+    ) -> str:
+        console_url = build_api_url(
+            build_url,
+            "consoleText",
+            internal_base_url=self._settings.internal_base_url,
+        )
+        response = self._client.get(console_url)
+        response.raise_for_status()
+        return extract_console_signal_excerpts(response.text, max_bytes=max_bytes)
+
     def _fetch_progressive_chunk(self, progressive_url: str, start: int) -> ProgressiveTextChunk:
         response = self._client.get(progressive_url, params={"start": start})
         response.raise_for_status()
@@ -206,6 +235,45 @@ def rewrite_build_url_host(build_url: str, *, internal_base_url: str) -> str:
     return rewritten
 
 
+def extract_console_signal_excerpts(
+    console_text: str,
+    *,
+    context_lines: int = DEFAULT_CONSOLE_SIGNAL_CONTEXT_LINES,
+    max_matches: int = DEFAULT_CONSOLE_SIGNAL_MATCH_LIMIT,
+    max_bytes: int = DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES,
+) -> str:
+    lines = console_text.splitlines()
+    matched_ranges: list[tuple[int, int]] = []
+
+    for index, line in enumerate(lines):
+        if not any(pattern.search(line) for pattern in CONSOLE_SIGNAL_PATTERNS):
+            continue
+        matched_ranges.append(
+            (
+                max(0, index - context_lines),
+                min(len(lines), index + context_lines + 1),
+            )
+        )
+        if len(matched_ranges) >= max_matches:
+            break
+
+    merged_ranges = _merge_line_ranges(matched_ranges)
+    if not merged_ranges:
+        return ""
+
+    parts = ["===== Jenkins console signal excerpts ====="]
+    for start, end in merged_ranges:
+        block = [f"----- lines {start + 1}-{end} -----", *lines[start:end]]
+        candidate = "\n".join([*parts, *block])
+        if len(candidate.encode("utf-8", errors="replace")) > max_bytes:
+            if len(parts) == 1:
+                return _head_text(candidate, max_bytes=max_bytes)
+            break
+        parts.extend(block)
+
+    return "\n".join(parts)
+
+
 def _failed_flow_nodes(stage_description: dict[str, Any]) -> list[dict[str, Any]]:
     nodes = stage_description.get("stageFlowNodes")
     if isinstance(nodes, list):
@@ -230,6 +298,27 @@ def _tail_text(text: str, *, max_bytes: int) -> str:
     if len(encoded) <= max_bytes:
         return text
     return encoded[-max_bytes:].decode("utf-8", errors="replace")
+
+
+def _head_text(text: str, *, max_bytes: int) -> str:
+    encoded = text.encode("utf-8", errors="replace")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="replace")
+
+
+def _merge_line_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not ranges:
+        return []
+
+    merged: list[list[int]] = []
+    for start, end in ranges:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
+            continue
+        merged[-1][1] = max(merged[-1][1], end)
+
+    return [(start, end) for start, end in merged]
 
 
 def _format_failed_node_log_header(stage: dict[str, Any], node: dict[str, Any]) -> str:

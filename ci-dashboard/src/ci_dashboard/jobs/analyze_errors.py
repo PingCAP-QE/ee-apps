@@ -10,12 +10,17 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import AnalyzeErrorsSummary, ErrorClassification, ReviewErrorSummary
 from ci_dashboard.jobs.gcs_client import GCSReader, parse_gcs_uri
+from ci_dashboard.jobs.jenkins_client import JenkinsClient
 from ci_dashboard.jobs.llm_classifier import LLMClassifier, build_llm_classifier
 from ci_dashboard.jobs.rule_engine import RuleEngine
 
 LOG = logging.getLogger(__name__)
 
 FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
+REMOTING_RULE_SOURCES = {
+    "rule:infra_jenkins_agent_offline",
+    "rule:infra_jenkins_remoting",
+}
 
 FETCH_CANDIDATE_BUILDS_SCAN = text(
     """
@@ -193,6 +198,7 @@ def run_analyze_errors(
     build_id: int | None = None,
     force: bool = False,
     reader: GCSReader | Any | None = None,
+    jenkins_fetcher: JenkinsClient | Any | None = None,
     rule_engine: RuleEngine | None = None,
     llm_classifier: LLMClassifier | None = None,
 ) -> AnalyzeErrorsSummary:
@@ -235,47 +241,54 @@ def run_analyze_errors(
         allowed_classifications=resolved_rule_engine.allowed_classifications,
     )
     resolved_reader = reader or GCSReader()
+    resolved_jenkins_fetcher = jenkins_fetcher or JenkinsClient(settings.jenkins)
+    owns_jenkins_fetcher = jenkins_fetcher is None and hasattr(resolved_jenkins_fetcher, "close")
 
-    for build in candidates:
-        summary.builds_scanned += 1
-        enriched_build = _enrich_build_evidence(build)
-        if not force and not _should_refresh_existing_machine_classification(enriched_build):
-            summary.builds_skipped += 1
-            continue
-        try:
-            classification_source, classification = _classify_single_build(
-                enriched_build,
-                reader=resolved_reader,
-                rule_engine=resolved_rule_engine,
-                llm_classifier=resolved_classifier,
-            )
-        except Exception:
-            summary.builds_failed += 1
-            LOG.exception("failed to analyze archived Jenkins error log", extra={"build_id": build["id"]})
-            continue
+    try:
+        for build in candidates:
+            summary.builds_scanned += 1
+            enriched_build = _enrich_build_evidence(build)
+            if not force and not _should_refresh_existing_machine_classification(enriched_build):
+                summary.builds_skipped += 1
+                continue
+            try:
+                classification_source, classification = _classify_single_build(
+                    enriched_build,
+                    reader=resolved_reader,
+                    jenkins_fetcher=resolved_jenkins_fetcher,
+                    rule_engine=resolved_rule_engine,
+                    llm_classifier=resolved_classifier,
+                )
+            except Exception:
+                summary.builds_failed += 1
+                LOG.exception("failed to analyze archived Jenkins error log", extra={"build_id": build["id"]})
+                continue
 
-        if classification_source == "rule" and classification is not None:
-            pending_updates.append(
-                {
-                    "id": int(build["id"]),
-                    "error_l1_category": classification.l1_category,
-                    "error_l2_subcategory": classification.l2_subcategory,
-                }
-            )
-            summary.builds_classified += 1
-            summary.builds_rule_classified += 1
-        elif classification_source == "llm" and classification is not None:
-            pending_updates.append(
-                {
-                    "id": int(build["id"]),
-                    "error_l1_category": classification.l1_category,
-                    "error_l2_subcategory": classification.l2_subcategory,
-                }
-            )
-            summary.builds_classified += 1
-            summary.builds_llm_classified += 1
-        else:
-            summary.builds_skipped += 1
+            if classification_source == "rule" and classification is not None:
+                pending_updates.append(
+                    {
+                        "id": int(build["id"]),
+                        "error_l1_category": classification.l1_category,
+                        "error_l2_subcategory": classification.l2_subcategory,
+                    }
+                )
+                summary.builds_classified += 1
+                summary.builds_rule_classified += 1
+            elif classification_source == "llm" and classification is not None:
+                pending_updates.append(
+                    {
+                        "id": int(build["id"]),
+                        "error_l1_category": classification.l1_category,
+                        "error_l2_subcategory": classification.l2_subcategory,
+                    }
+                )
+                summary.builds_classified += 1
+                summary.builds_llm_classified += 1
+            else:
+                summary.builds_skipped += 1
+    finally:
+        if owns_jenkins_fetcher:
+            resolved_jenkins_fetcher.close()
 
     if pending_updates:
         with engine.begin() as connection:
@@ -310,6 +323,7 @@ def _classify_single_build(
     build: Mapping[str, Any],
     *,
     reader: Any,
+    jenkins_fetcher: Any,
     rule_engine: RuleEngine,
     llm_classifier: LLMClassifier,
 ) -> tuple[str, ErrorClassification | None]:
@@ -324,6 +338,17 @@ def _classify_single_build(
 
     log_text = reader.download_text(bucket=object_ref.bucket, object_name=object_ref.object_name)
     classification = rule_engine.classify(log_text=log_text, build=build)
+    if classification is not None and classification.source in REMOTING_RULE_SOURCES:
+        combined_log = _append_live_signal_excerpts(
+            log_text,
+            build=build,
+            jenkins_fetcher=jenkins_fetcher,
+        )
+        if combined_log != log_text:
+            reclassified = rule_engine.classify(log_text=combined_log, build=build)
+            if reclassified is not None:
+                classification = reclassified
+            log_text = combined_log
     if classification is None:
         classification = llm_classifier.classify(log_text=log_text, build=build)
         classification_source = "llm"
@@ -399,3 +424,23 @@ def _normalize_review_category(value: str) -> str:
     if not normalized:
         raise ValueError("review category values must be non-empty")
     return normalized
+
+
+def _append_live_signal_excerpts(
+    log_text: str,
+    *,
+    build: Mapping[str, Any],
+    jenkins_fetcher: Any,
+) -> str:
+    fetch_console_signal_excerpts = getattr(jenkins_fetcher, "fetch_console_signal_excerpts", None)
+    if not callable(fetch_console_signal_excerpts):
+        return log_text
+
+    build_url = str(build.get("url") or "").strip()
+    if not build_url:
+        return log_text
+
+    signal_excerpts = fetch_console_signal_excerpts(build_url)
+    if not str(signal_excerpts or "").strip():
+        return log_text
+    return f"{log_text.rstrip()}\n{signal_excerpts}"

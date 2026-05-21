@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import ArchiveErrorLogsSummary
 from ci_dashboard.jobs.gcs_client import GCSUploader, parse_gcs_uri
-from ci_dashboard.jobs.jenkins_client import JenkinsClient
+from ci_dashboard.jobs.jenkins_client import JenkinsClient, extract_console_signal_excerpts
 
 LOG = logging.getLogger(__name__)
 
@@ -59,6 +59,12 @@ VAR_LIB_JENKINS_USER_RE = re.compile(r"(?i)/var/lib/jenkins/workspace/[^/\s]+")
 TOKEN_QUERY_RE = re.compile(r"(?i)([?&](?:token|access_token|api_key|apikey)=)([^&\s]+)")
 INTERNAL_IP_RE = re.compile(
     r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b"
+)
+REMOTING_SYMPTOM_RE = re.compile(
+    r"hudson\.remoting|channel is already closed|agent .* went offline|Timeout waiting for agent to come back|"
+    r"AgentOfflineException: Unable to create live FilePath|was marked offline: Connection was broken|"
+    r"cannot contact .*: java\.io\.IOException|closedchannelexception",
+    flags=re.IGNORECASE,
 )
 
 
@@ -222,6 +228,11 @@ def _archive_single_build(
         build_url=build_url,
         fetcher=fetcher,
     )
+    raw_log = _append_console_signal_excerpts(
+        raw_log,
+        build_url=build_url,
+        fetcher=fetcher,
+    )
     redacted_tail = redact_console_log(raw_log)
     bucket, object_name = build_archive_object_ref(build, settings, force=force)
     log_gcs_uri = uploader.upload_text(
@@ -249,3 +260,19 @@ def _append_failed_node_logs(raw_tail: str, *, build_url: str, fetcher: Any) -> 
     if not str(failed_node_logs or "").strip():
         return raw_tail
     return f"{raw_tail.rstrip()}\n{failed_node_logs}"
+
+
+def _append_console_signal_excerpts(raw_log: str, *, build_url: str, fetcher: Any) -> str:
+    if not REMOTING_SYMPTOM_RE.search(raw_log):
+        return raw_log
+    if extract_console_signal_excerpts(raw_log).strip():
+        return raw_log
+
+    fetch_console_signal_excerpts = getattr(fetcher, "fetch_console_signal_excerpts", None)
+    if not callable(fetch_console_signal_excerpts):
+        return raw_log
+
+    signal_excerpts = fetch_console_signal_excerpts(build_url)
+    if not str(signal_excerpts or "").strip():
+        return raw_log
+    return f"{raw_log.rstrip()}\n{signal_excerpts}"

@@ -68,7 +68,9 @@
       "text_patterns": [
         "CONFLICT \\([^\\r\\n]+\\): Merge conflict in ",
         "Automatic merge failed; fix conflicts and then commit the result\\.",
-        "error: could not apply [0-9a-f]+"
+        "error: could not apply [0-9a-f]+",
+        "malformed module path \\\"<<<<<<<\\\": invalid char '<'",
+        "syntax error: unexpected <<"
       ]
     },
     {
@@ -167,6 +169,19 @@
         "Executed [0-9]+ out of [0-9]+ test: [^\\r\\n]*fails locally",
         "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
         "--- FAIL: "
+      ]
+    },
+    {
+      "name": "ghpr_check2_realtikv_timeout",
+      "l1": "IT",
+      "l2": "TIMEOUT",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "Timeout has been exceeded[\\s\\S]*(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)",
+        "(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)[\\s\\S]*Timeout has been exceeded"
       ]
     },
     {
@@ -385,19 +400,25 @@
       "l1": "INFRA",
       "l2": "K8S",
       "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\.",
         "Pod \\[Failed\\]\\[[^\\]]*Evicted[^\\]]*\\]",
         "Container \\[[^\\]]+\\] terminated \\[Evicted\\]",
         "Reason: Evicted"
       ]
     },
     {
-      "name": "infra_jenkins_remoting",
+      "name": "infra_jenkins_agent_offline",
       "l1": "INFRA",
-      "l2": "JENKINS",
+      "l2": "JENKINS_AGENT_OFFLINE",
       "text_patterns": [
-        "hudson\\.remoting",
-        "channel is already closed",
+        "hudson\\.remoting\\.ChannelClosedException: channel is already closed",
+        "hudson\\.remoting\\.RequestAbortedException: java\\.nio\\.channels\\.ClosedChannelException",
         "agent .* went offline",
+        "Agent went offline during the build",
+        "seems to be removed or offline",
+        "Timeout waiting for agent to come back",
+        "AgentOfflineException: Unable to create live FilePath",
+        "was marked offline: Connection was broken",
         "cannot contact .*: java\\.io\\.IOException",
         "closedchannelexception"
       ]
@@ -449,6 +470,17 @@
       ]
     },
     {
+      "name": "build_internal_package_missing_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "job_name_patterns": [
+        "(^|/)pull_mysql_client_test(_next_gen)?$"
+      ],
+      "text_patterns": [
+        "no required module provides package github\\.com/pingcap/tidb/"
+      ]
+    },
+    {
       "name": "build_dependency_failure",
       "l1": "BUILD",
       "l2": "DEPENDENCY",
@@ -456,6 +488,7 @@
         "go: updates to go\\.mod needed; to update it:",
         "missing go\\.sum entry for module providing package",
         "no required module provides package",
+        "invalid version: unknown revision",
         "cannot find module",
         "compilepkg: missing strict dependencies:",
         "No dependencies were provided\\.",
@@ -492,6 +525,14 @@
         "archive/tar",
         "failed to push image",
         "buildx failed"
+      ]
+    },
+    {
+      "name": "build_support_repo_commit_checkout_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*tidb-test=[0-9a-f]{40}[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
       ]
     },
     {

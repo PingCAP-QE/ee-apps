@@ -61,6 +61,17 @@ class _FakeFetcherWithFailedNodes(_FakeFetcher):
         return self.failed_node_text
 
 
+class _FakeFetcherWithSignalExcerpts(_FakeFetcher):
+    def __init__(self, text: str, signal_text: str) -> None:
+        super().__init__(text)
+        self.signal_text = signal_text
+        self.signal_calls: list[str] = []
+
+    def fetch_console_signal_excerpts(self, build_url: str) -> str:
+        self.signal_calls.append(build_url)
+        return self.signal_text
+
+
 class _FakeUploader:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
@@ -201,6 +212,34 @@ def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine)
     ]
     assert "Connection reset by peer" in uploader.calls[0][2]
     assert "Build completed, 1 test FAILED" in uploader.calls[0][2]
+
+
+def test_run_archive_error_logs_appends_live_signal_excerpts_for_remoting_tail(sqlite_engine) -> None:
+    _insert_build(sqlite_engine, build_id=161)
+    fetcher = _FakeFetcherWithSignalExcerpts(
+        "hudson.remoting.ChannelClosedException\nTimeout waiting for agent to come back\n",
+        (
+            "===== Jenkins console signal excerpts =====\n"
+            "----- lines 101-103 -----\n"
+            "Container [golang] terminated [OOMKilled]\n"
+        ),
+    )
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine,
+        _settings(),
+        build_id=161,
+        fetcher=fetcher,
+        uploader=uploader,
+    )
+
+    assert summary.builds_archived == 1
+    assert fetcher.signal_calls == [
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/161/display/redirect"
+    ]
+    assert "Timeout waiting for agent to come back" in uploader.calls[0][2]
+    assert "Container [golang] terminated [OOMKilled]" in uploader.calls[0][2]
 
 
 def test_run_archive_error_logs_skips_existing_archive_without_force(sqlite_engine) -> None:

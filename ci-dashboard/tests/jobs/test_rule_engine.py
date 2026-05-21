@@ -277,6 +277,89 @@ def test_rule_engine_prefers_code_conflict_over_pipeline_config_noise() -> None:
     assert classification.source == "rule:others_code_conflict"
 
 
+def test_rule_engine_classifies_go_mod_conflict_markers_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "CGO_ENABLED=1 GO111MODULE=on go build -tags codes,nextgen "
+            "-o 'bin/tidb-server' ./cmd/tidb-server\n"
+            "go: errors parsing go.mod:\n"
+            "go.mod:127: malformed module path \"<<<<<<<\": invalid char '<'\n"
+            "go.mod:130: usage: require module/path v1.2.3\n"
+            "go.mod:133: usage: require module/path v1.2.3\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2605/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
+def test_rule_engine_classifies_go_source_conflict_markers_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "# github.com/pingcap/tidb/pkg/executor/importer\n"
+            "pkg/executor/importer/sampler.go:364:1: syntax error: unexpected <<, expected }\n"
+            "pkg/executor/importer/sampler.go:370:1: syntax error: unexpected ==, expected }\n"
+            "pkg/executor/importer/sampler.go:373:1: syntax error: unexpected >>, expected }\n"
+            "pkg/executor/importer/sampler.go:373:82: invalid character U+0023 '#'\n"
+            "pkg/executor/importer/sampler.go:376:3: syntax error: non-declaration statement outside function body\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2779/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
+def test_rule_engine_classifies_short_go_source_conflict_marker_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "# github.com/pingcap/tidb/pkg/executor/importer\n"
+            "pkg/executor/importer/sampler.go:364:1: syntax error: unexpected <<\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2779/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
 def test_rule_engine_prefers_disk_full_over_dm_integration_and_jenkins_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -651,6 +734,62 @@ def test_rule_engine_prefers_final_k8s_failure_over_jenkins_disconnect_noise() -
     assert classification.source == "rule:infra_k8s_runtime"
 
 
+def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_infra() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc seems to be removed or offline "
+            "(hudson.remoting.RequestAbortedException: java.nio.channels.ClosedChannelException); "
+            "will wait for 5 min 0 sec for it to come back online\n"
+            "[PodInfo] jenkins-tidb/pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc\n"
+            "Container [golang] terminated [Completed] No message\n"
+            "Container [jnlp] terminated [Error] No message\n"
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+            "Pod [Failed][PodFailed] No message\n"
+            "Timeout waiting for agent to come back\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2748/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "K8S"
+    assert classification.source == "rule:infra_k8s_runtime"
+
+
+def test_rule_engine_classifies_agent_offline_as_jenkins_agent_offline() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh bazel_brietest'\n"
+            "Timeout waiting for agent to come back\n"
+            "org.jenkinsci.plugins.workflow.support.steps.AgentOfflineException: "
+            "Unable to create live FilePath for pingcap-tidb-ghpr-check2-3353-3xd83-mbdh3-jv9zn; "
+            "pingcap-tidb-ghpr-check2-3353-3xd83-mbdh3-jv9zn was marked offline: "
+            "Connection was broken\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3353/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS_AGENT_OFFLINE"
+    assert classification.source == "rule:infra_jenkins_agent_offline"
+
+
 def test_rule_engine_prefers_jenkins_groovy_over_remoting_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -953,6 +1092,58 @@ def test_rule_engine_matches_go_mod_tidy_dependency_failure() -> None:
     assert classification.source == "rule:build_dependency_failure"
 
 
+def test_rule_engine_classifies_missing_internal_tidb_package_as_build_compile() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/server/handler/user_admin_handler.go:36:2: "
+            "no required module provides package github.com/pingcap/tidb/pkg/session/types; to add it:\n"
+            "\tgo get github.com/pingcap/tidb/pkg/session/types\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2762/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_internal_package_missing_compile_failure"
+
+
+def test_rule_engine_classifies_missing_internal_tidb_package_for_unprefixed_job_name() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/server/handler/user_admin_handler.go:36:2: "
+            "no required module provides package github.com/pingcap/tidb/pkg/session/types; to add it:\n"
+            "\tgo get github.com/pingcap/tidb/pkg/session/types\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pull_mysql_client_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test/2954/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_internal_package_missing_compile_failure"
+
+
 def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
     engine = RuleEngine.from_file()
 
@@ -1009,6 +1200,60 @@ def test_rule_engine_matches_missing_go_sum_dependency_failure() -> None:
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "DEPENDENCY"
     assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_classifies_go_unknown_revision_as_dependency_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "go: github.com/pingcap/tipb@v0.0.0-20260511103949-52a408fd6ab8: "
+            "invalid version: unknown revision 52a408fd6ab8\n"
+            "+ pushd tidb\n"
+            "/home/jenkins/agent/workspace/pingcap/tidb/ghpr_build@tmp/durable-af434c3f/"
+            "script.sh.copy: line 6: pushd: tidb: No such file or directory\n"
+            "make: *** tidb: No such file or directory.  Stop.\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_build",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2713/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_classifies_support_repo_commit_checkout_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "computeBranchFromPR component: tidb-test, prTargetBranch: feature/fts, "
+            "prTitle: planner: avoid invalid TiCI FTS request for null match pattern | "
+            "tidb-test=42c2474b6e2e1ef3430d07a1743ca7e17fd97acc tiflash=feature-fts "
+            "tikv=feature-fts, trunkBranch: master\n"
+            "Fetching upstream changes from git@github.com:PingCAP-QE/tidb-test.git\n"
+            "ERROR: Couldn't find any revision to build. Verify the repository and branch "
+            "configuration for this job.\n"
+            "ERROR: Maximum checkout retry attempts reached, aborting\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test/2883/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_support_repo_commit_checkout_pipeline_config_failure"
 
 
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
@@ -1466,6 +1711,28 @@ def test_rule_engine_prefers_external_dependency_over_ghpr_check2_noise() -> Non
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "EXTERNAL_DEP"
     assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
+def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh bazel_importintotest4'\n"
+            "Matrix - SCRIPT_AND_ARGS = 'integrationtest_with_tikv.sh y'\n"
+            "Timeout has been exceeded\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3563/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TIMEOUT"
+    assert classification.source == "rule:ghpr_check2_realtikv_timeout"
 
 
 def test_rule_engine_does_not_treat_passed_test_names_with_fail_suffix_as_failures() -> None:
