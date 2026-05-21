@@ -10,6 +10,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Container termination reason OOMKilled is INFRA/OOMKILLED, even when Jenkins later reports a matrix branch failure or agent disconnect.
 - Use job names as strong hints for test families: ghpr/pull unit/mysql jobs are UT, integration/realcluster/lightning/br/dm integration jobs are IT.
 - ghpr_check2 test-failure evidence should usually stay in the UT family because that job behaves like a unit-style mixed check job; do not move it to IT unless the failing evidence is explicitly integration-specific.
+- ghpr_check2 timeout evidence can move to IT/TIMEOUT when the failing branch is explicitly integration-specific, for example `run_real_tikv_tests.sh ...` or `integrationtest_with_tikv.sh ...`, even though the outer job name is ghpr_check2.
 - Go compiler errors such as "undefined:" or "has no field or method" are BUILD/COMPILE, even when they appear inside Bazel or wrapper output.
 - Bazel/unit summaries such as "FAILED TO BUILD", "fails to build", or "0 failing out of 0 test cases" point to an upstream build problem, not a UT test failure by themselves.
 - Failpoint rewrite/parser errors such as "Rewrite error ... expected declaration/statement, found '<<'" are BUILD/COMPILE.
@@ -21,7 +22,9 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", or 429/502/503 while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
 - BR integration matrix TEST_GROUP failures are IT/TEST_FAILURE, even if the failed case logs local 127.0.0.1 PD/TiKV connection-refused or timeout symptoms.
+- Kubelet final pod failures such as `TerminationByKubelet` with `imminent node shutdown` are INFRA/K8S and should beat later Jenkins remoting or agent-offline noise.
 - Jenkins Groovy/runtime/cache/websocket/controller persistence errors are INFRA subcategories, not product BUILD failures.
+- Agent disconnect/remoting failures such as `Timeout waiting for agent to come back`, `AgentOfflineException`, or `was marked offline: Connection was broken` are INFRA/JENKINS when there is no earlier stronger root cause.
 - Disk-full evidence such as "No space left on device" is INFRA/DISK_FULL even when it appears while Jenkins saves pipeline state.
 - Prow superseded aborts are OTHERS/SUPERSEDED_BY_NEWER_BUILD when Prow marks the job aborted because a newer same-PR same-job version is running, or when an admin-abort log has same-PR same-job newer different-SHA build evidence; this overrides downstream noise.
 - Admin aborts are OTHERS/ABORT_BY_ADMIN and override downstream matrix, network, or interrupted-process symptoms.

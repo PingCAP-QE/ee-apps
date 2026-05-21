@@ -172,6 +172,19 @@
       ]
     },
     {
+      "name": "ghpr_check2_realtikv_timeout",
+      "l1": "IT",
+      "l2": "TIMEOUT",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "Timeout has been exceeded[\\s\\S]*(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)",
+        "(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)[\\s\\S]*Timeout has been exceeded"
+      ]
+    },
+    {
       "name": "br_integration_test_output_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -387,6 +400,7 @@
       "l1": "INFRA",
       "l2": "K8S",
       "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\.",
         "Pod \\[Failed\\]\\[[^\\]]*Evicted[^\\]]*\\]",
         "Container \\[[^\\]]+\\] terminated \\[Evicted\\]",
         "Reason: Evicted"
@@ -400,6 +414,9 @@
         "hudson\\.remoting",
         "channel is already closed",
         "agent .* went offline",
+        "Timeout waiting for agent to come back",
+        "AgentOfflineException: Unable to create live FilePath",
+        "was marked offline: Connection was broken",
         "cannot contact .*: java\\.io\\.IOException",
         "closedchannelexception"
       ]

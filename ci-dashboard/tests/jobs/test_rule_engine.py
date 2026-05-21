@@ -709,6 +709,62 @@ def test_rule_engine_prefers_final_k8s_failure_over_jenkins_disconnect_noise() -
     assert classification.source == "rule:infra_k8s_runtime"
 
 
+def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_infra() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc seems to be removed or offline "
+            "(hudson.remoting.RequestAbortedException: java.nio.channels.ClosedChannelException); "
+            "will wait for 5 min 0 sec for it to come back online\n"
+            "[PodInfo] jenkins-tidb/pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc\n"
+            "Container [golang] terminated [Completed] No message\n"
+            "Container [jnlp] terminated [Error] No message\n"
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+            "Pod [Failed][PodFailed] No message\n"
+            "Timeout waiting for agent to come back\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2748/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "K8S"
+    assert classification.source == "rule:infra_k8s_runtime"
+
+
+def test_rule_engine_classifies_agent_offline_as_jenkins_infra() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh bazel_brietest'\n"
+            "Timeout waiting for agent to come back\n"
+            "org.jenkinsci.plugins.workflow.support.steps.AgentOfflineException: "
+            "Unable to create live FilePath for pingcap-tidb-ghpr-check2-3353-3xd83-mbdh3-jv9zn; "
+            "pingcap-tidb-ghpr-check2-3353-3xd83-mbdh3-jv9zn was marked offline: "
+            "Connection was broken\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3353/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS"
+    assert classification.source == "rule:infra_jenkins_remoting"
+
+
 def test_rule_engine_prefers_jenkins_groovy_over_remoting_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -1604,6 +1660,28 @@ def test_rule_engine_prefers_external_dependency_over_ghpr_check2_noise() -> Non
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "EXTERNAL_DEP"
     assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
+def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh bazel_importintotest4'\n"
+            "Matrix - SCRIPT_AND_ARGS = 'integrationtest_with_tikv.sh y'\n"
+            "Timeout has been exceeded\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3563/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TIMEOUT"
+    assert classification.source == "rule:ghpr_check2_realtikv_timeout"
 
 
 def test_rule_engine_does_not_treat_passed_test_names_with_fail_suffix_as_failures() -> None:
