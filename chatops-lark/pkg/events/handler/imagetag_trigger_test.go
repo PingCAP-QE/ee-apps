@@ -79,9 +79,42 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 			return
 		}
 
+		if listCalls == 2 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"total_count": 2,
+				"workflow_runs": []map[string]any{
+					{
+						"id":            201,
+						"event":         "workflow_dispatch",
+						"display_title": "query-image-tag ghcr.io/pingcap/tidb:other",
+						"head_branch":   "main",
+						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/201",
+						"created_at":    time.Now().UTC().Format(time.RFC3339),
+					},
+					{
+						"id":            100,
+						"event":         "workflow_dispatch",
+						"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
+						"head_branch":   "main",
+						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+						"created_at":    "2026-05-21T03:00:00Z",
+					},
+				},
+			})
+			return
+		}
+
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"total_count": 2,
+			"total_count": 3,
 			"workflow_runs": []map[string]any{
+				{
+					"id":            201,
+					"event":         "workflow_dispatch",
+					"display_title": "query-image-tag ghcr.io/pingcap/tidb:other",
+					"head_branch":   "main",
+					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/201",
+					"created_at":    time.Now().UTC().Format(time.RFC3339),
+				},
 				{
 					"id":            200,
 					"event":         "workflow_dispatch",
@@ -123,8 +156,8 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 	if dispatchCalls != 1 {
 		t.Fatalf("expected 1 dispatch call, got %d", dispatchCalls)
 	}
-	if listCalls < 2 {
-		t.Fatalf("expected at least 2 list calls, got %d", listCalls)
+	if listCalls < 3 {
+		t.Fatalf("expected at least 3 list calls, got %d", listCalls)
 	}
 	if !strings.Contains(resp, "/image-tag poll 200") {
 		t.Fatalf("expected response to contain poll command, got:\n%s", resp)
@@ -177,5 +210,51 @@ func TestSelectImageTagWorkflowRun(t *testing.T) {
 	}
 	if run.GetID() != 101 {
 		t.Fatalf("expected run 101, got %d", run.GetID())
+	}
+}
+
+func TestSelectImageTagWorkflowRunRequiresExactTitle(t *testing.T) {
+	dispatchedAt := time.Date(2026, 5, 21, 4, 0, 0, 0, time.UTC)
+	runs := []*github.WorkflowRun{
+		{
+			ID:           github.Int64(101),
+			Event:        github.String("workflow_dispatch"),
+			DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:other"),
+			HeadBranch:   github.String("main"),
+			CreatedAt:    &github.Timestamp{Time: dispatchedAt.Add(10 * time.Second)},
+		},
+	}
+
+	run := selectImageTagWorkflowRun(runs, "main", "query-image-tag ghcr.io/pingcap/tidb:nightly", 100, dispatchedAt)
+	if run != nil {
+		t.Fatalf("expected no run when only fallback candidates are visible, got %d", run.GetID())
+	}
+}
+
+func TestSelectImageTagWorkflowRunPrefersOldestExactMatch(t *testing.T) {
+	dispatchedAt := time.Date(2026, 5, 21, 4, 0, 0, 0, time.UTC)
+	runs := []*github.WorkflowRun{
+		{
+			ID:           github.Int64(102),
+			Event:        github.String("workflow_dispatch"),
+			DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:nightly"),
+			HeadBranch:   github.String("main"),
+			CreatedAt:    &github.Timestamp{Time: dispatchedAt.Add(20 * time.Second)},
+		},
+		{
+			ID:           github.Int64(101),
+			Event:        github.String("workflow_dispatch"),
+			DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:nightly"),
+			HeadBranch:   github.String("main"),
+			CreatedAt:    &github.Timestamp{Time: dispatchedAt.Add(10 * time.Second)},
+		},
+	}
+
+	run := selectImageTagWorkflowRun(runs, "main", "query-image-tag ghcr.io/pingcap/tidb:nightly", 100, dispatchedAt)
+	if run == nil {
+		t.Fatal("expected a matching run")
+	}
+	if run.GetID() != 101 {
+		t.Fatalf("expected the oldest exact match to win, got %d", run.GetID())
 	}
 }

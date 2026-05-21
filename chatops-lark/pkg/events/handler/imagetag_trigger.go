@@ -175,7 +175,7 @@ func findDispatchedImageTagWorkflowRun(ctx context.Context, gc *github.Client, c
 }
 
 func selectImageTagWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle string, minRunID int64, dispatchedAt time.Time) *github.WorkflowRun {
-	var fallback *github.WorkflowRun
+	var matched *github.WorkflowRun
 
 	for _, run := range runs {
 		if run == nil || run.GetID() <= minRunID {
@@ -191,16 +191,15 @@ func selectImageTagWorkflowRun(runs []*github.WorkflowRun, ref, expectedTitle st
 			continue
 		}
 
-		if run.GetDisplayTitle() == expectedTitle {
-			return run
+		if run.GetDisplayTitle() != expectedTitle {
+			continue
 		}
-
-		if fallback == nil || run.GetID() > fallback.GetID() {
-			fallback = run
+		if matched == nil || run.GetID() < matched.GetID() {
+			matched = run
 		}
 	}
 
-	return fallback
+	return matched
 }
 
 func imageTagWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) bool {
