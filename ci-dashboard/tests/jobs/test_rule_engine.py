@@ -1095,6 +1095,60 @@ def test_rule_engine_matches_missing_go_sum_dependency_failure() -> None:
     assert classification.source == "rule:build_dependency_failure"
 
 
+def test_rule_engine_classifies_go_unknown_revision_as_dependency_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "go: github.com/pingcap/tipb@v0.0.0-20260511103949-52a408fd6ab8: "
+            "invalid version: unknown revision 52a408fd6ab8\n"
+            "+ pushd tidb\n"
+            "/home/jenkins/agent/workspace/pingcap/tidb/ghpr_build@tmp/durable-af434c3f/"
+            "script.sh.copy: line 6: pushd: tidb: No such file or directory\n"
+            "make: *** tidb: No such file or directory.  Stop.\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_build",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_build/2713/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_classifies_support_repo_commit_checkout_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "computeBranchFromPR component: tidb-test, prTargetBranch: feature/fts, "
+            "prTitle: planner: avoid invalid TiCI FTS request for null match pattern | "
+            "tidb-test=42c2474b6e2e1ef3430d07a1743ca7e17fd97acc tiflash=feature-fts "
+            "tikv=feature-fts, trunkBranch: master\n"
+            "Fetching upstream changes from git@github.com:PingCAP-QE/tidb-test.git\n"
+            "ERROR: Couldn't find any revision to build. Verify the repository and branch "
+            "configuration for this job.\n"
+            "ERROR: Maximum checkout retry attempts reached, aborting\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test/2883/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_support_repo_commit_checkout_pipeline_config_failure"
+
+
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
     engine = RuleEngine.from_file()
 

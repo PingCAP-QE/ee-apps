@@ -469,6 +469,7 @@
         "go: updates to go\\.mod needed; to update it:",
         "missing go\\.sum entry for module providing package",
         "no required module provides package",
+        "invalid version: unknown revision",
         "cannot find module",
         "compilepkg: missing strict dependencies:",
         "No dependencies were provided\\.",
@@ -505,6 +506,14 @@
         "archive/tar",
         "failed to push image",
         "buildx failed"
+      ]
+    },
+    {
+      "name": "build_support_repo_commit_checkout_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*tidb-test=[0-9a-f]{40}[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
       ]
     },
     {

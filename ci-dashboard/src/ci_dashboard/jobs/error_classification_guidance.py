@@ -15,7 +15,8 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Failpoint rewrite/parser errors such as "Rewrite error ... expected declaration/statement, found '<<'" are BUILD/COMPILE.
 - Raw merge-conflict markers that leak into source after pre-merge, such as `malformed module path "<<<<<<<"` or `syntax error: unexpected <<`, are OTHERS/CODE_CONFLICT rather than BUILD/COMPILE.
 - Missing internal TiDB package imports such as `no required module provides package github.com/pingcap/tidb/...` are BUILD/COMPILE, while generic module hygiene failures such as `go mod tidy` or strict-deps drift stay BUILD/DEPENDENCY.
-- Dependency hygiene failures such as "updates to go.mod needed", "missing strict dependencies", "No dependencies were provided", or imports/deps mismatch are BUILD/DEPENDENCY.
+- Dependency hygiene failures such as "updates to go.mod needed", "missing strict dependencies", "No dependencies were provided", imports/deps mismatch, or `invalid version: unknown revision` are BUILD/DEPENDENCY.
+- Support-repo checkout failures that log `tidb-test=<40-hex-sha>` and then `Couldn't find any revision to build` are BUILD/PIPELINE_CONFIG; treat them as CI checkout/refspec logic failures rather than INFRA/GIT noise.
 - Nogo or build-time static-analysis validation failures such as "Validating nogo output" or "Running nogo on //... failed" are BUILD/FORMAT_CHECK, including ghpr_build, ghpr_check2, pull_build_next_gen, and pull_unit_test jobs; do not leave them in BUILD/PIPELINE_CONFIG or move them to BUILD/COMPILE.
 - Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", or 429/502/503 while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
