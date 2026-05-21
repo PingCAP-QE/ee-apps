@@ -28,17 +28,17 @@ func TestPollImageTagWorkflowSuccess(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/runs/200", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/200", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":         200,
 			"status":     "completed",
 			"conclusion": "success",
-			"html_url":   "https://github.com/PingCAP-QE/ci/actions/runs/200",
+			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/200",
 		})
 	})
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/runs/200/artifacts", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/200/artifacts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"total_count": 1,
@@ -52,7 +52,7 @@ func TestPollImageTagWorkflowSuccess(t *testing.T) {
 		})
 	})
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/artifacts/456/zip", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/artifacts/456/zip", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, server.URL+"/download/result.zip", http.StatusFound)
 	})
 
@@ -65,8 +65,8 @@ func TestPollImageTagWorkflowSuccess(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	resp, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
-		Owner:    "PingCAP-QE",
-		Repo:     "ci",
+		Owner:    "tidbcloud",
+		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
 	}, 200, server.Client())
 	if err != nil {
@@ -90,13 +90,13 @@ func TestPollImageTagWorkflowFailure(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/runs/201", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/201", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":         201,
 			"status":     "completed",
 			"conclusion": "failure",
-			"html_url":   "https://github.com/PingCAP-QE/ci/actions/runs/201",
+			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/201",
 		})
 	})
 
@@ -104,8 +104,8 @@ func TestPollImageTagWorkflowFailure(t *testing.T) {
 	gc.BaseURL, _ = url.Parse(server.URL + "/")
 
 	_, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
-		Owner:    "PingCAP-QE",
-		Repo:     "ci",
+		Owner:    "tidbcloud",
+		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
 	}, 201, server.Client())
 	if err == nil {

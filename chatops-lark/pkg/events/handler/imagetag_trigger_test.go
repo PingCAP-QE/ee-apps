@@ -21,14 +21,14 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"default_branch": "main",
 		})
 	})
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/workflows/query-image-tag.yml/dispatches", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/workflows/query-image-tag.yml/dispatches", func(w http.ResponseWriter, r *http.Request) {
 		dispatchCalls++
 
 		var payload map[string]any
@@ -58,7 +58,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/workflows/query-image-tag.yml/runs", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/workflows/query-image-tag.yml/runs", func(w http.ResponseWriter, r *http.Request) {
 		listCalls++
 
 		w.Header().Set("Content-Type", "application/json")
@@ -71,7 +71,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 						"event":         "workflow_dispatch",
 						"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
 						"head_branch":   "main",
-						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+						"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/100",
 						"created_at":    "2026-05-21T03:00:00Z",
 					},
 				},
@@ -88,7 +88,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 						"event":         "workflow_dispatch",
 						"display_title": "query-image-tag ghcr.io/pingcap/tidb:other",
 						"head_branch":   "main",
-						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/201",
+						"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/201",
 						"created_at":    time.Now().UTC().Format(time.RFC3339),
 					},
 					{
@@ -96,7 +96,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 						"event":         "workflow_dispatch",
 						"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
 						"head_branch":   "main",
-						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+						"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/100",
 						"created_at":    "2026-05-21T03:00:00Z",
 					},
 				},
@@ -112,7 +112,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 					"event":         "workflow_dispatch",
 					"display_title": "query-image-tag ghcr.io/pingcap/tidb:other",
 					"head_branch":   "main",
-					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/201",
+					"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/201",
 					"created_at":    time.Now().UTC().Format(time.RFC3339),
 				},
 				{
@@ -120,7 +120,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 					"event":         "workflow_dispatch",
 					"display_title": "query-image-tag ghcr.io/pingcap/tidb:nightly",
 					"head_branch":   "main",
-					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/200",
+					"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/200",
 					"created_at":    time.Now().UTC().Format(time.RFC3339),
 				},
 				{
@@ -128,7 +128,7 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 					"event":         "workflow_dispatch",
 					"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
 					"head_branch":   "main",
-					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+					"html_url":      "https://github.com/tidbcloud/docker-image-controller/actions/runs/100",
 					"created_at":    "2026-05-21T03:00:00Z",
 				},
 			},
@@ -142,8 +142,8 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 		Registry: "ghcr.io/pingcap/tidb",
 		Tag:      "nightly",
 	}, gc, imageTagWorkflowConfig{
-		Owner:    "PingCAP-QE",
-		Repo:     "ci",
+		Owner:    "tidbcloud",
+		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
 		CredentialRefs: map[string]string{
 			"ghcr.io/pingcap": "query-image-ghcr",

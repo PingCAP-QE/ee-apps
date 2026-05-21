@@ -16,8 +16,8 @@ const (
 	cfgKeyImageTagRef            = "image_tag.ref"
 	cfgKeyImageTagCredentialRefs = "image_tag.credential_refs"
 
-	defaultImageTagOwner    = "PingCAP-QE"
-	defaultImageTagRepo     = "ci"
+	defaultImageTagOwner    = "tidbcloud"
+	defaultImageTagRepo     = "docker-image-controller"
 	defaultImageTagWorkflow = "query-image-tag.yml"
 )
 

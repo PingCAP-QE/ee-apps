@@ -40,8 +40,8 @@ devbuild:
 image_tag:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-  owner: "PingCAP-QE" # Optional, defaults to PingCAP-QE
-  repo: "ci" # Optional, defaults to ci
+  owner: "tidbcloud" # Optional, defaults to tidbcloud
+  repo: "docker-image-controller" # Optional, defaults to docker-image-controller
   workflow: "query-image-tag.yml" # Optional, defaults to query-image-tag.yml
   ref: "main" # Optional, defaults to the repository default branch when omitted
   github_token: "ghp_xxx"
