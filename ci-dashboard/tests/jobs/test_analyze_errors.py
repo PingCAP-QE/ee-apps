@@ -56,6 +56,16 @@ class _FakeClassifier:
         return self.classification
 
 
+class _FakeJenkinsFetcher:
+    def __init__(self, excerpts_by_url: dict[str, str]) -> None:
+        self.excerpts_by_url = excerpts_by_url
+        self.calls: list[str] = []
+
+    def fetch_console_signal_excerpts(self, build_url: str) -> str:
+        self.calls.append(build_url)
+        return self.excerpts_by_url.get(build_url, "")
+
+
 def _insert_build(
     sqlite_engine,
     *,
@@ -621,6 +631,73 @@ def test_run_analyze_errors_force_overwrites_machine_classification(sqlite_engin
 
     assert row["error_l1_category"] == "UT"
     assert row["error_l2_subcategory"] == "TEST_FAILURE"
+
+
+def test_run_analyze_errors_reclassifies_remoting_archive_with_live_oom_excerpt(sqlite_engine) -> None:
+    build_id = 451
+    job_name = "pull_cdc_storage_integration_light"
+    build_url = f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/{job_name}/{build_id}/"
+    _insert_build(
+        sqlite_engine,
+        build_id=build_id,
+        job_name=job_name,
+        log_gcs_uri="gcs://ci-dashboard-test/2605/451.log",
+        error_l1_category="INFRA",
+        error_l2_subcategory="JENKINS",
+    )
+    reader = _FakeReader(
+        {
+            (
+                "ci-dashboard-test",
+                "2605/451.log",
+            ): (
+                "hudson.remoting.ChannelClosedException\n"
+                "removed or offline for 5 min\n"
+                "Timeout waiting for agent to come back\n"
+            ),
+        }
+    )
+    jenkins_fetcher = _FakeJenkinsFetcher(
+        {
+            build_url: (
+                "===== Jenkins console signal excerpts =====\n"
+                "----- lines 1880-1884 -----\n"
+                "Container [golang] terminated [OOMKilled]\n"
+            )
+        }
+    )
+    classifier = _FakeClassifier(
+        ErrorClassification(
+            l1_category="OTHERS",
+            l2_subcategory="UNCLASSIFIED",
+            source="llm:test",
+        )
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        force=True,
+        reader=reader,
+        jenkins_fetcher=jenkins_fetcher,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=classifier,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_rule_classified == 1
+    assert summary.builds_llm_classified == 0
+    assert reader.calls == [("ci-dashboard-test", "2605/451.log")]
+    assert jenkins_fetcher.calls == [build_url]
+    assert classifier.calls == []
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 451")
+        ).mappings().one()
+
+    assert row["error_l1_category"] == "INFRA"
+    assert row["error_l2_subcategory"] == "OOMKILLED"
 
 
 def test_review_error_classification_updates_revise_fields(sqlite_engine) -> None:

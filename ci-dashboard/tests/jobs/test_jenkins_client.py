@@ -8,6 +8,7 @@ from ci_dashboard.jobs.jenkins_client import (
     build_api_url,
     build_progressive_text_url,
     canonicalize_build_url,
+    extract_console_signal_excerpts,
     rewrite_build_url_host,
 )
 
@@ -254,3 +255,67 @@ def test_jenkins_client_fetch_failed_node_logs_collects_aborted_matrix_node_cons
     assert "stage: Test (44)" in text
     assert "node: G11 (55)" in text
     assert "TEST FAILED: OUTPUT DOES NOT CONTAIN" in text
+
+
+def test_extract_console_signal_excerpts_returns_kube_failure_context() -> None:
+    console_text = "\n".join(
+        [
+            "random prefix",
+            "still starting",
+            "Pod xyz status update",
+            "Container [golang] terminated [OOMKilled]",
+            "removed or offline for 5 min",
+            "Timeout waiting for agent to come back",
+        ]
+    )
+
+    excerpts = extract_console_signal_excerpts(
+        console_text,
+        context_lines=1,
+        max_matches=2,
+        max_bytes=4096,
+    )
+
+    assert "===== Jenkins console signal excerpts =====" in excerpts
+    assert "----- lines 3-5 -----" in excerpts
+    assert "Pod xyz status update" in excerpts
+    assert "Container [golang] terminated [OOMKilled]" in excerpts
+    assert "removed or offline for 5 min" in excerpts
+    assert "Timeout waiting for agent to come back" not in excerpts
+
+
+def test_jenkins_client_fetch_console_signal_excerpts_uses_console_text_endpoint() -> None:
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        if request.url.path.endswith("/consoleText"):
+            return httpx.Response(
+                200,
+                text=(
+                    "startup line\n"
+                    "Pod status update\n"
+                    "Container [golang] terminated [OOMKilled]\n"
+                    "tail line\n"
+                ),
+            )
+        return httpx.Response(404)
+
+    client = JenkinsClient(
+        JenkinsSettings(http_timeout_seconds=5),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    try:
+        excerpts = client.fetch_console_signal_excerpts(
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tiflow/job/pull_cdc_storage_integration_light/1357/",
+            max_bytes=4096,
+        )
+    finally:
+        client.close()
+
+    assert excerpts.startswith("===== Jenkins console signal excerpts =====")
+    assert "Container [golang] terminated [OOMKilled]" in excerpts
+    assert seen_paths == [
+        "/jenkins/job/pingcap/job/tiflow/job/pull_cdc_storage_integration_light/1357/consoleText"
+    ]

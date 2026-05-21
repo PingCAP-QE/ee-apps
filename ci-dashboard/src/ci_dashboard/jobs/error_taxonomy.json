@@ -407,13 +407,15 @@
       ]
     },
     {
-      "name": "infra_jenkins_remoting",
+      "name": "infra_jenkins_agent_offline",
       "l1": "INFRA",
-      "l2": "JENKINS",
+      "l2": "JENKINS_AGENT_OFFLINE",
       "text_patterns": [
-        "hudson\\.remoting",
-        "channel is already closed",
+        "hudson\\.remoting\\.ChannelClosedException: channel is already closed",
+        "hudson\\.remoting\\.RequestAbortedException: java\\.nio\\.channels\\.ClosedChannelException",
         "agent .* went offline",
+        "Agent went offline during the build",
+        "seems to be removed or offline",
         "Timeout waiting for agent to come back",
         "AgentOfflineException: Unable to create live FilePath",
         "was marked offline: Connection was broken",

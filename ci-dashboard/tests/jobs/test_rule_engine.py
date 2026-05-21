@@ -740,7 +740,7 @@ def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_infra() -> None:
     assert classification.source == "rule:infra_k8s_runtime"
 
 
-def test_rule_engine_classifies_agent_offline_as_jenkins_infra() -> None:
+def test_rule_engine_classifies_agent_offline_as_jenkins_agent_offline() -> None:
     engine = RuleEngine.from_file()
 
     classification = engine.classify(
@@ -761,8 +761,8 @@ def test_rule_engine_classifies_agent_offline_as_jenkins_infra() -> None:
 
     assert classification is not None
     assert classification.l1_category == "INFRA"
-    assert classification.l2_subcategory == "JENKINS"
-    assert classification.source == "rule:infra_jenkins_remoting"
+    assert classification.l2_subcategory == "JENKINS_AGENT_OFFLINE"
+    assert classification.source == "rule:infra_jenkins_agent_offline"
 
 
 def test_rule_engine_prefers_jenkins_groovy_over_remoting_noise() -> None:
