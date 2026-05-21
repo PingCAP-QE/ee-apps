@@ -75,6 +75,9 @@ func pollImageTagWorkflow(ctx context.Context, gc *github.Client, cfg imageTagWo
 	if err != nil {
 		return "", fmt.Errorf("poll image-tag workflow failed: %w", err)
 	}
+	if err := validateImageTagWorkflowRun(ctx, gc, cfg, run); err != nil {
+		return "", err
+	}
 
 	runURL := buildImageTagRunURL(cfg, runID, run.GetHTMLURL())
 	if run.GetStatus() != "completed" {
@@ -129,6 +132,35 @@ func downloadImageTagPollResult(ctx context.Context, gc *github.Client, cfg imag
 	return &result, nil
 }
 
+func validateImageTagWorkflowRun(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig, run *github.WorkflowRun) error {
+	if run == nil {
+		return fmt.Errorf("workflow run returned no payload")
+	}
+
+	expectedPath := imageTagWorkflowPath(cfg.Workflow)
+	if workflowPathMatches(run.GetPath(), expectedPath) {
+		return nil
+	}
+
+	workflow, _, err := gc.Actions.GetWorkflowByFileName(ctx, cfg.Owner, cfg.Repo, cfg.Workflow)
+	if err != nil {
+		return fmt.Errorf("load workflow metadata for %q failed: %w", cfg.Workflow, err)
+	}
+	if workflow == nil {
+		return fmt.Errorf("workflow metadata for %q returned no payload", cfg.Workflow)
+	}
+	if imageTagWorkflowRunMatches(run, workflow) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"workflow run %d does not belong to %q (got %q)",
+		run.GetID(),
+		describeImageTagWorkflow(workflow, expectedPath),
+		describeImageTagWorkflowRun(run),
+	)
+}
+
 func getImageTagArtifact(ctx context.Context, gc *github.Client, cfg imageTagWorkflowConfig, runID int64) (*github.Artifact, error) {
 	artifacts, _, err := gc.Actions.ListWorkflowRunArtifacts(ctx, cfg.Owner, cfg.Repo, runID, &github.ListOptions{PerPage: 100})
 	if err != nil {
@@ -149,6 +181,82 @@ func getImageTagArtifact(ctx context.Context, gc *github.Client, cfg imageTagWor
 	}
 
 	return nil, fmt.Errorf("workflow run %d did not produce a %s artifact", runID, imageTagArtifactName)
+}
+
+func imageTagWorkflowRunMatches(run *github.WorkflowRun, workflow *github.Workflow) bool {
+	if run == nil || workflow == nil {
+		return false
+	}
+	if workflow.GetID() != 0 && run.GetWorkflowID() == workflow.GetID() {
+		return true
+	}
+	if workflow.GetURL() != "" && strings.TrimSpace(run.GetWorkflowURL()) == strings.TrimSpace(workflow.GetURL()) {
+		return true
+	}
+	return workflowPathMatches(run.GetPath(), workflow.GetPath())
+}
+
+func workflowPathMatches(actualPath, expectedPath string) bool {
+	actual := normalizeWorkflowPath(actualPath)
+	expected := normalizeWorkflowPath(expectedPath)
+	if actual == "" || expected == "" {
+		return false
+	}
+	return actual == expected
+}
+
+func imageTagWorkflowPath(workflow string) string {
+	path := normalizeWorkflowPath(workflow)
+	if path == "" {
+		return ""
+	}
+	if strings.Contains(path, "/") {
+		return path
+	}
+	return ".github/workflows/" + path
+}
+
+func normalizeWorkflowPath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.TrimPrefix(path, "/")
+	if idx := strings.Index(path, "@"); idx >= 0 {
+		path = path[:idx]
+	}
+	return path
+}
+
+func describeImageTagWorkflowRun(run *github.WorkflowRun) string {
+	if run == nil {
+		return "unknown workflow"
+	}
+	if path := normalizeWorkflowPath(run.GetPath()); path != "" {
+		return path
+	}
+	if url := strings.TrimSpace(run.GetWorkflowURL()); url != "" {
+		return url
+	}
+	if workflowID := run.GetWorkflowID(); workflowID != 0 {
+		return fmt.Sprintf("workflow id %d", workflowID)
+	}
+	return "unknown workflow"
+}
+
+func describeImageTagWorkflow(workflow *github.Workflow, fallbackPath string) string {
+	if workflow != nil {
+		if path := normalizeWorkflowPath(workflow.GetPath()); path != "" {
+			return path
+		}
+		if url := strings.TrimSpace(workflow.GetURL()); url != "" {
+			return url
+		}
+		if workflowID := workflow.GetID(); workflowID != 0 {
+			return fmt.Sprintf("workflow id %d", workflowID)
+		}
+	}
+	if path := normalizeWorkflowPath(fallbackPath); path != "" {
+		return path
+	}
+	return strings.TrimSpace(fallbackPath)
 }
 
 func fetchImageTagArtifactArchive(ctx context.Context, httpClient *http.Client, archiveURL string) ([]byte, error) {

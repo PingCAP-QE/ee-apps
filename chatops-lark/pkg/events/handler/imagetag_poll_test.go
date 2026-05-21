@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-github/v68/github"
@@ -32,6 +33,7 @@ func TestPollImageTagWorkflowSuccess(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":         200,
+			"path":       ".github/workflows/query-image-tag.yml",
 			"status":     "completed",
 			"conclusion": "success",
 			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/200",
@@ -94,6 +96,7 @@ func TestPollImageTagWorkflowFailure(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":         201,
+			"path":       ".github/workflows/query-image-tag.yml",
 			"status":     "completed",
 			"conclusion": "failure",
 			"html_url":   "https://github.com/tidbcloud/docker-image-controller/actions/runs/201",
@@ -113,6 +116,59 @@ func TestPollImageTagWorkflowFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "conclusion") {
 		t.Fatalf("expected failure to mention conclusion, got: %v", err)
+	}
+}
+
+func TestPollImageTagWorkflowRejectsMismatchedWorkflow(t *testing.T) {
+	var artifactListed atomic.Bool
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/202", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":           202,
+			"path":         ".github/workflows/release.yml",
+			"workflow_id":  999,
+			"workflow_url": server.URL + "/repos/tidbcloud/docker-image-controller/actions/workflows/999",
+			"status":       "completed",
+			"conclusion":   "success",
+			"html_url":     "https://github.com/tidbcloud/docker-image-controller/actions/runs/202",
+		})
+	})
+
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/workflows/query-image-tag.yml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":   123,
+			"path": ".github/workflows/query-image-tag.yml",
+			"url":  server.URL + "/repos/tidbcloud/docker-image-controller/actions/workflows/123",
+		})
+	})
+
+	mux.HandleFunc("/repos/tidbcloud/docker-image-controller/actions/runs/202/artifacts", func(w http.ResponseWriter, r *http.Request) {
+		artifactListed.Store(true)
+		http.Error(w, "artifacts should not be queried for mismatched workflows", http.StatusInternalServerError)
+	})
+
+	gc := github.NewClient(nil)
+	gc.BaseURL, _ = url.Parse(server.URL + "/")
+
+	_, err := pollImageTagWorkflow(context.Background(), gc, imageTagWorkflowConfig{
+		Owner:    "tidbcloud",
+		Repo:     "docker-image-controller",
+		Workflow: "query-image-tag.yml",
+	}, 202, server.Client())
+	if err == nil {
+		t.Fatal("expected pollImageTagWorkflow() to reject mismatched workflow")
+	}
+	if !strings.Contains(err.Error(), "does not belong") {
+		t.Fatalf("expected mismatched workflow error, got: %v", err)
+	}
+	if artifactListed.Load() {
+		t.Fatal("expected artifact lookup to be skipped for mismatched workflow")
 	}
 }
 
