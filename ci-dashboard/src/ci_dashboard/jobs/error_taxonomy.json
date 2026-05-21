@@ -70,7 +70,7 @@
         "Automatic merge failed; fix conflicts and then commit the result\\.",
         "error: could not apply [0-9a-f]+",
         "malformed module path \\\"<<<<<<<\\\": invalid char '<'",
-        "syntax error: unexpected <<, expected [^\\r\\n]+"
+        "syntax error: unexpected <<"
       ]
     },
     {
@@ -474,7 +474,7 @@
       "l1": "BUILD",
       "l2": "COMPILE",
       "job_name_patterns": [
-        "^pingcap/tidb/"
+        "(^|/)pull_mysql_client_test(_next_gen)?$"
       ],
       "text_patterns": [
         "no required module provides package github\\.com/pingcap/tidb/"

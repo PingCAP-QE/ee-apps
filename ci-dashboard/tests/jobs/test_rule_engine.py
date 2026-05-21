@@ -335,6 +335,31 @@ def test_rule_engine_classifies_go_source_conflict_markers_as_code_conflict() ->
     assert classification.source == "rule:others_code_conflict"
 
 
+def test_rule_engine_classifies_short_go_source_conflict_marker_as_code_conflict() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "# github.com/pingcap/tidb/pkg/executor/importer\n"
+            "pkg/executor/importer/sampler.go:364:1: syntax error: unexpected <<\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2779/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "OTHERS"
+    assert classification.l2_subcategory == "CODE_CONFLICT"
+    assert classification.source == "rule:others_code_conflict"
+
+
 def test_rule_engine_prefers_disk_full_over_dm_integration_and_jenkins_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -1083,6 +1108,32 @@ def test_rule_engine_classifies_missing_internal_tidb_package_as_build_compile()
             "url": (
                 "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
                 "pull_mysql_client_test_next_gen/2762/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_internal_package_missing_compile_failure"
+
+
+def test_rule_engine_classifies_missing_internal_tidb_package_for_unprefixed_job_name() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/server/handler/user_admin_handler.go:36:2: "
+            "no required module provides package github.com/pingcap/tidb/pkg/session/types; to add it:\n"
+            "\tgo get github.com/pingcap/tidb/pkg/session/types\n"
+            "make: *** [Makefile:249: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pull_mysql_client_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test/2954/"
             ),
         },
     )
