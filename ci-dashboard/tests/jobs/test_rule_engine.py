@@ -1274,6 +1274,38 @@ def test_rule_engine_prefers_missing_pull_ref_checkout_over_realcluster_matrix_n
     assert classification.source == "rule:infra_git_checkout_failure"
 
 
+def test_rule_engine_classifies_git_auth_checkout_failure_as_infra_git() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "stage: Checkout (25)\n"
+            "node: Checkout and merge pull request(s) to target if exist (39)\n"
+            "git version 2.43.5\n"
+            "Reinitialized existing Git repository in "
+            "/home/jenkins/agent/workspace/pingcap/tidb/pull_unit_test_next_gen/tidb/.git/\n"
+            ".git\n"
+            "HEAD is now at 721229bcd9 executor: estimate analyze NDV from singleton sketches\n"
+            "ERROR: internal error performing authentication\n"
+            "fatal: Could not read from remote repository.\n\n"
+            "Please make sure you have the correct access rights\n"
+            "and the repository exists.\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_unit_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_unit_test_next_gen/3049/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
+
+
 def test_rule_engine_prefers_go_compile_error_over_jenkins_remoting_warning() -> None:
     engine = RuleEngine.from_file()
 
