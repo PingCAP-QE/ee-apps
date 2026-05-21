@@ -505,6 +505,32 @@ def test_rule_engine_prefers_oomkilled_over_cdc_storage_matrix_failure() -> None
     assert classification.source == "rule:infra_k8s_oomkilled"
 
 
+def test_rule_engine_classifies_cdc_kafka_integration_finish_mark_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "* Failed to connect to 127.0.0.1 port 8300: Connection refused\n"
+            "table test.finish_mark not exists for 199-th check, retry later\n"
+            "table test.finish_mark not exists at last check\n"
+            "ERROR: script returned exit code 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tiflow/pull_cdc_integration_kafka_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tiflow/job/"
+                "pull_cdc_integration_kafka_test/319/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_integration_kafka_test_failure"
+
+
 def test_rule_engine_classifies_dm_next_gen_integration_failure() -> None:
     engine = RuleEngine.from_file()
 
@@ -567,6 +593,34 @@ def test_rule_engine_prefers_merged_integration_test_failure_over_jenkins_noise(
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
     assert classification.source == "rule:merged_integration_test_failure"
+
+
+def test_rule_engine_classifies_merged_integration_clean_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "  - Killing processes\n"
+            "tidb-server: no process found\n"
+            "tikv-server: no process found\n"
+            "pd-server: no process found\n"
+            "make: *** [Makefile:17: clean] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_copr_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_copr_test/177/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:merged_integration_cleanup_pipeline_config_failure"
 
 
 def test_rule_engine_prefers_br_integration_matrix_failure_over_network_noise() -> None:
@@ -1092,6 +1146,55 @@ def test_rule_engine_matches_go_mod_tidy_dependency_failure() -> None:
     assert classification.source == "rule:build_dependency_failure"
 
 
+def test_rule_engine_classifies_mysql_client_startup_failure_as_unit_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:4000' (111)\n"
+            "can not start server on 4000\n"
+            "make: *** [Makefile:143: mysql_client_test] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2192/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:unit_mysql_test_failure"
+
+
+def test_rule_engine_classifies_missing_import_path_as_build_compile() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/metrics/metrics_internal_test.go:22:1: missing import path\n"
+            "make: *** [Makefile:241: server] Error 1\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2626/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_go_compile_failure"
+
+
 def test_rule_engine_classifies_missing_internal_tidb_package_as_build_compile() -> None:
     engine = RuleEngine.from_file()
 
@@ -1256,6 +1359,31 @@ def test_rule_engine_classifies_support_repo_commit_checkout_failure_as_pipeline
     assert classification.source == "rule:build_support_repo_commit_checkout_pipeline_config_failure"
 
 
+def test_rule_engine_classifies_support_repo_branch_checkout_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Fetching upstream changes from git@github.com:PingCAP-QE/tidb-test.git\n"
+            "ERROR: Couldn't find any revision to build. Verify the repository and branch "
+            "configuration for this job.\n"
+            "ERROR: Maximum checkout retry attempts reached, aborting\n"
+            "> git rev-parse origin/feature-fts^{commit} # timeout=10\n"
+            "> git rev-parse feature-fts^{commit} # timeout=10\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_mysql_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_mysql_test/3497/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_support_repo_branch_checkout_pipeline_config_failure"
+
+
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
     engine = RuleEngine.from_file()
 
@@ -1287,6 +1415,34 @@ def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warnin
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "COMPILE"
     assert classification.source == "rule:build_go_compile_failure"
+
+
+def test_rule_engine_classifies_rust_compile_failure_as_build_compile() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "For more information about this error, try `rustc --explain E0505`.\n"
+            "error: could not compile `tikv` (lib) due to 2 previous errors\n"
+            "make: *** [Makefile:215: build] Error 101\n"
+            "ERROR: script returned exit code 2\n"
+        ),
+        build={
+            "job_name": (
+                "tidbcloud/cloud-storage-engine/dedicated/"
+                "pull_integration_realcluster_test_next_gen"
+            ),
+            "url": (
+                "https://prow.tidb.net/jenkins/job/tidbcloud/job/cloud-storage-engine/job/"
+                "dedicated/job/pull_integration_realcluster_test_next_gen/1340/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "COMPILE"
+    assert classification.source == "rule:build_compile_failure"
 
 
 def test_rule_engine_prefers_codegen_failure_over_k8s_noise() -> None:

@@ -119,14 +119,17 @@
       "job_name_patterns": [
         "(^|/)ghpr_mysql_test$",
         "(^|/)pull_mysql_test(_next_gen)?$",
+        "(^|/)pull_mysql_client_test(_next_gen)?$",
         "(^|_)ghpr_mysql_test($|_)",
-        "(^|_)pull_mysql_test(_next_gen)?($|_)"
+        "(^|_)pull_mysql_test(_next_gen)?($|_)",
+        "(^|_)pull_mysql_client_test(_next_gen)?($|_)"
       ],
       "text_patterns": [
         "tests failed",
         "run test \\[[^\\]]+\\] err:",
         "but got\\(",
-        "diff:"
+        "diff:",
+        "can not start server on [0-9]+"
       ]
     },
     {
@@ -265,6 +268,31 @@
       ]
     },
     {
+      "name": "cdc_integration_kafka_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_integration_kafka_test$",
+        "(^|_)pull_cdc_integration_kafka_test($|_)"
+      ],
+      "text_patterns": [
+        "table test\\.finish_mark not exists at last check",
+        "Failed to connect to 127\\.0\\.0\\.1 port 8300: Connection refused"
+      ]
+    },
+    {
+      "name": "merged_integration_cleanup_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "(tidb-server|tikv-server|pd-server): no process found[\\s\\S]*make: \\*\\*\\* \\[Makefile:17: clean\\] Error [0-9]+"
+      ]
+    },
+    {
       "name": "merged_integration_test_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -309,6 +337,7 @@
       "l1": "BUILD",
       "l2": "COMPILE",
       "text_patterns": [
+        "\\.go:[0-9]+:[0-9]+: missing import path",
         "\\.go:[0-9]+:[0-9]+: undefined:",
         "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
         "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
@@ -462,6 +491,7 @@
       "l1": "BUILD",
       "l2": "COMPILE",
       "text_patterns": [
+        "error: could not compile `[^`]+` \\(lib\\) due to [0-9]+ previous errors",
         "compilation failed",
         "undefined reference",
         "syntax error",
@@ -533,6 +563,14 @@
       "l2": "PIPELINE_CONFIG",
       "text_patterns": [
         "computeBranchFromPR component: tidb-test,[\\s\\S]*tidb-test=[0-9a-f]{40}[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
+      ]
+    },
+    {
+      "name": "build_support_repo_branch_checkout_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "tidb-test\\.git[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
       ]
     },
     {
