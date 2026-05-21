@@ -281,18 +281,6 @@
       ]
     },
     {
-      "name": "merged_integration_cleanup_pipeline_config_failure",
-      "l1": "BUILD",
-      "l2": "PIPELINE_CONFIG",
-      "job_name_patterns": [
-        "(^|/)merged_integration_.*_test$",
-        "(^|_)merged_integration_.*_test($|_)"
-      ],
-      "text_patterns": [
-        "(tidb-server|tikv-server|pd-server): no process found[\\s\\S]*make: \\*\\*\\* \\[Makefile:17: clean\\] Error [0-9]+"
-      ]
-    },
-    {
       "name": "merged_integration_test_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -305,6 +293,18 @@
         "Test summary\\([^\\r\\n]+\\): Test case FAIL",
         "push_down_test_bin exit code is [1-9][0-9]*",
         "make: \\*\\*\\* \\[Makefile:[0-9]+: push-down-test\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "merged_integration_cleanup_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "(tidb-server|tikv-server|pd-server): no process found[\\s\\S]*make: \\*\\*\\* \\[Makefile:[0-9]+: clean\\] Error [0-9]+"
       ]
     },
     {

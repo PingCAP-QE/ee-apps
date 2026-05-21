@@ -604,7 +604,7 @@ def test_rule_engine_classifies_merged_integration_clean_failure_as_pipeline_con
             "tidb-server: no process found\n"
             "tikv-server: no process found\n"
             "pd-server: no process found\n"
-            "make: *** [Makefile:17: clean] Error 1\n"
+            "make: *** [Makefile:42: clean] Error 1\n"
             "ERROR: script returned exit code 2\n"
             "Finished: FAILURE\n"
         ),
@@ -621,6 +621,38 @@ def test_rule_engine_classifies_merged_integration_clean_failure_as_pipeline_con
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "PIPELINE_CONFIG"
     assert classification.source == "rule:merged_integration_cleanup_pipeline_config_failure"
+
+
+def test_rule_engine_prefers_merged_integration_test_failure_over_cleanup_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Test fail: Outputs are not matching.\n"
+            "Test summary(sql/randgen/6_date_2.sql): Test case FAIL\n"
+            "push_down_test_bin exit code is 2\n"
+            "  - Killing processes\n"
+            "tidb-server: no process found\n"
+            "tikv-server: no process found\n"
+            "pd-server: no process found\n"
+            "make: *** [Makefile:42: clean] Error 1\n"
+            "make: *** [Makefile:5: push-down-test] Error 2\n"
+            "ERROR: script returned exit code 2\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_copr_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_copr_test/178/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:merged_integration_test_failure"
 
 
 def test_rule_engine_prefers_br_integration_matrix_failure_over_network_noise() -> None:
