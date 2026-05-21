@@ -1211,6 +1211,69 @@ def test_rule_engine_classifies_jenkins_git_http_500_as_infra_git() -> None:
     assert classification.source == "rule:infra_git_checkout_failure"
 
 
+def test_rule_engine_classifies_missing_pull_ref_checkout_as_infra_git() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Still waiting to schedule task\n"
+            "‘pingcap-tidb-pull-mysql-client-test-next-gen-2744-gg1g7-x-51p62’ is offline\n"
+            "git version 2.43.7\n"
+            "Reinitialized existing Git repository in "
+            "/home/jenkins/agent/workspace/pingcap/tidb/pull_mysql_client_test_next_gen/"
+            "tidb/.git/\n"
+            "HEAD is now at 64e215c518 executor: add ordered window builder (#68480)\n"
+            "fatal: couldn't find remote ref refs/pull/68498/head\n"
+            "ERROR: script returned exit code 128\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2744/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
+
+
+def test_rule_engine_prefers_missing_pull_ref_checkout_over_realcluster_matrix_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Still waiting to schedule task\n"
+            "‘gcap-tidb-pull-integration-realcluster-test-next-gen-3111-mmpn0’ is offline\n"
+            "HEAD is now at 64e215c518 executor: add ordered window builder (#68480)\n"
+            "POST git-upload-pack (656 bytes)\n"
+            "fatal: couldn't find remote ref refs/pull/68498/head\n"
+            "ERROR: script returned exit code 128\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/integrationtest/run-tests-next-gen.sh -s bin/tidb-server -d n'\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_sessiontest'\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3111/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
+
+
 def test_rule_engine_prefers_go_compile_error_over_jenkins_remoting_warning() -> None:
     engine = RuleEngine.from_file()
 

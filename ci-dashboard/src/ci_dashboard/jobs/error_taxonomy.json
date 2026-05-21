@@ -476,7 +476,8 @@
         "ERROR: Error cloning remote repo 'origin'",
         "hudson\\.plugins\\.git\\.GitException: Command \"git fetch [^\"]+\" returned status code 128",
         "fatal: unable to access 'https://github\\.com/[^']+': The requested URL returned error: 5[0-9]{2}",
-        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}"
+        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}",
+        "fatal: couldn't find remote ref refs/pull/[0-9]+/head"
       ]
     },
     {
