@@ -619,6 +619,14 @@
       ]
     },
     {
+      "name": "build_support_repo_branch_mismatch_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*base branch of tidb-test pr must be the same as the base branch of tidb pr\\.[\\s\\S]*fatal: couldn't find remote ref refs/heads/[^\\r\\n]+"
+      ]
+    },
+    {
       "name": "build_pipeline_config_failure",
       "l1": "BUILD",
       "l2": "PIPELINE_CONFIG",

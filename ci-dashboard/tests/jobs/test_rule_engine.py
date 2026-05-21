@@ -1450,6 +1450,34 @@ def test_rule_engine_classifies_support_repo_branch_checkout_failure_as_pipeline
     assert classification.source == "rule:build_support_repo_branch_checkout_pipeline_config_failure"
 
 
+def test_rule_engine_classifies_support_repo_branch_mismatch_checkout_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "computeBranchFromPR component: tidb-test, prTargetBranch: feature/fts, "
+            "prTitle: planner: avoid invalid TiCI FTS request for null match pattern | "
+            "tidb-test=pr/2740 tiflash=feature-fts tikv=feature-fts, trunkBranch: master\n"
+            "Checkout the PR: pr/2740 of tidb-test\n"
+            "Note: When specifying tidb-test=pr/xxx in the PR title, the base branch of "
+            "tidb-test pr must be the same as the base branch of tidb pr.If not, please "
+            "specify tidb-test=<branch> or tidb-test=<commit-hash>.\n"
+            "fatal: couldn't find remote ref refs/heads/feature/fts\n"
+            "ERROR: script returned exit code 128\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_mysql_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_mysql_test/3490/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_support_repo_branch_mismatch_pipeline_config_failure"
+
+
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
     engine = RuleEngine.from_file()
 
