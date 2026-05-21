@@ -34,6 +34,7 @@ from ci_dashboard.jobs.sync_pods import (
     _coerce_str,
     _coerce_str_mapping,
     _decode_json_object,
+    _extract_pod_abnormal_summary,
     _get_json,
     _get_kubernetes_api_ca_file,
     _get_kubernetes_api_token,
@@ -64,7 +65,7 @@ DEFAULT_DB_RETRY_ATTEMPTS = 3
 DEFAULT_DB_RETRY_BASE_DELAY_MS = 500
 DEFAULT_DB_RETRY_MAX_DELAY_MS = 5000
 RETRYABLE_MYSQL_ERROR_CODES = frozenset({1205, 1213})
-POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
+POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED", "DELETED"})
 EVENT_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
 
 logger = logging.getLogger(__name__)
@@ -463,7 +464,10 @@ def _run_pod_worker(
                 pod_object = watch_event.get("object")
                 if not isinstance(pod_object, dict):
                     continue
-                snapshot = _normalize_pod_object(pod_object, context=context)
+                snapshot = _normalize_pod_object(
+                    pod_object,
+                    context=context,
+                )
                 if snapshot is None:
                     continue
                 lifecycle_count = _persist_pod_snapshots(
@@ -849,7 +853,9 @@ def _load_existing_pod_metadata_snapshots(
               lifecycle.pod_labels_json,
               lifecycle.pod_annotations_json,
               lifecycle.metadata_observed_at,
-              lifecycle.pod_created_at
+              lifecycle.pod_created_at,
+              lifecycle.abnormal_reason,
+              lifecycle.abnormal_message
             FROM ci_l1_pod_lifecycle AS lifecycle
             JOIN requested_pods AS requested
               ON lifecycle.source_project = requested.source_project
@@ -866,7 +872,15 @@ def _load_existing_pod_metadata_snapshots(
         labels = _json_loads_str_mapping(row.get("pod_labels_json"))
         annotations = _json_loads_str_mapping(row.get("pod_annotations_json"))
         creation_timestamp = _parse_datetime(row.get("pod_created_at"))
-        if not labels and not annotations and creation_timestamp is None:
+        abnormal_reason = _coerce_str(row.get("abnormal_reason"))
+        abnormal_message = _coerce_str(row.get("abnormal_message"))
+        if (
+            not labels
+            and not annotations
+            and creation_timestamp is None
+            and abnormal_reason is None
+            and abnormal_message is None
+        ):
             continue
         identity = _pod_identity_from_values(
             source_project=_coerce_str(row.get("source_project")) or "",
@@ -881,6 +895,8 @@ def _load_existing_pod_metadata_snapshots(
             observed_at=_parse_datetime(row.get("metadata_observed_at"))
             or datetime.now(UTC).replace(tzinfo=None),
             creation_timestamp=creation_timestamp,
+            abnormal_reason=abnormal_reason,
+            abnormal_message=abnormal_message,
         )
     return snapshots
 
@@ -913,6 +929,7 @@ def _normalize_pod_object(
             annotations=_coerce_str_mapping(metadata.get("annotations")),
             observed_at=observed_at,
             creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
+            **_extract_pod_abnormal_summary(pod_object, observed_at=observed_at),
         ),
     )
 

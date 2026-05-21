@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS ci_l1_pod_lifecycle (
   pod_annotations_json TEXT NULL,
   metadata_observed_at DATETIME NULL,
   pod_created_at DATETIME NULL,
+  abnormal_reason VARCHAR(64) NULL,
+  abnormal_message TEXT NULL,
   pod_author VARCHAR(255) NULL,
   pod_org VARCHAR(255) NULL,
   pod_repo VARCHAR(255) NULL,

@@ -45,6 +45,7 @@ from ci_dashboard.jobs.sync_pods import (
     _read_int_env,
     _request_json,
     _resolve_jenkins_build_metadata,
+    _select_abnormal_summary,
     _upsert_pod_events,
     run_reconcile_pod_linkage_for_time_window,
     run_sync_pods,
@@ -77,6 +78,7 @@ def _pod_metadata(
     annotations: dict[str, str] | None = None,
     pod_uid: str | None = None,
     creation_timestamp: datetime | None = None,
+    **status_fields: object,
 ) -> PodMetadataSnapshot:
     return PodMetadataSnapshot(
         pod_uid=pod_uid,
@@ -84,6 +86,7 @@ def _pod_metadata(
         annotations=annotations or {},
         observed_at=datetime(2026, 4, 21, 9, 45, 0),
         creation_timestamp=creation_timestamp,
+        **status_fields,
     )
 
 
@@ -230,7 +233,17 @@ def test_sync_pod_helper_functions_cover_common_edge_cases(sqlite_engine, monkey
     assert _null_safe_equals_sql("a", "b", "mysql") == "a <=> b"
     assert _pod_events_table_expr("sqlite") == "ci_l1_pod_events AS events"
     assert _pod_events_table_expr("mysql") == "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
-    assert {"Failed", "BackOff", "ErrImagePull", "ImagePullBackOff"}.issubset(POD_EVENT_REASONS)
+    assert {
+        "Failed",
+        "BackOff",
+        "ErrImagePull",
+        "ImagePullBackOff",
+        "Killing",
+        "Evicted",
+        "NodeLost",
+        "Unhealthy",
+        "Preempting",
+    }.issubset(POD_EVENT_REASONS)
     relation_sql, params = _build_requested_pods_relation([("p1", "ns", "uid", "pod")])
     assert "UNION ALL" not in relation_sql
     assert params == {
@@ -319,7 +332,31 @@ def test_sync_pods_http_and_kubernetes_helpers(monkeypatch: pytest.MonkeyPatch) 
     assert _get_kubernetes_api_ca_file() is None
 
 
+def test_select_abnormal_summary_prefers_diagnostic_message_for_same_reason() -> None:
+    reason, message = _select_abnormal_summary(
+        [
+            {
+                "reason": "Evicted",
+                "message": None,
+                "source_rank": 0,
+                "timestamp": "2026-04-20T12:54:35Z",
+            },
+            {
+                "reason": "Evicted",
+                "message": "The node had condition: [MemoryPressure].",
+                "source_rank": 1,
+                "timestamp": "2026-04-20T12:54:34Z",
+            },
+        ]
+    )
+
+    assert reason == "Evicted"
+    assert message == "The node had condition: [MemoryPressure]."
+
+
 def test_sync_pods_build_matching_helpers_cover_jenkins_paths(sqlite_engine, monkeypatch) -> None:
+    monkeypatch.setenv("CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS", "90")
+
     assert _normalize_jenkins_runtime_url("https://do.pingcap.net/jenkins/job/a/1/") is None
     assert _normalize_jenkins_runtime_url("https://prow.tidb.net/jenkins/job/a/1/") == "https://prow.tidb.net/jenkins/job/a/1/"
     assert _infer_pod_build_system("jenkins-tidb") == "JENKINS"
@@ -478,6 +515,242 @@ def test_sync_pods_metadata_fetch_and_logging_entry_normalization(monkeypatch: p
     assert snapshots["pod-a"].labels == {"author": "alice"}
     assert snapshots["pod-a"].annotations == {"ci_job": "pingcap/tidb/test-a"}
     assert snapshots["pod-a"].creation_timestamp == datetime(2026, 4, 20, 12, 49, 30)
+
+
+def test_sync_pods_metadata_fetch_extracts_status_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_at = datetime(2026, 4, 20, 13, 0, 0)
+    pages = iter(
+        [
+            {
+                "items": [
+                    {
+                        "metadata": {
+                            "name": "pod-a",
+                            "uid": "uid-a",
+                            "creationTimestamp": "2026-04-20T12:49:30Z",
+                            "deletionTimestamp": "2026-04-20T13:00:05Z",
+                            "labels": {"author": "alice"},
+                            "annotations": {"ci_job": "pingcap/tidb/test-a"},
+                        },
+                        "status": {
+                            "phase": "Failed",
+                            "reason": "Evicted",
+                            "message": "The node had condition: [MemoryPressure].",
+                            "containerStatuses": [
+                                {
+                                    "restartCount": 2,
+                                    "lastState": {
+                                        "terminated": {
+                                            "reason": "OOMKilled",
+                                            "message": "Container was OOM killed",
+                                            "finishedAt": "2026-04-20T12:59:30Z",
+                                        }
+                                    },
+                                },
+                                {"restartCount": 1},
+                            ],
+                        },
+                    }
+                ],
+                "metadata": {},
+            }
+        ]
+    )
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._get_json", lambda *args, **kwargs: next(pages))
+
+    snapshots = _list_namespace_pod_metadata(
+        namespace_name="jenkins-tidb",
+        requested_pod_names={"pod-a"},
+        base_url="https://k8s.internal",
+        token="token",
+        ca_file=None,
+        observed_at=observed_at,
+    )
+
+    snapshot = snapshots["pod-a"]
+    assert snapshot.abnormal_reason == "OOMKilled"
+    assert snapshot.abnormal_message == "Container was OOM killed"
+
+
+def test_sync_pods_end_to_end_records_abnormal_summary(sqlite_engine, monkeypatch) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_builds (
+                  source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
+                  optional, report, org, repo, repo_full_name, url, normalized_build_url,
+                  pod_name, start_time, cloud_phase, build_system
+                ) VALUES (
+                  11, 'prow-job-status-1', 'prow-test-pods', 'ghpr_unit_test', 'presubmit', 'failure',
+                  0, 1, 'pingcap', 'tidb', 'pingcap/tidb',
+                  'https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/pingcap_tidb/66207/ghpr_unit_test/11/',
+                  'https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/pingcap_tidb/66207/ghpr_unit_test/11/',
+                  'pod-status', '2026-04-20T12:50:00Z', 'GCP', 'PROW_NATIVE'
+                )
+                """
+            )
+        )
+
+    entries = [
+        {
+            "insertId": "status-ins-1",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:53:49Z",
+            "receiveTimestamp": "2026-04-20T12:53:54Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-status",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Scheduled",
+                "type": "Normal",
+                "message": "Successfully assigned",
+                "reportingComponent": "default-scheduler",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-status"},
+                "firstTimestamp": "2026-04-20T12:53:49Z",
+                "lastTimestamp": "2026-04-20T12:53:49Z",
+            },
+        },
+        {
+            "insertId": "status-ins-2",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:54:10Z",
+            "receiveTimestamp": "2026-04-20T12:54:11Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-status",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Killing",
+                "type": "Warning",
+                "message": "Stopping container test",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-status"},
+                "firstTimestamp": "2026-04-20T12:54:10Z",
+                "lastTimestamp": "2026-04-20T12:54:10Z",
+            },
+        },
+        {
+            "insertId": "status-ins-3",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:54:20Z",
+            "receiveTimestamp": "2026-04-20T12:54:21Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-status",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Unhealthy",
+                "type": "Warning",
+                "message": "Readiness probe failed",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-status"},
+                "firstTimestamp": "2026-04-20T12:54:20Z",
+                "lastTimestamp": "2026-04-20T12:54:20Z",
+            },
+        },
+        {
+            "insertId": "status-ins-4",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:54:30Z",
+            "receiveTimestamp": "2026-04-20T12:54:31Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-status",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Preempting",
+                "type": "Warning",
+                "message": "Preempting pod",
+                "reportingComponent": "default-scheduler",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-status"},
+                "firstTimestamp": "2026-04-20T12:54:30Z",
+                "lastTimestamp": "2026-04-20T12:54:30Z",
+            },
+        },
+        {
+            "insertId": "status-ins-5",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:54:35Z",
+            "receiveTimestamp": "2026-04-20T12:54:36Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-status",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Evicted",
+                "type": "Warning",
+                "message": "The node had condition: [MemoryPressure].",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-status"},
+                "firstTimestamp": "2026-04-20T12:54:35Z",
+                "lastTimestamp": "2026-04-20T12:54:35Z",
+            },
+        },
+    ]
+
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._fetch_pod_event_entries", lambda **_: entries)
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_pod_metadata_snapshots",
+        lambda _pods: {
+            _pod_identity("prow-test-pods", "uid-status", "pod-status"): _pod_metadata(
+                pod_uid="uid-status",
+                creation_timestamp=datetime(2026, 4, 20, 12, 49, 30),
+                abnormal_reason="OOMKilled",
+                abnormal_message="Container was OOM killed",
+            )
+        },
+    )
+
+    summary = run_sync_pods(sqlite_engine, _settings(batch_size=10))
+    assert summary.lifecycle_rows_upserted == 1
+    assert summary.pods_touched == 1
+
+    with sqlite_engine.begin() as connection:
+        lifecycle = connection.execute(
+            text(
+                """
+                SELECT
+                  pod_created_at,
+                  abnormal_reason,
+                  abnormal_message
+                FROM ci_l1_pod_lifecycle
+                WHERE source_project = 'pingcap-testing-account'
+                  AND namespace_name = 'prow-test-pods'
+                  AND pod_uid = 'uid-status'
+                """
+            )
+        ).mappings().one()
+
+    assert str(lifecycle["pod_created_at"]) == "2026-04-20 12:49:30"
+    assert lifecycle["abnormal_reason"] == "OOMKilled"
+    assert lifecycle["abnormal_message"] == "Container was OOM killed"
 
 
 def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None:
