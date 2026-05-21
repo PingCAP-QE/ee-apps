@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections import defaultdict
 import re
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import inspect, text
@@ -373,46 +374,50 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
     with engine.begin() as connection:
         cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
         params.update({"limit": limit, "min_samples": 3})
+        # Aggregate on build-level rows first so each build contributes exactly one
+        # "slowest pod" sample before we look up a representative pod/image.
         rows = list(
             connection.execute(
                 text(
                     f"""
                     {cte},
-                    ranked_pulls AS (
-                      SELECT
-                        COALESCE(job_name, '(unknown job)') AS name,
-                        source_project,
-                        namespace_name,
-                        pod_uid,
-                        pod_name,
-                        first_pulled_at,
-                        cloud_phase,
-                        build_id,
-                        pull_image_s,
-                        ROW_NUMBER() OVER (
-                          PARTITION BY COALESCE(job_name, '(unknown job)')
-                          ORDER BY
-                            pull_image_s DESC,
-                            CASE WHEN first_pulled_at IS NULL THEN 1 ELSE 0 END ASC,
-                            first_pulled_at DESC,
-                            build_id DESC
-                        ) AS pull_rank
-                      FROM pod_join_rows
-                      WHERE pull_image_s IS NOT NULL
-                        AND first_pulled_at IS NOT NULL
-                    ),
                     selected_jobs AS (
                       SELECT
-                        name,
+                        COALESCE(job_name, '(unknown job)') AS name,
                         AVG(pull_image_s) AS value,
                         COUNT(*) AS linked_build_count,
                         MIN(cloud_phase) AS link_cloud_phase,
                         COUNT(*) AS valid_sample_count
-                      FROM ranked_pulls
+                      FROM pod_build_rows
+                      WHERE pull_image_s IS NOT NULL
                       GROUP BY name
                       HAVING valid_sample_count >= :min_samples
                       ORDER BY value DESC
                       LIMIT :limit
+                    ),
+                    ranked_pulls AS (
+                      SELECT
+                        COALESCE(pod_join_rows.job_name, '(unknown job)') AS name,
+                        pod_join_rows.source_project,
+                        pod_join_rows.namespace_name,
+                        pod_join_rows.pod_uid,
+                        pod_join_rows.pod_name,
+                        pod_join_rows.first_pulled_at,
+                        pod_join_rows.build_id,
+                        pod_join_rows.pull_image_s,
+                        ROW_NUMBER() OVER (
+                          PARTITION BY COALESCE(pod_join_rows.job_name, '(unknown job)')
+                          ORDER BY
+                            pod_join_rows.pull_image_s DESC,
+                            CASE WHEN pod_join_rows.first_pulled_at IS NULL THEN 1 ELSE 0 END ASC,
+                            pod_join_rows.first_pulled_at DESC,
+                            pod_join_rows.build_id DESC
+                        ) AS pull_rank
+                      FROM pod_join_rows
+                      JOIN selected_jobs
+                        ON selected_jobs.name = COALESCE(pod_join_rows.job_name, '(unknown job)')
+                      WHERE pod_join_rows.pull_image_s IS NOT NULL
+                        AND pod_join_rows.first_pulled_at IS NOT NULL
                     )
                     SELECT
                       selected_jobs.name,
@@ -452,6 +457,47 @@ def get_pull_image_slowest_jobs(engine: Engine, filters: CommonFilters, *, limit
     return {"items": items, "meta": filters.meta()}
 
 
+def get_runtime_pod_sections(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    with engine.begin() as connection:
+        pod_build_rows, total_build_count, capabilities = _load_pod_build_rows(connection, filters)
+        sections = {
+            "runtime_summary": _build_runtime_summary_from_pod_rows(
+                pod_build_rows,
+                filters,
+                total_build_count=total_build_count,
+                capabilities=capabilities,
+            ),
+            "scheduling_trend": _build_scheduling_trend_from_pod_rows(
+                pod_build_rows,
+                filters,
+                capabilities=capabilities,
+            ),
+            "scheduling_failure_jobs": _build_scheduling_failure_jobs_from_pod_rows(
+                pod_build_rows,
+                filters,
+            ),
+            "scheduling_slowest_jobs": _build_scheduling_slowest_jobs_from_pod_rows(
+                pod_build_rows,
+                filters,
+                capabilities=capabilities,
+            ),
+            "pull_image_trend": _build_pull_image_trend_from_pod_rows(
+                pod_build_rows,
+                filters,
+            ),
+            "pull_image_failure_jobs": _build_pull_image_failure_jobs_from_pod_rows(
+                pod_build_rows,
+                filters,
+            ),
+            "pull_image_slowest_jobs": _build_pull_image_slowest_jobs_from_pod_rows(
+                connection,
+                pod_build_rows,
+                filters,
+            ),
+        }
+    return sections
+
+
 def get_pull_image_failure_reasons(engine: Engine, filters: CommonFilters, *, limit: int = 10) -> dict[str, Any]:
     with engine.begin() as connection:
         cte, params, _capabilities = _build_pod_build_rows_cte(connection, filters)
@@ -484,6 +530,537 @@ def get_pull_image_failure_reasons(engine: Engine, filters: CommonFilters, *, li
         ).mappings()
         items = [_ranking_item(row, value_key="value") for row in rows]
     return {"items": items, "meta": filters.meta()}
+
+
+def _load_pod_build_rows(
+    connection: Connection,
+    filters: CommonFilters,
+) -> tuple[list[dict[str, Any]], int, dict[str, bool]]:
+    cte, params, capabilities = _build_pod_build_rows_cte(connection, filters)
+    rows = [
+        dict(row)
+        for row in connection.execute(
+            text(
+                f"""
+                {cte}
+                SELECT
+                  (SELECT COUNT(*) FROM build_scope) AS total_build_count,
+                  pod_build_rows.*
+                FROM pod_build_rows
+                """
+            ),
+            params,
+        ).mappings()
+    ]
+    if rows:
+        total_build_count = int(rows[0].pop("total_build_count") or 0)
+        for row in rows[1:]:
+            row.pop("total_build_count", None)
+        return rows, total_build_count, capabilities
+
+    total_build_count = int(
+        connection.execute(
+            text(
+                f"""
+                {cte}
+                SELECT COUNT(*) AS total_build_count
+                FROM build_scope
+                """
+            ),
+            params,
+        ).scalar_one()
+        or 0
+    )
+    return rows, total_build_count, capabilities
+
+
+def _build_runtime_summary_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    total_build_count: int,
+    capabilities: dict[str, bool],
+) -> dict[str, Any]:
+    linked_build_count = len(rows)
+    valid_scheduling_samples = [float(row["scheduling_wait_s"]) for row in rows if row.get("scheduling_wait_s") is not None]
+    valid_pull_samples = [float(row["pull_image_s"]) for row in rows if row.get("pull_image_s") is not None]
+    pull_success_scope = [
+        row for row in rows if int(row.get("pull_attempted") or 0) == 1 or int(row.get("image_pull_failure_hit") or 0) == 1
+    ]
+    pull_success_count = sum(
+        1
+        for row in pull_success_scope
+        if int(row.get("image_pull_failure_hit") or 0) == 0
+    )
+    return {
+        "avg_scheduling_wait_s": _round_or_none(
+            sum(valid_scheduling_samples) / len(valid_scheduling_samples) if valid_scheduling_samples else None
+        ),
+        "final_scheduling_failure_count": sum(int(row.get("final_scheduling_failure_hit") or 0) for row in rows),
+        "avg_pull_image_s": _round_or_zero(
+            sum(valid_pull_samples) / len(valid_pull_samples) if valid_pull_samples else None
+        ),
+        "pull_image_success_rate_pct": _round_or_zero(
+            (pull_success_count * 100.0 / len(pull_success_scope)) if pull_success_scope else None,
+            digits=1,
+        ),
+        "linked_build_count": linked_build_count,
+        "valid_scheduling_sample_count": len(valid_scheduling_samples),
+        "valid_pull_image_sample_count": len(valid_pull_samples),
+        "scheduling_wait_supported": capabilities["scheduling_wait_supported"],
+        "scheduling_wait_source_column": capabilities["scheduling_wait_source_column"],
+        "total_build_count": total_build_count,
+        "builds_with_pod_count": linked_build_count,
+        "linked_pod_row_count": sum(int(row.get("linked_pod_count") or 0) for row in rows),
+        "pod_linkage_coverage_pct": round((linked_build_count * 100.0 / total_build_count), 1)
+        if total_build_count
+        else 0,
+        "meta": filters.meta(),
+    }
+
+
+def _build_scheduling_trend_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    capabilities: dict[str, bool],
+) -> dict[str, Any]:
+    buckets: dict[datetime | Any, dict[str, Any]] = {}
+    for row in rows:
+        bucket_start = _bucket_start_for_value(row.get("scheduling_bucket_time"), filters.granularity)
+        if bucket_start is None:
+            continue
+        bucket = buckets.setdefault(
+            bucket_start,
+            {
+                "bucket_start": bucket_start,
+                "scheduling_wait_sum_s": 0.0,
+                "final_failure_count": 0,
+                "linked_build_count": 0,
+                "valid_sample_count": 0,
+            },
+        )
+        bucket["linked_build_count"] += 1
+        bucket["final_failure_count"] += int(row.get("final_scheduling_failure_hit") or 0)
+        scheduling_wait_s = row.get("scheduling_wait_s")
+        if scheduling_wait_s is not None:
+            bucket["scheduling_wait_sum_s"] += float(scheduling_wait_s)
+            bucket["valid_sample_count"] += 1
+    data_rows = []
+    for bucket_start in sorted(buckets):
+        bucket = buckets[bucket_start]
+        valid_sample_count = int(bucket["valid_sample_count"] or 0)
+        data_rows.append(
+            {
+                "bucket_start": bucket_start,
+                "scheduling_wait_avg_s": (
+                    bucket["scheduling_wait_sum_s"] / valid_sample_count if valid_sample_count else None
+                ),
+                "final_failure_count": int(bucket["final_failure_count"] or 0),
+                "linked_build_count": int(bucket["linked_build_count"] or 0),
+                "valid_sample_count": valid_sample_count,
+            }
+        )
+
+    return {
+        "series": (
+            [
+                {
+                    "key": "scheduling_wait_avg_s",
+                    "label": "Scheduling wait",
+                    "type": "bar",
+                    "points": _points(data_rows, "scheduling_wait_avg_s"),
+                }
+            ]
+            if capabilities["scheduling_wait_supported"]
+            else []
+        )
+        + [
+            {
+                "key": "final_scheduling_failure_count",
+                "label": "Final scheduling failures",
+                "type": "line",
+                "axis": "right",
+                "points": _points(data_rows, "final_failure_count"),
+            },
+        ],
+        "meta": {
+            **filters.meta(),
+            "scheduling_wait_supported": capabilities["scheduling_wait_supported"],
+            "scheduling_wait_source_column": capabilities["scheduling_wait_source_column"],
+            "sample_counts": [
+                {
+                    "bucket_start": str(row["bucket_start"]),
+                    "linked_build_count": int(row["linked_build_count"] or 0),
+                    "valid_sample_count": int(row["valid_sample_count"] or 0),
+                }
+                for row in data_rows
+            ],
+        },
+    }
+
+
+def _build_scheduling_failure_jobs_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    limit: int = 10,
+) -> dict[str, Any]:
+    min_final_failures = 3
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[_runtime_job_name(row)].append(row)
+
+    ranked_rows: list[dict[str, Any]] = []
+    total_failure_job_count = 0
+    for name, group_rows in grouped.items():
+        final_failure_count = sum(int(row.get("final_scheduling_failure_hit") or 0) for row in group_rows)
+        if final_failure_count <= 0:
+            continue
+        total_failure_job_count += 1
+        if final_failure_count <= min_final_failures:
+            continue
+        ranked_rows.append(
+            {
+                "name": name,
+                "value": final_failure_count,
+                "linked_build_count": len(group_rows),
+                "link_cloud_phase": _min_text_value(row.get("cloud_phase") for row in group_rows),
+                "final_failure_count": final_failure_count,
+                "recent_failure_builds": _recent_failure_build_items(group_rows),
+            }
+        )
+
+    ranked_rows.sort(
+        key=lambda row: (
+            -int(row["value"]),
+            -int(row["linked_build_count"]),
+            str(row["name"]),
+        )
+    )
+    shown_rows = ranked_rows[:limit]
+    items = [
+        {
+            **_job_ranking_item(
+                row,
+                value_key="value",
+                extra_keys=("linked_build_count", "final_failure_count"),
+            ),
+            "recent_failure_builds": row["recent_failure_builds"],
+        }
+        for row in shown_rows
+    ]
+    shown_failure_job_count = len(ranked_rows)
+    return {
+        "items": items,
+        "meta": {
+            **filters.meta(),
+            "min_final_failures": min_final_failures,
+            "total_failure_job_count": total_failure_job_count,
+            "shown_failure_job_count": shown_failure_job_count,
+            "filtered_out_job_count": max(total_failure_job_count - shown_failure_job_count, 0),
+        },
+    }
+
+
+def _build_scheduling_slowest_jobs_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    capabilities: dict[str, bool],
+    limit: int = 10,
+) -> dict[str, Any]:
+    min_wait_seconds = 150
+    grouped: dict[str, list[float]] = defaultdict(list)
+    cloud_phase_by_job: dict[str, list[str | None]] = defaultdict(list)
+    for row in rows:
+        scheduling_wait_s = row.get("scheduling_wait_s")
+        if scheduling_wait_s is None:
+            continue
+        job_name = _runtime_job_name(row)
+        grouped[job_name].append(float(scheduling_wait_s))
+        cloud_phase_by_job[job_name].append(row.get("cloud_phase"))
+
+    ranked_rows = []
+    for name, values in grouped.items():
+        valid_sample_count = len(values)
+        avg_wait = sum(values) / valid_sample_count
+        if valid_sample_count < 3 or avg_wait <= min_wait_seconds:
+            continue
+        ranked_rows.append(
+            {
+                "name": name,
+                "value": avg_wait,
+                "linked_build_count": valid_sample_count,
+                "link_cloud_phase": _min_text_value(cloud_phase_by_job.get(name, [])),
+                "valid_sample_count": valid_sample_count,
+            }
+        )
+    ranked_rows.sort(key=lambda row: (-float(row["value"]), str(row["name"])))
+    items = [
+        _job_ranking_item(
+            row,
+            value_key="value",
+            extra_keys=("linked_build_count", "valid_sample_count"),
+        )
+        for row in ranked_rows[:limit]
+    ]
+    return {
+        "items": items,
+        "meta": {
+            **filters.meta(),
+            "min_wait_seconds": min_wait_seconds,
+            "scheduling_wait_supported": capabilities["scheduling_wait_supported"],
+            "scheduling_wait_source_column": capabilities["scheduling_wait_source_column"],
+        },
+    }
+
+
+def _build_pull_image_trend_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    buckets: dict[datetime | Any, dict[str, Any]] = {}
+    for row in rows:
+        bucket_start = _bucket_start_for_value(row.get("pull_image_bucket_time"), filters.granularity)
+        if bucket_start is None:
+            continue
+        bucket = buckets.setdefault(
+            bucket_start,
+            {
+                "bucket_start": bucket_start,
+                "pull_image_sum_s": 0.0,
+                "pull_image_valid_sample_count": 0,
+                "success_scope_count": 0,
+                "success_count": 0,
+                "linked_build_count": 0,
+            },
+        )
+        bucket["linked_build_count"] += 1
+        pull_image_s = row.get("pull_image_s")
+        if pull_image_s is not None:
+            bucket["pull_image_sum_s"] += float(pull_image_s)
+            bucket["pull_image_valid_sample_count"] += 1
+        if int(row.get("pull_attempted") or 0) == 1 or int(row.get("image_pull_failure_hit") or 0) == 1:
+            bucket["success_scope_count"] += 1
+            if int(row.get("image_pull_failure_hit") or 0) == 0:
+                bucket["success_count"] += 1
+
+    data_rows = []
+    for bucket_start in sorted(buckets):
+        bucket = buckets[bucket_start]
+        valid_sample_count = int(bucket["pull_image_valid_sample_count"] or 0)
+        success_scope_count = int(bucket["success_scope_count"] or 0)
+        data_rows.append(
+            {
+                "bucket_start": bucket_start,
+                "pull_image_avg_s": (
+                    bucket["pull_image_sum_s"] / valid_sample_count if valid_sample_count else None
+                ),
+                "success_rate_pct": (
+                    bucket["success_count"] * 100.0 / success_scope_count if success_scope_count else None
+                ),
+                "linked_build_count": int(bucket["linked_build_count"] or 0),
+                "valid_sample_count": valid_sample_count,
+            }
+        )
+
+    return {
+        "series": [
+            {
+                "key": "pull_image_avg_s",
+                "label": "Image pull avg",
+                "type": "bar",
+                "points": _points(data_rows, "pull_image_avg_s"),
+            },
+            {
+                "key": "pull_image_success_rate_pct",
+                "label": "Image pull success rate",
+                "type": "line",
+                "axis": "right",
+                "points": _points(data_rows, "success_rate_pct", digits=1),
+            },
+        ],
+        "meta": {
+            **filters.meta(),
+            "sample_counts": [
+                {
+                    "bucket_start": str(row["bucket_start"]),
+                    "linked_build_count": int(row["linked_build_count"] or 0),
+                    "valid_sample_count": int(row["valid_sample_count"] or 0),
+                }
+                for row in data_rows
+            ],
+        },
+    }
+
+
+def _build_pull_image_failure_jobs_from_pod_rows(
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    limit: int = 10,
+) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[_runtime_job_name(row)].append(row)
+
+    ranked_rows = []
+    for name, group_rows in grouped.items():
+        failure_count = sum(int(row.get("image_pull_failure_hit") or 0) for row in group_rows)
+        if failure_count <= 0:
+            continue
+        pull_values = [float(row["pull_image_s"]) for row in group_rows if row.get("pull_image_s") is not None]
+        ranked_rows.append(
+            {
+                "name": name,
+                "value": failure_count,
+                "linked_build_count": len(group_rows),
+                "link_cloud_phase": _min_text_value(row.get("cloud_phase") for row in group_rows),
+                "pull_attempted_count": sum(int(row.get("pull_attempted") or 0) for row in group_rows),
+                "avg_pull_image_s": sum(pull_values) / len(pull_values) if pull_values else None,
+            }
+        )
+    ranked_rows.sort(
+        key=lambda row: (
+            -int(row["value"]),
+            -(float(row["avg_pull_image_s"]) if row["avg_pull_image_s"] is not None else -1.0),
+            str(row["name"]),
+        )
+    )
+    items = [
+        _job_ranking_item(
+            row,
+            value_key="value",
+            extra_keys=("linked_build_count", "pull_attempted_count", "avg_pull_image_s"),
+        )
+        for row in ranked_rows[:limit]
+    ]
+    return {"items": items, "meta": filters.meta()}
+
+
+def _build_pull_image_slowest_jobs_from_pod_rows(
+    connection: Connection,
+    rows: list[dict[str, Any]],
+    filters: CommonFilters,
+    *,
+    limit: int = 10,
+) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row.get("pull_image_s") is None:
+            continue
+        grouped[_runtime_job_name(row)].append(row)
+
+    ranked_rows = []
+    for name, group_rows in grouped.items():
+        valid_sample_count = len(group_rows)
+        if valid_sample_count < 3:
+            continue
+        values = [float(row["pull_image_s"]) for row in group_rows if row.get("pull_image_s") is not None]
+        ranked_rows.append(
+            {
+                "name": name,
+                "value": sum(values) / len(values),
+                "linked_build_count": valid_sample_count,
+                "link_cloud_phase": _min_text_value(row.get("cloud_phase") for row in group_rows),
+                "valid_sample_count": valid_sample_count,
+            }
+        )
+    ranked_rows.sort(key=lambda row: (-float(row["value"]), str(row["name"])))
+    ranked_rows = ranked_rows[:limit]
+    items = [
+        _job_ranking_item(
+            row,
+            value_key="value",
+            extra_keys=("linked_build_count", "valid_sample_count"),
+        )
+        for row in ranked_rows
+    ]
+    representative_rows = _load_slowest_pull_representatives(
+        connection,
+        filters,
+        tuple(str(row["name"]) for row in ranked_rows),
+    )
+    for item in items:
+        representative = representative_rows.get(item["name"])
+        event_message = _lookup_first_pulled_event_message(connection, representative) if representative else None
+        parsed = _extract_pulled_image_duration(event_message)
+        item["slowest_pull_image"] = parsed[0] if parsed else None
+    return {"items": items, "meta": filters.meta()}
+
+
+def _load_slowest_pull_representatives(
+    connection: Connection,
+    filters: CommonFilters,
+    job_names: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    if not job_names:
+        return {}
+
+    selected_filters = _filters_with_job_names(filters, job_names)
+    cte, params, _capabilities = _build_pod_build_rows_cte(connection, selected_filters)
+    rows = connection.execute(
+        text(
+            f"""
+            {cte},
+            ranked_pulls AS (
+              SELECT
+                COALESCE(job_name, '(unknown job)') AS name,
+                source_project,
+                namespace_name,
+                pod_uid,
+                pod_name,
+                first_pulled_at,
+                build_id,
+                pull_image_s,
+                ROW_NUMBER() OVER (
+                  PARTITION BY COALESCE(job_name, '(unknown job)')
+                  ORDER BY
+                    pull_image_s DESC,
+                    CASE WHEN first_pulled_at IS NULL THEN 1 ELSE 0 END ASC,
+                    first_pulled_at DESC,
+                    build_id DESC
+                ) AS pull_rank
+              FROM pod_join_rows
+              WHERE pull_image_s IS NOT NULL
+                AND first_pulled_at IS NOT NULL
+            )
+            SELECT
+              name,
+              source_project,
+              namespace_name,
+              pod_uid,
+              pod_name,
+              first_pulled_at
+            FROM ranked_pulls
+            WHERE pull_rank = 1
+            """
+        ),
+        params,
+    ).mappings()
+    return {str(row["name"]): dict(row) for row in rows}
+
+
+def _filters_with_job_names(filters: CommonFilters, job_names: tuple[str, ...]) -> CommonFilters:
+    expanded_job_names: list[str] = []
+    repo_prefix = f"{filters.repo}/" if filters.repo else ""
+    for job_name in job_names:
+        expanded_job_names.append(job_name)
+        if repo_prefix and job_name.startswith(repo_prefix):
+            stripped = job_name[len(repo_prefix) :]
+            if stripped:
+                expanded_job_names.append(stripped)
+    return CommonFilters(
+        repo=filters.repo,
+        branch=filters.branch,
+        job_name=",".join(expanded_job_names),
+        cloud_phase=filters.cloud_phase,
+        issue_status=filters.issue_status,
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        granularity=filters.granularity,
+    )
 
 
 def get_error_l1_share(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -1461,6 +2038,59 @@ def _extract_pulled_image_duration(message: Any) -> tuple[str, float] | None:
     if not match:
         return None
     return image, float(match.group(1))
+
+
+def _runtime_job_name(row: dict[str, Any]) -> str:
+    return str(row.get("job_name") or "(unknown job)")
+
+
+def _min_text_value(values: Any) -> str | None:
+    normalized = [str(value) for value in values if value not in {None, ""}]
+    if not normalized:
+        return None
+    return min(normalized)
+
+
+def _recent_failure_build_items(rows: list[dict[str, Any]], *, per_job_limit: int = 10) -> list[dict[str, Any]]:
+    failure_rows = [
+        row
+        for row in rows
+        if int(row.get("final_scheduling_failure_hit") or 0) == 1
+    ]
+    failure_rows.sort(
+        key=lambda row: (
+            row.get("start_time") is None,
+            row.get("start_time") or datetime.min,
+            int(row.get("build_id") or 0),
+        ),
+        reverse=True,
+    )
+    return [_error_build_item(row) for row in failure_rows[:per_job_limit]]
+
+
+def _bucket_start_for_value(value: Any, granularity: str) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        current = value.date()
+    elif isinstance(value, date):
+        current = value
+    elif isinstance(value, str):
+        raw = value.strip()
+        if len(raw) < 10:
+            return None
+        try:
+            current = date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if granularity == "month":
+        return current.replace(day=1)
+    if granularity == "week":
+        return current - timedelta(days=current.weekday())
+    return current
 
 
 def _points(rows: list[dict[str, Any]], key: str, *, digits: int = 0) -> list[list[Any]]:

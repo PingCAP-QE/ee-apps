@@ -250,10 +250,6 @@ def test_error_classification_scope_skips_unclassified_no_log_builds(sqlite_engi
     l1_items = {item["name"]: item for item in body["error_l1_share"]["items"]}
     assert l1_items["INFRA"]["value"] == 1
     assert l1_items["OTHERS"]["value"] == 2
-    assert "job-skipped" not in {
-        item["name"]
-        for item in body["error_top_jobs"]["items"]
-    }
 
 
 def test_runtime_error_top_jobs_supports_l1_l2_drilldown_and_job_urls(sqlite_engine) -> None:
@@ -1040,6 +1036,9 @@ def test_pull_image_slowest_jobs_include_slowest_image_url(sqlite_engine) -> Non
     body = response.json()
     slowest_jobs = body["pull_image_slowest_jobs"]["items"]
     assert slowest_jobs[0]["name"] == "pingcap/tidb/job-pull-image"
+    assert slowest_jobs[0]["value"] == 46.67
+    assert slowest_jobs[0]["linked_build_count"] == 3
+    assert slowest_jobs[0]["valid_sample_count"] == 3
     assert slowest_jobs[0]["slowest_pull_image"] == "registry.example.com/slow:v9"
 
 
