@@ -103,13 +103,25 @@
       ]
     },
     {
+      "name": "realcluster_statistics_duplicate_key_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_integration_realcluster_test(_next_gen)?$",
+        "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = 'tests/realtikvtest/scripts/next-gen/run-tests\\.sh bazel_statisticstest'[\\s\\S]*Duplicate entry [^\\r\\n]+ for key '(?:t\\.idx|t0\\.idx1)'"
+      ]
+    },
+    {
       "name": "infra_external_dependency_bazel_fetch_failure",
       "l1": "INFRA",
       "l2": "EXTERNAL_DEP",
       "text_patterns": [
         "Error in download_and_extract: java\\.io\\.IOException: Error downloading",
         "Error computing the main repository mapping: no such package '@[^']+//': java\\.io\\.IOException: Error downloading",
-        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]*UnrecoverableHttpException GET returned (429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable)"
+        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]+(Read timed out|GET returned (404 Not Found|429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable|504 Gateway Time-out))"
       ]
     },
     {
@@ -151,6 +163,20 @@
       "text_patterns": [
         "Validating nogo output for //[^\\r\\n]+ failed",
         "Running nogo on //[^\\r\\n]+ failed"
+      ]
+    },
+    {
+      "name": "ghpr_check2_realtikv_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
+        "Test output for //tests/realtikvtest/[^\\r\\n]+",
+        "type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\""
       ]
     },
     {
@@ -200,6 +226,23 @@
         "check data failed [1-9][0-9]*-th time",
         "check diff failed [1-9][0-9]*-th time",
         "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "br_restore_compatibility_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|/)merged_integration_br_test$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)",
+        "(^|_)merged_integration_br_test($|_)"
+      ],
+      "text_patterns": [
+        "\\[BR:Restore:ErrRestoreNotFreshCluster\\]cluster is not fresh",
+        "\\[BR:Restore:ErrRestoreIncompatibleSys\\]incompatible system table",
+        "missing column in cluster data \\[table=user\\]",
+        "incompatible column, table:"
       ]
     },
     {
@@ -264,7 +307,29 @@
         "(^|_)pull_cdc_mysql_integration_light($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_kafka_integration_heavy_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_kafka_integration_heavy$",
+        "(^|_)pull_cdc_kafka_integration_heavy($|_)"
+      ],
+      "text_patterns": [
+        "table fail_over_test\\.finish_mark not exists for [1-9][0-9]*-th check, retry later",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
       ]
     },
     {
@@ -329,7 +394,9 @@
         "(^|_)pull_lightning_integration_test($|_)"
       ],
       "text_patterns": [
-        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN"
+        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
       ]
     },
     {
@@ -409,7 +476,8 @@
         "ERROR: Error cloning remote repo 'origin'",
         "hudson\\.plugins\\.git\\.GitException: Command \"git fetch [^\"]+\" returned status code 128",
         "fatal: unable to access 'https://github\\.com/[^']+': The requested URL returned error: 5[0-9]{2}",
-        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}"
+        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}",
+        "fatal: couldn't find remote ref refs/pull/[0-9]+/head"
       ]
     },
     {
@@ -571,6 +639,14 @@
       "l2": "PIPELINE_CONFIG",
       "text_patterns": [
         "tidb-test\\.git[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
+      ]
+    },
+    {
+      "name": "build_support_repo_branch_mismatch_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*base branch of tidb-test pr must be the same as the base branch of tidb pr\\.[\\s\\S]*fatal: couldn't find remote ref refs/heads/[^\\r\\n]+"
       ]
     },
     {

@@ -117,7 +117,7 @@ def test_rule_engine_prefers_unit_bazel_failure_over_k8s_noise() -> None:
     assert classification.source == "rule:unit_bazel_test_failure"
 
 
-def test_rule_engine_prefers_ghpr_check2_bazel_test_failure_over_network_noise() -> None:
+def test_rule_engine_prefers_ghpr_check2_realtikv_failure_over_network_noise() -> None:
     engine = RuleEngine.from_file()
 
     classification = engine.classify(
@@ -138,9 +138,9 @@ def test_rule_engine_prefers_ghpr_check2_bazel_test_failure_over_network_noise()
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
-    assert classification.source == "rule:unit_bazel_test_failure"
+    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
 
 
 def test_rule_engine_classifies_ghpr_check2_nogo_failure_as_format_check() -> None:
@@ -476,6 +476,90 @@ def test_rule_engine_classifies_cdc_mysql_integration_light_matrix_failure_as_in
     assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
 
 
+def test_rule_engine_classifies_cdc_mysql_integration_light_output_failure_as_integration_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "command: run_sql 'show databases;' 127.0.0.1 3306 && "
+            "check_not_contains 'fail_over_ddl_test'\n"
+            "TEST FAILED: OUTPUT CONTAINS 'fail_over_ddl_test'\n"
+            "run task failed 1-th time, retry later\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_mysql_integration_light",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_mysql_integration_light/1974/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
+
+
+def test_rule_engine_classifies_cdc_kafka_integration_heavy_finish_mark_failure_over_websocket_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "table fail_over_test.finish_mark not exists for 11-th check, retry later\n"
+            "check diff failed 50-th time, retry later\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G15'\n"
+            "Failed to start websocket connection: io.fabric8.kubernetes.client."
+            "KubernetesClientException: An error has occurred.\n"
+            "ERROR: Failed to start websocket connection after 5 attempts. "
+            "Check logs above for more details.\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_kafka_integration_heavy",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_kafka_integration_heavy/1452/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_kafka_integration_heavy_test_failure"
+
+
+def test_rule_engine_keeps_cdc_kafka_integration_heavy_websocket_failure_as_infra_network() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Container [golang] waiting [ErrImagePull] failed to pull and unpack "
+            "image \"ghcr.io/pingcap-qe/ci/jenkins:v2025.12.28-2-g97bb688-go1.25\": "
+            "failed to fetch anonymous token: Get \"https://ghcr.io/token\": "
+            "dial tcp 140.82.114.33:443: i/o timeout\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G07'\n"
+            "Failed to start websocket connection: io.fabric8.kubernetes.client."
+            "KubernetesClientException: An error has occurred.\n"
+            "ERROR: Failed to start websocket connection after 5 attempts. "
+            "Check logs above for more details.\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_kafka_integration_heavy",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_kafka_integration_heavy/1445/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "NETWORK"
+    assert classification.source == "rule:infra_network_websocket"
+
+
 def test_rule_engine_prefers_oomkilled_over_cdc_storage_matrix_failure() -> None:
     engine = RuleEngine.from_file()
 
@@ -769,6 +853,40 @@ def test_rule_engine_prefers_br_output_failure_over_later_timeout_noise() -> Non
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
     assert classification.source == "rule:br_integration_test_output_failure"
+
+
+def test_rule_engine_classifies_br_restore_compatibility_failure_before_jenkins_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "[2026/05/18 22:36:28.082 +08:00] [ERROR] [restore.go:93] "
+            "[\"failed to restore\"] "
+            "[error=\"user db/tables: db1.t1, db1.t2: "
+            "[BR:Restore:ErrRestoreNotFreshCluster]cluster is not fresh\"]\n"
+            "[2026/05/18 22:38:30.606 +08:00] [ERROR] [main.go:43] [\"br failed\"] "
+            "[error=\"incompatible column, table: tables_priv, "
+            "col in cluster: Table_priv set('Select'), col in backup: "
+            "Table_priv set('Select','Insert','Update','Delete','Create','Drop',"
+            "'Grant','Index','Alter','Create View','Show View','Trigger',"
+            "'References'): [BR:Restore:ErrRestoreIncompatibleSys]"
+            "incompatible system table\"]\n"
+            "hudson.remoting.ChannelClosedException: channel is already closed\n"
+            "Agent pingcap-tidb-merged-integration-br-test went offline during the build\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_br_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_br_test/223/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:br_restore_compatibility_failure"
 
 
 def test_rule_engine_prefers_kubelet_eviction_over_jenkins_disconnect_noise() -> None:
@@ -1083,6 +1201,69 @@ def test_rule_engine_classifies_jenkins_git_http_500_as_infra_git() -> None:
             "url": (
                 "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
                 "pull_cdc_mysql_integration_light/1867/console"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
+
+
+def test_rule_engine_classifies_missing_pull_ref_checkout_as_infra_git() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Still waiting to schedule task\n"
+            "‘pingcap-tidb-pull-mysql-client-test-next-gen-2744-gg1g7-x-51p62’ is offline\n"
+            "git version 2.43.7\n"
+            "Reinitialized existing Git repository in "
+            "/home/jenkins/agent/workspace/pingcap/tidb/pull_mysql_client_test_next_gen/"
+            "tidb/.git/\n"
+            "HEAD is now at 64e215c518 executor: add ordered window builder (#68480)\n"
+            "fatal: couldn't find remote ref refs/pull/68498/head\n"
+            "ERROR: script returned exit code 128\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_mysql_client_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_mysql_client_test_next_gen/2744/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "GIT"
+    assert classification.source == "rule:infra_git_checkout_failure"
+
+
+def test_rule_engine_prefers_missing_pull_ref_checkout_over_realcluster_matrix_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Still waiting to schedule task\n"
+            "‘gcap-tidb-pull-integration-realcluster-test-next-gen-3111-mmpn0’ is offline\n"
+            "HEAD is now at 64e215c518 executor: add ordered window builder (#68480)\n"
+            "POST git-upload-pack (656 bytes)\n"
+            "fatal: couldn't find remote ref refs/pull/68498/head\n"
+            "ERROR: script returned exit code 128\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/integrationtest/run-tests-next-gen.sh -s bin/tidb-server -d n'\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_sessiontest'\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3111/"
             ),
         },
     )
@@ -1414,6 +1595,34 @@ def test_rule_engine_classifies_support_repo_branch_checkout_failure_as_pipeline
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "PIPELINE_CONFIG"
     assert classification.source == "rule:build_support_repo_branch_checkout_pipeline_config_failure"
+
+
+def test_rule_engine_classifies_support_repo_branch_mismatch_checkout_failure_as_pipeline_config() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "computeBranchFromPR component: tidb-test, prTargetBranch: feature/fts, "
+            "prTitle: planner: avoid invalid TiCI FTS request for null match pattern | "
+            "tidb-test=pr/2740 tiflash=feature-fts tikv=feature-fts, trunkBranch: master\n"
+            "Checkout the PR: pr/2740 of tidb-test\n"
+            "Note: When specifying tidb-test=pr/xxx in the PR title, the base branch of "
+            "tidb-test pr must be the same as the base branch of tidb pr.If not, please "
+            "specify tidb-test=<branch> or tidb-test=<commit-hash>.\n"
+            "fatal: couldn't find remote ref refs/heads/feature/fts\n"
+            "ERROR: script returned exit code 128\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_mysql_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_mysql_test/3490/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_support_repo_branch_mismatch_pipeline_config_failure"
 
 
 def test_rule_engine_prefers_go_plugin_abi_mismatch_over_jenkins_remoting_warning() -> None:
@@ -1901,6 +2110,115 @@ def test_rule_engine_prefers_external_dependency_over_ghpr_check2_noise() -> Non
     assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
 
 
+def test_rule_engine_prefers_realcluster_statistics_duplicate_key_failure_over_bazel_fetch_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WARNING: Download from https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz failed: class com.google.devtools.build.lib.bazel."
+            "repository.downloader.UnrecoverableHttpException GET returned 502 Bad Gateway "
+            "or Proxy Error\n"
+            "Error in download_and_extract: java.io.IOException: Error downloading "
+            "[https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz] to /tmp/platforms-1.0.0.tar.gz: GET returned 502 "
+            "Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@platforms//host': java.io.IOException: Error downloading "
+            "[https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz] to /tmp/platforms-1.0.0.tar.gz: GET returned 502 "
+            "Bad Gateway or Proxy Error\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_statisticstest'\n"
+            "[2026/05/19 08:32:42.356 +00:00] [ERROR] [workerpool.go:44] "
+            "[\"worker pool encountered error\"] [error=\"[kv:1062]Duplicate entry '1' "
+            "for key 't.idx'\"]\n"
+            "[2026/05/19 08:40:46.349 +00:00] [ERROR] [common.go:495] "
+            "[\"add index failed\"] [error=\"[kv:1062]Duplicate entry '\\x01' for key "
+            "'t0.idx1'\"]\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3064/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
+
+
+def test_rule_engine_keeps_mixed_realcluster_external_dependency_as_external_dep() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WARNING: Download from https://github.com/bazel-contrib/bazel_features/"
+            "releases/download/v1.15.0/bazel_features-v1.15.0.tar.gz failed: class "
+            "com.google.devtools.build.lib.bazel.repository.downloader."
+            "UnrecoverableHttpException GET returned 502 Bad Gateway or Proxy Error\n"
+            "Error in download_and_extract: java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: GET "
+            "returned 502 Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@bazel_features//': java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: GET "
+            "returned 502 Bad Gateway or Proxy Error\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_addindextest1'\n"
+            "[2026/05/21 03:08:28.756 +00:00] [INFO] [session.go:5101] "
+            "[\"CRUCIAL OPERATION\"] [sql=\"alter table t add unique index uk(b);\"]\n"
+            "[2026/05/21 03:08:28.756 +00:00] [ERROR] [workerpool.go:44] "
+            "[\"worker pool encountered error\"] [error=\"[kv:1062]Duplicate entry '1' "
+            "for key 't.uk'\"]\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3251/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "EXTERNAL_DEP"
+    assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
+def test_rule_engine_classifies_ghpr_check2_not_bootstrapped_realtikv_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh "
+            "bazel_pushdowntest'\n"
+            "==================== Test output for "
+            "//tests/realtikvtest/pushdowntest:pushdowntest_test (shard 5 of 5):\n"
+            "[ERROR] [kv.go:210] [\"failed to load current txn safe point from PD\"] "
+            "[error=\"type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\" \"]\n"
+            "--- FAIL: TestRealTiKVPartitionIndexLookUpPushDown (0.01s)\n"
+            "FAIL\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3578/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
+
+
 def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:
     engine = RuleEngine.from_file()
 
@@ -1957,6 +2275,60 @@ def test_rule_engine_does_not_treat_lightning_disk_quota_grep_as_disk_full() -> 
             "url": (
                 "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
                 "pull_lightning_integration_test/1018/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:lightning_integration_test_failure"
+
+
+def test_rule_engine_classifies_lightning_output_failure_as_integration_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "TEST FAILED: OUTPUT DOES NOT CONTAIN 'pause pd scheduler of table scope'\n"
+            "TiFlash seems doesn't started, retrying...\n"
+            "context deadline exceeded while waiting for local test service\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_lightning_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_lightning_integration_test/1248/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:lightning_integration_test_failure"
+
+
+def test_rule_engine_classifies_lightning_matrix_failure_over_local_network_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "[2026/05/14 19:24:21.516 +08:00] [WARN] [retry_interceptor.go:63] "
+            "[\"retrying of unary invoker failed\"] [error=\"rpc error: code = "
+            "DeadlineExceeded desc = context deadline exceeded\"]\n"
+            "TiFlash seems doesn't started, retrying...\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G06'\n"
+            "error=\"transport: Error while dialing: dial tcp 127.0.0.1:2379: "
+            "connect: connection refused\"\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_lightning_integration_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_lightning_integration_test/1256/"
             ),
         },
     )
