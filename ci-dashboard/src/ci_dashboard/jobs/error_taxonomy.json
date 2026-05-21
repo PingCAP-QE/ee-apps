@@ -307,7 +307,29 @@
         "(^|_)pull_cdc_mysql_integration_light($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_kafka_integration_heavy_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_kafka_integration_heavy$",
+        "(^|_)pull_cdc_kafka_integration_heavy($|_)"
+      ],
+      "text_patterns": [
+        "table fail_over_test\\.finish_mark not exists for [1-9][0-9]*-th check, retry later",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
       ]
     },
     {

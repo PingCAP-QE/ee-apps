@@ -476,6 +476,90 @@ def test_rule_engine_classifies_cdc_mysql_integration_light_matrix_failure_as_in
     assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
 
 
+def test_rule_engine_classifies_cdc_mysql_integration_light_output_failure_as_integration_test_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "command: run_sql 'show databases;' 127.0.0.1 3306 && "
+            "check_not_contains 'fail_over_ddl_test'\n"
+            "TEST FAILED: OUTPUT CONTAINS 'fail_over_ddl_test'\n"
+            "run task failed 1-th time, retry later\n"
+            "script returned exit code 143\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_mysql_integration_light",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_mysql_integration_light/1974/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
+
+
+def test_rule_engine_classifies_cdc_kafka_integration_heavy_finish_mark_failure_over_websocket_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "table fail_over_test.finish_mark not exists for 11-th check, retry later\n"
+            "check diff failed 50-th time, retry later\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G15'\n"
+            "Failed to start websocket connection: io.fabric8.kubernetes.client."
+            "KubernetesClientException: An error has occurred.\n"
+            "ERROR: Failed to start websocket connection after 5 attempts. "
+            "Check logs above for more details.\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_kafka_integration_heavy",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_kafka_integration_heavy/1452/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_kafka_integration_heavy_test_failure"
+
+
+def test_rule_engine_keeps_cdc_kafka_integration_heavy_websocket_failure_as_infra_network() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Container [golang] waiting [ErrImagePull] failed to pull and unpack "
+            "image \"ghcr.io/pingcap-qe/ci/jenkins:v2025.12.28-2-g97bb688-go1.25\": "
+            "failed to fetch anonymous token: Get \"https://ghcr.io/token\": "
+            "dial tcp 140.82.114.33:443: i/o timeout\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G07'\n"
+            "Failed to start websocket connection: io.fabric8.kubernetes.client."
+            "KubernetesClientException: An error has occurred.\n"
+            "ERROR: Failed to start websocket connection after 5 attempts. "
+            "Check logs above for more details.\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_kafka_integration_heavy",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_kafka_integration_heavy/1445/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "NETWORK"
+    assert classification.source == "rule:infra_network_websocket"
+
+
 def test_rule_engine_prefers_oomkilled_over_cdc_storage_matrix_failure() -> None:
     engine = RuleEngine.from_file()
 
