@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 const (
 	imageTagWorkflowRunLookupTimeout = 30 * time.Second
 	imageTagWorkflowRunLookupTick    = 2 * time.Second
+	imageTagHTTPTimeout              = 30 * time.Second
 )
 
 var errImageTagWorkflowRunNotFound = errors.New("dispatched workflow run not found yet")
@@ -37,7 +39,7 @@ func runCommandImageTagTrigger(ctx context.Context, args []string) (string, erro
 		return "", err
 	}
 
-	gc := github.NewClient(nil).WithAuthToken(token)
+	gc, _ := newImageTagGitHubClient(token)
 	return triggerImageTagWorkflow(ctx, params, gc, cfg)
 }
 
@@ -70,12 +72,17 @@ func triggerImageTagWorkflow(ctx context.Context, params *imageTagTriggerParams,
 	}
 
 	dispatchedAt := time.Now().UTC()
+	inputs := map[string]interface{}{
+		"registry_url": params.Registry,
+		"image_tag":    params.Tag,
+	}
+	if credentialRef := resolveImageTagCredentialRef(params.Registry, cfg.CredentialRefs); credentialRef != "" {
+		inputs["credential_ref"] = credentialRef
+	}
+
 	_, err = gc.Actions.CreateWorkflowDispatchEventByFileName(ctx, cfg.Owner, cfg.Repo, cfg.Workflow, github.CreateWorkflowDispatchEventRequest{
-		Ref: ref,
-		Inputs: map[string]interface{}{
-			"registry_url": params.Registry,
-			"image_tag":    params.Tag,
-		},
+		Ref:    ref,
+		Inputs: inputs,
 	})
 	if err != nil {
 		return "", fmt.Errorf("trigger image-tag workflow failed: %w", err)
@@ -214,6 +221,47 @@ func imageTagWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) bool {
 	}
 
 	return false
+}
+
+func newImageTagGitHubClient(token string) (*github.Client, *http.Client) {
+	httpClient := &http.Client{Timeout: imageTagHTTPTimeout}
+	return github.NewClient(httpClient).WithAuthToken(token), httpClient
+}
+
+func resolveImageTagCredentialRef(registry string, credentialRefs map[string]string) string {
+	registry = normalizeImageTagRegistryPrefix(registry)
+	if registry == "" {
+		return ""
+	}
+
+	var matchedPrefix string
+	var matchedCredentialRef string
+	for prefix, credentialRef := range credentialRefs {
+		normalizedPrefix := normalizeImageTagRegistryPrefix(prefix)
+		if normalizedPrefix == "" || credentialRef == "" {
+			continue
+		}
+		if !imageTagRegistryPrefixMatches(registry, normalizedPrefix) {
+			continue
+		}
+		if len(normalizedPrefix) > len(matchedPrefix) {
+			matchedPrefix = normalizedPrefix
+			matchedCredentialRef = credentialRef
+		}
+	}
+
+	return matchedCredentialRef
+}
+
+func normalizeImageTagRegistryPrefix(registry string) string {
+	registry = strings.TrimSpace(strings.ToLower(registry))
+	registry = strings.TrimPrefix(registry, "https://")
+	registry = strings.TrimPrefix(registry, "http://")
+	return strings.Trim(registry, "/")
+}
+
+func imageTagRegistryPrefixMatches(registry, prefix string) bool {
+	return registry == prefix || strings.HasPrefix(registry, prefix+"/")
 }
 
 func buildWorkflowPageURL(cfg imageTagWorkflowConfig) string {

@@ -51,6 +51,9 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 		if inputs["image_tag"] != "nightly" {
 			t.Fatalf("unexpected image_tag: %#v", inputs["image_tag"])
 		}
+		if inputs["credential_ref"] != "query-image-ghcr" {
+			t.Fatalf("unexpected credential_ref: %#v", inputs["credential_ref"])
+		}
 
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -109,6 +112,9 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 		Owner:    "PingCAP-QE",
 		Repo:     "ci",
 		Workflow: "query-image-tag.yml",
+		CredentialRefs: map[string]string{
+			"ghcr.io/pingcap": "query-image-ghcr",
+		},
 	})
 	if err != nil {
 		t.Fatalf("triggerImageTagWorkflow() error = %v", err)
@@ -125,6 +131,24 @@ func TestTriggerImageTagWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(resp, "actions/runs/200") {
 		t.Fatalf("expected response to contain run URL, got:\n%s", resp)
+	}
+}
+
+func TestResolveImageTagCredentialRef(t *testing.T) {
+	credentialRef := resolveImageTagCredentialRef("https://ghcr.io/pingcap/tidb", map[string]string{
+		"ghcr.io":                    "query-image-public",
+		"ghcr.io/pingcap":            "query-image-ghcr",
+		"ghcr.io/pingcap/tidb-tools": "query-image-tools",
+	})
+	if credentialRef != "query-image-ghcr" {
+		t.Fatalf("expected longest matching credential_ref, got %q", credentialRef)
+	}
+
+	credentialRef = resolveImageTagCredentialRef("registry.pingcap.net/private/tidb", map[string]string{
+		"ghcr.io/pingcap": "query-image-ghcr",
+	})
+	if credentialRef != "" {
+		t.Fatalf("expected empty credential_ref for unmatched registry, got %q", credentialRef)
 	}
 }
 

@@ -45,6 +45,9 @@ image_tag:
   workflow: "query-image-tag.yml" # Optional, defaults to query-image-tag.yml
   ref: "main" # Optional, defaults to the repository default branch when omitted
   github_token: "ghp_xxx"
+  credential_refs: # Optional; longest matching registry prefix wins and is sent as workflow input `credential_ref`
+    "registry.pingcap.net/private": "query-image-private"
+    "ghcr.io/pingcap": "query-image-ghcr"
 
 hotfix:
   api_url: "https://tibuild.pingcap.net/api/v2/hotfix" # API endpoint for hotfix operations

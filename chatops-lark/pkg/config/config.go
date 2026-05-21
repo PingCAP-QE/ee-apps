@@ -52,11 +52,12 @@ type Config struct {
 	ImageTag *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
-		Owner       string `yaml:"owner" json:"owner"`
-		Repo        string `yaml:"repo" json:"repo"`
-		Workflow    string `yaml:"workflow" json:"workflow"`
-		Ref         string `yaml:"ref" json:"ref"`
-		GitHubToken string `yaml:"github_token" json:"github_token"`
+		Owner          string            `yaml:"owner" json:"owner"`
+		Repo           string            `yaml:"repo" json:"repo"`
+		Workflow       string            `yaml:"workflow" json:"workflow"`
+		Ref            string            `yaml:"ref" json:"ref"`
+		GitHubToken    string            `yaml:"github_token" json:"github_token"`
+		CredentialRefs map[string]string `yaml:"credential_refs" json:"credential_refs"`
 	} `yaml:"image_tag" json:"image_tag"`
 
 	Hotfix *struct {

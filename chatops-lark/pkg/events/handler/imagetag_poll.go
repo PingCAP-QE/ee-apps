@@ -53,8 +53,8 @@ func runCommandImageTagPoll(ctx context.Context, args []string) (string, error) 
 		return "", err
 	}
 
-	gc := github.NewClient(nil).WithAuthToken(token)
-	return pollImageTagWorkflow(ctx, gc, cfg, params.RunID, http.DefaultClient)
+	gc, httpClient := newImageTagGitHubClient(token)
+	return pollImageTagWorkflow(ctx, gc, cfg, params.RunID, httpClient)
 }
 
 func parseCommandImageTagPoll(args []string) (*imageTagPollParams, error) {

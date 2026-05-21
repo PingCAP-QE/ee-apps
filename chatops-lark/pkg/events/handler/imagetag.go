@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	cfgKeyImageTagOwner    = "image_tag.owner"
-	cfgKeyImageTagRepo     = "image_tag.repo"
-	cfgKeyImageTagWorkflow = "image_tag.workflow"
-	cfgKeyImageTagRef      = "image_tag.ref"
+	cfgKeyImageTagOwner          = "image_tag.owner"
+	cfgKeyImageTagRepo           = "image_tag.repo"
+	cfgKeyImageTagWorkflow       = "image_tag.workflow"
+	cfgKeyImageTagRef            = "image_tag.ref"
+	cfgKeyImageTagCredentialRefs = "image_tag.credential_refs"
 
 	defaultImageTagOwner    = "PingCAP-QE"
 	defaultImageTagRepo     = "ci"
@@ -39,10 +40,11 @@ Use '/image-tag --help' or '/image-tag -h' to see this message.
 `
 
 type imageTagWorkflowConfig struct {
-	Owner    string
-	Repo     string
-	Workflow string
-	Ref      string
+	Owner          string
+	Repo           string
+	Workflow       string
+	Ref            string
+	CredentialRefs map[string]string
 }
 
 func runCommandImageTag(ctx context.Context, args []string) (string, error) {
@@ -83,6 +85,7 @@ func setupCtxImageTag(ctx context.Context, cfg config.Config, _ *CommandActor) c
 	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagRepo, repo)
 	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagWorkflow, workflow)
 	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagRef, strings.TrimSpace(cfg.ImageTag.Ref))
+	nextCtx = context.WithValue(nextCtx, cfgKeyImageTagCredentialRefs, normalizeImageTagCredentialRefs(cfg.ImageTag.CredentialRefs))
 
 	return nextCtx
 }
@@ -109,11 +112,34 @@ func loadImageTagWorkflowConfig(ctx context.Context) (imageTagWorkflowConfig, st
 	}
 
 	ref, _ := ctx.Value(cfgKeyImageTagRef).(string)
+	credentialRefs, _ := ctx.Value(cfgKeyImageTagCredentialRefs).(map[string]string)
 
 	return imageTagWorkflowConfig{
-		Owner:    owner,
-		Repo:     repo,
-		Workflow: workflow,
-		Ref:      ref,
+		Owner:          owner,
+		Repo:           repo,
+		Workflow:       workflow,
+		Ref:            ref,
+		CredentialRefs: credentialRefs,
 	}, token, nil
+}
+
+func normalizeImageTagCredentialRefs(credentialRefs map[string]string) map[string]string {
+	if len(credentialRefs) == 0 {
+		return nil
+	}
+
+	normalized := make(map[string]string, len(credentialRefs))
+	for prefix, credentialRef := range credentialRefs {
+		prefix = strings.TrimSpace(prefix)
+		credentialRef = strings.TrimSpace(credentialRef)
+		if prefix == "" || credentialRef == "" {
+			continue
+		}
+		normalized[prefix] = credentialRef
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
 }
