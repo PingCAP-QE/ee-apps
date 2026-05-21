@@ -36,6 +36,16 @@ devbuild:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
+# ImageTag configuration
+image_tag:
+  audit:
+    webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  owner: "PingCAP-QE" # Optional, defaults to PingCAP-QE
+  repo: "ci" # Optional, defaults to ci
+  workflow: "query-image-tag.yml" # Optional, defaults to query-image-tag.yml
+  ref: "main" # Optional, defaults to the repository default branch when omitted
+  github_token: "ghp_xxx"
+
 hotfix:
   api_url: "https://tibuild.pingcap.net/api/v2/hotfix" # API endpoint for hotfix operations
   audit:

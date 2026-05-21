@@ -49,6 +49,16 @@ type Config struct {
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
+	ImageTag *struct {
+		BaseCmdConfig `yaml:",inline" json:",inline"`
+
+		Owner       string `yaml:"owner" json:"owner"`
+		Repo        string `yaml:"repo" json:"repo"`
+		Workflow    string `yaml:"workflow" json:"workflow"`
+		Ref         string `yaml:"ref" json:"ref"`
+		GitHubToken string `yaml:"github_token" json:"github_token"`
+	} `yaml:"image_tag" json:"image_tag"`
+
 	Hotfix *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 

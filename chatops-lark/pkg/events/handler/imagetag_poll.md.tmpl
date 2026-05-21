@@ -1,0 +1,10 @@
+**Image Reference:** `{{ .image_ref }}`
+**Created At:** `{{ .created_at }}`
+**Digest:** `{{ .digest }}`
+**Multi-Arch:** `{{ .multi_arch }}`
+**Platforms:** {{ if .platforms }}{{ join ", " .platforms }}{{ else }}none{{ end }}
+
+**Labels:**
+```yaml
+{{ toYaml .labels }}
+```

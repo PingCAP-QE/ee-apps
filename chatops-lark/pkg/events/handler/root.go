@@ -193,6 +193,14 @@ func (r *rootHandler) initialize() error {
 			SetupContext: setupCtxDevbuild,
 		}
 	}
+	if r.Config.ImageTag != nil {
+		r.commandRegistry["/image-tag"] = CommandConfig{
+			Description:  "Query image tag metadata through GitHub Actions",
+			Handler:      runCommandImageTag,
+			Audit:        r.Config.ImageTag.Audit,
+			SetupContext: setupCtxImageTag,
+		}
+	}
 	if r.Config.Ask != nil {
 		r.commandRegistry["/ask"] = CommandConfig{
 			Description:  "Ask a question with LLM",

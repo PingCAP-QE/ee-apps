@@ -1,0 +1,157 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/go-github/v68/github"
+)
+
+func TestTriggerImageTagWorkflow(t *testing.T) {
+	var dispatchCalls int
+	var listCalls int
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/repos/PingCAP-QE/ci", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"default_branch": "main",
+		})
+	})
+
+	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/workflows/query-image-tag.yml/dispatches", func(w http.ResponseWriter, r *http.Request) {
+		dispatchCalls++
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode dispatch payload failed: %v", err)
+		}
+
+		if payload["ref"] != "main" {
+			t.Fatalf("expected dispatch ref main, got %#v", payload["ref"])
+		}
+
+		inputs, ok := payload["inputs"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected dispatch inputs map, got %#v", payload["inputs"])
+		}
+
+		if inputs["registry_url"] != "ghcr.io/pingcap/tidb" {
+			t.Fatalf("unexpected registry_url: %#v", inputs["registry_url"])
+		}
+		if inputs["image_tag"] != "nightly" {
+			t.Fatalf("unexpected image_tag: %#v", inputs["image_tag"])
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("/repos/PingCAP-QE/ci/actions/workflows/query-image-tag.yml/runs", func(w http.ResponseWriter, r *http.Request) {
+		listCalls++
+
+		w.Header().Set("Content-Type", "application/json")
+		if dispatchCalls == 0 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"total_count": 1,
+				"workflow_runs": []map[string]any{
+					{
+						"id":            100,
+						"event":         "workflow_dispatch",
+						"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
+						"head_branch":   "main",
+						"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+						"created_at":    "2026-05-21T03:00:00Z",
+					},
+				},
+			})
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total_count": 2,
+			"workflow_runs": []map[string]any{
+				{
+					"id":            200,
+					"event":         "workflow_dispatch",
+					"display_title": "query-image-tag ghcr.io/pingcap/tidb:nightly",
+					"head_branch":   "main",
+					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/200",
+					"created_at":    time.Now().UTC().Format(time.RFC3339),
+				},
+				{
+					"id":            100,
+					"event":         "workflow_dispatch",
+					"display_title": "query-image-tag ghcr.io/pingcap/tidb:previous",
+					"head_branch":   "main",
+					"html_url":      "https://github.com/PingCAP-QE/ci/actions/runs/100",
+					"created_at":    "2026-05-21T03:00:00Z",
+				},
+			},
+		})
+	})
+
+	gc := github.NewClient(nil)
+	gc.BaseURL, _ = url.Parse(server.URL + "/")
+
+	resp, err := triggerImageTagWorkflow(context.Background(), &imageTagTriggerParams{
+		Registry: "ghcr.io/pingcap/tidb",
+		Tag:      "nightly",
+	}, gc, imageTagWorkflowConfig{
+		Owner:    "PingCAP-QE",
+		Repo:     "ci",
+		Workflow: "query-image-tag.yml",
+	})
+	if err != nil {
+		t.Fatalf("triggerImageTagWorkflow() error = %v", err)
+	}
+
+	if dispatchCalls != 1 {
+		t.Fatalf("expected 1 dispatch call, got %d", dispatchCalls)
+	}
+	if listCalls < 2 {
+		t.Fatalf("expected at least 2 list calls, got %d", listCalls)
+	}
+	if !strings.Contains(resp, "/image-tag poll 200") {
+		t.Fatalf("expected response to contain poll command, got:\n%s", resp)
+	}
+	if !strings.Contains(resp, "actions/runs/200") {
+		t.Fatalf("expected response to contain run URL, got:\n%s", resp)
+	}
+}
+
+func TestSelectImageTagWorkflowRun(t *testing.T) {
+	dispatchedAt := time.Date(2026, 5, 21, 4, 0, 0, 0, time.UTC)
+	runs := []*github.WorkflowRun{
+		{
+			ID:           github.Int64(101),
+			Event:        github.String("workflow_dispatch"),
+			DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:nightly"),
+			HeadBranch:   github.String("main"),
+			CreatedAt:    &github.Timestamp{Time: dispatchedAt.Add(10 * time.Second)},
+		},
+		{
+			ID:           github.Int64(102),
+			Event:        github.String("workflow_dispatch"),
+			DisplayTitle: github.String("query-image-tag ghcr.io/pingcap/tidb:other"),
+			HeadBranch:   github.String("main"),
+			CreatedAt:    &github.Timestamp{Time: dispatchedAt.Add(20 * time.Second)},
+		},
+	}
+
+	run := selectImageTagWorkflowRun(runs, "main", "query-image-tag ghcr.io/pingcap/tidb:nightly", 100, dispatchedAt)
+	if run == nil {
+		t.Fatal("expected a matching run")
+	}
+	if run.GetID() != 101 {
+		t.Fatalf("expected run 101, got %d", run.GetID())
+	}
+}
