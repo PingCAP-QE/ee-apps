@@ -103,6 +103,18 @@
       ]
     },
     {
+      "name": "realcluster_statistics_duplicate_key_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_integration_realcluster_test(_next_gen)?$",
+        "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = 'tests/realtikvtest/scripts/next-gen/run-tests\\.sh bazel_statisticstest'[\\s\\S]*Duplicate entry [^\\r\\n]+ for key '(?:t\\.idx|t0\\.idx1)'"
+      ]
+    },
+    {
       "name": "infra_external_dependency_bazel_fetch_failure",
       "l1": "INFRA",
       "l2": "EXTERNAL_DEP",

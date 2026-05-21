@@ -1901,6 +1901,89 @@ def test_rule_engine_prefers_external_dependency_over_ghpr_check2_noise() -> Non
     assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
 
 
+def test_rule_engine_prefers_realcluster_statistics_duplicate_key_failure_over_bazel_fetch_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WARNING: Download from https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz failed: class com.google.devtools.build.lib.bazel."
+            "repository.downloader.UnrecoverableHttpException GET returned 502 Bad Gateway "
+            "or Proxy Error\n"
+            "Error in download_and_extract: java.io.IOException: Error downloading "
+            "[https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz] to /tmp/platforms-1.0.0.tar.gz: GET returned 502 "
+            "Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@platforms//host': java.io.IOException: Error downloading "
+            "[https://github.com/bazelbuild/platforms/releases/download/1.0.0/"
+            "platforms-1.0.0.tar.gz] to /tmp/platforms-1.0.0.tar.gz: GET returned 502 "
+            "Bad Gateway or Proxy Error\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_statisticstest'\n"
+            "[2026/05/19 08:32:42.356 +00:00] [ERROR] [workerpool.go:44] "
+            "[\"worker pool encountered error\"] [error=\"[kv:1062]Duplicate entry '1' "
+            "for key 't.idx'\"]\n"
+            "[2026/05/19 08:40:46.349 +00:00] [ERROR] [common.go:495] "
+            "[\"add index failed\"] [error=\"[kv:1062]Duplicate entry '\\x01' for key "
+            "'t0.idx1'\"]\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3064/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
+
+
+def test_rule_engine_keeps_mixed_realcluster_external_dependency_as_external_dep() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WARNING: Download from https://github.com/bazel-contrib/bazel_features/"
+            "releases/download/v1.15.0/bazel_features-v1.15.0.tar.gz failed: class "
+            "com.google.devtools.build.lib.bazel.repository.downloader."
+            "UnrecoverableHttpException GET returned 502 Bad Gateway or Proxy Error\n"
+            "Error in download_and_extract: java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: GET "
+            "returned 502 Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@bazel_features//': java.io.IOException: Error downloading "
+            "[https://github.com/bazel-contrib/bazel_features/releases/download/v1.15.0/"
+            "bazel_features-v1.15.0.tar.gz] to /tmp/bazel_features-v1.15.0.tar.gz: GET "
+            "returned 502 Bad Gateway or Proxy Error\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_addindextest1'\n"
+            "[2026/05/21 03:08:28.756 +00:00] [INFO] [session.go:5101] "
+            "[\"CRUCIAL OPERATION\"] [sql=\"alter table t add unique index uk(b);\"]\n"
+            "[2026/05/21 03:08:28.756 +00:00] [ERROR] [workerpool.go:44] "
+            "[\"worker pool encountered error\"] [error=\"[kv:1062]Duplicate entry '1' "
+            "for key 't.uk'\"]\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3251/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "EXTERNAL_DEP"
+    assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
 def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:
     engine = RuleEngine.from_file()
 
