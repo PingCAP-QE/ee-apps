@@ -117,7 +117,7 @@ def test_rule_engine_prefers_unit_bazel_failure_over_k8s_noise() -> None:
     assert classification.source == "rule:unit_bazel_test_failure"
 
 
-def test_rule_engine_prefers_ghpr_check2_bazel_test_failure_over_network_noise() -> None:
+def test_rule_engine_prefers_ghpr_check2_realtikv_failure_over_network_noise() -> None:
     engine = RuleEngine.from_file()
 
     classification = engine.classify(
@@ -138,9 +138,9 @@ def test_rule_engine_prefers_ghpr_check2_bazel_test_failure_over_network_noise()
     )
 
     assert classification is not None
-    assert classification.l1_category == "UT"
+    assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
-    assert classification.source == "rule:unit_bazel_test_failure"
+    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
 
 
 def test_rule_engine_classifies_ghpr_check2_nogo_failure_as_format_check() -> None:
@@ -1982,6 +1982,32 @@ def test_rule_engine_keeps_mixed_realcluster_external_dependency_as_external_dep
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "EXTERNAL_DEP"
     assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+
+
+def test_rule_engine_classifies_ghpr_check2_not_bootstrapped_realtikv_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh "
+            "bazel_pushdowntest'\n"
+            "==================== Test output for "
+            "//tests/realtikvtest/pushdowntest:pushdowntest_test (shard 5 of 5):\n"
+            "[ERROR] [kv.go:210] [\"failed to load current txn safe point from PD\"] "
+            "[error=\"type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\" \"]\n"
+            "--- FAIL: TestRealTiKVPartitionIndexLookUpPushDown (0.01s)\n"
+            "FAIL\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3578/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
 
 
 def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:

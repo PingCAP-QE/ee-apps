@@ -11,6 +11,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Use job names as strong hints for test families: ghpr/pull unit/mysql jobs are UT, integration/realcluster/lightning/br/dm integration jobs are IT.
 - ghpr_check2 test-failure evidence should usually stay in the UT family because that job behaves like a unit-style mixed check job; do not move it to IT unless the failing evidence is explicitly integration-specific.
 - ghpr_check2 timeout evidence can move to IT/TIMEOUT when the failing branch is explicitly integration-specific, for example `run_real_tikv_tests.sh ...` or `integrationtest_with_tikv.sh ...`, even though the outer job name is ghpr_check2.
+- ghpr_check2 realtikv/integration failure evidence such as `//tests/realtikvtest/... FAILED`, `Test output for //tests/realtikvtest/...`, or PD `NOT_BOOTSTRAPPED` errors inside `run_real_tikv_tests.sh` or `integrationtest_with_tikv.sh` branches should be IT/TEST_FAILURE, not UT/TEST_FAILURE.
 - Go compiler errors such as "undefined:" or "has no field or method" are BUILD/COMPILE, even when they appear inside Bazel or wrapper output.
 - Bazel/unit summaries such as "FAILED TO BUILD", "fails to build", or "0 failing out of 0 test cases" point to an upstream build problem, not a UT test failure by themselves.
 - Failpoint rewrite/parser errors such as "Rewrite error ... expected declaration/statement, found '<<'" are BUILD/COMPILE.
@@ -19,7 +20,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Dependency hygiene failures such as "updates to go.mod needed", "missing strict dependencies", "No dependencies were provided", imports/deps mismatch, or `invalid version: unknown revision` are BUILD/DEPENDENCY.
 - Support-repo checkout failures that log `tidb-test=<40-hex-sha>` and then `Couldn't find any revision to build` are BUILD/PIPELINE_CONFIG; treat them as CI checkout/refspec logic failures rather than INFRA/GIT noise.
 - Nogo or build-time static-analysis validation failures such as "Validating nogo output" or "Running nogo on //... failed" are BUILD/FORMAT_CHECK, including ghpr_build, ghpr_check2, pull_build_next_gen, and pull_unit_test jobs; do not leave them in BUILD/PIPELINE_CONFIG or move them to BUILD/COMPILE.
-- Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", or 429/502/503 while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
+- Repository/archive download failures such as "Error downloading", "Error computing the main repository mapping", download 404/429/502/503/504, or read-timeout while fetching Bazel/GitHub dependencies are INFRA/EXTERNAL_DEP even if matrix branches later show test interruptions.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
 - BR integration matrix TEST_GROUP failures are IT/TEST_FAILURE, even if the failed case logs local 127.0.0.1 PD/TiKV connection-refused or timeout symptoms.
 - Kubelet final pod failures such as `TerminationByKubelet` with `imminent node shutdown` are INFRA/K8S and should beat later Jenkins remoting or agent-offline noise.

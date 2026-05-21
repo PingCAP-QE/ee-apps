@@ -121,7 +121,7 @@
       "text_patterns": [
         "Error in download_and_extract: java\\.io\\.IOException: Error downloading",
         "Error computing the main repository mapping: no such package '@[^']+//': java\\.io\\.IOException: Error downloading",
-        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]*UnrecoverableHttpException GET returned (429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable)"
+        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]+(Read timed out|GET returned (404 Not Found|429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable|504 Gateway Time-out))"
       ]
     },
     {
@@ -163,6 +163,20 @@
       "text_patterns": [
         "Validating nogo output for //[^\\r\\n]+ failed",
         "Running nogo on //[^\\r\\n]+ failed"
+      ]
+    },
+    {
+      "name": "ghpr_check2_realtikv_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
+        "Test output for //tests/realtikvtest/[^\\r\\n]+",
+        "type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\""
       ]
     },
     {
