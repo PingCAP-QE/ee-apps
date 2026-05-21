@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import queue
 import socket
 import threading
 from datetime import datetime
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -24,6 +26,7 @@ from ci_dashboard.jobs.pod_watcher import (
     _build_lifecycle_rows_for_snapshots,
     _db_batch_size,
     _format_watch_error,
+    _get_jenkins_prefixes_if_needed,
     _is_retryable_db_error,
     _is_resource_version_expired_watch_error,
     _load_runtime_context,
@@ -32,11 +35,16 @@ from ci_dashboard.jobs.pod_watcher import (
     _persist_pod_events,
     _persist_pod_snapshots,
     _read_non_negative_int_env,
+    _run_event_worker,
+    _run_pod_worker,
     _sleep_until_retry,
     _start_health_server,
     _stream_key,
     _stream_watch_json,
+    _worker_guard,
+    run_watch_pods,
 )
+from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_pods import NormalizedPodEvent, PodMetadataSnapshot
 
 
@@ -73,6 +81,7 @@ def _watched_snapshot(
     annotations: dict[str, str] | None = None,
     observed_at: datetime = datetime(2026, 5, 1, 1, 0, 2),
     creation_timestamp: datetime = datetime(2026, 5, 1, 1, 0, 1),
+    **snapshot_fields: object,
 ) -> WatchedPodSnapshot:
     return WatchedPodSnapshot(
         source_project="pingcap-testing-account",
@@ -87,6 +96,7 @@ def _watched_snapshot(
             annotations=annotations or {},
             observed_at=observed_at,
             creation_timestamp=creation_timestamp,
+            **snapshot_fields,
         ),
     )
 
@@ -121,6 +131,29 @@ def _pod_event(
         reporting_instance=instance,
         source_insert_id=insert_id,
     )
+
+
+class _FakeRecorder:
+    def __init__(self, *, stop_event: threading.Event | None = None) -> None:
+        self.calls: list[dict[str, int]] = []
+        self._stop_event = stop_event
+
+    def add(self, **kwargs: int) -> None:
+        self.calls.append(kwargs)
+        if kwargs.get("watch_restarts") and self._stop_event is not None:
+            self._stop_event.set()
+
+
+class _FakeHealthServer:
+    def __init__(self) -> None:
+        self.shutdown_calls = 0
+        self.close_calls = 0
+
+    def shutdown(self) -> None:
+        self.shutdown_calls += 1
+
+    def server_close(self) -> None:
+        self.close_calls += 1
 
 
 def test_watch_health_state_requires_each_stream_heartbeat() -> None:
@@ -371,6 +404,96 @@ def test_runtime_context_and_helper_edge_cases(monkeypatch) -> None:
     _sleep_until_retry(stop_event)
 
 
+def test_worker_guard_forwards_errors_and_sets_stop_event() -> None:
+    worker_errors: queue.Queue[BaseException] = queue.Queue()
+    stop_event = threading.Event()
+
+    def boom() -> None:
+        raise RuntimeError("worker exploded")
+
+    _worker_guard(
+        worker_errors=worker_errors,
+        stop_event=stop_event,
+        target=boom,
+        target_kwargs={},
+    )
+
+    assert stop_event.is_set() is True
+    exc = worker_errors.get_nowait()
+    assert isinstance(exc, RuntimeError)
+    assert str(exc) == "worker exploded"
+
+
+def test_run_watch_pods_marks_job_succeeded(sqlite_engine, monkeypatch) -> None:
+    pod_calls: list[str] = []
+    event_calls: list[str] = []
+    health_server = _FakeHealthServer()
+
+    monkeypatch.setattr(watcher, "_load_runtime_context", _runtime_context)
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_url", lambda: "https://k8s.example")
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_token", lambda: "token")
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_ca_file", lambda: None)
+    monkeypatch.setattr(watcher, "_load_target_namespaces", lambda connection: ["jenkins-tidb"])
+    monkeypatch.setattr(watcher, "_start_health_server", lambda health_state: health_server)
+
+    def fake_run_pod_worker(**kwargs) -> None:
+        pod_calls.append(kwargs["namespace_name"])
+
+    def fake_run_event_worker(**kwargs) -> None:
+        event_calls.append(kwargs["namespace_name"])
+
+    monkeypatch.setattr(watcher, "_run_pod_worker", fake_run_pod_worker)
+    monkeypatch.setattr(watcher, "_run_event_worker", fake_run_event_worker)
+
+    summary = run_watch_pods(sqlite_engine, _settings())
+
+    assert isinstance(summary, WatchPodsSummary)
+    assert pod_calls == ["jenkins-tidb"]
+    assert event_calls == ["jenkins-tidb"]
+    assert health_server.shutdown_calls == 1
+    assert health_server.close_calls == 1
+    with sqlite_engine.begin() as connection:
+        state = get_job_state(connection, "ci-watch-pods")
+    assert state is not None
+    assert state.last_status == "succeeded"
+    assert state.watermark == {"namespaces": ["jenkins-tidb"]}
+
+
+def test_run_watch_pods_marks_job_failed_when_worker_errors(sqlite_engine, monkeypatch) -> None:
+    health_server = _FakeHealthServer()
+
+    monkeypatch.setattr(watcher, "_load_runtime_context", _runtime_context)
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_url", lambda: "https://k8s.example")
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_token", lambda: "token")
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_ca_file", lambda: None)
+    monkeypatch.setattr(watcher, "_load_target_namespaces", lambda connection: ["jenkins-tidb"])
+    monkeypatch.setattr(watcher, "_start_health_server", lambda health_state: health_server)
+    monkeypatch.setattr(
+        watcher,
+        "_run_pod_worker",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(watcher, "_run_event_worker", lambda **kwargs: None)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run_watch_pods(sqlite_engine, _settings())
+
+    assert health_server.shutdown_calls == 1
+    assert health_server.close_calls == 1
+    with sqlite_engine.begin() as connection:
+        state = get_job_state(connection, "ci-watch-pods")
+    assert state is not None
+    assert state.last_status == "failed"
+    assert state.last_error == "boom"
+
+
+def test_run_watch_pods_validates_max_events(sqlite_engine, monkeypatch) -> None:
+    monkeypatch.setattr(watcher, "_load_runtime_context", _runtime_context)
+
+    with pytest.raises(ValueError, match="max_events must be positive"):
+        run_watch_pods(sqlite_engine, _settings(), max_events=0)
+
+
 def test_normalize_pod_object_preserves_creation_time_and_metadata() -> None:
     snapshot = _normalize_pod_object(
         {
@@ -396,6 +519,43 @@ def test_normalize_pod_object_preserves_creation_time_and_metadata() -> None:
     assert snapshot.snapshot.creation_timestamp == datetime(2026, 5, 1, 1, 2, 3)
     assert snapshot.snapshot.labels == {"org": "pingcap", "repo": "tidb"}
     assert snapshot.snapshot.annotations == {"ci_job": "pingcap/tidb/ghpr_unit_test"}
+
+
+def test_normalize_pod_object_captures_abnormal_summary() -> None:
+    snapshot = _normalize_pod_object(
+        {
+            "metadata": {
+                "namespace": "jenkins-tidb",
+                "name": "agent-pod",
+                "uid": "uid-a",
+                "creationTimestamp": "2026-05-01T01:02:03Z",
+                "deletionTimestamp": "2026-05-01T01:05:00Z",
+            },
+            "status": {
+                "phase": "Failed",
+                "reason": "NodeLost",
+                "message": "Node became unreachable",
+                "containerStatuses": [
+                    {
+                        "restartCount": 2,
+                        "lastState": {
+                            "terminated": {
+                                "reason": "OOMKilled",
+                                "message": "Container was OOM killed",
+                                "finishedAt": "2026-05-01T01:04:30Z",
+                            }
+                        },
+                    },
+                    {"restartCount": 1},
+                ],
+            },
+        },
+        context=_runtime_context(),
+    )
+
+    assert snapshot is not None
+    assert snapshot.snapshot.abnormal_reason == "OOMKilled"
+    assert snapshot.snapshot.abnormal_message == "Container was OOM killed"
 
 
 def test_normalize_kubernetes_event_uses_core_event_fields() -> None:
@@ -434,6 +594,232 @@ def test_normalize_kubernetes_event_uses_core_event_fields() -> None:
     assert normalized.source_insert_id == "kubernetes-event:event-uid:12345"
     assert normalized.reporting_component == "kubelet"
     assert normalized.reporting_instance == "node-a"
+
+
+def test_run_pod_worker_processes_list_and_stream_events(sqlite_engine, monkeypatch) -> None:
+    stop_event = threading.Event()
+    recorder = _FakeRecorder(stop_event=stop_event)
+    health_state = WatchHealthState(stale_after_seconds=60)
+    stream_key = _stream_key("jenkins-tidb", "pods")
+    health_state.register(stream_key)
+    persisted_batches: list[list[str]] = []
+
+    class _FakeClient:
+        def list_collection(self, *, namespace_name: str, resource: str):
+            assert namespace_name == "jenkins-tidb"
+            assert resource == "pods"
+            return (
+                [
+                    {
+                        "metadata": {
+                            "namespace": "jenkins-tidb",
+                            "name": "agent-pod",
+                            "uid": "uid-a",
+                            "creationTimestamp": "2026-05-01T01:02:03Z",
+                        }
+                    }
+                ],
+                "rv-pods",
+            )
+
+        def stream_collection(self, *, namespace_name: str, resource: str, resource_version: str):
+            assert namespace_name == "jenkins-tidb"
+            assert resource == "pods"
+            assert resource_version == "rv-pods"
+            yield {"type": "BOOKMARK"}
+            yield {"type": "ADDED", "object": "not-a-pod"}
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "metadata": {
+                        "namespace": "jenkins-tidb",
+                        "name": "agent-pod-2",
+                        "uid": "uid-b",
+                        "creationTimestamp": "2026-05-01T01:03:03Z",
+                    }
+                },
+            }
+            yield {"type": "ERROR", "object": {"reason": "Gone", "message": "too old", "code": 410}}
+
+    def fake_persist_pod_snapshots(
+        engine,
+        settings,
+        snapshots,
+        *,
+        jenkins_prefix_cache=None,
+        on_batch_persisted=None,
+    ) -> int:
+        del engine, settings, jenkins_prefix_cache
+        persisted_batches.append([snapshot.pod_name for snapshot in snapshots])
+        if on_batch_persisted is not None:
+            on_batch_persisted()
+        return len(snapshots)
+
+    monkeypatch.setattr(watcher, "_persist_pod_snapshots", fake_persist_pod_snapshots)
+
+    _run_pod_worker(
+        engine=sqlite_engine,
+        settings=_settings(),
+        client=_FakeClient(),
+        context=_runtime_context(),
+        namespace_name="jenkins-tidb",
+        stream_key=stream_key,
+        health_state=health_state,
+        recorder=recorder,
+        jenkins_prefix_cache=_JenkinsPodNameUrlPrefixCache(ttl_seconds=900),
+        stop_event=stop_event,
+    )
+
+    assert persisted_batches == [["agent-pod"], ["agent-pod-2"]]
+    assert recorder.calls[0]["pod_snapshots_seen"] == 1
+    assert recorder.calls[1]["pod_snapshots_seen"] == 1
+    assert recorder.calls[2]["watch_restarts"] == 1
+    assert health_state.snapshot()["streams"][stream_key]["healthy"] is True
+
+
+def test_run_event_worker_processes_list_and_stream_events(sqlite_engine, monkeypatch) -> None:
+    stop_event = threading.Event()
+    recorder = _FakeRecorder(stop_event=stop_event)
+    health_state = WatchHealthState(stale_after_seconds=60)
+    stream_key = _stream_key("jenkins-tidb", "events")
+    health_state.register(stream_key)
+    persisted_batches: list[list[str]] = []
+
+    class _FakeClient:
+        def list_collection(self, *, namespace_name: str, resource: str):
+            assert namespace_name == "jenkins-tidb"
+            assert resource == "events"
+            return (
+                [
+                    {
+                        "metadata": {
+                            "namespace": "jenkins-tidb",
+                            "name": "agent-pod.1",
+                            "uid": "event-1",
+                            "resourceVersion": "rv-1",
+                            "creationTimestamp": "2026-05-01T01:02:08Z",
+                        },
+                        "involvedObject": {
+                            "kind": "Pod",
+                            "namespace": "jenkins-tidb",
+                            "name": "agent-pod",
+                            "uid": "uid-a",
+                        },
+                        "reason": "Unhealthy",
+                        "type": "Warning",
+                        "message": "Readiness probe failed",
+                        "lastTimestamp": "2026-05-01T01:02:10Z",
+                    }
+                ],
+                "rv-events",
+            )
+
+        def stream_collection(self, *, namespace_name: str, resource: str, resource_version: str):
+            assert namespace_name == "jenkins-tidb"
+            assert resource == "events"
+            assert resource_version == "rv-events"
+            yield {"type": "BOOKMARK"}
+            yield {"type": "ADDED", "object": "not-an-event"}
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "metadata": {
+                        "namespace": "jenkins-tidb",
+                        "name": "agent-pod.2",
+                        "uid": "event-2",
+                        "resourceVersion": "rv-2",
+                        "creationTimestamp": "2026-05-01T01:03:08Z",
+                    },
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "namespace": "jenkins-tidb",
+                        "name": "agent-pod",
+                        "uid": "uid-a",
+                    },
+                    "reason": "Killing",
+                    "type": "Warning",
+                    "message": "Stopping container",
+                    "lastTimestamp": "2026-05-01T01:03:10Z",
+                },
+            }
+            yield {"type": "ERROR", "object": {"reason": "Gone", "message": "too old", "code": 410}}
+
+    def fake_persist_pod_events(
+        engine,
+        settings,
+        rows,
+        *,
+        jenkins_prefix_cache=None,
+        on_batch_persisted=None,
+    ) -> tuple[int, int, int]:
+        del engine, settings, jenkins_prefix_cache
+        persisted_batches.append([row.event_reason or "" for row in rows])
+        if on_batch_persisted is not None:
+            on_batch_persisted()
+        return len(rows), len(rows), len(rows)
+
+    monkeypatch.setattr(watcher, "_persist_pod_events", fake_persist_pod_events)
+
+    _run_event_worker(
+        engine=sqlite_engine,
+        settings=_settings(),
+        client=_FakeClient(),
+        context=_runtime_context(),
+        namespace_name="jenkins-tidb",
+        stream_key=stream_key,
+        health_state=health_state,
+        recorder=recorder,
+        jenkins_prefix_cache=_JenkinsPodNameUrlPrefixCache(ttl_seconds=900),
+        stop_event=stop_event,
+    )
+
+    assert persisted_batches == [["Unhealthy"], ["Killing"]]
+    assert recorder.calls[0]["event_rows_seen"] == 1
+    assert recorder.calls[1]["event_rows_seen"] == 1
+    assert recorder.calls[2]["watch_restarts"] == 1
+    assert health_state.snapshot()["streams"][stream_key]["healthy"] is True
+
+
+def test_run_event_worker_retries_after_non_expired_watch_error(sqlite_engine, monkeypatch) -> None:
+    stop_event = threading.Event()
+    recorder = _FakeRecorder()
+    health_state = WatchHealthState(stale_after_seconds=60)
+    stream_key = _stream_key("jenkins-tidb", "events")
+    health_state.register(stream_key)
+    sleep_calls = 0
+
+    class _FakeClient:
+        def list_collection(self, *, namespace_name: str, resource: str):
+            assert namespace_name == "jenkins-tidb"
+            assert resource == "events"
+            return ([], "rv-events")
+
+        def stream_collection(self, *, namespace_name: str, resource: str, resource_version: str):
+            del namespace_name, resource, resource_version
+            yield {"type": "ERROR", "object": {"reason": "Forbidden", "message": "denied", "code": 403}}
+
+    def fake_sleep_until_retry(inner_stop_event: threading.Event) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        inner_stop_event.set()
+
+    monkeypatch.setattr(watcher, "_sleep_until_retry", fake_sleep_until_retry)
+
+    _run_event_worker(
+        engine=sqlite_engine,
+        settings=_settings(),
+        client=_FakeClient(),
+        context=_runtime_context(),
+        namespace_name="jenkins-tidb",
+        stream_key=stream_key,
+        health_state=health_state,
+        recorder=recorder,
+        jenkins_prefix_cache=_JenkinsPodNameUrlPrefixCache(ttl_seconds=900),
+        stop_event=stop_event,
+    )
+
+    assert sleep_calls == 1
+    assert any(call.get("watch_restarts") == 1 for call in recorder.calls)
 
 
 def test_snapshot_lifecycle_keeps_metadata_when_events_arrive_later(sqlite_engine) -> None:
@@ -517,6 +903,34 @@ def test_snapshot_lifecycle_keeps_metadata_when_events_arrive_later(sqlite_engin
     assert lifecycle["schedule_to_started_seconds"] == 20
 
 
+def test_persist_pod_snapshots_records_abnormal_summary(sqlite_engine) -> None:
+    snapshot = _watched_snapshot(
+        namespace_name="prow-test-pods",
+        pod_name="status-pod",
+        pod_uid="uid-status",
+        abnormal_reason="OOMKilled",
+        abnormal_message="Container was OOM killed",
+    )
+
+    assert _persist_pod_snapshots(sqlite_engine, _settings(), [snapshot]) == 1
+
+    with sqlite_engine.begin() as connection:
+        lifecycle = connection.execute(
+            text(
+                """
+                SELECT
+                  abnormal_reason,
+                  abnormal_message
+                FROM ci_l1_pod_lifecycle
+                WHERE pod_uid = 'uid-status'
+                """
+            )
+        ).mappings().one()
+
+    assert lifecycle["abnormal_reason"] == "OOMKilled"
+    assert lifecycle["abnormal_message"] == "Container was OOM killed"
+
+
 def test_build_lifecycle_rows_for_snapshots_uses_existing_event_aggregates(sqlite_engine) -> None:
     snapshot = _watched_snapshot(
         namespace_name="prow-test-pods",
@@ -538,6 +952,69 @@ def test_build_lifecycle_rows_for_snapshots_uses_existing_event_aggregates(sqlit
     assert len(rows) == 1
     assert rows[0]["scheduled_at"] == datetime(2026, 5, 1, 1, 0, 5)
     assert rows[0]["pod_created_at"] == datetime(2026, 5, 1, 1, 0, 1)
+
+
+def test_persist_pod_events_records_highest_priority_abnormal_summary(sqlite_engine) -> None:
+    snapshot = _watched_snapshot(
+        namespace_name="prow-test-pods",
+        pod_name="anomaly-pod",
+        pod_uid="uid-anomaly",
+    )
+    assert _persist_pod_snapshots(sqlite_engine, _settings(), [snapshot]) == 1
+
+    events = [
+        _pod_event(
+            namespace_name="prow-test-pods",
+            pod_name="anomaly-pod",
+            pod_uid="uid-anomaly",
+            reason="Killing",
+            timestamp=datetime(2026, 5, 1, 1, 0, 10),
+            insert_id="kubernetes-event:killing",
+            component="kubelet",
+            instance="node-a",
+            message="Stopping container",
+        ),
+        _pod_event(
+            namespace_name="prow-test-pods",
+            pod_name="anomaly-pod",
+            pod_uid="uid-anomaly",
+            reason="Unhealthy",
+            timestamp=datetime(2026, 5, 1, 1, 0, 20),
+            insert_id="kubernetes-event:unhealthy",
+            component="kubelet",
+            instance="node-a",
+            message="Readiness probe failed",
+        ),
+        _pod_event(
+            namespace_name="prow-test-pods",
+            pod_name="anomaly-pod",
+            pod_uid="uid-anomaly",
+            reason="Preempting",
+            timestamp=datetime(2026, 5, 1, 1, 0, 30),
+            insert_id="kubernetes-event:preempting",
+            component="default-scheduler",
+            instance="scheduler",
+            message="Preempting pod",
+        ),
+    ]
+
+    assert _persist_pod_events(sqlite_engine, _settings(), events) == (3, 1, 1)
+
+    with sqlite_engine.begin() as connection:
+        lifecycle = connection.execute(
+            text(
+                """
+                SELECT
+                  abnormal_reason,
+                  abnormal_message
+                FROM ci_l1_pod_lifecycle
+                WHERE pod_uid = 'uid-anomaly'
+                """
+            )
+        ).mappings().one()
+
+    assert lifecycle["abnormal_reason"] == "Unhealthy"
+    assert lifecycle["abnormal_message"] == "Readiness probe failed"
 
 
 def test_persist_paths_cache_jenkins_prefixes_and_refresh_heartbeat(sqlite_engine, monkeypatch) -> None:
@@ -665,3 +1142,32 @@ def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatc
     assert calls == 2
     assert heartbeats == 2
     assert sleep_calls == [0.025]
+
+
+def test_get_jenkins_prefixes_if_needed_respects_namespace(sqlite_engine, monkeypatch) -> None:
+    load_calls = 0
+
+    def fake_load_prefixes(connection):
+        del connection
+        nonlocal load_calls
+        load_calls += 1
+        return {"ghpr-unit-test": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/"}
+
+    monkeypatch.setattr(watcher, "_load_jenkins_pod_name_url_prefix_map", fake_load_prefixes)
+    cache = _JenkinsPodNameUrlPrefixCache(ttl_seconds=900)
+
+    with sqlite_engine.begin() as connection:
+        assert _get_jenkins_prefixes_if_needed(
+            connection,
+            [("pingcap-testing-account", "prow-test-pods", "uid-a", "pod-a")],
+            cache,
+        ) is None
+        assert _get_jenkins_prefixes_if_needed(
+            connection,
+            [("pingcap-testing-account", "jenkins-tidb", "uid-a", "pod-a")],
+            cache,
+        ) == {
+            "ghpr-unit-test": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/"
+        }
+
+    assert load_calls == 1

@@ -46,12 +46,28 @@ POD_EVENT_REASONS = (
     "Pulled",
     "Created",
     "Started",
+    "Killing",
+    "Evicted",
+    "NodeLost",
+    "Unhealthy",
+    "Preempting",
     "FailedScheduling",
     "Failed",
     "BackOff",
     "ErrImagePull",
     "ImagePullBackOff",
 )
+
+ABNORMAL_REASON_PRIORITY = (
+    "OOMKilled",
+    "Evicted",
+    "Unhealthy",
+    "NodeLost",
+    "Preempting",
+    "Killing",
+)
+ABNORMAL_REASON_RANK = {reason: index for index, reason in enumerate(ABNORMAL_REASON_PRIORITY)}
+ABNORMAL_EVENT_REASONS = frozenset(ABNORMAL_REASON_PRIORITY[1:])
 
 DEFAULT_POD_EVENT_NAMESPACES = (
     "prow-test-pods",
@@ -117,6 +133,8 @@ class PodMetadataSnapshot:
     annotations: dict[str, str]
     observed_at: datetime
     creation_timestamp: datetime | None = None
+    abnormal_reason: str | None = None
+    abnormal_message: str | None = None
 
     def as_lifecycle_fields(self) -> dict[str, Any]:
         return {
@@ -124,6 +142,8 @@ class PodMetadataSnapshot:
             "pod_annotations_json": _json_dumps_or_none(self.annotations),
             "metadata_observed_at": self.observed_at,
             "pod_created_at": self.creation_timestamp,
+            "abnormal_reason": self.abnormal_reason,
+            "abnormal_message": self.abnormal_message,
             "pod_author": _coerce_str(self.labels.get("author")),
             "pod_org": _coerce_str(self.labels.get("org")),
             "pod_repo": _coerce_str(self.labels.get("repo")),
@@ -138,6 +158,108 @@ class PodMetadataSnapshot:
 class JenkinsPodNameBuildRef:
     pod_prefix: str
     build_number: str
+
+
+def _iter_terminated_container_states(
+    container_statuses: Any,
+    *,
+    observed_at: datetime,
+) -> list[dict[str, Any]]:
+    if not isinstance(container_statuses, list):
+        return []
+
+    terminated_states: list[dict[str, Any]] = []
+    for container_status in container_statuses:
+        if not isinstance(container_status, dict):
+            continue
+        for state_key in ("state", "lastState"):
+            state = container_status.get(state_key)
+            if not isinstance(state, dict):
+                continue
+            terminated = state.get("terminated")
+            if not isinstance(terminated, dict):
+                continue
+            terminated_at = (
+                _parse_datetime(terminated.get("finishedAt"))
+                or _parse_datetime(terminated.get("startedAt"))
+                or observed_at
+            )
+            terminated_states.append(
+                {
+                    "reason": _coerce_str(terminated.get("reason")),
+                    "message": _coerce_str(terminated.get("message")),
+                    "timestamp": terminated_at,
+                }
+            )
+
+    return terminated_states
+
+
+def _select_abnormal_summary(candidates: Iterable[dict[str, Any]]) -> tuple[str | None, str | None]:
+    selected_reason: str | None = None
+    selected_message: str | None = None
+    selected_key: tuple[int, int, int, float] | None = None
+
+    for candidate in candidates:
+        reason = _coerce_str(candidate.get("reason"))
+        if reason not in ABNORMAL_REASON_RANK:
+            continue
+        message = _coerce_str(candidate.get("message"))
+        source_rank = int(candidate.get("source_rank", 1))
+        timestamp = _parse_datetime(candidate.get("timestamp"))
+        timestamp_key = -timestamp.timestamp() if isinstance(timestamp, datetime) else float("inf")
+        # This table is meant to summarize the most actionable diagnosis, so for the same
+        # abnormal reason we prefer a concrete message over an empty higher-authority source.
+        key = (
+            ABNORMAL_REASON_RANK[reason],
+            0 if message else 1,
+            source_rank,
+            timestamp_key,
+        )
+        if selected_key is None or key < selected_key:
+            selected_reason = reason
+            selected_message = message
+            selected_key = key
+
+    return selected_reason, selected_message
+
+
+def _extract_pod_abnormal_summary(
+    pod_object: dict[str, Any],
+    *,
+    observed_at: datetime,
+) -> dict[str, Any]:
+    status = pod_object.get("status")
+    status = status if isinstance(status, dict) else {}
+    candidates = [
+        {
+            "reason": state.get("reason"),
+            "message": state.get("message"),
+            "timestamp": state.get("timestamp"),
+            "source_rank": 0,
+        }
+        for state in _iter_terminated_container_states(
+            status.get("containerStatuses"),
+            observed_at=observed_at,
+        )
+        if _coerce_str(state.get("reason")) == "OOMKilled"
+    ]
+    status_reason = _coerce_str(status.get("reason"))
+    if status_reason in ABNORMAL_EVENT_REASONS:
+        candidates.append(
+            {
+                "reason": status_reason,
+                "message": _coerce_str(status.get("message")),
+                "timestamp": observed_at,
+                "source_rank": 0,
+            }
+        )
+
+    abnormal_reason, abnormal_message = _select_abnormal_summary(candidates)
+    return {
+        "abnormal_reason": abnormal_reason,
+        "abnormal_message": abnormal_message,
+    }
 
 
 def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
@@ -626,6 +748,7 @@ def _build_lifecycle_rows(
     if not lifecycle_rows:
         return []
 
+    abnormal_event_summaries = _load_abnormal_event_summaries(connection, pods)
     build_metadata_by_identity = _load_build_metadata_map(
         connection,
         lifecycle_rows,
@@ -660,6 +783,22 @@ def _build_lifecycle_rows(
             build_meta,
             build_system=_coerce_str(merged.get("build_system")),
         )
+        abnormal_reason, abnormal_message = _select_abnormal_summary(
+            [
+                {
+                    "reason": _coerce_str(merged.get("abnormal_reason")),
+                    "message": _coerce_str(merged.get("abnormal_message")),
+                    "source_rank": 0,
+                },
+                {
+                    "reason": _coerce_str(abnormal_event_summaries.get(identity, {}).get("abnormal_reason")),
+                    "message": _coerce_str(abnormal_event_summaries.get(identity, {}).get("abnormal_message")),
+                    "source_rank": 1,
+                },
+            ]
+        )
+        merged["abnormal_reason"] = abnormal_reason
+        merged["abnormal_message"] = abnormal_message
         schedule_at = _parse_datetime(merged.get("scheduled_at"))
         started_at = _parse_datetime(merged.get("first_started_at"))
         merged["scheduled_at"] = schedule_at
@@ -836,6 +975,77 @@ def _load_single_lifecycle_aggregate(
         },
     ).mappings()
     return [dict(row) for row in rows]
+
+
+def _load_abnormal_event_summaries(
+    connection: Connection,
+    pods: list[tuple[str, str | None, str | None, str | None]],
+) -> dict[tuple[str, str | None, str | None, str | None], dict[str, Any]]:
+    if not pods:
+        return {}
+
+    requested_pods_sql, params = _build_requested_pods_relation(pods)
+    reason_placeholders: list[str] = []
+    for index, reason in enumerate(sorted(ABNORMAL_EVENT_REASONS)):
+        param_name = f"abnormal_reason_{index}"
+        reason_placeholders.append(f":{param_name}")
+        params[param_name] = reason
+
+    rows = connection.execute(
+        text(
+            f"""
+            WITH requested_pods AS (
+              {requested_pods_sql}
+            )
+            SELECT
+              events.source_project,
+              events.namespace_name,
+              events.pod_uid,
+              events.pod_name,
+              events.event_reason,
+              events.event_message,
+              events.event_timestamp
+            FROM {_pod_events_table_expr(connection.dialect.name)}
+            JOIN requested_pods AS requested
+              ON events.source_project = requested.source_project
+             AND {_null_safe_equals_sql('events.namespace_name', 'requested.namespace_name', connection.dialect.name)}
+             AND {_null_safe_equals_sql('events.pod_uid', 'requested.pod_uid', connection.dialect.name)}
+             AND {_null_safe_equals_sql('events.pod_name', 'requested.pod_name', connection.dialect.name)}
+            WHERE events.event_reason IN ({", ".join(reason_placeholders)})
+            """
+        ),
+        params,
+    ).mappings()
+
+    candidates_by_identity: dict[tuple[str, str | None, str | None, str | None], list[dict[str, Any]]] = (
+        defaultdict(list)
+    )
+    for row in rows:
+        identity = _pod_identity_from_values(
+            source_project=_coerce_str(row.get("source_project")) or "",
+            namespace_name=_coerce_str(row.get("namespace_name")),
+            pod_uid=_coerce_str(row.get("pod_uid")),
+            pod_name=_coerce_str(row.get("pod_name")),
+        )
+        candidates_by_identity[identity].append(
+            {
+                "reason": _coerce_str(row.get("event_reason")),
+                "message": _coerce_str(row.get("event_message")),
+                "timestamp": row.get("event_timestamp"),
+                "source_rank": 1,
+            }
+        )
+
+    summaries: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
+    for identity, candidates in candidates_by_identity.items():
+        abnormal_reason, abnormal_message = _select_abnormal_summary(candidates)
+        if abnormal_reason is None:
+            continue
+        summaries[identity] = {
+            "abnormal_reason": abnormal_reason,
+            "abnormal_message": abnormal_message,
+        }
+    return summaries
 
 
 def _pod_events_table_expr(dialect_name: str) -> str:
@@ -1267,6 +1477,8 @@ def _empty_pod_metadata_fields() -> dict[str, Any]:
         "pod_annotations_json": None,
         "metadata_observed_at": None,
         "pod_created_at": None,
+        "abnormal_reason": None,
+        "abnormal_message": None,
         "pod_author": None,
         "pod_org": None,
         "pod_repo": None,
@@ -1398,6 +1610,7 @@ def _list_namespace_pod_metadata(
                     annotations=_coerce_str_mapping(metadata.get("annotations")),
                     observed_at=observed_at,
                     creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
+                    **_extract_pod_abnormal_summary(item, observed_at=observed_at),
                 )
         metadata_obj = response.get("metadata")
         continue_token = None
@@ -1712,7 +1925,16 @@ def _deserialize_pod_metadata_snapshots_from_lifecycle_rows(
     for lifecycle in lifecycle_rows:
         labels = _json_loads_str_mapping(lifecycle.get("pod_labels_json"))
         annotations = _json_loads_str_mapping(lifecycle.get("pod_annotations_json"))
-        if not labels and not annotations:
+        creation_timestamp = _parse_datetime(lifecycle.get("pod_created_at"))
+        abnormal_reason = _coerce_str(lifecycle.get("abnormal_reason"))
+        abnormal_message = _coerce_str(lifecycle.get("abnormal_message"))
+        if (
+            not labels
+            and not annotations
+            and creation_timestamp is None
+            and abnormal_reason is None
+            and abnormal_message is None
+        ):
             continue
         identity = _pod_identity_from_values(
             source_project=_coerce_str(lifecycle.get("source_project")) or "",
@@ -1726,7 +1948,9 @@ def _deserialize_pod_metadata_snapshots_from_lifecycle_rows(
             labels=labels,
             annotations=annotations,
             observed_at=observed_at,
-            creation_timestamp=_parse_datetime(lifecycle.get("pod_created_at")),
+            creation_timestamp=creation_timestamp,
+            abnormal_reason=abnormal_reason,
+            abnormal_message=abnormal_message,
         )
     return snapshots
 
@@ -1749,6 +1973,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
             INSERT INTO ci_l1_pod_lifecycle (
               source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
               build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
+              abnormal_reason, abnormal_message,
               pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
               source_prow_job_id, normalized_build_url, repo_full_name, job_name,
               scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
@@ -1756,6 +1981,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
             ) VALUES (
               :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
               :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
+              :abnormal_reason, :abnormal_message,
               :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
               :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
               :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
@@ -1769,6 +1995,8 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
               pod_annotations_json = excluded.pod_annotations_json,
               metadata_observed_at = excluded.metadata_observed_at,
               pod_created_at = excluded.pod_created_at,
+              abnormal_reason = excluded.abnormal_reason,
+              abnormal_message = excluded.abnormal_message,
               pod_author = excluded.pod_author,
               pod_org = excluded.pod_org,
               pod_repo = excluded.pod_repo,
@@ -1797,6 +2025,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
         INSERT INTO ci_l1_pod_lifecycle (
           source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
           build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
+          abnormal_reason, abnormal_message,
           pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
           source_prow_job_id, normalized_build_url, repo_full_name, job_name,
           scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
@@ -1804,6 +2033,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
         ) VALUES (
           :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
           :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
+          :abnormal_reason, :abnormal_message,
           :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
           :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
           :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
@@ -1817,6 +2047,8 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
           pod_annotations_json = VALUES(pod_annotations_json),
           metadata_observed_at = VALUES(metadata_observed_at),
           pod_created_at = VALUES(pod_created_at),
+          abnormal_reason = VALUES(abnormal_reason),
+          abnormal_message = VALUES(abnormal_message),
           pod_author = VALUES(pod_author),
           pod_org = VALUES(pod_org),
           pod_repo = VALUES(pod_repo),
