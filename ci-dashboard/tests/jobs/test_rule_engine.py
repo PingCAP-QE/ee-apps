@@ -2435,3 +2435,139 @@ def test_rule_engine_classifies_lightning_matrix_failure_over_local_network_nois
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
     assert classification.source == "rule:lightning_integration_test_failure"
+
+
+def test_rule_engine_requires_final_kubelet_failure_for_memory_eviction() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "The node was low on resource: memory. Container golang was using 15109Mi, "
+            "request is 8Gi, has larger consumption of memory.\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh "
+            "bazel_importintotest'\n"
+            "==================== Test output for "
+            "//tests/realtikvtest/importintotest:importintotest_test (shard 1 of 1):\n"
+            "[ERROR] [workerpool.go:44] [\"worker pool encountered error\"] "
+            "[error=\"[kv:1062]Duplicate entry '\\\\x02' for key 't0.idx1'\"]\n"
+            "[WARN] [index.go:2007] [\"run add index job failed, convert job to "
+            "rollback\"] [error=\"[kv:1062]Duplicate entry '\\\\x02' for key "
+            "'t0.idx1'\"]\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3764/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
+
+
+def test_rule_engine_classifies_ghpr_check_integrationtest_diff_as_it_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "diff:\n"
+            "explain format='plan_tree' select * from (select row_number() over "
+            "(partition by b) as rownumber from t) DT where rownumber <= 1;\n"
+            "id\ttask\taccess object\toperator info\n"
+            "Projection\troot\t\tColumn\n"
+            "make: *** [Makefile:188: integrationtest] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check/3213/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:ghpr_check_integrationtest_failure"
+
+
+def test_rule_engine_classifies_cdc_storage_light_matrix_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "command: run_sql 'show databases;' 127.0.0.1 3306 && "
+            "check_not_contains 'fail_over_ddl_test'\n"
+            "TEST FAILED: OUTPUT CONTAINS 'fail_over_ddl_test'\n"
+            "run task failed 3-th time, retry later\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G14'\n"
+            "ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1' (111)\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_storage_integration_light",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_storage_integration_light/1431/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_storage_integration_light_test_failure"
+
+
+def test_rule_engine_classifies_merged_integration_jdbc_matrix_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "org.jooq.exception.DataAccessException: SQL [insert into "
+            "jooq_spring_boot_example.book (id, author_id, title) values (?, ?, ?)]; "
+            "Duplicate entry '6' for key 'book.PRIMARY'\n"
+            "Caused by: java.sql.SQLIntegrityConstraintViolationException: "
+            "Duplicate entry '6' for key 'book.PRIMARY'\n"
+            "Failed in branch Matrix - TEST_PARAMS = 'tidb_jdbc_test/tidb_jdbc8_test "
+            "./test_slow.sh', TEST_STORE = 'tikv'\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_jdbc_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_jdbc_test/237/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:merged_integration_matrix_test_failure"
+
+
+def test_rule_engine_classifies_merged_br_matrix_failure_over_local_network_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "[2026/05/15 14:01:23.123 +08:00] [WARN] [backup.go:123] "
+            "[\"retryable storage error\"] [error=\"store backup failed\"]\n"
+            "[2026/05/15 14:01:24.456 +08:00] [ERROR] [client.go:88] "
+            "[\"failed to make connection to store 4\"] "
+            "[error=\"[BR:Common:ErrFailedToConnect] failed to make connection to store 4\"]\n"
+            "dial tcp 127.0.0.1:20163: connect: connection refused\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G02'\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_br_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_br_test/231/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:merged_integration_matrix_test_failure"

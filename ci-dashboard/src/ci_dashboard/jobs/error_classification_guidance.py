@@ -7,6 +7,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Stage names or wrapper steps such as "prepare depends", "build", or generic pipeline/config steps are weak hints; classify the underlying compiler, dependency, test, or merge evidence instead.
 - In this autoscaled CI environment, FailedScheduling/Unschedulable/Insufficient resources/taints/PVC waits during pod Pending are normal scheduling pressure, not an error by themselves.
 - Only classify Kubernetes as INFRA when there is final pod/container failure evidence such as TerminationByKubelet, OOMKilled, or Evicted.
+- Do not classify K8S_MEMORY_EVICTION from partial memory-usage snippets alone; require final kubelet pod-failure evidence such as `Pod [Failed][TerminationByKubelet] The node was low on resource: memory`.
 - Container termination reason OOMKilled is INFRA/OOMKILLED, even when Jenkins later reports a matrix branch failure or agent disconnect.
 - Use job names as strong hints for test families: ghpr/pull unit/mysql jobs are UT, integration/realcluster/lightning/br/dm integration jobs are IT.
 - ghpr_check2 test-failure evidence should usually stay in the UT family because that job behaves like a unit-style mixed check job; do not move it to IT unless the failing evidence is explicitly integration-specific.
@@ -27,7 +28,10 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - Bazel remote-cache throttling evidence such as `Remote Cache: 429 Too Many Requests`, `Failed to fetch blobs because of a remote cache error`, or GCS `SlowDown ... exceeded your bucket's IO capacity` is INFRA/NETWORK rather than INFRA/EXTERNAL_DEP.
 - For integration job families, Jenkins/test wrapper timeout evidence such as "Timeout has been exceeded" is IT/TIMEOUT, not INFRA/NETWORK.
 - BR integration matrix TEST_GROUP failures are IT/TEST_FAILURE, even if the failed case logs local 127.0.0.1 PD/TiKV connection-refused or timeout symptoms.
+- merged integration matrix failures should usually stay in IT/TEST_FAILURE when the failed branch also shows concrete product/test evidence such as `TEST FAILED`, duplicate-key exceptions, JDBC assertion failures, BR store-backup failures, or local service connection-refused inside the test workload.
 - BR restore compatibility failures such as "ErrRestoreNotFreshCluster", "ErrRestoreIncompatibleSys", "missing column in cluster data", or "incompatible column, table:" are IT/TEST_FAILURE, even if later console tail shows scatter warnings or Jenkins remoting noise.
+- For `pull_cdc_storage_integration_light`, matrix `TEST_GROUP` failures with `TEST FAILED`, `check diff failed`, `check data failed`, or `run task failed` are IT/TEST_FAILURE, even if the same build also had transient Pending/PVC scheduling noise.
+- For `ghpr_check`, `make ... integrationtest` failures with plan diff or integration output mismatch evidence are IT/TEST_FAILURE rather than INFRA/NETWORK.
 - Kubelet final pod failures such as `TerminationByKubelet` with `imminent node shutdown` are INFRA/K8S and should beat later Jenkins remoting or agent-offline noise.
 - Jenkins Groovy/runtime/cache/websocket/controller persistence errors are INFRA subcategories, not product BUILD failures.
 - Agent disconnect/remoting failures such as `Timeout waiting for agent to come back`, `AgentOfflineException`, or `was marked offline: Connection was broken` are INFRA/JENKINS_AGENT_OFFLINE when there is no earlier stronger root cause.
