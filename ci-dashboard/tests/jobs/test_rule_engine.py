@@ -2473,6 +2473,248 @@ def test_rule_engine_classifies_lightning_matrix_failure_over_local_network_nois
     assert classification.source == "rule:lightning_integration_test_failure"
 
 
+def test_rule_engine_classifies_unit_testdata_load_error_as_ut_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "FAIL: //tests/readonlytest/tpch_test:tpch_test (see "
+            "/tmp/bazel/tpch_test/test.log)\n"
+            "ERROR: /workspace/tidb/tests/readonlytest/tpch_test/BUILD.bazel:10:8: "
+            "Testing //tests/readonlytest/tpch_test:tpch_test failed: Test failed, aborting\n"
+            "testdata: Errors on loading test data from file: invalid character '<' "
+            "looking for beginning of value\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_unit_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/3610/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:unit_bazel_test_failure"
+
+
+def test_rule_engine_classifies_pull_check2_realtikv_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "FAIL: //tests/realtikvtest/importintotest3:importintotest3_test\n"
+            "==================== Test output for "
+            "//tests/realtikvtest/importintotest3:importintotest3_test:\n"
+            "[ERROR] [kv.go:210] [\"failed to load current txn safe point from PD\"] "
+            "[error=\"type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\"\"]\n"
+            "--- FAIL: TestImportInto (12.34s)\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/release-8.5/pull_check2",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "release-8.5/job/pull_check2/591/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
+
+
+def test_rule_engine_classifies_pull_check_tidy_diff_as_codegen_failure() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Files go.sum and /tmp/go.sum.before differ\n"
+            "make: *** [Makefile:97: tidy] Error 1\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/release-8.5/pull_check",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "release-8.5/job/pull_check/513/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "CODEGEN"
+    assert classification.source == "rule:build_codegen_failure"
+
+
+def test_rule_engine_classifies_merged_integration_mysql_query_mismatch_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "alter_table:46 query succeeded, but expected error(s)!\n"
+            "type_newdecimal:1880 query failed with non expected error(s)!\n"
+            "Failed in branch Matrix - TEST_PART = '2'\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_integration_mysql_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_integration_mysql_test/204/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:merged_integration_mysql_test_failure"
+
+
+def test_rule_engine_classifies_cdc_storage_heavy_next_gen_failure_as_it() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "check diff failed 1-th time, retry later\n"
+            "[CDC:ErrTableIsNotFounded]table is not found\n"
+            "[CDC:ErrMaintainerNotFounded]maintainer is not found\n"
+            "Failed in branch Matrix - TEST_GROUP = 'G09'\n"
+        ),
+        build={
+            "job_name": "pingcap/ticdc/pull_cdc_storage_integration_heavy_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/ticdc/job/"
+                "pull_cdc_storage_integration_heavy_next_gen/317/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:cdc_storage_integration_heavy_next_gen_test_failure"
+
+
+def test_rule_engine_classifies_bazel_socket_closed_as_infra_network() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Bazel caught terminate signal; shutting down.\n"
+            "Could not interrupt server: (14) Socket closed\n"
+            "Server terminated abruptly (error code: 14, error message: 'Socket closed')\n"
+            "make: *** [Makefile:800: bazel_ci_simple_prepare] Error 36\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3424/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "NETWORK"
+    assert classification.source == "rule:infra_network_websocket"
+
+
+def test_rule_engine_classifies_corrupt_git_workspace_as_jenkins_cache() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: Workspace has a .git repository, but it appears to be corrupt.\n"
+            "fatal: not a gitdir /home/jenkins/agent/workspace/pingcap/tidb/"
+            "pull_integration_realcluster_test_next_gen/tidb/.git\n"
+        ),
+        build={
+            "job_name": "tidbcloud/cloud-storage-engine/dedicated/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/tidbcloud/job/cloud-storage-engine/"
+                "job/dedicated/job/pull_integration_realcluster_test_next_gen/1523/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS_CACHE"
+    assert classification.source == "rule:infra_jenkins_cache"
+
+
+def test_rule_engine_classifies_ingest_tmp_space_error_as_disk_full() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Error 8256 (HY000): Check ingest environment failed: no enough space in "
+            "/tmp/tidb/tmp_ddl-6999\n"
+            "Finished: FAILURE\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3667/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "DISK_FULL"
+    assert classification.source == "rule:infra_disk_full"
+
+
+def test_rule_engine_classifies_merged_unit_metric_failure_as_ut() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "=== FAIL: engine/servermaster TestCollectMetric\n"
+            "Received unexpected error: Get \"http://127.0.0.1:33143/metrics\": "
+            "dial tcp 127.0.0.1:33143: connect: connection refused\n"
+            "--- FAIL: TestCollectMetric (0.01s)\n"
+        ),
+        build={
+            "job_name": "pingcap/tiflow/merged_unit_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tiflow/job/"
+                "merged_unit_test/20/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:merged_unit_test_failure"
+
+
+def test_rule_engine_classifies_realcluster_nogo_failure_as_format_check() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/"
+            "pull_integration_realcluster_test_next_gen/tidb/pkg/ddl/BUILD.bazel:3:11: "
+            "Validating nogo output for //pkg/ddl:ddl failed\n"
+            "nogo: errors found by nogo during build-time code analysis:\n"
+            "pkg/ddl/index.go:3918:2: [prealloc] Consider preallocating sampledKVs\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/3381/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "FORMAT_CHECK"
+    assert classification.source == "rule:build_format_check_nogo_failure"
+
+
 def test_rule_engine_requires_final_kubelet_failure_for_memory_eviction() -> None:
     engine = RuleEngine.from_file()
 

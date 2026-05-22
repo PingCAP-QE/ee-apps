@@ -79,7 +79,8 @@
       "l2": "DISK_FULL",
       "text_patterns": [
         "java\\.io\\.IOException: No space left on device",
-        "No space left on device"
+        "No space left on device",
+        "Error 8256 \\(HY000\\): Check ingest environment failed: no enough space in /tmp/tidb/"
       ]
     },
     {
@@ -166,11 +167,13 @@
         "(^|/)ghpr_check2$",
         "(^|/)ghpr_build$",
         "(^|/)pull_build_next_gen$",
+        "(^|/)pull_integration_realcluster_test(_next_gen)?$",
         "(^|/)ghpr_unit_test$",
         "(^|/)pull_unit_test[^/]*$",
         "(^|_)ghpr_check2($|_)",
         "(^|_)ghpr_build($|_)",
         "(^|_)pull_build_next_gen($|_)",
+        "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)",
         "(^|_)ghpr_unit_test($|_)",
         "(^|_)pull_unit_test($|_)"
       ],
@@ -185,7 +188,9 @@
       "l2": "TEST_FAILURE",
       "job_name_patterns": [
         "(^|/)ghpr_check2$",
-        "(^|_)ghpr_check2($|_)"
+        "(^|/)pull_check2[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_check2($|_)"
       ],
       "text_patterns": [
         "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
@@ -207,9 +212,12 @@
       ],
       "text_patterns": [
         "Testing //[^\\r\\n]+ failed: Test failed",
+        "FAIL: //[^\\r\\n]+_test",
         "Test cases: finished with [^\\r\\n]*[1-9][0-9]* failing",
         "Build completed, [1-9][0-9]* test FAILED",
         "Executed [0-9]+ out of [0-9]+ test: [^\\r\\n]*fails locally",
+        "testdata: Errors on loading test data from file:",
+        "panic: runtime error: invalid memory address or nil pointer dereference",
         "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
         "--- FAIL: "
       ]
@@ -220,7 +228,9 @@
       "l2": "TIMEOUT",
       "job_name_patterns": [
         "(^|/)ghpr_check2$",
-        "(^|_)ghpr_check2($|_)"
+        "(^|/)pull_check2[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_check2($|_)"
       ],
       "text_patterns": [
         "Timeout has been exceeded[\\s\\S]*(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)",
@@ -347,6 +357,21 @@
       ]
     },
     {
+      "name": "cdc_storage_integration_heavy_next_gen_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_storage_integration_heavy_next_gen$",
+        "(^|_)pull_cdc_storage_integration_heavy_next_gen($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "check diff failed [1-9][0-9]*-th time",
+        "\\[CDC:ErrTableIsNotFounded\\]table is not found",
+        "\\[CDC:ErrMaintainerNotFounded\\]maintainer is not found"
+      ]
+    },
+    {
       "name": "cdc_storage_integration_light_test_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -389,6 +414,34 @@
         "Test summary\\([^\\r\\n]+\\): Test case FAIL",
         "push_down_test_bin exit code is [1-9][0-9]*",
         "make: \\*\\*\\* \\[Makefile:[0-9]+: push-down-test\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "merged_integration_mysql_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_integration_mysql_test$",
+        "(^|_)merged_integration_mysql_test($|_)"
+      ],
+      "text_patterns": [
+        "query succeeded, but expected error\\(s\\)!",
+        "query failed with non expected error\\(s\\)!",
+        "Failed in branch Matrix - TEST_PART = '[^']+'"
+      ]
+    },
+    {
+      "name": "merged_unit_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_unit_test$",
+        "(^|_)merged_unit_test($|_)"
+      ],
+      "text_patterns": [
+        "=== FAIL:",
+        "--- FAIL:",
+        "Received unexpected error: Get \\\"http://127\\.0\\.0\\.1:[0-9]+/metrics\\\":"
       ]
     },
     {
@@ -455,6 +508,7 @@
         "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
         "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
         "\\.go:[0-9]+:[0-9]+: .* does not implement .*",
+        "\\.go:[0-9]+:[0-9]+: unknown field ",
         "\\.go:[0-9]+:[0-9]+: too many arguments in call to",
         "\\.go:[0-9]+:[0-9]+: not enough arguments in call to",
         "Rewrite error [^\\r\\n]+\\.go:[0-9]+:[0-9]+: expected (statement|declaration), found ",
@@ -480,11 +534,16 @@
       "l2": "CODEGEN",
       "job_name_patterns": [
         "(^|/)ghpr_check$",
+        "(^|/)pull_check[^/]*$",
         "(^|_)ghpr_check($|_)"
+        ,
+        "(^|_)pull_check($|_)"
       ],
       "text_patterns": [
         "Your commit is changed after running go generate \\./\\.\\.\\., it should not happen\\.",
-        "make: \\*\\*\\* \\[Makefile:[0-9]+: gogenerate\\] Error [0-9]+"
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: gogenerate\\] Error [0-9]+",
+        "Files go\\.sum and /tmp/go\\.sum\\.before differ",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: tidy\\] Error [0-9]+"
       ]
     },
     {
@@ -512,7 +571,9 @@
         "hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)[\\s\\S]*Caused: java\\.io\\.IOException: Failed to extract input stream",
         "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)",
         "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*jenkins-pipeline-cache",
-        "org\\.apache\\.http\\.ConnectionClosedException: Premature end of Content-Length delimited message body[\\s\\S]*jenkins-pipeline-cache"
+        "org\\.apache\\.http\\.ConnectionClosedException: Premature end of Content-Length delimited message body[\\s\\S]*jenkins-pipeline-cache",
+        "Workspace has a \\.git repository, but it appears to be corrupt\\.",
+        "fatal: not a gitdir "
       ]
     },
     {
@@ -524,7 +585,8 @@
         "okhttp3\\.internal\\.ws\\.WebSocketReader",
         "okhttp3\\.internal\\.ws\\.RealWebSocket",
         "java\\.io\\.EOFException[\\s\\S]*okhttp3\\.internal\\.ws",
-        "ERROR: Process exited immediately after creation\\.[\\s\\S]*websocket"
+        "ERROR: Process exited immediately after creation\\.[\\s\\S]*websocket",
+        "Server terminated abruptly \\(error code: 14, error message: 'Socket closed'\\)"
       ]
     },
     {
