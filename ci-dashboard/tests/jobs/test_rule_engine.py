@@ -1024,6 +1024,42 @@ def test_rule_engine_prefers_jenkins_groovy_over_remoting_noise() -> None:
     assert classification.source == "rule:infra_jenkins_groovy"
 
 
+def test_rule_engine_prefers_agent_offline_over_groovy_missing_property() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Running on pingcap-tidb-merged-sqllogic-test-210-547vx-s8nf1-fppqr in "
+            "/home/jenkins/agent/workspace/pingcap/tidb/merged_sqllogic_test\n"
+            "ERROR: Checkout failed\n"
+            "java.lang.InterruptedException\n"
+            "org.jenkinsci.plugins.workflow.support.steps.AgentOfflineException: "
+            "Unable to create live FilePath for pingcap-tidb-merged-sqllogic-test-210-2vwhm-n7j1j-lhw92\n"
+            "org.jenkinsci.plugins.workflow.steps.FlowInterruptedException: Failed in "
+            "branch Matrix - CACHE_ENABLED = '1', TEST_PATH_STRING = "
+            "'index/between/100 index/between/1000 index/commute/10'\n"
+            "groovy.lang.MissingPropertyException: No such property: source "
+            "for class: groovy.lang.Binding\n"
+            "at WorkflowScript.run(WorkflowScript:114)\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/merged_sqllogic_test",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "merged_sqllogic_test/210/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "JENKINS_AGENT_OFFLINE"
+    assert (
+        classification.source
+        == "rule:infra_jenkins_agent_offline_before_groovy_missing_property"
+    )
+
+
 def test_rule_engine_classifies_jenkins_dsl_error_as_groovy_infra() -> None:
     engine = RuleEngine.from_file()
 

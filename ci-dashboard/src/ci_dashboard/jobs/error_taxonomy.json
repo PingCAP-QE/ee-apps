@@ -541,6 +541,19 @@
       ]
     },
     {
+      "name": "infra_jenkins_agent_offline_before_groovy_missing_property",
+      "l1": "INFRA",
+      "l2": "JENKINS_AGENT_OFFLINE",
+      "job_name_patterns": [
+        "(^|/)merged_sqllogic_test$",
+        "(^|_)merged_sqllogic_test($|_)"
+      ],
+      "text_patterns": [
+        "AgentOfflineException: Unable to create live FilePath[\\s\\S]*groovy\\.lang\\.MissingPropertyException: No such property: source",
+        "ERROR: Checkout failed[\\s\\S]*java\\.lang\\.InterruptedException[\\s\\S]*groovy\\.lang\\.MissingPropertyException: No such property: source"
+      ]
+    },
+    {
       "name": "infra_jenkins_groovy",
       "l1": "INFRA",
       "l2": "JENKINS_GROOVY",

@@ -34,6 +34,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - For `ghpr_check`, `make ... integrationtest` failures with plan diff or integration output mismatch evidence are IT/TEST_FAILURE rather than INFRA/NETWORK.
 - Kubelet final pod failures such as `TerminationByKubelet` with `imminent node shutdown` are INFRA/K8S and should beat later Jenkins remoting or agent-offline noise.
 - Jenkins Groovy/runtime/cache/websocket/controller persistence errors are INFRA subcategories, not product BUILD failures.
+- If a log first shows checkout interruption or agent-loss evidence such as `ERROR: Checkout failed`, `java.lang.InterruptedException`, or `AgentOfflineException: Unable to create live FilePath`, and only later shows `groovy.lang.MissingPropertyException: No such property: source`, prefer INFRA/JENKINS_AGENT_OFFLINE over INFRA/JENKINS_GROOVY.
 - Agent disconnect/remoting failures such as `Timeout waiting for agent to come back`, `AgentOfflineException`, or `was marked offline: Connection was broken` are INFRA/JENKINS_AGENT_OFFLINE when there is no earlier stronger root cause.
 - Disk-full evidence such as "No space left on device" is INFRA/DISK_FULL even when it appears while Jenkins saves pipeline state.
 - Prow superseded aborts are OTHERS/SUPERSEDED_BY_NEWER_BUILD when Prow marks the job aborted because a newer same-PR same-job version is running, or when an admin-abort log has same-PR same-job newer different-SHA build evidence; this overrides downstream noise.
