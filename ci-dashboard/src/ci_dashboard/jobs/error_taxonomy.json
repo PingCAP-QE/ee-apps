@@ -107,11 +107,26 @@
       "l1": "IT",
       "l2": "TEST_FAILURE",
       "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)",
         "(^|/)pull_integration_realcluster_test(_next_gen)?$",
         "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - SCRIPT_AND_ARGS = 'tests/realtikvtest/scripts/next-gen/run-tests\\.sh bazel_statisticstest'[\\s\\S]*Duplicate entry [^\\r\\n]+ for key '(?:t\\.idx|t0\\.idx1)'"
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = 'tests/realtikvtest/scripts/next-gen/run-tests\\.sh bazel_statisticstest'[\\s\\S]*Duplicate entry [^\\r\\n]+ for key '(?:t\\.idx|t0\\.idx1)'",
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = '(?:tests/realtikvtest/scripts/next-gen/run-tests\\.sh|run_real_tikv_tests\\.sh) bazel_(?:addindextest[0-9]*|importintotest[0-9]*)'[\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)",
+        "Test output for //tests/realtikvtest/[^\\r\\n]+[\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)",
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in [\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)"
+      ]
+    },
+    {
+      "name": "infra_remote_cache_throttle_network",
+      "l1": "INFRA",
+      "l2": "NETWORK",
+      "text_patterns": [
+        "Remote Cache: 429 Too Many Requests",
+        "Failed to fetch blobs because of a remote cache error\\.: 429 Too Many Requests",
+        "SlowDown[^\\r\\n]*exceeded your bucket's IO capacity"
       ]
     },
     {
@@ -549,7 +564,6 @@
       "l2": "EXTERNAL_DEP",
       "text_patterns": [
         "rate limit exceeded",
-        "429 Too Many Requests",
         "502 Bad Gateway",
         "503 Service Unavailable",
         "upstream connect error"

@@ -2184,7 +2184,7 @@ def test_rule_engine_prefers_realcluster_statistics_duplicate_key_failure_over_b
     assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
 
 
-def test_rule_engine_keeps_mixed_realcluster_external_dependency_as_external_dep() -> None:
+def test_rule_engine_prefers_mixed_realcluster_duplicate_key_over_external_dependency() -> None:
     engine = RuleEngine.from_file()
 
     classification = engine.classify(
@@ -2220,9 +2220,38 @@ def test_rule_engine_keeps_mixed_realcluster_external_dependency_as_external_dep
     )
 
     assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
+
+
+def test_rule_engine_classifies_remote_cache_throttle_as_infra_network() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "INFO: Build completed, 1 test FAILED, 123 total actions\n"
+            "ERROR: /home/jenkins/agent/workspace/pkg/server/BUILD.bazel:3:11: GoLink "
+            "//pkg/server:server failed: (Exit 1): builder failed: error executing "
+            "GoLink command\n"
+            "Remote Cache: 429 Too Many Requests\n"
+            "GoLink //pkg/server:server failed: Failed to fetch blobs because of a "
+            "remote cache error.: 429 Too Many Requests\n"
+            "<Error><Code>SlowDown</Code><Message>Please reduce your request rate."
+            "</Message><Details>Please reduce your request rate. Your current request "
+            "rate is too high. Please retry after some time. Your bucket's IO capacity "
+            "has been exceeded.</Details></Error>\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_unit_test",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/3988/",
+        },
+    )
+
+    assert classification is not None
     assert classification.l1_category == "INFRA"
-    assert classification.l2_subcategory == "EXTERNAL_DEP"
-    assert classification.source == "rule:infra_external_dependency_bazel_fetch_failure"
+    assert classification.l2_subcategory == "NETWORK"
+    assert classification.source == "rule:infra_remote_cache_throttle_network"
 
 
 def test_rule_engine_classifies_ghpr_check2_not_bootstrapped_realtikv_failure_as_it() -> None:
@@ -2248,7 +2277,44 @@ def test_rule_engine_classifies_ghpr_check2_not_bootstrapped_realtikv_failure_as
     assert classification is not None
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
-    assert classification.source == "rule:ghpr_check2_realtikv_test_failure"
+
+
+def test_rule_engine_prefers_ghpr_check2_realtikv_duplicate_key_over_external_dependency() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "WARNING: Download from https://github.com/bazelbuild/rules_java/releases/"
+            "download/7.12.2/rules_java-7.12.2.tar.gz failed: class "
+            "com.google.devtools.build.lib.bazel.repository.downloader."
+            "UnrecoverableHttpException GET returned 502 Bad Gateway or Proxy Error\n"
+            "ERROR: Error computing the main repository mapping: no such package "
+            "'@rules_java//java': java.io.IOException: Error downloading "
+            "[https://github.com/bazelbuild/rules_java/releases/download/7.12.2/"
+            "rules_java-7.12.2.tar.gz] to /tmp/rules_java-7.12.2.tar.gz: GET "
+            "returned 502 Bad Gateway or Proxy Error\n"
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = 'run_real_tikv_tests.sh "
+            "bazel_importintotest'\n"
+            "==================== Test output for "
+            "//tests/realtikvtest/importintotest:importintotest_test (shard 1 of 1):\n"
+            "[ERROR] [workerpool.go:44] [\"worker pool encountered error\"] "
+            "[error=\"[kv:1062]Duplicate entry '\\\\x02' for key 't0.idx1'\"]\n"
+            "[WARN] [index.go:2007] [\"run add index job failed, convert job to "
+            "rollback\"] [error=\"[kv:1062]Duplicate entry '\\\\x02' for key "
+            "'t0.idx1'\"]\n"
+            "//tests/realtikvtest/importintotest:importintotest_test FAILED in 3 out "
+            "of 3 in 0.3s\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/3621/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "IT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:realcluster_statistics_duplicate_key_test_failure"
 
 
 def test_rule_engine_classifies_ghpr_check2_realtikv_timeout_as_integration_timeout() -> None:
