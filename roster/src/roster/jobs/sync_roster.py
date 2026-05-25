@@ -29,6 +29,7 @@ from sqlalchemy.engine import Connection
 LOG = logging.getLogger(__name__)
 
 RosterSyncStatus = Literal["not_implemented", "success", "failed", "partial"]
+RosterEmployeeChangeType = Literal["hire", "leave", "group_change"]
 DEFAULT_INACTIVE_GRACE = timedelta(days=2)
 BULK_UPDATE_CHUNK_SIZE = 500
 
@@ -72,6 +73,24 @@ groups_table = Table(
     Column("last_seen_at", DateTime),
     Column("created_at", DateTime, nullable=False, default=_utcnow_naive),
     Column("updated_at", DateTime, nullable=False, default=_utcnow_naive),
+)
+
+employee_change_events_table = Table(
+    "roster_employee_change_events",
+    metadata,
+    Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
+    Column("event_type", String(32), nullable=False),
+    Column("employee_lark_id", String(128), nullable=False),
+    Column("employee_name", String(255), nullable=False),
+    Column("employee_email", String(255)),
+    Column("manager_name", String(255)),
+    Column("manager_email", String(255)),
+    Column("group_name", String(255)),
+    Column("group_path", String(1024)),
+    Column("previous_group_name", String(255)),
+    Column("previous_group_path", String(1024)),
+    Column("event_at", DateTime, nullable=False),
+    Column("created_at", DateTime, nullable=False, default=_utcnow_naive),
 )
 
 
@@ -159,6 +178,7 @@ def _sync_roster_rows(
     sync_time: datetime,
     inactive_grace: timedelta,
 ) -> None:
+    previous_employee_state_by_lark_id = _employee_state_map(connection)
     group_rows = [_group_pass1_row(group, sync_time) for group in roster.groups]
     employee_rows = _employee_pass1_rows(roster.employees, sync_time)
 
@@ -185,6 +205,13 @@ def _sync_roster_rows(
         connection,
         sync_time=sync_time,
         inactive_grace=inactive_grace,
+    )
+    _record_employee_change_events(
+        connection,
+        previous_employee_state_by_lark_id=previous_employee_state_by_lark_id,
+        current_employee_state_by_lark_id=_employee_state_map(connection),
+        fetched_employee_lark_ids={employee.lark_id for employee in roster.employees},
+        event_at=sync_time,
     )
 
 
@@ -464,6 +491,97 @@ def _bulk_update_by_id(
                 for row in chunk
             ],
         )
+
+
+def _record_employee_change_events(
+    connection: Connection,
+    *,
+    previous_employee_state_by_lark_id: dict[str, dict[str, object]],
+    current_employee_state_by_lark_id: dict[str, dict[str, object]],
+    fetched_employee_lark_ids: set[str],
+    event_at: datetime,
+) -> None:
+    event_rows: list[dict[str, object]] = []
+
+    for lark_id in sorted(fetched_employee_lark_ids):
+        current = current_employee_state_by_lark_id.get(lark_id)
+        if current is None:
+            continue
+        previous = previous_employee_state_by_lark_id.get(lark_id)
+        if previous is None or not _state_is_active(previous):
+            event_rows.append(_employee_change_event_row("hire", current, event_at=event_at))
+        elif previous.get("group_id") != current.get("group_id"):
+            event_rows.append(
+                _employee_change_event_row(
+                    "group_change",
+                    current,
+                    event_at=event_at,
+                    previous=previous,
+                )
+            )
+
+    for lark_id, previous in sorted(previous_employee_state_by_lark_id.items()):
+        if lark_id in fetched_employee_lark_ids or not _state_is_active(previous):
+            continue
+        current = current_employee_state_by_lark_id.get(lark_id)
+        if current is not None and not _state_is_active(current):
+            event_rows.append(_employee_change_event_row("leave", current, event_at=event_at))
+
+    if event_rows:
+        connection.execute(employee_change_events_table.insert(), event_rows)
+
+
+def _employee_change_event_row(
+    event_type: RosterEmployeeChangeType,
+    current: dict[str, object],
+    *,
+    event_at: datetime,
+    previous: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "event_type": event_type,
+        "employee_lark_id": current["lark_id"],
+        "employee_name": current["name"],
+        "employee_email": current.get("email"),
+        "manager_name": current.get("manager_name"),
+        "manager_email": current.get("manager_email"),
+        "group_name": current.get("group_name"),
+        "group_path": current.get("group_path"),
+        "previous_group_name": previous.get("group_name") if previous else None,
+        "previous_group_path": previous.get("group_path") if previous else None,
+        "event_at": event_at,
+        "created_at": event_at,
+    }
+
+
+def _employee_state_map(connection: Connection) -> dict[str, dict[str, object]]:
+    manager = employees_table.alias("manager")
+    rows = connection.execute(
+        select(
+            employees_table.c.lark_id,
+            employees_table.c.name,
+            employees_table.c.email,
+            employees_table.c.is_active,
+            employees_table.c.manager_id,
+            employees_table.c.group_id,
+            employees_table.c.group_path,
+            manager.c.name.label("manager_name"),
+            manager.c.email.label("manager_email"),
+            groups_table.c.name.label("group_name"),
+        )
+        .select_from(
+            employees_table.outerjoin(manager, employees_table.c.manager_id == manager.c.id)
+            .outerjoin(groups_table, employees_table.c.group_id == groups_table.c.id)
+        )
+    ).all()
+    return {
+        str(row.lark_id): dict(row._mapping)
+        for row in rows
+    }
+
+
+def _state_is_active(state: dict[str, object]) -> bool:
+    return bool(state.get("is_active"))
 
 
 def _chunks(

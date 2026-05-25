@@ -13,6 +13,7 @@ from roster.jobs.sync_roster import (
     RosterSyncStatus,
     StaticRosterSource,
     SyncRosterSummary,
+    employee_change_events_table,
     employees_table,
     groups_table,
     metadata,
@@ -335,6 +336,94 @@ def test_run_sync_roster_marks_missing_rows_inactive_after_grace_period() -> Non
 
     assert employee_is_active is False
     assert group_is_active is False
+
+
+def test_run_sync_roster_records_employee_change_events() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+    original_time = _dt("2026-05-10T08:00:00")
+    first = StaticRosterSource(
+        FetchedRoster(
+            groups=[
+                FetchedGroup(lark_group_id="eng", name="Engineering"),
+                FetchedGroup(lark_group_id="db", name="Database"),
+            ],
+            employees=[
+                FetchedEmployee(
+                    lark_id="manager",
+                    name="Manager",
+                    email="manager@example.com",
+                    group_lark_id="eng",
+                ),
+                FetchedEmployee(
+                    lark_id="alice",
+                    name="Alice",
+                    email="alice@example.com",
+                    manager_lark_id="manager",
+                    group_lark_id="eng",
+                ),
+            ],
+        )
+    )
+    second = StaticRosterSource(
+        FetchedRoster(
+            groups=[
+                FetchedGroup(lark_group_id="eng", name="Engineering"),
+                FetchedGroup(lark_group_id="db", name="Database"),
+            ],
+            employees=[
+                FetchedEmployee(
+                    lark_id="manager",
+                    name="Manager",
+                    email="manager@example.com",
+                    group_lark_id="eng",
+                ),
+                FetchedEmployee(
+                    lark_id="alice",
+                    name="Alice",
+                    email="alice@example.com",
+                    manager_lark_id="manager",
+                    group_lark_id="db",
+                ),
+            ],
+        )
+    )
+
+    run_sync_roster(engine, source=first, now=original_time)
+    run_sync_roster(engine, source=second, now=original_time + timedelta(days=1))
+    run_sync_roster(
+        engine,
+        source=StaticRosterSource(FetchedRoster(groups=[], employees=[])),
+        now=original_time + timedelta(days=4),
+        inactive_grace=timedelta(days=2),
+    )
+
+    with engine.connect() as conn:
+        events = [
+            row._mapping
+            for row in conn.execute(
+                select(employee_change_events_table).order_by(
+                    employee_change_events_table.c.event_at,
+                    employee_change_events_table.c.employee_lark_id,
+                    employee_change_events_table.c.event_type,
+                )
+            ).all()
+        ]
+
+    alice_events = [event for event in events if event["employee_lark_id"] == "alice"]
+    assert [event["event_type"] for event in alice_events] == [
+        "hire",
+        "group_change",
+        "leave",
+    ]
+    assert alice_events[0]["employee_name"] == "Alice"
+    assert alice_events[0]["employee_email"] == "alice@example.com"
+    assert alice_events[0]["manager_name"] == "Manager"
+    assert alice_events[0]["manager_email"] == "manager@example.com"
+    assert alice_events[0]["group_name"] == "Engineering"
+    assert alice_events[1]["previous_group_name"] == "Engineering"
+    assert alice_events[1]["group_name"] == "Database"
+    assert alice_events[2]["group_name"] == "Database"
 
 
 def test_run_sync_roster_normalizes_empty_join_keys_to_null() -> None:

@@ -25,6 +25,13 @@ Compare synced roster rows with historical employee identity tables:
 python -m roster.jobs.cli validate-history --details-limit 20
 ```
 
+Print or send the weekly roster change summary:
+
+```bash
+python -m roster.jobs.cli weekly-summary
+python -m roster.jobs.cli weekly-summary --send-lark
+```
+
 Database configuration accepts either a SQLAlchemy URL:
 
 ```bash
@@ -53,6 +60,7 @@ Optional Lark settings:
 
 ```bash
 ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID=...
+ROSTER_LARK_NOTIFY_OPEN_ID=...
 ROSTER_LARK_ROOT_DEPARTMENT_ID=0
 ```
 

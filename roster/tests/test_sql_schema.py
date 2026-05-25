@@ -10,6 +10,11 @@ JOIN_TIME_SQL_PATH = (
 EN_NAME_SQL_PATH = (
     Path(__file__).resolve().parents[1] / "sql" / "003_alter_roster_employees_add_en_name.sql"
 )
+CHANGE_EVENTS_SQL_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "sql"
+    / "004_create_roster_employee_change_events.sql"
+)
 
 
 def test_schema_migration_creates_expected_tables() -> None:
@@ -17,7 +22,8 @@ def test_schema_migration_creates_expected_tables() -> None:
 
     assert "CREATE TABLE IF NOT EXISTS roster_employees" in sql
     assert "CREATE TABLE IF NOT EXISTS roster_groups" in sql
-    assert sql.count("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci") == 2
+    assert "CREATE TABLE IF NOT EXISTS roster_employee_change_events" in sql
+    assert sql.count("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci") == 3
 
 
 def test_employee_schema_has_join_keys_and_paths() -> None:
@@ -61,3 +67,15 @@ def test_en_name_alter_sql_adds_employee_column() -> None:
 
     assert "ALTER TABLE roster_employees" in sql
     assert "ADD COLUMN en_name VARCHAR(255) NULL AFTER name" in sql
+
+
+def test_change_events_sql_creates_weekly_summary_table() -> None:
+    sql = CHANGE_EVENTS_SQL_PATH.read_text()
+
+    assert "CREATE TABLE IF NOT EXISTS roster_employee_change_events" in sql
+    assert "event_type VARCHAR(32) NOT NULL" in sql
+    assert "employee_name VARCHAR(255) NOT NULL" in sql
+    assert "manager_name VARCHAR(255) NULL" in sql
+    assert "group_name VARCHAR(255) NULL" in sql
+    assert "previous_group_name VARCHAR(255) NULL" in sql
+    assert "KEY idx_roster_employee_change_events_type_time (event_type, event_at)" in sql

@@ -225,6 +225,29 @@ def test_lark_api_client_raises_when_token_missing() -> None:
         client.tenant_access_token()
 
 
+def test_lark_api_client_posts_authenticated_json() -> None:
+    transport = FakeTransport([{"code": 0, "data": {"message_id": "om_xxx"}}])
+    client = LarkApiClient("app_id", "app_secret", transport=transport)
+
+    response = client.post(
+        "/im/v1/messages",
+        params={"receive_id_type": "open_id"},
+        json_body={"receive_id": "ou_xxx"},
+        token="token",
+    )
+
+    assert response["data"]["message_id"] == "om_xxx"
+    assert transport.calls == [
+        {
+            "method": "POST",
+            "path": "/im/v1/messages",
+            "params": {"receive_id_type": "open_id"},
+            "json_body": {"receive_id": "ou_xxx"},
+            "headers": {"Authorization": "Bearer token"},
+        }
+    ]
+
+
 def test_lark_api_client_rejects_authenticated_request_without_headers() -> None:
     client = LarkApiClient("app_id", "app_secret", transport=FakeTransport([]))
 

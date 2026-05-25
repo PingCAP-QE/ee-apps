@@ -40,6 +40,7 @@ class LarkSettings:
     app_id: str | None = None
     app_secret: str | None = None
     github_custom_attr_id: str | None = None
+    notify_open_id: str | None = None
     root_department_id: str = "0"
 
     @property
@@ -97,6 +98,7 @@ def load_settings(
             app_id=env.get("ROSTER_LARK_APP_ID") or None,
             app_secret=env.get("ROSTER_LARK_APP_SECRET") or None,
             github_custom_attr_id=env.get("ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID") or None,
+            notify_open_id=env.get("ROSTER_LARK_NOTIFY_OPEN_ID") or None,
             root_department_id=env.get("ROSTER_LARK_ROOT_DEPARTMENT_ID") or "0",
         ),
         log_level=(env.get("ROSTER_LOG_LEVEL") or "INFO").upper(),
