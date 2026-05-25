@@ -13,6 +13,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_repo_group_stack_page,
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
+    get_cost_weekly_overview_page,
     get_flaky_page,
     get_overview_page,
     get_runtime_insights_page,
@@ -81,6 +82,14 @@ def cost_trend_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_trend_page(engine, filters)
+
+
+@router.get("/cost-weekly-overview")
+def cost_weekly_overview_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_weekly_overview_page(engine, filters)
 
 
 @router.get("/cost-repo-group-stack")

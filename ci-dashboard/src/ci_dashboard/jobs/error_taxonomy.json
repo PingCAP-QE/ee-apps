@@ -456,7 +456,9 @@
         "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*TEST FAILED: OUTPUT (?:DOES NOT CONTAIN|CONTAINS)",
         "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*org\\.jooq\\.exception\\.DataAccessException: SQL \\[[^\\r\\n]+Duplicate entry",
         "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*SQLIntegrityConstraintViolationException: Duplicate entry",
-        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*(?:retryable storage error|store backup failed|\\[BR:Common:ErrFailedToConnect\\] failed to make connection to store|\\[health check\\] check health error)"
+        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*(?:retryable storage error|store backup failed|\\[BR:Common:ErrFailedToConnect\\] failed to make connection to store|\\[health check\\] check health error)",
+        "(?:org\\.jooq\\.exception\\.DataAccessException: SQL \\[[^\\r\\n]+Duplicate entry|SQLIntegrityConstraintViolationException: Duplicate entry)[\\s\\S]*Failed in branch Matrix - [^\\r\\n]+",
+        "(?:retryable storage error|store backup failed|\\[BR:Common:ErrFailedToConnect\\] failed to make connection to store|\\[health check\\] check health error)[\\s\\S]*Failed in branch Matrix - [^\\r\\n]+"
       ]
     },
     {

@@ -22,6 +22,10 @@ def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
     assert "cost_at_list" in query
     assert "pricing_unit NOT IN ('hour', 'minute', 'second')" in query
     assert "ROUND(SUM(amount_in_pricing_units) * 60, 2)" in query
+    assert "Cloud Logging" in query
+    assert "Compute Flexible Committed Use Discounts - 3 Year" in query
+    assert "Compute Flexible Committed Use Discounts - 1 Year" in query
+    assert "wei_zheng" in query
     assert "MAX(export_time) AS source_export_time" in query
     assert "LIMIT 10" in query
 
@@ -41,7 +45,12 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
     assert "resource_name" not in query
-    assert "service.description" not in query
+    assert "service.description AS service_name" in query
+    assert "sku.description AS sku_name" in query
+    assert "Cloud Logging" in query
+    assert "Compute Flexible Committed Use Discounts - 3 Year" in query
+    assert "Compute Flexible Committed Use Discounts - 1 Year" in query
+    assert "wei_zheng" in query
     assert "LIMIT 20" in query
 
 
@@ -54,6 +63,8 @@ def test_build_gcp_unmatched_resource_query_keeps_resource_context() -> None:
     assert "resource.global_name" in query
     assert "usage_seconds" in query
     assert "service.description AS service_name" in query
+    assert "Cloud Logging" in query
+    assert "wei_zheng" in query
 
 
 def test_decimal_or_none() -> None:

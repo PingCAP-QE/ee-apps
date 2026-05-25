@@ -25,6 +25,7 @@ from cost_insight.jobs.sync_gcp_billing_export import (
     _upsert_cost_source,
 )
 from cost_insight.sources.gcp_billing_export import (
+    DEFAULT_COST_OWNER_AUTHOR,
     decimal_or_none,
     fetch_gcp_billing_summary_rows,
 )
@@ -32,12 +33,15 @@ from cost_insight.sources.gcp_billing_export import (
 LOG = logging.getLogger(__name__)
 
 JOB_NAME = "sync_gcp_billing_summary"
+OWNER_OVERRIDE_DELETE_CHUNK_SIZE = 1000
 HASH_FIELDS = (
     "vendor",
     "account_id",
     "billing_account_id",
     "export_partition_date",
     "usage_date",
+    "service_name",
+    "sku_name",
     "author",
     "org",
     "repo",
@@ -194,6 +198,8 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "billing_account_id": nullable_text(row.get("billing_account_id")),
         "export_partition_date": coerce_date(row.get("export_partition_date")),
         "usage_date": coerce_date(row.get("usage_date")),
+        "service_name": nullable_text(row.get("service_name")),
+        "sku_name": nullable_text(row.get("sku_name")),
         "author": nullable_text(row.get("author")),
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
@@ -226,6 +232,8 @@ def write_summary_rows(engine: Engine, rows: Sequence[dict[str, Any]], *, dry_ru
         LOG.info("dry-run skipped cost_bq_export_summary_daily upsert", extra={"row_count": len(rows)})
         return 0
     with engine.begin() as connection:
+        _delete_legacy_summary_rows(connection, rows)
+        _delete_superseded_owner_override_rows(connection, rows)
         connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
     return len(rows)
 
@@ -235,6 +243,62 @@ def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[d
     if connection.dialect.name != "sqlite":
         return bound_rows
     return bind_decimal_rows(bound_rows)
+
+
+def _delete_legacy_summary_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> None:
+    partitions = {
+        (
+            row["vendor"],
+            row["account_id"],
+            row["export_partition_date"],
+        )
+        for row in rows
+    }
+    if not partitions:
+        return
+    for vendor, account_id, export_partition_date in partitions:
+        connection.execute(
+            _DELETE_LEGACY_SUMMARY_ROWS,
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "export_partition_date": export_partition_date,
+            },
+        )
+
+
+def _delete_superseded_owner_override_rows(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    for offset in range(0, len(rows), OWNER_OVERRIDE_DELETE_CHUNK_SIZE):
+        params = [
+            {
+                "vendor": row.get("vendor") or "",
+                "account_id": row.get("account_id") or "",
+                "billing_account_id": row.get("billing_account_id") or "",
+                "export_partition_date": row["export_partition_date"],
+                "usage_date": row["usage_date"],
+                "service_name": row.get("service_name") or "",
+                "sku_name": row.get("sku_name") or "",
+                "org": row.get("org") or "",
+                "repo": row.get("repo") or "",
+            }
+            for row in rows[offset : offset + OWNER_OVERRIDE_DELETE_CHUNK_SIZE]
+            if _is_owner_override_row(row)
+        ]
+        if params:
+            connection.execute(_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS, params)
+
+
+def _is_owner_override_row(row: dict[str, Any]) -> bool:
+    if row.get("author") != DEFAULT_COST_OWNER_AUTHOR:
+        return False
+    return (
+        row.get("service_name") == "Cloud Logging"
+        or row.get("sku_name") == "Compute Flexible Committed Use Discounts - 3 Year"
+        or row.get("sku_name") == "Compute Flexible Committed Use Discounts - 1 Year"
+    )
 
 
 def _get_touched_usage_dates(
@@ -271,6 +335,8 @@ def _build_upsert_statement(connection: Connection):
               billing_account_id,
               export_partition_date,
               usage_date,
+              service_name,
+              sku_name,
               org,
               repo,
               author,
@@ -286,6 +352,8 @@ def _build_upsert_statement(connection: Connection):
               :billing_account_id,
               :export_partition_date,
               :usage_date,
+              :service_name,
+              :sku_name,
               :org,
               :repo,
               :author,
@@ -299,12 +367,14 @@ def _build_upsert_statement(connection: Connection):
             ON CONFLICT(vendor, account_id, export_partition_date, source_row_hash)
             DO UPDATE SET
               billing_account_id = excluded.billing_account_id,
-              list_cost = excluded.list_cost,
-              effective_cost = excluded.effective_cost,
-              credit_amount = excluded.credit_amount,
-              net_cost = excluded.net_cost,
-              source_export_time = excluded.source_export_time,
-              updated_at = CURRENT_TIMESTAMP
+          list_cost = excluded.list_cost,
+          effective_cost = excluded.effective_cost,
+          credit_amount = excluded.credit_amount,
+          net_cost = excluded.net_cost,
+          service_name = excluded.service_name,
+          sku_name = excluded.sku_name,
+          source_export_time = excluded.source_export_time,
+          updated_at = CURRENT_TIMESTAMP
             """
         )
     return text(
@@ -315,6 +385,8 @@ def _build_upsert_statement(connection: Connection):
           billing_account_id,
           export_partition_date,
           usage_date,
+          service_name,
+          sku_name,
           org,
           repo,
           author,
@@ -330,6 +402,8 @@ def _build_upsert_statement(connection: Connection):
           :billing_account_id,
           :export_partition_date,
           :usage_date,
+          :service_name,
+          :sku_name,
           :org,
           :repo,
           :author,
@@ -347,6 +421,8 @@ def _build_upsert_statement(connection: Connection):
           effective_cost = VALUES(effective_cost),
           credit_amount = VALUES(credit_amount),
           net_cost = VALUES(net_cost),
+          service_name = VALUES(service_name),
+          sku_name = VALUES(sku_name),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
         """
@@ -361,5 +437,34 @@ _SELECT_TOUCHED_USAGE_DATES = text(
       AND vendor = :vendor
       AND account_id = :account_id
     ORDER BY usage_date
+    """
+)
+
+
+_DELETE_LEGACY_SUMMARY_ROWS = text(
+    """
+    DELETE FROM cost_bq_export_summary_daily
+    WHERE vendor = :vendor
+      AND account_id = :account_id
+      AND export_partition_date = :export_partition_date
+      AND service_name IS NULL
+      AND sku_name IS NULL
+    """
+)
+
+
+_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
+    """
+    DELETE FROM cost_bq_export_summary_daily
+    WHERE vendor = :vendor
+      AND account_id = :account_id
+      AND COALESCE(billing_account_id, '') = :billing_account_id
+      AND export_partition_date = :export_partition_date
+      AND usage_date = :usage_date
+      AND COALESCE(service_name, '') = :service_name
+      AND COALESCE(sku_name, '') = :sku_name
+      AND COALESCE(org, '') = :org
+      AND COALESCE(repo, '') = :repo
+      AND author IS NULL
     """
 )
