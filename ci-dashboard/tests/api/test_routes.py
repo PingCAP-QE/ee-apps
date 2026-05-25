@@ -39,6 +39,14 @@ def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.Monk
     dependencies_module._cached_engine.cache_clear()
 
 
+def test_cost_null_safe_eq_uses_dialect_specific_operator() -> None:
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+
+    assert cost_queries._null_safe_eq(sqlite_connection, "m.org", "r.org") == "m.org IS r.org"
+    assert cost_queries._null_safe_eq(mysql_connection, "m.org", "r.org") == "m.org <=> r.org"
+
+
 def _insert_build(
     sqlite_engine,
     *,

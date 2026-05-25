@@ -7,6 +7,7 @@ from cost_insight.jobs import state_store
 from cost_insight.jobs.sync_gcp_billing_summary import (
     JOB_NAME,
     _normalize_summary_row,
+    _select_billing_account_id,
     _start_partition_from_state,
     build_summary_row_hash,
     run_sync_gcp_billing_summary,
@@ -121,6 +122,11 @@ def test_summary_hash_ignores_amount_changes() -> None:
     changed = {**row, "net_cost": "99.00"}
 
     assert build_summary_row_hash(row) == build_summary_row_hash(changed)
+
+
+def test_select_billing_account_id_handles_empty_and_multiple_values() -> None:
+    assert _select_billing_account_id(set()) is None
+    assert _select_billing_account_id({"billing-2", "billing-1"}) == "billing-1"
 
 
 def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:

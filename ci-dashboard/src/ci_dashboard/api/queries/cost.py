@@ -257,6 +257,9 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
         attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
         resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
         namespace_clause, namespace_params = _build_unallocated_namespace_where("r.namespace")
+        org_match = _null_safe_eq(connection, "m.org", "r.org")
+        repo_match = _null_safe_eq(connection, "m.repo", "r.repo")
+        author_match = _null_safe_eq(connection, "m.author", "r.author")
         rows = connection.execute(
             text(
                 f"""
@@ -303,9 +306,9 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                     ON m.usage_date = r.usage_date
                    AND m.vendor = r.vendor
                    AND m.account_id = r.account_id
-                   AND (m.org = r.org OR (m.org IS NULL AND r.org IS NULL))
-                   AND (m.repo = r.repo OR (m.repo IS NULL AND r.repo IS NULL))
-                   AND (m.author = r.author OR (m.author IS NULL AND r.author IS NULL))
+                   AND {org_match}
+                   AND {repo_match}
+                   AND {author_match}
                   WHERE {resource_where_clause}
                     AND r.resource_name IS NOT NULL
                     AND r.resource_name <> ''
@@ -488,6 +491,12 @@ def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str)
     if connection.dialect.name == "sqlite":
         return f"{value_expr} LIKE {prefix_expr} || '%'"
     return f"{value_expr} LIKE CONCAT({prefix_expr}, '%')"
+
+
+def _null_safe_eq(connection: Connection, left_expr: str, right_expr: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"{left_expr} IS {right_expr}"
+    return f"{left_expr} <=> {right_expr}"
 
 
 def _repo_key(repo_name: str, index: int) -> str:

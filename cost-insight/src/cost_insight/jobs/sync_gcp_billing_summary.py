@@ -91,7 +91,7 @@ def run_sync_gcp_billing_summary(
     try:
         rows_seen = 0
         rows_written = 0
-        source_billing_account_id: str | None = None
+        source_billing_account_ids: set[str] = set()
         batch: list[dict[str, Any]] = []
         for source_row in fetch_rows(
             billing_table=settings.billing_table,
@@ -104,9 +104,8 @@ def run_sync_gcp_billing_summary(
         ):
             rows_seen += 1
             normalized = _normalize_summary_row(source_row)
-            source_billing_account_id = source_billing_account_id or normalized[
-                "billing_account_id"
-            ]
+            if normalized["billing_account_id"]:
+                source_billing_account_ids.add(normalized["billing_account_id"])
             batch.append(normalized)
             if len(batch) >= settings.page_size:
                 rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
@@ -116,6 +115,7 @@ def run_sync_gcp_billing_summary(
         touched_usage_dates: tuple[date, ...] = ()
         if not dry_run:
             with engine.begin() as connection:
+                source_billing_account_id = _select_billing_account_id(source_billing_account_ids)
                 if source_billing_account_id:
                     _upsert_cost_source(
                         connection,
@@ -174,6 +174,17 @@ def _watermark(
         "export_partition_start": export_partition_start.isoformat(),
         "export_partition_end": export_partition_end.isoformat(),
     }
+
+
+def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
+    if not billing_account_ids:
+        return None
+    if len(billing_account_ids) > 1:
+        LOG.warning(
+            "multiple billing account ids observed for cost source; keeping the first sorted id",
+            extra={"billing_account_ids": sorted(billing_account_ids)},
+        )
+    return sorted(billing_account_ids)[0]
 
 
 def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
