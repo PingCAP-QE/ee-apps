@@ -53,6 +53,19 @@ export function getPreviousDateRange(startDate, endDate) {
   };
 }
 
+export function getPreviousCompleteSaturdayWeek(referenceDate = new Date()) {
+  const end = new Date(referenceDate);
+  end.setHours(0, 0, 0, 0);
+  const daysSinceFriday = (end.getDay() - 5 + 7) % 7 || 7;
+  end.setDate(end.getDate() - daysSinceFriday);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  return {
+    start_date: toDateInputValue(start),
+    end_date: toDateInputValue(end),
+  };
+}
+
 export function toDateInputValue(value) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");

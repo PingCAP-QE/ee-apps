@@ -414,6 +414,26 @@ select {
   color: var(--muted);
 }
 
+.cost-weekly-overview__grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 2fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.cost-weekly-overview__cards {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.cost-weekly-overview__charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .scope-note__grid {
     grid-template-columns: 1fr;
@@ -1026,6 +1046,30 @@ select {
   align-items: flex-start;
 }
 
+.donut-card__header-actions {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.donut-card__action {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(49, 87, 114, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--navy);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.donut-card__action:hover,
+.donut-card__action:focus {
+  border-color: rgba(15, 124, 130, 0.28);
+  background: rgba(255, 255, 255, 0.95);
+}
+
 .donut-card__header strong {
   display: block;
   font-size: 1.02rem;
@@ -1055,6 +1099,36 @@ select {
   width: 100%;
   max-width: 240px;
   height: auto;
+}
+
+.donut-card--labeled {
+  min-height: 370px;
+}
+
+.labeled-donut-chart {
+  width: 100%;
+  height: auto;
+  min-height: 285px;
+  overflow: visible;
+}
+
+.labeled-donut-chart__label polyline {
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+
+.labeled-donut-chart__label text {
+  fill: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.labeled-donut-chart__label-metric {
+  fill: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .donut-chart__segment {
@@ -1640,6 +1714,7 @@ select {
 
   .stats-grid,
   .progress-summary-grid,
+  .cost-weekly-overview__grid,
   .page-grid--overview,
   .flaky-highlight-row,
   .page-grid--two-column {
@@ -1647,6 +1722,7 @@ select {
   }
 
   .donut-grid,
+  .cost-weekly-overview__charts,
   .runtime-compare-grid,
   .donut-card__body {
     grid-template-columns: 1fr;
@@ -1671,6 +1747,8 @@ select {
   .filter-grid,
   .stats-grid,
   .progress-summary-grid,
+  .cost-weekly-overview__grid,
+  .cost-weekly-overview__charts,
   .page-grid--overview,
   .flaky-highlight-row,
   .flaky-highlight-stack,

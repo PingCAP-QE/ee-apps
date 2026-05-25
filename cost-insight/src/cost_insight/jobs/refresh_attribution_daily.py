@@ -161,9 +161,11 @@ def normalized_identity_sql(expression: str) -> str:
     return (
         "REPLACE("
         "REPLACE("
-        f"REPLACE({base}, '-', '_'), "
-        "'.', '_'), "
-        "' ', '_')"
+        "REPLACE("
+        f"REPLACE({base}, '-', ''), "
+        "'.', ''), "
+        "'_', ''), "
+        "' ', '')"
     )
 
 
@@ -206,6 +208,20 @@ _NORMALIZED_EMAIL_LOCAL = normalized_identity_sql(
     "SUBSTRING_INDEX(normalized_employee.email, '@', 1)"
 )
 _NORMALIZED_EN_NAME = normalized_identity_sql("normalized_employee.en_name")
+_RAW_AUTHOR_OVERRIDE_EMAIL = """
+CASE LOWER(raw.author)
+  WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
+  WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
+  ELSE NULL
+END
+""".strip()
+_SUMMARY_AUTHOR_OVERRIDE_EMAIL = """
+CASE LOWER(summary.author)
+  WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
+  WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
+  ELSE NULL
+END
+""".strip()
 
 
 _INSERT_ATTRIBUTION_DAILY = text(
@@ -294,12 +310,14 @@ _INSERT_ATTRIBUTION_DAILY = text(
         raw.author AS owner,
         CASE
           WHEN COALESCE(
+            override_employee.id,
             github_employee.id,
             email_employee.id,
             normalized_employee.id
           ) IS NOT NULL THEN CONCAT(
             'employee:',
             CAST(COALESCE(
+              override_employee.id,
               github_employee.id,
               email_employee.id,
               normalized_employee.id
@@ -309,6 +327,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
           ELSE 'unattributed'
         END AS attribution_key,
         CASE
+          WHEN override_employee.id IS NOT NULL THEN 'author_override'
           WHEN github_employee.id IS NOT NULL THEN 'author_github'
           WHEN email_employee.id IS NOT NULL THEN 'author_email'
           WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
@@ -317,6 +336,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
         END AS attribution_source,
         CASE
           WHEN COALESCE(
+            override_employee.id,
             github_employee.id,
             email_employee.id,
             normalized_employee.id
@@ -325,16 +345,19 @@ _INSERT_ATTRIBUTION_DAILY = text(
           ELSE 'unattributed'
         END AS attribution_status,
         COALESCE(
+          override_employee.id,
           github_employee.id,
           email_employee.id,
           normalized_employee.id
         ) AS employee_id,
         COALESCE(
+          override_employee.group_id,
           github_employee.group_id,
           email_employee.group_id,
           normalized_employee.group_id
         ) AS group_id,
         COALESCE(
+          override_employee.manager_id,
           github_employee.manager_id,
           email_employee.manager_id,
           normalized_employee.manager_id,
@@ -346,8 +369,14 @@ _INSERT_ATTRIBUTION_DAILY = text(
         raw.credit_amount,
         raw.net_cost
       FROM cost_raw_details raw
+      LEFT JOIN roster_employees override_employee
+        ON override_employee.is_active = 1
+       AND raw.author IS NOT NULL
+       AND override_employee.email IS NOT NULL
+       AND LOWER(override_employee.email) = LOWER({_RAW_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
-        ON github_employee.is_active = 1
+        ON override_employee.id IS NULL
+       AND github_employee.is_active = 1
        AND raw.author IS NOT NULL
        AND github_employee.github_id IS NOT NULL
        AND LOWER(github_employee.github_id) = LOWER(raw.author)
@@ -378,6 +407,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
       LEFT JOIN roster_groups matched_group
         ON matched_group.is_active = 1
        AND matched_group.id = COALESCE(
+         override_employee.group_id,
          github_employee.group_id,
          email_employee.group_id,
          normalized_employee.group_id
@@ -438,8 +468,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.usage_date,
       attributed.vendor,
       attributed.account_id,
-      NULL AS service_name,
-      NULL AS sku_name,
+      attributed.service_name,
+      attributed.sku_name,
       attributed.org,
       attributed.repo,
       NULL AS resource_name,
@@ -463,8 +493,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           DATE_FORMAT(attributed.usage_date, '%Y-%m-%d'),
           COALESCE(attributed.vendor, ''),
           COALESCE(attributed.account_id, ''),
-          '',
-          '',
+          COALESCE(attributed.service_name, ''),
+          COALESCE(attributed.sku_name, ''),
           COALESCE(attributed.org, ''),
           COALESCE(attributed.repo, ''),
           '',
@@ -484,18 +514,22 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.usage_date,
         summary.vendor,
         summary.account_id,
+        summary.service_name,
+        summary.sku_name,
         summary.org,
         summary.repo,
         summary.author,
         summary.author AS owner,
         CASE
           WHEN COALESCE(
+            override_employee.id,
             github_employee.id,
             email_employee.id,
             normalized_employee.id
           ) IS NOT NULL THEN CONCAT(
             'employee:',
             CAST(COALESCE(
+              override_employee.id,
               github_employee.id,
               email_employee.id,
               normalized_employee.id
@@ -505,6 +539,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           ELSE 'unattributed'
         END AS attribution_key,
         CASE
+          WHEN override_employee.id IS NOT NULL THEN 'author_override'
           WHEN github_employee.id IS NOT NULL THEN 'author_github'
           WHEN email_employee.id IS NOT NULL THEN 'author_email'
           WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
@@ -513,6 +548,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         END AS attribution_source,
         CASE
           WHEN COALESCE(
+            override_employee.id,
             github_employee.id,
             email_employee.id,
             normalized_employee.id
@@ -521,16 +557,19 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           ELSE 'unattributed'
         END AS attribution_status,
         COALESCE(
+          override_employee.id,
           github_employee.id,
           email_employee.id,
           normalized_employee.id
         ) AS employee_id,
         COALESCE(
+          override_employee.group_id,
           github_employee.group_id,
           email_employee.group_id,
           normalized_employee.group_id
         ) AS group_id,
         COALESCE(
+          override_employee.manager_id,
           github_employee.manager_id,
           email_employee.manager_id,
           normalized_employee.manager_id,
@@ -541,8 +580,14 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.credit_amount,
         summary.net_cost
       FROM cost_bq_export_summary_daily summary
+      LEFT JOIN roster_employees override_employee
+        ON override_employee.is_active = 1
+       AND summary.author IS NOT NULL
+       AND override_employee.email IS NOT NULL
+       AND LOWER(override_employee.email) = LOWER({_SUMMARY_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
-        ON github_employee.is_active = 1
+        ON override_employee.id IS NULL
+       AND github_employee.is_active = 1
        AND summary.author IS NOT NULL
        AND github_employee.github_id IS NOT NULL
        AND LOWER(github_employee.github_id) = LOWER(summary.author)
@@ -573,6 +618,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       LEFT JOIN roster_groups matched_group
         ON matched_group.is_active = 1
        AND matched_group.id = COALESCE(
+         override_employee.group_id,
          github_employee.group_id,
          email_employee.group_id,
          normalized_employee.group_id
@@ -585,6 +631,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.usage_date,
       attributed.vendor,
       attributed.account_id,
+      attributed.service_name,
+      attributed.sku_name,
       attributed.org,
       attributed.repo,
       attributed.author,

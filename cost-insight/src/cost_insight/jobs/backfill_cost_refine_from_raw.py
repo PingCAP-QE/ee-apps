@@ -183,6 +183,8 @@ _SELECT_SUMMARY_ROWS = text(
       billing_account_id,
       {_SYNTHETIC_EXPORT_PARTITION_DATE} AS export_partition_date,
       usage_date,
+      service_name,
+      sku_name,
       author,
       org,
       repo,
@@ -201,10 +203,12 @@ _SELECT_SUMMARY_ROWS = text(
       billing_account_id,
       export_partition_date,
       usage_date,
+      service_name,
+      sku_name,
       author,
       org,
       repo
-    ORDER BY export_partition_date, usage_date, author, org, repo
+    ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo
     """
 )
 

@@ -297,9 +297,18 @@ def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
         if affected_pods:
             pod_metadata_by_identity = _load_pod_metadata_snapshots(sorted(affected_pods))
             if any(_infer_pod_build_system(namespace_name) == "JENKINS" for _, namespace_name, _, _ in affected_pods):
+                jenkins_event_times = [
+                    row.event_timestamp
+                    for row in normalized_rows
+                    if _infer_pod_build_system(row.namespace_name) == "JENKINS"
+                ]
+                jenkins_reference_time = min(jenkins_event_times) if jenkins_event_times else None
                 with engine.begin() as connection:
                     # Learn the prefix mapping once per run instead of rescanning build history per lifecycle batch.
-                    jenkins_pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
+                    jenkins_pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map_for_reference(
+                        connection,
+                        reference_time=jenkins_reference_time,
+                    )
             for group in chunked(sorted(affected_pods), settings.jobs.batch_size):
                 with engine.begin() as connection:
                     lifecycle_rows = _build_lifecycle_rows(
@@ -1081,6 +1090,18 @@ def _null_safe_equals_sql(left: str, right: str, dialect_name: str) -> str:
     return f"{left} <=> {right}"
 
 
+def _datetime_lower_bound_sql(column: str, parameter: str, dialect_name: str) -> str:
+    if dialect_name == "sqlite":
+        return f"datetime({column}) >= datetime({parameter})"
+    return f"{column} >= {parameter}"
+
+
+def _datetime_upper_bound_sql(column: str, parameter: str, dialect_name: str) -> str:
+    if dialect_name == "sqlite":
+        return f"datetime({column}) < datetime({parameter})"
+    return f"{column} < {parameter}"
+
+
 def _load_build_metadata_map(
     connection: Connection,
     lifecycle_rows: list[dict[str, Any]],
@@ -1124,9 +1145,18 @@ def _load_build_metadata_map(
 
     if jenkins_rows_by_identity:
         pod_name_url_prefixes = jenkins_pod_name_url_prefixes
-        if pod_name_url_prefixes is None:
-            pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
         candidate_urls_by_identity: dict[tuple[str, str | None, str | None, str | None], list[str]] = {}
+        jenkins_scheduled_ats = [
+            payload.get("scheduled_at")
+            for payload in jenkins_rows_by_identity.values()
+            if isinstance(payload.get("scheduled_at"), datetime)
+        ]
+        earliest_scheduled = min(jenkins_scheduled_ats) if jenkins_scheduled_ats else None
+        if pod_name_url_prefixes is None:
+            pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map_for_reference(
+                connection,
+                reference_time=earliest_scheduled,
+            )
         for identity, payload in jenkins_rows_by_identity.items():
             candidate_urls: list[str] = []
             metadata_url = _extract_normalized_build_url_from_metadata(payload.get("pod_metadata"))
@@ -1144,13 +1174,7 @@ def _load_build_metadata_map(
             if candidate_urls:
                 candidate_urls_by_identity[identity] = candidate_urls
 
-        jenkins_scheduled_ats = [
-            payload.get("scheduled_at")
-            for payload in jenkins_rows_by_identity.values()
-            if isinstance(payload.get("scheduled_at"), datetime)
-        ]
-        if jenkins_scheduled_ats:
-            earliest_scheduled = min(jenkins_scheduled_ats)
+        if earliest_scheduled:
             lookback_days = _read_int_env(
                 "CI_DASHBOARD_BUILD_URL_LOOKBACK_DAYS",
                 BUILD_URL_LOOKBACK_DAYS,
@@ -1262,6 +1286,11 @@ def _load_build_candidates_by_normalized_url(
         placeholders.append(f":{param_name}")
         params[param_name] = normalized_build_url
 
+    start_time_clause = _datetime_lower_bound_sql(
+        "start_time",
+        ":start_time_cutoff",
+        connection.dialect.name,
+    )
     rows = connection.execute(
         text(
             f"""
@@ -1277,7 +1306,7 @@ def _load_build_candidates_by_normalized_url(
             FROM ci_l1_builds
             WHERE normalized_build_url IS NOT NULL
               AND normalized_build_url IN ({", ".join(placeholders)})
-              AND start_time >= :start_time_cutoff
+              AND {start_time_clause}
             ORDER BY start_time DESC
             """
         ),
@@ -1293,15 +1322,37 @@ def _load_build_candidates_by_normalized_url(
     return dict(grouped)
 
 
-def _load_jenkins_pod_name_url_prefix_map(connection: Connection) -> dict[str, str]:
+def _load_jenkins_pod_name_url_prefix_map_for_reference(
+    connection: Connection,
+    *,
+    reference_time: datetime | None,
+) -> dict[str, str]:
+    try:
+        return _load_jenkins_pod_name_url_prefix_map(
+            connection,
+            reference_time=reference_time,
+        )
+    except TypeError as exc:
+        if "reference_time" not in str(exc):
+            raise
+        return _load_jenkins_pod_name_url_prefix_map(connection)
+
+
+def _load_jenkins_pod_name_url_prefix_map(
+    connection: Connection,
+    *,
+    reference_time: datetime | None = None,
+) -> dict[str, str]:
     lookback_days = _read_int_env(
         "CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS",
         JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS,
     )
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=lookback_days)
+    resolved_reference_time = reference_time or datetime.now(UTC).replace(tzinfo=None)
+    cutoff = resolved_reference_time - timedelta(days=lookback_days)
+    start_time_clause = _datetime_lower_bound_sql("start_time", ":cutoff", connection.dialect.name)
     rows = connection.execute(
         text(
-            """
+            f"""
             SELECT
               pod_name,
               normalized_build_url,
@@ -1310,7 +1361,7 @@ def _load_jenkins_pod_name_url_prefix_map(connection: Connection) -> dict[str, s
             WHERE build_system = 'JENKINS'
               AND pod_name IS NOT NULL
               AND normalized_build_url IS NOT NULL
-              AND start_time >= :cutoff
+              AND {start_time_clause}
             ORDER BY start_time DESC
             """
         ),
@@ -1746,7 +1797,10 @@ def _reconcile_lifecycle_rows_in_time_window(
             _infer_pod_build_system(_coerce_str(lifecycle.get("namespace_name"))) == "JENKINS"
             for lifecycle in lifecycle_rows
         ):
-            cached_prefix_map = _load_jenkins_pod_name_url_prefix_map(connection)
+            cached_prefix_map = _load_jenkins_pod_name_url_prefix_map_for_reference(
+                connection,
+                reference_time=start_time_to or start_time_from,
+            )
 
         pod_metadata_by_identity = _deserialize_pod_metadata_snapshots_from_lifecycle_rows(lifecycle_rows)
         build_metadata_by_identity = _load_build_metadata_map(
@@ -1862,8 +1916,15 @@ def _load_lifecycle_rows_for_reconcile(
     }
     end_clause = ""
     if start_time_to is not None:
-        end_clause = "  AND scheduled_at < :start_time_to\n"
+        end_clause = (
+            f"  AND {_datetime_upper_bound_sql('scheduled_at', ':start_time_to', connection.dialect.name)}\n"
+        )
         params["start_time_to"] = start_time_to
+    start_time_from_clause = _datetime_lower_bound_sql(
+        "scheduled_at",
+        ":start_time_from",
+        connection.dialect.name,
+    )
 
     rows = connection.execute(
         text(
@@ -1888,7 +1949,7 @@ def _load_lifecycle_rows_for_reconcile(
               repo_full_name,
               job_name
             FROM ci_l1_pod_lifecycle
-            WHERE scheduled_at >= :start_time_from
+            WHERE {start_time_from_clause}
 {end_clause}              AND id > :after_lifecycle_id
               AND (
                 source_prow_job_id IS NULL

@@ -66,6 +66,7 @@ def test_normalized_identity_sql_replaces_label_unsafe_characters() -> None:
     assert "'@'" in sql
     assert "'-'" in sql
     assert "'.'" in sql
+    assert "'_'" in sql
     assert "' '" in sql
 
 
@@ -295,6 +296,12 @@ def test_insert_sql_contains_roster_matching_and_daily_dimensions() -> None:
     sql = str(_INSERT_ATTRIBUTION_DAILY)
 
     assert "LEFT JOIN roster_employees github_employee" in sql
+    assert "LEFT JOIN roster_employees override_employee" in sql
+    assert "flaky-claw" in sql
+    assert "yinsu@pingcap.com" in sql
+    assert "ti-chi-bot" in sql
+    assert "wei.zheng@pingcap.com" in sql
+    assert "author_override" in sql
     assert "LEFT JOIN roster_employees normalized_employee" in sql
     assert "LOWER(github_employee.github_id) = LOWER(raw.author)" in sql
     assert "SUBSTRING_INDEX(email_employee.email, '@', 1)" in sql
@@ -312,12 +319,14 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     sql = str(_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY)
 
     assert "FROM cost_bq_export_summary_daily summary" in sql
-    assert "NULL AS service_name" in sql
-    assert "NULL AS sku_name" in sql
+    assert "summary.service_name" in sql
+    assert "summary.sku_name" in sql
     assert "NULL AS resource_name" in sql
     assert "NULL AS usage_seconds" in sql
     assert "LEFT JOIN roster_employees github_employee" in sql
+    assert "LEFT JOIN roster_employees override_employee" in sql
     assert "LOWER(github_employee.github_id) = LOWER(summary.author)" in sql
+    assert "author_override" in sql
     assert "author_normalized" in sql
     assert "SHA2(" in sql
     assert "{normalized_" not in sql

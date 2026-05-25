@@ -59,6 +59,8 @@ def _sqlite_engine():
                   billing_account_id TEXT,
                   export_partition_date TEXT NOT NULL,
                   usage_date TEXT NOT NULL,
+                  service_name TEXT,
+                  sku_name TEXT,
                   org TEXT,
                   repo TEXT,
                   author TEXT,
@@ -85,6 +87,8 @@ def _summary_row(day: str = "2026-05-18") -> dict[str, object]:
         "billing_account_id": "billing-1",
         "export_partition_date": day,
         "usage_date": day,
+        "service_name": "Compute Engine",
+        "sku_name": "C4 Instance Core running in Americas",
         "author": "hawkingrei",
         "org": "pingcap",
         "repo": "tidb",
@@ -122,6 +126,9 @@ def test_summary_hash_ignores_amount_changes() -> None:
     changed = {**row, "net_cost": "99.00"}
 
     assert build_summary_row_hash(row) == build_summary_row_hash(changed)
+    assert build_summary_row_hash(row) != build_summary_row_hash(
+        {**row, "service_name": "Cloud Storage"}
+    )
 
 
 def test_select_billing_account_id_handles_empty_and_multiple_values() -> None:
@@ -150,10 +157,202 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
             count = connection.execute(
                 text("SELECT COUNT(*) FROM cost_bq_export_summary_daily")
             ).scalar_one()
+            service_names = connection.execute(
+                text("SELECT DISTINCT service_name FROM cost_bq_export_summary_daily")
+            ).scalars().all()
             state = state_store.get_job_state(connection, JOB_NAME)
         assert count == 2
+        assert service_names == ["Compute Engine"]
         assert state is not None
         assert state.last_status == "succeeded"
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row(),
+            "service_name": "Cloud Logging",
+            "sku_name": "Log Storage cost",
+            "author": None,
+        }
+    )
+    old_row = {
+        **old_row,
+        "list_cost": float(old_row["list_cost"]),
+        "effective_cost": float(old_row["effective_cost"]),
+        "credit_amount": float(old_row["credit_amount"]),
+        "net_cost": float(old_row["net_cost"]),
+    }
+    new_row = {
+        **_summary_row(),
+        "service_name": "Cloud Logging",
+        "sku_name": "Log Storage cost",
+        "author": "wei_zheng",
+    }
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      export_partition_date,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      org,
+                      repo,
+                      author,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost,
+                      source_export_time,
+                      source_row_hash
+                    ) VALUES (
+                      :vendor,
+                      :account_id,
+                      :billing_account_id,
+                      :export_partition_date,
+                      :usage_date,
+                      :service_name,
+                      :sku_name,
+                      :org,
+                      :repo,
+                      :author,
+                      :list_cost,
+                      :effective_cost,
+                      :credit_amount,
+                      :net_cost,
+                      :source_export_time,
+                      :source_row_hash
+                    )
+                    """
+                ),
+                old_row,
+            )
+
+        run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=False,
+            fetch_rows=lambda **_kwargs: [new_row],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT author, ROUND(SUM(list_cost), 2) AS list_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY author
+                    """
+                )
+            ).all()
+        assert rows == [("wei_zheng", 10.0)]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_deletes_one_year_cud_superseded_rows() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row(),
+            "service_name": "Compute Engine",
+            "sku_name": "Compute Flexible Committed Use Discounts - 1 Year",
+            "author": None,
+        }
+    )
+    old_row = {
+        **old_row,
+        "list_cost": float(old_row["list_cost"]),
+        "effective_cost": float(old_row["effective_cost"]),
+        "credit_amount": float(old_row["credit_amount"]),
+        "net_cost": float(old_row["net_cost"]),
+    }
+    new_row = {
+        **_summary_row(),
+        "service_name": "Compute Engine",
+        "sku_name": "Compute Flexible Committed Use Discounts - 1 Year",
+        "author": "wei_zheng",
+    }
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      export_partition_date,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      org,
+                      repo,
+                      author,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost,
+                      source_export_time,
+                      source_row_hash
+                    ) VALUES (
+                      :vendor,
+                      :account_id,
+                      :billing_account_id,
+                      :export_partition_date,
+                      :usage_date,
+                      :service_name,
+                      :sku_name,
+                      :org,
+                      :repo,
+                      :author,
+                      :list_cost,
+                      :effective_cost,
+                      :credit_amount,
+                      :net_cost,
+                      :source_export_time,
+                      :source_row_hash
+                    )
+                    """
+                ),
+                old_row,
+            )
+
+        run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=False,
+            fetch_rows=lambda **_kwargs: [new_row],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT author, ROUND(SUM(list_cost), 2) AS list_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY author
+                    """
+                )
+            ).all()
+        assert rows == [("wei_zheng", 10.0)]
     finally:
         engine.dispose()
 

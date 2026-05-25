@@ -24,6 +24,7 @@ from ci_dashboard.api.queries.cost import (
     get_engineering_group_share,
     get_repo_group_cost_stack,
     get_unmatched_resources,
+    get_weekly_overview,
 )
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
@@ -232,6 +233,13 @@ def get_cost_trend_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_cost_trend(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_weekly_overview_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_weekly_overview(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_repo_group_stack_page(

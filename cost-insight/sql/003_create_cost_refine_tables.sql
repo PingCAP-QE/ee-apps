@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS cost_bq_export_summary_daily (
   billing_account_id VARCHAR(128) NULL,
   export_partition_date DATE NOT NULL,
   usage_date DATE NOT NULL,
+  service_name VARCHAR(255) NULL,
+  sku_name VARCHAR(255) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
   author VARCHAR(255) NULL,
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS cost_bq_export_summary_daily (
     source_row_hash
   ),
   KEY idx_cost_bq_export_summary_usage_date (usage_date, vendor, account_id),
+  KEY idx_cost_bq_export_summary_service (usage_date, service_name),
   KEY idx_cost_bq_export_summary_export_partition (export_partition_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

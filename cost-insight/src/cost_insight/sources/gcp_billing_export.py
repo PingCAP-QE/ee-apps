@@ -6,6 +6,9 @@ from decimal import Decimal
 from typing import Any
 
 
+DEFAULT_COST_OWNER_AUTHOR = "wei_zheng"
+
+
 def fetch_gcp_billing_rows(
     *,
     billing_table: str,
@@ -109,6 +112,7 @@ def fetch_gcp_unmatched_resource_rows(
 
 def build_gcp_billing_query(*, billing_table: str, limit: int | None = None) -> str:
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
+    author_expr = _author_expr_with_overrides()
     return f"""
 WITH normalized AS (
   SELECT
@@ -119,7 +123,7 @@ WITH normalized AS (
     sku.description AS sku_name,
     location.region AS region,
     {_label_expr(("k8s-namespace", "namespace"))} AS namespace,
-    {_label_expr(("k8s-label/author", "author"))} AS author,
+    {author_expr} AS author,
     {_label_expr(("k8s-label/org", "org"))} AS org,
     {_label_expr(("k8s-label/repo", "repo"))} AS repo,
     COALESCE(
@@ -185,6 +189,7 @@ ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 
 def build_gcp_billing_summary_query(*, billing_table: str, limit: int | None = None) -> str:
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
+    author_expr = _author_expr_with_overrides()
     return f"""
 SELECT
   'gcp' AS vendor,
@@ -192,7 +197,9 @@ SELECT
   billing_account_id,
   _PARTITIONDATE AS export_partition_date,
   DATE(usage_start_time) AS usage_date,
-  {_label_expr(("k8s-label/author", "author"))} AS author,
+  service.description AS service_name,
+  sku.description AS sku_name,
+  {author_expr} AS author,
   {_label_expr(("k8s-label/org", "org"))} AS org,
   {_label_expr(("k8s-label/repo", "repo"))} AS repo,
   ROUND(SUM(cost_at_list), 2) AS list_cost,
@@ -211,17 +218,19 @@ GROUP BY
   billing_account_id,
   export_partition_date,
   usage_date,
+  service_name,
+  sku_name,
   author,
   org,
   repo
-ORDER BY export_partition_date, usage_date, author, org, repo{limit_clause}
+ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo{limit_clause}
 """.strip()
 
 
 def build_gcp_unmatched_resource_query(*, billing_table: str, limit: int | None = None) -> str:
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     namespace_expr = _label_expr(("k8s-namespace", "namespace"))
-    author_expr = _label_expr(("k8s-label/author", "author"))
+    author_expr = _author_expr_with_overrides()
     org_expr = _label_expr(("k8s-label/org", "org"))
     repo_expr = _label_expr(("k8s-label/repo", "repo"))
     workload_expr = _label_expr(("k8s-workload-name",))
@@ -311,6 +320,23 @@ def _label_expr(keys: Iterable[str]) -> str:
       WHERE label.key IN ({key_list})
       LIMIT 1
     )[SAFE_OFFSET(0)]
+    """.strip()
+
+
+def _author_expr_with_overrides() -> str:
+    label_author = _label_expr(("k8s-label/author", "author"))
+    return f"""
+    COALESCE(
+      {label_author},
+      CASE
+        WHEN service.description = 'Cloud Logging' THEN '{DEFAULT_COST_OWNER_AUTHOR}'
+        WHEN sku.description = 'Compute Flexible Committed Use Discounts - 3 Year'
+          THEN '{DEFAULT_COST_OWNER_AUTHOR}'
+        WHEN sku.description = 'Compute Flexible Committed Use Discounts - 1 Year'
+          THEN '{DEFAULT_COST_OWNER_AUTHOR}'
+        ELSE NULL
+      END
+    )
     """.strip()
 
 

@@ -914,6 +914,7 @@ export function DonutShareChart({
   totalLabel = "builds",
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
+  headerAction,
 }) {
   if (!items?.length) {
     return <EmptyState message={emptyMessage} compact />;
@@ -937,10 +938,13 @@ export function DonutShareChart({
           <strong>{title}</strong>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
-        <span className="panel-badge">
-          <strong>{formatCompact(total)}</strong>
-          {totalLabel}
-        </span>
+        <div className="donut-card__header-actions">
+          {headerAction}
+          <span className="panel-badge">
+            <strong>{formatCompact(total)}</strong>
+            {totalLabel}
+          </span>
+        </div>
       </header>
 
       <div className="donut-card__body">
@@ -1022,6 +1026,186 @@ export function DonutShareChart({
           })}
         </div>
       </div>
+    </article>
+  );
+}
+
+export function LabeledDonutShareChart({
+  title,
+  subtitle,
+  items,
+  totalValue,
+  totalLabel = "builds",
+  emptyMessage = "No share data for the current filters.",
+  onItemSelect,
+  headerAction,
+}) {
+  if (!items?.length) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const chartTotal = Number(totalValue || 0) > 0 ? Number(totalValue) : total;
+  if (!chartTotal) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const width = 640;
+  const height = 390;
+  const centerX = width / 2;
+  const centerY = 205;
+  const radius = 106;
+  const innerRadius = 64;
+  const labelRadius = 128;
+  const labelWidth = 178;
+  const rightLabelX = width - labelWidth - 12;
+  const leftLabelX = 12;
+  let startAngle = -Math.PI / 2;
+
+  const segments = items.map((item, index) => {
+    const value = Number(item.value || 0);
+    const angle = (value / chartTotal) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+    const midAngle = startAngle + angle / 2;
+    const segment = {
+      item,
+      index,
+      value,
+      percent: Number(item.share_pct || 0),
+      startAngle,
+      endAngle,
+      midAngle,
+      fill: donutColor(item.name, index),
+      nameLines: wrapLabel(item.name, 20),
+    };
+    startAngle = endAngle;
+    return segment;
+  });
+
+  const labels = arrangeDonutLabels(
+    segments.map((segment) => {
+      const side = Math.cos(segment.midAngle) >= 0 ? "right" : "left";
+      return {
+        ...segment,
+        side,
+        rawY: centerY + Math.sin(segment.midAngle) * labelRadius,
+        height: segment.nameLines.length * 15 + 18,
+      };
+    }),
+    height,
+  );
+
+  return (
+    <article className="donut-card donut-card--labeled">
+      <header className="donut-card__header">
+        <div>
+          <strong>{title}</strong>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <div className="donut-card__header-actions">
+          {headerAction}
+          <span className="panel-badge">
+            <strong>{formatCompact(chartTotal)}</strong>
+            {totalLabel}
+          </span>
+        </div>
+      </header>
+
+      <svg
+        className="labeled-donut-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${title} share chart`}
+      >
+        {segments.map((segment) => {
+          const interactive = typeof onItemSelect === "function" && segment.item.interactive !== false;
+          return (
+            <path
+              key={`${title}-${segment.item.name}-segment`}
+              d={describeDonutArc(
+                centerX,
+                centerY,
+                innerRadius,
+                radius,
+                segment.startAngle,
+                segment.endAngle,
+              )}
+              fill={segment.fill}
+              className={interactive ? "donut-chart__segment donut-chart__segment--interactive" : "donut-chart__segment"}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
+              aria-label={`${segment.item.name}: ${formatCompact(segment.value)} ${totalLabel}, ${formatPercent(segment.percent)}`}
+              onClick={interactive ? () => onItemSelect(segment.item) : undefined}
+              onKeyDown={
+                interactive
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onItemSelect(segment.item);
+                      }
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
+        <circle cx={centerX} cy={centerY} r={innerRadius - 4} fill="#fcf7ef" />
+        <text x={centerX} y={centerY - 7} textAnchor="middle" className="donut-chart__center-value">
+          {formatCompact(chartTotal)}
+        </text>
+        <text x={centerX} y={centerY + 17} textAnchor="middle" className="donut-chart__center-label">
+          {totalLabel}
+        </text>
+
+        {labels.map((label) => {
+          const interactive = typeof onItemSelect === "function" && label.item.interactive !== false;
+          const start = polarToCartesian(centerX, centerY, radius + 5, label.midAngle);
+          const elbow = polarToCartesian(centerX, centerY, radius + 25, label.midAngle);
+          const labelX = label.side === "right" ? rightLabelX : leftLabelX;
+          const anchorX = label.side === "right" ? labelX : labelX + labelWidth;
+          const endX = label.side === "right" ? labelX - 8 : labelX + labelWidth + 8;
+          const textAnchor = label.side === "right" ? "start" : "end";
+          const metric = `${formatCompact(label.value)} · ${formatPercent(label.percent)}`;
+
+          return (
+            <g
+              key={`${title}-${label.item.name}-label`}
+              className={interactive ? "labeled-donut-chart__label labeled-donut-chart__label--interactive" : "labeled-donut-chart__label"}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
+              aria-label={`${label.item.name}: ${formatCompact(label.value)} ${totalLabel}, ${formatPercent(label.percent)}`}
+              onClick={interactive ? () => onItemSelect(label.item) : undefined}
+              onKeyDown={
+                interactive
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onItemSelect(label.item);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <polyline
+                points={`${start.x},${start.y} ${elbow.x},${elbow.y} ${endX},${label.y}`}
+                fill="none"
+                stroke={label.fill}
+              />
+              <circle cx={start.x} cy={start.y} r="2.3" fill={label.fill} />
+              <text x={anchorX} y={label.y - (label.nameLines.length - 1) * 7} textAnchor={textAnchor}>
+                {label.nameLines.map((line, lineIndex) => (
+                  <tspan key={line} x={anchorX} dy={lineIndex === 0 ? 0 : 15}>
+                    {line}
+                  </tspan>
+                ))}
+                <tspan x={anchorX} dy="17" className="labeled-donut-chart__label-metric">
+                  {metric}
+                </tspan>
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </article>
   );
 }
@@ -1497,6 +1681,60 @@ function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle
     `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
     "Z",
   ].join(" ");
+}
+
+function wrapLabel(value, maxLength) {
+  const words = String(value || "").split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [""];
+  }
+
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      current = word;
+    } else if (`${current} ${word}`.length <= maxLength) {
+      current = `${current} ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) {
+    lines.push(current);
+  }
+  return lines;
+}
+
+function arrangeDonutLabels(labels, height) {
+  const minY = 36;
+  const maxY = height - 28;
+  const minGap = 48;
+
+  return ["left", "right"].flatMap((side) => {
+    const sideLabels = labels
+      .filter((label) => label.side === side)
+      .sort((a, b) => a.rawY - b.rawY)
+      .map((label) => ({
+        ...label,
+        y: Math.min(maxY, Math.max(minY, label.rawY)),
+      }));
+
+    for (let index = 1; index < sideLabels.length; index += 1) {
+      sideLabels[index].y = Math.max(sideLabels[index].y, sideLabels[index - 1].y + minGap);
+    }
+    for (let index = sideLabels.length - 2; index >= 0; index -= 1) {
+      if (sideLabels[index + 1].y > maxY) {
+        sideLabels[index + 1].y = maxY;
+      }
+      sideLabels[index].y = Math.min(sideLabels[index].y, sideLabels[index + 1].y - minGap);
+    }
+    return sideLabels.map((label) => ({
+      ...label,
+      y: Math.min(maxY, Math.max(minY, label.y)),
+    }));
+  });
 }
 
 function polarToCartesian(cx, cy, radius, angleInRadians) {

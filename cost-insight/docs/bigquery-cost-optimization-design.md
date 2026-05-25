@@ -64,6 +64,14 @@ granularity. Field trimming helps, but only after the collector prunes
 - Scan every BigQuery export partition at most once for the regular summary
   pipeline.
 - Avoid resource-level columns in the regular summary pipeline.
+- Preserve service and SKU dimensions in the regular summary pipeline so
+  dashboard attribution can still answer service-level cost questions without
+  reading deprecated raw detail tables.
+- Apply source-side owner overrides for cost lines that cannot be labeled on
+  GCP resources. For now, unlabeled Cloud Logging and
+  `Compute Flexible Committed Use Discounts - 3 Year` rows are assigned to
+  `author=wei_zheng`, which fuzzy-matches the `wei.zheng@pingcap.com` roster
+  identity and maps to the EQ roster group during attribution.
 - Keep resource-level unmatched data as a separate weekly pipeline.
 - Make late-arriving usage and billing corrections additive and idempotent.
 - Keep dashboard APIs mostly backed by `cost_attribution_daily`.
@@ -83,6 +91,8 @@ CREATE TABLE cost_bq_export_summary_daily (
   billing_account_id VARCHAR(128) NULL,
   export_partition_date DATE NOT NULL,
   usage_date DATE NOT NULL,
+  service_name VARCHAR(255) NULL,
+  sku_name VARCHAR(255) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
   author VARCHAR(255) NULL,
@@ -353,14 +363,13 @@ weekly and never participates in historical correction backfills.
 The existing attribution refresh reads `cost_raw_details` and groups by
 `service_name`, `sku_name`, and `resource_name`. The summary path cannot reuse
 that SQL unchanged because `cost_bq_export_summary_daily` intentionally omits
-those resource-level columns.
+resource-level columns, while keeping the service and SKU dimensions.
 
 The implementation should either add a new
 `refresh-cost-attribution-from-summary` command or parameterize the existing
 refresh job with a source table mode. The summary mode should rebuild
-`cost_attribution_daily` with `service_name`, `sku_name`, and `resource_name`
-set to `NULL`. These columns are nullable and current dashboard trend, repo,
-and group views do not depend on them.
+`cost_attribution_daily` with `service_name` and `sku_name` from the summary
+rows and `resource_name` set to `NULL`.
 
 The summary attribution query shape is:
 
@@ -394,8 +403,8 @@ SELECT
   attributed.usage_date,
   attributed.vendor,
   attributed.account_id,
-  NULL AS service_name,
-  NULL AS sku_name,
+  attributed.service_name,
+  attributed.sku_name,
   attributed.org,
   attributed.repo,
   NULL AS resource_name,
