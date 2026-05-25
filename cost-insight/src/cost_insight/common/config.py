@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import date
 from functools import lru_cache
 from typing import Mapping
 
@@ -10,6 +11,7 @@ DEFAULT_GCP_BILLING_TABLE = (
     "gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
+DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 
 
 @dataclass(frozen=True)
@@ -27,7 +29,12 @@ class DatabaseSettings:
 class GcpBillingSettings:
     billing_table: str = DEFAULT_GCP_BILLING_TABLE
     account_id: str = DEFAULT_GCP_ACCOUNT_ID
+    earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
     sync_overlap_days: int = 3
+    sync_lag_days: int = 5
+    export_overlap_days: int = 0
+    sync_initial_lookback_days: int | None = None
+    unmatched_resource_lag_days: int = 5
     page_size: int = 5000
 
 
@@ -60,10 +67,40 @@ def load_settings(
                 "COST_INSIGHT_GCP_ACCOUNT_ID",
                 "COST_GCP_ACCOUNT_ID",
             ),
+            earliest_usage_date=_read_date_any(
+                env,
+                ("COST_INSIGHT_EARLIEST_USAGE_DATE", "COST_EARLIEST_USAGE_DATE"),
+                DEFAULT_EARLIEST_USAGE_DATE,
+            ),
             sync_overlap_days=_read_int_any(
                 env,
                 ("COST_INSIGHT_SYNC_OVERLAP_DAYS", "COST_SYNC_OVERLAP_DAYS"),
                 3,
+            ),
+            sync_lag_days=_read_int_any(
+                env,
+                ("COST_INSIGHT_SYNC_LAG_DAYS", "COST_SYNC_LAG_DAYS"),
+                5,
+            ),
+            export_overlap_days=_read_non_negative_int_any(
+                env,
+                ("COST_INSIGHT_EXPORT_OVERLAP_DAYS", "COST_EXPORT_OVERLAP_DAYS"),
+                0,
+            ),
+            sync_initial_lookback_days=_read_optional_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS",
+                    "COST_SYNC_INITIAL_LOOKBACK_DAYS",
+                ),
+            ),
+            unmatched_resource_lag_days=_read_int_any(
+                env,
+                (
+                    "COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS",
+                    "COST_UNMATCHED_RESOURCE_LAG_DAYS",
+                ),
+                5,
             ),
             page_size=_read_int_any(
                 env,
@@ -162,4 +199,58 @@ def _read_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: in
     for key in keys:
         if key in environ:
             return _read_int(environ, key, default)
+    return default
+
+
+def _read_non_negative_int(
+    environ: Mapping[str, str],
+    key: str,
+    default: int,
+) -> int:
+    raw = environ.get(key, str(default))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{key} must be an integer, got {raw!r}") from exc
+    if value < 0:
+        raise ValueError(f"{key} must be non-negative, got {raw!r}")
+    return value
+
+
+def _read_non_negative_int_any(
+    environ: Mapping[str, str],
+    keys: tuple[str, ...],
+    default: int,
+) -> int:
+    for key in keys:
+        if key in environ:
+            return _read_non_negative_int(environ, key, default)
+    return default
+
+
+def _read_optional_positive_int_any(
+    environ: Mapping[str, str],
+    keys: tuple[str, ...],
+) -> int | None:
+    for key in keys:
+        raw = environ.get(key)
+        if raw is None or raw.strip() == "":
+            continue
+        return _read_int(environ, key, 1)
+    return None
+
+
+def _read_date_any(
+    environ: Mapping[str, str],
+    keys: tuple[str, ...],
+    default: date,
+) -> date:
+    for key in keys:
+        raw = environ.get(key)
+        if raw is None or raw.strip() == "":
+            continue
+        try:
+            return date.fromisoformat(raw)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be an ISO date, got {raw!r}") from exc
     return default

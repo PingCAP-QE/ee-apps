@@ -1,0 +1,63 @@
+CREATE TABLE IF NOT EXISTS cost_bq_export_summary_daily (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  vendor VARCHAR(32) NOT NULL,
+  account_id VARCHAR(128) NOT NULL,
+  billing_account_id VARCHAR(128) NULL,
+  export_partition_date DATE NOT NULL,
+  usage_date DATE NOT NULL,
+  org VARCHAR(255) NULL,
+  repo VARCHAR(255) NULL,
+  author VARCHAR(255) NULL,
+  list_cost DECIMAL(16, 2) NULL,
+  effective_cost DECIMAL(16, 2) NULL,
+  credit_amount DECIMAL(16, 2) NULL,
+  net_cost DECIMAL(16, 2) NULL,
+  source_export_time DATETIME NULL,
+  source_row_hash CHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_cost_bq_export_summary_source_row (
+    vendor,
+    account_id,
+    export_partition_date,
+    source_row_hash
+  ),
+  KEY idx_cost_bq_export_summary_usage_date (usage_date, vendor, account_id),
+  KEY idx_cost_bq_export_summary_export_partition (export_partition_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cost_unmatched_resource_daily (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  vendor VARCHAR(32) NOT NULL,
+  account_id VARCHAR(128) NOT NULL,
+  billing_account_id VARCHAR(128) NULL,
+  export_partition_date DATE NOT NULL,
+  usage_date DATE NOT NULL,
+  service_name VARCHAR(255) NULL,
+  sku_name VARCHAR(255) NULL,
+  namespace VARCHAR(255) NULL,
+  org VARCHAR(255) NULL,
+  repo VARCHAR(255) NULL,
+  author VARCHAR(255) NULL,
+  resource_name VARCHAR(512) NOT NULL,
+  usage_seconds DECIMAL(20, 2) NULL,
+  list_cost DECIMAL(16, 2) NULL,
+  effective_cost DECIMAL(16, 2) NULL,
+  credit_amount DECIMAL(16, 2) NULL,
+  net_cost DECIMAL(16, 2) NULL,
+  source_export_time DATETIME NULL,
+  source_row_hash CHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_cost_unmatched_resource_source_row (
+    vendor,
+    account_id,
+    export_partition_date,
+    source_row_hash
+  ),
+  KEY idx_cost_unmatched_resource_usage_date (usage_date, vendor, account_id),
+  KEY idx_cost_unmatched_resource_resource_name (resource_name(255)),
+  KEY idx_cost_unmatched_resource_repo (usage_date, org, repo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

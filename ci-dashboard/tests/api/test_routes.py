@@ -39,6 +39,14 @@ def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.Monk
     dependencies_module._cached_engine.cache_clear()
 
 
+def test_cost_null_safe_eq_uses_dialect_specific_operator() -> None:
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+
+    assert cost_queries._null_safe_eq(sqlite_connection, "m.org", "r.org") == "m.org IS r.org"
+    assert cost_queries._null_safe_eq(mysql_connection, "m.org", "r.org") == "m.org <=> r.org"
+
+
 def _insert_build(
     sqlite_engine,
     *,
@@ -494,6 +502,57 @@ def _insert_cost_raw_detail(
                 "effective_cost": effective_cost if effective_cost is not None else list_cost,
                 "net_cost": net_cost if net_cost is not None else list_cost,
                 "source_row_hash": source_row_hash or f"{usage_date}-{resource_name}-{namespace}-{list_cost}",
+            },
+        )
+
+
+def _insert_cost_unmatched_resource(
+    sqlite_engine,
+    *,
+    usage_date: str,
+    repo: str,
+    resource_name: str,
+    namespace: str | None,
+    list_cost: float,
+    effective_cost: float | None = None,
+    net_cost: float | None = None,
+    author: str | None = "alice",
+    usage_seconds: float = 3600,
+    service_name: str = "Compute Engine",
+    sku_name: str = "runner",
+    source_row_hash: str | None = None,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_unmatched_resource_daily (
+                  vendor, account_id, billing_account_id, export_partition_date, usage_date,
+                  service_name, sku_name, namespace, author, org, repo, resource_name,
+                  usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
+                  source_export_time, source_row_hash
+                ) VALUES (
+                  'gcp', 'pingcap-testing-account', 'billing-account-1', :usage_date, :usage_date,
+                  :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :resource_name,
+                  :usage_seconds, :list_cost, :effective_cost, 0, :net_cost,
+                  '2026-05-19 00:00:00', :source_row_hash
+                )
+                """
+            ),
+            {
+                "usage_date": usage_date,
+                "service_name": service_name,
+                "sku_name": sku_name,
+                "namespace": namespace,
+                "author": author,
+                "repo": repo,
+                "resource_name": resource_name,
+                "usage_seconds": usage_seconds,
+                "list_cost": list_cost,
+                "effective_cost": effective_cost if effective_cost is not None else list_cost,
+                "net_cost": net_cost if net_cost is not None else list_cost,
+                "source_row_hash": source_row_hash
+                or f"{usage_date}-{resource_name}-{namespace}-{list_cost}",
             },
         )
 
@@ -2147,7 +2206,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         net_cost=0,
         effective_cost=90,
         list_cost=120,
-        resource_name="projects/pingcap-prod/zones/us-central1-a/instances/tidb-ci-runner-1",
+        resource_name=None,
         author=None,
         owner=None,
         attribution_key=None,
@@ -2156,7 +2215,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         employee_id=None,
         usage_seconds=172800,
     )
-    _insert_cost_raw_detail(
+    _insert_cost_unmatched_resource(
         sqlite_engine,
         usage_date="2026-05-10",
         repo="tidb",
@@ -2176,7 +2235,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         net_cost=0,
         effective_cost=20,
         list_cost=30,
-        resource_name="//logging.googleapis.com/projects/890604261603/locations/global/buckets/_Default",
+        resource_name=None,
         author=None,
         owner=None,
         attribution_key=None,
@@ -2194,7 +2253,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         net_cost=0,
         effective_cost=20,
         list_cost=30,
-        resource_name="//logging.googleapis.com/projects/890604261603/locations/global/buckets/_Default",
+        resource_name=None,
         author=None,
         owner=None,
         attribution_key=None,
@@ -2204,7 +2263,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         usage_seconds=86400,
         dimension_hash="cost-log-bucket-end",
     )
-    _insert_cost_raw_detail(
+    _insert_cost_unmatched_resource(
         sqlite_engine,
         usage_date="2026-05-01",
         repo="platform",
@@ -2217,9 +2276,9 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         usage_seconds=86400,
         service_name="Cloud Logging",
         sku_name="Vended Logs Storage",
-        source_row_hash="raw-log-bucket-start",
+        source_row_hash="resource-log-bucket-start",
     )
-    _insert_cost_raw_detail(
+    _insert_cost_unmatched_resource(
         sqlite_engine,
         usage_date="2026-05-31",
         repo="platform",
@@ -2232,7 +2291,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         usage_seconds=86400,
         service_name="Cloud Logging",
         sku_name="Vended Logs Storage",
-        source_row_hash="raw-log-bucket-end",
+        source_row_hash="resource-log-bucket-end",
     )
     _insert_cost_attribution(
         sqlite_engine,
@@ -2251,7 +2310,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         employee_id=None,
         usage_seconds=21600,
     )
-    _insert_cost_raw_detail(
+    _insert_cost_unmatched_resource(
         sqlite_engine,
         usage_date="2026-05-11",
         repo="ticdc",

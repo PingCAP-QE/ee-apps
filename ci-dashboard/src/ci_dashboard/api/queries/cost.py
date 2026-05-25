@@ -255,43 +255,83 @@ def get_engineering_group_share(engine: Engine, filters: CommonFilters) -> dict[
 def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
-        raw_where_clause, raw_params = _build_cost_where(filters, table_alias="r")
+        resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
         namespace_clause, namespace_params = _build_unallocated_namespace_where("r.namespace")
+        org_match = _null_safe_eq(connection, "m.org", "r.org")
+        repo_match = _null_safe_eq(connection, "m.repo", "r.repo")
+        author_match = _null_safe_eq(connection, "m.author", "r.author")
         rows = connection.execute(
             text(
                 f"""
-                WITH unmatched_resources AS (
+                WITH unmatched_dimensions AS (
                   SELECT
-                    c.resource_name AS resource_name,
+                    c.usage_date AS usage_date,
+                    c.vendor AS vendor,
+                    c.account_id AS account_id,
+                    c.org AS org,
+                    c.repo AS repo,
+                    c.author AS author,
                     MAX(c.attribution_key) AS attribution_key,
                     MAX(c.attribution_source) AS attribution_source,
                     MAX(c.attribution_status) AS attribution_status
                   FROM cost_attribution_daily c
                   WHERE {attr_where_clause}
                     AND c.employee_id IS NULL
-                    AND c.resource_name IS NOT NULL
-                    AND c.resource_name <> ''
-                  GROUP BY c.resource_name
+                  GROUP BY
+                    c.usage_date,
+                    c.vendor,
+                    c.account_id,
+                    c.org,
+                    c.repo,
+                    c.author
                 ),
-                unallocated_resources AS (
+                unallocated_resource_rows AS (
                   SELECT
                     r.resource_name AS resource_name,
-                    MAX(r.service_name) AS service_name,
-                    MAX(r.sku_name) AS sku_name,
-                    MAX(r.org) AS org_name,
-                    MAX(r.repo) AS repo_name,
-                    MAX(r.author) AS author_name,
-                    MIN(r.usage_date) AS first_seen_date,
-                    MAX(r.usage_date) AS last_seen_date,
-                    GROUP_CONCAT(DISTINCT COALESCE(r.namespace, '<null>')) AS allocation_buckets,
-                    SUM(COALESCE(r.usage_seconds, 0)) AS usage_seconds,
-                    SUM(r.list_cost) AS list_cost
-                  FROM cost_raw_details r
-                  WHERE {raw_where_clause}
+                    r.service_name AS service_name,
+                    r.sku_name AS sku_name,
+                    r.org AS org_name,
+                    r.repo AS repo_name,
+                    r.author AS author_name,
+                    r.usage_date AS usage_date,
+                    r.namespace AS namespace,
+                    r.usage_seconds AS usage_seconds,
+                    r.list_cost AS list_cost,
+                    m.attribution_key AS attribution_key,
+                    m.attribution_source AS attribution_source,
+                    m.attribution_status AS attribution_status
+                  FROM cost_unmatched_resource_daily r
+                  -- Keep attribution as the source of truth; resource rows alone are not roster-filtered.
+                  JOIN unmatched_dimensions m
+                    ON m.usage_date = r.usage_date
+                   AND m.vendor = r.vendor
+                   AND m.account_id = r.account_id
+                   AND {org_match}
+                   AND {repo_match}
+                   AND {author_match}
+                  WHERE {resource_where_clause}
                     AND r.resource_name IS NOT NULL
                     AND r.resource_name <> ''
                     AND ({namespace_clause})
-                  GROUP BY r.resource_name
+                ),
+                unallocated_resources AS (
+                  SELECT
+                    resource_name,
+                    MAX(service_name) AS service_name,
+                    MAX(sku_name) AS sku_name,
+                    MAX(org_name) AS org_name,
+                    MAX(repo_name) AS repo_name,
+                    MAX(author_name) AS author_name,
+                    MIN(usage_date) AS first_seen_date,
+                    MAX(usage_date) AS last_seen_date,
+                    GROUP_CONCAT(DISTINCT COALESCE(namespace, '<null>')) AS allocation_buckets,
+                    SUM(COALESCE(usage_seconds, 0)) AS usage_seconds,
+                    SUM(list_cost) AS list_cost,
+                    MAX(attribution_key) AS attribution_key,
+                    MAX(attribution_source) AS attribution_source,
+                    MAX(attribution_status) AS attribution_status
+                  FROM unallocated_resource_rows
+                  GROUP BY resource_name
                 )
                 SELECT
                   u.resource_name AS resource_name,
@@ -302,22 +342,20 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                   u.author_name AS author_name,
                   u.first_seen_date AS first_seen_date,
                   u.last_seen_date AS last_seen_date,
-                  m.attribution_key AS attribution_key,
-                  m.attribution_source AS attribution_source,
-                  m.attribution_status AS attribution_status,
+                  u.attribution_key AS attribution_key,
+                  u.attribution_source AS attribution_source,
+                  u.attribution_status AS attribution_status,
                   u.allocation_buckets AS allocation_buckets,
                   u.usage_seconds AS usage_seconds,
                   u.list_cost AS list_cost
                 FROM unallocated_resources u
-                JOIN unmatched_resources m
-                  ON m.resource_name = u.resource_name
                 ORDER BY list_cost DESC, u.resource_name
                 LIMIT :limit
                 """
             ),
             {
                 **attr_params,
-                **raw_params,
+                **resource_params,
                 **namespace_params,
                 "limit": UNMATCHED_RESOURCE_LIMIT,
             },
@@ -453,6 +491,12 @@ def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str)
     if connection.dialect.name == "sqlite":
         return f"{value_expr} LIKE {prefix_expr} || '%'"
     return f"{value_expr} LIKE CONCAT({prefix_expr}, '%')"
+
+
+def _null_safe_eq(connection: Connection, left_expr: str, right_expr: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"{left_expr} IS {right_expr}"
+    return f"{left_expr} <=> {right_expr}"
 
 
 def _repo_key(repo_name: str, index: int) -> str:
