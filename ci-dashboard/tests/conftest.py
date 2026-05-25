@@ -347,6 +347,33 @@ def _create_test_schema(engine: Engine) -> None:
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        """
+        CREATE TABLE cost_unmatched_resource_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          billing_account_id TEXT NULL,
+          export_partition_date TEXT NOT NULL,
+          usage_date TEXT NOT NULL,
+          service_name TEXT NULL,
+          sku_name TEXT NULL,
+          namespace TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          author TEXT NULL,
+          resource_name TEXT NOT NULL,
+          usage_seconds REAL NULL,
+          list_cost REAL NULL,
+          effective_cost REAL NULL,
+          credit_amount REAL NULL,
+          net_cost REAL NULL,
+          source_export_time TEXT NULL,
+          source_row_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
+        )
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:

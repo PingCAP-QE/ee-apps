@@ -10,6 +10,7 @@ logical model later.
 Current design:
 
 - [System design](docs/system-design.md)
+- [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
 
 ## Local Setup
 
@@ -28,7 +29,12 @@ Useful GCP settings:
 | --- | --- |
 | `COST_INSIGHT_GCP_BILLING_TABLE` | `gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
+| `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
 | `COST_INSIGHT_SYNC_OVERLAP_DAYS` | `3` |
+| `COST_INSIGHT_SYNC_LAG_DAYS` | `5` |
+| `COST_INSIGHT_EXPORT_OVERLAP_DAYS` | `0` |
+| `COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
+| `COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS` | `5` |
 | `COST_INSIGHT_SYNC_PAGE_SIZE` | `5000` |
 
 The Python BigQuery SDK requires Application Default Credentials. For local
@@ -81,3 +87,50 @@ This job reads `cost_raw_details`, joins current `roster_employees` and
 corrections and roster fixes can be reflected by refreshing the same dates.
 Use `--split-by-day` for multi-day ranges to stay under TiDB single-query
 memory limits.
+
+## BigQuery Cost-Optimized Pipeline
+
+The refined pipeline avoids scanning resource-level billing export columns for
+regular dashboard summaries:
+
+```bash
+cost-insight sync-gcp-billing-summary \
+  --export-partition-start 2026-05-17 \
+  --export-partition-end 2026-05-23
+```
+
+After summary rows are imported, refresh attribution from the summary table:
+
+```bash
+cost-insight refresh-cost-attribution-from-summary \
+  --start-date 2026-05-17 \
+  --end-date 2026-05-23 \
+  --split-by-day
+```
+
+Resource-level investigation data is imported separately for a stable usage
+week:
+
+```bash
+cost-insight sync-gcp-unmatched-resources \
+  --usage-start-date 2026-05-17 \
+  --usage-end-date 2026-05-23
+```
+
+To avoid a BigQuery backfill during migration, seed the new tables from the
+existing `cost_raw_details` table:
+
+```bash
+cost-insight backfill-gcp-cost-refine-from-raw \
+  --start-date 2026-01-01 \
+  --end-date 2026-05-20 \
+  --mark-summary-watermark
+```
+
+The backfill synthesizes `export_partition_date` from
+`DATE(source_export_time)`, falling back to `usage_date` when
+`source_export_time` is missing. `--mark-summary-watermark` prevents the new
+summary importer from scanning already-backfilled historical export partitions.
+
+See [docs/bigquery-cost-optimization-design.md](docs/bigquery-cost-optimization-design.md)
+for the detailed table design, query shapes, and cost estimates.

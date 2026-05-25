@@ -5,8 +5,11 @@ from cost_insight.common import db
 from cost_insight.common.config import DatabaseSettings, GcpBillingSettings, Settings
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
+from cost_insight.jobs.backfill_cost_refine_from_raw import BackfillCostRefineFromRawSummary
 from cost_insight.jobs.refresh_attribution_daily import RefreshAttributionSummary
+from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
+from cost_insight.jobs.sync_gcp_unmatched_resources import SyncGcpUnmatchedResourcesSummary
 
 
 def test_build_engine_uses_database_url(monkeypatch) -> None:
@@ -224,6 +227,222 @@ def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
     assert captured["dry_run"] is True
     assert '"rows_inserted": 3' in output
     assert '"raw_rows": 10' in output
+
+
+def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return SyncGcpBillingSummaryResult(
+            account_id=kwargs["settings"].account_id,
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            rows_seen=2,
+            rows_written=2,
+            dry_run=kwargs["dry_run"],
+            touched_usage_dates=(date(2026, 5, 17),),
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_sync_gcp_billing_summary", fake_run)
+
+    exit_code = cli.main(
+        [
+            "sync-gcp-billing-summary",
+            "--export-partition-start",
+            "2026-05-17",
+            "--export-partition-end",
+            "2026-05-18",
+            "--earliest-usage-date",
+            "2026-01-01",
+            "--limit",
+            "10",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["export_partition_start"] == date(2026, 5, 17)
+    assert captured["export_partition_end"] == date(2026, 5, 18)
+    assert captured["earliest_usage_date"] == date(2026, 1, 1)
+    assert captured["limit"] == 10
+    assert '"touched_usage_dates": [' in output
+
+
+def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=kwargs["settings"].account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=date(2026, 5, 17),
+            export_partition_end=date(2026, 5, 24),
+            rows_seen=3,
+            rows_written=3,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_sync_gcp_unmatched_resources", fake_run)
+
+    exit_code = cli.main(
+        [
+            "sync-gcp-unmatched-resources",
+            "--usage-start-date",
+            "2026-05-17",
+            "--usage-end-date",
+            "2026-05-18",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["usage_start_date"] == date(2026, 5, 17)
+    assert captured["usage_end_date"] == date(2026, 5, 18)
+    assert '"rows_seen": 3' in output
+
+
+def test_cli_runs_backfill_cost_refine_from_raw_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return BackfillCostRefineFromRawSummary(
+            account_id=kwargs["settings"].account_id,
+            start_date=kwargs["start_date"],
+            end_date=kwargs["end_date"],
+            summary_rows_seen=2,
+            summary_rows_written=2,
+            unmatched_rows_seen=1,
+            unmatched_rows_written=1,
+            export_partition_start=date(2026, 5, 17),
+            export_partition_end=date(2026, 5, 20),
+            dry_run=kwargs["dry_run"],
+            marked_summary_watermark=kwargs["mark_summary_watermark"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_backfill_cost_refine_from_raw", fake_run)
+
+    exit_code = cli.main(
+        [
+            "backfill-gcp-cost-refine-from-raw",
+            "--start-date",
+            "2026-01-01",
+            "--end-date",
+            "2026-05-20",
+            "--mark-summary-watermark",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["start_date"] == date(2026, 1, 1)
+    assert captured["end_date"] == date(2026, 5, 20)
+    assert captured["include_unmatched_resources"] is True
+    assert captured["mark_summary_watermark"] is True
+    assert captured["dry_run"] is True
+    assert '"summary_rows_seen": 2' in output
+    assert '"marked_summary_watermark": true' in output
+
+
+def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        log_level="INFO",
+    )
+
+    def fake_refresh(engine, *, settings, start_date, end_date, dry_run):
+        captured["engine"] = engine
+        captured["settings"] = settings
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        captured["dry_run"] = dry_run
+        return RefreshAttributionSummary(
+            account_id=settings.account_id,
+            start_date=start_date,
+            end_date=end_date,
+            rows_deleted=2,
+            rows_inserted=3,
+            dry_run=dry_run,
+            summary_rows=10 if dry_run else None,
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_refresh_cost_attribution_from_summary", fake_refresh)
+
+    exit_code = cli.main(
+        [
+            "refresh-cost-attribution-from-summary",
+            "--start-date",
+            "2026-05-09",
+            "--end-date",
+            "2026-05-17",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["start_date"] == date(2026, 5, 9)
+    assert captured["end_date"] == date(2026, 5, 17)
+    assert '"summary_rows": 10' in output
 
 
 def test_cli_refresh_attribution_split_by_day_runs_each_date(monkeypatch, capsys) -> None:

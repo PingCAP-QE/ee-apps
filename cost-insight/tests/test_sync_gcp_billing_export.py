@@ -5,15 +5,12 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.row_utils import coerce_date, coerce_datetime, hash_value, nullable_text
 from cost_insight.jobs import state_store
 from cost_insight.jobs.sync_gcp_billing_export import (
     JOB_NAME,
-    _coerce_date,
-    _coerce_datetime,
     _ensure_cost_source_enabled,
-    _hash_value,
     _normalize_row,
-    _nullable_text,
     _start_date_from_state,
     _watermark,
     _write_batch,
@@ -82,24 +79,24 @@ def test_normalize_row_rejects_missing_required_fields() -> None:
 
 
 def test_coercion_helpers() -> None:
-    assert _nullable_text("  value  ") == "value"
-    assert _nullable_text("   ") is None
-    assert _coerce_date(datetime(2026, 5, 18, 12, 0)) == date(2026, 5, 18)
-    assert _coerce_date(date(2026, 5, 18)) == date(2026, 5, 18)
-    assert _coerce_datetime(datetime(2026, 5, 18, 12, 0)).tzinfo is None
-    assert _coerce_datetime("2026-05-18T12:00:00+08:00") == datetime(2026, 5, 18, 4, 0)
-    assert _coerce_datetime(datetime(2026, 5, 18, 12, 0, tzinfo=timezone.utc)) == datetime(
+    assert nullable_text("  value  ") == "value"
+    assert nullable_text("   ") is None
+    assert coerce_date(datetime(2026, 5, 18, 12, 0)) == date(2026, 5, 18)
+    assert coerce_date(date(2026, 5, 18)) == date(2026, 5, 18)
+    assert coerce_datetime(datetime(2026, 5, 18, 12, 0)).tzinfo is None
+    assert coerce_datetime("2026-05-18T12:00:00+08:00") == datetime(2026, 5, 18, 4, 0)
+    assert coerce_datetime(datetime(2026, 5, 18, 12, 0, tzinfo=timezone.utc)) == datetime(
         2026, 5, 18, 12, 0
     )
-    assert _hash_value(Decimal("1.20")) == "1.20"
+    assert hash_value(Decimal("1.20")) == "1.20"
 
 
 def test_coercion_helpers_reject_invalid_values() -> None:
     with pytest.raises(ValueError, match="Unsupported date value"):
-        _coerce_date(123)
+        coerce_date(123)
 
     with pytest.raises(ValueError, match="Unsupported datetime value"):
-        _coerce_datetime(123)
+        coerce_datetime(123)
 
 
 def test_start_date_from_state_uses_overlap() -> None:
