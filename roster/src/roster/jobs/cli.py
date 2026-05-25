@@ -11,6 +11,11 @@ from roster.common.logging import configure_logging
 from roster.jobs.sync_roster import run_sync_roster
 from roster.jobs.validate_history import validate_historical_employees
 from roster.jobs.validate_lark import validate_lark_roster
+from roster.jobs.weekly_summary import (
+    DEFAULT_WEEKLY_SUMMARY_DAYS,
+    load_weekly_roster_summary,
+    send_weekly_roster_summary_to_lark,
+)
 from roster.sources.lark import LarkApiClient, LarkRosterSource
 
 
@@ -18,6 +23,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Roster job runner")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("sync-roster", help="Sync Lark roster data into roster tables")
+    weekly_summary = subparsers.add_parser(
+        "weekly-summary",
+        help="Build the roster weekly change summary and optionally send it to Lark",
+    )
+    weekly_summary.add_argument(
+        "--days",
+        type=int,
+        default=DEFAULT_WEEKLY_SUMMARY_DAYS,
+        help="Number of days to include in the weekly roster summary",
+    )
+    weekly_summary.add_argument(
+        "--send-lark",
+        action="store_true",
+        help="Send the weekly summary to ROSTER_LARK_NOTIFY_OPEN_ID",
+    )
     subparsers.add_parser("validate-lark", help="Fetch Lark roster data and print field quality summary")
     validate_history = subparsers.add_parser(
         "validate-history",
@@ -34,7 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    settings = get_settings(require_database=args.command in {"sync-roster", "validate-history"})
+    settings = get_settings(
+        require_database=args.command in {"sync-roster", "weekly-summary", "validate-history"}
+    )
     configure_logging(settings.log_level)
 
     if args.command == "sync-roster":
@@ -45,6 +67,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).info(
                 "sync-roster finished",
                 extra={"summary": summary.__dict__},
+            )
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "weekly-summary":
+        engine = build_engine(settings)
+        try:
+            summary = load_weekly_roster_summary(engine, days=args.days)
+            if args.send_lark:
+                if not settings.lark.is_configured:
+                    raise SystemExit(
+                        "weekly-summary --send-lark requires "
+                        "ROSTER_LARK_APP_ID and ROSTER_LARK_APP_SECRET"
+                    )
+                if not settings.lark.notify_open_id:
+                    raise SystemExit("weekly-summary --send-lark requires ROSTER_LARK_NOTIFY_OPEN_ID")
+                send_weekly_roster_summary_to_lark(
+                    summary,
+                    client=LarkApiClient(settings.lark.app_id, settings.lark.app_secret),
+                    open_id=settings.lark.notify_open_id,
+                )
+            else:
+                print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
+            logging.getLogger(__name__).info(
+                "weekly-summary finished",
+                extra={"summary_count": summary.total_count, "sent_lark": args.send_lark},
             )
             return 0
         finally:

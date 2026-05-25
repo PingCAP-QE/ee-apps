@@ -98,6 +98,22 @@ class LarkApiClient:
             headers={"Authorization": f"Bearer {token}"},
         )
 
+    def post(
+        self,
+        path: str,
+        *,
+        params: dict[str, object] | None = None,
+        json_body: dict[str, object] | None = None,
+        token: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            path,
+            params=params,
+            json_body=json_body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
     def _request(
         self,
         method: str,

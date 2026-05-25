@@ -11,6 +11,7 @@ The schema keeps the first version small:
 - no identity table
 - no closure table
 - no multi-group relation table for now
+- a small change-event table for weekly roster notifications
 
 Hierarchy queries use materialized path columns.
 
@@ -97,6 +98,40 @@ Field notes:
 - `is_active`: active group flag.
 - `last_seen_at`: last successful sync time when this group was returned by Lark.
 
+### `roster_employee_change_events`
+
+Stores employee-level changes detected during sync. This table is intentionally not a
+full snapshot; it only records the changes needed for weekly notifications.
+
+```sql
+CREATE TABLE roster_employee_change_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  event_type VARCHAR(32) NOT NULL,
+  employee_lark_id VARCHAR(128) NOT NULL,
+  employee_name VARCHAR(255) NOT NULL,
+  employee_email VARCHAR(255) NULL,
+  manager_name VARCHAR(255) NULL,
+  manager_email VARCHAR(255) NULL,
+  group_name VARCHAR(255) NULL,
+  group_path VARCHAR(1024) NULL,
+  previous_group_name VARCHAR(255) NULL,
+  previous_group_path VARCHAR(1024) NULL,
+  event_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_roster_employee_change_events_event_at (event_at),
+  KEY idx_roster_employee_change_events_type_time (event_type, event_at),
+  KEY idx_roster_employee_change_events_employee (employee_lark_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+Field notes:
+
+- `event_type`: one of `hire`, `leave`, or `group_change`.
+- `employee_*`, `manager_*`, and `group_*`: denormalized display fields for notifications.
+- `previous_group_*`: previous department fields for `group_change` events.
+- `event_at`: sync time when the change was detected.
+
 ## Hierarchy Queries
 
 Find all direct and indirect reports of a manager:
@@ -179,6 +214,9 @@ Inactive handling:
   `idx_roster_employees_employee_no` to a unique key.
 - Because `group_path` is denormalized onto employees, every full sync must refresh it after
   group paths are rebuilt.
+- Employee change events are recorded after reference fields and inactive flags are refreshed:
+  a new or reactivated employee emits `hire`, a stale employee newly marked inactive emits
+  `leave`, and a primary group change emits `group_change`.
 
 ## Current Tradeoffs
 

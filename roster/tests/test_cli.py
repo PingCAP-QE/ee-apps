@@ -11,6 +11,14 @@ def test_parser_exposes_sync_roster_command() -> None:
     assert args.command == "sync-roster"
 
 
+def test_parser_exposes_weekly_summary_command() -> None:
+    args = cli.build_parser().parse_args(["weekly-summary", "--days", "14", "--send-lark"])
+
+    assert args.command == "weekly-summary"
+    assert args.days == 14
+    assert args.send_lark is True
+
+
 def test_parser_exposes_validate_lark_command() -> None:
     args = cli.build_parser().parse_args(["validate-lark"])
 
@@ -114,6 +122,69 @@ def test_main_builds_lark_source_when_configured(monkeypatch) -> None:
         "client": ("cli_xxx", "secret"),
         "source_args": (client, "github_attr", "od-root"),
         "sync": (engine, source),
+        "disposed": True,
+    }
+
+
+def test_main_weekly_summary_prints_json_and_disposes_engine(monkeypatch, capsys) -> None:
+    calls: dict[str, object] = {}
+    settings = SimpleNamespace(log_level="INFO", lark=SimpleNamespace(is_configured=False))
+    engine = SimpleNamespace(dispose=lambda: calls.setdefault("disposed", True))
+    summary = SimpleNamespace(total_count=0, to_dict=lambda: {"hires": []})
+
+    monkeypatch.setattr(cli, "get_settings", lambda *args, **kwargs: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda log_level: calls.setdefault("log", log_level))
+    monkeypatch.setattr(cli, "build_engine", lambda resolved: calls.setdefault("engine", engine))
+
+    def fake_load_weekly_roster_summary(built_engine, *, days):
+        calls["summary"] = (built_engine, days)
+        return summary
+
+    monkeypatch.setattr(cli, "load_weekly_roster_summary", fake_load_weekly_roster_summary)
+
+    assert cli.main(["weekly-summary", "--days", "14"]) == 0
+
+    assert calls == {
+        "log": "INFO",
+        "engine": engine,
+        "summary": (engine, 14),
+        "disposed": True,
+    }
+    assert capsys.readouterr().out == '{\n  "hires": []\n}\n'
+
+
+def test_main_weekly_summary_sends_lark(monkeypatch) -> None:
+    calls: dict[str, object] = {}
+    lark_settings = SimpleNamespace(
+        is_configured=True,
+        app_id="cli_xxx",
+        app_secret="secret",
+        notify_open_id="ou_xxx",
+    )
+    settings = SimpleNamespace(log_level="INFO", lark=lark_settings)
+    engine = SimpleNamespace(dispose=lambda: calls.setdefault("disposed", True))
+    summary = SimpleNamespace(total_count=3, to_dict=lambda: {"hires": []})
+    client = object()
+
+    monkeypatch.setattr(cli, "get_settings", lambda *args, **kwargs: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda log_level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda resolved: engine)
+    monkeypatch.setattr(cli, "load_weekly_roster_summary", lambda built_engine, *, days: summary)
+    monkeypatch.setattr(
+        cli,
+        "LarkApiClient",
+        lambda app_id, app_secret: calls.setdefault("client", (app_id, app_secret)) and client,
+    )
+
+    def fake_send(summary_arg, *, client, open_id):
+        calls["send"] = (summary_arg, client, open_id)
+
+    monkeypatch.setattr(cli, "send_weekly_roster_summary_to_lark", fake_send)
+
+    assert cli.main(["weekly-summary", "--send-lark"]) == 0
+    assert calls == {
+        "client": ("cli_xxx", "secret"),
+        "send": (summary, client, "ou_xxx"),
         "disposed": True,
     }
 
