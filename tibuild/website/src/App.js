@@ -93,9 +93,6 @@ const PipelineTabs = ({buildTypeProp}) => {
                 build_type: buildTypeSelect
             }),
         {
-            onSuccess: (data) => {
-                console.log(data)
-            },
             keepPreviousData: true,
             staleTime: 5000,
         }
@@ -121,7 +118,7 @@ const PipelineTabs = ({buildTypeProp}) => {
             <>
                 <Tabs value={tab} onChange={handleChange} aria-label="basic tabs example">
                     {currentVersions.map((v) => (
-                        <Tab label={v.pipeline_name}></Tab>
+                        <Tab key={v.pipeline_id} label={v.pipeline_name}></Tab>
                     ))}
                 </Tabs>
                 <GridList tab={tab} currentVersions={currentVersions}></GridList>
@@ -133,7 +130,7 @@ const PipelineTabs = ({buildTypeProp}) => {
             <>
                 <Tabs value={tabNightly} onChange={handleChangeNightly} aria-label="basic tabs example">
                     {currentVersions.map((v) => (
-                        <Tab label={v.pipeline_name}></Tab>
+                        <Tab key={v.pipeline_id} label={v.pipeline_name}></Tab>
                     ))}
                 </Tabs>
                 <GridList tab={tabNightly} currentVersions={currentVersions}></GridList>
@@ -144,7 +141,7 @@ const PipelineTabs = ({buildTypeProp}) => {
             <>
                 <Tabs value={0} onChange={handleChange} aria-label="basic tabs example">
                     {currentVersions.map((v) => (
-                        <Tab label={v.pipeline_name}></Tab>
+                        <Tab key={v.pipeline_id} label={v.pipeline_name}></Tab>
                     ))}
                 </Tabs>
                 <GridList tab={0} currentVersions={currentVersions}></GridList>
@@ -167,7 +164,7 @@ const ListPage = ({props}) => {
                     {/*</Paper>*/}
                     <Accordion defaultExpanded={true}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                            <td><font face="Comic Sans MS"> Build Target</font></td>
+                            <Box component="span" sx={{fontFamily: "Comic Sans MS"}}>Build Target</Box>
                         </AccordionSummary>
                         <AccordionDetails>
                             <Box sx={{width: "100%"}}>
