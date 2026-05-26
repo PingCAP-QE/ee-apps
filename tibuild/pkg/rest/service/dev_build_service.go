@@ -369,7 +369,7 @@ func fillWithDefaults(req *DevBuild) {
 	fillForFIPS(spec)
 	if req.Spec.PipelineEngine == "" {
 		// switch to tekton engine for common dev-build for tikv components.
-		if req.Spec.Product == ProductTikv && !req.Spec.IsHotfix {
+		if (req.Spec.Product == ProductTikv || req.Spec.Product == ProductTiflash) && !req.Spec.IsHotfix {
 			req.Spec.PipelineEngine = TektonEngine
 		} else {
 			req.Spec.PipelineEngine = JenkinsEngine

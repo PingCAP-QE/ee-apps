@@ -32,7 +32,7 @@ func TestNewEvent(t *testing.T) {
 	require.NoError(t, err)
 	js, err := json.Marshal(evs)
 	require.NoError(t, err)
-	expected := `[{"specversion":"1.0","id":"","paramgithubrepo":"tikv/pd","paramprofile":"community","source":"tibuild.pingcap.net/api/devbuilds/1","type":"net.pingcap.tibuild.devbuild.push","subject":"1","datacontenttype":"application/json","data":{"ref":"refs/heads/master","after":"754095a9f460dcf31f053045cfedfb00b9ad8e81", "before":"00000000000000000000000000000000000000000","repository":{"full_name":"tikv/pd", "name":"pd","owner":{"login":"tikv"},"clone_url":"https://github.com/tikv/pd.git"}},"user":"some@pingcap.com"}]`
+	expected := `[{"specversion":"1.0","id":"","paramgithubrepo":"tikv/pd","paramispushgcr":false,"paramprofile":"community","source":"tibuild.pingcap.net/api/devbuilds/1","type":"net.pingcap.tibuild.devbuild.push","subject":"1","datacontenttype":"application/json","data":{"ref":"refs/heads/master","after":"754095a9f460dcf31f053045cfedfb00b9ad8e81", "before":"00000000000000000000000000000000000000000","repository":{"full_name":"tikv/pd", "name":"pd","owner":{"login":"tikv"},"clone_url":"https://github.com/tikv/pd.git"}},"user":"some@pingcap.com"}]`
 	require.JSONEq(t, expected, string(js))
 }
 
