@@ -161,7 +161,7 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     assert row["case_name"] == "TestAuditPluginRetrying"
     assert row["issue_status"] == "closed"
     assert row["issue_branch"] == "master"
-    assert row["branch_source"] == "ticket_body"
+    assert row["branch_source"] == "default_master"
     assert str(row["issue_closed_at"]).startswith("2026-04-13 09:30:00")
     assert str(row["last_reopened_at"]).startswith("2026-04-12 08:00:00")
     assert row["reopen_count"] == 1
@@ -217,7 +217,7 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     assert total_rows["count"] == 1
 
 
-def test_sync_flaky_issues_uses_github_api_comments_when_ticket_body_missing(
+def test_sync_flaky_issues_defaults_branch_to_master_when_ticket_body_missing(
     sqlite_engine,
     monkeypatch,
 ) -> None:
@@ -237,20 +237,14 @@ def test_sync_flaky_issues_uses_github_api_comments_when_ticket_body_missing(
 
     monkeypatch.setattr(
         "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
-        lambda **_: (
-            "Automated flaky test report.\n- Branch: master\n",
-            [
-                {
-                    "user": {"login": "ti-chi-bot"},
-                    "body": "Automated flaky test report update.\n- Branch: release-8.5\n",
-                }
-            ],
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for branch metadata")
         ),
     )
 
     summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
 
-    assert summary.branch_fetch_attempted == 1
+    assert summary.branch_fetch_attempted == 0
     assert summary.branch_fetch_failed == 0
 
     with sqlite_engine.begin() as connection:
@@ -264,8 +258,8 @@ def test_sync_flaky_issues_uses_github_api_comments_when_ticket_body_missing(
             )
         ).mappings().one()
 
-    assert row["issue_branch"] == "release-8.5"
-    assert row["branch_source"] == "github_api_comments"
+    assert row["issue_branch"] == "master"
+    assert row["branch_source"] == "default_master"
 
 
 def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
@@ -634,7 +628,7 @@ def test_sync_flaky_issues_reuses_existing_branch_when_ticket_is_unchanged(
         ).mappings().one()
 
     assert row["issue_branch"] == "master"
-    assert row["branch_source"] == "github_api_body"
+    assert row["branch_source"] == "default_master"
 
 
 def test_parse_issue_branch_handles_plain_body_and_escaped_newlines() -> None:
@@ -788,12 +782,14 @@ def test_sync_flaky_issue_helpers_cover_fallbacks_and_payload_shapes(monkeypatch
 
     monkeypatch.setattr(
         "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
-        lambda **_: ("body without branch", []),
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for branch metadata")
+        ),
     )
     assert _resolve_issue_branch(
         {"repo": "pingcap/tidb", "number": 1, "body": None, "comments": None, "updated_at": "2026-04-16T09:00:00Z"},
         existing,
-    ) == ("release-8.5", "github_api_body", True, False)
+    ) == ("master", "default_master", False, False)
 
 
 def test_fetch_github_api_json_and_issue_details_wrap_http_failures(monkeypatch: pytest.MonkeyPatch) -> None:

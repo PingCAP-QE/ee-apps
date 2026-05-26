@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date, datetime, timezone
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -318,6 +319,7 @@ def _insert_pull_ticket(
     closed_at: str | None = None,
     merged: int = 0,
     merged_at: str | None = None,
+    target_branch: str | None = "master",
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -328,7 +330,7 @@ def _insert_pull_ticket(
                   closed_at, merged, merged_at, review, review_comments, timeline, branches
                 ) VALUES (
                   'pull', :repo, :number, :title, NULL, '[]', :state, :created_at, :updated_at,
-                  :closed_at, :merged, :merged_at, '[]', '[]', '[]', NULL
+                  :closed_at, :merged, :merged_at, '[]', '[]', '[]', :branches
                 )
                 """
             ),
@@ -342,6 +344,11 @@ def _insert_pull_ticket(
                 "closed_at": closed_at,
                 "merged": merged,
                 "merged_at": merged_at,
+                "branches": (
+                    json.dumps({"base": {"ref": target_branch}})
+                    if target_branch is not None
+                    else None
+                ),
             },
         )
 
@@ -2028,7 +2035,7 @@ def test_page_routes(api_client: TestClient) -> None:
     ]
     assert flaky_body["bucketed_flaky_rate"]["meta"]["requested_granularity"] == "day"
     assert flaky_body["bucketed_flaky_rate"]["meta"]["effective_granularity"] == "week"
-    assert flaky_body["issue_case_weekly_rates"]["rows"][0]["display_name"] == "TestCaseAlpha"
+    assert flaky_body["issue_case_weekly_rates"]["rows"][0]["display_name"] == "[master] TestCaseAlpha"
     assert flaky_body["issue_case_weekly_rates"]["rows"][0]["cells"] == ["100.00% (1/1)"]
     assert flaky_body["issue_case_weekly_rates"]["rows"][1]["cells"] == ["100.00% (1/1)"]
     failure_series = {
@@ -3153,6 +3160,7 @@ def test_flaky_page_issue_lifecycle_snapshot_ignores_issue_status_filter(
     assert lifecycle["meta"]["latest_full_week_start"] == "2026-04-13"
     assert lifecycle["meta"]["latest_full_week_end"] == "2026-04-19"
     assert lifecycle["meta"]["ignores_issue_status"] is True
+    assert lifecycle["meta"]["ignores_branch"] is True
     assert lifecycle["latest_week_created_count"] == 2
     assert lifecycle["latest_week_created_open_count"] == 1
     assert lifecycle["latest_week_created_closed_count"] == 1
@@ -3274,6 +3282,8 @@ def test_flaky_page_issue_fix_progress_snapshot(
     assert progress["meta"]["ignores_job_name"] is True
     assert progress["meta"]["ignores_cloud_phase"] is True
     assert progress["meta"]["ignores_issue_status"] is True
+    assert progress["meta"]["ignores_branch_for_issues"] is True
+    assert progress["meta"]["applies_branch_to_prs"] is True
     assert progress["filed_issue_count"] == 5
     assert progress["filed_issue_delta"] == 1
     assert progress["fixed_issue_count"] == 2
@@ -3282,3 +3292,112 @@ def test_flaky_page_issue_fix_progress_snapshot(
     assert progress["in_review_pr_delta"] == 0
     assert progress["merged_pr_count"] == 1
     assert progress["merged_pr_delta"] == 1
+
+
+def test_flaky_issue_queries_ignore_branch_filter(sqlite_engine) -> None:
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=72001,
+        case_name="ReleaseScopedCase",
+        issue_branch="release-8.5",
+        issue_status="open",
+        issue_created_at="2026-04-10 10:00:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=72002,
+        case_name="MasterScopedCase",
+        issue_branch="master",
+        issue_status="closed",
+        issue_created_at="2026-04-11 10:00:00",
+        issue_closed_at="2026-04-12 12:00:00",
+    )
+    _insert_flaky_issue_pr_link(
+        sqlite_engine,
+        issue_repo="pingcap/tidb",
+        issue_number=72001,
+        pr_repo="pingcap/tidb",
+        pr_number=73001,
+        linked_at="2026-04-10 11:00:00",
+    )
+    _insert_flaky_issue_pr_link(
+        sqlite_engine,
+        issue_repo="pingcap/tidb",
+        issue_number=72002,
+        pr_repo="pingcap/tidb",
+        pr_number=73002,
+        linked_at="2026-04-11 11:00:00",
+    )
+    _insert_pull_ticket(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        number=73001,
+        state="open",
+        created_at="2026-04-10 11:05:00",
+        target_branch="release-8.5",
+    )
+    _insert_pull_ticket(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        number=73002,
+        state="closed",
+        created_at="2026-04-11 11:05:00",
+        closed_at="2026-04-12 12:00:00",
+        merged=1,
+        merged_at="2026-04-12 12:00:00",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            page_response = client.get(
+                "/api/v1/pages/flaky",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-20",
+                },
+            )
+            issue_rates_response = client.get(
+                "/api/v1/flaky/issue-weekly-rates",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-20",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert page_response.status_code == 200
+    assert issue_rates_response.status_code == 200
+
+    page_body = page_response.json()
+    issue_fix_progress = page_body["issue_fix_progress"]
+    assert issue_fix_progress["meta"]["ignores_branch_for_issues"] is True
+    assert issue_fix_progress["meta"]["applies_branch_to_prs"] is True
+    assert issue_fix_progress["filed_issue_count"] == 2
+    assert issue_fix_progress["fixed_issue_count"] == 1
+    assert issue_fix_progress["in_review_pr_count"] == 0
+    assert issue_fix_progress["merged_pr_count"] == 1
+
+    issue_lifecycle = page_body["issue_lifecycle"]
+    assert issue_lifecycle["meta"]["ignores_branch"] is True
+    assert issue_lifecycle["scoped_issue_count"] == 2
+
+    issue_lifecycle_weekly = page_body["issue_lifecycle_weekly"]
+    assert issue_lifecycle_weekly["meta"]["ignores_branch"] is True
+
+    issue_rates_body = issue_rates_response.json()
+    assert issue_rates_body["meta"]["ignores_branch"] is True
+    rows_by_issue = {
+        row["issue_number"]: row
+        for row in issue_rates_body["rows"]
+    }
+    assert rows_by_issue[72001]["issue_branch"] == "release-8.5"
+    assert rows_by_issue[72001]["display_name"] == "[release-8.5] ReleaseScopedCase"
+    assert rows_by_issue[72002]["display_name"] == "[master] MasterScopedCase"
