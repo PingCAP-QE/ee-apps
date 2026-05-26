@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,16 @@ type tidbxGitTagMeta struct {
 	Author *string                  `json:"author,omitempty"`
 	Meta   *hotfix.TiDBxBumpTagMeta `json:"meta,omitempty"`
 }
+
+type tidbxTagPatchBumper func(lastestTag string) (string, error)
+
+var (
+	legacyTidbxTagPattern       = regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
+	alphaTidbxTagPattern        = regexp.MustCompile(`^(v\d+\.\d+\.\d+)-alpha$`)
+	releaseNextgenBranchPattern = regexp.MustCompile(`^release-nextgen-(\d{4})(\d{2})(?:\d{2})?$`)
+	releaseNextgenDailyBranch   = regexp.MustCompile(`^release-nextgen-\d{8}$`)
+	releaseNextgenMonthlyBranch = regexp.MustCompile(`^release-nextgen-\d{6}$`)
+)
 
 // BumpTagForTidbx creates a hot fix git tag for a GitHub repository.
 func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTidbxPayload) (*hotfix.HotfixTagResult, error) {
@@ -58,7 +69,7 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 	l.Info().Msg("Verified commit exists")
 
 	// Step 2: Compute the tag name (and fail if commit already has a tidbx-style tag)
-	tagName, err := s.computeNewTagNameForTidbx(ctx, owner, repo, commitSHA)
+	tagName, err := s.computeNewTagNameForTidbx(ctx, owner, repo, commitSHA, p.Branch)
 	if err != nil {
 		l.Err(err).Msg("Failed to compute tag name")
 		return nil, err
@@ -149,11 +160,9 @@ func (s *hotfixsrvc) QueryTagOfTidbx(ctx context.Context, p *hotfix.QueryTagOfTi
 	return ret, nil
 }
 
-// computeNewTagNameForTidbx computes the next tag name based on existing tags,
+// computeNewTagNameForTidbx computes the next tag name based on existing tags
 // and fails if the provided commit already has a tidbx-style tag.
-// Tags use the new plain semver flow starting at v26.0.0 and fall back to the
-// legacy vX.Y.Z-nextgen.YYYYMM.N pattern for older repositories.
-func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string) (string, error) {
+func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo, commitSHA string, branch *string) (string, error) {
 	// Get all tags from the repository
 	var allTags []*github.RepositoryTag
 	opts := &github.ListOptions{PerPage: 100}
@@ -173,15 +182,21 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		opts.Page = resp.NextPage
 	}
 
-	// Parse and filter both the new >=v26.0.0 semver tags and the legacy nextgen tags.
-	legacyPattern := regexp.MustCompile(`^v(\d+\.\d+\.\d+)-nextgen\.(\d{6})\.(\d+)$`)
+	// Parse and filter three kinds of tags:
+	// 1) new GA tags: vX.Y.Z
+	// 2) new alpha tags: vX.Y.Z-alpha
+	// 3) legacy tags: vX.Y.Z-nextgen.YYYYMM.N
 	var legacyTags []tagInfo
 	var newTags []string
+	var alphaTags []string
 
 	for _, tag := range allTags {
 		name := tag.GetName()
+		baseAlphaTag, isAlphaTag := parseTidbxAlphaTag(name)
 
-		if (legacyPattern.MatchString(name) || isNewTidbxGitTag(name)) &&
+		// Keep "already tagged" guard for GA and legacy tags.
+		// For alpha tags, we allow promotion on the same commit (vX.Y.Z-alpha -> vX.Y.Z).
+		if (legacyTidbxTagPattern.MatchString(name) || isNewTidbxGitTag(name)) &&
 			tag.Commit != nil && tag.Commit.SHA != nil && *tag.Commit.SHA == commitSHA {
 			return "", &hotfix.HTTPError{
 				Code:    http.StatusBadRequest,
@@ -194,7 +209,12 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 			continue
 		}
 
-		matches := legacyPattern.FindStringSubmatch(name)
+		if isAlphaTag {
+			alphaTags = append(alphaTags, baseAlphaTag)
+			continue
+		}
+
+		matches := legacyTidbxTagPattern.FindStringSubmatch(name)
 		if len(matches) == 4 {
 			seq, err := strconv.Atoi(matches[3])
 			if err != nil {
@@ -209,71 +229,225 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 		}
 	}
 
-	if len(newTags) > 0 {
-		sort.Slice(newTags, func(i, j int) bool {
-			return semver.Compare(newTags[i], newTags[j]) > 0
+	headBranch := ""
+	if branch != nil {
+		headBranch = *branch
+	} else {
+		b, err := s.getLatestNextgenReleaseBranchForCommit(ctx, owner, repo, commitSHA)
+		if err != nil {
+			return "", err
+		}
+		headBranch = b
+	}
+
+	if releaseNextgenMonthlyBranch.MatchString(headBranch) {
+		if len(newTags) > 0 {
+			sort.Slice(newTags, func(i, j int) bool {
+				return semver.Compare(newTags[i], newTags[j]) > 0
+			})
+
+			return s.computeNextTagByCompareCommits(ctx, owner, repo, commitSHA, newTags[0], newStyleTidbxTagGenerator)
+		}
+
+		// If there is no GA new-style tag, but there is alpha tag, promote the latest
+		// alpha tag to its first GA tag (vX.Y.Z-alpha -> vX.Y.Z).
+		if len(alphaTags) > 0 {
+			sort.Slice(alphaTags, func(i, j int) bool {
+				return semver.Compare(alphaTags[i], alphaTags[j]) > 0
+			})
+
+			return s.computeNextTagByCompareCommits(ctx, owner, repo, commitSHA, alphaTags[0]+"-alpha", newStyleTidbxTagGeneratorFromAlphaTag)
+		}
+	}
+
+	// If only legacy tags exist and the commit's head branch is legacy style, keep legacy bump behavior.
+	if releaseNextgenDailyBranch.MatchString(headBranch) && len(legacyTags) > 0 {
+		sort.Slice(legacyTags, func(i, j int) bool {
+			if legacyTags[i].yearMonth != legacyTags[j].yearMonth {
+				return legacyTags[i].yearMonth > legacyTags[j].yearMonth
+			}
+			return legacyTags[i].sequence > legacyTags[j].sequence
 		})
 
-		latest := newTags[0]
-		comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest, commitSHA, nil)
-		if err != nil {
-			return "", &hotfix.HTTPError{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("failed to compare commits: %v", err),
-			}
-		}
-		if comparison.GetStatus() == "behind" {
-			return "", &hotfix.HTTPError{
-				Code:    http.StatusBadRequest,
-				Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest),
-			}
-		}
-
-		parts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
-		patch, err := strconv.Atoi(parts[2])
-		if err != nil {
-			return "", &hotfix.HTTPError{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("failed to parse patch from tag %s: %v", latest, err),
-			}
-		}
-		return fmt.Sprintf("v%s.%s.%d", parts[0], parts[1], patch+1), nil
+		return s.computeNextTagByCompareCommits(ctx, owner, repo, commitSHA, legacyTags[0].name, legacyTidbxTagGenerator)
 	}
 
-	// If no matching tags exist, we cannot determine the version to use.
-	if len(legacyTags) == 0 {
-		return "", &hotfix.HTTPError{
-			Code:    http.StatusBadRequest,
-			Message: "no existing tags found matching pattern >=v26.0.0 or vX.Y.Z-nextgen.YYYYMM.N, cannot determine version to use",
+	// If there are no tags, and caller provides a release-nextgen branch in new style,
+	// bootstrap the first patch version: vYY.M.0.
+	if headBranch != "" {
+		if bootstrapTag, ok := buildBootstrapTagFromReleaseBranch(headBranch); ok {
+			return bootstrapTag, nil
 		}
 	}
 
-	// Sort tags to find the latest legacy tag.
-	sort.Slice(legacyTags, func(i, j int) bool {
-		if legacyTags[i].yearMonth != legacyTags[j].yearMonth {
-			return legacyTags[i].yearMonth > legacyTags[j].yearMonth
-		}
-		return legacyTags[i].sequence > legacyTags[j].sequence
-	})
+	return "", &hotfix.HTTPError{
+		Code:    http.StatusBadRequest,
+		Message: "no existing tags found matching new-style/legacy patterns, and branch does not match bootstrap rule release-nextgen-YYYYMM[/DD]",
+	}
+}
 
-	latest := legacyTags[0]
-
-	// Check if the commit is behind the latest existing tidbx-style tag
-	comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, latest.name, commitSHA, nil)
+// computeNextTagByCompareCommits compares the provided commit against the latest
+// existing tag. If the commit is ahead, it uses the given generator to produce the
+// next tag name. If identical, behind, or diverged, it returns an appropriate error.
+func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, repo, commitSHA, lastTag string, aheadFn tidbxTagPatchBumper) (string, error) {
+	comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, lastTag, commitSHA, nil)
 	if err != nil {
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("failed to compare commits: %v", err),
 		}
 	}
-
-	if comparison.GetStatus() == "behind" {
+	switch status := comparison.GetStatus(); status {
+	case "identical":
+		errMsg := fmt.Sprintf("commit %s is identical with existing tidbx-style tag %s. We can not create a new tag on it.", commitSHA, lastTag)
+		s.logger.Warn().Msg(errMsg)
 		return "", &hotfix.HTTPError{
 			Code:    http.StatusBadRequest,
-			Message: fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, latest.name),
+			Message: errMsg,
+		}
+	case "behind":
+		errMsg := fmt.Sprintf("commit %s is behind existing tidbx-style tag %s; cannot create new tag on an outdated commit", commitSHA, lastTag)
+		s.logger.Warn().Msg(errMsg)
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusBadRequest,
+			Message: errMsg,
+		}
+	case "diverged":
+		errMsg := fmt.Sprintf("commit %s is diverged with tidbx-style tag %s; please find the releaser to address it", commitSHA, lastTag)
+		s.logger.Error().Msg(errMsg)
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusConflict,
+			Message: errMsg,
+		}
+	case "ahead":
+		newTag, err := aheadFn(lastTag)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to generate next tag from %s: %v", lastTag, err)
+			s.logger.Error().Msg(errMsg)
+			return "", &hotfix.HTTPError{
+				Code:    http.StatusInternalServerError,
+				Message: errMsg,
+			}
+		}
+		return newTag, nil
+	default:
+		errMsg := fmt.Sprintf("unknown compare status: '%s'", status)
+		s.logger.Error().Msg(errMsg)
+		return "", &hotfix.HTTPError{
+			Code:    http.StatusInternalServerError,
+			Message: errMsg,
 		}
 	}
+}
 
-	// Always increment sequence based on the latest tag's month found in the repository
-	return fmt.Sprintf("v%s-nextgen.%s.%d", latest.version, latest.yearMonth, latest.sequence+1), nil
+func (s *hotfixsrvc) getLatestNextgenReleaseBranchForCommit(ctx context.Context, owner, repo, commitSHA string) (string, error) {
+	branchNames, err := s.getBranchesContainingCommit(ctx, owner, repo, commitSHA)
+	if err != nil {
+		return "", err
+	}
+
+	releaseBranches := slices.DeleteFunc(branchNames, func(b string) bool {
+		return !releaseNextgenBranchPattern.MatchString(b)
+	})
+
+	if len(releaseBranches) == 0 {
+		return "", nil
+	}
+	return slices.Max(releaseBranches), nil
+}
+
+func (s *hotfixsrvc) getBranchesContainingCommit(ctx context.Context, owner, repo, commitSHA string) ([]string, error) {
+	u := fmt.Sprintf("https://%s/%s/%s/branch_commits/%s", "github.com", owner, repo, commitSHA)
+	req, err := s.ghClient.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	var ret struct {
+		Branches []struct {
+			Branch string `json:"branch,omitempty"`
+		}
+	}
+	if _, err := s.ghClient.Do(ctx, req, &ret); err != nil {
+		s.logger.Err(err).Msg("fetch branches which contains the given commit failed")
+		return nil, err
+	}
+
+	var branchNames []string
+	for _, b := range ret.Branches {
+		branchNames = append(branchNames, b.Branch)
+	}
+
+	return branchNames, nil
+}
+
+func parseTidbxAlphaTag(tag string) (string, bool) {
+	matches := alphaTidbxTagPattern.FindStringSubmatch(tag)
+	if len(matches) != 2 {
+		return "", false
+	}
+	base := matches[1]
+	if !isNewTidbxGitTag(base) {
+		return "", false
+	}
+
+	return base, true
+}
+
+func buildBootstrapTagFromReleaseBranch(branch string) (string, bool) {
+	matches := releaseNextgenBranchPattern.FindStringSubmatch(branch)
+	if len(matches) != 3 {
+		return "", false
+	}
+
+	year, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return "", false
+	}
+	month, err := strconv.Atoi(matches[2])
+	if err != nil || month < 1 || month > 12 {
+		return "", false
+	}
+
+	shortYear := year % 100
+	if shortYear <= 25 {
+		return "", false
+	}
+
+	return fmt.Sprintf("v%d.%d.0", shortYear, month), true
+}
+
+func newStyleTidbxTagGenerator(latest string) (string, error) {
+	parts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("v%s.%s.%d", parts[0], parts[1], patch+1), nil
+}
+
+func newStyleTidbxTagGeneratorFromAlphaTag(latestAlpha string) (string, error) {
+	tag, ok := parseTidbxAlphaTag(latestAlpha)
+	if !ok {
+		return "", fmt.Errorf("invalid alpha tag: %s", latestAlpha)
+	}
+	return tag, nil
+}
+
+func legacyTidbxTagGenerator(name string) (string, error) {
+	matches := legacyTidbxTagPattern.FindStringSubmatch(name)
+	if len(matches) != 4 {
+		return "", fmt.Errorf("tag %s does not match legacy tidbx tag pattern", name)
+	}
+	seq, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return "", err
+	}
+
+	semVer := matches[1]
+	yearMonth := matches[2]
+
+	return fmt.Sprintf("v%s-nextgen.%s.%d", semVer, yearMonth, seq+1), nil
 }

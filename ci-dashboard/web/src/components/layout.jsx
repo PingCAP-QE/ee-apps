@@ -1,0 +1,261 @@
+import { useEffect, useState } from "react";
+import { NavLink } from "react-router-dom";
+import packageInfo from "../../package.json";
+
+export function DashboardLayout({
+  filters,
+  onFilterChange,
+  filterOptions,
+  features = {},
+  children,
+}) {
+  const currentVersion = packageInfo.version;
+  const showRuntimeInsights = features.runtimeInsightsEnabled === true;
+  const showCostDashboard = features.costDashboardEnabled === true;
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-mark">
+          <h1>CI Dashboard</h1>
+          <p>Build health, flaky patterns, and migration status,</p>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Primary">
+          <NavItem to="/" label="Overview" caption="Signal at a glance" />
+          <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
+          <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
+          <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
+          {showCostDashboard && (
+            <NavItem to="/cost" label="Cost" caption="Spend by repo and engineering ownership" />
+          )}
+          {showRuntimeInsights && (
+            <NavItem
+              to="/runtime-insights"
+              label="CI details insight"
+              caption="Pod and Jenkins diagnosis"
+            />
+          )}
+        </nav>
+
+        <div className="sidebar-note">
+          <p>
+            Build ingestion stays all-repo. PR metadata is best effort and can lag a little
+            behind source activity.
+          </p>
+          <p className="sidebar-note__version">Version {currentVersion}</p>
+        </div>
+      </aside>
+
+      <div className="main-column">
+        <FilterBar
+          filters={filters}
+          onFilterChange={onFilterChange}
+          filterOptions={filterOptions}
+        />
+        <main className="page-content">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+function NavItem({ to, label, caption }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      className={({ isActive }) =>
+        isActive ? "sidebar-link sidebar-link--active" : "sidebar-link"
+      }
+    >
+      <span className="sidebar-link__label">{label}</span>
+      <span className="sidebar-link__caption">{caption}</span>
+    </NavLink>
+  );
+}
+
+function FilterBar({ filters, onFilterChange, filterOptions }) {
+  const [isCompact, setIsCompact] = useState(false);
+  const scopePills = [
+    { label: "Repo", value: filters.repo || "All repos" },
+    { label: "Branch", value: filters.branch || "All branches" },
+    { label: "Job", value: filters.job_name || "All jobs" },
+    { label: "Cloud", value: filters.cloud_phase || "All clouds" },
+    { label: "Issues", value: filters.issue_status || "All issues" },
+    { label: "Bucket", value: filters.granularity },
+  ];
+
+  useEffect(() => {
+    let frameId = 0;
+
+    function syncCompactState() {
+      frameId = 0;
+      setIsCompact(window.scrollY > 8);
+    }
+
+    function handleScroll() {
+      if (frameId !== 0) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(syncCompactState);
+    }
+
+    syncCompactState();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  return (
+    <section className={isCompact ? "filter-bar filter-bar--compact" : "filter-bar"}>
+      <div className="filter-bar__header">
+        <div className="filter-bar__header-copy">
+          <span className="filter-bar__eyebrow">Page filters</span>
+          <h2>{filterOptions.scopeLabel}</h2>
+        </div>
+      </div>
+
+      <div className="filter-bar__scope">
+        {scopePills.map((item) => (
+          <span key={item.label} className="scope-pill">
+            <strong>{item.label}</strong>
+            <span>{item.value}</span>
+          </span>
+        ))}
+      </div>
+
+      <p className="filter-bar__note">
+        Each tab keeps its own filter state. Ingestion stays all-repo and all-branch.
+      </p>
+
+      <div className="filter-grid">
+        <FilterField
+          label="Start"
+          control={
+            <input
+              type="date"
+              value={filters.start_date}
+              onChange={(event) => onFilterChange("start_date", event.target.value)}
+            />
+          }
+        />
+        <FilterField
+          label="End"
+          control={
+            <input
+              type="date"
+              value={filters.end_date}
+              onChange={(event) => onFilterChange("end_date", event.target.value)}
+            />
+          }
+        />
+        <FilterField
+          label="Repo"
+          control={
+            <select
+              value={filters.repo}
+              onChange={(event) => onFilterChange("repo", event.target.value)}
+            >
+              <option value="">All repos</option>
+              {filterOptions.repos.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+        <FilterField
+          label="Branch"
+          control={
+            <select
+              value={filters.branch}
+              onChange={(event) => onFilterChange("branch", event.target.value)}
+            >
+              <option value="">All branches</option>
+              {filterOptions.branches.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+      </div>
+
+      <div className="filter-grid filter-grid--advanced">
+        <FilterField
+          label="Job"
+          control={
+            <select
+              value={filters.job_name}
+              onChange={(event) => onFilterChange("job_name", event.target.value)}
+            >
+              <option value="">All jobs</option>
+              {filterOptions.jobs.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+        <FilterField
+          label="Cloud"
+          control={
+            <select
+              value={filters.cloud_phase}
+              onChange={(event) => onFilterChange("cloud_phase", event.target.value)}
+            >
+              <option value="">All clouds</option>
+              {filterOptions.cloudPhases.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+        <FilterField
+          label="Issue status"
+          control={
+            <select
+              value={filters.issue_status}
+              onChange={(event) => onFilterChange("issue_status", event.target.value)}
+            >
+              <option value="">All issues</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+          }
+        />
+        <FilterField
+          label="Bucket"
+          control={
+            <select
+              value={filters.granularity}
+              onChange={(event) => onFilterChange("granularity", event.target.value)}
+            >
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+function FilterField({ label, control, className = "" }) {
+  return (
+    <label className={className ? `filter-field ${className}` : "filter-field"}>
+      <span>{label}</span>
+      {control}
+    </label>
+  );
+}

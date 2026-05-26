@@ -14,7 +14,10 @@ import (
 
 const nextgenCalendarTagThreshold = "v26.0.0"
 
-var legacyNextgenImageTagRegexp = regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
+var (
+	legacyNextgenImageTagRegexp         = regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
+	calendarSemverNextgenImageTagRegexp = regexp.MustCompile(`^v2[6-9]\.\d+\.\d+(-nextgen)?$`)
+)
 
 // UpdateComponentVersionInCloudconfig implements
 // update-component-version-in-cloudconfig.
@@ -183,12 +186,12 @@ func isSupportedNextgenImageTag(tag string) bool {
 	if legacyNextgenImageTagRegexp.MatchString(tag) {
 		return true
 	}
-	if !strings.HasSuffix(tag, "-nextgen") {
-		return false
+	if calendarSemverNextgenImageTagRegexp.MatchString(tag) {
+		baseTag := strings.TrimSuffix(tag, "-nextgen")
+		return semver.IsValid(baseTag) &&
+			!strings.Contains(strings.TrimPrefix(baseTag, "v"), "-") &&
+			semver.Compare(baseTag, nextgenCalendarTagThreshold) >= 0
 	}
 
-	baseTag := strings.TrimSuffix(tag, "-nextgen")
-	return semver.IsValid(baseTag) &&
-		!strings.Contains(strings.TrimPrefix(baseTag, "v"), "-") &&
-		semver.Compare(baseTag, nextgenCalendarTagThreshold) >= 0
+	return false
 }

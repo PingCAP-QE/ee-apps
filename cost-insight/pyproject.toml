@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cost-insight"
+version = "0.1.0"
+description = "Cloud cost collection, attribution, and budget jobs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "google-cloud-bigquery>=3.25.0",
+  "PyMySQL>=1.1.0",
+  "SQLAlchemy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "coverage>=7.0.0",
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+  "ruff>=0.4.0",
+]
+
+[project.scripts]
+cost-insight = "cost_insight.jobs.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=cost_insight --cov-report=term-missing --cov-fail-under=90"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["cost_insight"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

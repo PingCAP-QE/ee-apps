@@ -2,12 +2,13 @@ module github.com/PingCAP-QE/ee-apps/tibuild
 
 go 1.25.0
 
-toolchain go1.25.8
+toolchain go1.26.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.1
+	github.com/deckarep/golang-set/v2 v2.8.0
 	github.com/dougsland/jenkinsctl v0.0.1
 	github.com/gin-contrib/requestid v1.0.5
 	github.com/gin-contrib/static v1.1.5

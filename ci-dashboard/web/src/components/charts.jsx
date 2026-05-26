@@ -1,0 +1,2028 @@
+import { useEffect, useId, useRef, useState } from "react";
+
+import {
+  formatCompact,
+  formatCurrency,
+  formatDateRangeLabel,
+  formatNumber,
+  formatPercent,
+  formatSeconds,
+} from "../lib/api";
+
+export const BLIND_RETRY_LOOP_HINT =
+  "On the Same Revision, if a job experiences 1 or more consecutive failures eventually followed by a new commit, the builds starting from the 2nd attempt onwards (up to the new commit) are classified as a blind retry loop.";
+
+const DONUT_COLORS = [
+  "#315772",
+  "#2a9d8f",
+  "#d1495b",
+  "#bc6c25",
+  "#7d8597",
+  "#0f7c82",
+  "#d88b3d",
+  "#457b9d",
+  "#8d5a97",
+  "#4f772d",
+];
+
+const SERIES_COLORS = {
+  total_count: "#315772",
+  success_count: "#2a9d8f",
+  failure_count: "#d1495b",
+  success_rate_pct: "#f4a261",
+  baseline_avg_total_s: "#7d8597",
+  recent_gcp_avg_total_s: "#2a9d8f",
+  gcp_build_count: "#315772",
+  idc_build_count: "#bc6c25",
+  queue_avg_s: "#7f5539",
+  run_avg_s: "#2a9d8f",
+  total_avg_s: "#315772",
+  selected_job_total_avg_s: "#315772",
+  flaky_rate_pct: "#d1495b",
+  retry_loop_rate_pct: "#e9c46a",
+  noisy_rate_pct: "#2a9d8f",
+  selected_job_success_rate_pct: "#f4a261",
+  new_case_count: "#d1495b",
+  resolved_case_count: "#2a9d8f",
+  issue_created_count: "#d1495b",
+  issue_closed_count: "#2a9d8f",
+  issue_reopened_count: "#e9c46a",
+  issue_open_count: "#315772",
+  net_cost: "#0f766e",
+  effective_cost: "#2a9d8f",
+  list_cost: "#d88b3d",
+  gcp_budget: "#d1495b",
+  repo__no_repo: "#c8d0d6",
+  total_failure_like_count: "#264653",
+  issue_filtered_flaky_rate_pct: "#0f7c82",
+  scheduling_wait_avg_s: "#bc6c25",
+  final_scheduling_failure_count: "#d1495b",
+  scheduling_failure_rate_pct: "#d1495b",
+  pull_image_avg_s: "#0f7c82",
+  pull_image_success_rate_pct: "#d1495b",
+  INFRA: "#d1495b",
+  BUILD: "#bc6c25",
+  UT: "#2a9d8f",
+  IT: "#315772",
+  OTHERS: "#7d8597",
+  JENKINS: "#315772",
+  JENKINS_CACHE: "#457b9d",
+  JENKINS_GROOVY: "#8d5a97",
+  K8S: "#d1495b",
+  K8S_MEMORY_EVICTION: "#9d0208",
+  OOMKILLED: "#6d1a36",
+  NETWORK: "#0f7c82",
+  DISK_FULL: "#bc6c25",
+  STORAGE: "#bc6c25",
+  EXTERNAL_DEP: "#8d5a97",
+  COMPILE: "#bc6c25",
+  TIMEOUT: "#d88b3d",
+  classified_count: "#2a9d8f",
+  unclassified_count: "#7d8597",
+  machine_only: "#315772",
+  human_revised: "#d1495b",
+  FLAKY_TEST: "#d1495b",
+  UNCLASSIFIED: "#7d8597",
+};
+
+export function PageIntro({ eyebrow, title, description, kicker }) {
+  return (
+    <header className="page-intro">
+      <div>
+        <span className="page-intro__eyebrow">{eyebrow}</span>
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </div>
+      {kicker ? <div className="page-intro__kicker">{kicker}</div> : null}
+    </header>
+  );
+}
+
+export function StatCard({ label, value, detail, delta, tone = "default" }) {
+  return (
+    <article className={`stat-card stat-card--${tone}`}>
+      <span className="stat-card__label">{label}</span>
+      <strong className="stat-card__value">{value}</strong>
+      <div className="stat-card__meta">
+        <span>{detail}</span>
+        {delta ? <span className="stat-card__delta">{delta}</span> : null}
+      </div>
+    </article>
+  );
+}
+
+export function InfoHint({ text }) {
+  const tooltipId = useId();
+
+  return (
+    <span className="info-hint">
+      <button
+        type="button"
+        className="info-hint__button"
+        aria-label="Show metric definition"
+        aria-describedby={tooltipId}
+      >
+        i
+      </button>
+      <span id={tooltipId} role="tooltip" className="info-hint__tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+export function Panel({
+  title,
+  subtitle,
+  children,
+  loading,
+  error,
+  actions,
+  className = "",
+}) {
+  return (
+    <section className={`panel ${className}`.trim()}>
+      <header className="panel__header">
+        <div>
+          <h3>{title}</h3>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        {actions ? <div className="panel__actions">{actions}</div> : null}
+      </header>
+      {loading ? <LoadingState /> : null}
+      {error ? <ErrorState error={error} /> : null}
+      {!loading && !error ? <div className="panel__body">{children}</div> : null}
+    </section>
+  );
+}
+
+export function TrendChart({
+  series,
+  yFormatter = formatNumber,
+  rightYFormatter = formatNumber,
+  rightYMin = null,
+  yMax = null,
+  rightYMax = null,
+  rightYAutoPad = false,
+  rightYPadRatio = 0.12,
+  bucketAnnotations = null,
+  height = 280,
+  compactY = false,
+  stackBars = false,
+  yTickMode = "default",
+  yTickSegments = null,
+  rightYTickMode = "default",
+  axisLabelSize = 11,
+  bottomLabelSize = 11,
+  annotationLabelSize = 10,
+  barGroupWidthFactor = 0.66,
+  barMaxWidth = 46,
+  leftPadding = 52,
+  selectedBucketLabel = null,
+  onBucketSelect = null,
+  preserveLabelOrder = false,
+}) {
+  const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const hoverTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (!series?.length) {
+    return <EmptyState message="No chart data for the current filters." />;
+  }
+
+  const labels = Array.from(
+    new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
+  );
+  if (!preserveLabelOrder) {
+    labels.sort();
+  }
+  if (!labels.length) {
+    return <EmptyState message="No chart data for the current filters." />;
+  }
+
+  const hasRightAxis = series.some((item) => item.axis === "right");
+  const pointMaps = new Map(
+    series.map((item) => [
+      item.key,
+      new Map(
+        item.points.map((point) => [
+          point[0],
+          point[1] == null ? null : Number(point[1]),
+        ]),
+      ),
+    ]),
+  );
+  const leftSeries = series.filter((item) => item.axis !== "right");
+  const rightSeries = series.filter((item) => item.axis === "right");
+  const leftLineSeries = leftSeries.filter((item) => item.type !== "bar");
+  const leftBarSeries = leftSeries.filter((item) => item.type === "bar");
+  const leftAxisIsPercent = yFormatter === formatPercent;
+  const rightAxisIsPercent = rightYFormatter === formatPercent;
+  const leftLineValues = leftLineSeries.flatMap((item) =>
+    labels
+      .map((label) => pointMaps.get(item.key)?.get(label))
+      .filter((value) => value != null),
+  );
+  const leftBarValues = stackBars
+    ? labels.map((label) =>
+        leftBarSeries.reduce(
+          (sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0),
+          0,
+        ),
+      )
+    : leftBarSeries.flatMap((item) =>
+        labels.map((label) => pointMaps.get(item.key)?.get(label) ?? 0),
+      );
+  const leftValues = [...leftLineValues, ...leftBarValues];
+  const rightValues = rightSeries.flatMap((item) =>
+    labels
+      .map((label) => pointMaps.get(item.key)?.get(label))
+      .filter((value) => value != null),
+  );
+  const sharedTickSegments =
+    yTickSegments ?? (yTickMode === "integer" || rightYTickMode === "integer" ? 5 : 4);
+  const rawLeftMaxValue = yMax ?? (leftAxisIsPercent ? 100 : Math.max(...leftValues, 1));
+  const leftAxisTicks = buildAxisTicks({
+    min: 0,
+    max: rawLeftMaxValue,
+    mode: yTickMode,
+    isPercent: leftAxisIsPercent,
+    segments: sharedTickSegments,
+  });
+  const leftMaxValue = leftAxisTicks.max;
+  const leftTickValues = leftAxisTicks.ticks;
+  const rightAxisDomain = resolveAxisDomain({
+    values: rightValues,
+    explicitMin: rightYMin,
+    explicitMax: rightYMax ?? (rightAxisIsPercent ? 100 : null),
+    autoPad: rightYAutoPad,
+    padRatio: rightYPadRatio,
+  });
+  const rightAxisTicks = buildAxisTicks({
+    min: rightAxisDomain.min,
+    max: rightAxisDomain.max,
+    mode: rightYTickMode,
+    isPercent: rightAxisIsPercent,
+    segments: sharedTickSegments,
+  });
+  const resolvedRightYMin = rightAxisTicks.min;
+  const resolvedRightYMax = rightAxisTicks.max;
+  const rightTickValues = rightAxisTicks.ticks;
+  const width = 760;
+  const annotationMap = new Map(
+    (bucketAnnotations || []).map((annotation) => [annotation.label, annotation.text]),
+  );
+  const padding = {
+    top: annotationMap.size ? 54 : compactY ? 6 : 20,
+    right: hasRightAxis ? 58 : 20,
+    bottom: compactY ? 22 : 42,
+    left: leftPadding,
+  };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const barSeries = series.filter((item) => item.type === "bar");
+  const lineSeries = series.filter((item) => item.type === "line");
+  const hasBars = barSeries.length > 0;
+  const xInset =
+    hasBars && labels.length > 1
+      ? Math.min(Math.max(barMaxWidth / 2 + 8, 20), plotWidth * 0.1)
+      : 0;
+  const xRangeWidth = Math.max(plotWidth - xInset * 2, 1);
+  const xStep = labels.length > 1 ? xRangeWidth / (labels.length - 1) : plotWidth;
+  const xForIndex = (index) =>
+    labels.length > 1 ? padding.left + xInset + index * xStep : padding.left + plotWidth / 2;
+  const displayLabels = labels.map((label) => formatBottomAxisLabel(label));
+  const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
+  const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
+  const maxBottomLabels = Math.max(2, Math.floor(plotWidth / estimatedBottomLabelWidth));
+  const bottomLabelStep =
+    labels.length > maxBottomLabels
+      ? Math.ceil((labels.length - 1) / Math.max(maxBottomLabels - 1, 1))
+      : 1;
+  const minBottomLabelIndexGap = Math.max(
+    1,
+    Math.ceil(estimatedBottomLabelWidth / Math.max(xStep, 1)),
+  );
+  const visibleBottomLabelIndices = buildVisibleBottomLabelIndices(
+    labels.length,
+    bottomLabelStep,
+    minBottomLabelIndexGap,
+  );
+  const interactiveBuckets = typeof onBucketSelect === "function";
+  const selectedBucketIndex = selectedBucketLabel ? labels.indexOf(selectedBucketLabel) : -1;
+  const getBucketArea = (index) => {
+    if (labels.length === 1) {
+      return { x: padding.left, width: plotWidth };
+    }
+    const center = xForIndex(index);
+    const left = index === 0 ? padding.left : center - xStep / 2;
+    const right = index === labels.length - 1 ? padding.left + plotWidth : center + xStep / 2;
+    return { x: left, width: Math.max(right - left, 12) };
+  };
+  const hoveredBucket =
+    hoveredBucketIndex == null || hoveredBucketIndex < 0
+      ? null
+      : buildBucketTooltip({
+          label: labels[hoveredBucketIndex],
+          index: hoveredBucketIndex,
+          series,
+          pointMaps,
+          xForIndex,
+          yFormatter,
+          rightYFormatter,
+          width,
+          height,
+          padding,
+        });
+  const handleBucketHoverStart = (index) => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    setHoveredBucketIndex(index);
+    setTooltipVisible(false);
+    hoverTimerRef.current = window.setTimeout(() => {
+      setTooltipVisible(true);
+    }, 1000);
+  };
+  const handleBucketHoverEnd = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setTooltipVisible(false);
+    setHoveredBucketIndex(null);
+  };
+
+  return (
+    <div className="trend-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend chart">
+        {leftTickValues.map((value, index) => {
+          const ratio =
+            leftTickValues.length > 1 ? index / (leftTickValues.length - 1) : 0;
+          const y = padding.top + plotHeight - plotHeight * ratio;
+          return (
+            <g key={value}>
+              <line
+                x1={padding.left}
+                x2={padding.left + plotWidth}
+                y1={y}
+                y2={y}
+                className="chart-grid"
+              />
+              <text
+                x={padding.left - 8}
+                y={y + 4}
+                textAnchor="end"
+                className="chart-axis-label"
+                style={{ fontSize: `${axisLabelSize}px` }}
+              >
+                {yFormatter(value)}
+              </text>
+              {hasRightAxis ? (
+                <text
+                  x={width - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="chart-axis-label"
+                  style={{ fontSize: `${axisLabelSize}px` }}
+                >
+                  {rightYFormatter(rightTickValues[index] ?? resolvedRightYMin)}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+
+        {selectedBucketIndex >= 0 ? (
+          <rect
+            x={getBucketArea(selectedBucketIndex).x}
+            y={padding.top}
+            width={getBucketArea(selectedBucketIndex).width}
+            height={plotHeight}
+            rx="8"
+            fill="rgba(42, 157, 143, 0.09)"
+          />
+        ) : null}
+
+        {barSeries.map((item, seriesIndex) =>
+          labels.map((label, index) => {
+            const value = pointMaps.get(item.key)?.get(label) ?? 0;
+            const groupWidth = Math.min(barMaxWidth, xStep * barGroupWidthFactor || barMaxWidth);
+            const stackedSeries = stackBars
+              ? barSeries.filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+              : [];
+            const axisSeriesIndex = stackBars
+              ? stackedSeries.findIndex((candidate) => candidate.key === item.key)
+              : seriesIndex;
+            const barWidth = stackBars
+              ? Math.max(groupWidth - 4, 10)
+              : Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
+            const centerX = xForIndex(index);
+            const groupStart = centerX - groupWidth / 2;
+            const x = stackBars
+              ? centerX - barWidth / 2
+              : groupStart + seriesIndex * (barWidth + 6);
+            const axisRange =
+              item.axis === "right"
+                ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+                : leftMaxValue;
+            const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
+            const baseValue = stackBars
+              ? stackedSeries
+                  .slice(0, Math.max(axisSeriesIndex, 0))
+                  .reduce((sum, candidate) => sum + (pointMaps.get(candidate.key)?.get(label) ?? 0), 0)
+              : 0;
+            const normalizedValue = Math.max(value - axisMin, 0);
+            const normalizedBaseValue = Math.max(baseValue - axisMin, 0);
+            const barHeight = axisRange > 0 ? (normalizedValue / axisRange) * plotHeight : 0;
+            const y = stackBars
+              ? padding.top + plotHeight - ((normalizedBaseValue + normalizedValue) / axisRange) * plotHeight
+              : padding.top + plotHeight - barHeight;
+            return (
+              <rect
+                key={`${item.key}-${label}`}
+                x={x}
+                y={y}
+                width={barWidth}
+                height={barHeight}
+                rx={stackBars ? 2 : 6}
+                fill={seriesColor(item.key)}
+                opacity="0.78"
+              />
+            );
+          }),
+        )}
+
+        {lineSeries.map((item) => {
+          const axisRange =
+            item.axis === "right"
+              ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+              : leftMaxValue;
+          const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
+          const segments = [];
+          let currentSegment = [];
+
+          labels.forEach((label, index) => {
+            const value = pointMaps.get(item.key)?.get(label);
+            if (value == null) {
+              if (currentSegment.length) {
+                segments.push(currentSegment);
+                currentSegment = [];
+              }
+              return;
+            }
+
+            const x = xForIndex(index);
+            const y = padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
+            currentSegment.push({ label, x, y });
+          });
+
+          if (currentSegment.length) {
+            segments.push(currentSegment);
+          }
+
+          return (
+            <g key={item.key}>
+              {segments.map((segment, index) => (
+                <polyline
+                  key={`${item.key}-segment-${index}`}
+                  points={segment.map((point) => `${point.x},${point.y}`).join(" ")}
+                  fill="none"
+                  stroke={seriesColor(item.key)}
+                  strokeWidth="3"
+                  strokeDasharray={item.dash ? "7 6" : undefined}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ))}
+              {item.showPoints === false
+                ? null
+                : segments.flatMap((segment) =>
+                    segment.map((point) => (
+                      <circle
+                        key={`${item.key}-${point.label}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
+                        fill={seriesColor(item.key)}
+                        stroke="#fcf7ef"
+                        strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
+                        style={interactiveBuckets ? { cursor: "pointer" } : undefined}
+                        onClick={
+                          interactiveBuckets
+                            ? () =>
+                                onBucketSelect(
+                                  selectedBucketLabel === point.label ? null : point.label,
+                                )
+                            : undefined
+                        }
+                      />
+                    )),
+                  )}
+            </g>
+          );
+        })}
+
+        {labels.map((label, index) => {
+          const annotation = annotationMap.get(label);
+          if (!annotation) {
+            return null;
+          }
+
+          const annotationY = getAnnotationY({
+            label,
+            series,
+            pointMaps,
+            leftMaxValue,
+            resolvedRightYMin,
+            resolvedRightYMax,
+            padding,
+            plotHeight,
+          });
+          const x = xForIndex(index);
+          const annotationLines = String(annotation).split("\n");
+          return (
+            <text
+              key={`${label}-annotation`}
+              x={x}
+              y={annotationY}
+              className="chart-axis-label chart-axis-label--annotation"
+              style={{ fontSize: `${annotationLabelSize}px` }}
+            >
+              {annotationLines.map((line, lineIndex) => (
+                <tspan
+                  key={`${label}-annotation-line-${lineIndex}`}
+                  x={x}
+                  dy={lineIndex === 0 ? 0 : annotationLabelSize + 2}
+                >
+                  {line}
+                </tspan>
+              ))}
+            </text>
+          );
+        })}
+
+        {labels.map((label, index) => {
+          if (!visibleBottomLabelIndices.has(index)) {
+            return null;
+          }
+          const isFirstLabel = index === 0;
+          const isLastLabel = index === labels.length - 1;
+          const x = xForIndex(index);
+          const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
+          return (
+            <text
+              key={label}
+              x={x}
+              y={height - 14}
+              textAnchor={textAnchor}
+              className="chart-axis-label chart-axis-label--bottom"
+              style={{ fontSize: `${bottomLabelSize}px` }}
+            >
+              {displayLabels[index]}
+            </text>
+          );
+        })}
+
+        {tooltipVisible && hoveredBucket ? (
+          <g className="chart-tooltip" transform={`translate(${hoveredBucket.x}, ${hoveredBucket.y})`}>
+            <rect
+              width={hoveredBucket.width}
+              height={hoveredBucket.height}
+              rx="8"
+              className="chart-tooltip__box"
+            />
+            <text x="12" y="18" className="chart-tooltip__title">
+              {formatBottomAxisLabel(hoveredBucket.label)}
+            </text>
+            {hoveredBucket.rows.map((row, index) => (
+              <g key={`${hoveredBucket.label}-${row.key}`} transform={`translate(0, ${34 + index * 18})`}>
+                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                <text x="25" y="0" className="chart-tooltip__text">
+                  {row.label}: {row.value}
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : null}
+
+        {labels.map((label, index) => {
+          const area = getBucketArea(index);
+          return (
+            <rect
+              key={`${label}-hit-area`}
+              x={area.x}
+              y={padding.top}
+              width={area.width}
+              height={plotHeight}
+              fill="transparent"
+              className="chart-hit-area"
+              style={{ cursor: interactiveBuckets ? "pointer" : "default" }}
+              onMouseEnter={() => handleBucketHoverStart(index)}
+              onMouseLeave={handleBucketHoverEnd}
+              onClick={
+                interactiveBuckets
+                  ? () => onBucketSelect(selectedBucketLabel === label ? null : label)
+                  : undefined
+              }
+            />
+          );
+        })}
+      </svg>
+
+      <div className="chart-legend">
+        {series.map((item) => (
+          <div key={item.key} className="chart-legend__item">
+            <span
+              className="chart-legend__swatch"
+              style={{ backgroundColor: seriesColor(item.key) }}
+            />
+            <span>{item.label || formatSeriesLabel(item.key)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function CloudComparisonPanel({ groups }) {
+  if (!groups?.length) {
+    return <EmptyState message="No cloud comparison data yet." />;
+  }
+
+  return (
+    <div className="comparison-grid">
+      {groups.map((group) => (
+        <article key={group.name} className="comparison-card">
+          <header>
+            <span className="comparison-card__eyebrow">{group.name}</span>
+            <strong>{formatPercent(group.metrics.success_rate_pct)}</strong>
+            <p>success rate</p>
+          </header>
+          <div className="comparison-card__bar">
+            <span
+              style={{ width: `${Math.min(group.metrics.success_rate_pct, 100)}%` }}
+            />
+          </div>
+          <dl className="comparison-metrics">
+            <div>
+              <dt>Builds</dt>
+              <dd>{formatCompact(group.metrics.total_builds)}</dd>
+            </div>
+            <div>
+              <dt>Queue</dt>
+              <dd>{formatSeconds(group.metrics.queue_avg_s)}</dd>
+            </div>
+            <div>
+              <dt>Run</dt>
+              <dd>{formatSeconds(group.metrics.run_avg_s)}</dd>
+            </div>
+            <div>
+              <dt>Total</dt>
+              <dd>{formatSeconds(group.metrics.total_avg_s)}</dd>
+            </div>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function ShareBars({ categories, groups }) {
+  if (!groups?.length) {
+    return <EmptyState message="No category share data yet." />;
+  }
+
+  return (
+    <div className="share-bars">
+      {groups.map((group) => {
+        const total = group.values.reduce((sum, value) => sum + value, 0) || 1;
+        return (
+          <article key={group.name} className="share-bars__group">
+            <div className="share-bars__header">
+              <strong>{group.name}</strong>
+              <span>{formatNumber(total)} failure-like builds</span>
+            </div>
+            <div className="share-bars__track">
+              {group.values.map((value, index) => (
+                <span
+                  key={`${group.name}-${categories[index]}`}
+                  title={`${categories[index]}: ${value}`}
+                  style={{
+                    width: `${(value / total) * 100}%`,
+                    backgroundColor: seriesColor(categories[index]),
+                  }}
+                />
+              ))}
+            </div>
+            <div className="share-bars__legend">
+              {categories.map((category, index) => (
+                <div key={`${group.name}-${category}`} className="share-bars__legend-item">
+                  <span
+                    className="chart-legend__swatch"
+                    style={{ backgroundColor: seriesColor(category) }}
+                  />
+                  <span>
+                    {category}: {formatNumber(group.values[index])}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+export function RankingList({
+  items,
+  valueKey = "value",
+  valueFormatter = formatNumber,
+  renderMeta = null,
+  onItemSelect = null,
+}) {
+  if (!items?.length) {
+    return <EmptyState message="No ranking data for the current scope." />;
+  }
+
+  const maxValue = Math.max(...items.map((item) => Number(item[valueKey] || 0)), 1);
+
+  return (
+    <div className="ranking-list">
+      {items.map((item, index) => {
+        const value = Number(item[valueKey] || 0);
+        const metaContent = renderMeta ? renderMeta(item) : buildDefaultRankingMeta(item);
+        const interactive = typeof onItemSelect === "function";
+        return (
+          <article
+            key={item.name}
+            className="ranking-list__item"
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : undefined}
+            onClick={interactive ? () => onItemSelect(item) : undefined}
+            onKeyDown={
+              interactive
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onItemSelect(item);
+                    }
+                  }
+                : undefined
+            }
+          >
+            <div className="ranking-list__header">
+              <span className="ranking-list__rank">{String(index + 1).padStart(2, "0")}</span>
+              <div className="ranking-list__title">
+                {item.job_url ? (
+                  <a
+                    href={item.job_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ranking-list__link"
+                    title={item.job_url}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {item.name}
+                  </a>
+                ) : (
+                  <strong>{item.name}</strong>
+                )}
+                <span>{valueFormatter(value)}</span>
+              </div>
+            </div>
+            <div className="ranking-list__bar">
+              <span style={{ width: `${(value / maxValue) * 100}%` }} />
+            </div>
+            {metaContent ? <div className="ranking-list__meta">{metaContent}</div> : null}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function buildDefaultRankingMeta(item) {
+  const meta = [];
+  if ("noisy_rate_pct" in item) {
+    meta.push(<span key="noisy-rate">Noisy rate {formatPercent(item.noisy_rate_pct)}</span>);
+  }
+  if ("noisy_build_count" in item && "failure_like_build_count" in item) {
+    meta.push(
+      <span key="noisy-build-count">
+        {formatNumber(item.noisy_build_count)} noisy / {formatNumber(item.failure_like_build_count)} failure-like builds
+      </span>,
+    );
+  } else if ("failure_like_build_count" in item) {
+    meta.push(
+      <span key="failure-like-build-count">
+        {formatNumber(item.failure_like_build_count)} failure-like builds
+      </span>,
+    );
+  }
+  return meta.length ? meta : null;
+}
+
+export function RuntimeComparisonBoard({
+  improved,
+  regressed,
+  windowDays,
+  minSuccessRuns,
+}) {
+  if (!improved?.length && !regressed?.length) {
+    return <EmptyState message="No migration runtime comparison jobs matched the current scope." />;
+  }
+
+  const allItems = [...(improved || []), ...(regressed || [])];
+  const maxRunSeconds = Math.max(
+    ...allItems.flatMap((item) => [item.idc_baseline_avg_run_s, item.gcp_recent_avg_run_s]),
+    1,
+  );
+
+  return (
+    <div className="runtime-compare-grid">
+      <RuntimeChangeList
+        title="Top 10 improved jobs"
+        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        tone="improved"
+        items={improved}
+        maxRunSeconds={maxRunSeconds}
+        emptyMessage="No improved jobs met the migration comparison threshold."
+      />
+      <RuntimeChangeList
+        title="Top 10 regressed jobs"
+        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        tone="regressed"
+        items={regressed}
+        maxRunSeconds={maxRunSeconds}
+        emptyMessage="No regressed jobs met the migration comparison threshold."
+      />
+    </div>
+  );
+}
+
+export function MigrationFixedWindowComparisonTable({ rows }) {
+  if (!rows?.length) {
+    return <EmptyState message="No migration comparison rows are available yet." />;
+  }
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table data-table--compact migration-compare-table">
+        <thead>
+          <tr>
+            <th>Scope</th>
+            <th>Baseline avg duration</th>
+            <th>Baseline success count</th>
+            <th>Baseline success rate</th>
+            <th>Recent GCP avg duration</th>
+            <th>Recent GCP success count</th>
+            <th>Recent GCP success rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.scope_key}>
+              <th scope="row">{row.scope_label}</th>
+              <td>{formatSeconds(row.baseline?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.baseline?.success_count)}</td>
+              <td>{formatPercent(row.baseline?.success_rate_pct)}</td>
+              <td>{formatSeconds(row.recent_gcp?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.recent_gcp?.success_count)}</td>
+              <td>{formatPercent(row.recent_gcp?.success_rate_pct)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function DonutShareChart({
+  title,
+  subtitle,
+  items,
+  totalLabel = "builds",
+  emptyMessage = "No share data for the current filters.",
+  onItemSelect,
+  headerAction,
+}) {
+  if (!items?.length) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  if (!total) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const radius = 78;
+  const innerRadius = 43;
+  const size = 220;
+  const center = size / 2;
+  let startAngle = -Math.PI / 2;
+
+  return (
+    <article className="donut-card">
+      <header className="donut-card__header">
+        <div>
+          <strong>{title}</strong>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <div className="donut-card__header-actions">
+          {headerAction}
+          <span className="panel-badge">
+            <strong>{formatCompact(total)}</strong>
+            {totalLabel}
+          </span>
+        </div>
+      </header>
+
+      <div className="donut-card__body">
+        <div className="donut-chart">
+          <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${title} share chart`}>
+            {items.map((item, index) => {
+              const value = Number(item.value || 0);
+              const angle = (value / total) * Math.PI * 2;
+              const endAngle = startAngle + angle;
+              const fill = donutColor(item.name, index);
+              const path = describeDonutArc(center, center, innerRadius, radius, startAngle, endAngle);
+              const percent = Number(item.share_pct || 0);
+              const key = `${title}-${item.name}`;
+              const interactive = typeof onItemSelect === "function" && item.interactive !== false;
+              const element = (
+                <path
+                  d={path}
+                  fill={fill}
+                  className={interactive ? "donut-chart__segment donut-chart__segment--interactive" : "donut-chart__segment"}
+                  role={interactive ? "button" : undefined}
+                  tabIndex={interactive ? 0 : undefined}
+                  aria-label={`${item.name}: ${formatCompact(value)} ${totalLabel}, ${formatPercent(percent)}`}
+                  onClick={interactive ? () => onItemSelect(item) : undefined}
+                  onKeyDown={
+                    interactive
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onItemSelect(item);
+                          }
+                        }
+                      : undefined
+                  }
+                />
+              );
+              startAngle = endAngle;
+              return <g key={key}>{element}</g>;
+            })}
+            <circle cx={center} cy={center} r={innerRadius - 3} fill="#fcf7ef" />
+            <text x={center} y={center - 6} textAnchor="middle" className="donut-chart__center-value">
+              {formatCompact(total)}
+            </text>
+            <text x={center} y={center + 16} textAnchor="middle" className="donut-chart__center-label">
+              {totalLabel}
+            </text>
+          </svg>
+        </div>
+
+        <div className="donut-legend">
+          {items.map((item, index) => {
+            const interactive = typeof onItemSelect === "function" && item.interactive !== false;
+            if (interactive) {
+              return (
+                <button
+                  key={`${title}-${item.name}-legend`}
+                  type="button"
+                  className="donut-legend__item"
+                  onClick={() => onItemSelect(item)}
+                >
+                  <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
+                  <span className="donut-legend__name">{item.name}</span>
+                  <span className="donut-legend__value">{formatCompact(item.value)}</span>
+                  <span className="donut-legend__share">{formatPercent(item.share_pct)}</span>
+                </button>
+              );
+            }
+
+            return (
+              <div
+                key={`${title}-${item.name}-legend`}
+                className="donut-legend__item donut-legend__item--static"
+              >
+                <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
+                <span className="donut-legend__name">{item.name}</span>
+                <span className="donut-legend__value">{formatCompact(item.value)}</span>
+                <span className="donut-legend__share">{formatPercent(item.share_pct)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function LabeledDonutShareChart({
+  title,
+  subtitle,
+  items,
+  totalValue,
+  totalLabel = "builds",
+  emptyMessage = "No share data for the current filters.",
+  onItemSelect,
+  headerAction,
+}) {
+  if (!items?.length) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const chartTotal = Number(totalValue || 0) > 0 ? Number(totalValue) : total;
+  if (!chartTotal) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const width = 640;
+  const height = 390;
+  const centerX = width / 2;
+  const centerY = 205;
+  const radius = 106;
+  const innerRadius = 64;
+  const labelRadius = 128;
+  const labelWidth = 178;
+  const rightLabelX = width - labelWidth - 12;
+  const leftLabelX = 12;
+  let startAngle = -Math.PI / 2;
+
+  const segments = items.map((item, index) => {
+    const value = Number(item.value || 0);
+    const angle = (value / chartTotal) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+    const midAngle = startAngle + angle / 2;
+    const segment = {
+      item,
+      index,
+      value,
+      percent: Number(item.share_pct || 0),
+      startAngle,
+      endAngle,
+      midAngle,
+      fill: donutColor(item.name, index),
+      nameLines: wrapLabel(item.name, 20),
+    };
+    startAngle = endAngle;
+    return segment;
+  });
+
+  const labels = arrangeDonutLabels(
+    segments.map((segment) => {
+      const side = Math.cos(segment.midAngle) >= 0 ? "right" : "left";
+      return {
+        ...segment,
+        side,
+        rawY: centerY + Math.sin(segment.midAngle) * labelRadius,
+        height: segment.nameLines.length * 15 + 18,
+      };
+    }),
+    height,
+  );
+
+  return (
+    <article className="donut-card donut-card--labeled">
+      <header className="donut-card__header">
+        <div>
+          <strong>{title}</strong>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <div className="donut-card__header-actions">
+          {headerAction}
+          <span className="panel-badge">
+            <strong>{formatCompact(chartTotal)}</strong>
+            {totalLabel}
+          </span>
+        </div>
+      </header>
+
+      <svg
+        className="labeled-donut-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${title} share chart`}
+      >
+        {segments.map((segment) => {
+          const interactive = typeof onItemSelect === "function" && segment.item.interactive !== false;
+          return (
+            <path
+              key={`${title}-${segment.item.name}-segment`}
+              d={describeDonutArc(
+                centerX,
+                centerY,
+                innerRadius,
+                radius,
+                segment.startAngle,
+                segment.endAngle,
+              )}
+              fill={segment.fill}
+              className={interactive ? "donut-chart__segment donut-chart__segment--interactive" : "donut-chart__segment"}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
+              aria-label={`${segment.item.name}: ${formatCompact(segment.value)} ${totalLabel}, ${formatPercent(segment.percent)}`}
+              onClick={interactive ? () => onItemSelect(segment.item) : undefined}
+              onKeyDown={
+                interactive
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onItemSelect(segment.item);
+                      }
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
+        <circle cx={centerX} cy={centerY} r={innerRadius - 4} fill="#fcf7ef" />
+        <text x={centerX} y={centerY - 7} textAnchor="middle" className="donut-chart__center-value">
+          {formatCompact(chartTotal)}
+        </text>
+        <text x={centerX} y={centerY + 17} textAnchor="middle" className="donut-chart__center-label">
+          {totalLabel}
+        </text>
+
+        {labels.map((label) => {
+          const interactive = typeof onItemSelect === "function" && label.item.interactive !== false;
+          const start = polarToCartesian(centerX, centerY, radius + 5, label.midAngle);
+          const elbow = polarToCartesian(centerX, centerY, radius + 25, label.midAngle);
+          const labelX = label.side === "right" ? rightLabelX : leftLabelX;
+          const anchorX = label.side === "right" ? labelX : labelX + labelWidth;
+          const endX = label.side === "right" ? labelX - 8 : labelX + labelWidth + 8;
+          const textAnchor = label.side === "right" ? "start" : "end";
+          const metric = `${formatCompact(label.value)} · ${formatPercent(label.percent)}`;
+
+          return (
+            <g
+              key={`${title}-${label.item.name}-label`}
+              className={interactive ? "labeled-donut-chart__label labeled-donut-chart__label--interactive" : "labeled-donut-chart__label"}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
+              aria-label={`${label.item.name}: ${formatCompact(label.value)} ${totalLabel}, ${formatPercent(label.percent)}`}
+              onClick={interactive ? () => onItemSelect(label.item) : undefined}
+              onKeyDown={
+                interactive
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onItemSelect(label.item);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <polyline
+                points={`${start.x},${start.y} ${elbow.x},${elbow.y} ${endX},${label.y}`}
+                fill="none"
+                stroke={label.fill}
+              />
+              <circle cx={start.x} cy={start.y} r="2.3" fill={label.fill} />
+              <text x={anchorX} y={label.y - (label.nameLines.length - 1) * 7} textAnchor={textAnchor}>
+                {label.nameLines.map((line, lineIndex) => (
+                  <tspan key={line} x={anchorX} dy={lineIndex === 0 ? 0 : 15}>
+                    {line}
+                  </tspan>
+                ))}
+                <tspan x={anchorX} dy="17" className="labeled-donut-chart__label-metric">
+                  {metric}
+                </tspan>
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </article>
+  );
+}
+
+export function DrilldownModal({ title, subtitle, children, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <section
+        className="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="modal-card__header">
+          <div>
+            <h3>{title}</h3>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          <button type="button" className="ghost-button ghost-button--compact" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <div className="modal-card__body">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+export function FreshnessStrip({ jobs, generatedAt }) {
+  if (!jobs?.length) {
+    return <EmptyState message="No freshness records available yet." compact />;
+  }
+
+  return (
+    <div className="freshness-strip">
+      <div className="freshness-strip__header">
+        <span>Freshness</span>
+        <strong>{generatedAt}</strong>
+      </div>
+      <div className="freshness-strip__rows">
+        {jobs.map((job) => (
+          <article key={job.job_name} className="freshness-chip">
+            <div>
+              <strong>{job.job_name}</strong>
+              <span>{job.last_status}</span>
+            </div>
+            <span className="freshness-chip__lag">
+              {job.lag_minutes == null ? "n/a" : `${job.lag_minutes}m lag`}
+            </span>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function PeriodComparisonTable({ groups, meta }) {
+  if (!groups?.length) {
+    return <EmptyState message="No period comparison data yet." />;
+  }
+
+  return (
+    <div className="period-grid">
+      {groups.map((group) => (
+        <article key={group.name} className="period-card">
+          <header>
+            <span>{group.name === "period_a" ? "Current window" : "Previous window"}</span>
+            <p className="period-card__range">
+              {group.name === "period_a"
+                ? formatDateRangeLabel(meta?.period_a_start, meta?.period_a_end)
+                : formatDateRangeLabel(meta?.period_b_start, meta?.period_b_end)}
+            </p>
+            <strong>{formatPercent(group.values.noisy_rate_pct)}</strong>
+            <p>noisy rate</p>
+          </header>
+          <dl>
+            <div>
+              <dt>Total builds</dt>
+              <dd>{formatCompact(group.values.total_build_count)}</dd>
+            </div>
+            <div>
+              <dt>Failure-like</dt>
+              <dd>{formatCompact(group.values.failure_like_build_count)}</dd>
+            </div>
+            <div>
+              <dt>Flaky</dt>
+              <dd>{formatCompact(group.values.flaky_build_count)}</dd>
+            </div>
+            <div>
+              <dt>
+                Blind-retry-loop
+                <InfoHint text={BLIND_RETRY_LOOP_HINT} />
+              </dt>
+              <dd>{formatCompact(group.values.retry_loop_build_count)}</dd>
+            </div>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function DistinctCaseCountTable({ weeks, rows, scrollClassName = "" }) {
+  if (!rows?.length) {
+    return <EmptyState message="No distinct flaky case counts for the current scope." />;
+  }
+
+  return (
+    <div className={`table-scroll ${scrollClassName}`.trim()}>
+      <table className="data-table data-table--compact">
+        <thead>
+          <tr>
+            <th>Branch</th>
+            {weeks.map((week) => (
+              <th key={week}>{week}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.branch}>
+              <th scope="row">{row.branch}</th>
+              {row.values.map((value, index) => (
+                <td key={`${row.branch}-${weeks[index]}`}>{formatNumber(value)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
+  if (!rows?.length) {
+    return <EmptyState message="No flaky issues matched the current repo, branch, and date window." />;
+  }
+
+  const highlightStartIndex = Math.max(weeks.length - 2, 0);
+
+  return (
+    <div className={`table-scroll ${scrollClassName}`.trim()}>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Case name</th>
+            {weeks.map((week) => (
+              <th key={week}>{week}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const closeTimeLabel = row.issue_closed_at ? formatUtcCloseTime(row.issue_closed_at) : null;
+            return (
+            <tr key={`${row.issue_number}-${row.case_name}`}>
+              <th scope="row">
+                <div className="issue-cell">
+                  <a href={row.issue_url} target="_blank" rel="noreferrer">
+                    {row.display_name}
+                  </a>
+                  <div className="issue-cell__meta">
+                    <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
+                      {row.issue_status}
+                    </span>
+                    {row.issue_branch ? <span>{row.issue_branch}</span> : null}
+                    {closeTimeLabel ? <span>{closeTimeLabel}</span> : null}
+                  </div>
+                </div>
+              </th>
+              {row.metrics.map((metric, index) => {
+                const isRecentWeek = index >= highlightStartIndex;
+                const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
+                return (
+                  <td
+                    key={`${row.issue_number}-${weeks[index]}`}
+                    className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
+                  >
+                    {metric.cell}
+                  </td>
+                );
+              })}
+            </tr>
+          )})}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function BucketFlakyRateTable({
+  rows,
+  effectiveGranularity,
+  selectedTime = null,
+  onSelectTime = null,
+}) {
+  if (!rows?.length) {
+    return <EmptyState message="No flaky-rate buckets matched the current build scope." compact />;
+  }
+
+  const timeLabel = effectiveGranularity === "month" ? "Time (month)" : "Time (week)";
+  const interactive = typeof onSelectTime === "function";
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table data-table--compact data-table--narrow">
+        <thead>
+          <tr>
+            <th>{timeLabel}</th>
+            <th>Flaky rate</th>
+            <th>Delta vs previous</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.time}
+              className={[
+                interactive ? "data-row--interactive" : "",
+                selectedTime === row.time ? "data-row--selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={
+                interactive
+                  ? () => onSelectTime(selectedTime === row.time ? null : row.time)
+                  : undefined
+              }
+            >
+              <th scope="row">{formatBucketTimeCell(row.time, effectiveGranularity)}</th>
+              <td>{formatPercent(row.flaky_rate_pct)}</td>
+              <td className={buildBucketDeltaClassName(row.time_to_time_pct)}>
+                {formatTimeToTimeCell(row.time_to_time_pct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function UnmatchedResourceTable({ items }) {
+  if (!items?.length) {
+    return <EmptyState message="No unmatched unallocated named resources for the current filters." />;
+  }
+
+  return (
+    <div className="table-scroll table-scroll--compact-y">
+      <table className="data-table data-table--compact">
+        <thead>
+          <tr>
+            <th>Resource name</th>
+            <th>List cost</th>
+            <th>Duration</th>
+            <th>Service</th>
+            <th>SKU</th>
+            <th>Labels</th>
+            <th>Allocation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.resource_name}>
+              <th scope="row">
+                <div className="resource-table__name">{item.resource_name}</div>
+                {item.repo_name ? (
+                  <div className="resource-table__meta">repo: {item.repo_name}</div>
+                ) : null}
+              </th>
+              <td>{formatCurrency(item.list_cost)}</td>
+              <td>{formatResourceDuration(item.observed_days)}</td>
+              <td>{item.service_name || "--"}</td>
+              <td>{item.sku_name || "--"}</td>
+              <td className="resource-table__labels">{item.labels || "--"}</td>
+              <td>
+                <div className="resource-table__meta">{item.allocation_buckets || "--"}</div>
+                <div className="resource-table__meta">{item.attribution_status || "--"}</div>
+                <div className="resource-table__meta">{item.attribution_source || "--"}</div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function EmptyState({ message, compact = false }) {
+  return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
+}
+
+function formatBucketTimeCell(value, granularity) {
+  const text = String(value || "");
+  if (granularity !== "month") {
+    return text;
+  }
+  const match = text.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!match) {
+    return text;
+  }
+  return `${match[1]}-${match[2]}`;
+}
+
+function formatTimeToTimeCell(value) {
+  if (value == null) {
+    return "--";
+  }
+  return formatSignedPercent(value);
+}
+
+function buildBucketDeltaClassName(value) {
+  if (value == null) {
+    return undefined;
+  }
+  return value > 0 ? "bucket-delta bucket-delta--up" : "bucket-delta";
+}
+
+function LoadingState() {
+  return (
+    <div className="empty-state">
+      <span className="loading-dot" />
+      Loading chart data...
+    </div>
+  );
+}
+
+function ErrorState({ error }) {
+  return <div className="empty-state empty-state--error">Could not load panel: {error}</div>;
+}
+
+function buildBucketTooltip({
+  label,
+  index,
+  series,
+  pointMaps,
+  xForIndex,
+  yFormatter,
+  rightYFormatter,
+  width,
+  height,
+  padding,
+}) {
+  const rows = series
+    .map((item) => {
+      const rawValue = pointMaps.get(item.key)?.get(label);
+      if (rawValue == null) {
+        return null;
+      }
+      const formatter = item.axis === "right" ? rightYFormatter : yFormatter;
+      return {
+        key: item.key,
+        label: item.label || formatSeriesLabel(item.key),
+        value: formatter(rawValue),
+      };
+    })
+    .filter(Boolean);
+  const longestRowLength = Math.max(
+    String(formatBottomAxisLabel(label)).length,
+    ...rows.map((row) => `${row.label}: ${row.value}`.length),
+  );
+  const tooltipWidth = Math.min(Math.max(170, longestRowLength * 7 + 42), 300);
+  const tooltipHeight = Math.max(48, 34 + rows.length * 18 + 10);
+  const preferredX = xForIndex(index) + 14;
+  const x =
+    preferredX + tooltipWidth > width - 8
+      ? Math.max(8, xForIndex(index) - tooltipWidth - 14)
+      : preferredX;
+  const y = Math.max(8, Math.min(padding.top + 8, height - tooltipHeight - 8));
+
+  return {
+    label,
+    rows,
+    x,
+    y,
+    width: tooltipWidth,
+    height: tooltipHeight,
+  };
+}
+
+function seriesColor(key) {
+  if (SERIES_COLORS[key]) {
+    return SERIES_COLORS[key];
+  }
+  return DONUT_COLORS[Math.abs(hashString(String(key || ""))) % DONUT_COLORS.length];
+}
+
+function donutColor(name, index) {
+  if (name && SERIES_COLORS[name]) {
+    return SERIES_COLORS[name];
+  }
+  return DONUT_COLORS[index % DONUT_COLORS.length];
+}
+
+function formatSeriesLabel(key) {
+  return key
+    .replaceAll("_pct", " %")
+    .replaceAll("_s", " (s)")
+    .replaceAll("_", " ")
+    .replaceAll("retry loop", "Blind-retry-loop")
+    .replaceAll("FLAKY TEST", "Flaky test")
+    .replaceAll("UNCLASSIFIED", "Unclassified");
+}
+
+function formatBottomAxisLabel(label) {
+  const text = String(label || "");
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return text;
+  }
+  const [, _year, month, day] = match;
+  return `${month}-${day}`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
+function buildVisibleBottomLabelIndices(labelCount, step, minGap) {
+  if (labelCount <= 0) {
+    return new Set();
+  }
+
+  const indices = [];
+  for (let index = 0; index < labelCount; index += step) {
+    indices.push(index);
+  }
+  if (indices[indices.length - 1] !== labelCount - 1) {
+    indices.push(labelCount - 1);
+  }
+
+  while (indices.length >= 2) {
+    const lastIndex = indices[indices.length - 1];
+    const previousIndex = indices[indices.length - 2];
+    if (lastIndex - previousIndex >= minGap) {
+      break;
+    }
+    indices.splice(indices.length - 2, 1);
+  }
+
+  return new Set(indices);
+}
+
+function formatUtcCloseTime(isoValue) {
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  return `Closed: ${yyyy}-${mm}-${dd} ${hh}:${min} UTC`;
+}
+
+function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+  const outerStart = polarToCartesian(cx, cy, outerRadius, endAngle);
+  const outerEnd = polarToCartesian(cx, cy, outerRadius, startAngle);
+  const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
+  const innerEnd = polarToCartesian(cx, cy, innerRadius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 0 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerStart.x} ${innerStart.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
+    "Z",
+  ].join(" ");
+}
+
+function wrapLabel(value, maxLength) {
+  const words = String(value || "").split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [""];
+  }
+
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      current = word;
+    } else if (`${current} ${word}`.length <= maxLength) {
+      current = `${current} ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) {
+    lines.push(current);
+  }
+  return lines;
+}
+
+function arrangeDonutLabels(labels, height) {
+  const minY = 36;
+  const maxY = height - 28;
+  const minGap = 48;
+
+  return ["left", "right"].flatMap((side) => {
+    const sideLabels = labels
+      .filter((label) => label.side === side)
+      .sort((a, b) => a.rawY - b.rawY)
+      .map((label) => ({
+        ...label,
+        y: Math.min(maxY, Math.max(minY, label.rawY)),
+      }));
+
+    for (let index = 1; index < sideLabels.length; index += 1) {
+      sideLabels[index].y = Math.max(sideLabels[index].y, sideLabels[index - 1].y + minGap);
+    }
+    for (let index = sideLabels.length - 2; index >= 0; index -= 1) {
+      if (sideLabels[index + 1].y > maxY) {
+        sideLabels[index + 1].y = maxY;
+      }
+      sideLabels[index].y = Math.min(sideLabels[index].y, sideLabels[index + 1].y - minGap);
+    }
+    return sideLabels.map((label) => ({
+      ...label,
+      y: Math.min(maxY, Math.max(minY, label.y)),
+    }));
+  });
+}
+
+function polarToCartesian(cx, cy, radius, angleInRadians) {
+  return {
+    x: cx + radius * Math.cos(angleInRadians),
+    y: cy + radius * Math.sin(angleInRadians),
+  };
+}
+
+function RuntimeChangeList({
+  title,
+  subtitle,
+  tone,
+  items,
+  maxRunSeconds,
+  emptyMessage,
+}) {
+  return (
+    <section className={`runtime-compare-card runtime-compare-card--${tone}`}>
+      <header className="runtime-compare-card__header">
+        <div>
+          <strong>{title}</strong>
+          <p>{subtitle}</p>
+        </div>
+        <span className="panel-badge">
+          <strong>{items?.length || 0}</strong>
+          jobs
+        </span>
+      </header>
+
+      <div className="runtime-compare-legend">
+        <span className="runtime-compare-legend__item">
+          <span className="runtime-compare-track__dot runtime-compare-track__dot--baseline runtime-compare-legend__dot" />
+          IDC baseline
+        </span>
+        <span className="runtime-compare-legend__item">
+          <span className={`runtime-compare-track__dot runtime-compare-track__dot--${tone} runtime-compare-legend__dot`} />
+          GCP recent
+        </span>
+        <span className={`runtime-compare-legend__swatch runtime-compare-legend__swatch--${tone}`} />
+        <span className="runtime-compare-legend__caption">
+          Colored segment = delta between the two averages. Left is shorter runtime, right is longer.
+        </span>
+      </div>
+
+      {!items?.length ? (
+        <EmptyState message={emptyMessage} compact />
+      ) : (
+        <div className="runtime-compare-list">
+          {items.map((item, index) => (
+            <article
+              key={`${tone}-${item.normalized_job_path}`}
+              className="runtime-compare-item"
+            >
+              <div className="runtime-compare-item__header">
+                <span className={`runtime-compare-item__rank runtime-compare-item__rank--${tone}`}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div className="runtime-compare-item__title">
+                  <strong>{item.job_name}</strong>
+                  <span className="runtime-compare-item__path">{item.normalized_job_path}</span>
+                </div>
+                <span className={`runtime-compare-item__delta runtime-compare-item__delta--${tone}`}>
+                  {formatSignedDuration(item.delta_run_s)} ({formatSignedPercent(item.delta_pct)})
+                </span>
+              </div>
+
+              <div className="runtime-compare-track">
+                <span className="runtime-compare-track__axis" />
+                <span
+                  className={`runtime-compare-track__connector runtime-compare-track__connector--${tone}`}
+                  style={buildConnectorStyle(item, maxRunSeconds)}
+                />
+                <span
+                  className="runtime-compare-track__dot runtime-compare-track__dot--baseline"
+                  style={{ left: `${ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds)}%` }}
+                  title={`IDC baseline ${formatSeconds(item.idc_baseline_avg_run_s)}`}
+                />
+                <span
+                  className={`runtime-compare-track__dot runtime-compare-track__dot--${tone}`}
+                  style={{ left: `${ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds)}%` }}
+                  title={`GCP recent ${formatSeconds(item.gcp_recent_avg_run_s)}`}
+                />
+              </div>
+
+              <div className="runtime-compare-item__meta">
+                <span>
+                  IDC {formatSeconds(item.idc_baseline_avg_run_s)} ({item.idc_success_count})
+                </span>
+                <span>
+                  GCP {formatSeconds(item.gcp_recent_avg_run_s)} ({item.gcp_success_count})
+                </span>
+                <span>First GCP {formatShortDate(item.first_gcp_success_at)}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ratioPct(value, maxValue) {
+  if (!maxValue) {
+    return 0;
+  }
+  return (Number(value || 0) / Number(maxValue)) * 100;
+}
+
+function buildConnectorStyle(item, maxRunSeconds) {
+  const start = ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds);
+  const end = ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds);
+  return {
+    left: `${Math.min(start, end)}%`,
+    width: `${Math.max(Math.abs(end - start), 0.8)}%`,
+  };
+}
+
+function formatSignedDuration(seconds) {
+  const numeric = Number(seconds || 0);
+  const prefix = numeric > 0 ? "+" : "";
+  return `${prefix}${formatSeconds(Math.abs(numeric))}`.replace(/^/, numeric < 0 ? "-" : "");
+}
+
+function formatSignedPercent(value) {
+  const numeric = Number(value || 0);
+  const prefix = numeric > 0 ? "+" : "";
+  return `${prefix}${numeric.toFixed(1)}%`;
+}
+
+function formatShortDate(value) {
+  if (!value) {
+    return "n/a";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "n/a";
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function formatResourceDuration(value) {
+  const days = Number(value || 0);
+  if (days <= 0) {
+    return "--";
+  }
+  return `${days.toFixed(0)}d`;
+}
+
+function getAnnotationY({
+  label,
+  series,
+  pointMaps,
+  leftMaxValue,
+  resolvedRightYMin,
+  resolvedRightYMax,
+  padding,
+  plotHeight,
+}) {
+  const ys = series.map((item) => {
+    const value = pointMaps.get(item.key)?.get(label) ?? 0;
+    const axisRange =
+      item.axis === "right"
+        ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
+        : leftMaxValue;
+    const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
+    return padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
+  });
+
+  const topMostPoint = Math.min(...ys);
+  return Math.max(padding.top - 10, topMostPoint - 8);
+}
+
+function resolveAxisDomain({
+  values,
+  explicitMin = null,
+  explicitMax = null,
+  autoPad = false,
+  padRatio = 0.12,
+}) {
+  const numericValues = values.filter((value) => Number.isFinite(value));
+  let min = explicitMin ?? (numericValues.length ? Math.min(...numericValues) : 0);
+  let max = explicitMax ?? (numericValues.length ? Math.max(...numericValues) : 1);
+
+  if (explicitMin == null && explicitMax == null && autoPad && numericValues.length) {
+    if (min === max) {
+      const basePad = Math.max((Math.abs(max) || 1) * Math.min(padRatio, 0.04), 0.5);
+      min -= basePad;
+      max += basePad;
+    } else {
+      const span = max - min;
+      const pad = Math.max(span * padRatio, 0.5);
+      min -= pad;
+      max += pad;
+    }
+  }
+
+  if (max <= min) {
+    if (explicitMax != null) {
+      max = explicitMax;
+      min = explicitMin ?? Math.min(0, explicitMax - 1);
+    } else if (explicitMin != null) {
+      min = explicitMin;
+      max = explicitMin + 1;
+    } else {
+      max = min + 1;
+    }
+  }
+
+  return { min, max };
+}
+
+function buildAxisTicks({
+  min,
+  max,
+  mode = "default",
+  isPercent = false,
+  segments = 4,
+}) {
+  const safeMin = Number.isFinite(min) ? min : 0;
+  const safeMax = Number.isFinite(max) ? max : safeMin + 1;
+  const safeSegments = Number.isFinite(segments) && segments > 0 ? Math.floor(segments) : 4;
+  const tickMode = ["default", "integer", "thousands-rounded"].includes(mode)
+    ? mode
+    : "default";
+
+  if (tickMode === "thousands-rounded") {
+    const rawStep = Math.max(safeMax, 1) / safeSegments;
+    const step = niceStep(rawStep);
+    const roundedMax = step * safeSegments;
+    return {
+      min: 0,
+      max: roundedMax,
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => index * step),
+    };
+  }
+
+  if (tickMode === "integer") {
+    const integerMin = Math.floor(safeMin);
+    const integerMax = Math.ceil(safeMax);
+    const span = Math.max(integerMax - integerMin, 1);
+    const step = Math.max(1, Math.ceil(span / safeSegments));
+    const roundedMax = integerMin + step * safeSegments;
+    return {
+      min: integerMin,
+      max: roundedMax,
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => integerMin + index * step),
+    };
+  }
+
+  if (isPercent && safeMin === 0 && safeMax === 100) {
+    return {
+      min: 0,
+      max: 100,
+      ticks: Array.from({ length: safeSegments + 1 }, (_, index) => (100 / safeSegments) * index),
+    };
+  }
+
+  const resolvedMax = safeMax > safeMin ? safeMax : safeMin + 1;
+  const span = resolvedMax - safeMin;
+  return {
+    min: safeMin,
+    max: resolvedMax,
+    ticks: Array.from(
+      { length: safeSegments + 1 },
+      (_, index) => safeMin + (span * index) / safeSegments,
+    ),
+  };
+}
+
+function niceStep(value) {
+  const safeValue = Math.max(Number(value) || 0, 1);
+  const exponent = Math.floor(Math.log10(safeValue));
+  const magnitude = 10 ** exponent;
+  const normalized = safeValue / magnitude;
+  const niceNormalized =
+    normalized <= 1
+      ? 1
+      : normalized <= 1.5
+        ? 1.5
+      : normalized <= 2
+        ? 2
+        : normalized <= 3
+          ? 3
+          : normalized <= 4
+            ? 4
+            : normalized <= 5
+              ? 5
+              : 10;
+  return Math.max(1000, niceNormalized * magnitude);
+}

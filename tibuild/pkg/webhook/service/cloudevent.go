@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"gopkg.in/yaml.v3"
+
+	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
 
 type CloudEventService interface {

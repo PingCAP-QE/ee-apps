@@ -1,0 +1,18 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: ci-dashboard
+
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: ci-dashboard
+      docker:
+        dockerfile: Dockerfile.app
+    - image: ci-dashboard-jobs
+      docker:
+        dockerfile: Dockerfile.jobs
+  local:
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0

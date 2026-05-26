@@ -132,6 +132,11 @@ func (DevBuildSpec) Fields() []ent.Field {
 			Default("jenkins").
 			Comment("Pipeline engine used"),
 
+		field.String("platform").
+			Optional().
+			Default("").
+			Comment("Build for target platforms"),
+
 		field.String("builder_img").
 			Optional().
 			MaxLen(128).
