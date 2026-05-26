@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
