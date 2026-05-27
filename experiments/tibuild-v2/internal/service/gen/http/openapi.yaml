@@ -1067,7 +1067,7 @@ definitions:
                     - tekton
             platform:
                 type: string
-                default: all
+                default: linux
                 example: linux/amd64
                 enum:
                     - all

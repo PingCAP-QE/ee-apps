@@ -3728,7 +3728,7 @@ components:
                         - tekton
                 platform:
                     type: string
-                    default: all
+                    default: linux
                     example: all
                     enum:
                         - all

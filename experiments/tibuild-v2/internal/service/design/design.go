@@ -295,7 +295,7 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 		Enum("enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen")
 	})
 	Attribute("platform", String, func() {
-		Default("all")
+		Default("linux")
 		Enum("all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64")
 	})
 	Attribute("features", String, func() {

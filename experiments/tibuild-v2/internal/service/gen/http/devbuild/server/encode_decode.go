@@ -711,7 +711,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 	{
 		var zero string
 		if res.Platform == zero {
-			res.Platform = "all"
+			res.Platform = "linux"
 		}
 	}
 
@@ -924,7 +924,7 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 		res.Platform = *v.Platform
 	}
 	if v.Platform == nil {
-		res.Platform = "all"
+		res.Platform = "linux"
 	}
 
 	return res
@@ -967,7 +967,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 	{
 		var zero string
 		if res.Platform == zero {
-			res.Platform = "all"
+			res.Platform = "linux"
 		}
 	}
 
