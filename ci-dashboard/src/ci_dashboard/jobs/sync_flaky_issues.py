@@ -36,6 +36,8 @@ CASE_NAME_PATTERN = re.compile(r"^Flaky test:\s*(.+?)\s+in\s+.+$")
 BRANCH_PATTERN = re.compile(r"- Branch:\s*([^\n<\"]+)")
 GITHUB_API_BASE_URL = "https://api.github.com"
 BOT_AUTHORS = {"ti-chi-bot", "ti-chi-bot[bot]"}
+DEFAULT_ISSUE_BRANCH = "master"
+DEFAULT_BRANCH_SOURCE = "default_master"
 
 
 @dataclass(frozen=True)
@@ -267,45 +269,8 @@ def _resolve_issue_branch(
     row: dict[str, Any],
     existing: dict[str, Any] | None,
 ) -> tuple[str | None, str, bool, bool]:
-    source_comments_branch = parse_issue_branch_from_comments(row.get("comments"))
-    if source_comments_branch:
-        return source_comments_branch, "ticket_comments", False, False
-
-    ticket_body = str(row.get("body") or "")
-    body_branch = parse_issue_branch(ticket_body)
-    if body_branch:
-        return body_branch, "ticket_body", False, False
-
-    reused_branch, reused_source = _reuse_existing_issue_branch_if_fresh(row, existing)
-    if reused_branch:
-        return reused_branch, reused_source, False, False
-
-    repo = str(row["repo"])
-    issue_number = int(row["number"])
-    try:
-        github_body, github_comments = fetch_issue_details_via_github_api(
-            repo=repo,
-            issue_number=issue_number,
-        )
-        github_comments_branch = parse_issue_branch_from_comments(github_comments)
-        if github_comments_branch:
-            return github_comments_branch, "github_api_comments", True, False
-        github_body_branch = parse_issue_branch(github_body)
-        if github_body_branch:
-            return github_body_branch, "github_api_body", True, False
-        fallback_branch, fallback_source = _fallback_issue_branch(existing)
-        return fallback_branch, fallback_source, True, False
-    except Exception as exc:
-        LOG.warning(
-            "failed to fetch flaky issue details via GitHub API",
-            extra={
-                "repo": repo,
-                "issue_number": issue_number,
-                "error": str(exc),
-            },
-        )
-        fallback_branch, fallback_source = _fallback_issue_branch(existing)
-        return fallback_branch, fallback_source, True, True
+    del row, existing
+    return DEFAULT_ISSUE_BRANCH, DEFAULT_BRANCH_SOURCE, False, False
 
 
 def _fallback_issue_branch(existing: dict[str, Any] | None) -> tuple[str | None, str]:

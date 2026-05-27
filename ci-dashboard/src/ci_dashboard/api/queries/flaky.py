@@ -496,10 +496,11 @@ def get_issue_filtered_weekly_case_rates(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    issue_filters = _issue_query_filters(filters)
 
     with engine.begin() as connection:
-        issue_cases = _fetch_issue_cases(connection, filters, effective_repo)
-        data_rows = _fetch_issue_weekly_rate_rows(connection, filters, effective_repo)
+        issue_cases = _fetch_issue_cases(connection, issue_filters, effective_repo)
+        data_rows = _fetch_issue_weekly_rate_rows(connection, issue_filters, effective_repo)
 
     week_columns = _week_columns(filters.start_date, filters.end_date, data_rows)
     metrics_by_case_week: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
@@ -541,7 +542,7 @@ def get_issue_filtered_weekly_case_rates(
                 "display_name": _issue_display_name(
                     case_name=case_name,
                     issue_branch=issue_branch,
-                    selected_branch=filters.branch,
+                    selected_branch=issue_filters.branch,
                 ),
                 "issue_branch": issue_branch,
                 "issue_number": int(issue["issue_number"]),
@@ -576,6 +577,7 @@ def get_issue_filtered_weekly_case_rates(
             "bucket_granularity": "week",
             "defaulted_repo": filters.repo is None,
             "issue_case_count": len(rows_payload),
+            "ignores_branch": True,
         }
     )
     return {
@@ -601,6 +603,7 @@ def get_issue_lifecycle_snapshot(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    issue_filters = _issue_query_filters(filters)
     latest_full_week_start = _latest_complete_week_start(filters.end_date)
     latest_full_week_end = (
         latest_full_week_start + timedelta(days=6)
@@ -609,7 +612,7 @@ def get_issue_lifecycle_snapshot(
     )
 
     with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, filters, effective_repo)
+        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
 
     scoped_issue_rows = [
         row
@@ -672,6 +675,7 @@ def get_issue_lifecycle_snapshot(
                 latest_full_week_end.isoformat() if latest_full_week_end else None
             ),
             "ignores_issue_status": True,
+            "ignores_branch": True,
         }
     )
 
@@ -711,10 +715,10 @@ def get_issue_fix_progress_snapshot(
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
     as_of_date = filters.end_date or date.today()
     comparison_as_of_date = as_of_date - timedelta(days=7)
-    scoped_filters = CommonFilters(repo=filters.repo, branch=filters.branch)
+    issue_filters = _issue_query_filters(filters)
 
     with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, scoped_filters, effective_repo)
+        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
 
         current_issue_rows = [
             row for row in issue_rows if _entity_exists_as_of(row.get("issue_created_at"), as_of_date)
@@ -726,10 +730,12 @@ def get_issue_fix_progress_snapshot(
         current_pull_rows = _fetch_linked_pull_rows(
             connection,
             [(str(row["repo"]), int(row["issue_number"])) for row in current_issue_rows],
+            branch=filters.branch,
         )
         previous_pull_rows = _fetch_linked_pull_rows(
             connection,
             [(str(row["repo"]), int(row["issue_number"])) for row in previous_issue_rows],
+            branch=filters.branch,
         )
 
     current_fixed_issue_count = sum(
@@ -770,6 +776,8 @@ def get_issue_fix_progress_snapshot(
             "ignores_job_name": True,
             "ignores_cloud_phase": True,
             "ignores_issue_status": True,
+            "ignores_branch_for_issues": True,
+            "applies_branch_to_prs": bool(filters.branch),
         }
     )
 
@@ -791,8 +799,9 @@ def get_issue_lifecycle_weekly(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
+    issue_filters = _issue_query_filters(filters)
     with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, filters, effective_repo)
+        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
 
     scoped_issue_rows = [
         row
@@ -855,6 +864,7 @@ def get_issue_lifecycle_weekly(
             "defaulted_repo": filters.repo is None,
             "bucket_granularity": "week",
             "ignores_issue_status": True,
+            "ignores_branch": True,
         }
     )
     return {
@@ -1195,6 +1205,19 @@ def _fetch_issue_weekly_rate_rows(
     return [dict(row) for row in rows]
 
 
+def _issue_query_filters(filters: CommonFilters) -> CommonFilters:
+    return CommonFilters(
+        repo=filters.repo,
+        branch=None,
+        job_name=filters.job_name,
+        cloud_phase=filters.cloud_phase,
+        issue_status=filters.issue_status,
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        granularity=filters.granularity,
+    )
+
+
 def _fetch_weekly_flaky_case_presence(
     connection: Connection,
     filters: CommonFilters,
@@ -1413,6 +1436,8 @@ def _fetch_issue_latest_rows(
 def _fetch_linked_pull_rows(
     connection: Connection,
     issue_keys: list[tuple[str, int]],
+    *,
+    branch: str | None = None,
 ) -> list[dict[str, Any]]:
     if not issue_keys:
         return []
@@ -1425,6 +1450,11 @@ def _fetch_linked_pull_rows(
         )
         params[f"issue_repo_{index}"] = issue_repo
         params[f"issue_number_{index}"] = issue_number
+
+    branch_clause = ""
+    if branch:
+        branch_clause = f" AND {_pull_ticket_branch_expr(connection, 'p')} = :branch"
+        params["branch"] = branch
 
     rows = connection.execute(
         text(
@@ -1442,13 +1472,21 @@ def _fetch_linked_pull_rows(
               ON p.type = 'pull'
              AND p.repo = l.pr_repo
              AND p.number = l.pr_number
-            WHERE {' OR '.join(clauses)}
+            WHERE ({' OR '.join(clauses)})
+            {branch_clause}
             ORDER BY p.repo, p.number
             """
         ),
         params,
     ).mappings()
     return [dict(row) for row in rows]
+
+
+def _pull_ticket_branch_expr(connection: Connection, table_alias: str) -> str:
+    prefix = f"{table_alias}."
+    if connection.dialect.name == "sqlite":
+        return f"json_extract({prefix}branches, '$.base.ref')"
+    return f"JSON_UNQUOTE(JSON_EXTRACT({prefix}branches, '$.base.ref'))"
 
 
 def _latest_complete_week_start(end_date: date | None) -> date | None:
