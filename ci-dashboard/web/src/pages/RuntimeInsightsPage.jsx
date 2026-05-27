@@ -23,6 +23,83 @@ const EMPTY_ITEMS = [];
 const EMPTY_DETAILS = {};
 const formatOneDecimal = (value) => Number(value || 0).toFixed(1);
 
+function buildRateAxisBounds(values) {
+  const numericValues = values.filter((value) => Number.isFinite(value));
+  if (!numericValues.length) {
+    return { min: 0, max: 10 };
+  }
+
+  const hardMin = 0;
+  const hardMax = 95;
+  const rawMin = Math.min(...numericValues);
+  const rawMax = Math.max(...numericValues);
+  const span = rawMax - rawMin;
+  const pad = span === 0 ? Math.max(4, rawMax * 0.35 || 4) : Math.max(span, 4);
+
+  let min = rawMin - pad;
+  let max = rawMax + pad;
+  const desiredRange = max - min;
+
+  if (min < hardMin) {
+    max = Math.min(hardMax, max + (hardMin - min));
+    min = hardMin;
+  }
+  if (max > hardMax) {
+    min = Math.max(hardMin, min - (max - hardMax));
+    max = hardMax;
+  }
+  if (max - min < 1) {
+    max = Math.min(hardMax, min + 1);
+  }
+  if (max - min < desiredRange && min === hardMin) {
+    max = Math.min(hardMax, hardMin + desiredRange);
+  }
+
+  return {
+    min: Number(min.toFixed(1)),
+    max: Number(max.toFixed(1)),
+  };
+}
+
+function buildSelectedTrendWithShare(selectedKey, allSeries, shareLabelSuffix) {
+  if (!selectedKey || !allSeries?.length) {
+    return { series: EMPTY_ITEMS, rightAxis: null };
+  }
+
+  const selectedSeries = allSeries.find((item) => item.key === selectedKey);
+  if (!selectedSeries) {
+    return { series: EMPTY_ITEMS, rightAxis: null };
+  }
+
+  const labels = Array.from(
+    new Set(allSeries.flatMap((item) => item.points.map((point) => point[0]))),
+  ).sort();
+  const selectedValues = new Map(
+    selectedSeries.points.map((point) => [point[0], Number(point[1] || 0)]),
+  );
+
+  const shareSeries = {
+    key: "selected_share_pct",
+    label: `${selectedSeries.label || selectedKey} ${shareLabelSuffix}`,
+    type: "line",
+    axis: "right",
+    points: labels.map((label) => {
+      const total = allSeries.reduce((sum, item) => {
+        const point = item.points.find((candidate) => candidate[0] === label);
+        return sum + Number(point?.[1] || 0);
+      }, 0);
+      const selectedValue = selectedValues.get(label) || 0;
+      const sharePct = total > 0 ? (selectedValue / total) * 100 : 0;
+      return [label, Number(sharePct.toFixed(1))];
+    }),
+  };
+
+  return {
+    series: [selectedSeries, shareSeries],
+    rightAxis: buildRateAxisBounds(shareSeries.points.map((point) => point[1])),
+  };
+}
+
 export default function RuntimeInsightsPage({ filters }) {
   const page = useApiData("/api/v1/pages/runtime-insights", filters);
   const [selectedL1, setSelectedL1] = useState("INFRA");
@@ -47,11 +124,20 @@ export default function RuntimeInsightsPage({ filters }) {
   const classificationSummary = classificationCoverage.summary || {};
   const l1Items = page.data?.error_l1_share?.items || EMPTY_ITEMS;
   const l2Details = page.data?.error_l1_share?.l2_details || EMPTY_DETAILS;
+  const selectedL1Trend = buildSelectedTrendWithShare(
+    selectedL1,
+    page.data?.error_l1_trend?.series || EMPTY_ITEMS,
+    "share",
+  );
   const selectedL2Share =
     selectedL1 === "INFRA"
       ? page.data?.infra_l2_share?.items || l2Details.INFRA || EMPTY_ITEMS
       : l2Details[selectedL1] || EMPTY_ITEMS;
-  const selectedL2Trend = page.data?.error_l2_trends?.items?.[selectedL1]?.series || EMPTY_ITEMS;
+  const selectedL2Trend = buildSelectedTrendWithShare(
+    selectedL2,
+    page.data?.error_l2_trends?.items?.[selectedL1]?.series || EMPTY_ITEMS,
+    "share",
+  );
   const topErrorJobs = useApiData("/api/v1/pages/runtime-error-top-jobs", {
     ...filters,
     error_l1_category: selectedL1 || "",
@@ -315,14 +401,16 @@ export default function RuntimeInsightsPage({ filters }) {
 
         <Panel
           title="Jenkins Error Catalog Trend"
-          subtitle="Failure-like builds by Jenkins Error Catalog over time."
+          subtitle={`Showing ${selectedL1} count by time bucket, with its share of the total bucket on the right axis.`}
           loading={page.loading}
           error={page.error}
         >
           <TrendChart
-            series={page.data?.error_l1_trend?.series}
+            series={selectedL1Trend.series}
             yFormatter={formatNumber}
-            stackBars
+            rightYFormatter={formatPercent}
+            rightYMin={selectedL1Trend.rightAxis?.min ?? 0}
+            rightYMax={selectedL1Trend.rightAxis?.max ?? 10}
           />
         </Panel>
 
@@ -344,14 +432,20 @@ export default function RuntimeInsightsPage({ filters }) {
 
         <Panel
           title={`${selectedL1} Error Details Trend`}
-          subtitle="Trend of the top error details inside the selected catalog."
+          subtitle={
+            selectedL2
+              ? `Showing ${selectedL2} count by time bucket, with its share inside ${selectedL1} on the right axis.`
+              : "Select an error detail from the chart on the left."
+          }
           loading={page.loading}
           error={page.error}
         >
           <TrendChart
-            series={selectedL2Trend}
+            series={selectedL2Trend.series}
             yFormatter={formatNumber}
-            stackBars
+            rightYFormatter={formatPercent}
+            rightYMin={selectedL2Trend.rightAxis?.min ?? 0}
+            rightYMax={selectedL2Trend.rightAxis?.max ?? 10}
           />
         </Panel>
 

@@ -75,6 +75,7 @@ const SERIES_COLORS = {
   DISK_FULL: "#bc6c25",
   STORAGE: "#bc6c25",
   EXTERNAL_DEP: "#8d5a97",
+  selected_share_pct: "#264653",
   COMPILE: "#bc6c25",
   TIMEOUT: "#d88b3d",
   classified_count: "#2a9d8f",
