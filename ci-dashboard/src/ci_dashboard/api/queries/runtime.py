@@ -1136,12 +1136,6 @@ def get_error_l1_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
-        if filters.granularity == "week":
-            data_rows = filter_complete_week_rows(
-                data_rows,
-                start_date=filters.start_date,
-                end_date=filters.end_date,
-            )
     return {
         "series": [
             {
@@ -1183,12 +1177,6 @@ def get_error_l2_trends(engine: Engine, filters: CommonFilters) -> dict[str, Any
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
-        if filters.granularity == "week":
-            data_rows = filter_complete_week_rows(
-                data_rows,
-                start_date=filters.start_date,
-                end_date=filters.end_date,
-            )
 
     values_by_l1_l2: dict[tuple[str, str], dict[str, int]] = {}
     totals_by_l1: dict[str, dict[str, int]] = {}
