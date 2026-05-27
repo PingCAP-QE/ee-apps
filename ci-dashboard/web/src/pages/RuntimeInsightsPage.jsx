@@ -74,8 +74,15 @@ function buildSelectedTrendWithShare(selectedKey, allSeries, shareLabelSuffix) {
   const labels = Array.from(
     new Set(allSeries.flatMap((item) => item.points.map((point) => point[0]))),
   ).sort();
+  const totals = new Map();
+  allSeries.forEach((item) => {
+    item.points.forEach(([label, value]) => {
+      totals.set(label, (totals.get(label) || 0) + Number(value || 0));
+    });
+  });
+  const selectedPoints = selectedSeries.points || [];
   const selectedValues = new Map(
-    selectedSeries.points.map((point) => [point[0], Number(point[1] || 0)]),
+    selectedPoints.map((point) => [point[0], Number(point[1] || 0)]),
   );
 
   const shareSeries = {
@@ -84,10 +91,7 @@ function buildSelectedTrendWithShare(selectedKey, allSeries, shareLabelSuffix) {
     type: "line",
     axis: "right",
     points: labels.map((label) => {
-      const total = allSeries.reduce((sum, item) => {
-        const point = item.points.find((candidate) => candidate[0] === label);
-        return sum + Number(point?.[1] || 0);
-      }, 0);
+      const total = totals.get(label) || 0;
       const selectedValue = selectedValues.get(label) || 0;
       const sharePct = total > 0 ? (selectedValue / total) * 100 : 0;
       return [label, Number(sharePct.toFixed(1))];
