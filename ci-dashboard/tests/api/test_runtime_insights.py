@@ -835,6 +835,72 @@ def test_runtime_trends_use_pod_time_buckets_and_true_scheduling_wait(sqlite_eng
     ]
 
 
+def test_error_trends_keep_partial_current_week(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=301,
+        source_prow_job_id="runtime-error-full-week",
+        job_name="job-errors",
+        state="failure",
+        start_time="2026-05-21 09:00:00",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/runtime-error-full-week/1/",
+        error_l1_category="INFRA",
+        error_l2_subcategory="K8S",
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=302,
+        source_prow_job_id="runtime-error-partial-week",
+        job_name="job-errors",
+        state="failure",
+        start_time="2026-05-27 10:00:00",
+        normalized_build_url="https://prow.tidb.net/jenkins/job/runtime-error-partial-week/1/",
+        error_l1_category="INFRA",
+        error_l2_subcategory="NETWORK",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-05-18",
+                    "end_date": "2026-05-27",
+                    "granularity": "week",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+
+    l1_points = {
+        item["key"]: item["points"]
+        for item in body["error_l1_trend"]["series"]
+    }
+    assert l1_points["INFRA"] == [
+        ["2026-05-18", 1.0],
+        ["2026-05-25", 1.0],
+    ]
+
+    infra_points = {
+        item["key"]: item["points"]
+        for item in body["error_l2_trends"]["items"]["INFRA"]["series"]
+    }
+    assert infra_points["K8S"] == [
+        ["2026-05-18", 1.0],
+        ["2026-05-25", 0.0],
+    ]
+    assert infra_points["NETWORK"] == [
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 1.0],
+    ]
+
+
 def test_pull_image_in_progress_without_failure_event_counts_as_success(sqlite_engine) -> None:
     build_url_ok = "https://prow.tidb.net/jenkins/job/runtime-pull-ok/1/"
     build_url_in_progress = "https://prow.tidb.net/jenkins/job/runtime-pull-in-progress/1/"
