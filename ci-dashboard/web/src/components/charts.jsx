@@ -436,13 +436,16 @@ export function TrendChart({
                 ? Math.max(resolvedRightYMax - resolvedRightYMin, 1)
                 : leftMaxValue;
             const axisMin = item.axis === "right" ? resolvedRightYMin : 0;
+            const axisMax = item.axis === "right" ? resolvedRightYMax : leftMaxValue;
             const baseValue = stackBars
               ? stackedSeries
                   .slice(0, Math.max(axisSeriesIndex, 0))
                   .reduce((sum, candidate) => sum + (pointMaps.get(candidate.key)?.get(label) ?? 0), 0)
               : 0;
-            const normalizedValue = Math.max(value - axisMin, 0);
-            const normalizedBaseValue = Math.max(baseValue - axisMin, 0);
+            const clampedValue = Math.min(Math.max(value, axisMin), axisMax);
+            const clampedBaseValue = Math.min(Math.max(baseValue, axisMin), axisMax);
+            const normalizedValue = Math.max(clampedValue - axisMin, 0);
+            const normalizedBaseValue = Math.max(clampedBaseValue - axisMin, 0);
             const barHeight = axisRange > 0 ? (normalizedValue / axisRange) * plotHeight : 0;
             const y = stackBars
               ? padding.top + plotHeight - ((normalizedBaseValue + normalizedValue) / axisRange) * plotHeight
@@ -482,7 +485,12 @@ export function TrendChart({
             }
 
             const x = xForIndex(index);
-            const y = padding.top + plotHeight - ((value - axisMin) / axisRange) * plotHeight;
+            const clampedValue = Math.min(
+              Math.max(value, axisMin),
+              axisMin + axisRange,
+            );
+            const y =
+              padding.top + plotHeight - ((clampedValue - axisMin) / axisRange) * plotHeight;
             currentSegment.push({ label, x, y });
           });
 
