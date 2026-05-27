@@ -128,11 +128,11 @@ func parsePlatforms(platformExp string) []string {
 	switch platformExp {
 	case LinuxAmd64, LinuxArm64, DarwinAmd64, DarwinArm64:
 		return []string{platformExp}
-	case "linux", "linux/all":
+	case "linux", "linux/all", "":
 		return []string{LinuxAmd64, LinuxArm64}
 	case "darwin", "darwin/all":
 		return []string{DarwinAmd64, DarwinArm64}
-	case "", "all":
+	case "all":
 		return []string{""}
 	default:
 		return strings.Split(platformExp, ",")
