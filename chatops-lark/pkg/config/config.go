@@ -75,12 +75,11 @@ type BaseCmdConfig struct {
 type RegistryImageConfig struct {
 	BaseCmdConfig `yaml:",inline" json:",inline"`
 
-	Owner          string            `yaml:"owner" json:"owner"`
-	Repo           string            `yaml:"repo" json:"repo"`
-	Workflow       string            `yaml:"workflow" json:"workflow"`
-	Ref            string            `yaml:"ref" json:"ref"`
-	GitHubToken    string            `yaml:"github_token" json:"github_token"`
-	CredentialRefs map[string]string `yaml:"credential_refs" json:"credential_refs"`
+	Owner       string `yaml:"owner" json:"owner"`
+	Repo        string `yaml:"repo" json:"repo"`
+	Workflow    string `yaml:"workflow" json:"workflow"`
+	Ref         string `yaml:"ref" json:"ref"`
+	GitHubToken string `yaml:"github_token" json:"github_token"`
 }
 
 type AuditConfig struct {

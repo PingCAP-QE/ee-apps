@@ -120,9 +120,6 @@ func queryRegistryImage(ctx context.Context, params *registryImageQueryParams, g
 		"registry_url": params.Repository,
 		"image_tag":    params.Tag,
 	}
-	if credentialRef := resolveRegistryImageCredentialRef(params.Repository, cfg.CredentialRefs); credentialRef != "" {
-		inputs["credential_ref"] = credentialRef
-	}
 
 	_, err = gc.Actions.CreateWorkflowDispatchEventByFileName(ctx, cfg.Owner, cfg.Repo, cfg.Workflow, github.CreateWorkflowDispatchEventRequest{
 		Ref:    ref,
@@ -388,42 +385,6 @@ func registryImageWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) boo
 func newRegistryImageGitHubClient(token string) (*github.Client, *http.Client) {
 	httpClient := &http.Client{Timeout: registryImageHTTPTimeout}
 	return github.NewClient(httpClient).WithAuthToken(token), httpClient
-}
-
-func resolveRegistryImageCredentialRef(repository string, credentialRefs map[string]string) string {
-	repository = normalizeRegistryImagePrefix(repository)
-	if repository == "" {
-		return ""
-	}
-
-	var matchedPrefix string
-	var matchedCredentialRef string
-	for prefix, credentialRef := range credentialRefs {
-		normalizedPrefix := normalizeRegistryImagePrefix(prefix)
-		if normalizedPrefix == "" || credentialRef == "" {
-			continue
-		}
-		if !registryImagePrefixMatches(repository, normalizedPrefix) {
-			continue
-		}
-		if len(normalizedPrefix) > len(matchedPrefix) {
-			matchedPrefix = normalizedPrefix
-			matchedCredentialRef = credentialRef
-		}
-	}
-
-	return matchedCredentialRef
-}
-
-func normalizeRegistryImagePrefix(repository string) string {
-	repository = strings.TrimSpace(strings.ToLower(repository))
-	repository = strings.TrimPrefix(repository, "https://")
-	repository = strings.TrimPrefix(repository, "http://")
-	return strings.Trim(repository, "/")
-}
-
-func registryImagePrefixMatches(repository, prefix string) bool {
-	return repository == prefix || strings.HasPrefix(repository, prefix+"/")
 }
 
 func buildWorkflowPageURL(cfg registryImageWorkflowConfig) string {

@@ -10,11 +10,10 @@ import (
 )
 
 const (
-	cfgKeyRegistryImageOwner          = "registry_image.owner"
-	cfgKeyRegistryImageRepo           = "registry_image.repo"
-	cfgKeyRegistryImageWorkflow       = "registry_image.workflow"
-	cfgKeyRegistryImageRef            = "registry_image.ref"
-	cfgKeyRegistryImageCredentialRefs = "registry_image.credential_refs"
+	cfgKeyRegistryImageOwner    = "registry_image.owner"
+	cfgKeyRegistryImageRepo     = "registry_image.repo"
+	cfgKeyRegistryImageWorkflow = "registry_image.workflow"
+	cfgKeyRegistryImageRef      = "registry_image.ref"
 
 	defaultRegistryImageOwner    = "tidbcloud"
 	defaultRegistryImageRepo     = "docker-image-controller"
@@ -41,11 +40,10 @@ Use '/cloud-image --help' or '/cloud-image -h' to see this message.
 `
 
 type registryImageWorkflowConfig struct {
-	Owner          string
-	Repo           string
-	Workflow       string
-	Ref            string
-	CredentialRefs map[string]string
+	Owner    string
+	Repo     string
+	Workflow string
+	Ref      string
 }
 
 func runCommandRegistryImage(ctx context.Context, args []string) (string, error) {
@@ -89,7 +87,6 @@ func setupCtxRegistryImage(ctx context.Context, cfg config.Config, _ *CommandAct
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageRepo, repo)
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageWorkflow, workflow)
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageRef, strings.TrimSpace(registryImageCfg.Ref))
-	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageCredentialRefs, normalizeRegistryImageCredentialRefs(registryImageCfg.CredentialRefs))
 
 	return nextCtx
 }
@@ -116,34 +113,11 @@ func loadRegistryImageWorkflowConfig(ctx context.Context) (registryImageWorkflow
 	}
 
 	ref, _ := ctx.Value(cfgKeyRegistryImageRef).(string)
-	credentialRefs, _ := ctx.Value(cfgKeyRegistryImageCredentialRefs).(map[string]string)
 
 	return registryImageWorkflowConfig{
-		Owner:          owner,
-		Repo:           repo,
-		Workflow:       workflow,
-		Ref:            ref,
-		CredentialRefs: credentialRefs,
+		Owner:    owner,
+		Repo:     repo,
+		Workflow: workflow,
+		Ref:      ref,
 	}, token, nil
-}
-
-func normalizeRegistryImageCredentialRefs(credentialRefs map[string]string) map[string]string {
-	if len(credentialRefs) == 0 {
-		return nil
-	}
-
-	normalized := make(map[string]string, len(credentialRefs))
-	for prefix, credentialRef := range credentialRefs {
-		prefix = strings.TrimSpace(prefix)
-		credentialRef = strings.TrimSpace(credentialRef)
-		if prefix == "" || credentialRef == "" {
-			continue
-		}
-		normalized[prefix] = credentialRef
-	}
-	if len(normalized) == 0 {
-		return nil
-	}
-
-	return normalized
 }

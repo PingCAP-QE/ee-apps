@@ -59,8 +59,8 @@ func TestQueryRegistryImageReturnsFoundResult(t *testing.T) {
 		if inputs["image_tag"] != "nightly" {
 			t.Fatalf("unexpected image_tag: %#v", inputs["image_tag"])
 		}
-		if inputs["credential_ref"] != "query-image-ghcr" {
-			t.Fatalf("unexpected credential_ref: %#v", inputs["credential_ref"])
+		if _, ok := inputs["credential_ref"]; ok {
+			t.Fatalf("credential_ref should not be provided, got %#v", inputs["credential_ref"])
 		}
 
 		w.WriteHeader(http.StatusNoContent)
@@ -188,9 +188,6 @@ func TestQueryRegistryImageReturnsFoundResult(t *testing.T) {
 		Owner:    "tidbcloud",
 		Repo:     "docker-image-controller",
 		Workflow: "query-image-tag.yml",
-		CredentialRefs: map[string]string{
-			"ghcr.io/pingcap": "query-image-ghcr",
-		},
 	}, server.Client())
 	if err != nil {
 		t.Fatalf("queryRegistryImage() error = %v", err)
@@ -310,24 +307,6 @@ func TestParseCommandRegistryImageQuery(t *testing.T) {
 
 	if _, err := parseCommandRegistryImageQuery([]string{"ghcr.io/pingcap/tidb:nightly"}); err == nil {
 		t.Fatal("expected tagged positional syntax to be rejected")
-	}
-}
-
-func TestResolveRegistryImageCredentialRef(t *testing.T) {
-	credentialRef := resolveRegistryImageCredentialRef("https://ghcr.io/pingcap/tidb", map[string]string{
-		"ghcr.io":                    "query-image-public",
-		"ghcr.io/pingcap":            "query-image-ghcr",
-		"ghcr.io/pingcap/tidb-tools": "query-image-tools",
-	})
-	if credentialRef != "query-image-ghcr" {
-		t.Fatalf("expected longest matching credential_ref, got %q", credentialRef)
-	}
-
-	credentialRef = resolveRegistryImageCredentialRef("registry.pingcap.net/private/tidb", map[string]string{
-		"ghcr.io/pingcap": "query-image-ghcr",
-	})
-	if credentialRef != "" {
-		t.Fatalf("expected empty credential_ref for unmatched registry, got %q", credentialRef)
 	}
 }
 
