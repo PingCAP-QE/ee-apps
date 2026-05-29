@@ -20,7 +20,7 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 	mux.HandleFunc("/users/testorg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"login": "testorg",
 			"type":  "Organization",
 		})
@@ -37,7 +37,7 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		collaborators := []map[string]interface{}{
+		collaborators := []map[string]any{
 			{"login": "owner1", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
 			{"login": "owner2", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
 			{"login": "owner3", "permissions": map[string]bool{"admin": true, "push": true, "pull": true}},
@@ -60,7 +60,7 @@ func TestGetOrgAdmins_ExcludeOrgOwners(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		orgOwners := []map[string]interface{}{
+		orgOwners := []map[string]any{
 			{"login": "owner1", "type": "User"},
 			{"login": "owner2", "type": "User"},
 			{"login": "owner3", "type": "User"},
@@ -115,7 +115,7 @@ func TestGetOrgAdmins_PersonalRepo(t *testing.T) {
 	mux.HandleFunc("/users/testuser", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"login": "testuser",
 			"type":  "User",
 		})
@@ -150,13 +150,13 @@ func TestGetOrgAdmins_NoAdmins(t *testing.T) {
 	mux.HandleFunc("/repos/testorg/emptyrepo/collaborators", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]interface{}{})
+		json.NewEncoder(w).Encode([]any{})
 	})
 
 	mux.HandleFunc("/orgs/testorg/members", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]interface{}{})
+		json.NewEncoder(w).Encode([]any{})
 	})
 
 	gc := github.NewClient(nil)
@@ -189,7 +189,7 @@ func TestGetOrgAdmins_RepoNotFound(t *testing.T) {
 	mux.HandleFunc("/repos/testorg/notfound/collaborators", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"message": "Not Found",
 		})
 	})
