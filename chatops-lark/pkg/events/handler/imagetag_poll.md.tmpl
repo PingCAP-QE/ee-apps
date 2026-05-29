@@ -1,0 +1,27 @@
+**{{ statusIcon .status }} Cloud Image Query**
+{{- if .summary }}
+{{ .summary }}
+{{- end }}
+
+{{- if .image_ref }}
+- **Image Reference:** {{ .image_ref }}
+{{- end }}
+- **Result:** {{ statusLabel .status }}
+{{- if .is_found }}
+- **Image Created At (OCI):** {{ .created_at }}
+- **Digest:** {{ .digest }}
+- **Multi-Arch:** {{ boolLabel .multi_arch }}
+- **Platforms:** {{ if .platforms }}{{ join ", " .platforms }}{{ else }}none{{ end }}
+{{- end }}
+{{- if .run_url }}
+- **Workflow Run:** {{ .run_url }}
+{{- end }}
+
+{{- if .is_found }}
+Image Created At (OCI) is OCI image metadata, not the registry push/sync time.
+
+**Labels**
+```yaml
+{{ toYaml .labels }}
+```
+{{- end }}

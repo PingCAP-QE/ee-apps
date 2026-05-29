@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html/template"
+	"text/template"
 
 	sprig "github.com/Masterminds/sprig/v3"
 	"github.com/go-resty/resty/v2"

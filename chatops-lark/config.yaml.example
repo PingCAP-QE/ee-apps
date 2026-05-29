@@ -36,6 +36,15 @@ devbuild:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
   api_url: "https://tibuild.pingcap.net/api/devbuilds"
 
+# Cloud image query configuration
+registry_image:
+  audit:
+    webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  owner: "tidbcloud" # Optional, defaults to tidbcloud
+  repo: "docker-image-controller" # Optional, defaults to docker-image-controller
+  workflow: "query-image-tag.yml" # Optional, defaults to query-image-tag.yml
+  ref: "main" # Optional, defaults to the repository default branch when omitted
+  github_token: "ghp_xxx"
 hotfix:
   api_url: "https://tibuild.pingcap.net/api/v2/hotfix" # API endpoint for hotfix operations
   audit:

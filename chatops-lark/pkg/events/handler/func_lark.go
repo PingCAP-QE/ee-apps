@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var larkMarkdownLinkPattern = regexp.MustCompile(`^\[([^\]]+)\]\((.+)\)$`)
+
 // determineMessageType determines the message type and checks if the bot was mentioned
 func determineMessageType(event *larkim.P2MessageReceiveV1, botOpenID string) (msgType string, chatID string, isMentionBot bool) {
 	// Check if the message is from a group chat
@@ -68,7 +70,7 @@ func parseGroupCommand(event *larkim.P2MessageReceiveV1) *Command {
 	argsStr := strings.TrimSpace(matches[2])
 	var args []string
 	if argsStr != "" {
-		args = strings.Fields(argsStr)
+		args = normalizeCommandTokens(strings.Fields(argsStr))
 	}
 
 	return &Command{Name: commandName, Args: args}
@@ -89,7 +91,7 @@ func parsePrivateCommand(event *larkim.P2MessageReceiveV1) *Command {
 		return nil
 	}
 
-	return &Command{Name: messageParts[0], Args: messageParts[1:]}
+	return &Command{Name: messageParts[0], Args: normalizeCommandTokens(messageParts[1:])}
 }
 
 func shouldHandle(event *larkim.P2MessageReceiveV1, botOpenID string) *Command {
@@ -117,4 +119,31 @@ func parseUserCustomAttr(attrID string, info *larkcontact.User) *string {
 	}
 
 	return nil
+}
+
+func normalizeCommandTokens(tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		normalized = append(normalized, normalizeCommandToken(token))
+	}
+
+	return normalized
+}
+
+func normalizeCommandToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return token
+	}
+
+	matches := larkMarkdownLinkPattern.FindStringSubmatch(token)
+	if len(matches) != 3 {
+		return token
+	}
+
+	return matches[1]
 }
