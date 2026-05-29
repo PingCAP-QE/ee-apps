@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -17,6 +18,22 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 		t.Log(str)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
+		}
+	})
+
+	t.Run("preserves quotes in result markdown", func(t *testing.T) {
+		result := "version: \"9\""
+		info := &AuditInfo{
+			UserEmail: "user@example.com",
+			Command:   "/cloud-image",
+			Result:    &result,
+		}
+		str, err := newLarkCardWithGoTemplate(info)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if strings.Contains(str, "&#34;") {
+			t.Fatalf("expected rendered audit card to preserve quotes, got: %s", str)
 		}
 	})
 }

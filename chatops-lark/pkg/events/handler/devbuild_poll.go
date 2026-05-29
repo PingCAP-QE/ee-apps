@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"html/template"
 	"net/url"
 	"strings"
+	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/go-resty/resty/v2"

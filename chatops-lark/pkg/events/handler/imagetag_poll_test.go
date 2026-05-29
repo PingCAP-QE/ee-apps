@@ -74,8 +74,10 @@ func TestBuildRegistryImageQueryOutcomeNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderRegistryImageQueryResponse() error = %v", err)
 	}
-	if !strings.Contains(resp, "NOT_FOUND") {
-		t.Fatalf("expected rendered response to contain NOT_FOUND, got:\n%s", resp)
+	for _, fragment := range []string{"🤷 Cloud Image Query", "Result:** Not Found", "Image Reference:"} {
+		if !strings.Contains(resp, fragment) {
+			t.Fatalf("expected rendered response to contain %q, got:\n%s", fragment, resp)
+		}
 	}
 }
 
@@ -179,6 +181,40 @@ func TestExtractResultJSONFromArtifact(t *testing.T) {
 	}
 	if string(body) != `{"image_ref":"ghcr.io/pingcap/tidb:nightly"}` {
 		t.Fatalf("unexpected extracted body: %s", string(body))
+	}
+}
+
+func TestRenderRegistryImageQueryResponseFoundPreservesQuotes(t *testing.T) {
+	resp, err := renderRegistryImageQueryResponse(&registryImageQueryOutcome{
+		Status:    registryImageQueryStatusFound,
+		Summary:   "Tag exists in the target registry.",
+		ImageRef:  "tidbcloud-prod-registry.ap-southeast-1.cr.aliyuncs.com/tidbcloud/dm:v26.3.0-nextgen",
+		CreatedAt: "2026-05-21T07:09:20.240911096Z",
+		Digest:    "sha256:22a3c79dad4659fb467e587817c89f10ad26d31d3916eae007d5eecf5344b512",
+		MultiArch: true,
+		Platforms: []string{"linux/amd64", "linux/arm64"},
+		Labels: map[string]any{
+			"version": "9",
+		},
+		RunURL: "https://github.com/tidbcloud/docker-image-controller/actions/runs/200",
+	})
+	if err != nil {
+		t.Fatalf("renderRegistryImageQueryResponse() error = %v", err)
+	}
+
+	for _, fragment := range []string{
+		"✅ Cloud Image Query",
+		"Result:** Found",
+		"Multi-Arch:** Yes",
+		"Platforms:** linux/amd64, linux/arm64",
+		"version: \"9\"",
+	} {
+		if !strings.Contains(resp, fragment) {
+			t.Fatalf("expected rendered response to contain %q, got:\n%s", fragment, resp)
+		}
+	}
+	if strings.Contains(resp, "&#34;") {
+		t.Fatalf("expected rendered response to preserve quotes, got:\n%s", resp)
 	}
 }
 

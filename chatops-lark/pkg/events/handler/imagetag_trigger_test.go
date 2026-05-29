@@ -201,7 +201,8 @@ func TestQueryRegistryImageReturnsFoundResult(t *testing.T) {
 	}
 
 	for _, fragment := range []string{
-		"FOUND",
+		"✅ Cloud Image Query",
+		"Result:** Found",
 		"ghcr.io/pingcap/tidb:nightly",
 		"Image Created At (OCI)",
 		"sha256:abc123",
@@ -283,8 +284,10 @@ func TestQueryRegistryImageReturnsRunningWhenWorkflowDoesNotFinishInline(t *test
 	if err != nil {
 		t.Fatalf("queryRegistryImage() error = %v", err)
 	}
-	if !strings.Contains(resp, "RUNNING") {
-		t.Fatalf("expected response to contain RUNNING, got:\n%s", resp)
+	for _, fragment := range []string{"🤷 Cloud Image Query", "Result:** Running"} {
+		if !strings.Contains(resp, fragment) {
+			t.Fatalf("expected response to contain %q, got:\n%s", fragment, resp)
+		}
 	}
 }
 

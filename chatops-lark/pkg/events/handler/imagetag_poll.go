@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
@@ -553,6 +553,38 @@ func renderRegistryImageQueryResponse(outcome *registryImageQueryOutcome) (strin
 	tmpl := template.Must(template.New("markdown").
 		Funcs(sprig.FuncMap()).
 		Funcs(template.FuncMap{
+			"boolLabel": func(v bool) string {
+				if v {
+					return "Yes"
+				}
+				return "No"
+			},
+			"statusIcon": func(status string) string {
+				switch registryImageQueryStatus(status) {
+				case registryImageQueryStatusFound:
+					return "✅"
+				case registryImageQueryStatusNotFound, registryImageQueryStatusRunning, registryImageQueryStatusTimeout:
+					return "🤷"
+				default:
+					return "❌"
+				}
+			},
+			"statusLabel": func(status string) string {
+				switch registryImageQueryStatus(status) {
+				case registryImageQueryStatusFound:
+					return "Found"
+				case registryImageQueryStatusNotFound:
+					return "Not Found"
+				case registryImageQueryStatusAuthFailed:
+					return "Authentication Failed"
+				case registryImageQueryStatusRunning:
+					return "Running"
+				case registryImageQueryStatusTimeout:
+					return "Timed Out"
+				default:
+					return "Failed"
+				}
+			},
 			"toYaml": func(v any) string {
 				yamlBytes, err := yaml.Marshal(v)
 				if err != nil {
