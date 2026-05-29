@@ -199,7 +199,7 @@ func (r *rootHandler) initialize() error {
 			SetupContext: setupCtxDevbuild,
 		}
 	}
-	if registryImageCfg := r.Config.EffectiveRegistryImage(); registryImageCfg != nil {
+	if registryImageCfg := r.Config.RegistryImage; registryImageCfg != nil {
 		r.commandRegistry["/cloud-image"] = CommandConfig{
 			Description:  "Query image metadata from cloud registries through GitHub Actions",
 			Handler:      runCommandRegistryImage,

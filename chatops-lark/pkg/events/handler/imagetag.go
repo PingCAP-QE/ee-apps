@@ -64,7 +64,7 @@ func runCommandRegistryImage(ctx context.Context, args []string) (string, error)
 }
 
 func setupCtxRegistryImage(ctx context.Context, cfg config.Config, _ *CommandActor) context.Context {
-	registryImageCfg := cfg.EffectiveRegistryImage()
+	registryImageCfg := cfg.RegistryImage
 	if registryImageCfg == nil {
 		return ctx
 	}

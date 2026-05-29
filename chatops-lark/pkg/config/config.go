@@ -51,9 +51,6 @@ type Config struct {
 
 	RegistryImage *RegistryImageConfig `yaml:"registry_image" json:"registry_image"`
 
-	// ImageTag is a deprecated compatibility alias for the old pre-merge config block name.
-	ImageTag *RegistryImageConfig `yaml:"image_tag,omitempty" json:"image_tag,omitempty"`
-
 	Hotfix *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
@@ -119,12 +116,4 @@ func (c *Config) Validate() error {
 		return errors.New("app_secret is required")
 	}
 	return nil
-}
-
-func (c Config) EffectiveRegistryImage() *RegistryImageConfig {
-	if c.RegistryImage != nil {
-		return c.RegistryImage
-	}
-
-	return c.ImageTag
 }
