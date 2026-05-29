@@ -21,24 +21,23 @@ const (
 	defaultRegistryImageWorkflow = "query-image-tag.yml"
 )
 
-const registryImageHelpText = `Usage: /registry-image <subcommand> [args...]
+const registryImageHelpText = `Usage: /cloud-image query --repo <repo> --tag <tag>
 
 Subcommands:
-  query <image:tag>          - Query a cloud registry image by full tag reference
-  query <image> --tag <tag>  - Query a cloud registry image with an explicit tag
-  inspect ...                - Alias for query
+  query                      - Query OCI image metadata from a cloud registry by repository and tag
 
 Examples:
-  /registry-image query ghcr.io/pingcap/tidb:nightly
-  /registry-image query registry.example.com/team/image --tag v8.5.0
-  /registry-image inspect tidbcloud-prod-registry.ap-southeast-1.cr.aliyuncs.com/tidbcloud/dm:v26.3.0-nextgen
+  /cloud-image query --repo ghcr.io/pingcap/tidb --tag nightly
+  /cloud-image query --tag v8.5.0 --repo registry.example.com/team/image
+  /cloud-image query --repo tidbcloud-prod-registry.ap-southeast-1.cr.aliyuncs.com/tidbcloud/dm --tag v26.3.0-nextgen
 
 Notes:
-  - This command checks whether the target tag exists in the cloud registry and returns OCI image metadata when found.
+  - This command checks whether the target tag exists in the target cloud registry and returns OCI image metadata when found.
   - Image Created At (OCI) is OCI image metadata, not the registry push/sync time.
   - GitHub authentication comes from backend config, never from chat input.
+  - Use option flags only; positional image:tag arguments are not supported.
 
-Use '/registry-image --help' or '/registry-image -h' to see this message.
+Use '/cloud-image --help' or '/cloud-image -h' to see this message.
 `
 
 type registryImageWorkflowConfig struct {
@@ -55,7 +54,7 @@ func runCommandRegistryImage(ctx context.Context, args []string) (string, error)
 	}
 
 	switch args[0] {
-	case "query", "inspect":
+	case "query":
 		return runCommandRegistryImageQuery(ctx, args[1:])
 	case "-h", "--help":
 		return registryImageHelpText, NewInformationError("Requested command usage")

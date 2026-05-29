@@ -55,32 +55,42 @@ func runCommandRegistryImageQuery(ctx context.Context, args []string) (string, e
 }
 
 func parseCommandRegistryImageQuery(args []string) (*registryImageQueryParams, error) {
-	switch {
-	case len(args) == 1:
-		return parseRegistryImageTaggedReference(args[0])
-	case len(args) == 3 && (args[1] == "--tag" || args[1] == "-t"):
-		return buildRegistryImageQueryParams(args[0], args[2])
-	default:
-		return nil, errors.New(registryImageHelpText)
-	}
-}
-
-func parseRegistryImageTaggedReference(imageRef string) (*registryImageQueryParams, error) {
-	imageRef = strings.TrimSpace(imageRef)
-	if imageRef == "" || strings.Contains(imageRef, "@") {
+	if len(args) == 0 {
 		return nil, errors.New(registryImageHelpText)
 	}
 
-	lastSlash := strings.LastIndex(imageRef, "/")
-	lastColon := strings.LastIndex(imageRef, ":")
-	if lastColon <= lastSlash || lastColon == len(imageRef)-1 {
+	var repository string
+	var tag string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--repo":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return nil, errors.New(registryImageHelpText)
+			}
+			if repository != "" {
+				return nil, errors.New(registryImageHelpText)
+			}
+			repository = args[i+1]
+			i++
+		case "--tag":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return nil, errors.New(registryImageHelpText)
+			}
+			if tag != "" {
+				return nil, errors.New(registryImageHelpText)
+			}
+			tag = args[i+1]
+			i++
+		default:
+			return nil, errors.New(registryImageHelpText)
+		}
+	}
+
+	if repository == "" || tag == "" {
 		return nil, errors.New(registryImageHelpText)
 	}
 
-	return buildRegistryImageQueryParams(imageRef[:lastColon], imageRef[lastColon+1:])
-}
-
-func buildRegistryImageQueryParams(repository, tag string) (*registryImageQueryParams, error) {
 	repository = strings.TrimSpace(repository)
 	tag = strings.TrimSpace(tag)
 	if repository == "" || tag == "" || strings.Contains(repository, "@") {

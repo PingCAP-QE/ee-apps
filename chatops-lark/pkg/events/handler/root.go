@@ -200,8 +200,8 @@ func (r *rootHandler) initialize() error {
 		}
 	}
 	if registryImageCfg := r.Config.EffectiveRegistryImage(); registryImageCfg != nil {
-		r.commandRegistry["/registry-image"] = CommandConfig{
-			Description:  "Query cloud registry image metadata through GitHub Actions",
+		r.commandRegistry["/cloud-image"] = CommandConfig{
+			Description:  "Query image metadata from cloud registries through GitHub Actions",
 			Handler:      runCommandRegistryImage,
 			Audit:        registryImageCfg.Audit,
 			SetupContext: setupCtxRegistryImage,

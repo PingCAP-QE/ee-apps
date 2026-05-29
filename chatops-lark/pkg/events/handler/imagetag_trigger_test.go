@@ -292,20 +292,24 @@ func TestQueryRegistryImageReturnsRunningWhenWorkflowDoesNotFinishInline(t *test
 }
 
 func TestParseCommandRegistryImageQuery(t *testing.T) {
-	params, err := parseCommandRegistryImageQuery([]string{"ghcr.io/pingcap/tidb:nightly"})
+	params, err := parseCommandRegistryImageQuery([]string{"--repo", "ghcr.io/pingcap/tidb", "--tag", "nightly"})
 	if err != nil {
-		t.Fatalf("parseCommandRegistryImageQuery(tagged) error = %v", err)
+		t.Fatalf("parseCommandRegistryImageQuery(canonical) error = %v", err)
 	}
 	if params.Repository != "ghcr.io/pingcap/tidb" || params.Tag != "nightly" {
-		t.Fatalf("unexpected tagged params: %+v", params)
+		t.Fatalf("unexpected canonical params: %+v", params)
 	}
 
-	params, err = parseCommandRegistryImageQuery([]string{"ghcr.io/pingcap/tidb", "--tag", "nightly"})
+	params, err = parseCommandRegistryImageQuery([]string{"--tag", "nightly", "--repo", "ghcr.io/pingcap/tidb"})
 	if err != nil {
-		t.Fatalf("parseCommandRegistryImageQuery(--tag) error = %v", err)
+		t.Fatalf("parseCommandRegistryImageQuery(reordered) error = %v", err)
 	}
 	if params.Repository != "ghcr.io/pingcap/tidb" || params.Tag != "nightly" {
-		t.Fatalf("unexpected --tag params: %+v", params)
+		t.Fatalf("unexpected reordered params: %+v", params)
+	}
+
+	if _, err := parseCommandRegistryImageQuery([]string{"ghcr.io/pingcap/tidb:nightly"}); err == nil {
+		t.Fatal("expected tagged positional syntax to be rejected")
 	}
 }
 
