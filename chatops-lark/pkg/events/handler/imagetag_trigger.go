@@ -116,7 +116,7 @@ func queryRegistryImage(ctx context.Context, params *registryImageQueryParams, g
 	}
 
 	dispatchedAt := time.Now().UTC()
-	inputs := map[string]interface{}{
+	inputs := map[string]any{
 		"registry_url": params.Repository,
 		"image_tag":    params.Tag,
 	}
