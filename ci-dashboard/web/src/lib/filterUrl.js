@@ -99,3 +99,20 @@ export function buildFilterSearch(filters, pathname) {
 export function sameFilters(left, right) {
   return FILTER_QUERY_KEYS.every((key) => (left?.[key] || "") === (right?.[key] || ""));
 }
+
+export function buildNavSearchByPath(filtersByPath, defaultRange, currentFilters) {
+  return NAV_PATHS.reduce((accumulator, pathname) => {
+    const routeFilters = filtersByPath[pathname] || buildDefaultFilters(defaultRange, pathname);
+    return {
+      ...accumulator,
+      [pathname]: buildFilterSearch(
+        {
+          ...routeFilters,
+          start_date: currentFilters.start_date,
+          end_date: currentFilters.end_date,
+        },
+        pathname,
+      ),
+    };
+  }, {});
+}

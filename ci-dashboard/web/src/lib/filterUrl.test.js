@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildDefaultFilters,
   buildFilterSearch,
+  buildNavSearchByPath,
   readFiltersFromSearch,
   sameFilters,
 } from "./filterUrl.js";
@@ -74,4 +75,34 @@ test("compares filter values without being sensitive to object identity", () => 
     ),
     false,
   );
+});
+
+test("keeps the active date range when building links to other tabs", () => {
+  const navSearchByPath = buildNavSearchByPath(
+    {
+      "/flaky": {
+        ...buildDefaultFilters(defaultRange, "/flaky"),
+        start_date: "2026-04-01",
+        end_date: "2026-04-30",
+      },
+    },
+    defaultRange,
+    {
+      ...buildDefaultFilters(defaultRange, "/ci-status"),
+      start_date: "2026-05-25",
+      end_date: "2026-06-01",
+      repo: "pingcap/tidb",
+      branch: "master",
+    },
+  );
+
+  const flakyParams = new URLSearchParams(navSearchByPath["/flaky"]);
+  const migrateParams = new URLSearchParams(navSearchByPath["/migrate-status"]);
+  assert.equal(flakyParams.get("start_date"), "2026-05-25");
+  assert.equal(flakyParams.get("end_date"), "2026-06-01");
+  assert.equal(flakyParams.get("repo"), "pingcap/tidb");
+  assert.equal(flakyParams.get("issue_status"), "closed");
+  assert.equal(migrateParams.get("start_date"), "2026-05-25");
+  assert.equal(migrateParams.get("end_date"), "2026-06-01");
+  assert.equal(migrateParams.get("granularity"), "week");
 });

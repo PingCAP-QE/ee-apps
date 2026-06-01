@@ -12,10 +12,10 @@ import { buildScopeLabel, getDefaultDateRange, useApiData } from "./lib/api";
 import {
   buildDefaultFilters,
   buildFilterSearch,
+  buildNavSearchByPath,
   CI_STATUS_PATH,
   COST_PATH,
   MIGRATE_STATUS_PATH,
-  NAV_PATHS,
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
   sameFilters,
@@ -187,13 +187,7 @@ export default function App() {
     });
   }
 
-  const navSearchByPath = NAV_PATHS.reduce((accumulator, pathname) => {
-    const routeFilters = filtersByPath[pathname] || buildDefaultFilters(defaultRange, pathname);
-    return {
-      ...accumulator,
-      [pathname]: buildFilterSearch(routeFilters, pathname),
-    };
-  }, {});
+  const navSearchByPath = buildNavSearchByPath(filtersByPath, defaultRange, filters);
 
   const filterOptions = {
     repos: REPO_OPTIONS,
