@@ -1581,11 +1581,13 @@ def _build_pod_build_rows_cte(
 ) -> tuple[str, dict[str, Any], dict[str, bool]]:
     where_clause, params = build_common_where(filters, table_alias="b")
     params["final_scheduling_failure_cutoff_at"] = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=30)
+    params["final_scheduling_failure_grace_seconds"] = 30 * 60
     failure_like_states = ", ".join(f"'{state}'" for state in FAILURE_LIKE_STATES)
     builds_table = builds_table_expr(connection, filters, alias="b")
     pod_created_column = _pod_created_column(connection)
     pod_created_select = f"p.{pod_created_column}" if pod_created_column else "NULL"
     scheduling_wait_s = timediff_seconds_expr(connection, "pc.pod_created_at", "pc.scheduled_at")
+    final_scheduling_observed_s = timediff_seconds_expr(connection, "pc.pod_created_at", "pc.last_event_at")
     pull_image_s = timediff_seconds_expr(connection, "pc.first_pulling_at", "pc.first_pulled_at")
     resolved_job_name = "COALESCE(NULLIF(pc.build_job_name, ''), NULLIF(pc.pod_job_name, ''))"
     canonical_job_name = _canonical_job_name_expr(
@@ -1712,8 +1714,27 @@ def _build_pod_build_rows_cte(
             CASE
               WHEN pc.failed_scheduling_count > 0
                AND pc.scheduled_at IS NULL
+               AND LOWER(COALESCE(pc.build_state, '')) IN ({failure_like_states})
                AND pc.last_event_at IS NOT NULL
-               AND pc.last_event_at < :final_scheduling_failure_cutoff_at
+               AND (
+                 (
+                   pc.pod_created_at IS NOT NULL
+                   AND (
+                     (
+                       pc.completion_time IS NULL
+                       AND pc.pod_created_at < :final_scheduling_failure_cutoff_at
+                     )
+                     OR (
+                       pc.last_event_at >= pc.pod_created_at
+                       AND {final_scheduling_observed_s} >= :final_scheduling_failure_grace_seconds
+                     )
+                   )
+                 )
+                 OR (
+                   pc.pod_created_at IS NULL
+                   AND pc.last_event_at < :final_scheduling_failure_cutoff_at
+                 )
+               )
               THEN 1 ELSE 0
             END AS final_scheduling_failure_hit,
             CASE WHEN pc.first_pulling_at IS NOT NULL THEN 1 ELSE 0 END AS pull_attempted,

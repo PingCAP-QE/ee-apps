@@ -662,6 +662,153 @@ def test_runtime_insights_rolls_pods_to_builds_and_uses_effective_categories(sql
     }
 
 
+def test_runtime_ignores_unscheduled_pods_on_successful_builds(sqlite_engine) -> None:
+    build_url = "https://prow.tidb.net/jenkins/job/runtime-success-with-orphan-pod/1/"
+    _insert_build(
+        sqlite_engine,
+        build_id=701,
+        source_prow_job_id="runtime-success-orphan",
+        job_name="job-orphan",
+        state="success",
+        start_time="2026-04-20 10:00:00",
+        normalized_build_url=build_url,
+        completion_time="2026-04-20 10:30:00",
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-orphan-unscheduled",
+        pod_uid="pod-orphan-unscheduled-uid",
+        normalized_build_url=build_url,
+        source_prow_job_id="runtime-success-orphan",
+        job_name="job-orphan",
+        pod_created_at="2026-04-20 10:05:00",
+        scheduled_at=None,
+        first_pulling_at=None,
+        first_pulled_at=None,
+        last_failed_scheduling_at="2026-04-20 10:20:00",
+        failed_scheduling_count=42,
+        last_event_at="2026-04-20 10:20:00",
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-orphan-success",
+        pod_uid="pod-orphan-success-uid",
+        normalized_build_url=build_url,
+        source_prow_job_id="runtime-success-orphan",
+        job_name="job-orphan",
+        pod_created_at="2026-04-20 10:06:00",
+        scheduled_at="2026-04-20 10:07:00",
+        first_pulling_at="2026-04-20 10:08:00",
+        first_pulled_at="2026-04-20 10:08:10",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-20",
+                    "end_date": "2026-04-20",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime_summary"]["final_scheduling_failure_count"] == 0
+    scheduling_series = {
+        item["key"]: item
+        for item in body["scheduling_trend"]["series"]
+    }
+    assert scheduling_series["final_scheduling_failure_count"]["points"] == [["2026-04-20", 0]]
+    assert body["scheduling_failure_jobs"]["items"] == []
+    assert body["scheduling_failure_jobs"]["meta"]["total_failure_job_count"] == 0
+
+
+def test_runtime_requires_observed_grace_window_for_completed_scheduling_failures(sqlite_engine) -> None:
+    short_url = "https://prow.tidb.net/jenkins/job/runtime-short-unscheduled/1/"
+    long_url = "https://prow.tidb.net/jenkins/job/runtime-long-unscheduled/1/"
+    _insert_build(
+        sqlite_engine,
+        build_id=711,
+        source_prow_job_id="runtime-short-unscheduled",
+        job_name="job-unscheduled",
+        state="failure",
+        start_time="2026-04-20 10:00:00",
+        normalized_build_url=short_url,
+        completion_time="2026-04-20 10:20:00",
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-short-unscheduled",
+        pod_uid="pod-short-unscheduled-uid",
+        normalized_build_url=short_url,
+        source_prow_job_id="runtime-short-unscheduled",
+        job_name="job-unscheduled",
+        pod_created_at="2026-04-20 10:05:00",
+        scheduled_at=None,
+        first_pulling_at=None,
+        first_pulled_at=None,
+        last_failed_scheduling_at="2026-04-20 10:20:00",
+        failed_scheduling_count=12,
+        last_event_at="2026-04-20 10:20:00",
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=712,
+        source_prow_job_id="runtime-long-unscheduled",
+        job_name="job-unscheduled",
+        state="failure",
+        start_time="2026-04-20 11:00:00",
+        normalized_build_url=long_url,
+        completion_time="2026-04-20 11:45:00",
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        pod_name="pod-long-unscheduled",
+        pod_uid="pod-long-unscheduled-uid",
+        normalized_build_url=long_url,
+        source_prow_job_id="runtime-long-unscheduled",
+        job_name="job-unscheduled",
+        pod_created_at="2026-04-20 11:05:00",
+        scheduled_at=None,
+        first_pulling_at=None,
+        first_pulled_at=None,
+        last_failed_scheduling_at="2026-04-20 11:40:00",
+        failed_scheduling_count=90,
+        last_event_at="2026-04-20 11:40:00",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/pages/runtime-insights",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-04-20",
+                    "end_date": "2026-04-20",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime_summary"]["final_scheduling_failure_count"] == 1
+    scheduling_series = {
+        item["key"]: item
+        for item in body["scheduling_trend"]["series"]
+    }
+    assert scheduling_series["final_scheduling_failure_count"]["points"] == [["2026-04-20", 1]]
+    assert body["scheduling_failure_jobs"]["meta"]["total_failure_job_count"] == 1
+
+
 def test_scheduling_failure_jobs_include_latest_ten_failure_build_links(sqlite_engine) -> None:
     for index in range(12):
         build_number = 3000 + index
