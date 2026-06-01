@@ -223,11 +223,12 @@ Design implication:
 - implementation note: the first dashboard version uses
   `last_failed_scheduling_at -> scheduled_at` from `ci_l1_pod_lifecycle` for the
   displayed successful-retry duration. A final scheduling failure is currently
-  defined as `failed_scheduling_count > 0`, `scheduled_at IS NULL`, and
-  `last_event_at` older than a 30-minute grace window. The event-table version
-  `first FailedScheduling -> Scheduled` is semantically richer, but it needs a
-  materialized lifecycle field or a faster event rollup before it is safe for the
-  page-level endpoint on production data.
+  defined as `failed_scheduling_count > 0`, `scheduled_at IS NULL`, and an
+  observed unscheduled window of at least 30 minutes. For in-flight builds,
+  `pod_created_at` older than the 30-minute grace window is also treated as
+  stale. The event-table version `first FailedScheduling -> Scheduled` is
+  semantically richer, but it needs a materialized lifecycle field or a faster
+  event rollup before it is safe for the page-level endpoint on production data.
 
 ## 5. Metric Definitions
 

@@ -7,6 +7,7 @@ export function DashboardLayout({
   onFilterChange,
   filterOptions,
   features = {},
+  navSearchByPath = {},
   children,
 }) {
   const currentVersion = packageInfo.version;
@@ -22,16 +23,37 @@ export function DashboardLayout({
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
-          <NavItem to="/" label="Overview" caption="Signal at a glance" />
-          <NavItem to="/ci-status" label="CI Status" caption="Volume and duration" />
-          <NavItem to="/flaky" label="Flaky" caption="Noisy failures and blind-retry-loop patterns" />
-          <NavItem to="/migrate-status" label="GCP Migration" caption="GCP rollout and runtime drift" />
+          <NavItem to="/" search={navSearchByPath["/"]} label="Overview" caption="Signal at a glance" />
+          <NavItem
+            to="/ci-status"
+            search={navSearchByPath["/ci-status"]}
+            label="CI Status"
+            caption="Volume and duration"
+          />
+          <NavItem
+            to="/flaky"
+            search={navSearchByPath["/flaky"]}
+            label="Flaky"
+            caption="Noisy failures and blind-retry-loop patterns"
+          />
+          <NavItem
+            to="/migrate-status"
+            search={navSearchByPath["/migrate-status"]}
+            label="GCP Migration"
+            caption="GCP rollout and runtime drift"
+          />
           {showCostDashboard && (
-            <NavItem to="/cost" label="Cost" caption="Spend by repo and engineering ownership" />
+            <NavItem
+              to="/cost"
+              search={navSearchByPath["/cost"]}
+              label="Cost"
+              caption="Spend by repo and engineering ownership"
+            />
           )}
           {showRuntimeInsights && (
             <NavItem
               to="/runtime-insights"
+              search={navSearchByPath["/runtime-insights"]}
               label="CI details insight"
               caption="Pod and Jenkins diagnosis"
             />
@@ -59,10 +81,10 @@ export function DashboardLayout({
   );
 }
 
-function NavItem({ to, label, caption }) {
+function NavItem({ to, search = "", label, caption }) {
   return (
     <NavLink
-      to={to}
+      to={`${to}${search || ""}`}
       end={to === "/"}
       className={({ isActive }) =>
         isActive ? "sidebar-link sidebar-link--active" : "sidebar-link"

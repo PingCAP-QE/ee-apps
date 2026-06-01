@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { DashboardLayout } from "./components/layout";
 import OverviewPage from "./pages/OverviewPage";
@@ -9,6 +9,18 @@ import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
 import { buildScopeLabel, getDefaultDateRange, useApiData } from "./lib/api";
+import {
+  buildDefaultFilters,
+  buildFilterSearch,
+  buildNavSearchByPath,
+  CI_STATUS_PATH,
+  COST_PATH,
+  MIGRATE_STATUS_PATH,
+  readFiltersFromSearch,
+  RUNTIME_INSIGHTS_PATH,
+  sameFilters,
+  WEEK_GRANULARITY_PATHS,
+} from "./lib/filterUrl";
 
 const REPO_OPTIONS = [{ value: "pingcap/tidb", label: "pingcap/tidb" }];
 const BRANCH_OPTIONS = [
@@ -16,55 +28,16 @@ const BRANCH_OPTIONS = [
   { value: "master", label: "master" },
   { value: "release-8.5", label: "release-8.5" },
 ];
-const CI_STATUS_PATH = "/ci-status";
-const MIGRATE_STATUS_PATH = "/migrate-status";
-const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
-const COST_PATH = "/cost";
-const WEEK_GRANULARITY_PATHS = new Set([
-  CI_STATUS_PATH,
-  MIGRATE_STATUS_PATH,
-  RUNTIME_INSIGHTS_PATH,
-  COST_PATH,
-]);
-
-function buildDefaultFilters(defaultRange, pathname) {
-  const costRange =
-    pathname === COST_PATH
-      ? {
-          start_date: defaultRange.end_date.slice(0, 8) + "01",
-          end_date: defaultRange.end_date,
-        }
-      : defaultRange;
-  const baseFilters = {
-    repo: "",
-    branch: "",
-    job_name: "",
-    cloud_phase: "",
-    issue_status: "",
-    granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
-    start_date: costRange.start_date,
-    end_date: costRange.end_date,
-  };
-
-  if (pathname === "/flaky") {
-    return {
-      ...baseFilters,
-      repo: "pingcap/tidb",
-      branch: "master",
-      issue_status: "closed",
-    };
-  }
-
-  return baseFilters;
-}
 
 export default function App() {
   const [defaultRange] = useState(() => getDefaultDateRange());
   const location = useLocation();
+  const navigate = useNavigate();
   const [filtersByPath, setFiltersByPath] = useState(() => ({
-    [location.pathname]: buildDefaultFilters(defaultRange, location.pathname),
+    [location.pathname]: readFiltersFromSearch(defaultRange, location.pathname, location.search),
   }));
-  const filters = filtersByPath[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+  const filters = filtersByPath[location.pathname]
+    || readFiltersFromSearch(defaultRange, location.pathname, location.search);
   const navigation = useApiData("/api/v1/pages/navigation");
   const runtimeInsightsEnabled = navigation.data?.features?.runtime_insights_enabled === true;
   const costDashboardEnabled = navigation.data?.features?.cost_dashboard_enabled === true;
@@ -86,17 +59,32 @@ export default function App() {
   );
 
   useEffect(() => {
+    const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
     setFiltersByPath((current) => {
-      if (current[location.pathname]) {
+      if (sameFilters(current[location.pathname], urlFilters)) {
         return current;
       }
 
       return {
         ...current,
-        [location.pathname]: buildDefaultFilters(defaultRange, location.pathname),
+        [location.pathname]: urlFilters,
       };
     });
-  }, [defaultRange, location.pathname]);
+  }, [defaultRange, location.pathname, location.search]);
+
+  useEffect(() => {
+    const nextSearch = buildFilterSearch(filters, location.pathname);
+    if (nextSearch === location.search) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch,
+      },
+      { replace: true },
+    );
+  }, [filters, location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (location.pathname !== "/flaky") {
@@ -104,7 +92,8 @@ export default function App() {
     }
 
     setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+      const routeFilters = current[location.pathname]
+        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
       if (routeFilters.repo || routeFilters.branch || routeFilters.issue_status) {
         return current;
       }
@@ -119,7 +108,7 @@ export default function App() {
         },
       };
     });
-  }, [defaultRange, location.pathname]);
+  }, [defaultRange, location.pathname, location.search]);
 
   useEffect(() => {
     if (!WEEK_GRANULARITY_PATHS.has(location.pathname)) {
@@ -127,7 +116,8 @@ export default function App() {
     }
 
     setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+      const routeFilters = current[location.pathname]
+        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
       const hasValidGranularity = location.pathname === COST_PATH
         ? routeFilters.granularity === "week" || routeFilters.granularity === "month"
         : routeFilters.granularity === "week";
@@ -143,7 +133,7 @@ export default function App() {
         },
       };
     });
-  }, [defaultRange, location.pathname]);
+  }, [defaultRange, location.pathname, location.search]);
 
   const jobs = useApiData(
     "/api/v1/filters/jobs",
@@ -164,7 +154,8 @@ export default function App() {
 
   function handleFilterChange(key, value) {
     setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname] || buildDefaultFilters(defaultRange, location.pathname);
+      const routeFilters = current[location.pathname]
+        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
       if (key === "repo") {
         return {
           ...current,
@@ -196,6 +187,8 @@ export default function App() {
     });
   }
 
+  const navSearchByPath = buildNavSearchByPath(filtersByPath, defaultRange, filters);
+
   const filterOptions = {
     repos: REPO_OPTIONS,
     branches: BRANCH_OPTIONS,
@@ -210,6 +203,7 @@ export default function App() {
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
       features={{ runtimeInsightsEnabled, costDashboardEnabled }}
+      navSearchByPath={navSearchByPath}
     >
       <Routes>
         <Route path="/" element={<OverviewPage filters={filters} />} />
