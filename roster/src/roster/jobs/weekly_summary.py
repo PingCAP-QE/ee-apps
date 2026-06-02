@@ -17,6 +17,11 @@ DEFAULT_DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True)
+class LarkRecipient:
+    receive_id: str
+
+
+@dataclass(frozen=True)
 class RosterChangeItem:
     event_type: str
     employee_name: str
@@ -118,17 +123,36 @@ def send_weekly_roster_summary_to_lark(
     client: LarkApiClient,
     open_id: str,
 ) -> None:
-    token = client.tenant_access_token()
-    client.post(
-        "/im/v1/messages",
-        params={"receive_id_type": "open_id"},
-        json_body={
-            "receive_id": open_id,
-            "msg_type": "text",
-            "content": json.dumps({"text": summary.render_text()}, ensure_ascii=False),
-        },
-        token=token,
+    send_weekly_roster_summary_to_lark_recipients(
+        summary,
+        client=client,
+        open_ids=[open_id],
     )
+
+
+def send_weekly_roster_summary_to_lark_recipients(
+    summary: WeeklyRosterSummary,
+    *,
+    client: LarkApiClient,
+    open_ids: Sequence[str] = (),
+) -> None:
+    recipients = _build_lark_recipients(open_ids=open_ids)
+    if not recipients:
+        raise ValueError("at least one Lark recipient is required")
+
+    token = client.tenant_access_token()
+    content = json.dumps({"text": summary.render_text()}, ensure_ascii=False)
+    for recipient in recipients:
+        client.post(
+            "/im/v1/messages",
+            params={"receive_id_type": "open_id"},
+            json_body={
+                "receive_id": recipient.receive_id,
+                "msg_type": "text",
+                "content": content,
+            },
+            token=token,
+        )
 
 
 def _row_to_change_item(row) -> RosterChangeItem:
@@ -178,3 +202,20 @@ def _person_text(name: str | None, email: str | None) -> str:
 def _format_display_date(value: datetime) -> str:
     aware = value.replace(tzinfo=UTC)
     return aware.astimezone(DEFAULT_DISPLAY_TIMEZONE).strftime("%Y-%m-%d")
+
+
+def _build_lark_recipients(
+    *,
+    open_ids: Sequence[str],
+) -> list[LarkRecipient]:
+    recipients: list[LarkRecipient] = []
+    seen: set[str] = set()
+
+    for value in open_ids:
+        stripped = value.strip()
+        if not stripped or stripped in seen:
+            continue
+        seen.add(stripped)
+        recipients.append(LarkRecipient(receive_id=stripped))
+
+    return recipients
