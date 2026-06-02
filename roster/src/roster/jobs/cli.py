@@ -14,7 +14,7 @@ from roster.jobs.validate_lark import validate_lark_roster
 from roster.jobs.weekly_summary import (
     DEFAULT_WEEKLY_SUMMARY_DAYS,
     load_weekly_roster_summary,
-    send_weekly_roster_summary_to_lark,
+    send_weekly_roster_summary_to_lark_recipients,
 )
 from roster.sources.lark import LarkApiClient, LarkRosterSource
 
@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     weekly_summary.add_argument(
         "--send-lark",
         action="store_true",
-        help="Send the weekly summary to ROSTER_LARK_NOTIFY_OPEN_ID",
+        help="Send the weekly summary to configured Lark recipients",
     )
     subparsers.add_parser("validate-lark", help="Fetch Lark roster data and print field quality summary")
     validate_history = subparsers.add_parser(
@@ -82,12 +82,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "weekly-summary --send-lark requires "
                         "ROSTER_LARK_APP_ID and ROSTER_LARK_APP_SECRET"
                     )
-                if not settings.lark.notify_open_id:
-                    raise SystemExit("weekly-summary --send-lark requires ROSTER_LARK_NOTIFY_OPEN_ID")
-                send_weekly_roster_summary_to_lark(
+                if not settings.lark.has_notify_targets:
+                    raise SystemExit(
+                        "weekly-summary --send-lark requires "
+                        "ROSTER_LARK_NOTIFY_OPEN_ID or ROSTER_LARK_NOTIFY_OPEN_IDS"
+                    )
+                send_weekly_roster_summary_to_lark_recipients(
                     summary,
                     client=LarkApiClient(settings.lark.app_id, settings.lark.app_secret),
-                    open_id=settings.lark.notify_open_id,
+                    open_ids=settings.lark.all_notify_open_ids,
                 )
             else:
                 print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))

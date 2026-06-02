@@ -160,6 +160,8 @@ def test_main_weekly_summary_sends_lark(monkeypatch) -> None:
         app_id="cli_xxx",
         app_secret="secret",
         notify_open_id="ou_xxx",
+        all_notify_open_ids=("ou_xxx",),
+        has_notify_targets=True,
     )
     settings = SimpleNamespace(log_level="INFO", lark=lark_settings)
     engine = SimpleNamespace(dispose=lambda: calls.setdefault("disposed", True))
@@ -176,15 +178,15 @@ def test_main_weekly_summary_sends_lark(monkeypatch) -> None:
         lambda app_id, app_secret: calls.setdefault("client", (app_id, app_secret)) and client,
     )
 
-    def fake_send(summary_arg, *, client, open_id):
-        calls["send"] = (summary_arg, client, open_id)
+    def fake_send(summary_arg, *, client, open_ids):
+        calls["send"] = (summary_arg, client, open_ids)
 
-    monkeypatch.setattr(cli, "send_weekly_roster_summary_to_lark", fake_send)
+    monkeypatch.setattr(cli, "send_weekly_roster_summary_to_lark_recipients", fake_send)
 
     assert cli.main(["weekly-summary", "--send-lark"]) == 0
     assert calls == {
         "client": ("cli_xxx", "secret"),
-        "send": (summary, client, "ou_xxx"),
+        "send": (summary, client, ("ou_xxx",)),
         "disposed": True,
     }
 

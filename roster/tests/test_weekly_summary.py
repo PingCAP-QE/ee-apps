@@ -9,6 +9,7 @@ from roster.jobs.sync_roster import employee_change_events_table, metadata
 from roster.jobs.weekly_summary import (
     load_weekly_roster_summary,
     send_weekly_roster_summary_to_lark,
+    send_weekly_roster_summary_to_lark_recipients,
 )
 from roster.sources.lark import LarkApiClient
 
@@ -114,6 +115,33 @@ def test_send_weekly_roster_summary_to_lark_sends_text_message() -> None:
     assert message_call["json_body"]["msg_type"] == "text"
     content = json.loads(message_call["json_body"]["content"])
     assert "本周没有入职、离职、换组记录。" in content["text"]
+
+
+def test_send_weekly_roster_summary_to_lark_recipients_supports_multiple_open_ids() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+    now = datetime.fromisoformat("2026-05-25T01:00:00")
+    summary = load_weekly_roster_summary(engine, now=now, days=7)
+    transport = FakeTransport(
+        [
+            {"code": 0, "tenant_access_token": "token"},
+            {"code": 0, "data": {"message_id": "om_open"}},
+            {"code": 0, "data": {"message_id": "om_second"}},
+        ]
+    )
+
+    send_weekly_roster_summary_to_lark_recipients(
+        summary,
+        client=LarkApiClient("app_id", "app_secret", transport=transport),
+        open_ids=["ou_xxx", "ou_yyy"],
+    )
+
+    first_call = transport.calls[1]
+    second_call = transport.calls[2]
+    assert first_call["params"] == {"receive_id_type": "open_id"}
+    assert first_call["json_body"]["receive_id"] == "ou_xxx"
+    assert second_call["params"] == {"receive_id_type": "open_id"}
+    assert second_call["json_body"]["receive_id"] == "ou_yyy"
 
 
 def _event_row(

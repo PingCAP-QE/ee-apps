@@ -41,11 +41,23 @@ class LarkSettings:
     app_secret: str | None = None
     github_custom_attr_id: str | None = None
     notify_open_id: str | None = None
+    notify_open_ids: tuple[str, ...] = ()
     root_department_id: str = "0"
 
     @property
     def is_configured(self) -> bool:
         return bool(self.app_id and self.app_secret)
+
+    @property
+    def all_notify_open_ids(self) -> tuple[str, ...]:
+        values = list(self.notify_open_ids)
+        if self.notify_open_id:
+            values.insert(0, self.notify_open_id)
+        return _normalize_values(values)
+
+    @property
+    def has_notify_targets(self) -> bool:
+        return bool(self.all_notify_open_ids)
 
 
 @dataclass(frozen=True)
@@ -99,6 +111,7 @@ def load_settings(
             app_secret=env.get("ROSTER_LARK_APP_SECRET") or None,
             github_custom_attr_id=env.get("ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID") or None,
             notify_open_id=env.get("ROSTER_LARK_NOTIFY_OPEN_ID") or None,
+            notify_open_ids=_read_csv(env.get("ROSTER_LARK_NOTIFY_OPEN_IDS")),
             root_department_id=env.get("ROSTER_LARK_ROOT_DEPARTMENT_ID") or "0",
         ),
         log_level=(env.get("ROSTER_LOG_LEVEL") or "INFO").upper(),
@@ -123,3 +136,21 @@ def _read_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: in
         if key in environ:
             return _read_int(environ, key, default)
     return default
+
+
+def _read_csv(raw: str | None) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    return _normalize_values(raw.split(","))
+
+
+def _normalize_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for value in values:
+        stripped = value.strip()
+        if not stripped or stripped in seen:
+            continue
+        seen.add(stripped)
+        normalized.append(stripped)
+    return tuple(normalized)

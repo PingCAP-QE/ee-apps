@@ -61,8 +61,13 @@ Optional Lark settings:
 ```bash
 ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID=...
 ROSTER_LARK_NOTIFY_OPEN_ID=...
+ROSTER_LARK_NOTIFY_OPEN_IDS=ou_xxx,ou_yyy
 ROSTER_LARK_ROOT_DEPARTMENT_ID=0
 ```
+
+`ROSTER_LARK_NOTIFY_OPEN_ID` stays supported for the existing single-recipient setup.
+Use `ROSTER_LARK_NOTIFY_OPEN_IDS` when the weekly summary should be sent to
+multiple users.
 
 ## Kubernetes CronJob
 
