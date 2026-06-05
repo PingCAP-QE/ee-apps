@@ -4,9 +4,10 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
 
-from cost_insight.common.config import GcpBillingSettings
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.refresh_attribution_daily import (
+    CostAttributionSource,
     JOB_NAME,
     SUMMARY_JOB_NAME,
     _INSERT_ATTRIBUTION_DAILY,
@@ -17,6 +18,8 @@ from cost_insight.jobs.refresh_attribution_daily import (
     run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
+
+SOURCE = CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account")
 
 
 def _sqlite_engine():
@@ -42,10 +45,12 @@ def _sqlite_engine():
 
 def test_watermark_formats_dates() -> None:
     assert _watermark(
+        vendor="gcp",
         account_id="pingcap-testing-account",
         start_date=date(2026, 5, 9),
         end_date=date(2026, 5, 17),
     ) == {
+        "vendor": "gcp",
         "account_id": "pingcap-testing-account",
         "start_date": "2026-05-09",
         "end_date": "2026-05-17",
@@ -99,7 +104,7 @@ def test_run_refresh_attribution_dry_run_counts_raw_rows() -> None:
 
         summary = run_refresh_cost_attribution_daily(
             engine,
-            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
             dry_run=True,
@@ -110,7 +115,13 @@ def test_run_refresh_attribution_dry_run_counts_raw_rows() -> None:
         assert summary.rows_inserted == 0
         assert summary.dry_run is True
         with engine.begin() as connection:
-            assert state_store.get_job_state(connection, JOB_NAME) is None
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
+                )
+                is None
+            )
     finally:
         engine.dispose()
 
@@ -144,7 +155,7 @@ def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> N
 
         summary = run_refresh_cost_attribution_from_summary(
             engine,
-            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
             dry_run=True,
@@ -155,7 +166,17 @@ def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> N
         assert summary.rows_inserted == 0
         assert summary.dry_run is True
         with engine.begin() as connection:
-            assert state_store.get_job_state(connection, SUMMARY_JOB_NAME) is None
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor=SOURCE.vendor,
+                        account_id=SOURCE.account_id,
+                    ),
+                )
+                is None
+            )
     finally:
         engine.dispose()
 
@@ -188,7 +209,7 @@ def test_run_refresh_attribution_marks_success(monkeypatch) -> None:
     try:
         summary = run_refresh_cost_attribution_daily(
             engine,
-            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
         )
@@ -198,7 +219,10 @@ def test_run_refresh_attribution_marks_success(monkeypatch) -> None:
         assert [kind for kind, _params in executed] == ["delete", "insert"]
         assert executed[0][1]["account_id"] == "pingcap-testing-account"
         with engine.begin() as connection:
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
+            )
         assert state is not None
         assert state.last_status == "succeeded"
     finally:
@@ -233,7 +257,7 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
     try:
         summary = run_refresh_cost_attribution_from_summary(
             engine,
-            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
         )
@@ -242,7 +266,14 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
         assert summary.rows_inserted == 5
         assert [kind for kind, _params in executed] == ["delete", "insert-summary"]
         with engine.begin() as connection:
-            state = state_store.get_job_state(connection, SUMMARY_JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(
+                    SUMMARY_JOB_NAME,
+                    vendor=SOURCE.vendor,
+                    account_id=SOURCE.account_id,
+                ),
+            )
         assert state is not None
         assert state.last_status == "succeeded"
     finally:
@@ -264,13 +295,16 @@ def test_run_refresh_attribution_marks_failure(monkeypatch) -> None:
         with pytest.raises(RuntimeError, match="delete failed"):
             run_refresh_cost_attribution_daily(
                 engine,
-                settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+                source=SOURCE,
                 start_date=date(2026, 5, 9),
                 end_date=date(2026, 5, 10),
             )
 
         with engine.begin() as connection:
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
+            )
         assert state is not None
         assert state.last_status == "failed"
         assert "RuntimeError" in (state.last_error or "")
@@ -284,7 +318,7 @@ def test_run_refresh_attribution_rejects_invalid_range() -> None:
         with pytest.raises(ValueError, match="start_date"):
             run_refresh_cost_attribution_daily(
                 engine,
-                settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+                source=SOURCE,
                 start_date=date(2026, 5, 10),
                 end_date=date(2026, 5, 9),
             )

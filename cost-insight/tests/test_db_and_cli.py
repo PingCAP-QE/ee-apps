@@ -1,15 +1,51 @@
 from datetime import date
 from types import SimpleNamespace
 
+from sqlalchemy import create_engine, text
+
 from cost_insight.common import db
-from cost_insight.common.config import DatabaseSettings, GcpBillingSettings, Settings
+from cost_insight.common.config import AwsBillingSettings, DatabaseSettings, GcpBillingSettings, Settings
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
 from cost_insight.jobs.backfill_cost_refine_from_raw import BackfillCostRefineFromRawSummary
-from cost_insight.jobs.refresh_attribution_daily import RefreshAttributionSummary
+from cost_insight.jobs.refresh_attribution_daily import CostAttributionSource, RefreshAttributionSummary
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
 from cost_insight.jobs.sync_gcp_unmatched_resources import SyncGcpUnmatchedResourcesSummary
+
+
+def _sqlite_source_engine():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_sources (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  vendor TEXT NOT NULL,
+                  account_id TEXT NOT NULL,
+                  billing_account_id TEXT,
+                  display_name TEXT,
+                  is_active INTEGER NOT NULL DEFAULT 1,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE(vendor, account_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_sources (vendor, account_id, display_name, is_active)
+                VALUES
+                  ('gcp', 'pingcap-testing-account', 'PingCAP Testing', 1),
+                  ('gcp', 'qa-infra-dev', 'QA Infra Dev', 1),
+                  ('aws', '946646677266', 'QA Infra Dev AWS', 1)
+                """
+            )
+        )
+    return engine
 
 
 def test_build_engine_uses_database_url(monkeypatch) -> None:
@@ -77,6 +113,7 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
@@ -133,6 +170,7 @@ def test_cli_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
@@ -184,17 +222,19 @@ def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(engine, *, settings, start_date, end_date, dry_run):
+    def fake_refresh(engine, *, source, start_date, end_date, dry_run):
         captured["engine"] = engine
-        captured["settings"] = settings
+        captured["source"] = source
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=2,
@@ -225,6 +265,10 @@ def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
     assert captured["start_date"] == date(2026, 5, 9)
     assert captured["end_date"] == date(2026, 5, 17)
     assert captured["dry_run"] is True
+    assert captured["source"] == CostAttributionSource(
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+    )
     assert '"rows_inserted": 3' in output
     assert '"raw_rows": 10' in output
 
@@ -239,6 +283,7 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
@@ -294,6 +339,7 @@ def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
@@ -344,6 +390,7 @@ def test_cli_runs_backfill_cost_refine_from_raw_command(monkeypatch, capsys) -> 
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
@@ -402,17 +449,19 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(engine, *, settings, start_date, end_date, dry_run):
+    def fake_refresh(engine, *, source, start_date, end_date, dry_run):
         captured["engine"] = engine
-        captured["settings"] = settings
+        captured["source"] = source
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=2,
@@ -442,6 +491,10 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
     assert disposed == [True]
     assert captured["start_date"] == date(2026, 5, 9)
     assert captured["end_date"] == date(2026, 5, 17)
+    assert captured["source"] == CostAttributionSource(
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+    )
     assert '"summary_rows": 10' in output
 
 
@@ -454,13 +507,15 @@ def test_cli_refresh_attribution_split_by_day_runs_each_date(monkeypatch, capsys
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(_engine, *, settings, start_date, end_date, dry_run):
+    def fake_refresh(_engine, *, source, start_date, end_date, dry_run):
         calls.append((start_date, end_date, dry_run))
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=0,
@@ -502,3 +557,232 @@ def test_date_range_rejects_invalid_range() -> None:
         assert "--start-date" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected ValueError")
+
+
+def test_run_sync_gcp_command_split_by_day_requires_dates() -> None:
+    args = SimpleNamespace(
+        split_by_day=True,
+        start_date=None,
+        end_date=None,
+        dry_run=False,
+        limit=None,
+    )
+
+    try:
+        cli._run_sync_gcp_command(object(), settings=GcpBillingSettings(), args=args)
+    except ValueError as exc:
+        assert "--split-by-day" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError")
+
+
+def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return SyncGcpBillingSummaryResult(
+            account_id=kwargs["account_id"],
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            rows_seen=4,
+            rows_written=4,
+            dry_run=kwargs["dry_run"],
+            touched_usage_dates=(date(2026, 5, 17),),
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_run)
+
+    exit_code = cli.main(
+        [
+            "sync-aws-billing-summary",
+            "--export-partition-start",
+            "2026-05-01",
+            "--export-partition-end",
+            "2026-05-01",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["account_id"] == "946646677266"
+    assert '"account_id": "946646677266"' in output
+    assert '"rows_written": 4' in output
+
+
+def test_cli_runs_sync_aws_unmatched_resources_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=kwargs["account_id"],
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            rows_seen=5,
+            rows_written=5,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fake_run)
+
+    exit_code = cli.main(
+        [
+            "sync-aws-unmatched-resources",
+            "--usage-start-date",
+            "2026-05-17",
+            "--usage-end-date",
+            "2026-05-18",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["account_id"] == "946646677266"
+    assert captured["usage_start_date"] == date(2026, 5, 17)
+    assert '"rows_seen": 5' in output
+
+
+def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
+    calls = []
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
+        log_level="INFO",
+    )
+
+    def fake_refresh(_engine, *, source, start_date, end_date, dry_run):
+        calls.append((source.account_id, start_date, end_date, dry_run))
+        return RefreshAttributionSummary(
+            vendor=source.vendor,
+            account_id=source.account_id,
+            start_date=start_date,
+            end_date=end_date,
+            rows_deleted=0,
+            rows_inserted=1,
+            dry_run=dry_run,
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_refresh_cost_attribution_from_summary", fake_refresh)
+
+    assert (
+        cli.main(
+            [
+                "refresh-cost-attribution-from-summary",
+                "--start-date",
+                "2026-05-09",
+                "--end-date",
+                "2026-05-10",
+                "--split-by-day",
+            ]
+        )
+        == 0
+    )
+
+    assert calls == [
+        ("pingcap-testing-account", date(2026, 5, 9), date(2026, 5, 9), False),
+        ("pingcap-testing-account", date(2026, 5, 10), date(2026, 5, 10), False),
+    ]
+    assert '"start_date": "2026-05-09"' in capsys.readouterr().out
+
+
+def test_cli_source_resolution_prefers_active_registry() -> None:
+    engine = _sqlite_source_engine()
+    try:
+        gcp_sources = cli._resolve_gcp_sources(
+            engine,
+            settings=GcpBillingSettings(account_id="fallback-project"),
+        )
+        aws_sources = cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+        )
+        attribution_sources = cli._resolve_attribution_sources(
+            engine,
+            gcp_settings=GcpBillingSettings(account_id="fallback-project"),
+            aws_settings=AwsBillingSettings(account_id="000000000000"),
+        )
+
+        assert [settings.account_id for settings in gcp_sources] == [
+            "pingcap-testing-account",
+            "qa-infra-dev",
+        ]
+        assert aws_sources == ("946646677266",)
+        assert [(source.vendor, source.account_id) for source in attribution_sources] == [
+            ("aws", "946646677266"),
+            ("gcp", "pingcap-testing-account"),
+            ("gcp", "qa-infra-dev"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_cli_source_resolution_falls_back_when_registry_missing() -> None:
+    gcp_sources = cli._resolve_gcp_sources(
+        object(),
+        settings=GcpBillingSettings(account_id="fallback-project"),
+    )
+    aws_sources = cli._resolve_aws_sources(
+        object(),
+        settings=AwsBillingSettings(account_id="946646677266"),
+    )
+    attribution_sources = cli._resolve_attribution_sources(
+        object(),
+        gcp_settings=GcpBillingSettings(account_id="fallback-project"),
+        aws_settings=AwsBillingSettings(account_id="946646677266"),
+    )
+
+    assert [settings.account_id for settings in gcp_sources] == ["fallback-project"]
+    assert aws_sources == ("946646677266",)
+    assert [(source.vendor, source.account_id) for source in attribution_sources] == [
+        ("gcp", "fallback-project"),
+        ("aws", "946646677266"),
+    ]
+
+
+def test_cli_aws_source_resolution_returns_empty_without_registry_or_fallback(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        assert cli._resolve_aws_sources(object(), settings=AwsBillingSettings()) == ()
+    assert "No active AWS cost sources found" in caplog.text

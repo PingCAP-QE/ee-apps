@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_unmatched_resources import (
     JOB_NAME,
     _normalize_resource_row,
@@ -141,7 +142,10 @@ def test_run_sync_gcp_unmatched_resources_writes_rows() -> None:
             count = connection.execute(
                 text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
             ).scalar_one()
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
         assert count == 1
         assert state is not None
         assert state.last_status == "succeeded"

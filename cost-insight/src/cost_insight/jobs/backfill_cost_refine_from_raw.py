@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import coerce_date
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_summary import (
     JOB_NAME as SUMMARY_JOB_NAME,
 )
@@ -56,6 +57,7 @@ def run_backfill_cost_refine_from_raw(
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
 
+    job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
     params = {
         "vendor": "gcp",
         "account_id": settings.account_id,
@@ -70,7 +72,7 @@ def run_backfill_cost_refine_from_raw(
 
     if not dry_run:
         with engine.begin() as connection:
-            state_store.mark_job_started(connection, JOB_NAME, watermark)
+            state_store.mark_job_started(connection, job_name, watermark)
 
     try:
         summary_rows_seen = 0
@@ -127,7 +129,11 @@ def run_backfill_cost_refine_from_raw(
             with engine.begin() as connection:
                 state_store.mark_job_succeeded(
                     connection,
-                    SUMMARY_JOB_NAME,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor="gcp",
+                        account_id=settings.account_id,
+                    ),
                     summary_watermark(
                         account_id=settings.account_id,
                         export_partition_start=export_partition_start,
@@ -138,7 +144,7 @@ def run_backfill_cost_refine_from_raw(
 
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_succeeded(connection, JOB_NAME, watermark)
+                state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return BackfillCostRefineFromRawSummary(
             account_id=settings.account_id,
@@ -157,7 +163,7 @@ def run_backfill_cost_refine_from_raw(
         LOG.exception("backfill_cost_refine_from_raw failed")
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_failed(connection, JOB_NAME, watermark, repr(exc))
+                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         raise
 
 

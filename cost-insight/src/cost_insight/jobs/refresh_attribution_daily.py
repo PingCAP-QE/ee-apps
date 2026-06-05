@@ -8,18 +8,24 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from cost_insight.common.config import GcpBillingSettings
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs import state_store
 
 LOG = logging.getLogger(__name__)
 
 JOB_NAME = "refresh_cost_attribution_daily"
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
-VENDOR = "gcp"
+
+
+@dataclass(frozen=True)
+class CostAttributionSource:
+    vendor: str
+    account_id: str
 
 
 @dataclass(frozen=True)
 class RefreshAttributionSummary:
+    vendor: str
     account_id: str
     start_date: date
     end_date: date
@@ -33,7 +39,7 @@ class RefreshAttributionSummary:
 def run_refresh_cost_attribution_daily(
     engine: Engine,
     *,
-    settings: GcpBillingSettings,
+    source: CostAttributionSource,
     start_date: date,
     end_date: date,
     dry_run: bool = False,
@@ -42,18 +48,20 @@ def run_refresh_cost_attribution_daily(
         raise ValueError("start_date must be before or equal to end_date")
 
     params = {
-        "vendor": VENDOR,
-        "account_id": settings.account_id,
+        "vendor": source.vendor,
+        "account_id": source.account_id,
         "start_date": start_date,
         "end_date": end_date,
     }
-    watermark = _watermark(account_id=settings.account_id, start_date=start_date, end_date=end_date)
+    watermark = _watermark(vendor=source.vendor, account_id=source.account_id, start_date=start_date, end_date=end_date)
+    job_name = source_job_name(JOB_NAME, vendor=source.vendor, account_id=source.account_id)
 
     if dry_run:
         with engine.begin() as connection:
             raw_rows = connection.execute(_COUNT_RAW_DETAILS, params).scalar_one()
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=0,
@@ -64,15 +72,16 @@ def run_refresh_cost_attribution_daily(
 
     try:
         with engine.begin() as connection:
-            state_store.mark_job_started(connection, JOB_NAME, watermark)
+            state_store.mark_job_started(connection, job_name, watermark)
 
         with engine.begin() as connection:
             delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
             insert_result = connection.execute(_INSERT_ATTRIBUTION_DAILY, params)
-            state_store.mark_job_succeeded(connection, JOB_NAME, watermark)
+            state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=_positive_rowcount(delete_result.rowcount),
@@ -82,14 +91,14 @@ def run_refresh_cost_attribution_daily(
     except Exception as exc:
         LOG.exception("refresh_cost_attribution_daily failed")
         with engine.begin() as connection:
-            state_store.mark_job_failed(connection, JOB_NAME, watermark, repr(exc))
+            state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         raise
 
 
 def run_refresh_cost_attribution_from_summary(
     engine: Engine,
     *,
-    settings: GcpBillingSettings,
+    source: CostAttributionSource,
     start_date: date,
     end_date: date,
     dry_run: bool = False,
@@ -98,18 +107,20 @@ def run_refresh_cost_attribution_from_summary(
         raise ValueError("start_date must be before or equal to end_date")
 
     params = {
-        "vendor": VENDOR,
-        "account_id": settings.account_id,
+        "vendor": source.vendor,
+        "account_id": source.account_id,
         "start_date": start_date,
         "end_date": end_date,
     }
-    watermark = _watermark(account_id=settings.account_id, start_date=start_date, end_date=end_date)
+    watermark = _watermark(vendor=source.vendor, account_id=source.account_id, start_date=start_date, end_date=end_date)
+    job_name = source_job_name(SUMMARY_JOB_NAME, vendor=source.vendor, account_id=source.account_id)
 
     if dry_run:
         with engine.begin() as connection:
             summary_rows = connection.execute(_COUNT_SUMMARY_DETAILS, params).scalar_one()
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=0,
@@ -120,15 +131,16 @@ def run_refresh_cost_attribution_from_summary(
 
     try:
         with engine.begin() as connection:
-            state_store.mark_job_started(connection, SUMMARY_JOB_NAME, watermark)
+            state_store.mark_job_started(connection, job_name, watermark)
 
         with engine.begin() as connection:
             delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
             insert_result = connection.execute(_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY, params)
-            state_store.mark_job_succeeded(connection, SUMMARY_JOB_NAME, watermark)
+            state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return RefreshAttributionSummary(
-            account_id=settings.account_id,
+            vendor=source.vendor,
+            account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
             rows_deleted=_positive_rowcount(delete_result.rowcount),
@@ -138,12 +150,13 @@ def run_refresh_cost_attribution_from_summary(
     except Exception as exc:
         LOG.exception("refresh_cost_attribution_from_summary failed")
         with engine.begin() as connection:
-            state_store.mark_job_failed(connection, SUMMARY_JOB_NAME, watermark, repr(exc))
+            state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         raise
 
 
-def _watermark(*, account_id: str, start_date: date, end_date: date) -> dict[str, Any]:
+def _watermark(*, vendor: str, account_id: str, start_date: date, end_date: date) -> dict[str, Any]:
     return {
+        "vendor": vendor,
         "account_id": account_id,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),

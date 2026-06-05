@@ -11,6 +11,7 @@ DEFAULT_GCP_BILLING_TABLE = (
     "gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
+DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 
 
@@ -39,9 +40,20 @@ class GcpBillingSettings:
 
 
 @dataclass(frozen=True)
+class AwsBillingSettings:
+    billing_table: str = DEFAULT_AWS_BILLING_TABLE
+    account_id: str | None = None
+    earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
+    export_overlap_months: int = 1
+    sync_initial_lookback_months: int | None = 2
+    page_size: int = 5000
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     gcp_billing: GcpBillingSettings = GcpBillingSettings()
+    aws_billing: AwsBillingSettings = AwsBillingSettings()
     log_level: str = "INFO"
 
 
@@ -105,6 +117,44 @@ def load_settings(
             page_size=_read_int_any(
                 env,
                 ("COST_INSIGHT_SYNC_PAGE_SIZE", "COST_SYNC_PAGE_SIZE"),
+                5000,
+            ),
+        ),
+        aws_billing=AwsBillingSettings(
+            billing_table=_read_any(
+                env,
+                DEFAULT_AWS_BILLING_TABLE,
+                "COST_INSIGHT_AWS_BILLING_TABLE",
+                "COST_AWS_BILLING_TABLE",
+            ),
+            account_id=_read_optional_any(
+                env,
+                "COST_INSIGHT_AWS_ACCOUNT_ID",
+                "COST_AWS_ACCOUNT_ID",
+            ),
+            earliest_usage_date=_read_date_any(
+                env,
+                ("COST_INSIGHT_AWS_EARLIEST_USAGE_DATE", "COST_AWS_EARLIEST_USAGE_DATE"),
+                DEFAULT_EARLIEST_USAGE_DATE,
+            ),
+            export_overlap_months=_read_non_negative_int_any(
+                env,
+                (
+                    "COST_INSIGHT_AWS_EXPORT_OVERLAP_MONTHS",
+                    "COST_AWS_EXPORT_OVERLAP_MONTHS",
+                ),
+                1,
+            ),
+            sync_initial_lookback_months=_read_optional_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_AWS_SYNC_INITIAL_LOOKBACK_MONTHS",
+                    "COST_AWS_SYNC_INITIAL_LOOKBACK_MONTHS",
+                ),
+            ),
+            page_size=_read_int_any(
+                env,
+                ("COST_INSIGHT_AWS_SYNC_PAGE_SIZE", "COST_AWS_SYNC_PAGE_SIZE"),
                 5000,
             ),
         ),
@@ -182,6 +232,14 @@ def _read_required_any(environ: Mapping[str, str], *keys: str) -> str:
         if value is not None and value.strip() != "":
             return value
     raise ValueError(f"Missing required environment variable: {' or '.join(keys)}")
+
+
+def _read_optional_any(environ: Mapping[str, str], *keys: str) -> str | None:
+    for key in keys:
+        value = environ.get(key)
+        if value is not None and value.strip() != "":
+            return value
+    return None
 
 
 def _read_int(environ: Mapping[str, str], key: str, default: int) -> int:

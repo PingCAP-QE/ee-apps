@@ -4,16 +4,21 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, timedelta
 
-from cost_insight.common.config import get_settings
+from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, get_settings
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs.backfill_cost_refine_from_raw import run_backfill_cost_refine_from_raw
+from cost_insight.jobs.cost_sources import list_active_cost_sources
 from cost_insight.jobs.refresh_attribution_daily import (
+    CostAttributionSource,
     run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
+from cost_insight.jobs.sync_aws_billing_summary import run_sync_aws_billing_summary
+from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
@@ -47,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
     sync_summary.add_argument("--dry-run", action="store_true")
     sync_summary.add_argument("--limit", type=int, default=None)
 
+    sync_aws_summary = subparsers.add_parser(
+        "sync-aws-billing-summary",
+        help="Sync AWS billing export partitions into cost_bq_export_summary_daily",
+    )
+    sync_aws_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--dry-run", action="store_true")
+    sync_aws_summary.add_argument("--limit", type=int, default=None)
+
     sync_unmatched = subparsers.add_parser(
         "sync-gcp-unmatched-resources",
         help="Sync weekly GCP resource-level rows for unmatched resource investigation",
@@ -57,6 +72,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync_unmatched.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_unmatched.add_argument("--dry-run", action="store_true")
     sync_unmatched.add_argument("--limit", type=int, default=None)
+
+    sync_aws_unmatched = subparsers.add_parser(
+        "sync-aws-unmatched-resources",
+        help="Sync weekly AWS resource-level rows for unmatched resource investigation",
+    )
+    sync_aws_unmatched.add_argument("--usage-start-date", type=_parse_date, required=True)
+    sync_aws_unmatched.add_argument("--usage-end-date", type=_parse_date, required=True)
+    sync_aws_unmatched.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_aws_unmatched.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_aws_unmatched.add_argument("--dry-run", action="store_true")
+    sync_aws_unmatched.add_argument("--limit", type=int, default=None)
 
     backfill_refine = subparsers.add_parser(
         "backfill-gcp-cost-refine-from-raw",
@@ -113,13 +139,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "sync-gcp-billing-export":
         engine = build_engine(settings)
         try:
-            summaries = _run_sync_gcp_command(engine, settings=settings.gcp_billing, args=args)
-            payload = (
-                [_summary_to_json(summary) for summary in summaries]
-                if args.split_by_day
-                else _summary_to_json(summaries[0])
-            )
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            summaries = []
+            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+                summaries.extend(_run_sync_gcp_command(engine, settings=gcp_settings, args=args))
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -127,16 +150,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "sync-gcp-billing-summary":
         engine = build_engine(settings)
         try:
-            summary = run_sync_gcp_billing_summary(
-                engine,
-                settings=settings.gcp_billing,
-                export_partition_start=args.export_partition_start,
-                export_partition_end=args.export_partition_end,
-                earliest_usage_date=args.earliest_usage_date,
-                dry_run=args.dry_run,
-                limit=args.limit,
-            )
-            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            summaries = []
+            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+                summaries.append(
+                    run_sync_gcp_billing_summary(
+                        engine,
+                        settings=gcp_settings,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        earliest_usage_date=args.earliest_usage_date,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-aws-billing-summary":
+        engine = build_engine(settings)
+        try:
+            summaries = []
+            for account_id in _resolve_aws_sources(engine, settings=settings.aws_billing):
+                summaries.append(
+                    run_sync_aws_billing_summary(
+                        engine,
+                        settings=settings.aws_billing,
+                        account_id=account_id,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        earliest_usage_date=args.earliest_usage_date,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -144,17 +193,44 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "sync-gcp-unmatched-resources":
         engine = build_engine(settings)
         try:
-            summary = run_sync_gcp_unmatched_resources(
-                engine,
-                settings=settings.gcp_billing,
-                usage_start_date=args.usage_start_date,
-                usage_end_date=args.usage_end_date,
-                export_partition_start=args.export_partition_start,
-                export_partition_end=args.export_partition_end,
-                dry_run=args.dry_run,
-                limit=args.limit,
-            )
-            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            summaries = []
+            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+                summaries.append(
+                    run_sync_gcp_unmatched_resources(
+                        engine,
+                        settings=gcp_settings,
+                        usage_start_date=args.usage_start_date,
+                        usage_end_date=args.usage_end_date,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-aws-unmatched-resources":
+        engine = build_engine(settings)
+        try:
+            summaries = []
+            for account_id in _resolve_aws_sources(engine, settings=settings.aws_billing):
+                summaries.append(
+                    run_sync_aws_unmatched_resources(
+                        engine,
+                        settings=settings.aws_billing,
+                        account_id=account_id,
+                        usage_start_date=args.usage_start_date,
+                        usage_end_date=args.usage_end_date,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -162,16 +238,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "backfill-gcp-cost-refine-from-raw":
         engine = build_engine(settings)
         try:
-            summary = run_backfill_cost_refine_from_raw(
-                engine,
-                settings=settings.gcp_billing,
-                start_date=args.start_date,
-                end_date=args.end_date,
-                include_unmatched_resources=not args.skip_unmatched_resources,
-                mark_summary_watermark=args.mark_summary_watermark,
-                dry_run=args.dry_run,
-            )
-            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            summaries = []
+            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+                summaries.append(
+                    run_backfill_cost_refine_from_raw(
+                        engine,
+                        settings=gcp_settings,
+                        start_date=args.start_date,
+                        end_date=args.end_date,
+                        include_unmatched_resources=not args.skip_unmatched_resources,
+                        mark_summary_watermark=args.mark_summary_watermark,
+                        dry_run=args.dry_run,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -179,17 +259,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "refresh-cost-attribution-daily":
         engine = build_engine(settings)
         try:
-            summaries = _run_refresh_attribution_command(
+            summaries = []
+            for source in _resolve_attribution_sources(
                 engine,
-                settings=settings.gcp_billing,
-                args=args,
-            )
-            payload = (
-                [_summary_to_json(summary) for summary in summaries]
-                if args.split_by_day
-                else _summary_to_json(summaries[0])
-            )
-            print(json.dumps(payload, indent=2, sort_keys=True))
+                gcp_settings=settings.gcp_billing,
+                aws_settings=settings.aws_billing,
+            ):
+                summaries.extend(_run_refresh_attribution_command(engine, source=source, args=args))
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -197,17 +274,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "refresh-cost-attribution-from-summary":
         engine = build_engine(settings)
         try:
-            summaries = _run_refresh_attribution_from_summary_command(
+            summaries = []
+            for source in _resolve_attribution_sources(
                 engine,
-                settings=settings.gcp_billing,
-                args=args,
-            )
-            payload = (
-                [_summary_to_json(summary) for summary in summaries]
-                if args.split_by_day
-                else _summary_to_json(summaries[0])
-            )
-            print(json.dumps(payload, indent=2, sort_keys=True))
+                gcp_settings=settings.gcp_billing,
+                aws_settings=settings.aws_billing,
+            ):
+                summaries.extend(
+                    _run_refresh_attribution_from_summary_command(engine, source=source, args=args)
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()
@@ -257,18 +333,18 @@ def _run_sync_gcp_command(engine, *, settings, args):
     return [summary]
 
 
-def _run_refresh_attribution_command(engine, *, settings, args):
+def _run_refresh_attribution_command(engine, *, source: CostAttributionSource, args):
     logger = logging.getLogger(__name__)
     if args.split_by_day:
         summaries = []
         for usage_date in _date_range(args.start_date, args.end_date):
             logger.info(
                 "refresh-cost-attribution-daily day started",
-                extra={"usage_date": usage_date},
+                extra={"vendor": source.vendor, "account_id": source.account_id, "usage_date": usage_date},
             )
             summary = run_refresh_cost_attribution_daily(
                 engine,
-                settings=settings,
+                source=source,
                 start_date=usage_date,
                 end_date=usage_date,
                 dry_run=args.dry_run,
@@ -282,7 +358,7 @@ def _run_refresh_attribution_command(engine, *, settings, args):
 
     summary = run_refresh_cost_attribution_daily(
         engine,
-        settings=settings,
+        source=source,
         start_date=args.start_date,
         end_date=args.end_date,
         dry_run=args.dry_run,
@@ -294,18 +370,18 @@ def _run_refresh_attribution_command(engine, *, settings, args):
     return [summary]
 
 
-def _run_refresh_attribution_from_summary_command(engine, *, settings, args):
+def _run_refresh_attribution_from_summary_command(engine, *, source: CostAttributionSource, args):
     logger = logging.getLogger(__name__)
     if args.split_by_day:
         summaries = []
         for usage_date in _date_range(args.start_date, args.end_date):
             logger.info(
                 "refresh-cost-attribution-from-summary day started",
-                extra={"usage_date": usage_date},
+                extra={"vendor": source.vendor, "account_id": source.account_id, "usage_date": usage_date},
             )
             summary = run_refresh_cost_attribution_from_summary(
                 engine,
-                settings=settings,
+                source=source,
                 start_date=usage_date,
                 end_date=usage_date,
                 dry_run=args.dry_run,
@@ -319,7 +395,7 @@ def _run_refresh_attribution_from_summary_command(engine, *, settings, args):
 
     summary = run_refresh_cost_attribution_from_summary(
         engine,
-        settings=settings,
+        source=source,
         start_date=args.start_date,
         end_date=args.end_date,
         dry_run=args.dry_run,
@@ -340,11 +416,64 @@ def _date_range(start_date: date, end_date: date):
         current += timedelta(days=1)
 
 
+def _resolve_gcp_sources(engine, *, settings: GcpBillingSettings) -> tuple[GcpBillingSettings, ...]:
+    sources = _list_sources(engine, vendor="gcp")
+    if not sources:
+        return (settings,)
+    return tuple(replace(settings, account_id=source.account_id) for source in sources)
+
+
+def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[str, ...]:
+    sources = _list_sources(engine, vendor="aws")
+    if sources:
+        return tuple(source.account_id for source in sources)
+    if settings.account_id:
+        return (settings.account_id,)
+    logging.getLogger(__name__).warning(
+        "No active AWS cost sources found in cost_sources and COST_INSIGHT_AWS_ACCOUNT_ID is not set."
+    )
+    return ()
+
+
+def _resolve_attribution_sources(
+    engine,
+    *,
+    gcp_settings: GcpBillingSettings,
+    aws_settings: AwsBillingSettings,
+) -> tuple[CostAttributionSource, ...]:
+    sources = _list_sources(engine, vendor=None)
+    if sources:
+        return tuple(
+            CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
+            for source in sources
+        )
+    fallback_sources = [CostAttributionSource(vendor="gcp", account_id=gcp_settings.account_id)]
+    if aws_settings.account_id:
+        fallback_sources.append(
+            CostAttributionSource(vendor="aws", account_id=aws_settings.account_id)
+        )
+    return tuple(fallback_sources)
+
+
+def _list_sources(engine, *, vendor: str | None):
+    if not hasattr(engine, "begin"):
+        return ()
+    with engine.begin() as connection:
+        return list_active_cost_sources(connection, vendor=vendor)
+
+
+def _summaries_to_json(summaries: Sequence[object]) -> object:
+    payload = [_summary_to_json(summary) for summary in summaries]
+    return payload[0] if len(payload) == 1 else payload
+
+
 def _summary_to_json(summary) -> dict[str, object]:
     payload = {
         "account_id": summary.account_id,
         "dry_run": summary.dry_run,
     }
+    if hasattr(summary, "vendor") and getattr(summary, "vendor") is not None:
+        payload["vendor"] = getattr(summary, "vendor")
     for field in (
         "start_date",
         "end_date",
