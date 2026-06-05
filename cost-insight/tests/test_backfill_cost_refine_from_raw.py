@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.backfill_cost_refine_from_raw import (
     JOB_NAME,
     run_backfill_cost_refine_from_raw,
@@ -176,8 +177,14 @@ def test_backfill_cost_refine_from_raw_writes_summary_and_unmatched_rows() -> No
                     """
                 )
             ).mappings().one()
-            job_state = state_store.get_job_state(connection, JOB_NAME)
-            summary_state = state_store.get_job_state(connection, SUMMARY_JOB_NAME)
+            job_state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
+            summary_state = state_store.get_job_state(
+                connection,
+                source_job_name(SUMMARY_JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
 
         assert summary_cost["service_name"] == "Compute Engine"
         assert summary_cost["sku_name"] == "Core running"
@@ -219,7 +226,13 @@ def test_backfill_cost_refine_from_raw_dry_run_writes_nothing() -> None:
             resource_count = connection.execute(
                 text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
             ).scalar_one()
-            assert state_store.get_job_state(connection, JOB_NAME) is None
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+                )
+                is None
+            )
         assert summary_count == 0
         assert resource_count == 0
     finally:

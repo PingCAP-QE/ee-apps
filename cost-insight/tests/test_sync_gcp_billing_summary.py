@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_summary import (
     JOB_NAME,
     _normalize_summary_row,
@@ -160,7 +161,10 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
             service_names = connection.execute(
                 text("SELECT DISTINCT service_name FROM cost_bq_export_summary_daily")
             ).scalars().all()
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
         assert count == 2
         assert service_names == ["Compute Engine"]
         assert state is not None
@@ -374,6 +378,12 @@ def test_run_sync_gcp_billing_summary_dry_run_skips_state() -> None:
         assert summary.rows_seen == 1
         assert summary.rows_written == 0
         with engine.begin() as connection:
-            assert state_store.get_job_state(connection, JOB_NAME) is None
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+                )
+                is None
+            )
     finally:
         engine.dispose()

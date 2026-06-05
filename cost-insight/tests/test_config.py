@@ -2,7 +2,12 @@ import pytest
 
 from datetime import date
 
-from cost_insight.common.config import DEFAULT_GCP_ACCOUNT_ID, DEFAULT_GCP_BILLING_TABLE, load_settings
+from cost_insight.common.config import (
+    DEFAULT_AWS_BILLING_TABLE,
+    DEFAULT_GCP_ACCOUNT_ID,
+    DEFAULT_GCP_BILLING_TABLE,
+    load_settings,
+)
 
 
 def test_load_settings_uses_cost_database_url() -> None:
@@ -35,6 +40,8 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.database.url is None
     assert settings.gcp_billing.account_id == DEFAULT_GCP_ACCOUNT_ID
     assert settings.gcp_billing.billing_table == DEFAULT_GCP_BILLING_TABLE
+    assert settings.aws_billing.billing_table == DEFAULT_AWS_BILLING_TABLE
+    assert settings.aws_billing.account_id is None
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:
@@ -58,6 +65,27 @@ def test_load_settings_falls_back_to_tidb_parts() -> None:
     assert settings.gcp_billing.billing_table == "billing.table"
     assert settings.gcp_billing.page_size == 2000
     assert settings.log_level == "DEBUG"
+
+
+def test_load_settings_reads_aws_billing_settings() -> None:
+    settings = load_settings(
+        {
+            "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight",
+            "COST_INSIGHT_AWS_ACCOUNT_ID": "946646677266",
+            "COST_INSIGHT_AWS_BILLING_TABLE": "aws.billing.table",
+            "COST_INSIGHT_AWS_EARLIEST_USAGE_DATE": "2026-01-01",
+            "COST_INSIGHT_AWS_EXPORT_OVERLAP_MONTHS": "2",
+            "COST_INSIGHT_AWS_SYNC_INITIAL_LOOKBACK_MONTHS": "6",
+            "COST_INSIGHT_AWS_SYNC_PAGE_SIZE": "1000",
+        }
+    )
+
+    assert settings.aws_billing.account_id == "946646677266"
+    assert settings.aws_billing.billing_table == "aws.billing.table"
+    assert settings.aws_billing.earliest_usage_date == date(2026, 1, 1)
+    assert settings.aws_billing.export_overlap_months == 2
+    assert settings.aws_billing.sync_initial_lookback_months == 6
+    assert settings.aws_billing.page_size == 1000
 
 
 def test_load_settings_requires_database_when_not_skipped() -> None:

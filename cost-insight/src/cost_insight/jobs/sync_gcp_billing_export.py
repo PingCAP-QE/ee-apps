@@ -9,10 +9,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.engine import Engine
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import coerce_date, coerce_datetime, hash_value, nullable_text
+from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_cost_source
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs import state_store
 from cost_insight.sources.gcp_billing_export import decimal_or_none, fetch_gcp_billing_rows
 
@@ -58,9 +60,16 @@ def run_sync_gcp_billing_export(
     fetch_rows: RowFetcher = fetch_gcp_billing_rows,
 ) -> SyncGcpBillingSummary:
     resolved_end_date = end_date or (datetime.now(timezone.utc).date() - timedelta(days=1))
+    job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
     with engine.begin() as connection:
-        _ensure_cost_source_enabled(connection, settings, dry_run=dry_run)
-        state = state_store.get_job_state(connection, JOB_NAME)
+        ensure_cost_source_enabled(
+            connection,
+            vendor="gcp",
+            account_id=settings.account_id,
+            dry_run=dry_run,
+            display_name=settings.account_id,
+        )
+        state = state_store.get_job_state(connection, job_name)
         resolved_start_date = start_date or _start_date_from_state(
             state.watermark if state else {},
             end_date=resolved_end_date,
@@ -72,7 +81,7 @@ def run_sync_gcp_billing_export(
             end_date=resolved_end_date,
         )
         if not dry_run:
-            state_store.mark_job_started(connection, JOB_NAME, watermark)
+            state_store.mark_job_started(connection, job_name, watermark)
 
     try:
         rows_seen = 0
@@ -99,12 +108,14 @@ def run_sync_gcp_billing_export(
         if not dry_run:
             with engine.begin() as connection:
                 if source_billing_account_id:
-                    _upsert_cost_source(
+                    upsert_cost_source(
                         connection,
+                        vendor="gcp",
                         account_id=settings.account_id,
                         billing_account_id=source_billing_account_id,
+                        display_name=settings.account_id,
                     )
-                state_store.mark_job_succeeded(connection, JOB_NAME, watermark)
+                state_store.mark_job_succeeded(connection, job_name, watermark)
         return SyncGcpBillingSummary(
             account_id=settings.account_id,
             start_date=resolved_start_date,
@@ -117,7 +128,7 @@ def run_sync_gcp_billing_export(
         LOG.exception("sync_gcp_billing_export failed")
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_failed(connection, JOB_NAME, watermark, repr(exc))
+                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         raise
 
 
@@ -140,50 +151,6 @@ def _watermark(*, account_id: str, start_date: date, end_date: date) -> dict[str
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
     }
-
-
-def _ensure_cost_source_enabled(
-    connection: Connection,
-    settings: GcpBillingSettings,
-    *,
-    dry_run: bool,
-) -> None:
-    source = _get_cost_source(connection, account_id=settings.account_id)
-    if source is not None:
-        if int(source["is_active"]) != 1:
-            raise ValueError(f"Cost source gcp/{settings.account_id} is inactive")
-        return
-    if not dry_run:
-        _upsert_cost_source(connection, account_id=settings.account_id)
-
-
-def _get_cost_source(connection: Connection, *, account_id: str) -> dict[str, Any] | None:
-    row = (
-        connection.execute(
-            _SELECT_COST_SOURCE,
-            {"vendor": "gcp", "account_id": account_id},
-        )
-        .mappings()
-        .first()
-    )
-    return dict(row) if row is not None else None
-
-
-def _upsert_cost_source(
-    connection: Connection,
-    *,
-    account_id: str,
-    billing_account_id: str | None = None,
-) -> None:
-    connection.execute(
-        _build_upsert_cost_source_statement(connection),
-        {
-            "vendor": "gcp",
-            "account_id": account_id,
-            "billing_account_id": billing_account_id,
-            "display_name": account_id,
-        },
-    )
 
 
 def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -230,67 +197,6 @@ def _write_batch(engine: Engine, rows: Sequence[dict[str, Any]], *, dry_run: boo
     with engine.begin() as connection:
         connection.execute(_UPSERT_COST_RAW_DETAILS, list(rows))
     return len(rows)
-
-
-_SELECT_COST_SOURCE = text(
-    """
-    SELECT vendor, account_id, billing_account_id, display_name, is_active
-    FROM cost_sources
-    WHERE vendor = :vendor AND account_id = :account_id
-    """
-)
-
-
-def _build_upsert_cost_source_statement(connection: Connection):
-    if connection.dialect.name == "sqlite":
-        return text(
-            """
-            INSERT INTO cost_sources (
-              vendor,
-              account_id,
-              billing_account_id,
-              display_name,
-              is_active,
-              updated_at
-            ) VALUES (
-              :vendor,
-              :account_id,
-              :billing_account_id,
-              :display_name,
-              1,
-              CURRENT_TIMESTAMP
-            )
-            ON CONFLICT(vendor, account_id) DO UPDATE SET
-              billing_account_id = COALESCE(
-                excluded.billing_account_id,
-                cost_sources.billing_account_id
-              ),
-              display_name = COALESCE(cost_sources.display_name, excluded.display_name),
-              updated_at = CURRENT_TIMESTAMP
-            """
-        )
-    return text(
-        """
-        INSERT INTO cost_sources (
-          vendor,
-          account_id,
-          billing_account_id,
-          display_name,
-          is_active
-        ) VALUES (
-          :vendor,
-          :account_id,
-          :billing_account_id,
-          :display_name,
-          1
-        )
-        ON DUPLICATE KEY UPDATE
-          billing_account_id = COALESCE(VALUES(billing_account_id), billing_account_id),
-          display_name = COALESCE(display_name, VALUES(display_name)),
-          updated_at = CURRENT_TIMESTAMP
-        """
-    )
-
 
 _UPSERT_COST_RAW_DETAILS = text(
     """

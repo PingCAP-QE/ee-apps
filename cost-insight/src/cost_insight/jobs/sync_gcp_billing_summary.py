@@ -20,10 +20,8 @@ from cost_insight.common.row_utils import (
     nullable_text,
 )
 from cost_insight.jobs import state_store
-from cost_insight.jobs.sync_gcp_billing_export import (
-    _ensure_cost_source_enabled,
-    _upsert_cost_source,
-)
+from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_cost_source
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.sources.gcp_billing_export import (
     DEFAULT_COST_OWNER_AUTHOR,
     decimal_or_none,
@@ -75,9 +73,16 @@ def run_sync_gcp_billing_summary(
     resolved_end = export_partition_end or (
         datetime.now(timezone.utc).date() - timedelta(days=settings.sync_lag_days)
     )
+    job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
     with engine.begin() as connection:
-        _ensure_cost_source_enabled(connection, settings, dry_run=dry_run)
-        state = state_store.get_job_state(connection, JOB_NAME)
+        ensure_cost_source_enabled(
+            connection,
+            vendor="gcp",
+            account_id=settings.account_id,
+            dry_run=dry_run,
+            display_name=settings.account_id,
+        )
+        state = state_store.get_job_state(connection, job_name)
         resolved_start = export_partition_start or _start_partition_from_state(
             state.watermark if state else {},
             end_date=resolved_end,
@@ -90,7 +95,7 @@ def run_sync_gcp_billing_summary(
             export_partition_end=resolved_end,
         )
         if not dry_run:
-            state_store.mark_job_started(connection, JOB_NAME, watermark)
+            state_store.mark_job_started(connection, job_name, watermark)
 
     try:
         rows_seen = 0
@@ -121,10 +126,12 @@ def run_sync_gcp_billing_summary(
             with engine.begin() as connection:
                 source_billing_account_id = _select_billing_account_id(source_billing_account_ids)
                 if source_billing_account_id:
-                    _upsert_cost_source(
+                    upsert_cost_source(
                         connection,
+                        vendor="gcp",
                         account_id=settings.account_id,
                         billing_account_id=source_billing_account_id,
+                        display_name=settings.account_id,
                     )
                 touched_usage_dates = _get_touched_usage_dates(
                     connection,
@@ -132,7 +139,7 @@ def run_sync_gcp_billing_summary(
                     export_partition_start=resolved_start,
                     export_partition_end=resolved_end,
                 )
-                state_store.mark_job_succeeded(connection, JOB_NAME, watermark)
+                state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return SyncGcpBillingSummaryResult(
             account_id=settings.account_id,
@@ -147,7 +154,7 @@ def run_sync_gcp_billing_summary(
         LOG.exception("sync_gcp_billing_summary failed")
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_failed(connection, JOB_NAME, watermark, repr(exc))
+                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         raise
 
 

@@ -441,8 +441,8 @@ Sample watermarks:
 
 | job_name | watermark_json |
 | --- | --- |
-| `sync-gcp-billing-export` | `{"account_id":"pingcap-testing-account","start_date":"2026-05-15","end_date":"2026-05-18"}` |
-| `refresh-attribution-daily` | `{"last_usage_date":"2026-05-18"}` |
+| `sync_gcp_billing_export:gcp:pingcap-testing-account` | `{"account_id":"pingcap-testing-account","start_date":"2026-05-15","end_date":"2026-05-18"}` |
+| `refresh_cost_attribution_from_summary:aws:946646677266` | `{"vendor":"aws","account_id":"946646677266","start_date":"2026-05-01","end_date":"2026-05-31"}` |
 
 ## ETL Flow
 
@@ -459,9 +459,8 @@ flowchart LR
 
 Steps:
 
-1. Ensure the configured GCP project exists in `cost_sources` and is active.
-   V1 is still one configured source per run; multi-source discovery can be
-   added when we onboard AWS or more GCP projects.
+1. Discover active sources from `cost_sources` for the current vendor and
+   ensure each source is active before import starts.
 2. Read a usage-date range. On scheduled runs, re-read the last successful
    `end_date - overlap_days` window because billing export can receive late
    corrections.

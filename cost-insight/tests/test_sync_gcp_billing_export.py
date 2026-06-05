@@ -7,9 +7,10 @@ from sqlalchemy import create_engine, text
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import coerce_date, coerce_datetime, hash_value, nullable_text
 from cost_insight.jobs import state_store
+from cost_insight.jobs.cost_sources import ensure_cost_source_enabled
+from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_export import (
     JOB_NAME,
-    _ensure_cost_source_enabled,
     _normalize_row,
     _start_date_from_state,
     _watermark,
@@ -206,7 +207,13 @@ def test_run_sync_gcp_billing_export_dry_run_does_not_update_state() -> None:
         assert summary.rows_written == 0
         assert summary.dry_run is True
         with engine.begin() as connection:
-            assert state_store.get_job_state(connection, JOB_NAME) is None
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+                )
+                is None
+            )
             source = connection.execute(text("SELECT * FROM cost_sources")).mappings().first()
         assert source is None
     finally:
@@ -240,7 +247,10 @@ def test_run_sync_gcp_billing_export_marks_success(monkeypatch) -> None:
         assert summary.rows_written == 2
         assert [len(rows) for rows, _dry_run in writes] == [1, 1, 0]
         with engine.begin() as connection:
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
             source = (
                 connection.execute(
                     text(
@@ -285,7 +295,10 @@ def test_run_sync_gcp_billing_export_marks_failure(monkeypatch) -> None:
             )
 
         with engine.begin() as connection:
-            state = state_store.get_job_state(connection, JOB_NAME)
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
         assert state is not None
         assert state.last_status == "failed"
         assert "RuntimeError" in (state.last_error or "")
@@ -329,6 +342,7 @@ def test_write_batch_executes_upsert_for_non_dry_run() -> None:
 
 def test_ensure_cost_source_enabled_rejects_inactive_source() -> None:
     engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
     try:
         with engine.begin() as connection:
             connection.execute(
@@ -340,9 +354,10 @@ def test_ensure_cost_source_enabled_rejects_inactive_source() -> None:
                 )
             )
             with pytest.raises(ValueError, match="inactive"):
-                _ensure_cost_source_enabled(
+                ensure_cost_source_enabled(
                     connection,
-                    GcpBillingSettings(account_id="pingcap-testing-account"),
+                    vendor="gcp",
+                    account_id=settings.account_id,
                     dry_run=False,
                 )
     finally:

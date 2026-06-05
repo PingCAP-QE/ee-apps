@@ -3,9 +3,12 @@
 Cost Insight is an independent project for cloud cost and usage collection,
 attribution, budget comparison, and cost exploration.
 
-The first implementation target is GCP project `pingcap-testing-account`. The
-design stays vendor-neutral so AWS CUR and other vendors can land in the same
-logical model later.
+The current implementation supports multiple active sources through
+`cost_sources`, including:
+
+- GCP project `pingcap-testing-account`
+- GCP project `qa-infra-dev`
+- AWS account `946646677266` (`qa-infra-dev`)
 
 Current design:
 
@@ -37,6 +40,17 @@ Useful GCP settings:
 | `COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS` | `5` |
 | `COST_INSIGHT_SYNC_PAGE_SIZE` | `5000` |
 
+Useful AWS settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_AWS_BILLING_TABLE` | `gcp-digital-bi.stg_cloud_billing.stg_aws_billing` |
+| `COST_INSIGHT_AWS_ACCOUNT_ID` | unset |
+| `COST_INSIGHT_AWS_EARLIEST_USAGE_DATE` | `2026-01-01` |
+| `COST_INSIGHT_AWS_EXPORT_OVERLAP_MONTHS` | `1` |
+| `COST_INSIGHT_AWS_SYNC_INITIAL_LOOKBACK_MONTHS` | `2` |
+| `COST_INSIGHT_AWS_SYNC_PAGE_SIZE` | `5000` |
+
 The Python BigQuery SDK requires Application Default Credentials. For local
 validation with a user account:
 
@@ -45,13 +59,19 @@ gcloud auth application-default login
 gcloud auth application-default set-quota-project pingcap-testing-account
 ```
 
-## First GCP Backfill
+## Seed Active Sources
 
 After `sql/001_create_cost_tables.sql` is applied:
 
 ```bash
 mysql < sql/002_seed_initial_cost_sources.sql
 ```
+
+All recurring summary, unmatched-resource, and attribution jobs discover active
+sources from `cost_sources`. The env account IDs are now fallback values for
+local validation when the registry table is empty.
+
+## GCP Raw Backfill
 
 ```bash
 cost-insight sync-gcp-billing-export --start-date 2026-01-01 --end-date 2026-05-17 --split-by-day
@@ -99,6 +119,14 @@ cost-insight sync-gcp-billing-summary \
   --export-partition-end 2026-05-23
 ```
 
+AWS summary import uses the same `cost_bq_export_summary_daily` table:
+
+```bash
+cost-insight sync-aws-billing-summary \
+  --export-partition-start 2026-05-01 \
+  --export-partition-end 2026-05-01
+```
+
 After summary rows are imported, refresh attribution from the summary table:
 
 ```bash
@@ -113,6 +141,14 @@ week:
 
 ```bash
 cost-insight sync-gcp-unmatched-resources \
+  --usage-start-date 2026-05-17 \
+  --usage-end-date 2026-05-23
+```
+
+AWS unmatched resources use the same investigation table:
+
+```bash
+cost-insight sync-aws-unmatched-resources \
   --usage-start-date 2026-05-17 \
   --usage-end-date 2026-05-23
 ```
