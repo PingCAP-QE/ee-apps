@@ -25,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -43,13 +44,15 @@ type MacBuildReconciler struct {
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
 	now      func() time.Time
-	runBuild func(context.Context, buildv1alpha1.MacBuild) (*buildResult, error)
+	runBuild func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error)
 }
 
 type buildResult struct {
 	CommitHash          string
 	PushedArtifactsYaml string
 }
+
+type buildPhaseReporter func(string, string) error
 
 const (
 	defaultBuildTimeout      = 24 * time.Hour
@@ -88,15 +91,14 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if macBuild.Status.Phase == "" {
 		logger.Info("Setting initial status to Pending")
 
-		newStatus := macBuild.Status.DeepCopy()
-		now := metav1.NewTime(r.currentTime())
-		newStatus.SetPhase(buildv1alpha1.PhasePending, "Waiting for a matching macOS worker to claim this build.", now)
-		macBuild.Status = *newStatus
-
-		if err := r.Status().Update(ctx, &macBuild); err != nil {
+		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+			status.SetPhase(buildv1alpha1.PhasePending, "Waiting for a matching macOS worker to claim this build.", now)
+		})
+		if err != nil {
 			logger.Error(err, "Failed to update MacBuild status to Pending")
 			return ctrl.Result{}, err
 		}
+		macBuild = *updatedBuild
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -104,32 +106,39 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger.Info("MacBuild already has status", "Phase", macBuild.Status.Phase)
 	switch macBuild.Status.Phase {
 	case buildv1alpha1.PhasePending:
-		// adopt the build job and update the status to "Building"
-		logger.Info("Phase: Pending. Claiming and setting to Building.")
-		newStatus := macBuild.Status.DeepCopy()
-		now := metav1.NewTime(r.currentTime())
-		newStatus.SetPhase(buildv1alpha1.PhaseBuilding, "Build claimed by worker and queued for execution.", now)
-		newStatus.WorkerID = &r.WorkerID
-		newStatus.WorkerArch = optionalString(r.WorkerArch)
-		newStatus.StartTime = &now
-		newStatus.CompletionTime = nil
-		newStatus.Message = nil
-		macBuild.Status = *newStatus
+		if !r.matchesBuildArch(macBuild) {
+			logger.Info(
+				"Pending build does not match this worker architecture. Leaving it for another worker.",
+				"workerArch", r.WorkerArch,
+				"buildArch", buildArchFor(macBuild),
+			)
+			return ctrl.Result{}, nil
+		}
 
-		if err := r.Status().Update(ctx, &macBuild); err != nil {
-			logger.Error(err, "Failed to update status to Building")
+		logger.Info("Phase: Pending. Claiming and setting to Preparing.")
+		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+			status.SetPhase(buildv1alpha1.PhasePreparing, "Build claimed by worker and preparing workspace.", now)
+			status.WorkerID = &r.WorkerID
+			status.WorkerArch = optionalString(r.WorkerArch)
+			status.StartTime = &now
+			status.CompletionTime = nil
+			status.Message = nil
+		})
+		if err != nil {
+			logger.Error(err, "Failed to update status to Preparing")
 			return ctrl.Result{}, err
 		}
+		macBuild = *updatedBuild
 
 		return ctrl.Result{Requeue: true}, nil
-	case buildv1alpha1.PhaseBuilding:
-		logger.Info("Phase: Building. Starting build process.")
+	case buildv1alpha1.PhasePreparing, buildv1alpha1.PhaseBuilding, buildv1alpha1.PhasePublishing:
+		logger.Info("Phase: Active build phase. Starting or resuming build process.", "phase", macBuild.Status.Phase)
 
 		if macBuild.Status.StartTime == nil {
-			return r.failBuild(ctx, logger, &macBuild, "build entered Building without startTime")
+			return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without startTime")
 		}
 		if macBuild.Status.WorkerID == nil || *macBuild.Status.WorkerID == "" {
-			return r.failBuild(ctx, logger, &macBuild, "build entered Building without workerID")
+			return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without workerID")
 		}
 		if r.hasTimedOut(macBuild.Status.StartTime.Time) {
 			return r.failBuild(
@@ -149,37 +158,48 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{RequeueAfter: r.buildPollInterval()}, nil
 		}
 
-		result, err := r.runNativeBuild(ctx, macBuild)
-		newStatus := macBuild.Status.DeepCopy()
-		now := metav1.NewTime(r.currentTime())
-		newStatus.CompletionTime = &now
-		if *macBuild.Status.WorkerID == r.WorkerID {
-			newStatus.WorkerArch = optionalString(r.WorkerArch)
-		}
+		result, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {
+			updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+				status.SetPhase(phase, message, now)
+				status.WorkerID = &r.WorkerID
+				status.WorkerArch = optionalString(r.WorkerArch)
+				if status.StartTime == nil {
+					status.StartTime = &now
+				}
+				status.CompletionTime = nil
+				status.Message = nil
+			})
+			if err != nil {
+				return err
+			}
+			macBuild = *updatedBuild
+			return nil
+		})
 
 		if err != nil {
 			logger.Error(err, "Build failed")
-			newStatus.SetPhase(buildv1alpha1.PhaseFailed, err.Error(), now)
-			errMsg := err.Error()
-			newStatus.Message = &errMsg
-		} else {
-			logger.Info("Build succeeded")
-			newStatus.SetPhase(buildv1alpha1.PhaseSucceeded, "Build completed successfully.", now)
-			newStatus.Message = nil
-			newStatus.CommitHash = &result.CommitHash
-			if result.PushedArtifactsYaml != "" {
-				if newStatus.Outputs == nil {
-					newStatus.Outputs = &buildv1alpha1.MacBuildResultOutputs{}
-				}
-				newStatus.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
-			}
+			return r.failBuild(ctx, logger, &macBuild, err.Error())
 		}
 
-		macBuild.Status = *newStatus
-		if errUpdate := r.Status().Update(ctx, &macBuild); errUpdate != nil {
-			logger.Error(errUpdate, "Failed to update status to Succeeded/Failed")
-			return ctrl.Result{}, errUpdate
+		logger.Info("Build succeeded")
+		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+			status.SetPhase(buildv1alpha1.PhaseSucceeded, "Build completed successfully.", now)
+			status.Message = nil
+			status.CompletionTime = &now
+			status.WorkerArch = optionalString(r.WorkerArch)
+			status.CommitHash = &result.CommitHash
+			if result.PushedArtifactsYaml != "" {
+				if status.Outputs == nil {
+					status.Outputs = &buildv1alpha1.MacBuildResultOutputs{}
+				}
+				status.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
+			}
+		})
+		if err != nil {
+			logger.Error(err, "Failed to update status to Succeeded")
+			return ctrl.Result{}, err
 		}
+		macBuild = *updatedBuild
 		return ctrl.Result{}, nil
 	case buildv1alpha1.PhaseSucceeded, buildv1alpha1.PhaseFailed:
 		logger.WithValues("phase", macBuild.Status.Phase).Info("Nothing to do.")
@@ -198,11 +218,16 @@ func (r *MacBuildReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
+func (r *MacBuildReconciler) runNativeBuild(
+	ctx context.Context,
+	macBuild buildv1alpha1.MacBuild,
+	reportPhase buildPhaseReporter,
+) (*buildResult, error) {
 	if r.runBuild != nil {
-		return r.runBuild(ctx, macBuild)
+		return r.runBuild(ctx, macBuild, reportPhase)
 	}
 	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
+	job.reportPhase = reportPhase
 	return job.Run()
 }
 
@@ -239,19 +264,54 @@ func (r *MacBuildReconciler) failBuild(
 ) (ctrl.Result, error) {
 	logger.Info("Marking build as failed", "message", message)
 
-	newStatus := macBuild.Status.DeepCopy()
-	now := metav1.NewTime(r.currentTime())
-	newStatus.SetPhase(buildv1alpha1.PhaseFailed, message, now)
-	newStatus.Message = &message
-	newStatus.CompletionTime = &now
-	macBuild.Status = *newStatus
-
-	if err := r.Status().Update(ctx, macBuild); err != nil {
+	updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+		status.SetPhase(buildv1alpha1.PhaseFailed, message, now)
+		status.Message = &message
+		status.CompletionTime = &now
+		if status.WorkerID != nil && *status.WorkerID == r.WorkerID {
+			status.WorkerArch = optionalString(r.WorkerArch)
+		}
+	})
+	if err != nil {
 		logger.Error(err, "Failed to update status to Failed")
 		return ctrl.Result{}, err
 	}
+	*macBuild = *updatedBuild
 
 	return ctrl.Result{}, nil
+}
+
+func (r *MacBuildReconciler) updateBuildStatus(
+	ctx context.Context,
+	key client.ObjectKey,
+	mutate func(*buildv1alpha1.MacBuildStatus, metav1.Time),
+) (*buildv1alpha1.MacBuild, error) {
+	var updated buildv1alpha1.MacBuild
+
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, key, &updated); err != nil {
+			return err
+		}
+
+		mutate(&updated.Status, metav1.NewTime(r.currentTime()))
+		return r.Status().Update(ctx, &updated)
+	}); err != nil {
+		return nil, err
+	}
+
+	return updated.DeepCopy(), nil
+}
+
+func (r *MacBuildReconciler) matchesBuildArch(macBuild buildv1alpha1.MacBuild) bool {
+	return buildArchFor(macBuild) == buildv1alpha1.NormalizeBuildArch(r.WorkerArch)
+}
+
+func buildArchFor(macBuild buildv1alpha1.MacBuild) string {
+	arch := buildv1alpha1.NormalizeBuildArch(macBuild.Spec.Build.Arch)
+	if arch == "" {
+		return buildv1alpha1.BuildArchAMD64
+	}
+	return arch
 }
 
 func optionalString(value string) *string {
