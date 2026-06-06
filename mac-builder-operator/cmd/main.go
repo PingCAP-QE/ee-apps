@@ -65,6 +65,7 @@ func main() {
 	var tlsOpts []func(*tls.Config)
 	var enableAgent, enableGC bool
 	var buildTimeout, buildPollInterval time.Duration
+	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
@@ -73,6 +74,12 @@ func main() {
 		"Maximum time a MacBuild may stay in Building before the agent marks it failed.")
 	flag.DurationVar(&buildPollInterval, "build-poll-interval", 5*time.Minute,
 		"How often the agent rechecks Building jobs assigned to other workers.")
+	flag.StringVar(&artifactsRepoURL, "artifacts-repo-url", controller.DefaultArtifactsScriptRepoURL,
+		"Git repository URL used to generate build scripts for artifact packaging.")
+	flag.StringVar(&artifactsRepoRevision, "artifacts-repo-revision", controller.DefaultArtifactsScriptRepoRevision,
+		"Immutable tag or commit to check out from the artifacts repo before generating build scripts.")
+	flag.StringVar(&artifactsRepoCommit, "artifacts-repo-commit", controller.DefaultArtifactsScriptExpectedCommit,
+		"Expected full commit SHA for the pinned artifacts repo revision.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -110,6 +117,16 @@ func main() {
 	}
 	if enableAgent && buildPollInterval <= 0 {
 		setupLog.Info("build-poll-interval must be greater than zero")
+		os.Exit(1)
+	}
+
+	artifactsScriptSource, err := (controller.ArtifactsScriptSourceConfig{
+		URL:            artifactsRepoURL,
+		Revision:       artifactsRepoRevision,
+		ExpectedCommit: artifactsRepoCommit,
+	}).Normalize()
+	if enableAgent && err != nil {
+		setupLog.Error(err, "invalid artifacts repo source configuration")
 		os.Exit(1)
 	}
 
@@ -213,11 +230,12 @@ func main() {
 		}
 		setupLog.Info("Starting manager with Worker ID", "workerID", workerID)
 		if err := (&controller.MacBuildReconciler{
-			Client:            mgr.GetClient(),
-			Scheme:            mgr.GetScheme(),
-			WorkerID:          workerID,
-			BuildTimeout:      buildTimeout,
-			BuildPollInterval: buildPollInterval,
+			Client:                mgr.GetClient(),
+			Scheme:                mgr.GetScheme(),
+			WorkerID:              workerID,
+			BuildTimeout:          buildTimeout,
+			BuildPollInterval:     buildPollInterval,
+			ArtifactsScriptSource: artifactsScriptSource,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)

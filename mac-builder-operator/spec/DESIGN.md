@@ -9,6 +9,7 @@ The system consists of two main components:
 1. macOS Agent (External Controller):
    - Deployment: Runs on macOS physical machines or VMs (Outside the K8s cluster).
    - Responsibilities: Proactively watches the K8s API, claims tasks in Pending state, executes local operations (git clone, script generation, compilation, oras push), and updates the CRD Status in real-time.
+   - Supply chain control: The agent pins the external `artifacts.git` script source to a configured immutable revision and verifies the expected commit before executing generated build logic.
    - Communication: Connects to the K8s API Server via Kubeconfig or ServiceAccount Token (Outbound connection).
 
 2. GC Controller (Cluster Internal):

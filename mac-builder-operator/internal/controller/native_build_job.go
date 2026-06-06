@@ -34,10 +34,11 @@ import (
 
 // nativeBuildJob represents a build job for native Mac builds.
 type nativeBuildJob struct {
-	ctx      context.Context
-	logger   logr.Logger
-	macBuild buildv1alpha1.MacBuild
-	spec     buildv1alpha1.MacBuildSpec // shortcut
+	ctx                   context.Context
+	logger                logr.Logger
+	macBuild              buildv1alpha1.MacBuild
+	spec                  buildv1alpha1.MacBuildSpec // shortcut
+	artifactsScriptSource ArtifactsScriptSourceConfig
 
 	// Paths
 	workspaceDir     string
@@ -49,7 +50,11 @@ type nativeBuildJob struct {
 }
 
 // newNativeBuildJob creates a new instance of nativeBuildJob.
-func newNativeBuildJob(ctx context.Context, macBuild buildv1alpha1.MacBuild) *nativeBuildJob {
+func newNativeBuildJob(
+	ctx context.Context,
+	macBuild buildv1alpha1.MacBuild,
+	artifactsScriptSource ArtifactsScriptSourceConfig,
+) *nativeBuildJob {
 	logger := logf.FromContext(ctx)
 
 	// Create in 'os.TempDir()' (e.g., /var/folders/...)
@@ -59,10 +64,11 @@ func newNativeBuildJob(ctx context.Context, macBuild buildv1alpha1.MacBuild) *na
 	workspaceDir := filepath.Join(baseDir, workspaceName)
 
 	return &nativeBuildJob{
-		ctx:      ctx,
-		logger:   logger.WithValues("job", macBuild.Namespace, "workspace", workspaceDir),
-		macBuild: macBuild,
-		spec:     macBuild.Spec,
+		ctx:                   ctx,
+		logger:                logger.WithValues("job", macBuild.Namespace, "workspace", workspaceDir),
+		macBuild:              macBuild,
+		spec:                  macBuild.Spec,
+		artifactsScriptSource: artifactsScriptSource,
 
 		workspaceDir:     workspaceDir,
 		sourceDir:        filepath.Join(workspaceDir, "source"),
@@ -168,12 +174,46 @@ func (j *nativeBuildJob) exec(cmd *exec.Cmd, dir ...string) error {
 
 // cloneArtifactsRepo clones the artifacts repository.
 func (j *nativeBuildJob) cloneArtifactsRepo() error {
-	j.logger.Info("Cloning artifacts repository...")
-	artifactsRepoURL := "https://github.com/PingCAP-QE/artifacts.git"
-	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", artifactsRepoURL, j.artifactsRepoDir)
+	source, err := j.artifactsScriptSource.Normalize()
+	if err != nil {
+		return fmt.Errorf("invalid artifacts repo source: %w", err)
+	}
+
+	j.logger.Info(
+		"Cloning artifacts repository...",
+		"repo", source.URL,
+		"revision", source.Revision,
+		"expectedCommit", source.ExpectedCommit,
+	)
+
+	cmd := exec.Command("git", "clone", "--no-checkout", "--filter=blob:none", source.URL, j.artifactsRepoDir)
 	if err := j.exec(cmd); err != nil {
 		return fmt.Errorf("failed to clone artifacts repo: %w", err)
 	}
+
+	checkoutRef, err := j.resolveArtifactsCheckoutRef(source.Revision)
+	if err != nil {
+		return err
+	}
+
+	cmd = exec.Command("git", "checkout", "--detach", checkoutRef)
+	if err := j.exec(cmd, j.artifactsRepoDir); err != nil {
+		return fmt.Errorf("failed to checkout artifacts repo revision %q: %w", source.Revision, err)
+	}
+
+	headCommit, err := j.gitHeadCommit(j.artifactsRepoDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve artifacts repo HEAD commit: %w", err)
+	}
+	if headCommit != source.ExpectedCommit {
+		return fmt.Errorf(
+			"artifacts repo revision %q resolved to %q, expected %q",
+			source.Revision,
+			headCommit,
+			source.ExpectedCommit,
+		)
+	}
+
 	return nil
 }
 
@@ -215,6 +255,39 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	commitHash := strings.TrimSpace(string(hashBytes))
 	j.logger.Info("Source checked out", "commitHash", commitHash)
 	return commitHash, nil
+}
+
+func (j *nativeBuildJob) gitHeadCommit(dir string) (string, error) {
+	cmdHash := exec.Command("git", "rev-parse", "HEAD")
+	cmdHash.Dir = dir
+	hashBytes, err := cmdHash.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(hashBytes)), nil
+}
+
+func (j *nativeBuildJob) resolveArtifactsCheckoutRef(revision string) (string, error) {
+	if isFullCommitSHA(revision) {
+		return revision, nil
+	}
+
+	tagRef := revision
+	if !strings.HasPrefix(tagRef, "refs/tags/") {
+		tagRef = "refs/tags/" + revision
+	}
+
+	cmd := exec.Command("git", "rev-parse", "--verify", tagRef+"^{commit}")
+	cmd.Dir = j.artifactsRepoDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf(
+			"artifacts repo revision %q must be a reachable tag or full commit SHA: %s",
+			revision,
+			strings.TrimSpace(string(output)),
+		)
+	}
+
+	return tagRef, nil
 }
 
 // generateEnvFile generates the environment file for the build.
