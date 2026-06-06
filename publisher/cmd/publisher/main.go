@@ -17,9 +17,11 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/fileserver"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tiup"
 	implfs "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
 	implimg "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/image"
+	impltidbcloud "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tidbcloud"
 	impltiup "github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
@@ -55,7 +57,7 @@ func main() {
 		logLevel = zerolog.DebugLevel
 	}
 	zerolog.SetGlobalLevel(logLevel)
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tiup.ServiceName).Logger()
+	loggerCtx := zerolog.New(os.Stderr).With().Timestamp()
 
 	// Load and parse configuration
 	cfg, err := config.Load[config.Service](*configFile)
@@ -64,27 +66,39 @@ func main() {
 	}
 
 	// Initialize the services.
-	tiupSvc := impltiup.NewService(&logger, *cfg)
-	fsSvc := implfs.NewService(&logger, *cfg)
-	imgSvc := implimg.NewService(&logger, *cfg)
+	tiupLogger := loggerCtx.Str("service", "tiup").Logger()
+	tiupSvc := impltiup.NewService(&tiupLogger, *cfg)
+	fsLogger := loggerCtx.Str("service", "fileserver").Logger()
+	fsSvc := implfs.NewService(&fsLogger, *cfg)
+	imgLogger := loggerCtx.Str("service", "image").Logger()
+	imgSvc := implimg.NewService(&imgLogger, *cfg)
+	tidbcloudLogger := loggerCtx.Str("service", "tidbcloud").Logger()
+	tidbcloudSvc := impltidbcloud.NewService(&tidbcloudLogger, *cfg)
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	var (
-		tiupEndpoints *tiup.Endpoints
-		fsEndpoints   *fileserver.Endpoints
-		imgEndpoints  *image.Endpoints
+		tiupEndpoints      *tiup.Endpoints
+		fsEndpoints        *fileserver.Endpoints
+		imgEndpoints       *image.Endpoints
+		tidbcloudEndpoints *tidbcloud.Endpoints
 	)
 	{
 		tiupEndpoints = tiup.NewEndpoints(tiupSvc)
 		tiupEndpoints.Use(debug.LogPayloads())
 		tiupEndpoints.Use(log.Endpoint)
+
 		fsEndpoints = fileserver.NewEndpoints(fsSvc)
 		fsEndpoints.Use(debug.LogPayloads())
 		fsEndpoints.Use(log.Endpoint)
+
 		imgEndpoints = image.NewEndpoints(imgSvc)
 		imgEndpoints.Use(debug.LogPayloads())
 		imgEndpoints.Use(log.Endpoint)
+
+		tidbcloudEndpoints = tidbcloud.NewEndpoints(tidbcloudSvc)
+		tidbcloudEndpoints.Use(debug.LogPayloads())
+		tidbcloudEndpoints.Use(log.Endpoint)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -126,7 +140,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, imgEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, tiupEndpoints, fsEndpoints, imgEndpoints, tidbcloudEndpoints, &wg, errc, *dbgF)
 		}
 
 	default:

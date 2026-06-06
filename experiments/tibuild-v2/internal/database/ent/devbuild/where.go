@@ -124,6 +124,11 @@ func PipelineEngine(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineEngine, v))
 }
 
+// Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
+func Platform(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldPlatform, v))
+}
+
 // BuilderImg applies equality check predicate on the "builder_img" field. It's identical to BuilderImgEQ.
 func BuilderImg(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldBuilderImg, v))
@@ -1032,6 +1037,81 @@ func PipelineEngineEqualFold(v string) predicate.DevBuild {
 // PipelineEngineContainsFold applies the ContainsFold predicate on the "pipeline_engine" field.
 func PipelineEngineContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldPipelineEngine, v))
+}
+
+// PlatformEQ applies the EQ predicate on the "platform" field.
+func PlatformEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldPlatform, v))
+}
+
+// PlatformNEQ applies the NEQ predicate on the "platform" field.
+func PlatformNEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNEQ(FieldPlatform, v))
+}
+
+// PlatformIn applies the In predicate on the "platform" field.
+func PlatformIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIn(FieldPlatform, vs...))
+}
+
+// PlatformNotIn applies the NotIn predicate on the "platform" field.
+func PlatformNotIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotIn(FieldPlatform, vs...))
+}
+
+// PlatformGT applies the GT predicate on the "platform" field.
+func PlatformGT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGT(FieldPlatform, v))
+}
+
+// PlatformGTE applies the GTE predicate on the "platform" field.
+func PlatformGTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGTE(FieldPlatform, v))
+}
+
+// PlatformLT applies the LT predicate on the "platform" field.
+func PlatformLT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLT(FieldPlatform, v))
+}
+
+// PlatformLTE applies the LTE predicate on the "platform" field.
+func PlatformLTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLTE(FieldPlatform, v))
+}
+
+// PlatformContains applies the Contains predicate on the "platform" field.
+func PlatformContains(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContains(FieldPlatform, v))
+}
+
+// PlatformHasPrefix applies the HasPrefix predicate on the "platform" field.
+func PlatformHasPrefix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasPrefix(FieldPlatform, v))
+}
+
+// PlatformHasSuffix applies the HasSuffix predicate on the "platform" field.
+func PlatformHasSuffix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasSuffix(FieldPlatform, v))
+}
+
+// PlatformIsNil applies the IsNil predicate on the "platform" field.
+func PlatformIsNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIsNull(FieldPlatform))
+}
+
+// PlatformNotNil applies the NotNil predicate on the "platform" field.
+func PlatformNotNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotNull(FieldPlatform))
+}
+
+// PlatformEqualFold applies the EqualFold predicate on the "platform" field.
+func PlatformEqualFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEqualFold(FieldPlatform, v))
+}
+
+// PlatformContainsFold applies the ContainsFold predicate on the "platform" field.
+func PlatformContainsFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContainsFold(FieldPlatform, v))
 }
 
 // BuilderImgEQ applies the EQ predicate on the "builder_img" field.

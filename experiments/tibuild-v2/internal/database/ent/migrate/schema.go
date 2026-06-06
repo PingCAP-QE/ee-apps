@@ -26,6 +26,7 @@ var (
 		{Name: "is_push_gcr", Type: field.TypeBool, Nullable: true},
 		{Name: "target_img", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "pipeline_engine", Type: field.TypeString, Nullable: true, Size: 16, Default: "jenkins"},
+		{Name: "platform", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "builder_img", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "build_env", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "features", Type: field.TypeString, Nullable: true, Size: 128},

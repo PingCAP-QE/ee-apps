@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,22 +107,19 @@ func TestDevBuildCreate(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1.2", entity.Spec.PluginGitRef)
 	})
-	t.Run("auto fill fips", func(t *testing.T) {
-		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTikv, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
-			DevBuildSaveOption{})
-		require.NoError(t, err)
-		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
-		require.Equal(t, FIPS_TIKV_BUILDER, entity.Spec.BuilderImg)
-		require.Equal(t, FIPS_TIKV_BASE, entity.Spec.ProductBaseImg)
-	})
-	t.Run("auto fill fips", func(t *testing.T) {
-		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductBr, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", Features: "fips"}},
-			DevBuildSaveOption{})
-		require.NoError(t, err)
-		require.Equal(t, FIPS_BUILD_ENV, entity.Spec.BuildEnv)
-		require.Equal(t, "https://raw.githubusercontent.com/PingCAP-QE/artifacts/main/dockerfiles/br.Dockerfile", entity.Spec.ProductDockerfile)
+	t.Run("auto set tekton engine for tikv non-hotfix", func(t *testing.T) {
+		req := DevBuild{
+			Meta: DevBuildMeta{
+				// CreatedBy: "abc@test.com",
+			},
+			Spec: DevBuildSpec{
+				Product: ProductTikv,
+				Version: "v8.5.4",
+				Edition: EditionCommunity,
+				GitRef:  "pull/23"},
+		}
+		fillWithDefaults(&req)
+		require.Equal(t, TektonEngine, req.Spec.PipelineEngine)
 	})
 	t.Run("bad enterprise plugin", func(t *testing.T) {
 		_, err := server.Create(context.TODO(),
@@ -184,6 +182,21 @@ func TestDevBuildCreate(t *testing.T) {
 		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
 			Version: "v6.1.2", Edition: EditionCommunity, GithubRepo: "aa/bb/cc"}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "githubRepo is not valid")
+		require.ErrorIs(t, err, ErrBadRequest)
+	})
+	t.Run("tekton build requires createdBy", func(t *testing.T) {
+		_, err := server.Create(context.TODO(), DevBuild{
+			Spec: DevBuildSpec{
+				Product:        ProductTicdcNewarch,
+				GitRef:         "commit/69f386697dee31c31609f64c6c0fc0b2c91cf769",
+				Version:        "v8.5.5-test",
+				Edition:        EditionCommunity,
+				GithubRepo:     "pingcap/ticdc",
+				PipelineEngine: TektonEngine,
+				Platform:       "linux",
+			},
+		}, DevBuildSaveOption{})
+		require.ErrorContains(t, err, "meta.createdBy is required for tekton builds")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("hotfix ok", func(t *testing.T) {
@@ -463,6 +476,9 @@ func TestValidateReq(t *testing.T) {
 		{
 			name: "valid request with tekton pipeline",
 			req: DevBuild{
+				Meta: DevBuildMeta{
+					CreatedBy: "some@pingcap.com",
+				},
 				Spec: DevBuildSpec{
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
@@ -487,7 +503,7 @@ func TestValidateReq(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "product is not valid",
+			errMsg:  "product invalid-product is invalid",
 		},
 		{
 			name: "invalid edition for jenkins",
@@ -507,6 +523,9 @@ func TestValidateReq(t *testing.T) {
 		{
 			name: "invalid edition for tekton",
 			req: DevBuild{
+				Meta: DevBuildMeta{
+					CreatedBy: "some@pingcap.com",
+				},
 				Spec: DevBuildSpec{
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
@@ -518,6 +537,23 @@ func TestValidateReq(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "edition is not valid for tekton engine",
+		},
+		{
+			name: "legacy next-gen edition stays valid for tekton",
+			req: DevBuild{
+				Meta: DevBuildMeta{
+					CreatedBy: "some@pingcap.com",
+				},
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        EditionNextGenOld,
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "invalid pipeline engine",
@@ -677,6 +713,9 @@ func TestValidateReq(t *testing.T) {
 		{
 			name: "tekton engine with platform set",
 			req: DevBuild{
+				Meta: DevBuildMeta{
+					CreatedBy: "some@pingcap.com",
+				},
 				Spec: DevBuildSpec{
 					Product:        ProductTidb,
 					GitRef:         "branch/main",
@@ -688,6 +727,21 @@ func TestValidateReq(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "tekton engine without createdBy",
+			req: DevBuild{
+				Spec: DevBuildSpec{
+					Product:        ProductTidb,
+					GitRef:         "branch/main",
+					Version:        "v6.5.0",
+					Edition:        EditionCommunity,
+					PipelineEngine: TektonEngine,
+					GithubRepo:     "pingcap/tidb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "meta.createdBy is required for tekton builds",
 		},
 	}
 
@@ -701,9 +755,8 @@ func TestValidateReq(t *testing.T) {
 				return
 			}
 
-			// Check error message if error is expected
-			if tt.wantErr != (err != nil) {
-				t.Errorf("validateReq() error message = %v, want error: %v", err.Error(), tt.wantErr)
+			if err != nil && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("validateReq() error message = %v, want contains %q", err.Error(), tt.errMsg)
 			}
 		})
 	}

@@ -1,14 +1,537 @@
 {
-    "specversion": "1.0",
-    "id": "f813f928-adea-4653-a523-dee1a81dab7e",
-    "source": "/apis///namespaces/ee-cd//build-package-pingcap-tidb-darwin-g9k4f",
-    "type": "dev.tekton.event.pipelinerun.successful.v1",
-    "subject": "build-package-pingcap-tidb-darwin-g9k4f",
-    "datacontenttype": "application/json",
-    "time": "2023-12-07T06:30:55.539307083Z",
-    "data": {
-        "pipelineRun": {
-
+  "specversion": "1.0",
+  "id": "df4d16c8-8aee-48ee-93a8-cf24fd634b08",
+  "source": "/apis///namespaces/ee-cd//bp-tiflash-release-darwin-arm64-rfckh",
+  "type": "dev.tekton.event.pipelinerun.successful.v1",
+  "subject": "bp-tiflash-release-darwin-arm64-rfckh",
+  "datacontenttype": "application/json",
+  "time": "2026-02-02T09:34:05.542800675Z",
+  "data": {
+    "pipelineRun": {
+      "metadata": {
+        "name": "bp-tiflash-release-darwin-arm64-rfckh",
+        "generateName": "bp-tiflash-release-darwin-arm64-",
+        "namespace": "ee-cd",
+        "uid": "78c20921-fbeb-4689-a8c6-53844627cb12",
+        "resourceVersion": "136518622",
+        "generation": 1,
+        "creationTimestamp": "2026-02-02T07:42:42Z",
+        "labels": {
+          "kustomize.toolkit.fluxcd.io/name": "tekton-config-pipelines",
+          "kustomize.toolkit.fluxcd.io/namespace": "ee-cd",
+          "tekton.dev/pipeline": "pingcap-build-package-darwin",
+          "triggers.tekton.dev/eventlistener": "github",
+          "triggers.tekton.dev/trigger": "github-push-build-community-fts-darwin",
+          "triggers.tekton.dev/triggers-eventid": "dc4a97a4-b2c3-4ec4-81b4-866b76ebb0c5"
+        },
+        "annotations": {
+          "tekton.dev/ce-context": "{}",
+          "tibuild.pingcap.net/component": "tiflash",
+          "tibuild.pingcap.net/git-ref": "feature/fts",
+          "tibuild.pingcap.net/git-repo": "https://github.com/pingcap/tiflash.git",
+          "tibuild.pingcap.net/git-revision": "54bbcbbd9860e0bfa8748a15e7bec00833973696",
+          "tibuild.pingcap.net/platform": "darwin/arm64",
+          "tibuild.pingcap.net/profile": "release"
+        },
+        "finalizers": ["chains.tekton.dev/pipelinerun"],
+        "managedFields": [
+          {
+            "manager": "controller",
+            "operation": "Update",
+            "apiVersion": "tekton.dev/v1",
+            "time": "2026-02-02T07:42:42Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {
+              "f:metadata": {
+                "f:finalizers": {
+                  ".": {},
+                  "v:\"chains.tekton.dev/pipelinerun\"": {}
+                },
+                "f:labels": {
+                  "f:kustomize.toolkit.fluxcd.io/name": {},
+                  "f:kustomize.toolkit.fluxcd.io/namespace": {},
+                  "f:tekton.dev/pipeline": {}
+                }
+              }
+            }
+          },
+          {
+            "manager": "eventlistenersink",
+            "operation": "Update",
+            "apiVersion": "tekton.dev/v1",
+            "time": "2026-02-02T07:42:42Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {
+              "f:metadata": {
+                "f:annotations": {
+                  ".": {},
+                  "f:tekton.dev/ce-context": {},
+                  "f:tibuild.pingcap.net/component": {},
+                  "f:tibuild.pingcap.net/git-ref": {},
+                  "f:tibuild.pingcap.net/git-repo": {},
+                  "f:tibuild.pingcap.net/git-revision": {},
+                  "f:tibuild.pingcap.net/platform": {},
+                  "f:tibuild.pingcap.net/profile": {}
+                },
+                "f:generateName": {},
+                "f:labels": {
+                  ".": {},
+                  "f:triggers.tekton.dev/eventlistener": {},
+                  "f:triggers.tekton.dev/trigger": {},
+                  "f:triggers.tekton.dev/triggers-eventid": {}
+                }
+              },
+              "f:spec": {
+                ".": {},
+                "f:params": {},
+                "f:pipelineRef": { ".": {}, "f:name": {} },
+                "f:taskRunSpecs": {},
+                "f:taskRunTemplate": {
+                  ".": {},
+                  "f:podTemplate": {
+                    ".": {},
+                    "f:nodeSelector": { ".": {}, "f:kubernetes.io/arch": {} }
+                  }
+                },
+                "f:timeouts": { ".": {}, "f:pipeline": {} },
+                "f:workspaces": {}
+              }
+            }
+          },
+          {
+            "manager": "controller",
+            "operation": "Update",
+            "apiVersion": "tekton.dev/v1",
+            "time": "2026-02-02T09:33:57Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {
+              "f:status": {
+                ".": {},
+                "f:childReferences": {},
+                "f:conditions": {},
+                "f:pipelineSpec": {
+                  ".": {},
+                  "f:params": {},
+                  "f:results": {},
+                  "f:tasks": {},
+                  "f:workspaces": {}
+                },
+                "f:provenance": {
+                  ".": {},
+                  "f:featureFlags": {
+                    ".": {},
+                    "f:awaitSidecarReadiness": {},
+                    "f:coschedule": {},
+                    "f:enableAPIFields": {},
+                    "f:enableCELInWhenExpression": {},
+                    "f:enableParamEnum": {},
+                    "f:enableProvenanceInStatus": {},
+                    "f:enforceNonfalsifiability": {},
+                    "f:maxResultSize": {},
+                    "f:resultExtractionMethod": {},
+                    "f:verificationNoMatchPolicy": {}
+                  }
+                },
+                "f:startTime": {}
+              }
+            },
+            "subresource": "status"
+          }
+        ]
+      },
+      "spec": {
+        "pipelineRef": { "name": "pingcap-build-package-darwin" },
+        "params": [
+          {
+            "name": "git-url",
+            "value": "https://github.com/pingcap/tiflash.git"
+          },
+          {
+            "name": "git-refspec",
+            "value": "+refs/heads/feature/fts:refs/heads/feature/fts"
+          },
+          {
+            "name": "git-revision",
+            "value": "54bbcbbd9860e0bfa8748a15e7bec00833973696"
+          },
+          { "name": "git-ref", "value": "feature/fts" },
+          { "name": "component", "value": "tiflash" },
+          { "name": "profile", "value": "release" },
+          { "name": "os", "value": "darwin" },
+          { "name": "arch", "value": "arm64" },
+          {
+            "name": "registry",
+            "value": "us-docker.pkg.dev/pingcap-testing-account/hub"
+          },
+          { "name": "force-builder-image", "value": "" },
+          { "name": "boskos-server-url", "value": "http://boskos.ee-cd.svc" },
+          { "name": "publisher-url", "value": "https://publisher.pingcap.net" },
+          {
+            "name": "git-instead-of",
+            "value": "https://github.com/ =\u003e http://git-cdn.cache.svc:8000/, git@github.com: =\u003e http://git-cdn.cache.svc:8000/"
+          }
+        ],
+        "serviceAccountName": "default",
+        "timeouts": { "pipeline": "3h0m0s" },
+        "podTemplate": { "nodeSelector": { "kubernetes.io/arch": "amd64" } },
+        "workspaces": [
+          {
+            "name": "source",
+            "volumeClaimTemplate": {
+              "metadata": { "creationTimestamp": null },
+              "spec": {
+                "accessModes": ["ReadWriteOnce"],
+                "resources": { "requests": { "storage": "100Gi" } },
+                "storageClassName": "openebs-single-replica"
+              },
+              "status": {}
+            }
+          },
+          {
+            "name": "mac-ssh-credentials",
+            "secret": { "secretName": "mac-ssh-credentials" }
+          }
+        ],
+        "taskRunSpecs": [
+          {
+            "pipelineTaskName": "checkout",
+            "taskServiceAccountName": "github-bot"
+          },
+          {
+            "pipelineTaskName": "checkout-ext",
+            "taskServiceAccountName": "github-bot"
+          },
+          {
+            "pipelineTaskName": "build-binaries",
+            "taskServiceAccountName": "image-releaser"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Succeeded",
+            "status": "True",
+            "lastTransitionTime": "2026-02-02T09:34:05Z",
+            "reason": "Succeeded",
+            "message": "Tasks Completed: 7 (Failed: 0, Cancelled 0), Skipped: 0"
+          }
+        ],
+        "startTime": "2026-02-02T07:42:42Z",
+        "completionTime": "2026-02-02T09:34:05Z",
+        "pipelineResults": [
+          {
+            "name": "pushed-binaries",
+            "value": "oci:\n  repo: us-docker.pkg.dev/pingcap-testing-account/hub/pingcap/tiflash/package\n  tag: \"feature-fts-54bbcbb_darwin_arm64\"\n  digest: \"sha256:7c9785655169870462ec6c52bdc7d5bd4e6221b419b89686d11a769d92ee15d3\"\n  tags:\n    - feature-fts-54bbcbb_darwin_arm64\n    - feature-fts_darwin_arm64\n    - v9.0.0-feature.fts_darwin_arm64\nfiles:\n  - tiflash-v9.0.0-feature.fts-darwin-arm64.tar.gz\n  - tiflash-v9.0.0-feature.fts-darwin-arm64.tar.gz.sha256\n"
+          },
+          { "name": "pushed-images", "value": "'{}'" }
+        ],
+        "pipelineSpec": {
+          "tasks": [
+            {
+              "name": "checkout",
+              "taskRef": { "name": "git-clone", "kind": "Task" },
+              "retries": 2,
+              "params": [
+                {
+                  "name": "url",
+                  "value": "https://github.com/pingcap/tiflash.git"
+                },
+                {
+                  "name": "revision",
+                  "value": "54bbcbbd9860e0bfa8748a15e7bec00833973696"
+                },
+                { "name": "depth", "value": "0" },
+                {
+                  "name": "refspec",
+                  "value": "+refs/heads/feature/fts:refs/heads/feature/fts"
+                },
+                { "name": "subdirectory", "value": "tiflash" },
+                {
+                  "name": "gitInsteadOf",
+                  "value": "https://github.com/ =\u003e http://git-cdn.cache.svc:8000/, git@github.com: =\u003e http://git-cdn.cache.svc:8000/"
+                }
+              ],
+              "workspaces": [{ "name": "output", "workspace": "source" }]
+            },
+            {
+              "name": "checkout-ext",
+              "taskRef": { "name": "pingcap-git-clone-ext", "kind": "Task" },
+              "retries": 2,
+              "runAfter": ["checkout"],
+              "params": [
+                {
+                  "name": "master-git-url",
+                  "value": "https://github.com/pingcap/tiflash.git"
+                },
+                { "name": "master-git-ref", "value": "feature/fts" },
+                { "name": "depth", "value": "0" },
+                { "name": "refspec", "value": "+refs/heads/*:refs/heads/*" },
+                { "name": "master-directory", "value": "tiflash" }
+              ],
+              "workspaces": [{ "name": "output", "workspace": "source" }]
+            },
+            {
+              "name": "get-release-ver",
+              "taskRef": {
+                "name": "pingcap-get-set-release-version",
+                "kind": "Task"
+              },
+              "retries": 2,
+              "runAfter": ["checkout"],
+              "params": [
+                { "name": "git-ref", "value": "feature/fts" },
+                {
+                  "name": "git-refspec",
+                  "value": "+refs/heads/feature/fts:refs/heads/feature/fts"
+                }
+              ],
+              "workspaces": [
+                {
+                  "name": "source",
+                  "workspace": "source",
+                  "subPath": "tiflash"
+                }
+              ]
+            },
+            {
+              "name": "get-binaries-builder",
+              "taskRef": {
+                "name": "pingcap-get-builder-image",
+                "kind": "Task"
+              },
+              "retries": 2,
+              "params": [
+                { "name": "component", "value": "tiflash" },
+                { "name": "os", "value": "darwin" },
+                { "name": "arch", "value": "arm64" },
+                { "name": "profile", "value": "release" },
+                {
+                  "name": "version",
+                  "value": "$(tasks.get-release-ver.results.version)"
+                },
+                { "name": "force-builder-image", "value": "" }
+              ]
+            },
+            {
+              "name": "build-binaries",
+              "taskRef": {
+                "name": "pingcap-build-binaries-darwin",
+                "kind": "Task"
+              },
+              "retries": 2,
+              "runAfter": ["checkout-ext"],
+              "params": [
+                { "name": "os", "value": "darwin" },
+                { "name": "arch", "value": "arm64" },
+                { "name": "profile", "value": "release" },
+                { "name": "component", "value": "tiflash" },
+                {
+                  "name": "version",
+                  "value": "$(tasks.get-release-ver.results.version)"
+                },
+                {
+                  "name": "git-ref",
+                  "value": "$(tasks.get-release-ver.results.build-ref)"
+                },
+                {
+                  "name": "git-sha",
+                  "value": "$(tasks.checkout.results.commit)"
+                },
+                {
+                  "name": "builder-image",
+                  "value": "$(tasks.get-binaries-builder.results.image-url)"
+                },
+                { "name": "release-dir", "value": "build" },
+                { "name": "push", "value": "true" },
+                {
+                  "name": "registry",
+                  "value": "us-docker.pkg.dev/pingcap-testing-account/hub"
+                },
+                {
+                  "name": "boskos-server-url",
+                  "value": "http://boskos.ee-cd.svc"
+                }
+              ],
+              "workspaces": [
+                { "name": "source", "workspace": "source" },
+                { "name": "ssh-directory", "workspace": "mac-ssh-credentials" }
+              ]
+            },
+            {
+              "name": "build-images",
+              "taskRef": { "name": "echo", "kind": "Task" },
+              "when": [
+                { "input": "true", "operator": "in", "values": ["true"] }
+              ],
+              "params": [{ "name": "message", "value": "'{}'" }]
+            },
+            {
+              "name": "deliver-binaries",
+              "taskRef": { "name": "pingcap-deliver-binaries", "kind": "Task" },
+              "when": [
+                {
+                  "input": "$(tasks.build-binaries.results.pushed)",
+                  "operator": "notin",
+                  "values": ["{}", "\"{}\""]
+                }
+              ],
+              "retries": 2,
+              "runAfter": ["build-binaries"],
+              "params": [
+                { "name": "src-type", "value": "oci-info" },
+                {
+                  "name": "src",
+                  "value": "$(tasks.build-binaries.results.pushed)"
+                },
+                {
+                  "name": "publisher-url",
+                  "value": "https://publisher.pingcap.net"
+                }
+              ]
+            }
+          ],
+          "params": [
+            { "name": "git-url", "type": "string" },
+            { "name": "git-ref", "type": "string", "default": "master" },
+            {
+              "name": "git-refspec",
+              "type": "string",
+              "default": "+refs/heads/*:refs/heads/*"
+            },
+            { "name": "git-revision", "type": "string", "default": "master" },
+            {
+              "name": "git-instead-of",
+              "type": "string",
+              "description": "Configure Git to use the `insteadOf` feature to speed up cloning.\nYou can specify multiple `insteadOf` configurations separated by commas.\nFor example: insteadof1 =\u003e new1, insteadof2 =\u003e new2\n",
+              "default": ""
+            },
+            {
+              "name": "component",
+              "type": "string",
+              "description": "compoent name, supports:\n- pd\n- ticdc\n- tidb\n- tiflash\n- tiflow\n- tikv\n- tiproxy\n- tici\n\nMay be it is an idea to judge it by git-url, but it maybe\nnot a generic way for forked repositories with custom names.\n"
+            },
+            { "name": "os", "type": "string", "default": "darwin" },
+            { "name": "arch", "type": "string", "default": "amd64" },
+            { "name": "profile", "type": "string", "default": "release" },
+            { "name": "push", "type": "string", "default": "true" },
+            {
+              "name": "registry",
+              "type": "string",
+              "description": "the base OCI registry server for store artifacts, it can be set with prefix repo path.",
+              "default": "hub.pingcap.net"
+            },
+            {
+              "name": "force-builder-image",
+              "type": "string",
+              "description": "The builder image to use for building binaries by force, if empty. Default the task will complete one from config in artifacts.git repo.\n",
+              "default": ""
+            },
+            {
+              "name": "boskos-server-url",
+              "type": "string",
+              "description": "The URL of the running boskos server",
+              "default": "http://boskos"
+            },
+            {
+              "name": "publisher-url",
+              "type": "string",
+              "description": "The URL of the running publisher server",
+              "default": "https://publisher.pingcap.net"
+            }
+          ],
+          "workspaces": [
+            {
+              "name": "source",
+              "description": "The workspace where the git repo will be cloned."
+            },
+            {
+              "name": "mac-ssh-credentials",
+              "description": "secret contains ssh private key in `id_rsa` key for login mac"
+            }
+          ],
+          "results": [
+            {
+              "name": "pushed-binaries",
+              "description": "pushed binaries.",
+              "value": "$(tasks.build-binaries.results.pushed)"
+            },
+            {
+              "name": "pushed-images",
+              "description": "pushed images.",
+              "value": "$(tasks.build-images.results.printed)"
+            }
+          ]
+        },
+        "childReferences": [
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-checkout",
+            "pipelineTaskName": "checkout"
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-checkout-ext",
+            "pipelineTaskName": "checkout-ext"
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-get-release-ver",
+            "pipelineTaskName": "get-release-ver"
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-get-binaries-builder",
+            "pipelineTaskName": "get-binaries-builder"
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-build-binaries",
+            "pipelineTaskName": "build-binaries"
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-build-images",
+            "pipelineTaskName": "build-images",
+            "whenExpressions": [
+              { "input": "true", "operator": "in", "values": ["true"] }
+            ]
+          },
+          {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "TaskRun",
+            "name": "bp-tiflash-release-darwin-arm64-rfckh-deliver-binaries",
+            "pipelineTaskName": "deliver-binaries",
+            "whenExpressions": [
+              {
+                "input": "oci:\n  repo: us-docker.pkg.dev/pingcap-testing-account/hub/pingcap/tiflash/package\n  tag: \"feature-fts-54bbcbb_darwin_arm64\"\n  digest: \"sha256:7c9785655169870462ec6c52bdc7d5bd4e6221b419b89686d11a769d92ee15d3\"\n  tags:\n    - feature-fts-54bbcbb_darwin_arm64\n    - feature-fts_darwin_arm64\n    - v9.0.0-feature.fts_darwin_arm64\nfiles:\n  - tiflash-v9.0.0-feature.fts-darwin-arm64.tar.gz\n  - tiflash-v9.0.0-feature.fts-darwin-arm64.tar.gz.sha256\n",
+                "operator": "notin",
+                "values": ["{}", "\"{}\""]
+              }
+            ]
+          }
+        ],
+        "provenance": {
+          "featureFlags": {
+            "enableAPIFields": "alpha",
+            "awaitSidecarReadiness": true,
+            "enforceNonfalsifiability": "none",
+            "verificationNoMatchPolicy": "ignore",
+            "enableProvenanceInStatus": true,
+            "resultExtractionMethod": "sidecar-logs",
+            "maxResultSize": 10240,
+            "coschedule": "disabled",
+            "enableCELInWhenExpression": true,
+            "enableParamEnum": true
+          }
         }
+      }
     }
+  }
 }

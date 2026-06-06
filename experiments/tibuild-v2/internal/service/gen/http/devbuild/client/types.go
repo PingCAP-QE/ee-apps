@@ -256,7 +256,8 @@ type ImageArtifactResponse struct {
 
 // TektonStatusResponse is used to define fields on response body types.
 type TektonStatusResponse struct {
-	Pipelines []*TektonPipelineResponse `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	Pipelines        []*TektonPipelineResponse `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	TriggersEventIds []string                  `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineResponse is used to define fields on response body types.
@@ -378,7 +379,8 @@ type ImageArtifactResponseBody struct {
 
 // TektonStatusResponseBody is used to define fields on response body types.
 type TektonStatusResponseBody struct {
-	Pipelines []*TektonPipelineResponseBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	Pipelines        []*TektonPipelineResponseBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
+	TriggersEventIds []string                      `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineResponseBody is used to define fields on response body types.
@@ -449,7 +451,8 @@ type ImageArtifactRequestBody struct {
 
 // TektonStatusRequestBody is used to define fields on request body types.
 type TektonStatusRequestBody struct {
-	Pipelines []*TektonPipelineRequestBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	Pipelines        []*TektonPipelineRequestBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
+	TriggersEventIds []string                     `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
 }
 
 // TektonPipelineRequestBody is used to define fields on request body types.
@@ -1047,8 +1050,8 @@ func ValidateDevBuildSpecResponse(body *DevBuildSpecResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "nextgen" || *body.Edition == "next-gen") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 		}
 	}
 	if body.Platform != nil {
@@ -1202,6 +1205,9 @@ func ValidateTektonStatusResponse(body *TektonStatusResponse) (err error) {
 			}
 		}
 	}
+	for _, e := range body.TriggersEventIds {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggers_event_ids[*]", e, goa.FormatUUID))
+	}
 	return
 }
 
@@ -1268,8 +1274,8 @@ func ValidateOciArtifactResponse(body *OciArtifactResponse) (err error) {
 // ValidateDevBuildSpecRequestBody runs the validations defined on
 // DevBuildSpecRequestBody
 func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) {
-	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment" || body.Edition == "next-gen") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+	if !(body.Edition == "enterprise" || body.Edition == "community" || body.Edition == "fips" || body.Edition == "failpoint" || body.Edition == "experiment" || body.Edition == "nextgen" || body.Edition == "next-gen") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 	}
 	if !(body.Platform == "all" || body.Platform == "linux" || body.Platform == "darwin" || body.Platform == "linux/amd64" || body.Platform == "linux/arm64" || body.Platform == "darwin/amd64" || body.Platform == "darwin/arm64") {
 		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.platform", body.Platform, []any{"all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}))
@@ -1325,8 +1331,8 @@ func ValidateDevBuildSpecResponseBody(body *DevBuildSpecResponseBody) (err error
 		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
 	}
 	if body.Edition != nil {
-		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "next-gen") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "next-gen"}))
+		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "nextgen" || *body.Edition == "next-gen") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.edition", *body.Edition, []any{"enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen"}))
 		}
 	}
 	if body.Platform != nil {
@@ -1480,6 +1486,9 @@ func ValidateTektonStatusResponseBody(body *TektonStatusResponseBody) (err error
 				err = goa.MergeErrors(err, err2)
 			}
 		}
+	}
+	for _, e := range body.TriggersEventIds {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggers_event_ids[*]", e, goa.FormatUUID))
 	}
 	return
 }
@@ -1639,6 +1648,9 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 				err = goa.MergeErrors(err, err2)
 			}
 		}
+	}
+	for _, e := range body.TriggersEventIds {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggers_event_ids[*]", e, goa.FormatUUID))
 	}
 	return
 }

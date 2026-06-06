@@ -3,7 +3,7 @@ package response
 import (
 	"bytes"
 	"encoding/json"
-	"html/template"
+	"text/template"
 
 	sprig "github.com/Masterminds/sprig/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"

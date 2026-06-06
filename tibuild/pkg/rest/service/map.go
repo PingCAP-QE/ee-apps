@@ -23,7 +23,8 @@ const (
 	EditionCommunity  = "community"
 	EditionFailPoint  = "failpoint"
 	EditionFips       = "fips"
-	EditionNextGen    = "next-gen"
+	EditionNextGen    = "nextgen"
+	EditionNextGenOld = "next-gen"
 	EditionExperiment = "experiment"
 
 	// Products
@@ -61,7 +62,7 @@ const (
 var (
 	// editions
 	InvalidEditionForJenkins = []string{EditionEnterprise, EditionCommunity}
-	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment, EditionNextGen}
+	InvalidEditionForTekton  = []string{EditionEnterprise, EditionCommunity, EditionFailPoint, EditionFips, EditionExperiment, EditionNextGen, EditionNextGenOld}
 
 	// build status
 	validBuildStatuses = []string{BuildStatusPending, BuildStatusProcessing, BuildStatusAborted, BuildStatusSuccess, BuildStatusFailure, BuildStatusError}
@@ -151,6 +152,15 @@ func StringToProduct(s string) string {
 		return s
 	}
 	return ProductUnknown
+}
+
+func NormalizeEdition(edition string) string {
+	switch edition {
+	case EditionNextGen, EditionNextGenOld:
+		return EditionNextGen
+	default:
+		return edition
+	}
 }
 
 func IsValidBuildStatus(status string) bool {

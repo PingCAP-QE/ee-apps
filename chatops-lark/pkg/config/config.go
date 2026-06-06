@@ -49,6 +49,8 @@ type Config struct {
 		ApiURL string `yaml:"api_url" json:"api_url"`
 	} `yaml:"devbuild" json:"devbuild"`
 
+	RegistryImage *RegistryImageConfig `yaml:"registry_image" json:"registry_image"`
+
 	Hotfix *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
@@ -68,6 +70,16 @@ type Config struct {
 
 type BaseCmdConfig struct {
 	Audit *AuditConfig `yaml:"audit,omitempty" json:"audit,omitempty"`
+}
+
+type RegistryImageConfig struct {
+	BaseCmdConfig `yaml:",inline" json:",inline"`
+
+	Owner       string `yaml:"owner" json:"owner"`
+	Repo        string `yaml:"repo" json:"repo"`
+	Workflow    string `yaml:"workflow" json:"workflow"`
+	Ref         string `yaml:"ref" json:"ref"`
+	GitHubToken string `yaml:"github_token" json:"github_token"`
 }
 
 type AuditConfig struct {

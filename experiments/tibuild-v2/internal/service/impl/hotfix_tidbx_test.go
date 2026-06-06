@@ -2,9 +2,9 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/google/go-github/v69/github"
@@ -26,15 +26,21 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 	type testCase struct {
 		name            string
 		pages           [][]string
+		branch          *string
 		expected        string
-		taggedCommitSHA string
-		behindCommitSHA string
+		taggedCommitTag string
+		compareStatus   string
 		expectErr       bool
 		errCode         int
 	}
 
 	testCommitSHA := "a9814602ed087838d71095efd35bd221ab0bf5a9"
-	behindCommitSHA := "bbbb1234567890abcdef1234567890abcdef1234"
+	legacyBranch202410 := "release-nextgen-20241015"
+	legacyBranch202510 := "release-nextgen-20251015"
+	legacyBranch202601 := "release-nextgen-20260115"
+	bootstrapBranch := "release-nextgen-202604"
+	bootstrapBranchWithDate := "release-nextgen-20260415"
+	invalidBootstrapBranch := "release-nextgen-202512"
 	cases := []testCase{
 		{
 			name: "LastMonthIncrement",
@@ -47,7 +53,9 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"random-tag",
 				},
 			},
-			expected: "v8.5.4-nextgen.202510.4",
+			branch:        &legacyBranch202510,
+			compareStatus: "ahead",
+			expected:      "v8.5.4-nextgen.202510.4",
 		},
 		{
 			name: "Have tags with two months",
@@ -58,7 +66,9 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v7.1.0-nextgen.202409.3",
 				},
 			},
-			expected: "v7.1.0-nextgen.202410.11",
+			branch:        &legacyBranch202410,
+			compareStatus: "ahead",
+			expected:      "v7.1.0-nextgen.202410.11",
 		},
 		{
 			name: "NoMatchingTags",
@@ -71,6 +81,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"release-20251201",
 				},
 			},
+			branch:    &invalidBootstrapBranch,
 			expectErr: true,
 			errCode:   http.StatusBadRequest,
 		},
@@ -88,7 +99,9 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v9.0.0-nextgen.202601.0",
 				},
 			},
-			expected: "v9.0.0-nextgen.202601.1",
+			branch:        &legacyBranch202601,
+			compareStatus: "ahead",
+			expected:      "v9.0.0-nextgen.202601.1",
 		},
 		{
 			name: "CommitAlreadyTagged",
@@ -98,7 +111,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v8.5.4-nextgen.202510.2",
 				},
 			},
-			taggedCommitSHA: testCommitSHA,
+			taggedCommitTag: "v8.5.4-nextgen.202510.1",
 			expectErr:       true,
 			errCode:         http.StatusBadRequest,
 		},
@@ -110,9 +123,65 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 					"v8.5.4-nextgen.202510.2",
 				},
 			},
-			behindCommitSHA: behindCommitSHA,
-			expectErr:       true,
-			errCode:         http.StatusBadRequest,
+			branch:        &legacyBranch202510,
+			compareStatus: "behind",
+			expectErr:     true,
+			errCode:       http.StatusBadRequest,
+		},
+		{
+			name: "NewStyleBump",
+			pages: [][]string{
+				{
+					"v25.12.9",
+					"v26.4.1",
+					"v26.4.2",
+				},
+			},
+			branch:        &bootstrapBranch,
+			compareStatus: "ahead",
+			expected:      "v26.4.3",
+		},
+		{
+			name: "AlphaPromoteToGA",
+			pages: [][]string{
+				{
+					"v26.4.0-alpha",
+				},
+			},
+			branch:        &bootstrapBranch,
+			compareStatus: "ahead",
+			expected:      "v26.4.0",
+		},
+		{
+			name: "AlphaPromoteToGACommitBehind",
+			pages: [][]string{
+				{
+					"v26.4.2",
+				},
+			},
+			branch:        &bootstrapBranch,
+			compareStatus: "behind",
+			expectErr:     true,
+			errCode:       http.StatusBadRequest,
+		},
+		{
+			name:     "BootstrapFromReleaseNextgenYYYYMM",
+			pages:    [][]string{{}},
+			branch:   &bootstrapBranch,
+			expected: "v26.4.0",
+		},
+		{
+			name:     "BootstrapFromReleaseNextgenYYYYMMDD",
+			pages:    [][]string{{}},
+			branch:   &bootstrapBranchWithDate,
+			expected: "v26.4.0",
+		},
+		{
+			name:      "BootstrapRejectOldYear",
+			pages:     [][]string{{}},
+			branch:    &invalidBootstrapBranch,
+			expectErr: true,
+			errCode:   http.StatusBadRequest,
 		},
 	}
 
@@ -125,39 +194,30 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 				tags := make([]*github.RepositoryTag, len(names))
 				for j, name := range names {
 					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
-					// For the CommitAlreadyTagged case, attach the commit SHA to the first tidbx-style tag
-					if j == 0 && tc.taggedCommitSHA != "" && strings.HasPrefix(name, "v") && strings.Contains(name, "-nextgen.") {
-						tags[j].Commit = &github.Commit{SHA: &tc.taggedCommitSHA}
+					// For CommitAlreadyTagged, attach commit SHA to specific tag.
+					if tc.taggedCommitTag == name {
+						tags[j].Commit = &github.Commit{SHA: github.Ptr(testCommitSHA)}
 					}
 				}
 				tagPages = append(tagPages, tags)
 			}
 			resp := mock.WithRequestMatchPages(mock.GetReposTagsByOwnerByRepo, tagPages...)
 
-			// Mock CompareCommits for the CommitBehindExistingTag case
-			var comparisonResponse *github.CommitsComparison
-			if tc.behindCommitSHA != "" {
-				comparisonResponse = &github.CommitsComparison{
-					Status:   github.Ptr("behind"),
-					BehindBy: github.Ptr(1),
-				}
-			} else {
-				comparisonResponse = &github.CommitsComparison{
-					Status:   github.Ptr("identical"),
-					BehindBy: github.Ptr(0),
-				}
+			compareStatus := tc.compareStatus
+			if compareStatus == "" {
+				compareStatus = "identical"
 			}
-			compareMock := mock.WithRequestMatch(mock.GetReposCompareByOwnerByRepoByBasehead, comparisonResponse)
+			compareMock := mock.WithRequestMatch(
+				mock.GetReposCompareByOwnerByRepoByBasehead,
+				&github.CommitsComparison{
+					Status: github.Ptr(compareStatus),
+				},
+			)
 
 			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
 			svc := newServiceWithClient(ghClient)
 
-			commitSHA := testCommitSHA
-			if tc.behindCommitSHA != "" {
-				commitSHA = tc.behindCommitSHA
-			}
-
-			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", commitSHA)
+			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", testCommitSHA, tc.branch)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -173,7 +233,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			}
 
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("unexpected error: %#v", err)
 			}
 			if tag != tc.expected {
 				t.Fatalf("expected %s, got %s", tc.expected, tag)
@@ -200,7 +260,7 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 		},
 	)
 
-	branch := "main"
+	branch := "release-nextgen-20260115"
 	commit := "abc123"
 	expectedTag := "v9.0.0-nextgen.202601.1"
 
@@ -232,16 +292,65 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 		},
 	}
 
+	// Helper to create a branch_commits mock handler.
+	// The custom branch_commits endpoint does not use the standard /repos/ prefix.
+	branchCommitsHandler := mock.WithRequestMatchHandler(
+		mock.EndpointPattern{
+			Pattern: "/{owner}/{repo}/branch_commits/{sha}",
+			Method:  "GET",
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(mock.MustMarshal(struct {
+				Branches []struct {
+					Branch string `json:"branch,omitempty"`
+				} `json:"branches"`
+			}{
+				Branches: []struct {
+					Branch string `json:"branch,omitempty"`
+				}{
+					{Branch: branch},
+				},
+			}))
+		}),
+	)
+
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
-			// Prepare mocked responses:
-			// - GET tags pages
-			// - GET branch
-			// - POST create tag
-			// - POST create ref
+			var mockOpts []mock.MockBackendOption
+			mockOpts = append(mockOpts, respTags)
 
-			httpClient := mock.NewMockedHTTPClient(
-				respTags,
+			// Determine what CompareCommits responses are needed:
+			// - "branch + commit": verifyAndGetCommit calls CompareCommits(base=branch, head=commit) first.
+			// - "branch only" or "commit only": verifyAndGetCommit does NOT call CompareCommits.
+			// All cases: computeNextTagByCompareCommits calls CompareCommits(base=tag, head=commitSHA),
+			// which needs "ahead" to succeed.
+			if test.args.branch != "" && test.args.commit != "" {
+				// verifyAndGetCommit consumes "identical", then computeNextTagByCompareCommits needs "ahead".
+				mockOpts = append(mockOpts,
+					mock.WithRequestMatch(
+						mock.GetReposCompareByOwnerByRepoByBasehead,
+						&github.CommitsComparison{Status: github.Ptr("identical")},
+						&github.CommitsComparison{Status: github.Ptr("ahead")},
+					),
+				)
+			} else {
+				// Only computeNextTagByCompareCommits calls CompareCommits.
+				mockOpts = append(mockOpts,
+					mock.WithRequestMatch(
+						mock.GetReposCompareByOwnerByRepoByBasehead,
+						&github.CommitsComparison{Status: github.Ptr("ahead")},
+					),
+				)
+			}
+
+			// If only commit is provided (no branch), computeNewTagNameForTidbx will
+			// call getBranchesContainingCommit, which hits the custom branch_commits endpoint.
+			if test.args.commit != "" && test.args.branch == "" {
+				mockOpts = append(mockOpts, branchCommitsHandler)
+			}
+
+			// Common mocks for all subtests.
+			mockOpts = append(mockOpts,
 				mock.WithRequestMatch(
 					mock.GetReposCommitsByOwnerByRepoByRef,
 					&github.RepositoryCommit{
@@ -260,8 +369,20 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				mock.WithRequestMatch(
 					mock.PostReposGitTagsByOwnerByRepo,
 					&github.Tag{
-						Tag:     github.Ptr("v9.0.0-nextgen.202601.1"),
-						Message: github.Ptr("Hot fix tag created by tester"),
+						Tag: github.Ptr("v9.0.0-nextgen.202601.1"),
+						Message: github.Ptr(func() string {
+							b, _ := json.Marshal(map[string]any{
+								"author": "tester",
+								"meta": map[string]any{
+									"ops_req": map[string]any{
+										"applicant":  "tester",
+										"release_id": "rw-12345",
+										"change_id":  "ch-67890",
+									},
+								},
+							})
+							return string(b)
+						}()),
 						Object: &github.GitObject{
 							Type: github.Ptr("commit"),
 							SHA:  github.Ptr(commit),
@@ -278,12 +399,9 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 						},
 					},
 				),
-				mock.WithRequestMatch(
-					mock.GetReposCompareByOwnerByRepoByBasehead,
-					&github.CommitsComparison{Status: github.Ptr("identical")},
-					&github.CommitsComparison{Status: github.Ptr("ahead")},
-				),
 			)
+
+			httpClient := mock.NewMockedHTTPClient(mockOpts...)
 			svc := newServiceWithClient(github.NewClient(httpClient))
 
 			// prepare api payload
@@ -301,19 +419,82 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 			// call the api
 			result, err := svc.BumpTagForTidbx(tt.Context(), apiCallPayload)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				tt.Fatalf("unexpected error: %#v", err)
 			}
 
 			if result.Repo != test.args.fullRepo {
-				t.Fatalf("expected repo %s, got %s", test.args.fullRepo, result.Repo)
+				tt.Fatalf("expected repo %s, got %s", test.args.fullRepo, result.Repo)
 			}
 			if result.Commit != commit {
-				t.Fatalf("expected commit %s, got %s", commit, result.Commit)
+				tt.Fatalf("expected commit %s, got %s", commit, result.Commit)
 			}
 			if result.Tag != test.expectTag {
-				t.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
+				tt.Fatalf("expected tag %s, got %s", test.expectTag, result.Tag)
 			}
 		})
+	}
+}
+
+func TestBumpTagForTidbx_BootstrapFromReleaseBranch(t *testing.T) {
+	fullRepo := "owner/repo"
+	branch := "release-nextgen-202604"
+	commit := "abc123"
+	expectedTag := "v26.4.0"
+
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatchPages(
+			mock.GetReposTagsByOwnerByRepo,
+			[]*github.RepositoryTag{},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposBranchesByOwnerByRepoByBranch,
+			&github.Branch{
+				Name: github.Ptr(branch),
+				Commit: &github.RepositoryCommit{
+					SHA: github.Ptr(commit),
+				},
+			},
+		),
+		mock.WithRequestMatch(
+			mock.PostReposGitTagsByOwnerByRepo,
+			&github.Tag{
+				Tag: github.Ptr(expectedTag),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr(commit),
+				},
+				SHA: github.Ptr(commit),
+			},
+		),
+		mock.WithRequestMatch(
+			mock.PostReposGitRefsByOwnerByRepo,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + expectedTag),
+				Object: &github.GitObject{
+					SHA: github.Ptr(commit),
+				},
+			},
+		),
+	)
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, err := svc.BumpTagForTidbx(context.Background(), &hotfix.BumpTagForTidbxPayload{
+		Repo:   fullRepo,
+		Author: "tester",
+		Branch: &branch,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if res.Repo != fullRepo {
+		t.Fatalf("expected repo %s, got %s", fullRepo, res.Repo)
+	}
+	if res.Commit != commit {
+		t.Fatalf("expected commit %s, got %s", commit, res.Commit)
+	}
+	if res.Tag != expectedTag {
+		t.Fatalf("expected tag %s, got %s", expectedTag, res.Tag)
 	}
 }
 
@@ -368,5 +549,173 @@ func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
 	}
 	if httpErr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, httpErr.Code)
+	}
+}
+
+func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v8.5.4-nextgen.202510.1"
+
+	wantAuthor := "tester@example.com"
+	wantReleaseID := "rw-12345"
+	wantChangeID := "ch-67890"
+
+	metaBytes, err := json.Marshal(map[string]any{
+		"author": wantAuthor,
+		"meta": map[string]any{
+			"ops_req": map[string]any{
+				"applicant":  wantAuthor,
+				"release_id": wantReleaseID,
+				"change_id":  wantChangeID,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal metadata json: %v", err)
+	}
+
+	httpClient := mock.NewMockedHTTPClient(
+		// `QueryTagOfTidbx` now calls `s.getTag(...)` which does:
+		// 1) Git.GetRef("tags/<tag>")
+		// 2) Git.GetTag(<sha from ref>)
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + tag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag:     github.Ptr(tag),
+				Message: github.Ptr(string(metaBytes)),
+				SHA:     github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if qerr != nil {
+		t.Fatalf("unexpected error: %v", qerr)
+	}
+
+	if res.Repo != fullRepo {
+		t.Fatalf("expected repo %s, got %s", fullRepo, res.Repo)
+	}
+	if res.Tag != tag {
+		t.Fatalf("expected tag %s, got %s", tag, res.Tag)
+	}
+	// Query uses the tag object SHA as Commit (per current implementation).
+	if res.Commit != "deadbeef" {
+		t.Fatalf("expected commit %s, got %s", "deadbeef", res.Commit)
+	}
+	if res.Author == nil || *res.Author != wantAuthor {
+		t.Fatalf("expected author %q, got %+v", wantAuthor, res.Author)
+	}
+
+	if res.Meta == nil || res.Meta.OpsReq == nil || res.Meta.OpsReq.ReleaseID == nil || *res.Meta.OpsReq.ReleaseID != wantReleaseID {
+		t.Fatalf("expected release_id %q, got %+v", wantReleaseID, res.Meta.OpsReq)
+	}
+	if res.Meta == nil || res.Meta.OpsReq == nil || res.Meta.OpsReq.ChangeID == nil || *res.Meta.OpsReq.ChangeID != wantChangeID {
+		t.Fatalf("expected change_id %q, got %+v", wantChangeID, res.Meta)
+	}
+}
+
+func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v8.5.4-nextgen.202510.1"
+
+	httpClient := mock.NewMockedHTTPClient(
+		// `QueryTagOfTidbx` now calls `s.getTag(...)` which does:
+		// 1) Git.GetRef("tags/<tag>")
+		// 2) Git.GetTag(<sha from ref>)
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + tag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag:     github.Ptr(tag),
+				Message: github.Ptr("{not-json"),
+				SHA:     github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if qerr != nil {
+		t.Fatalf("unexpected error: %v", qerr)
+	}
+	if res.Author != nil || res.Meta != nil {
+		t.Fatalf("expected nil metadata fields on invalid json, got author=%+v meta=%+v", res.Author, res.Meta)
+	}
+}
+
+func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
+	fullRepo := "owner/repo"
+	tag := "v26.0.0-nextgen"
+	gitTag := "v26.0.0"
+
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatch(
+			mock.GetReposGitRefByOwnerByRepoByRef,
+			&github.Reference{
+				Ref: github.Ptr("refs/tags/" + gitTag),
+				Object: &github.GitObject{
+					SHA: github.Ptr("deadbeef"),
+				},
+			},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposGitTagsByOwnerByRepoByTagSha,
+			&github.Tag{
+				Tag: github.Ptr(gitTag),
+				SHA: github.Ptr("deadbeef"),
+				Object: &github.GitObject{
+					Type: github.Ptr("commit"),
+					SHA:  github.Ptr("abc123"),
+				},
+			},
+		),
+	)
+
+	svc := newServiceWithClient(github.NewClient(httpClient))
+
+	res, err := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
+		Repo: fullRepo,
+		Tag:  tag,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Tag != gitTag {
+		t.Fatalf("expected resolved tag %s, got %s", gitTag, res.Tag)
 	}
 }

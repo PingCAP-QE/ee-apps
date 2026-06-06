@@ -16,3 +16,7 @@ redis:
 services:
   tiup:
     # delivery_config_file: "delivery-config.yaml" # should load from config map
+
+  tidbcloud:
+    # ops_config_file: "tidbcloud-ops-config.yaml" # should load from config map
+    # testplatforms_config_file: "testplatforms-config.yaml"

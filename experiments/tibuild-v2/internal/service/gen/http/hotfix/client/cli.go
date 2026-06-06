@@ -23,7 +23,7 @@ func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.Bump
 	{
 		err = json.Unmarshal([]byte(hotfixBumpTagForTidbxBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"wuhuizuo\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"repo\": \"pingcap/tidb\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
 	v := &hotfix.BumpTagForTidbxPayload{
@@ -32,6 +32,27 @@ func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.Bump
 		Commit: body.Commit,
 		Author: body.Author,
 	}
+	if body.Meta != nil {
+		v.Meta = marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(body.Meta)
+	}
+
+	return v, nil
+}
+
+// BuildQueryTagOfTidbxPayload builds the payload for the hotfix
+// query-tag-of-tidbx endpoint from CLI flags.
+func BuildQueryTagOfTidbxPayload(hotfixQueryTagOfTidbxRepo string, hotfixQueryTagOfTidbxTag string) (*hotfix.QueryTagOfTidbxPayload, error) {
+	var repo string
+	{
+		repo = hotfixQueryTagOfTidbxRepo
+	}
+	var tag string
+	{
+		tag = hotfixQueryTagOfTidbxTag
+	}
+	v := &hotfix.QueryTagOfTidbxPayload{}
+	v.Repo = repo
+	v.Tag = tag
 
 	return v, nil
 }

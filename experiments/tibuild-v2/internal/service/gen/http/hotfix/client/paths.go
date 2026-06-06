@@ -12,3 +12,13 @@ package client
 func BumpTagForTidbxHotfixPath() string {
 	return "/api/v2/hotfix/bump-tag-for-tidbx"
 }
+
+// BumpTagForTidbxHotfixPath2 returns the URL path to the hotfix service bump-tag-for-tidbx HTTP endpoint.
+func BumpTagForTidbxHotfixPath2() string {
+	return "/api/v2/hotfix/tidbx/bump-tag"
+}
+
+// QueryTagOfTidbxHotfixPath returns the URL path to the hotfix service query-tag-of-tidbx HTTP endpoint.
+func QueryTagOfTidbxHotfixPath() string {
+	return "/api/v2/hotfix/tidbx/tag"
+}

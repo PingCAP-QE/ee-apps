@@ -1,0 +1,62 @@
+CREATE TABLE IF NOT EXISTS roster_employees (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  lark_id VARCHAR(128) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  en_name VARCHAR(255) NULL,
+  employee_no VARCHAR(64) NULL,
+  email VARCHAR(255) NULL,
+  github_id VARCHAR(255) NULL,
+  join_time DATETIME NULL,
+  manager_id BIGINT NULL,
+  manager_path VARCHAR(1024) NULL,
+  group_id BIGINT NULL,
+  group_path VARCHAR(1024) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  last_seen_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_roster_employees_lark_id (lark_id),
+  UNIQUE KEY uk_roster_employees_email (email),
+  UNIQUE KEY uk_roster_employees_github_id (github_id),
+  KEY idx_roster_employees_employee_no (employee_no),
+  KEY idx_roster_employees_manager (manager_id),
+  KEY idx_roster_employees_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS roster_groups (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  lark_group_id VARCHAR(128) NOT NULL,
+  parent_id BIGINT NULL,
+  name VARCHAR(255) NOT NULL,
+  manager_id BIGINT NULL,
+  path VARCHAR(1024) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  last_seen_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_roster_groups_lark_group_id (lark_group_id),
+  KEY idx_roster_groups_parent (parent_id),
+  KEY idx_roster_groups_manager (manager_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS roster_employee_change_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  event_type VARCHAR(32) NOT NULL,
+  employee_lark_id VARCHAR(128) NOT NULL,
+  employee_name VARCHAR(255) NOT NULL,
+  employee_email VARCHAR(255) NULL,
+  manager_name VARCHAR(255) NULL,
+  manager_email VARCHAR(255) NULL,
+  group_name VARCHAR(255) NULL,
+  group_path VARCHAR(1024) NULL,
+  previous_group_name VARCHAR(255) NULL,
+  previous_group_path VARCHAR(1024) NULL,
+  event_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_roster_employee_change_events_event_at (event_at),
+  KEY idx_roster_employee_change_events_type_time (event_type, event_at),
+  KEY idx_roster_employee_change_events_employee (employee_lark_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

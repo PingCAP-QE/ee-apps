@@ -63,9 +63,6 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 		return nil, fmt.Errorf("%s%w", err.Error(), ErrBadRequest)
 	}
 	if req.Spec.PipelineEngine == TektonEngine {
-		if req.Meta.CreatedBy == "" {
-			return nil, fmt.Errorf("unkown submitter%w", ErrAuth)
-		}
 		err := fillDetailInfoForTekton(ctx, s.GHClient, &req)
 		if err != nil {
 			return nil, err
@@ -366,11 +363,17 @@ func getBranchForCommit(ctx context.Context, client GHClient, owner, repo, commi
 
 func fillWithDefaults(req *DevBuild) {
 	spec := &req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	guessEnterprisePluginRef(spec)
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
 	if req.Spec.PipelineEngine == "" {
-		req.Spec.PipelineEngine = JenkinsEngine
+		// switch to tekton engine for common dev-build for tikv components.
+		if (req.Spec.Product == ProductTikv || req.Spec.Product == ProductTiflash) && !req.Spec.IsHotfix {
+			req.Spec.PipelineEngine = TektonEngine
+		} else {
+			req.Spec.PipelineEngine = JenkinsEngine
+		}
 	}
 }
 
@@ -434,6 +437,7 @@ func hasFIPS(feature string) bool {
 
 func validateReq(req DevBuild) error {
 	spec := req.Spec
+	spec.Edition = NormalizeEdition(spec.Edition)
 	if !slices.Contains(allProducts, spec.Product) {
 		return fmt.Errorf("product %s is invalid, valid list is: %s", spec.Product, strings.Join(allProducts, ","))
 	}
@@ -445,6 +449,9 @@ func validateReq(req DevBuild) error {
 			return fmt.Errorf("edition is not valid for jenkins engine")
 		}
 	case TektonEngine:
+		if req.Meta.CreatedBy == "" {
+			return fmt.Errorf("meta.createdBy is required for tekton builds")
+		}
 		if !slices.Contains(InvalidEditionForTekton, spec.Edition) {
 			return fmt.Errorf("edition is not valid for tekton engine")
 		}
@@ -524,21 +531,21 @@ func getTektonStartAt(pipelines []TektonPipeline) *time.Time {
 
 func computeTektonPhase(pipelines []TektonPipeline) string {
 	phase := BuildStatusPending
-	var success_platforms = map[string]struct{}{}
-	var failure_platforms = map[string]struct{}{}
-	var triggered_platforms = map[string]struct{}{}
+	var succeedPlatforms = map[string]struct{}{}
+	var failedPlatforms = map[string]struct{}{}
+	var triggeredPlatforms = map[string]struct{}{}
 	for _, pipeline := range pipelines {
 		switch pipeline.Status {
 		case BuildStatusSuccess:
-			success_platforms[pipeline.Platform] = struct{}{}
+			succeedPlatforms[pipeline.Platform] = struct{}{}
 		case BuildStatusFailure:
-			failure_platforms[pipeline.Platform] = struct{}{}
+			failedPlatforms[pipeline.Platform] = struct{}{}
 		}
-		triggered_platforms[pipeline.Platform] = struct{}{}
+		triggeredPlatforms[pipeline.Platform] = struct{}{}
 	}
-	if len(success_platforms) == len(triggered_platforms) {
+	if len(succeedPlatforms) == len(triggeredPlatforms) {
 		phase = BuildStatusSuccess
-	} else if len(failure_platforms) != 0 {
+	} else if len(failedPlatforms) != 0 {
 		phase = BuildStatusFailure
 	} else if len(pipelines) != 0 {
 		phase = BuildStatusProcessing

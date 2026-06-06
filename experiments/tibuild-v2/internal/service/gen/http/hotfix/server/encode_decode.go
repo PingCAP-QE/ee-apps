@@ -101,3 +101,130 @@ func EncodeBumpTagForTidbxError(encoder func(context.Context, http.ResponseWrite
 		}
 	}
 }
+
+// EncodeQueryTagOfTidbxResponse returns an encoder for responses returned by
+// the hotfix query-tag-of-tidbx endpoint.
+func EncodeQueryTagOfTidbxResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*hotfix.HotfixTagResult)
+		enc := encoder(ctx, w)
+		body := NewQueryTagOfTidbxResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeQueryTagOfTidbxRequest returns a decoder for requests sent to the
+// hotfix query-tag-of-tidbx endpoint.
+func DecodeQueryTagOfTidbxRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			repo string
+			tag  string
+			err  error
+		)
+		qp := r.URL.Query()
+		repo = qp.Get("repo")
+		if repo == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("repo", "query string"))
+		}
+		tag = qp.Get("tag")
+		if tag == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("tag", "query string"))
+		}
+		if err != nil {
+			return nil, err
+		}
+		payload := NewQueryTagOfTidbxPayload(repo, tag)
+
+		return payload, nil
+	}
+}
+
+// EncodeQueryTagOfTidbxError returns an encoder for errors returned by the
+// query-tag-of-tidbx hotfix endpoint.
+func EncodeQueryTagOfTidbxError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *hotfix.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryTagOfTidbxBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *hotfix.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryTagOfTidbxInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta builds a value
+// of type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaRequestBody.
+func unmarshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaRequestBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `json:"applicant,omitempty"`
+			ReleaseID *string `json:"release_id,omitempty"`
+			ChangeID  *string `json:"change_id,omitempty"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody builds a value
+// of type *TiDBxBumpTagMetaResponseBody from a value of type
+// *hotfix.TiDBxBumpTagMeta.
+func marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaResponseBody(v *hotfix.TiDBxBumpTagMeta) *TiDBxBumpTagMetaResponseBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiDBxBumpTagMetaResponseBody{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+			ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}

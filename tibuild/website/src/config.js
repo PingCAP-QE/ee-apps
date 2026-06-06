@@ -9,8 +9,6 @@ const prod_config = {
   SERVER_HOST: "/",
 };
 
-console.log(process.env);
-
 export default process.env.NODE_ENV === "development"
   ? dev_config
   : prod_config;

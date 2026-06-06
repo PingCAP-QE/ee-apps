@@ -146,6 +146,20 @@ var TiupDeliveryResults = Type("TiupDeliveryResults", func() {
 	Attribute("results", MapOf(TiupMirrorName, ArrayOf(String, RequestTaskIDFunc)))
 })
 
+var TidbcloudOpsTicket = Type("TidbcloudOpsTicket", func() {
+	Description("Ops ticket details")
+	Attribute("id", String, "ticket ID")
+	Attribute("url", String, func() {
+		Description("ticket visit url")
+		Format(FormatURI)
+	})
+	Attribute("release_id", String, "release window ID")
+	Attribute("change_id", String, "component publish flow ID")
+	Attribute("component", String, "component name")
+	Attribute("component_version", String, "component version derived from image tag")
+	Required("id", "url", "component", "component_version")
+})
+
 var TaskStateFunc = func() {
 	Description("State of the task")
 	Enum("queued", "processing", "success", "failed", "canceled")
@@ -323,6 +337,80 @@ var _ = Service("image", func() {
 		Result(String, TaskStateFunc)
 		HTTP(func() {
 			GET("/collect-multiarch/{request_id}")
+			Response(StatusOK)
+		})
+	})
+})
+
+var _ = Service("tidbcloud", func() {
+	Description("Publisher service for tidbcloud platform")
+	HTTP(func() {
+		Path("/tidbcloud")
+	})
+	Method("update-component-version-in-cloudconfig", func() {
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Example("prod")
+			})
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/component:v26.3.1-nextgen")
+			})
+
+			Required("stage", "image")
+		})
+		Result(func() {
+			Attribute("stage", String)
+			Attribute("tickets", ArrayOf(TidbcloudOpsTicket))
+			Required("stage", "tickets")
+		})
+		HTTP(func() {
+			POST("/devops/cloudconfig/versions/component")
+			Response(StatusOK)
+		})
+	})
+	Method("add-tidbx-image-tag-in-tcms", func() {
+		Payload(func() {
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/component:v26.3.1-nextgen")
+			})
+			Attribute("github", func() { // Should read config from the image when the attribute is not given.
+				Description("git informations")
+				Attribute("full_repo", String, "full github repo name", func() {
+					Example("pingcap/tidb")
+				})
+				Attribute("ref", String, "git ref", func() {
+					Example("refs/heads/master")
+				})
+				Attribute("commit_sha", String, "full commit SHA", func() {
+					MinLength(40)
+					MaxLength(40)
+					Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+				})
+				Required("full_repo", "commit_sha")
+			})
+			Required("image")
+
+		})
+		Result(func() {
+			Attribute("repo", String, "github full repo", func() {
+				Meta("struct:tag:json", "repo,omitempty")
+				Example("pingcap/tidb")
+			})
+			Attribute("branch", String, "github branch or tag name", func() {
+				Meta("struct:tag:json", "branch,omitempty")
+				Example("v26.3.1")
+			})
+			Attribute("sha", String, "github commit sha in the repo", func() {
+				Meta("struct:tag:json", "sha,omitempty")
+				Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+			})
+			Attribute("imageTag", String, "image tag", func() {
+				Meta("struct:tag:json", "imageTag,omitempty")
+				Example("v26.3.1-nextgen")
+			})
+		})
+		HTTP(func() {
+			POST("/tidbx-component-image-builds")
 			Response(StatusOK)
 		})
 	})

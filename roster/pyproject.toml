@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roster"
+version = "0.1.0"
+description = "Company roster sync jobs and schema"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyMySQL>=1.1.0",
+  "SQLAlchemy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "coverage>=7.0.0",
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+]
+
+[project.scripts]
+roster = "roster.jobs.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src/roster"]
+
+[tool.coverage.report]
+fail_under = 90

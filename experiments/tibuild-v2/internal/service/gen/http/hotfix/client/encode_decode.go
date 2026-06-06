@@ -121,3 +121,175 @@ func DecodeBumpTagForTidbxResponse(decoder func(*http.Response) goahttp.Decoder,
 		}
 	}
 }
+
+// BuildQueryTagOfTidbxRequest instantiates a HTTP request object with method
+// and path set to call the "hotfix" service "query-tag-of-tidbx" endpoint
+func (c *Client) BuildQueryTagOfTidbxRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: QueryTagOfTidbxHotfixPath()}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("hotfix", "query-tag-of-tidbx", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeQueryTagOfTidbxRequest returns an encoder for requests sent to the
+// hotfix query-tag-of-tidbx server.
+func EncodeQueryTagOfTidbxRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*hotfix.QueryTagOfTidbxPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("hotfix", "query-tag-of-tidbx", "*hotfix.QueryTagOfTidbxPayload", v)
+		}
+		values := req.URL.Query()
+		values.Add("repo", p.Repo)
+		values.Add("tag", p.Tag)
+		req.URL.RawQuery = values.Encode()
+		return nil
+	}
+}
+
+// DecodeQueryTagOfTidbxResponse returns a decoder for responses returned by
+// the hotfix query-tag-of-tidbx endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeQueryTagOfTidbxResponse may return the following errors:
+//   - "BadRequest" (type *hotfix.HTTPError): http.StatusBadRequest
+//   - "InternalServerError" (type *hotfix.HTTPError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeQueryTagOfTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body QueryTagOfTidbxResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("hotfix", "query-tag-of-tidbx", err)
+			}
+			err = ValidateQueryTagOfTidbxResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("hotfix", "query-tag-of-tidbx", err)
+			}
+			res := NewQueryTagOfTidbxHotfixTagResultOK(&body)
+			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body QueryTagOfTidbxBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("hotfix", "query-tag-of-tidbx", err)
+			}
+			err = ValidateQueryTagOfTidbxBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("hotfix", "query-tag-of-tidbx", err)
+			}
+			return nil, NewQueryTagOfTidbxBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body QueryTagOfTidbxInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("hotfix", "query-tag-of-tidbx", err)
+			}
+			err = ValidateQueryTagOfTidbxInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("hotfix", "query-tag-of-tidbx", err)
+			}
+			return nil, NewQueryTagOfTidbxInternalServerError(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("hotfix", "query-tag-of-tidbx", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody builds a value of
+// type *TiDBxBumpTagMetaRequestBody from a value of type
+// *hotfix.TiDBxBumpTagMeta.
+func marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody(v *hotfix.TiDBxBumpTagMeta) *TiDBxBumpTagMetaRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiDBxBumpTagMetaRequestBody{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+			ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta builds a value of
+// type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaRequestBody.
+func marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaRequestBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `json:"applicant,omitempty"`
+			ReleaseID *string `json:"release_id,omitempty"`
+			ChangeID  *string `json:"change_id,omitempty"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}
+
+// unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta builds a value
+// of type *hotfix.TiDBxBumpTagMeta from a value of type
+// *TiDBxBumpTagMetaResponseBody.
+func unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagMetaResponseBody) *hotfix.TiDBxBumpTagMeta {
+	if v == nil {
+		return nil
+	}
+	res := &hotfix.TiDBxBumpTagMeta{}
+	if v.OpsReq != nil {
+		res.OpsReq = &struct {
+			Applicant *string `json:"applicant,omitempty"`
+			ReleaseID *string `json:"release_id,omitempty"`
+			ChangeID  *string `json:"change_id,omitempty"`
+		}{
+			Applicant: v.OpsReq.Applicant,
+			ReleaseID: v.OpsReq.ReleaseID,
+			ChangeID:  v.OpsReq.ChangeID,
+		}
+	}
+
+	return res
+}

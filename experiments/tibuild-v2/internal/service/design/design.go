@@ -223,14 +223,37 @@ var _ = Service("hotfix", func() {
 			Attribute("commit", String, "Short or full git commit SHA", func() {
 				Example("abc123def456")
 			})
-			Attribute("author", String, "GitHub account who requested to create the git tag", func() {
-				Example("wuhuizuo")
+			Attribute("author", String, "The email who requested to create the git tag", func() {
+				Example("abc@test.com")
 			})
+			Attribute("meta", TiDBxBumpTagMeta, "meta data for the bumping context")
 			Required("repo", "author")
 		})
 		Result(HotfixTagResult)
 		HTTP(func() {
 			POST("/bump-tag-for-tidbx")
+			POST("/tidbx/bump-tag")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+	Method("query-tag-of-tidbx", func() {
+		Description("Query tag info of tidbx repo")
+		Payload(func() {
+			Attribute("repo", String, "Full name of GitHub repository (e.g., 'owner/repo')", func() {
+				Example("pingcap/tidb")
+			})
+			Attribute("tag", String, "Tag name of the GitHub repo", func() {
+				Example("v26.3.1-nextgen")
+			})
+			Required("repo", "tag")
+		})
+		Result(HotfixTagResult)
+		HTTP(func() {
+			GET("/tidbx/tag")
+			Param("repo")
+			Param("tag")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)
@@ -269,10 +292,10 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 	Attribute("build_env", String)
 	Attribute("builder_img", String)
 	Attribute("edition", String, func() {
-		Enum("enterprise", "community", "fips", "failpoint", "experiment", "next-gen")
+		Enum("enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen")
 	})
 	Attribute("platform", String, func() {
-		Default("all")
+		Default("linux")
 		Enum("all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64")
 	})
 	Attribute("features", String, func() {
@@ -363,6 +386,7 @@ var ImageArtifact = Type("ImageArtifact", func() {
 
 var TektonStatus = Type("TektonStatus", func() {
 	Attribute("pipelines", ArrayOf(TektonPipeline))
+	Attribute("triggers_event_ids", ArrayOf(String, func() { Format(FormatUUID) }))
 	Required("pipelines")
 })
 
@@ -456,5 +480,27 @@ var HotfixTagResult = Type("HotfixTagResult", func() {
 	Attribute("tag", String, "Git tag name", func() {
 		Example("v8.5.4-nextgen.202510.10")
 	})
+	Attribute("author", String, "The email who requested to create the git tag", func() {
+		Example("abc@test.com")
+	})
+	Attribute("meta", TiDBxBumpTagMeta, "meta data")
 	Required("repo", "commit", "tag")
+})
+
+var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
+	Attribute("ops_req", func() {
+		Attribute("applicant", String, func() {
+			Example("tidb")
+			Meta("struct:tag:json", "applicant,omitempty")
+		})
+		Attribute("release_id", String, func() {
+			Example("r1")
+			Meta("struct:tag:json", "release_id,omitempty")
+		})
+		Attribute("change_id", String, func() {
+			Example("c1")
+			Meta("struct:tag:json", "change_id,omitempty")
+		})
+		Meta("struct:tag:json", "ops_req,omitempty")
+	})
 })

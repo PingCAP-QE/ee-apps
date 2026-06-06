@@ -22,8 +22,10 @@ type BumpTagForTidbxRequestBody struct {
 	Branch *string `form:"branch,omitempty" json:"branch,omitempty" xml:"branch,omitempty"`
 	// Short or full git commit SHA
 	Commit *string `form:"commit,omitempty" json:"commit,omitempty" xml:"commit,omitempty"`
-	// GitHub account who requested to create the git tag
+	// The email who requested to create the git tag
 	Author string `form:"author" json:"author" xml:"author"`
+	// meta data for the bumping context
+	Meta *TiDBxBumpTagMetaRequestBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 }
 
 // BumpTagForTidbxResponseBody is the type of the "hotfix" service
@@ -35,6 +37,25 @@ type BumpTagForTidbxResponseBody struct {
 	Commit *string `form:"commit,omitempty" json:"commit,omitempty" xml:"commit,omitempty"`
 	// Git tag name
 	Tag *string `form:"tag,omitempty" json:"tag,omitempty" xml:"tag,omitempty"`
+	// The email who requested to create the git tag
+	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
+	// meta data
+	Meta *TiDBxBumpTagMetaResponseBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
+}
+
+// QueryTagOfTidbxResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body.
+type QueryTagOfTidbxResponseBody struct {
+	// Full name of GitHub repository
+	Repo *string `form:"repo,omitempty" json:"repo,omitempty" xml:"repo,omitempty"`
+	// The commit tag created on
+	Commit *string `form:"commit,omitempty" json:"commit,omitempty" xml:"commit,omitempty"`
+	// Git tag name
+	Tag *string `form:"tag,omitempty" json:"tag,omitempty" xml:"tag,omitempty"`
+	// The email who requested to create the git tag
+	Author *string `form:"author,omitempty" json:"author,omitempty" xml:"author,omitempty"`
+	// meta data
+	Meta *TiDBxBumpTagMetaResponseBody `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 }
 
 // BumpTagForTidbxBadRequestResponseBody is the type of the "hotfix" service
@@ -52,6 +73,39 @@ type BumpTagForTidbxInternalServerErrorResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// QueryTagOfTidbxBadRequestResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body for the "BadRequest" error.
+type QueryTagOfTidbxBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryTagOfTidbxInternalServerErrorResponseBody is the type of the "hotfix"
+// service "query-tag-of-tidbx" endpoint HTTP response body for the
+// "InternalServerError" error.
+type QueryTagOfTidbxInternalServerErrorResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// TiDBxBumpTagMetaRequestBody is used to define fields on request body types.
+type TiDBxBumpTagMetaRequestBody struct {
+	OpsReq *struct {
+		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+	} `json:"ops_req,omitempty"`
+}
+
+// TiDBxBumpTagMetaResponseBody is used to define fields on response body types.
+type TiDBxBumpTagMetaResponseBody struct {
+	OpsReq *struct {
+		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
+		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
+		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+	} `json:"ops_req,omitempty"`
+}
+
 // NewBumpTagForTidbxRequestBody builds the HTTP request body from the payload
 // of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
 func NewBumpTagForTidbxRequestBody(p *hotfix.BumpTagForTidbxPayload) *BumpTagForTidbxRequestBody {
@@ -60,6 +114,9 @@ func NewBumpTagForTidbxRequestBody(p *hotfix.BumpTagForTidbxPayload) *BumpTagFor
 		Branch: p.Branch,
 		Commit: p.Commit,
 		Author: p.Author,
+	}
+	if p.Meta != nil {
+		body.Meta = marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody(p.Meta)
 	}
 	return body
 }
@@ -71,6 +128,10 @@ func NewBumpTagForTidbxHotfixTagResultOK(body *BumpTagForTidbxResponseBody) *hot
 		Repo:   *body.Repo,
 		Commit: *body.Commit,
 		Tag:    *body.Tag,
+		Author: body.Author,
+	}
+	if body.Meta != nil {
+		v.Meta = unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta(body.Meta)
 	}
 
 	return v
@@ -98,9 +159,62 @@ func NewBumpTagForTidbxInternalServerError(body *BumpTagForTidbxInternalServerEr
 	return v
 }
 
+// NewQueryTagOfTidbxHotfixTagResultOK builds a "hotfix" service
+// "query-tag-of-tidbx" endpoint result from a HTTP "OK" response.
+func NewQueryTagOfTidbxHotfixTagResultOK(body *QueryTagOfTidbxResponseBody) *hotfix.HotfixTagResult {
+	v := &hotfix.HotfixTagResult{
+		Repo:   *body.Repo,
+		Commit: *body.Commit,
+		Tag:    *body.Tag,
+		Author: body.Author,
+	}
+	if body.Meta != nil {
+		v.Meta = unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta(body.Meta)
+	}
+
+	return v
+}
+
+// NewQueryTagOfTidbxBadRequest builds a hotfix service query-tag-of-tidbx
+// endpoint BadRequest error.
+func NewQueryTagOfTidbxBadRequest(body *QueryTagOfTidbxBadRequestResponseBody) *hotfix.HTTPError {
+	v := &hotfix.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryTagOfTidbxInternalServerError builds a hotfix service
+// query-tag-of-tidbx endpoint InternalServerError error.
+func NewQueryTagOfTidbxInternalServerError(body *QueryTagOfTidbxInternalServerErrorResponseBody) *hotfix.HTTPError {
+	v := &hotfix.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // ValidateBumpTagForTidbxResponseBody runs the validations defined on
 // Bump-Tag-For-TidbxResponseBody
 func ValidateBumpTagForTidbxResponseBody(body *BumpTagForTidbxResponseBody) (err error) {
+	if body.Repo == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
+	}
+	if body.Commit == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("commit", "body"))
+	}
+	if body.Tag == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tag", "body"))
+	}
+	return
+}
+
+// ValidateQueryTagOfTidbxResponseBody runs the validations defined on
+// Query-Tag-Of-TidbxResponseBody
+func ValidateQueryTagOfTidbxResponseBody(body *QueryTagOfTidbxResponseBody) (err error) {
 	if body.Repo == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
 	}
@@ -128,6 +242,30 @@ func ValidateBumpTagForTidbxBadRequestResponseBody(body *BumpTagForTidbxBadReque
 // ValidateBumpTagForTidbxInternalServerErrorResponseBody runs the validations
 // defined on bump-tag-for-tidbx_InternalServerError_response_body
 func ValidateBumpTagForTidbxInternalServerErrorResponseBody(body *BumpTagForTidbxInternalServerErrorResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryTagOfTidbxBadRequestResponseBody runs the validations defined
+// on query-tag-of-tidbx_BadRequest_response_body
+func ValidateQueryTagOfTidbxBadRequestResponseBody(body *QueryTagOfTidbxBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryTagOfTidbxInternalServerErrorResponseBody runs the validations
+// defined on query-tag-of-tidbx_InternalServerError_response_body
+func ValidateQueryTagOfTidbxInternalServerErrorResponseBody(body *QueryTagOfTidbxInternalServerErrorResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}

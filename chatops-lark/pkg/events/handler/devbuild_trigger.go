@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -166,10 +165,13 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 	return &ret, nil
 }
 
-func defaultEngineForProduct(s string) string {
-	if slices.Contains([]string{"tikv"}, s) {
-		return "tekton"
+func defaultEngineForProduct(product string) string {
+	peMap := map[string]string{
+		"tikv":          "tekton",
+		"tiflash":       "tekton",
+		"tidb-operator": "tekton",
+		"tiproxy":       "tekton",
+		"tici":          "tekton",
 	}
-
-	return ""
+	return peMap[product]
 }

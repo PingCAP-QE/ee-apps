@@ -21,6 +21,7 @@ import (
 type Server struct {
 	Mounts          []*MountPoint
 	BumpTagForTidbx http.Handler
+	QueryTagOfTidbx http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -51,8 +52,11 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"BumpTagForTidbx", "POST", "/api/v2/hotfix/bump-tag-for-tidbx"},
+			{"BumpTagForTidbx", "POST", "/api/v2/hotfix/tidbx/bump-tag"},
+			{"QueryTagOfTidbx", "GET", "/api/v2/hotfix/tidbx/tag"},
 		},
 		BumpTagForTidbx: NewBumpTagForTidbxHandler(e.BumpTagForTidbx, mux, decoder, encoder, errhandler, formatter),
+		QueryTagOfTidbx: NewQueryTagOfTidbxHandler(e.QueryTagOfTidbx, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -62,6 +66,7 @@ func (s *Server) Service() string { return "hotfix" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.BumpTagForTidbx = m(s.BumpTagForTidbx)
+	s.QueryTagOfTidbx = m(s.QueryTagOfTidbx)
 }
 
 // MethodNames returns the methods served.
@@ -70,6 +75,7 @@ func (s *Server) MethodNames() []string { return hotfix.MethodNames[:] }
 // Mount configures the mux to serve the hotfix endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountBumpTagForTidbxHandler(mux, h.BumpTagForTidbx)
+	MountQueryTagOfTidbxHandler(mux, h.QueryTagOfTidbx)
 }
 
 // Mount configures the mux to serve the hotfix endpoints.
@@ -87,6 +93,7 @@ func MountBumpTagForTidbxHandler(mux goahttp.Muxer, h http.Handler) {
 		}
 	}
 	mux.Handle("POST", "/api/v2/hotfix/bump-tag-for-tidbx", f)
+	mux.Handle("POST", "/api/v2/hotfix/tidbx/bump-tag", f)
 }
 
 // NewBumpTagForTidbxHandler creates a HTTP handler which loads the HTTP
@@ -107,6 +114,57 @@ func NewBumpTagForTidbxHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "bump-tag-for-tidbx")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "hotfix")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			errhandler(ctx, w, err)
+		}
+	})
+}
+
+// MountQueryTagOfTidbxHandler configures the mux to serve the "hotfix" service
+// "query-tag-of-tidbx" endpoint.
+func MountQueryTagOfTidbxHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/hotfix/tidbx/tag", f)
+}
+
+// NewQueryTagOfTidbxHandler creates a HTTP handler which loads the HTTP
+// request and calls the "hotfix" service "query-tag-of-tidbx" endpoint.
+func NewQueryTagOfTidbxHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeQueryTagOfTidbxRequest(mux, decoder)
+		encodeResponse = EncodeQueryTagOfTidbxResponse(encoder)
+		encodeError    = EncodeQueryTagOfTidbxError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "query-tag-of-tidbx")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "hotfix")
 		payload, err := decodeRequest(r)
 		if err != nil {

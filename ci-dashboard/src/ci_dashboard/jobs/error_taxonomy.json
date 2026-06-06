@@ -1,0 +1,833 @@
+{
+  "version": 1,
+  "default_classification": {
+    "l1": "OTHERS",
+    "l2": "UNCLASSIFIED"
+  },
+  "rules": [
+    {
+      "name": "others_superseded_by_prow_newer_build",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "build_field_patterns": {
+        "prow_state": [
+          "^aborted$"
+        ],
+        "prow_status_description": [
+          "^Aborted as the newer version of this job is running\\.$"
+        ],
+        "has_newer_pr_job_version": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
+      "name": "others_superseded_by_trigger_plugin_newer_sha",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "build_field_patterns": {
+        "prow_state": [
+          "^aborted$"
+        ],
+        "prow_status_description": [
+          "^Aborted by trigger plugin\\.$"
+        ],
+        "has_newer_pr_job_version_with_different_sha": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
+      "name": "others_superseded_by_admin_abort_newer_sha",
+      "l1": "OTHERS",
+      "l2": "SUPERSEDED_BY_NEWER_BUILD",
+      "text_patterns": [
+        "^Aborted by [^\\r\\n]+"
+      ],
+      "build_field_patterns": {
+        "prow_state": [
+          "^(aborted)?$"
+        ],
+        "has_newer_pr_job_version_with_different_sha": [
+          "^(1|true)$"
+        ]
+      }
+    },
+    {
+      "name": "others_abort_by_admin",
+      "l1": "OTHERS",
+      "l2": "ABORT_BY_ADMIN",
+      "text_patterns": [
+        "^Aborted by [^\\r\\n]+"
+      ]
+    },
+    {
+      "name": "others_code_conflict",
+      "l1": "OTHERS",
+      "l2": "CODE_CONFLICT",
+      "text_patterns": [
+        "CONFLICT \\([^\\r\\n]+\\): Merge conflict in ",
+        "Automatic merge failed; fix conflicts and then commit the result\\.",
+        "error: could not apply [0-9a-f]+",
+        "malformed module path \\\"<<<<<<<\\\": invalid char '<'",
+        "syntax error: unexpected <<"
+      ]
+    },
+    {
+      "name": "infra_disk_full",
+      "l1": "INFRA",
+      "l2": "DISK_FULL",
+      "text_patterns": [
+        "java\\.io\\.IOException: No space left on device",
+        "No space left on device",
+        "Error 8256 \\(HY000\\): Check ingest environment failed: no enough space in /tmp/tidb/"
+      ]
+    },
+    {
+      "name": "infra_k8s_oomkilled",
+      "l1": "INFRA",
+      "l2": "OOMKILLED",
+      "text_patterns": [
+        "Container \\[[^\\]]+\\] terminated \\[OOMKilled\\]",
+        "Pod \\[Failed\\]\\[[^\\]]*OOMKilled[^\\]]*\\]",
+        "Reason: OOMKilled"
+      ]
+    },
+    {
+      "name": "infra_k8s_kubelet_eviction",
+      "l1": "INFRA",
+      "l2": "K8S_MEMORY_EVICTION",
+      "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] The node was low on resource: memory",
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] The node was low on resource: memory\\.[\\s\\S]*Container .* was using .* request is .* larger consumption of memory"
+      ]
+    },
+    {
+      "name": "realcluster_statistics_duplicate_key_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|/)pull_integration_realcluster_test(_next_gen)?$",
+        "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = 'tests/realtikvtest/scripts/next-gen/run-tests\\.sh bazel_statisticstest'[\\s\\S]*Duplicate entry [^\\r\\n]+ for key '(?:t\\.idx|t0\\.idx1)'",
+        "Failed in branch Matrix - SCRIPT_AND_ARGS = '(?:tests/realtikvtest/scripts/next-gen/run-tests\\.sh|run_real_tikv_tests\\.sh) bazel_(?:addindextest[0-9]*|importintotest[0-9]*)'[\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)",
+        "Test output for //tests/realtikvtest/[^\\r\\n]+[\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)",
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in [\\s\\S]*(?:\\[kv:1062\\]Duplicate entry|ErrFoundDuplicateKey|run add index job failed, convert job to rollback)"
+      ]
+    },
+    {
+      "name": "infra_remote_cache_throttle_network",
+      "l1": "INFRA",
+      "l2": "NETWORK",
+      "text_patterns": [
+        "Remote Cache: 429 Too Many Requests",
+        "Failed to fetch blobs because of a remote cache error\\.: 429 Too Many Requests",
+        "SlowDown[^\\r\\n]*exceeded your bucket's IO capacity"
+      ]
+    },
+    {
+      "name": "infra_external_dependency_bazel_fetch_failure",
+      "l1": "INFRA",
+      "l2": "EXTERNAL_DEP",
+      "text_patterns": [
+        "Error in download_and_extract: java\\.io\\.IOException: Error downloading",
+        "Error computing the main repository mapping: no such package '@[^']+//': java\\.io\\.IOException: Error downloading",
+        "WARNING: Download from [^\\r\\n]+ failed: class [^\\r\\n]+(Read timed out|GET returned (404 Not Found|429 Too Many Requests|502 Bad Gateway or Proxy Error|503 Service Unavailable|504 Gateway Time-out))"
+      ]
+    },
+    {
+      "name": "unit_mysql_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_mysql_test$",
+        "(^|/)pull_mysql_test(_next_gen)?$",
+        "(^|/)pull_mysql_client_test(_next_gen)?$",
+        "(^|_)ghpr_mysql_test($|_)",
+        "(^|_)pull_mysql_test(_next_gen)?($|_)",
+        "(^|_)pull_mysql_client_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "tests failed",
+        "run test \\[[^\\]]+\\] err:",
+        "but got\\(",
+        "diff:",
+        "can not start server on [0-9]+"
+      ]
+    },
+    {
+      "name": "build_format_check_nogo_failure",
+      "l1": "BUILD",
+      "l2": "FORMAT_CHECK",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|/)ghpr_build$",
+        "(^|/)pull_build_next_gen$",
+        "(^|/)pull_integration_realcluster_test(_next_gen)?$",
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)ghpr_build($|_)",
+        "(^|_)pull_build_next_gen($|_)",
+        "(^|_)pull_integration_realcluster_test(_next_gen)?($|_)",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)"
+      ],
+      "text_patterns": [
+        "Validating nogo output for //[^\\r\\n]+ failed",
+        "Running nogo on //[^\\r\\n]+ failed"
+      ]
+    },
+    {
+      "name": "ghpr_check2_realtikv_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|/)pull_check2[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_check2($|_)"
+      ],
+      "text_patterns": [
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
+        "Test output for //tests/realtikvtest/[^\\r\\n]+",
+        "type:NOT_BOOTSTRAPPED message:\\\"cluster is not bootstrapped\\\""
+      ]
+    },
+    {
+      "name": "unit_bazel_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "Testing //[^\\r\\n]+ failed: Test failed",
+        "FAIL: //[^\\r\\n]+_test",
+        "Test cases: finished with [^\\r\\n]*[1-9][0-9]* failing",
+        "Build completed, [1-9][0-9]* test FAILED",
+        "Executed [0-9]+ out of [0-9]+ test: [^\\r\\n]*fails locally",
+        "testdata: Errors on loading test data from file:",
+        "panic: runtime error: invalid memory address or nil pointer dereference",
+        "//tests/realtikvtest/[^\\r\\n]+ FAILED in ",
+        "--- FAIL: "
+      ]
+    },
+    {
+      "name": "ghpr_check2_realtikv_timeout",
+      "l1": "IT",
+      "l2": "TIMEOUT",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|/)pull_check2[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_check2($|_)"
+      ],
+      "text_patterns": [
+        "Timeout has been exceeded[\\s\\S]*(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)",
+        "(run_real_tikv_tests\\.sh|integrationtest_with_tikv\\.sh)[\\s\\S]*Timeout has been exceeded"
+      ]
+    },
+    {
+      "name": "br_integration_test_output_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "br_restore_compatibility_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|/)merged_integration_br_test$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)",
+        "(^|_)merged_integration_br_test($|_)"
+      ],
+      "text_patterns": [
+        "\\[BR:Restore:ErrRestoreNotFreshCluster\\]cluster is not fresh",
+        "\\[BR:Restore:ErrRestoreIncompatibleSys\\]incompatible system table",
+        "missing column in cluster data \\[table=user\\]",
+        "incompatible column, table:"
+      ]
+    },
+    {
+      "name": "integration_test_timeout",
+      "l1": "IT",
+      "l2": "TIMEOUT",
+      "job_name_patterns": [
+        "(^|/)pull_dm_integration_test(_next_gen)?$",
+        "(^|/)pull_cdc_integration_storage_test$",
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|/)merged_integration_.*_test$",
+        "(^|/).*integration.*test.*$",
+        "(^|_)pull_dm_integration_test(_next_gen)?($|_)",
+        "(^|_)pull_cdc_integration_storage_test($|_)",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)",
+        "(^|_)merged_integration_.*_test($|_)",
+        "(^|_)integration(_|$)",
+        "realcluster",
+        "lightning",
+        "br_"
+      ],
+      "text_patterns": [
+        "Timeout has been exceeded",
+        "Cancelling nested steps due to timeout"
+      ]
+    },
+    {
+      "name": "dm_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_dm_integration_test(_next_gen)?$",
+        "(^|_)pull_dm_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: dm_integration_test_in_group\\] Error [0-9]+",
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+      ]
+    },
+    {
+      "name": "cdc_integration_storage_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_integration_storage_test$",
+        "(^|_)pull_cdc_integration_storage_test($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_mysql_integration_light_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_mysql_integration_light$",
+        "(^|_)pull_cdc_mysql_integration_light($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_kafka_integration_heavy_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_kafka_integration_heavy$",
+        "(^|_)pull_cdc_kafka_integration_heavy($|_)"
+      ],
+      "text_patterns": [
+        "table fail_over_test\\.finish_mark not exists for [1-9][0-9]*-th check, retry later",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_storage_integration_heavy_next_gen_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_storage_integration_heavy_next_gen$",
+        "(^|_)pull_cdc_storage_integration_heavy_next_gen($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "check diff failed [1-9][0-9]*-th time",
+        "\\[CDC:ErrTableIsNotFounded\\]table is not found",
+        "\\[CDC:ErrMaintainerNotFounded\\]maintainer is not found"
+      ]
+    },
+    {
+      "name": "cdc_storage_integration_light_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_storage_integration_light$",
+        "(^|_)pull_cdc_storage_integration_light($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT CONTAINS",
+        "check data failed [1-9][0-9]*-th time",
+        "check diff failed [1-9][0-9]*-th time",
+        "run task failed [1-9][0-9]*-th time"
+      ]
+    },
+    {
+      "name": "cdc_integration_kafka_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_cdc_integration_kafka_test$",
+        "(^|_)pull_cdc_integration_kafka_test($|_)"
+      ],
+      "text_patterns": [
+        "table test\\.finish_mark not exists at last check",
+        "Failed to connect to 127\\.0\\.0\\.1 port 8300: Connection refused"
+      ]
+    },
+    {
+      "name": "merged_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "Test fail: Outputs are not matching\\.",
+        "Test summary\\([^\\r\\n]+\\): Test case FAIL",
+        "push_down_test_bin exit code is [1-9][0-9]*",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: push-down-test\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "merged_integration_mysql_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_integration_mysql_test$",
+        "(^|_)merged_integration_mysql_test($|_)"
+      ],
+      "text_patterns": [
+        "query succeeded, but expected error\\(s\\)!",
+        "query failed with non expected error\\(s\\)!",
+        "Failed in branch Matrix - TEST_PART = '[^']+'"
+      ]
+    },
+    {
+      "name": "merged_unit_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_unit_test$",
+        "(^|_)merged_unit_test($|_)"
+      ],
+      "text_patterns": [
+        "=== FAIL:",
+        "--- FAIL:",
+        "Received unexpected error: Get \\\"http://127\\.0\\.0\\.1:[0-9]+/metrics\\\":"
+      ]
+    },
+    {
+      "name": "merged_integration_matrix_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*TEST FAILED: OUTPUT (?:DOES NOT CONTAIN|CONTAINS)",
+        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*org\\.jooq\\.exception\\.DataAccessException: SQL \\[[^\\r\\n]+Duplicate entry",
+        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*SQLIntegrityConstraintViolationException: Duplicate entry",
+        "Failed in branch Matrix - [^\\r\\n]+[\\s\\S]*(?:retryable storage error|store backup failed|\\[BR:Common:ErrFailedToConnect\\] failed to make connection to store|\\[health check\\] check health error)",
+        "(?:org\\.jooq\\.exception\\.DataAccessException: SQL \\[[^\\r\\n]+Duplicate entry|SQLIntegrityConstraintViolationException: Duplicate entry)[\\s\\S]*Failed in branch Matrix - [^\\r\\n]+",
+        "(?:retryable storage error|store backup failed|\\[BR:Common:ErrFailedToConnect\\] failed to make connection to store|\\[health check\\] check health error)[\\s\\S]*Failed in branch Matrix - [^\\r\\n]+"
+      ]
+    },
+    {
+      "name": "merged_integration_cleanup_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "job_name_patterns": [
+        "(^|/)merged_integration_.*_test$",
+        "(^|_)merged_integration_.*_test($|_)"
+      ],
+      "text_patterns": [
+        "(tidb-server|tikv-server|pd-server): no process found[\\s\\S]*make: \\*\\*\\* \\[Makefile:[0-9]+: clean\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "br_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: br_integration_test[^\\r\\n]*\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "lightning_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_lightning_integration_test$",
+        "(^|_)pull_lightning_integration_test($|_)"
+      ],
+      "text_patterns": [
+        "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN",
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+      ]
+    },
+    {
+      "name": "build_go_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "text_patterns": [
+        "\\.go:[0-9]+:[0-9]+: missing import path",
+        "\\.go:[0-9]+:[0-9]+: undefined:",
+        "\\.go:[0-9]+:[0-9]+: .* undefined( \\(type .*\\))?",
+        "\\.go:[0-9]+:[0-9]+: cannot use .* as .*",
+        "\\.go:[0-9]+:[0-9]+: .* does not implement .*",
+        "\\.go:[0-9]+:[0-9]+: unknown field ",
+        "\\.go:[0-9]+:[0-9]+: too many arguments in call to",
+        "\\.go:[0-9]+:[0-9]+: not enough arguments in call to",
+        "Rewrite error [^\\r\\n]+\\.go:[0-9]+:[0-9]+: expected (statement|declaration), found ",
+        "plugin\\.Open\\([^\\r\\n]+\\): plugin was built with a different version of package "
+      ]
+    },
+    {
+      "name": "ghpr_check_integrationtest_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check$",
+        "(^|_)ghpr_check($|_)"
+      ],
+      "text_patterns": [
+        "diff:[\\s\\S]*make: \\*\\*\\* \\[Makefile:[0-9]+: integrationtest\\] Error [0-9]+",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: integrationtest\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "build_codegen_failure",
+      "l1": "BUILD",
+      "l2": "CODEGEN",
+      "job_name_patterns": [
+        "(^|/)ghpr_check$",
+        "(^|/)pull_check[^/]*$",
+        "(^|_)ghpr_check($|_)"
+        ,
+        "(^|_)pull_check($|_)"
+      ],
+      "text_patterns": [
+        "Your commit is changed after running go generate \\./\\.\\.\\., it should not happen\\.",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: gogenerate\\] Error [0-9]+",
+        "Files go\\.sum and /tmp/go\\.sum\\.before differ",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: tidy\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "build_lint_failure",
+      "l1": "BUILD",
+      "l2": "LINT",
+      "job_name_patterns": [
+        "(^|/)ghpr_check$",
+        "(^|_)ghpr_check($|_)"
+      ],
+      "text_patterns": [
+        "https://revive\\.run/r#",
+        "problems \\([0-9]+ errors, [0-9]+ warnings\\)",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: lint\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "infra_jenkins_cache",
+      "l1": "INFRA",
+      "l2": "JENKINS_CACHE",
+      "text_patterns": [
+        "jenkins-pipeline-cache//io\\.jenkins\\.plugins\\.pipeline\\.cache",
+        "CacheStep\\$CacheStepExecution\\.start\\(CacheStep\\.java",
+        "io\\.jenkins\\.plugins\\.pipeline\\.cache\\.agent\\.RestoreCallable\\.invoke",
+        "hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)[\\s\\S]*Caused: java\\.io\\.IOException: Failed to extract input stream",
+        "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*hudson\\.FilePath\\.readFromTar\\(FilePath\\.java:[0-9]+\\)",
+        "Caused: java\\.io\\.IOException: Failed to extract input stream[\\s\\S]*jenkins-pipeline-cache",
+        "org\\.apache\\.http\\.ConnectionClosedException: Premature end of Content-Length delimited message body[\\s\\S]*jenkins-pipeline-cache",
+        "Workspace has a \\.git repository, but it appears to be corrupt\\.",
+        "fatal: not a gitdir "
+      ]
+    },
+    {
+      "name": "infra_network_websocket",
+      "l1": "INFRA",
+      "l2": "NETWORK",
+      "text_patterns": [
+        "Failed to start websocket connection",
+        "okhttp3\\.internal\\.ws\\.WebSocketReader",
+        "okhttp3\\.internal\\.ws\\.RealWebSocket",
+        "java\\.io\\.EOFException[\\s\\S]*okhttp3\\.internal\\.ws",
+        "ERROR: Process exited immediately after creation\\.[\\s\\S]*websocket",
+        "Server terminated abruptly \\(error code: 14, error message: 'Socket closed'\\)"
+      ]
+    },
+    {
+      "name": "infra_git_checkout_failure",
+      "l1": "INFRA",
+      "l2": "GIT",
+      "text_patterns": [
+        "ERROR: Error cloning remote repo 'origin'",
+        "hudson\\.plugins\\.git\\.GitException: Command \"git fetch [^\"]+\" returned status code 128",
+        "fatal: unable to access 'https://github\\.com/[^']+': The requested URL returned error: 5[0-9]{2}",
+        "error: RPC failed; HTTP 5[0-9]{2} curl 22 The requested URL returned error: 5[0-9]{2}",
+        "fatal: couldn't find remote ref refs/pull/[0-9]+/head",
+        "ERROR: internal error performing authentication[\\s\\S]*fatal: Could not read from remote repository\\."
+      ]
+    },
+    {
+      "name": "infra_jenkins_agent_offline_before_groovy_missing_property",
+      "l1": "INFRA",
+      "l2": "JENKINS_AGENT_OFFLINE",
+      "job_name_patterns": [
+        "(^|/)merged_sqllogic_test$",
+        "(^|_)merged_sqllogic_test($|_)"
+      ],
+      "text_patterns": [
+        "AgentOfflineException: Unable to create live FilePath[\\s\\S]*groovy\\.lang\\.MissingPropertyException: No such property: source",
+        "ERROR: Checkout failed[\\s\\S]*java\\.lang\\.InterruptedException[\\s\\S]*groovy\\.lang\\.MissingPropertyException: No such property: source"
+      ]
+    },
+    {
+      "name": "infra_jenkins_groovy",
+      "l1": "INFRA",
+      "l2": "JENKINS_GROOVY",
+      "text_patterns": [
+        "groovy\\.lang\\.(MissingPropertyException|MissingMethodException|GroovyRuntimeException):",
+        "java\\.lang\\.NullPointerException:[\\s\\S]*WorkflowScript\\.run\\(WorkflowScript:[0-9]+\\)",
+        "No such DSL method",
+        "No such property: .* for class: groovy\\.lang\\.Binding",
+        "org\\.jenkinsci\\.plugins\\.workflow\\.cps\\.CpsCompilationErrorsException"
+      ]
+    },
+    {
+      "name": "infra_k8s_runtime",
+      "l1": "INFRA",
+      "l2": "K8S",
+      "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\.",
+        "Pod \\[Failed\\]\\[[^\\]]*Evicted[^\\]]*\\]",
+        "Container \\[[^\\]]+\\] terminated \\[Evicted\\]",
+        "Reason: Evicted"
+      ]
+    },
+    {
+      "name": "infra_jenkins_agent_offline",
+      "l1": "INFRA",
+      "l2": "JENKINS_AGENT_OFFLINE",
+      "text_patterns": [
+        "hudson\\.remoting\\.ChannelClosedException: channel is already closed",
+        "hudson\\.remoting\\.RequestAbortedException: java\\.nio\\.channels\\.ClosedChannelException",
+        "agent .* went offline",
+        "Agent went offline during the build",
+        "seems to be removed or offline",
+        "Timeout waiting for agent to come back",
+        "AgentOfflineException: Unable to create live FilePath",
+        "was marked offline: Connection was broken",
+        "cannot contact .*: java\\.io\\.IOException",
+        "closedchannelexception"
+      ]
+    },
+    {
+      "name": "infra_network",
+      "l1": "INFRA",
+      "l2": "NETWORK",
+      "text_patterns": [
+        "i/o timeout",
+        "TLS handshake timeout",
+        "connection reset by peer",
+        "temporary failure in name resolution",
+        "no such host",
+        "context deadline exceeded"
+      ]
+    },
+    {
+      "name": "infra_storage",
+      "l1": "INFRA",
+      "l2": "STORAGE",
+      "text_patterns": [
+        "read-only file system",
+        "input/output error"
+      ]
+    },
+    {
+      "name": "infra_external_dependency",
+      "l1": "INFRA",
+      "l2": "EXTERNAL_DEP",
+      "text_patterns": [
+        "rate limit exceeded",
+        "502 Bad Gateway",
+        "503 Service Unavailable",
+        "upstream connect error"
+      ]
+    },
+    {
+      "name": "build_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "text_patterns": [
+        "error: could not compile `[^`]+` \\(lib\\) due to [0-9]+ previous errors",
+        "compilation failed",
+        "undefined reference",
+        "syntax error",
+        "error: expected",
+        "fatal error:"
+      ]
+    },
+    {
+      "name": "build_internal_package_missing_compile_failure",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "job_name_patterns": [
+        "(^|/)pull_mysql_client_test(_next_gen)?$"
+      ],
+      "text_patterns": [
+        "no required module provides package github\\.com/pingcap/tidb/"
+      ]
+    },
+    {
+      "name": "build_dependency_failure",
+      "l1": "BUILD",
+      "l2": "DEPENDENCY",
+      "text_patterns": [
+        "go: updates to go\\.mod needed; to update it:",
+        "missing go\\.sum entry for module providing package",
+        "no required module provides package",
+        "invalid version: unknown revision",
+        "cannot find module",
+        "compilepkg: missing strict dependencies:",
+        "No dependencies were provided\\.",
+        "Check that imports in Go sources match importpath attributes in deps\\.",
+        "No matching distribution found",
+        "Could not resolve dependencies",
+        "failed to download module"
+      ]
+    },
+    {
+      "name": "unit_bazel_failed_to_build",
+      "l1": "BUILD",
+      "l2": "COMPILE",
+      "job_name_patterns": [
+        "(^|/)ghpr_unit_test$",
+        "(^|/)pull_unit_test[^/]*$",
+        "(^|/)ghpr_check2$",
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)",
+        "(^|_)ghpr_check2($|_)"
+      ],
+      "text_patterns": [
+        "FAILED TO BUILD",
+        "fails to build"
+      ]
+    },
+    {
+      "name": "build_packaging_failure",
+      "l1": "BUILD",
+      "l2": "PACKAGING",
+      "text_patterns": [
+        "failed to solve with frontend dockerfile",
+        "error building image",
+        "archive/tar",
+        "failed to push image",
+        "buildx failed"
+      ]
+    },
+    {
+      "name": "build_support_repo_commit_checkout_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*tidb-test=[0-9a-f]{40}[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
+      ]
+    },
+    {
+      "name": "build_support_repo_branch_checkout_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "tidb-test\\.git[\\s\\S]*Couldn't find any revision to build\\. Verify the repository and branch configuration for this job\\."
+      ]
+    },
+    {
+      "name": "build_support_repo_branch_mismatch_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "computeBranchFromPR component: tidb-test,[\\s\\S]*base branch of tidb-test pr must be the same as the base branch of tidb pr\\.[\\s\\S]*fatal: couldn't find remote ref refs/heads/[^\\r\\n]+"
+      ]
+    },
+    {
+      "name": "build_pipeline_config_failure",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "Jenkinsfile validation failed",
+        "Declarative Pipeline.*syntax error",
+        "WorkflowScript:[0-9]+: unexpected token:",
+        "Jenkinsfile",
+        "MultipleCompilationErrorsException"
+      ]
+    },
+    {
+      "name": "unit_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|_)ghpr_unit_test($|_)",
+        "(^|_)pull_unit_test($|_)",
+        "(^|_)unit_test($|_)",
+        "ddlv1"
+      ],
+      "text_patterns": [
+        "--- FAIL:",
+        "^FAIL(?:\\s|$)",
+        "test failed"
+      ]
+    },
+    {
+      "name": "integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "integration",
+        "realcluster",
+        "lightning",
+        "br_"
+      ],
+      "text_patterns": [
+        "--- FAIL:",
+        "^FAIL(?:\\s|$)",
+        "test failed"
+      ]
+    }
+  ]
+}

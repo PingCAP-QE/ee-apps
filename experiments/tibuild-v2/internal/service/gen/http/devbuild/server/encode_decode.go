@@ -711,7 +711,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 	{
 		var zero string
 		if res.Platform == zero {
-			res.Platform = "all"
+			res.Platform = "linux"
 		}
 	}
 
@@ -839,6 +839,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponse(v *devbuild.TektonStatus)
 	} else {
 		res.Pipelines = []*TektonPipelineResponse{}
 	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
+	}
 
 	return res
 }
@@ -918,7 +924,7 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 		res.Platform = *v.Platform
 	}
 	if v.Platform == nil {
-		res.Platform = "all"
+		res.Platform = "linux"
 	}
 
 	return res
@@ -961,7 +967,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 	{
 		var zero string
 		if res.Platform == zero {
-			res.Platform = "all"
+			res.Platform = "linux"
 		}
 	}
 
@@ -1089,6 +1095,12 @@ func marshalDevbuildTektonStatusToTektonStatusResponseBody(v *devbuild.TektonSta
 		}
 	} else {
 		res.Pipelines = []*TektonPipelineResponseBody{}
+	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
 	}
 
 	return res
@@ -1262,6 +1274,12 @@ func unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusReque
 	res.Pipelines = make([]*devbuild.TektonPipeline, len(v.Pipelines))
 	for i, val := range v.Pipelines {
 		res.Pipelines[i] = unmarshalTektonPipelineRequestBodyToDevbuildTektonPipeline(val)
+	}
+	if v.TriggersEventIds != nil {
+		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
+		for i, val := range v.TriggersEventIds {
+			res.TriggersEventIds[i] = val
+		}
 	}
 
 	return res

@@ -78,24 +78,28 @@ func init() {
 	devbuild.DefaultPipelineEngine = devbuildDescPipelineEngine.Default.(string)
 	// devbuild.PipelineEngineValidator is a validator for the "pipeline_engine" field. It is called by the builders before save.
 	devbuild.PipelineEngineValidator = devbuildDescPipelineEngine.Validators[0].(func(string) error)
+	// devbuildDescPlatform is the schema descriptor for platform field.
+	devbuildDescPlatform := devbuildMixinFields1[11].Descriptor()
+	// devbuild.DefaultPlatform holds the default value on creation for the platform field.
+	devbuild.DefaultPlatform = devbuildDescPlatform.Default.(string)
 	// devbuildDescBuilderImg is the schema descriptor for builder_img field.
-	devbuildDescBuilderImg := devbuildMixinFields1[11].Descriptor()
+	devbuildDescBuilderImg := devbuildMixinFields1[12].Descriptor()
 	// devbuild.BuilderImgValidator is a validator for the "builder_img" field. It is called by the builders before save.
 	devbuild.BuilderImgValidator = devbuildDescBuilderImg.Validators[0].(func(string) error)
 	// devbuildDescBuildEnv is the schema descriptor for build_env field.
-	devbuildDescBuildEnv := devbuildMixinFields1[12].Descriptor()
+	devbuildDescBuildEnv := devbuildMixinFields1[13].Descriptor()
 	// devbuild.BuildEnvValidator is a validator for the "build_env" field. It is called by the builders before save.
 	devbuild.BuildEnvValidator = devbuildDescBuildEnv.Validators[0].(func(string) error)
 	// devbuildDescFeatures is the schema descriptor for features field.
-	devbuildDescFeatures := devbuildMixinFields1[13].Descriptor()
+	devbuildDescFeatures := devbuildMixinFields1[14].Descriptor()
 	// devbuild.FeaturesValidator is a validator for the "features" field. It is called by the builders before save.
 	devbuild.FeaturesValidator = devbuildDescFeatures.Validators[0].(func(string) error)
 	// devbuildDescProductBaseImg is the schema descriptor for product_base_img field.
-	devbuildDescProductBaseImg := devbuildMixinFields1[14].Descriptor()
+	devbuildDescProductBaseImg := devbuildMixinFields1[15].Descriptor()
 	// devbuild.ProductBaseImgValidator is a validator for the "product_base_img" field. It is called by the builders before save.
 	devbuild.ProductBaseImgValidator = devbuildDescProductBaseImg.Validators[0].(func(string) error)
 	// devbuildDescProductDockerfile is the schema descriptor for product_dockerfile field.
-	devbuildDescProductDockerfile := devbuildMixinFields1[15].Descriptor()
+	devbuildDescProductDockerfile := devbuildMixinFields1[16].Descriptor()
 	// devbuild.ProductDockerfileValidator is a validator for the "product_dockerfile" field. It is called by the builders before save.
 	devbuild.ProductDockerfileValidator = devbuildDescProductDockerfile.Validators[0].(func(string) error)
 	// devbuildDescStatus is the schema descriptor for status field.
