@@ -6,6 +6,14 @@ This project aims to bring macOS platform build tasks into the Kubernetes declar
 
 ## Getting Started
 
+### Running Controllers
+
+- Cluster GC only: `go run ./cmd/main.go --enable-gc=true`
+- Mac worker agent: `go run ./cmd/main.go --enable-agent --build-timeout=24h --build-poll-interval=5m`
+
+`--build-timeout` bounds how long a job may remain in `Building` before it is marked `Failed`, and
+`--build-poll-interval` controls how often agents recheck jobs owned by another worker.
+
 ### Prerequisites
 - go version v1.25.0+
 - docker version 17.03+.
@@ -113,6 +121,11 @@ is manually re-applied afterwards.
 ## Contributing
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
+
+### Testing
+
+- `make test` runs the default unit and envtest suites.
+- `go test -tags=manual -v -run TestManualNativeBuildJob ./internal/controller` runs the networked manual build test.
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 

@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -63,10 +64,15 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	var enableAgent, enableGC bool
+	var buildTimeout, buildPollInterval time.Duration
 
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
 	flag.BoolVar(&enableGC, "enable-gc", true, "Enable the MacBuild GC reconciler. Runs in the cluster.")
+	flag.DurationVar(&buildTimeout, "build-timeout", 24*time.Hour,
+		"Maximum time a MacBuild may stay in Building before the agent marks it failed.")
+	flag.DurationVar(&buildPollInterval, "build-poll-interval", 5*time.Minute,
+		"How often the agent rechecks Building jobs assigned to other workers.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -96,6 +102,14 @@ func main() {
 
 	if !enableAgent && !enableGC {
 		setupLog.Info("No controllers enabled. Use --enable-agent or --enable-gc to start a controller.")
+		os.Exit(1)
+	}
+	if enableAgent && buildTimeout <= 0 {
+		setupLog.Info("build-timeout must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && buildPollInterval <= 0 {
+		setupLog.Info("build-poll-interval must be greater than zero")
 		os.Exit(1)
 	}
 
@@ -199,9 +213,11 @@ func main() {
 		}
 		setupLog.Info("Starting manager with Worker ID", "workerID", workerID)
 		if err := (&controller.MacBuildReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			WorkerID: workerID,
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			WorkerID:          workerID,
+			BuildTimeout:      buildTimeout,
+			BuildPollInterval: buildPollInterval,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)

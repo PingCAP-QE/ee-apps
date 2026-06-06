@@ -1,3 +1,6 @@
+//go:build manual
+// +build manual
+
 /*
 Copyright 2025.
 
@@ -37,7 +40,7 @@ import (
 //
 // Usage:
 //
-//	go test -v -run TestManualNativeBuildJob ./internal/controller
+//	go test -tags=manual -v -run TestManualNativeBuildJob ./internal/controller
 func TestManualNativeBuildJob(t *testing.T) {
 	// Initialize logger
 	logf.SetLogger(zap.New(zap.UseDevMode(true)))

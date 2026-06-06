@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,14 +35,24 @@ import (
 // MacBuildReconciler reconciles a MacBuild object
 type MacBuildReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	WorkerID string
+	Scheme            *runtime.Scheme
+	WorkerID          string
+	BuildTimeout      time.Duration
+	BuildPollInterval time.Duration
+
+	now      func() time.Time
+	runBuild func(context.Context, buildv1alpha1.MacBuild) (*buildResult, error)
 }
 
 type buildResult struct {
 	CommitHash          string
 	PushedArtifactsYaml string
 }
+
+const (
+	defaultBuildTimeout      = 24 * time.Hour
+	defaultBuildPollInterval = 5 * time.Minute
+)
 
 // +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds/status,verbs=get;update;patch
@@ -93,8 +106,10 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		newStatus := macBuild.Status.DeepCopy()
 		newStatus.Phase = buildv1alpha1.PhaseBuilding
 		newStatus.WorkerID = &r.WorkerID
-		now := metav1.Now()
+		now := metav1.NewTime(r.currentTime())
 		newStatus.StartTime = &now
+		newStatus.CompletionTime = nil
+		newStatus.Message = nil
 		macBuild.Status = *newStatus
 
 		if err := r.Status().Update(ctx, &macBuild); err != nil {
@@ -106,17 +121,33 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case buildv1alpha1.PhaseBuilding:
 		logger.Info("Phase: Building. Starting build process.")
 
-		if macBuild.Status.WorkerID == nil || *macBuild.Status.WorkerID != r.WorkerID {
-			logger.Info("This build is not assigned to me.", "AssignedWorker", macBuild.Status.WorkerID)
-			return ctrl.Result{}, nil
+		if macBuild.Status.StartTime == nil {
+			return r.failBuild(ctx, logger, &macBuild, "build entered Building without startTime")
+		}
+		if macBuild.Status.WorkerID == nil || *macBuild.Status.WorkerID == "" {
+			return r.failBuild(ctx, logger, &macBuild, "build entered Building without workerID")
+		}
+		if r.hasTimedOut(macBuild.Status.StartTime.Time) {
+			return r.failBuild(
+				ctx,
+				logger,
+				&macBuild,
+				fmt.Sprintf("build timed out after %s on worker %q", r.buildTimeout(), *macBuild.Status.WorkerID),
+			)
 		}
 
-		// check the run status.
-		// TODO: in production, we need a more complex logic to check the long time goroutine.
-		job := newNativeBuildJob(ctx, macBuild)
-		result, err := job.Run()
+		if *macBuild.Status.WorkerID != r.WorkerID {
+			logger.Info(
+				"This build is assigned to another worker. Rechecking later.",
+				"assignedWorker", *macBuild.Status.WorkerID,
+				"requeueAfter", r.buildPollInterval(),
+			)
+			return ctrl.Result{RequeueAfter: r.buildPollInterval()}, nil
+		}
+
+		result, err := r.runNativeBuild(ctx, macBuild)
 		newStatus := macBuild.Status.DeepCopy()
-		now := metav1.Now()
+		now := metav1.NewTime(r.currentTime())
 		newStatus.CompletionTime = &now
 
 		if err != nil {
@@ -127,8 +158,12 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		} else {
 			logger.Info("Build succeeded")
 			newStatus.Phase = buildv1alpha1.PhaseSucceeded
+			newStatus.Message = nil
 			newStatus.CommitHash = &result.CommitHash
 			if result.PushedArtifactsYaml != "" {
+				if newStatus.Outputs == nil {
+					newStatus.Outputs = &buildv1alpha1.MacBuildResultOutputs{}
+				}
 				newStatus.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
 			}
 		}
@@ -157,6 +192,57 @@ func (r *MacBuildReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv1alpha1.MacBuild) (*buildResult, error) {
+	if r.runBuild != nil {
+		return r.runBuild(ctx, macBuild)
+	}
 	job := newNativeBuildJob(ctx, macBuild)
 	return job.Run()
+}
+
+func (r *MacBuildReconciler) currentTime() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+func (r *MacBuildReconciler) buildTimeout() time.Duration {
+	if r.BuildTimeout > 0 {
+		return r.BuildTimeout
+	}
+	return defaultBuildTimeout
+}
+
+func (r *MacBuildReconciler) buildPollInterval() time.Duration {
+	if r.BuildPollInterval > 0 {
+		return r.BuildPollInterval
+	}
+	return defaultBuildPollInterval
+}
+
+func (r *MacBuildReconciler) hasTimedOut(startTime time.Time) bool {
+	return r.currentTime().After(startTime.Add(r.buildTimeout()))
+}
+
+func (r *MacBuildReconciler) failBuild(
+	ctx context.Context,
+	logger logr.Logger,
+	macBuild *buildv1alpha1.MacBuild,
+	message string,
+) (ctrl.Result, error) {
+	logger.Info("Marking build as failed", "message", message)
+
+	newStatus := macBuild.Status.DeepCopy()
+	newStatus.Phase = buildv1alpha1.PhaseFailed
+	newStatus.Message = &message
+	now := metav1.NewTime(r.currentTime())
+	newStatus.CompletionTime = &now
+	macBuild.Status = *newStatus
+
+	if err := r.Status().Update(ctx, macBuild); err != nil {
+		logger.Error(err, "Failed to update status to Failed")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }
