@@ -6,4 +6,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: macbuild-sample
 spec:
-  # TODO(user): Add fields here
+  source:
+    gitRepository: https://github.com/pingcap/tidb.git
+    gitRef: main
+  build:
+    component: tidb
+    version: nightly
+    profile: release
+  artifacts:
+    push: false

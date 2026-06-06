@@ -37,6 +37,7 @@ type MacBuildReconciler struct {
 	client.Client
 	Scheme                *runtime.Scheme
 	WorkerID              string
+	WorkerArch            string
 	BuildTimeout          time.Duration
 	BuildPollInterval     time.Duration
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
@@ -88,7 +89,8 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Info("Setting initial status to Pending")
 
 		newStatus := macBuild.Status.DeepCopy()
-		newStatus.Phase = buildv1alpha1.PhasePending
+		now := metav1.NewTime(r.currentTime())
+		newStatus.SetPhase(buildv1alpha1.PhasePending, "Waiting for a matching macOS worker to claim this build.", now)
 		macBuild.Status = *newStatus
 
 		if err := r.Status().Update(ctx, &macBuild); err != nil {
@@ -105,9 +107,10 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// adopt the build job and update the status to "Building"
 		logger.Info("Phase: Pending. Claiming and setting to Building.")
 		newStatus := macBuild.Status.DeepCopy()
-		newStatus.Phase = buildv1alpha1.PhaseBuilding
-		newStatus.WorkerID = &r.WorkerID
 		now := metav1.NewTime(r.currentTime())
+		newStatus.SetPhase(buildv1alpha1.PhaseBuilding, "Build claimed by worker and queued for execution.", now)
+		newStatus.WorkerID = &r.WorkerID
+		newStatus.WorkerArch = optionalString(r.WorkerArch)
 		newStatus.StartTime = &now
 		newStatus.CompletionTime = nil
 		newStatus.Message = nil
@@ -150,15 +153,18 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		newStatus := macBuild.Status.DeepCopy()
 		now := metav1.NewTime(r.currentTime())
 		newStatus.CompletionTime = &now
+		if *macBuild.Status.WorkerID == r.WorkerID {
+			newStatus.WorkerArch = optionalString(r.WorkerArch)
+		}
 
 		if err != nil {
 			logger.Error(err, "Build failed")
-			newStatus.Phase = buildv1alpha1.PhaseFailed
+			newStatus.SetPhase(buildv1alpha1.PhaseFailed, err.Error(), now)
 			errMsg := err.Error()
 			newStatus.Message = &errMsg
 		} else {
 			logger.Info("Build succeeded")
-			newStatus.Phase = buildv1alpha1.PhaseSucceeded
+			newStatus.SetPhase(buildv1alpha1.PhaseSucceeded, "Build completed successfully.", now)
 			newStatus.Message = nil
 			newStatus.CommitHash = &result.CommitHash
 			if result.PushedArtifactsYaml != "" {
@@ -234,9 +240,9 @@ func (r *MacBuildReconciler) failBuild(
 	logger.Info("Marking build as failed", "message", message)
 
 	newStatus := macBuild.Status.DeepCopy()
-	newStatus.Phase = buildv1alpha1.PhaseFailed
-	newStatus.Message = &message
 	now := metav1.NewTime(r.currentTime())
+	newStatus.SetPhase(buildv1alpha1.PhaseFailed, message, now)
+	newStatus.Message = &message
 	newStatus.CompletionTime = &now
 	macBuild.Status = *newStatus
 
@@ -246,4 +252,11 @@ func (r *MacBuildReconciler) failBuild(
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

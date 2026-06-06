@@ -20,7 +20,7 @@ spec:
       name: Status
       type: string
     - description: Git Ref
-      jsonPath: .spec.gitRef
+      jsonPath: .spec.source.gitRef
       name: GitRef
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -68,7 +68,11 @@ spec:
                 description: Build defines the parameters for the build process
                 properties:
                   arch:
+                    default: amd64
                     description: Architecture to build for (e.g., amd64, arm64)
+                    enum:
+                    - amd64
+                    - arm64
                     type: string
                   component:
                     description: Component to build (e.g., tidb, tikv)
@@ -134,8 +138,8 @@ spec:
                 format: date-time
                 type: string
               message:
-                description: A detailed message about the current status (e.g., error
-                  log)
+                description: A detailed error or terminal message about the current
+                  status.
                 type: string
               outputs:
                 description: URLs of the final artifacts after completion
@@ -144,18 +148,57 @@ spec:
                     type: string
                 type: object
               phase:
-                description: Current phase of the build (Pending, Building, Uploading,
-                  Succeeded, Failed)
+                description: Current phase of the build (Pending, Preparing, Building,
+                  Publishing, Succeeded, Failed)
                 enum:
                 - Pending
+                - Preparing
                 - Building
-                - Uploading
+                - Publishing
                 - Succeeded
                 - Failed
+                type: string
+              phaseHistory:
+                description: Ordered history of phase transitions for this build.
+                items:
+                  description: MacBuildPhaseHistoryEntry records a phase transition
+                    for a build.
+                  properties:
+                    message:
+                      description: Optional message recorded for the phase transition.
+                      type: string
+                    phase:
+                      description: Phase entered at this point in time.
+                      enum:
+                      - Pending
+                      - Preparing
+                      - Building
+                      - Publishing
+                      - Succeeded
+                      - Failed
+                      type: string
+                    transitionTime:
+                      description: TransitionTime is when the phase was first observed.
+                      format: date-time
+                      type: string
+                  required:
+                  - phase
+                  - transitionTime
+                  type: object
+                type: array
+              phaseMessage:
+                description: A short message describing the current phase.
                 type: string
               startTime:
                 description: Timestamp when the build process started
                 format: date-time
+                type: string
+              workerArch:
+                description: The CPU architecture of the macOS worker that is processing
+                  this build
+                enum:
+                - amd64
+                - arm64
                 type: string
               workerID:
                 description: The ID of the macOS worker that is processing this build

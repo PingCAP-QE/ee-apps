@@ -17,16 +17,25 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"strings"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Build phases
 const (
-	PhasePending   string = "Pending"
-	PhaseBuilding  string = "Building"
-	PhaseUploading string = "Uploading"
-	PhaseSucceeded string = "Succeeded"
-	PhaseFailed    string = "Failed"
+	PhasePending    string = "Pending"
+	PhasePreparing  string = "Preparing"
+	PhaseBuilding   string = "Building"
+	PhasePublishing string = "Publishing"
+	PhaseSucceeded  string = "Succeeded"
+	PhaseFailed     string = "Failed"
+)
+
+// Supported build architectures.
+const (
+	BuildArchAMD64 string = "amd64"
+	BuildArchARM64 string = "arm64"
 )
 
 // MacBuildSpec defines the desired state of MacBuild
@@ -85,6 +94,8 @@ type BuildSpec struct {
 	OS string `json:"os,omitempty"`
 
 	// Architecture to build for (e.g., amd64, arm64)
+	// +kubebuilder:default:="amd64"
+	// +kubebuilder:validation:Enum=amd64;arm64
 	Arch string `json:"arch,omitempty"`
 
 	// Build profile (e.g., release, failpoint)
@@ -121,14 +132,18 @@ type ArtifactsSpec struct {
 
 // MacBuildStatus defines the observed state of MacBuild
 type MacBuildStatus struct {
-	// Current phase of the build (Pending, Building, Uploading, Succeeded, Failed)
+	// Current phase of the build (Pending, Preparing, Building, Publishing, Succeeded, Failed)
 	// +optional
-	// +kubebuilder:validation:Enum=Pending;Building;Uploading;Succeeded;Failed
+	// +kubebuilder:validation:Enum=Pending;Preparing;Building;Publishing;Succeeded;Failed
 	Phase string `json:"phase,omitempty"`
 
-	// A detailed message about the current status (e.g., error log)
+	// A detailed error or terminal message about the current status.
 	// +optional
 	Message *string `json:"message,omitempty"`
+
+	// A short message describing the current phase.
+	// +optional
+	PhaseMessage *string `json:"phaseMessage,omitempty"`
 
 	// Timestamp when the build process started
 	// +optional
@@ -146,9 +161,32 @@ type MacBuildStatus struct {
 	// +optional
 	WorkerID *string `json:"workerID,omitempty"`
 
+	// The CPU architecture of the macOS worker that is processing this build
+	// +optional
+	// +kubebuilder:validation:Enum=amd64;arm64
+	WorkerArch *string `json:"workerArch,omitempty"`
+
+	// Ordered history of phase transitions for this build.
+	// +optional
+	PhaseHistory []MacBuildPhaseHistoryEntry `json:"phaseHistory,omitempty"`
+
 	// URLs of the final artifacts after completion
 	// +optional
 	Outputs *MacBuildResultOutputs `json:"outputs,omitempty"`
+}
+
+// MacBuildPhaseHistoryEntry records a phase transition for a build.
+type MacBuildPhaseHistoryEntry struct {
+	// Phase entered at this point in time.
+	// +kubebuilder:validation:Enum=Pending;Preparing;Building;Publishing;Succeeded;Failed
+	Phase string `json:"phase"`
+
+	// TransitionTime is when the phase was first observed.
+	TransitionTime metav1.Time `json:"transitionTime"`
+
+	// Optional message recorded for the phase transition.
+	// +optional
+	Message *string `json:"message,omitempty"`
 }
 
 // MacBuildResultOutputs contains the final URLs of the build artifacts
@@ -159,7 +197,7 @@ type MacBuildResultOutputs struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.phase",description="The current build status"
-// +kubebuilder:printcolumn:name="GitRef",type="string",JSONPath=".spec.gitRef",description="Git Ref"
+// +kubebuilder:printcolumn:name="GitRef",type="string",JSONPath=".spec.source.gitRef",description="Git Ref"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // MacBuild is the Schema for the macbuilds API
@@ -182,4 +220,42 @@ type MacBuildList struct {
 
 func init() {
 	SchemeBuilder.Register(&MacBuild{}, &MacBuildList{})
+}
+
+// NormalizeBuildArch normalizes user-provided build architecture strings.
+func NormalizeBuildArch(arch string) string {
+	return strings.ToLower(strings.TrimSpace(arch))
+}
+
+// IsSupportedBuildArch returns true when the build architecture is supported by the API.
+func IsSupportedBuildArch(arch string) bool {
+	switch NormalizeBuildArch(arch) {
+	case BuildArchAMD64, BuildArchARM64:
+		return true
+	default:
+		return false
+	}
+}
+
+// SetPhase updates the current phase and appends to history when the phase changes.
+func (s *MacBuildStatus) SetPhase(phase string, message string, at metav1.Time) {
+	s.Phase = phase
+	s.PhaseMessage = optionalString(message)
+
+	if len(s.PhaseHistory) > 0 && s.PhaseHistory[len(s.PhaseHistory)-1].Phase == phase {
+		return
+	}
+
+	s.PhaseHistory = append(s.PhaseHistory, MacBuildPhaseHistoryEntry{
+		Phase:          phase,
+		TransitionTime: at,
+		Message:        optionalString(message),
+	})
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

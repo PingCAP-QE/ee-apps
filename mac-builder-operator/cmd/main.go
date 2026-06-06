@@ -19,7 +19,10 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
+	goruntime "runtime"
+	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -66,6 +69,12 @@ func main() {
 	var enableAgent, enableGC bool
 	var buildTimeout, buildPollInterval time.Duration
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
+	defaultWorkerName, err := os.Hostname()
+	if err != nil {
+		setupLog.Error(err, "unable to get hostname for default worker name")
+		os.Exit(1)
+	}
+	var workerName, workerArch string
 
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
@@ -80,6 +89,10 @@ func main() {
 		"Immutable tag or commit to check out from the artifacts repo before generating build scripts.")
 	flag.StringVar(&artifactsRepoCommit, "artifacts-repo-commit", controller.DefaultArtifactsScriptExpectedCommit,
 		"Expected full commit SHA for the pinned artifacts repo revision.")
+	flag.StringVar(&workerName, "worker-name", defaultWorkerName,
+		"Unique worker identity stored in MacBuild status when the agent claims a build.")
+	flag.StringVar(&workerArch, "worker-arch", goruntime.GOARCH,
+		"CPU architecture this worker can handle. Supported values: amd64, arm64.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -118,6 +131,15 @@ func main() {
 	if enableAgent && buildPollInterval <= 0 {
 		setupLog.Info("build-poll-interval must be greater than zero")
 		os.Exit(1)
+	}
+	if enableAgent {
+		normalizedWorkerName, normalizedWorkerArch, err := validateAgentIdentity(workerName, workerArch)
+		if err != nil {
+			setupLog.Info(err.Error(), "workerName", workerName, "workerArch", workerArch)
+			os.Exit(1)
+		}
+		workerName = normalizedWorkerName
+		workerArch = normalizedWorkerArch
 	}
 
 	artifactsScriptSource, err := (controller.ArtifactsScriptSourceConfig{
@@ -222,17 +244,12 @@ func main() {
 	}
 
 	if enableAgent {
-		// Get hostname for WorkerID, only needed for the agent.
-		workerID, err := os.Hostname()
-		if err != nil {
-			setupLog.Error(err, "unable to get hostname for worker ID")
-			os.Exit(1)
-		}
-		setupLog.Info("Starting manager with Worker ID", "workerID", workerID)
+		setupLog.Info("Starting manager with worker identity", "workerID", workerName, "workerArch", workerArch)
 		if err := (&controller.MacBuildReconciler{
 			Client:                mgr.GetClient(),
 			Scheme:                mgr.GetScheme(),
-			WorkerID:              workerID,
+			WorkerID:              workerName,
+			WorkerArch:            workerArch,
 			BuildTimeout:          buildTimeout,
 			BuildPollInterval:     buildPollInterval,
 			ArtifactsScriptSource: artifactsScriptSource,
@@ -270,4 +287,18 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func validateAgentIdentity(workerName string, workerArch string) (string, string, error) {
+	normalizedWorkerName := strings.TrimSpace(workerName)
+	if normalizedWorkerName == "" {
+		return "", "", fmt.Errorf("worker-name must not be empty when enable-agent is set")
+	}
+
+	normalizedWorkerArch := buildv1alpha1.NormalizeBuildArch(workerArch)
+	if !buildv1alpha1.IsSupportedBuildArch(normalizedWorkerArch) {
+		return "", "", fmt.Errorf("worker-arch must be one of amd64 or arm64")
+	}
+
+	return normalizedWorkerName, normalizedWorkerArch, nil
 }
