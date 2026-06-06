@@ -82,7 +82,7 @@ func TestManualNativeBuildJob(t *testing.T) {
 	logger.Info("Starting manual test for nativeBuildJob")
 
 	// Create a new nativeBuildJob
-	job := newNativeBuildJob(ctx, *macBuild)
+	job := newNativeBuildJob(ctx, *macBuild, ArtifactsScriptSourceConfig{})
 	logger.Info("Created nativeBuildJob", "job", job)
 
 	// Run the job

@@ -35,10 +35,11 @@ import (
 // MacBuildReconciler reconciles a MacBuild object
 type MacBuildReconciler struct {
 	client.Client
-	Scheme            *runtime.Scheme
-	WorkerID          string
-	BuildTimeout      time.Duration
-	BuildPollInterval time.Duration
+	Scheme                *runtime.Scheme
+	WorkerID              string
+	BuildTimeout          time.Duration
+	BuildPollInterval     time.Duration
+	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
 	now      func() time.Time
 	runBuild func(context.Context, buildv1alpha1.MacBuild) (*buildResult, error)
@@ -195,7 +196,7 @@ func (r *MacBuildReconciler) runNativeBuild(ctx context.Context, macBuild buildv
 	if r.runBuild != nil {
 		return r.runBuild(ctx, macBuild)
 	}
-	job := newNativeBuildJob(ctx, macBuild)
+	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
 	return job.Run()
 }
 

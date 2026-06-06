@@ -13,6 +13,8 @@ This project aims to bring macOS platform build tasks into the Kubernetes declar
 
 `--build-timeout` bounds how long a job may remain in `Building` before it is marked `Failed`, and
 `--build-poll-interval` controls how often agents recheck jobs owned by another worker.
+The agent also pins the external `artifacts.git` build-script source to an immutable revision via
+`--artifacts-repo-revision` plus `--artifacts-repo-commit`; branch refs such as `main` are rejected.
 
 ### Prerequisites
 - go version v1.25.0+
