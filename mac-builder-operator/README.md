@@ -9,12 +9,38 @@ This project aims to bring macOS platform build tasks into the Kubernetes declar
 ### Running Controllers
 
 - Cluster GC only: `go run ./cmd/main.go --enable-gc=true`
-- Mac worker agent: `go run ./cmd/main.go --enable-agent --build-timeout=24h --build-poll-interval=5m`
+- Mac worker agent: `go run ./cmd/main.go --enable-agent --worker-name="$(hostname)" --worker-arch="$(go env GOARCH)" --build-timeout=24h --build-poll-interval=5m`
 
 `--build-timeout` bounds how long a job may remain in `Building` before it is marked `Failed`, and
 `--build-poll-interval` controls how often agents recheck jobs owned by another worker.
 The agent also pins the external `artifacts.git` build-script source to an immutable revision via
 `--artifacts-repo-revision` plus `--artifacts-repo-commit`; branch refs such as `main` are rejected.
+`--worker-name` defaults to the local hostname, and `--worker-arch` defaults to the local Go runtime arch.
+Supported worker/build architectures are `amd64` and `arm64`.
+
+### MacBuild API Notes
+
+- `.spec.build.arch` is optional and defaults to `amd64`.
+- Agents record `.status.workerID`, `.status.workerArch`, `.status.phaseMessage`, and `.status.phaseHistory[]`.
+- Phase history entries capture the phase name, timestamp, and a short message for each transition.
+
+Example `MacBuild`:
+
+```yaml
+apiVersion: build.tibuild.pingcap.net/v1alpha1
+kind: MacBuild
+metadata:
+  name: macbuild-sample
+spec:
+  source:
+    gitRepository: https://github.com/pingcap/tidb.git
+    gitRef: main
+  build:
+    component: tidb
+    version: nightly
+  artifacts:
+    push: false
+```
 
 ### Prerequisites
 - go version v1.25.0+

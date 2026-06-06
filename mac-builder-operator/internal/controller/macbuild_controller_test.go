@@ -51,7 +51,17 @@ var _ = Describe("MacBuild Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: buildv1alpha1.MacBuildSpec{
+						Source: buildv1alpha1.SourceSpec{
+							GitRepository: "https://github.com/pingcap/tidb.git",
+							GitRef:        "main",
+						},
+						Build: buildv1alpha1.BuildSpec{
+							Component: "tidb",
+							Version:   "nightly",
+						},
+						Artifacts: buildv1alpha1.ArtifactsSpec{},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
