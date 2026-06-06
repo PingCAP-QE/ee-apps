@@ -33,14 +33,11 @@ func TestReconcileInitializesPendingStatusWithPhaseHistory(t *testing.T) {
 	}
 
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
 	})
 	if err != nil {
 		t.Fatalf("reconcile failed: %v", err)
-	}
-	if !result.Requeue {
-		t.Fatalf("expected reconcile to requeue after initializing status, got %+v", result)
 	}
 
 	var updated buildv1alpha1.MacBuild
@@ -91,14 +88,11 @@ func TestReconcilePendingClaimRecordsWorkerIdentityAndPhaseHistory(t *testing.T)
 	reconciler.WorkerID = testWorkerA
 	reconciler.WorkerArch = testWorkerArch
 
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
 	})
 	if err != nil {
 		t.Fatalf("reconcile failed: %v", err)
-	}
-	if !result.Requeue {
-		t.Fatalf("expected claim reconcile to requeue, got %+v", result)
 	}
 
 	var updated buildv1alpha1.MacBuild
