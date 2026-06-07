@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { ALL_COST_SOURCES, COST_PATH } from "./filterUrl";
+
 function normalizePrefix(value) {
   if (!value || value === "/") {
     return "";
@@ -9,6 +11,7 @@ function normalizePrefix(value) {
 }
 
 const API_BASE = normalizePrefix(import.meta.env.VITE_API_BASE_URL || import.meta.env.BASE_URL);
+export const COST_DATA_LAG_DAYS = 4;
 
 export function getDefaultDateRange() {
   const end = new Date();
@@ -60,6 +63,22 @@ export function getPreviousCompleteSaturdayWeek(referenceDate = new Date()) {
   end.setDate(end.getDate() - daysSinceFriday);
   const start = new Date(end);
   start.setDate(start.getDate() - 6);
+  return {
+    start_date: toDateInputValue(start),
+    end_date: toDateInputValue(end),
+  };
+}
+
+export function getLaggedTrailingDateRange(
+  referenceDate = new Date(),
+  windowDays = 7,
+  lagDays = COST_DATA_LAG_DAYS,
+) {
+  const end = new Date(referenceDate);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() - lagDays);
+  const start = new Date(end);
+  start.setDate(start.getDate() - windowDays + 1);
   return {
     start_date: toDateInputValue(start),
     end_date: toDateInputValue(end),
@@ -277,6 +296,35 @@ export function formatBrowserDateTime(value) {
   }).format(parsed);
 }
 
+export function formatCostSourceLabel(value) {
+  if (!value || value === ALL_COST_SOURCES) {
+    return "All sources";
+  }
+  const [vendor, accountId] = String(value || "").split(":");
+  if (!vendor || !accountId) {
+    return "Selected source";
+  }
+  return `${vendor} / ${accountId}`;
+}
+
+export function buildCostSourceOptions(items, selectedCostSource) {
+  const options = [
+    { value: ALL_COST_SOURCES, label: "All sources" },
+    ...(items || []),
+  ];
+  if (
+    selectedCostSource
+    && selectedCostSource !== ALL_COST_SOURCES
+    && !options.some((item) => item.value === selectedCostSource)
+  ) {
+    options.splice(1, 0, {
+      value: selectedCostSource,
+      label: formatCostSourceLabel(selectedCostSource),
+    });
+  }
+  return options;
+}
+
 export function formatDelta(current, previous, suffix = "") {
   const delta = Number(current || 0) - Number(previous || 0);
   const sign = delta > 0 ? "+" : "";
@@ -295,7 +343,14 @@ function parseIsoDate(value) {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
-export function buildScopeLabel(filters) {
+export function buildScopeLabel(filters, pathname, costSourceLabel = "") {
+  if (pathname === COST_PATH) {
+    return [
+      costSourceLabel || formatCostSourceLabel(filters.cost_source),
+      `${filters.start_date} to ${filters.end_date}`,
+    ].join(" · ");
+  }
+
   const parts = [];
   if (filters.repo) {
     parts.push(filters.repo);

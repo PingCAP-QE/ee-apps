@@ -355,6 +355,24 @@ select {
   line-height: 1.45;
 }
 
+.cost-page__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cost-page__filter {
+  width: min(100%, 360px);
+  padding: 1rem 1.05rem;
+  border-radius: 22px;
+  background: rgba(255, 253, 248, 0.8);
+  border: 1px solid var(--surface-border);
+}
+
+.cost-page__filter small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -416,22 +434,102 @@ select {
 
 .cost-weekly-overview__grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 2fr);
+  grid-template-columns: minmax(220px, 0.95fr) repeat(3, minmax(0, 1fr));
   gap: 1rem;
   align-items: stretch;
 }
 
 .cost-weekly-overview__cards {
   display: grid;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
+  align-content: start;
 }
 
-.cost-weekly-overview__charts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
+.cost-weekly-overview > .panel__body,
+.cost-weekly-overview__grid > * {
   min-width: 0;
+}
+
+.cost-weekly-overview .budget-gauge,
+.cost-weekly-overview .donut-card {
+  height: 100%;
+}
+
+.cost-weekly-overview .budget-gauge,
+.cost-weekly-overview .donut-card,
+.cost-weekly-overview .stat-card {
+  border-radius: 22px;
+}
+
+.cost-weekly-overview .budget-gauge,
+.cost-weekly-overview .donut-card {
+  padding: 0.9rem;
+}
+
+.cost-weekly-overview .budget-gauge {
+  gap: 0.72rem;
+}
+
+.cost-weekly-overview .budget-gauge__chart svg {
+  max-width: 204px;
+}
+
+.cost-weekly-overview .budget-gauge__summary {
+  font-size: 0.92rem;
+}
+
+.cost-weekly-overview .budget-gauge__metrics {
+  gap: 0.6rem;
+}
+
+.cost-weekly-overview .donut-card__header,
+.cost-weekly-overview .budget-gauge__header {
+  gap: 0.55rem;
+}
+
+.cost-weekly-overview .donut-card__header strong,
+.cost-weekly-overview .budget-gauge__header strong {
+  font-size: 0.98rem;
+}
+
+.cost-weekly-overview .donut-card__header p,
+.cost-weekly-overview .budget-gauge__header p {
+  font-size: 0.84rem;
+}
+
+.cost-weekly-overview .donut-card__body {
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.cost-weekly-overview .donut-chart svg {
+  max-width: 182px;
+}
+
+.cost-weekly-overview .donut-legend {
+  gap: 0.45rem;
+}
+
+.cost-weekly-overview .donut-legend__item {
+  padding: 0.58rem 0.64rem;
+  border-radius: 16px;
+  gap: 0.4rem;
+}
+
+.cost-weekly-overview .donut-legend__name,
+.cost-weekly-overview .donut-legend__value,
+.cost-weekly-overview .donut-legend__share {
+  font-size: 0.8rem;
+}
+
+.cost-weekly-overview .panel-badge {
+  font-size: 0.8rem;
+}
+
+.cost-weekly-overview .donut-card__action {
+  min-height: 2.05rem;
+  padding: 0.3rem 0.58rem;
 }
 
 @media (max-width: 900px) {
@@ -1037,6 +1135,122 @@ select {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(49, 87, 114, 0.08);
+}
+
+.budget-gauge {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(49, 87, 114, 0.08);
+}
+
+.budget-gauge--healthy {
+  background:
+    linear-gradient(180deg, rgba(15, 124, 130, 0.08), rgba(255, 255, 255, 0.72)),
+    rgba(255, 255, 255, 0.62);
+}
+
+.budget-gauge--warning {
+  background:
+    linear-gradient(180deg, rgba(209, 73, 91, 0.08), rgba(255, 255, 255, 0.72)),
+    rgba(255, 255, 255, 0.62);
+}
+
+.budget-gauge__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.budget-gauge__header strong {
+  display: block;
+}
+
+.budget-gauge__header p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.budget-gauge__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.budget-gauge__status--healthy {
+  background: rgba(15, 124, 130, 0.12);
+  color: var(--accent);
+}
+
+.budget-gauge__status--warning {
+  background: rgba(209, 73, 91, 0.12);
+  color: var(--rose);
+}
+
+.budget-gauge__chart {
+  display: flex;
+  justify-content: center;
+}
+
+.budget-gauge__chart svg {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+}
+
+.budget-gauge__value {
+  fill: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.budget-gauge__label {
+  fill: var(--muted);
+  font-size: 0.74rem;
+}
+
+.budget-gauge__summary {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.budget-gauge__summary--healthy {
+  color: var(--accent);
+}
+
+.budget-gauge__summary--warning {
+  color: var(--rose);
+}
+
+.budget-gauge__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.budget-gauge__metrics div {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.budget-gauge__metrics dt {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.budget-gauge__metrics dd {
+  margin: 0;
+  font-weight: 600;
 }
 
 .donut-card__header {
@@ -1722,7 +1936,6 @@ select {
   }
 
   .donut-grid,
-  .cost-weekly-overview__charts,
   .runtime-compare-grid,
   .donut-card__body {
     grid-template-columns: 1fr;
@@ -1748,7 +1961,6 @@ select {
   .stats-grid,
   .progress-summary-grid,
   .cost-weekly-overview__grid,
-  .cost-weekly-overview__charts,
   .page-grid--overview,
   .flaky-highlight-row,
   .flaky-highlight-stack,
@@ -1761,6 +1973,7 @@ select {
   .page-intro,
   .filter-bar__header,
   .panel__header,
+  .budget-gauge__header,
   .donut-card__header,
   .runtime-compare-card__header,
   .modal-card__header,
@@ -1776,6 +1989,10 @@ select {
   }
 
   .runtime-compare-item__header {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-gauge__metrics {
     grid-template-columns: 1fr;
   }
 }

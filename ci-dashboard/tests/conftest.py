@@ -293,6 +293,19 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
+        CREATE TABLE cost_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          billing_account_id TEXT NULL,
+          display_name TEXT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(vendor, account_id)
+        )
+        """,
+        """
         CREATE TABLE cost_attribution_daily (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           usage_date TEXT NOT NULL,

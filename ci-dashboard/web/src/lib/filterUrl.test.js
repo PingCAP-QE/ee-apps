@@ -60,6 +60,47 @@ test("keeps cost dashboard month buckets but normalizes invalid values", () => {
   );
 });
 
+test("keeps cost source on the cost tab and drops unrelated filters", () => {
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    "/cost",
+    "?repo=pingcap%2Ftidb&branch=main&job_name=unit&cloud_phase=GCP&issue_status=open&cost_source=aws%3A946646677266&granularity=month",
+  );
+
+  assert.equal(filters.repo, "");
+  assert.equal(filters.branch, "");
+  assert.equal(filters.job_name, "");
+  assert.equal(filters.cloud_phase, "");
+  assert.equal(filters.issue_status, "");
+  assert.equal(filters.cost_source, "aws:946646677266");
+  assert.equal(filters.granularity, "month");
+});
+
+test("does not keep cost source outside the cost tab", () => {
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    "/ci-status",
+    "?cost_source=aws%3A946646677266",
+  );
+
+  assert.equal(filters.cost_source, "");
+});
+
+test("serializes cost source for cost links", () => {
+  const search = buildFilterSearch(
+    {
+      ...buildDefaultFilters(defaultRange, "/cost"),
+      cost_source: "aws:946646677266",
+      granularity: "month",
+    },
+    "/cost",
+  );
+  const params = new URLSearchParams(search);
+
+  assert.equal(params.get("cost_source"), "aws:946646677266");
+  assert.equal(params.get("granularity"), "month");
+});
+
 test("compares filter values without being sensitive to object identity", () => {
   assert.equal(
     sameFilters(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -24,6 +24,8 @@ class CommonFilters:
     start_date: date | None = None
     end_date: date | None = None
     granularity: str = "day"
+    cost_vendor: str | None = None
+    cost_account_id: str | None = None
 
     def meta(self) -> dict[str, Any]:
         return {
@@ -36,6 +38,13 @@ class CommonFilters:
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "granularity": self.granularity,
+            "cost_vendor": self.cost_vendor,
+            "cost_account_id": self.cost_account_id,
+            "cost_source": (
+                f"{self.cost_vendor}:{self.cost_account_id}"
+                if self.cost_vendor and self.cost_account_id
+                else None
+            ),
         }
 
     @property
@@ -43,40 +52,13 @@ class CommonFilters:
         return split_filter_values(self.job_name)
 
     def without_issue_status(self) -> "CommonFilters":
-        return CommonFilters(
-            repo=self.repo,
-            branch=self.branch,
-            job_name=self.job_name,
-            cloud_phase=self.cloud_phase,
-            issue_status=None,
-            start_date=self.start_date,
-            end_date=self.end_date,
-            granularity=self.granularity,
-        )
+        return replace(self, issue_status=None)
 
     def without_cloud_phase(self) -> "CommonFilters":
-        return CommonFilters(
-            repo=self.repo,
-            branch=self.branch,
-            job_name=self.job_name,
-            cloud_phase=None,
-            issue_status=self.issue_status,
-            start_date=self.start_date,
-            end_date=self.end_date,
-            granularity=self.granularity,
-        )
+        return replace(self, cloud_phase=None)
 
     def without_repo(self) -> "CommonFilters":
-        return CommonFilters(
-            repo=None,
-            branch=self.branch,
-            job_name=self.job_name,
-            cloud_phase=self.cloud_phase,
-            issue_status=self.issue_status,
-            start_date=self.start_date,
-            end_date=self.end_date,
-            granularity=self.granularity,
-        )
+        return replace(self, repo=None)
 
 
 def build_common_where(

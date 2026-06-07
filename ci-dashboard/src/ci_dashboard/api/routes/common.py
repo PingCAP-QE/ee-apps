@@ -16,10 +16,12 @@ def get_common_filters(
     start_date: date | None = None,
     end_date: date | None = None,
     granularity: str = Query(default="day"),
+    cost_source: str | None = None,
 ) -> CommonFilters:
     validate_granularity(granularity)
     validate_date_range(start_date, end_date)
     validate_issue_status(issue_status)
+    cost_vendor, cost_account_id = parse_cost_source(cost_source)
     return CommonFilters(
         repo=repo,
         branch=branch,
@@ -29,6 +31,8 @@ def get_common_filters(
         start_date=start_date,
         end_date=end_date,
         granularity=granularity,
+        cost_vendor=cost_vendor,
+        cost_account_id=cost_account_id,
     )
 
 
@@ -47,3 +51,16 @@ def validate_issue_status(issue_status: str | None) -> None:
         return
     if issue_status not in {"open", "closed"}:
         raise HTTPException(status_code=400, detail="issue_status must be one of: open, closed")
+
+
+def parse_cost_source(cost_source: str | None) -> tuple[str | None, str | None]:
+    if cost_source is None or cost_source == "" or cost_source == "all":
+        return None, None
+
+    vendor, separator, account_id = cost_source.partition(":")
+    if not separator or not vendor or not account_id:
+        raise HTTPException(
+            status_code=400,
+            detail="cost_source must be 'all' or formatted as '<vendor>:<account_id>'",
+        )
+    return vendor, account_id

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any, Mapping
@@ -12,6 +13,11 @@ from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, 
 COST_STACK_LIMIT = 8
 UNMATCHED_RESOURCE_LIMIT = 20
 ENGINEERING_GROUP_NAME = "Engineering Group"
+PRIMARY_BUDGET_VENDOR = "gcp"
+PRIMARY_BUDGET_ACCOUNT_ID = "pingcap-testing-account"
+PRIMARY_ANNUAL_BUDGET = 17300 * 12
+COST_DATA_LAG_DAYS = 4
+FORECAST_WINDOW_DAYS = 14
 UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
     "kube:unallocated",
     "kube:system-overhead",
@@ -136,11 +142,14 @@ def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any
         start_date=previous_start,
         end_date=previous_end,
         granularity=cost_filters.granularity,
+        cost_vendor=cost_filters.cost_vendor,
+        cost_account_id=cost_filters.cost_account_id,
     )
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:
             current_summary = _cost_summary(connection, cost_filters)
             previous_summary = _cost_summary(connection, previous_filters)
+            budget_health = _budget_health_snapshot(connection, cost_filters)
             service_share = _service_share_by_threshold(
                 connection,
                 cost_filters,
@@ -153,10 +162,11 @@ def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any
                 min_share_pct=1.0,
             )
     else:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
                 "current_summary": executor.submit(_get_cost_summary, engine, cost_filters),
                 "previous_summary": executor.submit(_get_cost_summary, engine, previous_filters),
+                "budget_health": executor.submit(_get_budget_health_snapshot, engine, cost_filters),
                 "service_share": executor.submit(
                     _get_service_share_by_threshold,
                     engine,
@@ -174,6 +184,7 @@ def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any
             sections = {name: future.result() for name, future in futures.items()}
         current_summary = sections["current_summary"]
         previous_summary = sections["previous_summary"]
+        budget_health = sections["budget_health"]
         service_share = sections["service_share"]
         level2_share = sections["level2_share"]
 
@@ -194,6 +205,7 @@ def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any
                 previous_summary["net_cost"],
             ),
         },
+        "budget_health": budget_health,
         "service_share": service_share,
         "level2_share": level2_share,
     }
@@ -212,6 +224,14 @@ def _get_service_share_by_threshold(
 ) -> dict[str, Any]:
     with engine.begin() as connection:
         return _service_share_by_threshold(connection, filters, min_share_pct=min_share_pct)
+
+
+def _get_budget_health_snapshot(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any] | None:
+    with engine.begin() as connection:
+        return _budget_health_snapshot(connection, filters)
 
 
 def _get_engineering_share_by_level_threshold(
@@ -351,6 +371,32 @@ def get_engineering_group_share(engine: Engine, filters: CommonFilters) -> dict[
         "level1": level1,
         "level2": level2,
     }
+
+
+def list_cost_sources(engine: Engine) -> dict[str, Any]:
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT vendor, account_id, display_name
+                FROM cost_sources
+                WHERE is_active = :is_active
+                ORDER BY vendor, account_id
+                """
+            ),
+            {"is_active": 1},
+        ).mappings()
+        items = [
+            {
+                "value": _cost_source_value(str(row["vendor"]), str(row["account_id"])),
+                "label": _cost_source_label(str(row["vendor"]), str(row["account_id"])),
+                "vendor": str(row["vendor"]),
+                "account_id": str(row["account_id"]),
+                "display_name": str(row["display_name"] or ""),
+            }
+            for row in rows
+        ]
+    return {"items": items}
 
 
 def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -674,6 +720,75 @@ def _service_share_by_threshold(
     }
 
 
+def _budget_health_snapshot(
+    connection: Connection,
+    filters: CommonFilters,
+) -> dict[str, Any] | None:
+    annual_budget = _annual_budget_for_filters(filters)
+    if annual_budget is None:
+        return None
+
+    today = _today()
+    year_start = date(today.year, 1, 1)
+    observed_through = max(year_start, today - timedelta(days=COST_DATA_LAG_DAYS))
+    current_scope = CommonFilters(
+        start_date=year_start,
+        end_date=observed_through,
+        granularity=filters.granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
+    )
+    current_summary = _cost_summary(connection, current_scope)
+    current_cost = current_summary["net_cost"]
+    days_elapsed = max((observed_through - year_start).days + 1, 1)
+    days_in_year = 366 if calendar.isleap(today.year) else 365
+    days_remaining = max(days_in_year - days_elapsed, 0)
+    budget_to_date = round(annual_budget * days_elapsed / days_in_year, 2)
+    variance = round(current_cost - budget_to_date, 2)
+
+    recent_window_days = min(days_elapsed, FORECAST_WINDOW_DAYS)
+    recent_window_start = observed_through - timedelta(days=recent_window_days - 1)
+    recent_scope = CommonFilters(
+        start_date=recent_window_start,
+        end_date=observed_through,
+        granularity=filters.granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
+    )
+    recent_summary = _cost_summary(connection, recent_scope)
+    recent_window_cost = recent_summary["net_cost"]
+    recent_daily_cost = round(recent_window_cost / recent_window_days, 2) if recent_window_days else 0.0
+    forecast_remaining_cost = round(recent_daily_cost * days_remaining, 2)
+    forecast_total_cost = round(current_cost + forecast_remaining_cost, 2)
+    forecast_variance = round(forecast_total_cost - annual_budget, 2)
+    is_healthy = forecast_total_cost <= annual_budget
+
+    return {
+        "metric_key": "net_cost",
+        "annual_budget": round(annual_budget, 2),
+        "budget_to_date": budget_to_date,
+        "current_cost": current_cost,
+        "through_date": observed_through.isoformat(),
+        "days_elapsed": days_elapsed,
+        "days_in_year": days_in_year,
+        "days_remaining": days_remaining,
+        "annual_budget_pct": rate_pct(current_cost, annual_budget),
+        "budget_to_date_pct": rate_pct(current_cost, budget_to_date),
+        "variance": variance,
+        "variance_pct": rate_pct(variance, budget_to_date),
+        "recent_window_days": recent_window_days,
+        "recent_window_cost": recent_window_cost,
+        "recent_daily_cost": recent_daily_cost,
+        "forecast_remaining_cost": forecast_remaining_cost,
+        "forecast_total_cost": forecast_total_cost,
+        "forecast_budget_pct": rate_pct(forecast_total_cost, annual_budget),
+        "forecast_variance": forecast_variance,
+        "forecast_variance_pct": rate_pct(forecast_variance, annual_budget),
+        "status": "healthy" if is_healthy else "warning",
+        "status_label": "Healthy" if is_healthy else "Warning",
+    }
+
+
 def _share_items_above_threshold_with_others(
     all_items: list[dict[str, Any]],
     *,
@@ -716,12 +831,23 @@ def _number_or_zero(value: Any) -> float:
     return float(to_number(value) or 0)
 
 
+def _annual_budget_for_filters(filters: CommonFilters) -> float | None:
+    if (
+        filters.cost_vendor == PRIMARY_BUDGET_VENDOR
+        and filters.cost_account_id == PRIMARY_BUDGET_ACCOUNT_ID
+    ):
+        return float(PRIMARY_ANNUAL_BUDGET)
+    return None
+
+
 def _cost_filters(filters: CommonFilters) -> CommonFilters:
     granularity = filters.granularity if filters.granularity in {"week", "month"} else "week"
     return CommonFilters(
         start_date=filters.start_date,
         end_date=filters.end_date,
         granularity=granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
     )
 
 
@@ -739,6 +865,12 @@ def _build_cost_where(
     if filters.end_date:
         conditions.append(f"{prefix}usage_date <= :usage_date_to")
         params["usage_date_to"] = filters.end_date
+    if filters.cost_vendor:
+        conditions.append(f"{prefix}vendor = :cost_vendor")
+        params["cost_vendor"] = filters.cost_vendor
+    if filters.cost_account_id:
+        conditions.append(f"{prefix}account_id = :cost_account_id")
+        params["cost_account_id"] = filters.cost_account_id
     return " AND ".join(conditions), params
 
 
@@ -758,6 +890,14 @@ def _repo_key(repo_name: str, index: int) -> str:
     if repo_name == "(no repo)":
         return "repo__no_repo"
     return f"repo__{index}"
+
+
+def _cost_source_value(vendor: str, account_id: str) -> str:
+    return f"{vendor}:{account_id}"
+
+
+def _cost_source_label(vendor: str, account_id: str) -> str:
+    return f"{vendor} / {account_id}"
 
 
 def _bucket_starts(filters: CommonFilters, rows: list[dict[str, Any]]) -> list[str]:
@@ -817,6 +957,10 @@ def _build_unallocated_namespace_where(column: str) -> tuple[str, dict[str, Any]
 def _money(value: Any) -> float:
     numeric = to_number(value)
     return round(float(numeric or 0), 2)
+
+
+def _today() -> date:
+    return date.today()
 
 
 def _date_text(value: Any) -> str | None:

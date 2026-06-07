@@ -20,6 +20,7 @@ from ci_dashboard.api.queries.builds import (
 )
 from ci_dashboard.api.queries.cost import (
     get_cost_page,
+    list_cost_sources,
     get_cost_trend,
     get_engineering_group_share,
     get_repo_group_cost_stack,
@@ -221,6 +222,10 @@ def get_cost_insight_page(engine: Engine, filters: CommonFilters) -> dict[str, A
     return get_cost_page(engine, _normalize_cost_filters(filters))
 
 
+def get_cost_sources_page(engine: Engine) -> dict[str, Any]:
+    return list_cost_sources(engine)
+
+
 def get_cost_unmatched_resources_page(
     engine: Engine,
     filters: CommonFilters,
@@ -261,6 +266,8 @@ def _normalize_cost_filters(filters: CommonFilters) -> CommonFilters:
         start_date=filters.start_date,
         end_date=filters.end_date,
         granularity=filters.granularity if filters.granularity in {"week", "month"} else "week",
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
     )
 
 
