@@ -51,7 +51,7 @@ const SERIES_COLORS = {
   net_cost: "#0f766e",
   effective_cost: "#2a9d8f",
   list_cost: "#d88b3d",
-  gcp_budget: "#d1495b",
+  budget_target: "#d1495b",
   repo__no_repo: "#c8d0d6",
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",
@@ -920,6 +920,7 @@ export function DonutShareChart({
   title,
   subtitle,
   items,
+  totalValue = null,
   totalLabel = "builds",
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
@@ -929,8 +930,9 @@ export function DonutShareChart({
     return <EmptyState message={emptyMessage} compact />;
   }
 
-  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  if (!total) {
+  const itemsTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const total = Number(totalValue || 0) > 0 ? Number(totalValue) : itemsTotal;
+  if (!itemsTotal || !total) {
     return <EmptyState message={emptyMessage} compact />;
   }
 
@@ -1215,6 +1217,114 @@ export function LabeledDonutShareChart({
           );
         })}
       </svg>
+    </article>
+  );
+}
+
+export function BudgetHealthGauge({
+  title,
+  subtitle,
+  data,
+  emptyMessage = "Budget pace is not configured for the selected cost source yet.",
+}) {
+  if (!data) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const annualBudget = Number(data.annual_budget || 0);
+  const currentCost = Number(data.current_cost || 0);
+  const budgetToDate = Number(data.budget_to_date || 0);
+  if (!annualBudget) {
+    return <EmptyState message={emptyMessage} compact />;
+  }
+
+  const status = data.status === "warning" ? "warning" : "healthy";
+  const progressColor = status === "warning" ? "#d1495b" : "#0f7c82";
+  const markerColor = "#315772";
+  const width = 220;
+  const height = 196;
+  const centerX = width / 2;
+  const centerY = 140;
+  const radius = 74;
+  const startAngle = Math.PI;
+  const endAngle = Math.PI * 2;
+  const progressRatio = Math.min(Math.max(currentCost / annualBudget, 0), 1);
+  const markerRatio = Math.min(Math.max(budgetToDate / annualBudget, 0), 1);
+  const progressAngle = startAngle + progressRatio * Math.PI;
+  const markerAngle = startAngle + markerRatio * Math.PI;
+  const progressPoint = polarToCartesian(centerX, centerY, radius, progressAngle);
+  const markerInner = polarToCartesian(centerX, centerY, radius - 13, markerAngle);
+  const markerOuter = polarToCartesian(centerX, centerY, radius + 13, markerAngle);
+
+  return (
+    <article className={`budget-gauge budget-gauge--${status}`}>
+      <header className="budget-gauge__header">
+        <div>
+          <strong>{title}</strong>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <span className={`budget-gauge__status budget-gauge__status--${status}`}>
+          {data.status_label || (status === "warning" ? "Warning" : "Healthy")}
+        </span>
+      </header>
+
+      <div className="budget-gauge__chart">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title} gauge`}>
+          <path
+            d={describeOpenArc(centerX, centerY, radius, startAngle, endAngle)}
+            fill="none"
+            stroke="rgba(49, 87, 114, 0.12)"
+            strokeWidth="16"
+            strokeLinecap="round"
+          />
+          <path
+            d={describeOpenArc(centerX, centerY, radius, startAngle, progressAngle)}
+            fill="none"
+            stroke={progressColor}
+            strokeWidth="16"
+            strokeLinecap="round"
+          />
+          <line
+            x1={markerInner.x}
+            y1={markerInner.y}
+            x2={markerOuter.x}
+            y2={markerOuter.y}
+            stroke={markerColor}
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+          <circle cx={progressPoint.x} cy={progressPoint.y} r="6" fill={progressColor} />
+          <text x={centerX} y={108} textAnchor="middle" className="budget-gauge__value">
+            {formatCurrency(currentCost)}
+          </text>
+          <text x={centerX} y={128} textAnchor="middle" className="budget-gauge__label">
+            observed net cost
+          </text>
+        </svg>
+      </div>
+
+      <dl className="budget-gauge__metrics">
+        <div>
+          <dt>Annual budget</dt>
+          <dd>{formatCurrency(annualBudget)}</dd>
+        </div>
+        <div>
+          <dt>Budget at cutoff</dt>
+          <dd>{formatCurrency(budgetToDate)}</dd>
+        </div>
+        <div>
+          <dt>Pace</dt>
+          <dd>{formatPercent(data.budget_to_date_pct)}</dd>
+        </div>
+        <div>
+          <dt>14d avg / day</dt>
+          <dd>{formatCurrency(data.recent_daily_cost)}</dd>
+        </div>
+        <div>
+          <dt>Forecast total</dt>
+          <dd>{formatCurrency(data.forecast_total_cost)}</dd>
+        </div>
+      </dl>
     </article>
   );
 }
@@ -1689,6 +1799,16 @@ function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle
     `L ${innerStart.x} ${innerStart.y}`,
     `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
     "Z",
+  ].join(" ");
+}
+
+function describeOpenArc(cx, cy, radius, startAngle, endAngle) {
+  const start = polarToCartesian(cx, cy, radius, startAngle);
+  const end = polarToCartesian(cx, cy, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  return [
+    `M ${start.x} ${start.y}`,
+    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`,
   ].join(" ");
 }
 

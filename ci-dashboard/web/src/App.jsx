@@ -8,13 +8,19 @@ import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
-import { buildScopeLabel, getDefaultDateRange, useApiData } from "./lib/api";
+import {
+  buildCostSourceOptions,
+  buildScopeLabel,
+  getDefaultDateRange,
+  useApiData,
+} from "./lib/api";
 import {
   buildDefaultFilters,
   buildFilterSearch,
   buildNavSearchByPath,
   CI_STATUS_PATH,
   COST_PATH,
+  DEFAULT_COST_SOURCE,
   MIGRATE_STATUS_PATH,
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
@@ -38,6 +44,7 @@ export default function App() {
   }));
   const filters = filtersByPath[location.pathname]
     || readFiltersFromSearch(defaultRange, location.pathname, location.search);
+  const isCostPage = location.pathname === COST_PATH;
   const navigation = useApiData("/api/v1/pages/navigation");
   const runtimeInsightsEnabled = navigation.data?.features?.runtime_insights_enabled === true;
   const costDashboardEnabled = navigation.data?.features?.cost_dashboard_enabled === true;
@@ -143,6 +150,7 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
+    !isCostPage,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -150,7 +158,19 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  });
+  }, !isCostPage);
+  const costSources = useApiData(
+    "/api/v1/pages/cost-sources",
+    {},
+    isCostPage && costDashboardEnabled,
+  );
+  const costSourceOptions = buildCostSourceOptions(
+    costSources.data?.items,
+    filters.cost_source || DEFAULT_COST_SOURCE,
+  );
+  const selectedCostSource = costSourceOptions.find(
+    (item) => item.value === (filters.cost_source || DEFAULT_COST_SOURCE),
+  ) || costSourceOptions[0];
 
   function handleFilterChange(key, value) {
     setFiltersByPath((current) => {
@@ -190,11 +210,13 @@ export default function App() {
   const navSearchByPath = buildNavSearchByPath(filtersByPath, defaultRange, filters);
 
   const filterOptions = {
+    isCostPage,
     repos: REPO_OPTIONS,
     branches: BRANCH_OPTIONS,
     jobs: jobs.data?.items || [],
     cloudPhases: cloudPhases.data?.items || [],
-    scopeLabel: buildScopeLabel(filters),
+    costSources: costSourceOptions,
+    scopeLabel: buildScopeLabel(filters, location.pathname, selectedCostSource?.label),
   };
 
   return (

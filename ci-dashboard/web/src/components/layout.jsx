@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import packageInfo from "../../package.json";
+
+import { COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
   filters,
@@ -98,14 +100,24 @@ function NavItem({ to, search = "", label, caption }) {
 
 function FilterBar({ filters, onFilterChange, filterOptions }) {
   const [isCompact, setIsCompact] = useState(false);
-  const scopePills = [
-    { label: "Repo", value: filters.repo || "All repos" },
-    { label: "Branch", value: filters.branch || "All branches" },
-    { label: "Job", value: filters.job_name || "All jobs" },
-    { label: "Cloud", value: filters.cloud_phase || "All clouds" },
-    { label: "Issues", value: filters.issue_status || "All issues" },
-    { label: "Bucket", value: filters.granularity },
-  ];
+  const location = useLocation();
+  const isCostPage = location.pathname === COST_PATH;
+  const selectedCostSource = filterOptions.costSources?.find(
+    (item) => item.value === filters.cost_source,
+  ) || filterOptions.costSources?.[0];
+  const scopePills = isCostPage
+    ? [
+        { label: "Source", value: selectedCostSource?.label || "All sources" },
+        { label: "Bucket", value: filters.granularity },
+      ]
+    : [
+        { label: "Repo", value: filters.repo || "All repos" },
+        { label: "Branch", value: filters.branch || "All branches" },
+        { label: "Job", value: filters.job_name || "All jobs" },
+        { label: "Cloud", value: filters.cloud_phase || "All clouds" },
+        { label: "Issues", value: filters.issue_status || "All issues" },
+        { label: "Bucket", value: filters.granularity },
+      ];
 
   useEffect(() => {
     let frameId = 0;
@@ -151,7 +163,9 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
       </div>
 
       <p className="filter-bar__note">
-        Each tab keeps its own filter state. Ingestion stays all-repo and all-branch.
+        {isCostPage
+          ? "Each tab keeps its own filter state. Source only changes cost panels."
+          : "Each tab keeps its own filter state. Ingestion stays all-repo and all-branch."}
       </p>
 
       <div className="filter-grid">
@@ -175,100 +189,136 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
             />
           }
         />
-        <FilterField
-          label="Repo"
-          control={
-            <select
-              value={filters.repo}
-              onChange={(event) => onFilterChange("repo", event.target.value)}
-            >
-              <option value="">All repos</option>
-              {filterOptions.repos.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          }
-        />
-        <FilterField
-          label="Branch"
-          control={
-            <select
-              value={filters.branch}
-              onChange={(event) => onFilterChange("branch", event.target.value)}
-            >
-              <option value="">All branches</option>
-              {filterOptions.branches.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          }
-        />
+        {isCostPage ? (
+          <>
+            <FilterField
+              label="Source"
+              control={
+                <select
+                  value={filters.cost_source}
+                  onChange={(event) => onFilterChange("cost_source", event.target.value)}
+                >
+                  {filterOptions.costSources.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <FilterField
+              label="Bucket"
+              control={
+                <select
+                  value={filters.granularity}
+                  onChange={(event) => onFilterChange("granularity", event.target.value)}
+                >
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                </select>
+              }
+            />
+          </>
+        ) : (
+          <>
+            <FilterField
+              label="Repo"
+              control={
+                <select
+                  value={filters.repo}
+                  onChange={(event) => onFilterChange("repo", event.target.value)}
+                >
+                  <option value="">All repos</option>
+                  {filterOptions.repos.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <FilterField
+              label="Branch"
+              control={
+                <select
+                  value={filters.branch}
+                  onChange={(event) => onFilterChange("branch", event.target.value)}
+                >
+                  <option value="">All branches</option>
+                  {filterOptions.branches.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+          </>
+        )}
       </div>
 
-      <div className="filter-grid filter-grid--advanced">
-        <FilterField
-          label="Job"
-          control={
-            <select
-              value={filters.job_name}
-              onChange={(event) => onFilterChange("job_name", event.target.value)}
-            >
-              <option value="">All jobs</option>
-              {filterOptions.jobs.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          }
-        />
-        <FilterField
-          label="Cloud"
-          control={
-            <select
-              value={filters.cloud_phase}
-              onChange={(event) => onFilterChange("cloud_phase", event.target.value)}
-            >
-              <option value="">All clouds</option>
-              {filterOptions.cloudPhases.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          }
-        />
-        <FilterField
-          label="Issue status"
-          control={
-            <select
-              value={filters.issue_status}
-              onChange={(event) => onFilterChange("issue_status", event.target.value)}
-            >
-              <option value="">All issues</option>
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-            </select>
-          }
-        />
-        <FilterField
-          label="Bucket"
-          control={
-            <select
-              value={filters.granularity}
-              onChange={(event) => onFilterChange("granularity", event.target.value)}
-            >
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-            </select>
-          }
-        />
-      </div>
+      {!isCostPage && (
+        <div className="filter-grid filter-grid--advanced">
+          <FilterField
+            label="Job"
+            control={
+              <select
+                value={filters.job_name}
+                onChange={(event) => onFilterChange("job_name", event.target.value)}
+              >
+                <option value="">All jobs</option>
+                {filterOptions.jobs.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            }
+          />
+          <FilterField
+            label="Cloud"
+            control={
+              <select
+                value={filters.cloud_phase}
+                onChange={(event) => onFilterChange("cloud_phase", event.target.value)}
+              >
+                <option value="">All clouds</option>
+                {filterOptions.cloudPhases.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            }
+          />
+          <FilterField
+            label="Issue status"
+            control={
+              <select
+                value={filters.issue_status}
+                onChange={(event) => onFilterChange("issue_status", event.target.value)}
+              >
+                <option value="">All issues</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+              </select>
+            }
+          />
+          <FilterField
+            label="Bucket"
+            control={
+              <select
+                value={filters.granularity}
+                onChange={(event) => onFilterChange("granularity", event.target.value)}
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+              </select>
+            }
+          />
+        </div>
+      )}
     </section>
   );
 }

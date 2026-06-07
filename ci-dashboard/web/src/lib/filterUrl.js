@@ -2,6 +2,8 @@ export const CI_STATUS_PATH = "/ci-status";
 export const MIGRATE_STATUS_PATH = "/migrate-status";
 export const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
 export const COST_PATH = "/cost";
+export const ALL_COST_SOURCES = "all";
+export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
 export const FILTER_QUERY_KEYS = [
   "start_date",
   "end_date",
@@ -10,6 +12,7 @@ export const FILTER_QUERY_KEYS = [
   "job_name",
   "cloud_phase",
   "issue_status",
+  "cost_source",
   "granularity",
 ];
 export const WEEK_GRANULARITY_PATHS = new Set([
@@ -41,6 +44,7 @@ export function buildDefaultFilters(defaultRange, pathname) {
     job_name: "",
     cloud_phase: "",
     issue_status: "",
+    cost_source: pathname === COST_PATH ? DEFAULT_COST_SOURCE : "",
     granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
     start_date: costRange.start_date,
     end_date: costRange.end_date,
@@ -68,6 +72,16 @@ export function normalizeFiltersForPath(pathname, filters) {
   }
   if (WEEK_GRANULARITY_PATHS.has(pathname) && pathname !== COST_PATH) {
     next.granularity = "week";
+  }
+  if (pathname === COST_PATH) {
+    next.repo = "";
+    next.branch = "";
+    next.job_name = "";
+    next.cloud_phase = "";
+    next.issue_status = "";
+    next.cost_source = next.cost_source || DEFAULT_COST_SOURCE;
+  } else {
+    next.cost_source = "";
   }
   return next;
 }
