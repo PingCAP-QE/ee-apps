@@ -13,9 +13,6 @@ from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, 
 COST_STACK_LIMIT = 8
 UNMATCHED_RESOURCE_LIMIT = 20
 ENGINEERING_GROUP_NAME = "Engineering Group"
-PRIMARY_BUDGET_VENDOR = "gcp"
-PRIMARY_BUDGET_ACCOUNT_ID = "pingcap-testing-account"
-PRIMARY_ANNUAL_BUDGET = 17300 * 12
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
 UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
@@ -78,6 +75,11 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
             params,
         ).mappings()
         data_rows = [dict(row) for row in rows]
+        annual_budgets = _annual_budgets_for_filters(
+            connection,
+            filters,
+            years=_budget_years(filters, data_rows),
+        )
         coverage_row = connection.execute(
             text(
                 f"""
@@ -123,6 +125,7 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
         ],
         "meta": {
             **filters.meta(),
+            "annual_budgets": annual_budgets,
             "summary": {
                 "net_cost": round(summary_net_cost, 2),
                 "effective_cost": round(summary_effective_cost, 2),
@@ -724,12 +727,15 @@ def _budget_health_snapshot(
     connection: Connection,
     filters: CommonFilters,
 ) -> dict[str, Any] | None:
-    annual_budget = _annual_budget_for_filters(filters)
-    if annual_budget is None:
-        return None
-
     today = _today()
     year_start = date(today.year, 1, 1)
+    annual_budget = _annual_budget_for_filters(
+        connection,
+        filters,
+        year=today.year,
+    )
+    if annual_budget is None:
+        return None
     observed_through = max(year_start, today - timedelta(days=COST_DATA_LAG_DAYS))
     current_scope = CommonFilters(
         start_date=year_start,
@@ -831,13 +837,81 @@ def _number_or_zero(value: Any) -> float:
     return float(to_number(value) or 0)
 
 
-def _annual_budget_for_filters(filters: CommonFilters) -> float | None:
-    if (
-        filters.cost_vendor == PRIMARY_BUDGET_VENDOR
-        and filters.cost_account_id == PRIMARY_BUDGET_ACCOUNT_ID
-    ):
-        return float(PRIMARY_ANNUAL_BUDGET)
-    return None
+def _annual_budget_for_filters(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    year: int,
+) -> float | None:
+    if not filters.cost_vendor or not filters.cost_account_id:
+        return None
+
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+    params = {
+        "vendor": filters.cost_vendor,
+        "account_id": filters.cost_account_id,
+        "year_start": year_start,
+        "year_end": year_end,
+    }
+    source_wide_total = connection.execute(
+        text(
+            """
+            SELECT COALESCE(SUM(budget_amount), 0) AS budget_amount
+            FROM cost_budgets
+            WHERE vendor = :vendor
+              AND account_id = :account_id
+              AND period_start_date <= :year_start
+              AND period_end_date >= :year_end
+              AND group_id IS NULL
+              AND manager_id IS NULL
+              AND repo IS NULL
+              AND label_filters IS NULL
+            """
+        ),
+        params,
+    ).scalar_one()
+    source_wide_budget = _money(source_wide_total)
+    if source_wide_budget > 0:
+        return round(source_wide_budget, 2)
+
+    fallback_total = connection.execute(
+        text(
+            """
+            SELECT COALESCE(SUM(budget_amount), 0) AS budget_amount
+            FROM cost_budgets
+            WHERE vendor = :vendor
+              AND account_id = :account_id
+              AND period_start_date <= :year_start
+              AND period_end_date >= :year_end
+              AND group_id IS NULL
+              AND manager_id IS NULL
+            """
+        ),
+        params,
+    ).scalar_one()
+    fallback_budget = _money(fallback_total)
+    if fallback_budget <= 0:
+        return None
+    return round(fallback_budget, 2)
+
+
+def _annual_budgets_for_filters(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    years: list[int],
+) -> dict[str, float]:
+    budgets: dict[str, float] = {}
+    for year in years:
+        annual_budget = _annual_budget_for_filters(
+            connection,
+            filters,
+            year=year,
+        )
+        if annual_budget is not None:
+            budgets[str(year)] = annual_budget
+    return budgets
 
 
 def _cost_filters(filters: CommonFilters) -> CommonFilters:
@@ -906,6 +980,18 @@ def _bucket_starts(filters: CommonFilters, rows: list[dict[str, Any]]) -> list[s
             return _month_bucket_starts(filters.start_date, filters.end_date)
         return _week_bucket_starts(filters.start_date, filters.end_date)
     return sorted({str(row["bucket_start"]) for row in rows})
+
+
+def _budget_years(filters: CommonFilters, rows: list[dict[str, Any]]) -> list[int]:
+    if filters.start_date and filters.end_date:
+        return list(range(filters.start_date.year, filters.end_date.year + 1))
+
+    years = {
+        parsed.year
+        for row in rows
+        if (parsed := _parse_date(row.get("bucket_start"))) is not None
+    }
+    return sorted(years)
 
 
 def _week_bucket_starts(start_date: date, end_date: date) -> list[str]:

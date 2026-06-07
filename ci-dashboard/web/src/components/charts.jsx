@@ -51,7 +51,7 @@ const SERIES_COLORS = {
   net_cost: "#0f766e",
   effective_cost: "#2a9d8f",
   list_cost: "#d88b3d",
-  gcp_budget: "#d1495b",
+  budget_target: "#d1495b",
   repo__no_repo: "#c8d0d6",
   total_failure_like_count: "#264653",
   issue_filtered_flaky_rate_pct: "#0f7c82",

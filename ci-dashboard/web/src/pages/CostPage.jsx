@@ -20,8 +20,6 @@ import {
   UnmatchedResourceTable,
 } from "../components/charts";
 
-const ANNUAL_GCP_BUDGET = 17300 * 12;
-const ANNUAL_TICDC_BUDGET = 4500 * 12;
 const SHARED_COST_GROUP = "Efficiency & Quality";
 
 export default function CostPage({ filters }) {
@@ -30,7 +28,6 @@ export default function CostPage({ filters }) {
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
-  const isPrimaryBudgetScope = selectedCostSource === DEFAULT_COST_SOURCE;
   const selectedCostSourceValue =
     selectedCostSource === ALL_COST_SOURCES ? "" : selectedCostSource;
 
@@ -51,6 +48,8 @@ export default function CostPage({ filters }) {
   const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
   const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
   const summary = trend.data?.meta?.summary || {};
+  const configuredAnnualBudget = Number(weeklyOverview.data?.budget_health?.annual_budget || 0);
+  const hasConfiguredBudget = configuredAnnualBudget > 0;
   const stackTotal = (repoGroupStack.data?.items || []).reduce(
     (sum, item) => sum + Number(item.value || 0),
     0,
@@ -60,7 +59,7 @@ export default function CostPage({ filters }) {
   const costTrendSeries = withBudgetSeries(
     trend.data?.series,
     costFilters.granularity,
-    isPrimaryBudgetScope,
+    trend.data?.meta?.annual_budgets,
   );
   const weeklyLevel2Items = withSharedCostAllocation(
     weeklyOverview.data?.level2_share?.items,
@@ -100,8 +99,8 @@ export default function CostPage({ filters }) {
               label="Net cost"
               value={formatCurrency(weeklyOverview.data?.summary?.net_cost)}
               detail={
-                isPrimaryBudgetScope
-                  ? `Weekly budget ${formatCurrency(ANNUAL_GCP_BUDGET / 52)}`
+                hasConfiguredBudget
+                  ? `Weekly budget ${formatCurrency(configuredAnnualBudget / 52)}`
                   : "Budget not configured for this source"
               }
               delta={formatDelta(weeklyOverview.data?.summary?.net_cost_wow_pct)}
@@ -173,10 +172,10 @@ export default function CostPage({ filters }) {
         />
         <StatCard
           label="Annual budget"
-          value={isPrimaryBudgetScope ? formatCurrency(ANNUAL_GCP_BUDGET) : "--"}
+          value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
           detail={
-            isPrimaryBudgetScope
-              ? `Includes ticdc ${formatCurrency(ANNUAL_TICDC_BUDGET)} / year`
+            hasConfiguredBudget
+              ? "Configured annual budget for the selected source"
               : "Budget not configured for the selected source"
           }
           tone="rose"
@@ -311,28 +310,42 @@ function formatDelta(value) {
   return `WoW ${sign}${formatPercent(numeric)}`;
 }
 
-function withBudgetSeries(series, granularity, enabled) {
+function withBudgetSeries(series, granularity, annualBudgets) {
   if (!series?.length) {
     return series;
   }
-  if (!enabled) {
+  const budgetByYear =
+    annualBudgets && typeof annualBudgets === "object" ? annualBudgets : {};
+  const budgetYears = Object.keys(budgetByYear);
+  if (!budgetYears.length) {
     return series;
   }
   const labels = Array.from(
     new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
   ).sort();
-  const budgetPerBucket =
-    granularity === "month" ? ANNUAL_GCP_BUDGET / 12 : ANNUAL_GCP_BUDGET / 52;
+  const budgetPoints = labels.map((label) => {
+    const budgetYear = String(label).slice(0, 4);
+    const annualBudget = Number(budgetByYear[budgetYear] || 0);
+    if (!annualBudget) {
+      return [label, null];
+    }
+    const budgetPerBucket =
+      granularity === "month" ? annualBudget / 12 : annualBudget / 52;
+    return [label, budgetPerBucket];
+  });
+  if (!budgetPoints.some(([, value]) => value != null)) {
+    return series;
+  }
 
   return [
     ...series,
     {
-      key: "gcp_budget",
+      key: "budget_target",
       label: granularity === "month" ? "Monthly budget" : "Weekly budget",
       type: "line",
       dash: true,
       showPoints: false,
-      points: labels.map((label) => [label, budgetPerBucket]),
+      points: budgetPoints,
     },
   ];
 }

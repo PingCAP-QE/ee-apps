@@ -335,6 +335,26 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
+        CREATE TABLE cost_budgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          period_start_date TEXT NOT NULL,
+          period_end_date TEXT NOT NULL,
+          budget_name TEXT NULL,
+          label_filters TEXT NULL,
+          filter_hash TEXT NOT NULL,
+          group_id INTEGER NULL,
+          manager_id INTEGER NULL,
+          repo TEXT NULL,
+          budget_amount REAL NOT NULL,
+          source_type TEXT NOT NULL DEFAULT 'manual',
+          source_ref TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE cost_raw_details (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           vendor TEXT NOT NULL,

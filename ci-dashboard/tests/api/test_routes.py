@@ -439,6 +439,61 @@ def _insert_cost_source(
         )
 
 
+def _insert_cost_budget(
+    sqlite_engine,
+    *,
+    vendor: str,
+    account_id: str,
+    period_start_date: str,
+    period_end_date: str,
+    budget_amount: float,
+    budget_name: str | None = None,
+    label_filters: dict | list | str | None = None,
+    group_id: int | None = None,
+    manager_id: int | None = None,
+    repo: str | None = None,
+    filter_hash: str | None = None,
+    source_type: str = "manual",
+    source_ref: str | None = None,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_budgets (
+                  vendor, account_id, period_start_date, period_end_date, budget_name,
+                  label_filters, filter_hash, group_id, manager_id, repo, budget_amount,
+                  source_type, source_ref
+                ) VALUES (
+                  :vendor, :account_id, :period_start_date, :period_end_date, :budget_name,
+                  :label_filters, :filter_hash, :group_id, :manager_id, :repo, :budget_amount,
+                  :source_type, :source_ref
+                )
+                """
+            ),
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "period_start_date": period_start_date,
+                "period_end_date": period_end_date,
+                "budget_name": budget_name,
+                "label_filters": (
+                    json.dumps(label_filters, sort_keys=True)
+                    if isinstance(label_filters, (dict, list))
+                    else label_filters
+                ),
+                "filter_hash": filter_hash
+                or f"{vendor}:{account_id}:{period_start_date}:{period_end_date}:{budget_name or 'scope'}",
+                "group_id": group_id,
+                "manager_id": manager_id,
+                "repo": repo,
+                "budget_amount": budget_amount,
+                "source_type": source_type,
+                "source_ref": source_ref,
+            },
+        )
+
+
 def _insert_cost_attribution(
     sqlite_engine,
     *,
@@ -2527,6 +2582,15 @@ def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestCli
         display_name="disabled-project",
         is_active=0,
     )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="aws",
+        account_id="946646677266",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=36000.0,
+        budget_name="qa-infra-dev 2026",
+    )
     _insert_roster_group(
         sqlite_engine,
         group_id=100,
@@ -2621,6 +2685,7 @@ def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestCli
     assert trend_body["meta"]["cost_vendor"] == "aws"
     assert trend_body["meta"]["cost_account_id"] == "946646677266"
     assert trend_body["meta"]["cost_source"] == "aws:946646677266"
+    assert trend_body["meta"]["annual_budgets"] == {"2026": 36000.0}
     assert trend_body["meta"]["summary"]["list_cost"] == 30.0
     assert trend_body["meta"]["summary"]["net_cost"] == 28.0
     assert {series["key"]: series["points"] for series in trend_body["series"]}["list_cost"] == [
@@ -2638,6 +2703,15 @@ def test_cost_weekly_overview_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 5, 20))
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=207600.0,
+        budget_name="PingCAP Testing 2026",
+    )
 
     _insert_roster_group(
         sqlite_engine,
@@ -3049,7 +3123,14 @@ def test_budget_health_snapshot_marks_warning_when_over_pace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 1, 10))
-    monkeypatch.setattr(cost_queries, "PRIMARY_ANNUAL_BUDGET", 100.0)
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=100.0,
+    )
     _insert_roster_group(
         sqlite_engine,
         group_id=100,
@@ -3111,7 +3192,14 @@ def test_budget_health_snapshot_marks_warning_when_forecast_exceeds_budget_even_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 6, 30))
-    monkeypatch.setattr(cost_queries, "PRIMARY_ANNUAL_BUDGET", 100.0)
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=100.0,
+    )
     _insert_roster_group(
         sqlite_engine,
         group_id=100,
@@ -3163,6 +3251,82 @@ def test_budget_health_snapshot_marks_warning_when_forecast_exceeds_budget_even_
     assert snapshot["forecast_total_cost"] == 447.32
     assert snapshot["forecast_variance"] == 347.32
     assert snapshot["status"] == "warning"
+
+
+def test_annual_budget_for_filters_falls_back_to_summing_partitioned_budget_rows(
+    sqlite_engine,
+) -> None:
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="aws",
+        account_id="946646677266",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=120.0,
+        budget_name="Apps",
+        label_filters={"repo": "apps"},
+        repo="apps",
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="aws",
+        account_id="946646677266",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=80.0,
+        budget_name="Infra",
+        label_filters={"repo": "infra"},
+        repo="infra",
+    )
+
+    with sqlite_engine.begin() as connection:
+        budget = cost_queries._annual_budget_for_filters(
+            connection,
+            CommonFilters(
+                cost_vendor="aws",
+                cost_account_id="946646677266",
+            ),
+            year=2026,
+        )
+
+    assert budget == 200.0
+
+
+def test_annual_budget_for_filters_prefers_source_wide_budget_rows(
+    sqlite_engine,
+) -> None:
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="qa-infra-dev",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=300.0,
+        budget_name="Whole source",
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="qa-infra-dev",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=120.0,
+        budget_name="Apps",
+        label_filters={"repo": "apps"},
+        repo="apps",
+    )
+
+    with sqlite_engine.begin() as connection:
+        budget = cost_queries._annual_budget_for_filters(
+            connection,
+            CommonFilters(
+                cost_vendor="gcp",
+                cost_account_id="qa-infra-dev",
+            ),
+            year=2026,
+        )
+
+    assert budget == 300.0
 
 
 def test_cost_repo_group_stack_keeps_distinct_repo_keys_on_slug_collisions(sqlite_engine, api_client: TestClient) -> None:
