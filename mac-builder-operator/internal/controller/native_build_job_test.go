@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -85,6 +86,29 @@ func TestCloneArtifactsRepoRejectsBranchRevision(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "reachable tag or full commit SHA") {
 		t.Fatalf("expected branch rejection error, got %v", err)
+	}
+}
+
+func TestExecStreamsOutputAndReturnsFailureTail(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	job := newNativeBuildJob(context.Background(), newTestMacBuild(), ArtifactsScriptSourceConfig{})
+	job.stdoutWriter = &stdout
+	job.stderrWriter = &stderr
+
+	err := job.exec(exec.Command("sh", "-c", "printf 'stdout-line\\n'; printf 'stderr-line\\n' >&2; exit 7"))
+	if err == nil {
+		t.Fatal("expected exec to fail")
+	}
+	if !strings.Contains(err.Error(), "stdout-line") || !strings.Contains(err.Error(), "stderr-line") {
+		t.Fatalf("expected error tail to include stdout and stderr, got %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "stdout-line") {
+		t.Fatalf("expected stdout writer to receive streamed output, got %q", got)
+	}
+	if got := stderr.String(); !strings.Contains(got, "stderr-line") {
+		t.Fatalf("expected stderr writer to receive streamed output, got %q", got)
 	}
 }
 

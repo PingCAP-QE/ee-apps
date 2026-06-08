@@ -17,14 +17,14 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
@@ -47,6 +47,10 @@ type nativeBuildJob struct {
 	buildScriptPath  string
 	envFilePath      string
 	pushedResultPath string
+
+	reportPhase  buildPhaseReporter
+	stdoutWriter io.Writer
+	stderrWriter io.Writer
 }
 
 // newNativeBuildJob creates a new instance of nativeBuildJob.
@@ -76,6 +80,8 @@ func newNativeBuildJob(
 		buildScriptPath:  filepath.Join(workspaceDir, "build-package-artifacts.sh"),
 		envFilePath:      filepath.Join(workspaceDir, "remote.env"),
 		pushedResultPath: filepath.Join(workspaceDir, "pushed.yaml"),
+		stdoutWriter:     os.Stdout,
+		stderrWriter:     os.Stderr,
 	}
 }
 
@@ -115,6 +121,9 @@ func (j *nativeBuildJob) Run() (*buildResult, error) {
 		return result, nil
 	}
 
+	if err := j.updatePhase(buildv1alpha1.PhaseBuilding, "Running build steps on the worker."); err != nil {
+		return result, err
+	}
 	if err := j.executeBuild(); err != nil {
 		return result, err
 	}
@@ -123,6 +132,9 @@ func (j *nativeBuildJob) Run() (*buildResult, error) {
 		return result, nil
 	}
 
+	if err := j.updatePhase(buildv1alpha1.PhasePublishing, "Publishing build artifacts."); err != nil {
+		return result, err
+	}
 	pushedYAML, err := j.executePublish()
 	if err != nil {
 		return result, err
@@ -151,24 +163,35 @@ func (j *nativeBuildJob) cleanup() {
 
 // exec executes a command and logs its output.
 func (j *nativeBuildJob) exec(cmd *exec.Cmd, dir ...string) error {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
 	if len(dir) > 0 {
 		cmd.Dir = dir[0]
 	}
 
+	stdoutWriter := j.stdoutWriter
+	if stdoutWriter == nil {
+		stdoutWriter = io.Discard
+	}
+	stderrWriter := j.stderrWriter
+	if stderrWriter == nil {
+		stderrWriter = io.Discard
+	}
+	tail := newTailBuffer(8 * 1024)
+	cmd.Stdout = io.MultiWriter(stdoutWriter, tail)
+	cmd.Stderr = io.MultiWriter(stderrWriter, tail)
+
 	j.logger.Info("Executing command", "cmd", cmd.String(), "dir", cmd.Dir)
 
 	if err := cmd.Run(); err != nil {
-		stderrStr := stderr.String()
-		j.logger.Error(err, "Command execution failed", "stderr", stderrStr)
-		// Return stderr as the error message; this is useful
-		return errors.New(stderrStr)
+		tailSummary := strings.TrimSpace(tail.String())
+		if tailSummary != "" {
+			j.logger.Error(err, "Command execution failed", "tail", tailSummary)
+			return fmt.Errorf("command execution failed: %s", tailSummary)
+		}
+		j.logger.Error(err, "Command execution failed")
+		return fmt.Errorf("command execution failed: %w", err)
 	}
 
-	j.logger.Info("Command executed successfully", "stdout", stdout.String())
+	j.logger.Info("Command executed successfully", "cmd", cmd.String())
 	return nil
 }
 
@@ -406,4 +429,48 @@ func (j *nativeBuildJob) executePublish() (string, error) {
 	}
 
 	return string(pushedYAMLBytes), nil
+}
+
+func (j *nativeBuildJob) updatePhase(phase string, message string) error {
+	if j.reportPhase == nil {
+		return nil
+	}
+	return j.reportPhase(phase, message)
+}
+
+type tailBuffer struct {
+	mu        sync.Mutex
+	buf       []byte
+	maxBytes  int
+	truncated bool
+}
+
+func newTailBuffer(maxBytes int) *tailBuffer {
+	return &tailBuffer{maxBytes: maxBytes}
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.buf = append(b.buf, p...)
+	if len(b.buf) > b.maxBytes {
+		b.truncated = true
+		b.buf = append([]byte(nil), b.buf[len(b.buf)-b.maxBytes:]...)
+	}
+
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if len(b.buf) == 0 {
+		return ""
+	}
+	if b.truncated {
+		return "...\n" + string(b.buf)
+	}
+	return string(b.buf)
 }
