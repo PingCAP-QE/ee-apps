@@ -81,3 +81,14 @@ def test_run_cleanup_gcs_cache_rejects_non_dry_run_mode() -> None:
             settings=GcsCacheSettings(project_id="pingcap-testing-account"),
             mode="delete",
         )
+
+
+def test_run_cleanup_gcs_cache_propagates_query_failures() -> None:
+    def fake_execute(query, parameters):
+        raise RuntimeError("Query execution failed")
+
+    with pytest.raises(RuntimeError, match="Query execution failed"):
+        run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+            execute=fake_execute,
+        )

@@ -308,6 +308,24 @@ def test_cli_surfaces_cleanup_gcs_cache_mode_error(monkeypatch) -> None:
         cli.main(["cleanup-gcs-cache", "--mode", "delete"])
 
 
+def test_cli_rejects_non_positive_cleanup_retention_days(capsys) -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["cleanup-gcs-cache", "--ac-retention-days", "0"])
+
+    assert "expected a positive integer" in capsys.readouterr().err
+
+
+def test_cli_rejects_non_positive_cleanup_sample_limit(capsys) -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["cleanup-gcs-cache", "--sample-limit", "-1"])
+
+    assert "expected a positive integer" in capsys.readouterr().err
+
+
 def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}

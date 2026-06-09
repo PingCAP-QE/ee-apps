@@ -148,9 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("dry-run", "delete"),
         default="dry-run",
     )
-    cleanup_gcs_cache.add_argument("--ac-retention-days", type=int, default=None)
-    cleanup_gcs_cache.add_argument("--cas-retention-days", type=int, default=None)
-    cleanup_gcs_cache.add_argument("--sample-limit", type=int, default=None)
+    cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
     return parser
 
@@ -338,6 +338,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
+
+
+def _parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
+    return parsed
 
 
 def _run_sync_gcp_command(engine, *, settings, args):
