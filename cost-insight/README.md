@@ -14,6 +14,7 @@ Current design:
 
 - [System design](docs/system-design.md)
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
+- [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 
 ## Local Setup
 
@@ -170,3 +171,29 @@ summary importer from scanning already-backfilled historical export partitions.
 
 See [docs/bigquery-cost-optimization-design.md](docs/bigquery-cost-optimization-design.md)
 for the detailed table design, query shapes, and cost estimates.
+
+## GCS Bazel Cache Cleanup
+
+Summarize one day of access logs into BigQuery object last-seen tables:
+
+```bash
+cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08
+```
+
+Validate the query shape without writing BigQuery summary tables:
+
+```bash
+cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08 --dry-run
+```
+
+Build a weekly dry-run candidate report from the current last-seen table:
+
+```bash
+cost-insight cleanup-gcs-cache --mode dry-run
+```
+
+Override retention windows during validation:
+
+```bash
+cost-insight cleanup-gcs-cache --mode dry-run --ac-retention-days 21 --cas-retention-days 35
+```

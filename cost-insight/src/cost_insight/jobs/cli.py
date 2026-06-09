@@ -11,12 +11,14 @@ from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, g
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs.backfill_cost_refine_from_raw import run_backfill_cost_refine_from_raw
+from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
 from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
     run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
+from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
 from cost_insight.jobs.sync_aws_billing_summary import run_sync_aws_billing_summary
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
@@ -128,12 +130,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refresh one usage date at a time; recommended for larger ranges.",
     )
 
+    sync_gcs_cache = subparsers.add_parser(
+        "sync-gcs-cache-last-seen",
+        help="Summarize one day of GCS Bazel cache access logs into BigQuery last-seen tables",
+    )
+    sync_gcs_cache.set_defaults(require_database=False)
+    sync_gcs_cache.add_argument("--run-date", type=_parse_date, default=None)
+    sync_gcs_cache.add_argument("--dry-run", action="store_true")
+
+    cleanup_gcs_cache = subparsers.add_parser(
+        "cleanup-gcs-cache",
+        help="Build dry-run cleanup candidates from GCS cache last-seen summaries",
+    )
+    cleanup_gcs_cache.set_defaults(require_database=False)
+    cleanup_gcs_cache.add_argument(
+        "--mode",
+        choices=("dry-run", "delete"),
+        default="dry-run",
+    )
+    cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
+
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    settings = get_settings(require_database=True)
+    require_database = getattr(args, "require_database", True)
+    settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
 
     if args.command == "sync-gcp-billing-export":
@@ -288,11 +313,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
+    if args.command == "sync-gcs-cache-last-seen":
+        summary = run_sync_gcs_cache_last_seen(
+            settings=settings.gcs_cache,
+            run_date=args.run_date,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
+        return 0
+
+    if args.command == "cleanup-gcs-cache":
+        summary = run_cleanup_gcs_cache(
+            settings=settings.gcs_cache,
+            mode=args.mode,
+            ac_retention_days=args.ac_retention_days,
+            cas_retention_days=args.cas_retention_days,
+            sample_limit=args.sample_limit,
+        )
+        print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
+        return 0
+
     raise AssertionError(f"Unhandled command: {args.command}")  # pragma: no cover
 
 
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
+
+
+def _parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
+    return parsed
 
 
 def _run_sync_gcp_command(engine, *, settings, args):
@@ -468,43 +523,34 @@ def _summaries_to_json(summaries: Sequence[object]) -> object:
 
 
 def _summary_to_json(summary) -> dict[str, object]:
-    payload = {
-        "account_id": summary.account_id,
-        "dry_run": summary.dry_run,
+    return {
+        key: _jsonable(value)
+        for key, value in vars(summary).items()
+        if value is not None
     }
-    if hasattr(summary, "vendor") and getattr(summary, "vendor") is not None:
-        payload["vendor"] = getattr(summary, "vendor")
-    for field in (
-        "start_date",
-        "end_date",
-        "usage_start_date",
-        "usage_end_date",
-        "export_partition_start",
-        "export_partition_end",
-    ):
-        if hasattr(summary, field) and getattr(summary, field) is not None:
-            payload[field] = getattr(summary, field).isoformat()
-    for field in (
-        "rows_seen",
-        "rows_written",
-        "rows_deleted",
-        "rows_inserted",
-        "raw_rows",
-        "summary_rows",
-        "summary_rows_seen",
-        "summary_rows_written",
-        "unmatched_rows_seen",
-        "unmatched_rows_written",
-    ):
-        if hasattr(summary, field) and getattr(summary, field) is not None:
-            payload[field] = getattr(summary, field)
-    if hasattr(summary, "marked_summary_watermark"):
-        payload["marked_summary_watermark"] = summary.marked_summary_watermark
-    if hasattr(summary, "touched_usage_dates"):
-        payload["touched_usage_dates"] = [
-            usage_date.isoformat() for usage_date in summary.touched_usage_dates
-        ]
-    return payload
+
+
+def _jsonable(value):
+    if isinstance(value, date):
+        return value.isoformat()
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except TypeError:
+            pass
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if hasattr(value, "__dict__"):
+        return {
+            key: _jsonable(item)
+            for key, item in vars(value).items()
+            if item is not None
+        }
+    return value
 
 
 if __name__ == "__main__":  # pragma: no cover
