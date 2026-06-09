@@ -13,6 +13,11 @@ DEFAULT_GCP_BILLING_TABLE = (
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
+DEFAULT_GCS_CACHE_BUCKET = "pingcap-ci-bazel-remote-cache-us-central1"
+DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"
+DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE = "cloudaudit_googleapis_com_data_access"
+DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE = "gcs_cache_object_last_seen_daily"
+DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE = "gcs_cache_object_last_seen_current"
 
 
 @dataclass(frozen=True)
@@ -50,10 +55,26 @@ class AwsBillingSettings:
 
 
 @dataclass(frozen=True)
+class GcsCacheSettings:
+    project_id: str = DEFAULT_GCP_ACCOUNT_ID
+    bucket_name: str = DEFAULT_GCS_CACHE_BUCKET
+    dataset: str = DEFAULT_GCS_CACHE_DATASET
+    audit_log_table: str = DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE
+    last_seen_daily_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE
+    last_seen_current_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE
+    ac_retention_days: int = 28
+    cas_retention_days: int = 42
+    cleanup_sample_limit: int = 100
+    cleanup_max_delete_objects: int = 50000
+    cleanup_batch_size: int = 1000
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     gcp_billing: GcpBillingSettings = GcpBillingSettings()
     aws_billing: AwsBillingSettings = AwsBillingSettings()
+    gcs_cache: GcsCacheSettings = GcsCacheSettings()
     log_level: str = "INFO"
 
 
@@ -158,6 +179,85 @@ def load_settings(
                 5000,
             ),
         ),
+        gcs_cache=GcsCacheSettings(
+            project_id=_read_any(
+                env,
+                DEFAULT_GCP_ACCOUNT_ID,
+                "COST_INSIGHT_GCS_CACHE_PROJECT_ID",
+                "COST_GCS_CACHE_PROJECT_ID",
+                "GOOGLE_CLOUD_PROJECT",
+            ),
+            bucket_name=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_BUCKET,
+                "COST_INSIGHT_GCS_CACHE_BUCKET_NAME",
+                "COST_GCS_CACHE_BUCKET_NAME",
+            ),
+            dataset=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_DATASET,
+                "COST_INSIGHT_GCS_CACHE_DATASET",
+                "COST_GCS_CACHE_DATASET",
+            ),
+            audit_log_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE,
+                "COST_INSIGHT_GCS_CACHE_AUDIT_LOG_TABLE",
+                "COST_GCS_CACHE_AUDIT_LOG_TABLE",
+            ),
+            last_seen_daily_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE,
+                "COST_INSIGHT_GCS_CACHE_LAST_SEEN_DAILY_TABLE",
+                "COST_GCS_CACHE_LAST_SEEN_DAILY_TABLE",
+            ),
+            last_seen_current_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE,
+                "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE",
+                "COST_GCS_CACHE_LAST_SEEN_CURRENT_TABLE",
+            ),
+            ac_retention_days=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS",
+                    "COST_GCS_CACHE_AC_RETENTION_DAYS",
+                ),
+                28,
+            ),
+            cas_retention_days=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS",
+                    "COST_GCS_CACHE_CAS_RETENTION_DAYS",
+                ),
+                42,
+            ),
+            cleanup_sample_limit=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT",
+                    "COST_GCS_CACHE_CLEANUP_SAMPLE_LIMIT",
+                ),
+                100,
+            ),
+            cleanup_max_delete_objects=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS",
+                    "COST_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS",
+                ),
+                50000,
+            ),
+            cleanup_batch_size=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE",
+                    "COST_GCS_CACHE_CLEANUP_BATCH_SIZE",
+                ),
+                1000,
+            ),
+        ),
         log_level=_read_any(env, "INFO", "COST_INSIGHT_LOG_LEVEL", "COST_LOG_LEVEL").upper(),
     )
 
@@ -258,6 +358,10 @@ def _read_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: in
         if key in environ:
             return _read_int(environ, key, default)
     return default
+
+
+def _read_positive_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: int) -> int:
+    return _read_int_any(environ, keys, default)
 
 
 def _read_non_negative_int(

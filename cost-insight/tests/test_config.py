@@ -88,6 +88,37 @@ def test_load_settings_reads_aws_billing_settings() -> None:
     assert settings.aws_billing.page_size == 1000
 
 
+def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
+    settings = load_settings(
+        {
+            "GOOGLE_CLOUD_PROJECT": "override-project",
+            "COST_INSIGHT_GCS_CACHE_BUCKET_NAME": "custom-bucket",
+            "COST_INSIGHT_GCS_CACHE_DATASET": "custom_dataset",
+            "COST_INSIGHT_GCS_CACHE_AUDIT_LOG_TABLE": "raw_table",
+            "COST_INSIGHT_GCS_CACHE_LAST_SEEN_DAILY_TABLE": "daily_table",
+            "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE": "current_table",
+            "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS": "21",
+            "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS": "35",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT": "25",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "500",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE": "50",
+        },
+        require_database=False,
+    )
+
+    assert settings.gcs_cache.project_id == "override-project"
+    assert settings.gcs_cache.bucket_name == "custom-bucket"
+    assert settings.gcs_cache.dataset == "custom_dataset"
+    assert settings.gcs_cache.audit_log_table == "raw_table"
+    assert settings.gcs_cache.last_seen_daily_table == "daily_table"
+    assert settings.gcs_cache.last_seen_current_table == "current_table"
+    assert settings.gcs_cache.ac_retention_days == 21
+    assert settings.gcs_cache.cas_retention_days == 35
+    assert settings.gcs_cache.cleanup_sample_limit == 25
+    assert settings.gcs_cache.cleanup_max_delete_objects == 500
+    assert settings.gcs_cache.cleanup_batch_size == 50
+
+
 def test_load_settings_requires_database_when_not_skipped() -> None:
     with pytest.raises(ValueError, match="Missing required environment variable"):
         load_settings({})
@@ -99,6 +130,16 @@ def test_load_settings_rejects_invalid_positive_int() -> None:
             {
                 "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
                 "COST_INSIGHT_SYNC_PAGE_SIZE": "0",
+            }
+        )
+
+
+def test_load_settings_rejects_invalid_gcs_cache_positive_int() -> None:
+    with pytest.raises(ValueError, match="COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS must be positive"):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
+                "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS": "-1",
             }
         )
 
