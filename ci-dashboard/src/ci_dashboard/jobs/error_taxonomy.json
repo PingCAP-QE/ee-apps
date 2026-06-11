@@ -630,11 +630,31 @@
       ]
     },
     {
-      "name": "infra_k8s_runtime",
+      "name": "infra_spot_preempted",
       "l1": "INFRA",
-      "l2": "K8S",
+      "l2": "SPOT_PREEMPTED",
       "text_patterns": [
-        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\.",
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\."
+      ],
+      "build_field_patterns": {
+        "pod_event_reporting_instances": [
+          "-spot-"
+        ]
+      }
+    },
+    {
+      "name": "infra_k8s_node_shutdown",
+      "l1": "INFRA",
+      "l2": "K8S_NODE_SHUTDOWN",
+      "text_patterns": [
+        "Pod \\[Failed\\]\\[TerminationByKubelet\\] Pod was terminated in response to imminent node shutdown\\."
+      ]
+    },
+    {
+      "name": "infra_k8s_evicted",
+      "l1": "INFRA",
+      "l2": "K8S_STORAGE_EVICTED",
+      "text_patterns": [
         "Pod \\[Failed\\]\\[[^\\]]*Evicted[^\\]]*\\]",
         "Container \\[[^\\]]+\\] terminated \\[Evicted\\]",
         "Reason: Evicted"
