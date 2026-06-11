@@ -78,6 +78,11 @@ Notes:
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 - `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest
 - `scripts/render_archive_error_logs_cronjob.sh` renders the V3 Jenkins error-log archive CronJob manifest
+- Jenkins finished events asynchronously enrich the canonical build row from the
+  Jenkins `/timings/` page. This fetch is best-effort and does not block Kafka
+  offset commits.
+- `backfill-jenkins-timings --lookback-days 30` provides a one-off historical
+  repair command; it is intentionally not deployed as a recurring CronJob.
 
 ## Local Frontend Against TiDB
 

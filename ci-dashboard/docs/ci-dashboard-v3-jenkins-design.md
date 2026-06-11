@@ -297,6 +297,31 @@ Design implication:
 
 - provider choice is runtime configuration, not first-slice schema identity
 
+### 4.8 Jenkins Timings Are Best-Effort Event Enrichment
+
+After a Jenkins finished event has updated the canonical `ci_l1_builds` row,
+the consumer submits a bounded in-process background fetch for the build's
+`/timings/` page.
+
+- Kafka processing and offset commit do not wait for the HTTP request.
+- Fetch, parse, queue-full, or database-update failures are logged only.
+- There is no recurring timings CronJob.
+- A separate `backfill-jenkins-timings --lookback-days 30` command supports an
+  explicit one-off historical Job.
+
+The persisted fields are limited to Jenkins values that are not already
+represented by the primary build timeline:
+
+- `jenkins_blocked_subtasks_sum`: accumulated blocked time across subtasks, in seconds
+- `jenkins_buildable_subtasks_sum`: accumulated buildable wait across subtasks, in seconds
+- `jenkins_queue_total_subtasks_sum`: accumulated total queue time across subtasks, in seconds
+- `jenkins_building_subtasks_sum`: accumulated building time across subtasks, in seconds
+- `jenkins_subtask_count`: number of Jenkins subtasks
+
+Primary-task waiting, building, and scheduled-to-completion values are not
+stored because they overlap with existing build duration fields. Average
+executor utilization is derived when needed rather than persisted.
+
 ## 5. High-Level Architecture
 
 ### 5.1 Data Flow

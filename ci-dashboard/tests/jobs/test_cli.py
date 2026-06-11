@@ -8,6 +8,7 @@ from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
 from ci_dashboard.common.models import (
     AnalyzeErrorsSummary,
     ArchiveErrorLogsSummary,
+    BackfillJenkinsTimingsSummary,
     BackfillFlakyIssuePrLinksSummary,
     ConsumeJenkinsEventsSummary,
     RepairJobNamesSummary,
@@ -139,6 +140,41 @@ def test_cli_consume_jenkins_events_dispatch(monkeypatch) -> None:
     assert called["engine"] == "engine"
     assert called["log_level"] == "INFO"
     assert isinstance(called["summary"], ConsumeJenkinsEventsSummary)
+
+
+def test_cli_backfill_jenkins_timings_dispatch(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "get_settings", _settings)
+    monkeypatch.setattr(cli, "build_engine", lambda settings: called.setdefault("engine", "engine"))
+    monkeypatch.setattr(cli, "configure_logging", lambda level: None)
+
+    def fake_run(engine, settings, *, lookback_days, limit):
+        called["engine_arg"] = engine
+        called["settings"] = settings
+        called["lookback_days"] = lookback_days
+        called["limit"] = limit
+        return BackfillJenkinsTimingsSummary(builds_updated=3)
+
+    monkeypatch.setattr(cli, "run_backfill_jenkins_timings", fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ci-dashboard",
+            "backfill-jenkins-timings",
+            "--lookback-days",
+            "30",
+            "--limit",
+            "500",
+        ],
+    )
+
+    assert cli.main() == 0
+    assert called["engine"] == "engine"
+    assert called["engine_arg"] == "engine"
+    assert called["lookback_days"] == 30
+    assert called["limit"] == 500
+    assert isinstance(called["settings"], Settings)
 
 
 def test_cli_sync_pr_events_dispatch(monkeypatch) -> None:

@@ -152,6 +152,16 @@ class JenkinsClient:
         response.raise_for_status()
         return extract_console_signal_excerpts(response.text, max_bytes=max_bytes)
 
+    def fetch_timings_html(self, build_url: str, *, timeout_seconds: int = 5) -> str:
+        timings_url = build_api_url(
+            build_url,
+            "timings/",
+            internal_base_url=self._settings.internal_base_url,
+        )
+        response = self._client.get(timings_url, timeout=timeout_seconds)
+        response.raise_for_status()
+        return response.text
+
     def _fetch_progressive_chunk(self, progressive_url: str, start: int) -> ProgressiveTextChunk:
         response = self._client.get(progressive_url, params={"start": start})
         response.raise_for_status()
