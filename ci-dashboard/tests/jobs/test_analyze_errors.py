@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import (
@@ -12,7 +13,14 @@ from ci_dashboard.common.config import (
     Settings,
 )
 from ci_dashboard.common.models import ErrorClassification
-from ci_dashboard.jobs.analyze_errors import review_error_classification, run_analyze_errors
+from ci_dashboard.jobs.analyze_errors import (
+    _append_live_signal_excerpts,
+    _normalize_review_category,
+    _parse_json_mapping,
+    _should_refresh_existing_machine_classification,
+    review_error_classification,
+    run_analyze_errors,
+)
 from ci_dashboard.jobs.rule_engine import RuleEngine
 
 
@@ -72,6 +80,8 @@ def _insert_build(
     build_id: int,
     job_name: str,
     log_gcs_uri: str | None,
+    pod_name: str | None = None,
+    normalized_build_url: str | None = None,
     source_prow_job_id: str | None = None,
     job_type: str | None = None,
     pr_number: int | None = None,
@@ -91,7 +101,7 @@ def _insert_build(
                 INSERT INTO ci_l1_builds (
                   id, source_prow_row_id, source_prow_job_id, namespace, job_name, job_type, state,
                   optional, report, org, repo, repo_full_name, base_ref, pr_number, is_pr_build,
-                  context, url, normalized_build_url, author, start_time, completion_time,
+                  context, url, normalized_build_url, author, pod_name, start_time, completion_time,
                   total_seconds, head_sha, target_branch, cloud_phase, build_system, log_gcs_uri,
                   error_l1_category, error_l2_subcategory, revise_error_l1_category, revise_error_l2_subcategory
                 ) VALUES (
@@ -100,7 +110,7 @@ def _insert_build(
                   'unit',
                   :url,
                   :normalized_build_url,
-                  'alice', :start_time, :completion_time,
+                  'alice', :pod_name, :start_time, :completion_time,
                   1200, :head_sha, 'master', 'GCP', 'JENKINS', :log_gcs_uri,
                   :error_l1_category, :error_l2_subcategory, :revise_error_l1_category, :revise_error_l2_subcategory
                 )
@@ -114,9 +124,9 @@ def _insert_build(
                 "state": state,
                 "pr_number": build_id if pr_number is None else pr_number,
                 "url": f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/{job_name}/{build_id}/",
-                "normalized_build_url": (
-                    f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/{job_name}/{build_id}/"
-                ),
+                "normalized_build_url": normalized_build_url
+                or f"https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/{job_name}/{build_id}/",
+                "pod_name": pod_name,
                 "start_time": start_time,
                 "completion_time": completion_time,
                 "head_sha": head_sha,
@@ -125,6 +135,77 @@ def _insert_build(
                 "error_l2_subcategory": error_l2_subcategory,
                 "revise_error_l1_category": revise_error_l1_category,
                 "revise_error_l2_subcategory": revise_error_l2_subcategory,
+            },
+        )
+
+
+def _insert_pod_lifecycle(
+    sqlite_engine,
+    *,
+    source_prow_job_id: str | None = None,
+    pod_name: str,
+    normalized_build_url: str | None = None,
+    abnormal_reason: str | None = None,
+    abnormal_message: str | None = None,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_pod_lifecycle (
+                  source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
+                  build_system, source_prow_job_id, normalized_build_url, repo_full_name, job_name,
+                  abnormal_reason, abnormal_message
+                ) VALUES (
+                  'prow', 'prow', 'us-central1-c', 'jenkins-tidb', :pod_name, :pod_uid,
+                  'JENKINS', :source_prow_job_id, :normalized_build_url, 'pingcap/tidb', 'pingcap/tidb/ghpr_check2',
+                  :abnormal_reason, :abnormal_message
+                )
+                """
+            ),
+            {
+                "source_prow_job_id": source_prow_job_id,
+                "pod_name": pod_name,
+                "pod_uid": f"uid-{source_prow_job_id or pod_name}",
+                "normalized_build_url": normalized_build_url
+                or "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/2602/",
+                "abnormal_reason": abnormal_reason,
+                "abnormal_message": abnormal_message,
+            },
+        )
+
+
+def _insert_pod_event(
+    sqlite_engine,
+    *,
+    pod_name: str,
+    reporting_instance: str | None,
+    event_reason: str,
+    event_message: str,
+    source_insert_id: str,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_pod_events (
+                  source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
+                  event_reason, event_type, event_message, event_timestamp, receive_timestamp,
+                  reporting_component, reporting_instance, source_insert_id
+                ) VALUES (
+                  'prow', 'prow', 'us-central1-c', 'jenkins-tidb', :pod_name, :pod_uid,
+                  :event_reason, 'Normal', :event_message, '2026-04-24 10:01:00', '2026-04-24 10:01:01',
+                  'kubelet', :reporting_instance, :source_insert_id
+                )
+                """
+            ),
+            {
+                "pod_name": pod_name,
+                "pod_uid": f"uid-{pod_name}",
+                "event_reason": event_reason,
+                "event_message": event_message,
+                "reporting_instance": reporting_instance,
+                "source_insert_id": source_insert_id,
             },
         )
 
@@ -280,6 +361,136 @@ def test_run_analyze_errors_classifies_prow_superseded_abort_from_metadata(sqlit
 
     assert row["error_l1_category"] == "OTHERS"
     assert row["error_l2_subcategory"] == "SUPERSEDED_BY_NEWER_BUILD"
+
+
+def test_run_analyze_errors_classifies_spot_preempted_from_pod_evidence(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=211,
+        job_name="ghpr_check2",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/211.log",
+        source_prow_job_id="prow-job-211",
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        source_prow_job_id="prow-job-211",
+        pod_name="pingcap-tidb-ghpr-check2-211-abcd",
+    )
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name="pingcap-tidb-ghpr-check2-211-abcd",
+        reporting_instance="gke-prow-nap-c4d-highcpu-32-spot-1ops-91988024-qk46",
+        event_reason="Killing",
+        event_message="Stopping container jnlp",
+        source_insert_id="event-211-killing",
+    )
+
+    reader = _FakeReader(
+        {
+            (
+                "ci-dashboard-test",
+                "2604/211.log",
+            ): (
+                "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+                "Timeout waiting for agent to come back\n"
+                "Finished: ABORTED\n"
+            ),
+        }
+    )
+    classifier = _FakeClassifier(
+        ErrorClassification(
+            l1_category="OTHERS",
+            l2_subcategory="UNCLASSIFIED",
+            source="llm:test",
+        )
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=reader,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=classifier,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_classified == 1
+    assert summary.builds_rule_classified == 1
+    assert summary.builds_llm_classified == 0
+    assert classifier.calls == []
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 211")
+        ).mappings().one()
+
+    assert row["error_l1_category"] == "INFRA"
+    assert row["error_l2_subcategory"] == "SPOT_PREEMPTED"
+
+
+def test_run_analyze_errors_loads_spot_evidence_via_normalized_build_url(sqlite_engine) -> None:
+    normalized_build_url = "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/311/"
+    pod_name = "pingcap-tidb-ghpr-check2-311-abcd"
+    _insert_build(
+        sqlite_engine,
+        build_id=311,
+        job_name="ghpr_check2",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/311.log",
+        normalized_build_url=normalized_build_url,
+        source_prow_job_id=None,
+        pod_name=pod_name,
+    )
+    _insert_pod_lifecycle(
+        sqlite_engine,
+        source_prow_job_id=None,
+        normalized_build_url=normalized_build_url,
+        pod_name=pod_name,
+    )
+    _insert_pod_event(
+        sqlite_engine,
+        pod_name=pod_name,
+        reporting_instance="gke-prow-nap-c4d-highcpu-32-spot-1ops-91988024-qk46",
+        event_reason="Killing",
+        event_message="Stopping container jnlp",
+        source_insert_id="event-311-killing",
+    )
+
+    reader = _FakeReader(
+        {
+            (
+                "ci-dashboard-test",
+                "2604/311.log",
+            ): (
+                "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+                "Timeout waiting for agent to come back\n"
+                "Finished: ABORTED\n"
+            ),
+        }
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=reader,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=_FakeClassifier(
+            ErrorClassification(
+                l1_category="OTHERS",
+                l2_subcategory="UNCLASSIFIED",
+                source="llm:test",
+            )
+        ),
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_classified == 1
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 311")
+        ).mappings().one()
+
+    assert row["error_l1_category"] == "INFRA"
+    assert row["error_l2_subcategory"] == "SPOT_PREEMPTED"
 
 
 def test_run_analyze_errors_classifies_trigger_plugin_abort_with_newer_sha(sqlite_engine) -> None:
@@ -726,3 +937,185 @@ def test_review_error_classification_updates_revise_fields(sqlite_engine) -> Non
 
     assert row["revise_error_l1_category"] == "INFRA"
     assert row["revise_error_l2_subcategory"] == "NETWORK"
+
+
+def test_run_analyze_errors_skips_existing_machine_classification_without_force(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=601,
+        source_prow_job_id="skip-old-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        job_type="presubmit",
+        pr_number=68188,
+        head_sha="same-sha",
+        start_time="2026-05-06 09:00:00",
+        completion_time="2026-05-06 09:05:00",
+        state="failure",
+        log_gcs_uri=None,
+        error_l1_category="INFRA",
+        error_l2_subcategory="NETWORK",
+    )
+    _insert_build(
+        sqlite_engine,
+        build_id=602,
+        source_prow_job_id="skip-new-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        job_type="presubmit",
+        pr_number=68188,
+        head_sha="same-sha",
+        start_time="2026-05-06 09:10:00",
+        completion_time="2026-05-06 09:20:00",
+        state="success",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/602.log",
+    )
+    _insert_prow_job(
+        sqlite_engine,
+        row_id=903,
+        prow_job_id="skip-old-prow-job",
+        job_name="pingcap/tidb/ghpr_check2",
+        state="aborted",
+        pr_number=68188,
+        start_time="2026-05-06 09:00:00",
+        description="Aborted by admin.",
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=_FakeReader({}),
+        rule_engine=RuleEngine.from_file(),
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_skipped == 1
+    assert summary.builds_classified == 0
+
+
+def test_run_analyze_errors_counts_reader_failures(sqlite_engine) -> None:
+    class _BoomReader:
+        def download_text(self, *, bucket: str, object_name: str, encoding: str = "utf-8") -> str:
+            del bucket, object_name, encoding
+            raise RuntimeError("boom")
+
+    _insert_build(
+        sqlite_engine,
+        build_id=602,
+        job_name="ghpr_check2",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/602.log",
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=_BoomReader(),
+        rule_engine=RuleEngine.from_file(),
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_failed == 1
+    assert summary.builds_classified == 0
+
+
+def test_run_analyze_errors_skips_invalid_log_uri(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=603,
+        job_name="ghpr_check2",
+        log_gcs_uri="not-a-gcs-uri",
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=_FakeReader({}),
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=_FakeClassifier(
+            ErrorClassification(
+                l1_category="OTHERS",
+                l2_subcategory="UNCLASSIFIED",
+                source="llm:test",
+            )
+        ),
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_skipped == 1
+    assert summary.builds_classified == 0
+
+
+def test_parse_json_mapping_handles_bytes_invalid_json_and_non_mapping() -> None:
+    assert _parse_json_mapping(b'{\"description\": \"hello\"}') == {"description": "hello"}
+    assert _parse_json_mapping("{not-json") == {}
+    assert _parse_json_mapping("[1, 2, 3]") == {}
+
+
+def test_should_refresh_existing_machine_classification_handles_abort_paths() -> None:
+    assert _should_refresh_existing_machine_classification({"error_l1_category": "", "error_l2_subcategory": ""}) is True
+    assert (
+        _should_refresh_existing_machine_classification(
+            {
+                "error_l1_category": "OTHERS",
+                "error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD",
+            }
+        )
+        is False
+    )
+    assert (
+        _should_refresh_existing_machine_classification(
+            {
+                "error_l1_category": "INFRA",
+                "error_l2_subcategory": "NETWORK",
+                "prow_state": "failure",
+            }
+        )
+        is False
+    )
+    assert (
+        _should_refresh_existing_machine_classification(
+            {
+                "error_l1_category": "INFRA",
+                "error_l2_subcategory": "NETWORK",
+                "prow_state": "aborted",
+                "has_newer_pr_job_version_with_different_sha": "true",
+            }
+        )
+        is True
+    )
+    assert (
+        _should_refresh_existing_machine_classification(
+            {
+                "error_l1_category": "INFRA",
+                "error_l2_subcategory": "NETWORK",
+                "prow_state": "aborted",
+                "prow_status_description": "Aborted as the newer version of this job is running.",
+                "has_newer_pr_job_version": "1",
+            }
+        )
+        is True
+    )
+
+
+def test_normalize_review_category_rejects_empty_input() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        _normalize_review_category("   ")
+
+
+def test_append_live_signal_excerpts_handles_missing_fetcher_url_and_signal() -> None:
+    assert (
+        _append_live_signal_excerpts(
+            "tail",
+            build={"url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
+            jenkins_fetcher=object(),
+        )
+        == "tail"
+    )
+    fetcher = _FakeJenkinsFetcher({})
+    assert _append_live_signal_excerpts("tail", build={"url": ""}, jenkins_fetcher=fetcher) == "tail"
+    assert (
+        _append_live_signal_excerpts(
+            "tail",
+            build={"url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
+            jenkins_fetcher=fetcher,
+        )
+        == "tail"
+    )

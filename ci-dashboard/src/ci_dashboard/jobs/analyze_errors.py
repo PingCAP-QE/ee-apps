@@ -25,7 +25,7 @@ REMOTING_RULE_SOURCES = {
 FETCH_CANDIDATE_BUILDS_SCAN = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
-           b.pr_number, b.head_sha, b.url, b.log_gcs_uri,
+           b.pr_number, b.head_sha, b.url, b.normalized_build_url, b.pod_name, b.log_gcs_uri,
            b.error_l1_category, b.error_l2_subcategory,
            b.revise_error_l1_category, b.revise_error_l2_subcategory,
            pj.state AS prow_state, pj.status AS prow_status,
@@ -98,7 +98,7 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
 FETCH_CANDIDATE_BUILD_BY_ID = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
-           b.pr_number, b.head_sha, b.url, b.log_gcs_uri,
+           b.pr_number, b.head_sha, b.url, b.normalized_build_url, b.pod_name, b.log_gcs_uri,
            b.error_l1_category, b.error_l2_subcategory,
            b.revise_error_l1_category, b.revise_error_l2_subcategory,
            pj.state AS prow_state, pj.status AS prow_status,
@@ -167,6 +167,33 @@ FETCH_CANDIDATE_BUILD_BY_ID = text(
     """
 ).bindparams(bindparam("failure_states", expanding=True))
 
+FETCH_POD_LIFECYCLE_EVIDENCE_BY_PROW_JOB_ID = text(
+    """
+    SELECT id, source_prow_job_id, normalized_build_url, pod_name, abnormal_reason, abnormal_message
+    FROM ci_l1_pod_lifecycle
+    WHERE source_prow_job_id IN :source_prow_job_ids
+    ORDER BY id DESC
+    """
+).bindparams(bindparam("source_prow_job_ids", expanding=True))
+
+FETCH_POD_LIFECYCLE_EVIDENCE_BY_BUILD_URL = text(
+    """
+    SELECT id, source_prow_job_id, normalized_build_url, pod_name, abnormal_reason, abnormal_message
+    FROM ci_l1_pod_lifecycle
+    WHERE normalized_build_url IN :normalized_build_urls
+    ORDER BY id DESC
+    """
+).bindparams(bindparam("normalized_build_urls", expanding=True))
+
+FETCH_POD_EVENT_EVIDENCE = text(
+    """
+    SELECT pod_name, reporting_instance, event_reason, event_type, event_message
+    FROM ci_l1_pod_events
+    WHERE pod_name IN :pod_names
+    ORDER BY event_timestamp DESC, id DESC
+    """
+).bindparams(bindparam("pod_names", expanding=True))
+
 UPDATE_MACHINE_CLASSIFICATION = text(
     """
     UPDATE ci_l1_builds
@@ -229,6 +256,7 @@ def run_analyze_errors(
                     },
                 ).mappings()
             )
+        pod_evidence_by_build_id = _load_pod_evidence_by_build_id(connection, candidates)
 
     if not candidates:
         return summary
@@ -247,7 +275,10 @@ def run_analyze_errors(
     try:
         for build in candidates:
             summary.builds_scanned += 1
-            enriched_build = _enrich_build_evidence(build)
+            enriched_build = _enrich_build_evidence(
+                build,
+                pod_evidence=pod_evidence_by_build_id.get(int(build["id"])),
+            )
             if not force and not _should_refresh_existing_machine_classification(enriched_build):
                 summary.builds_skipped += 1
                 continue
@@ -356,7 +387,135 @@ def _classify_single_build(
     return classification_source, classification
 
 
-def _enrich_build_evidence(build: Mapping[str, Any]) -> dict[str, Any]:
+def _load_pod_evidence_by_build_id(connection, builds: list[Mapping[str, Any]]) -> dict[int, dict[str, str]]:
+    source_prow_job_ids = sorted(
+        {
+            str(build.get("source_prow_job_id") or "").strip()
+            for build in builds
+            if str(build.get("source_prow_job_id") or "").strip()
+        }
+    )
+    normalized_build_urls = sorted(
+        {
+            str(build.get("normalized_build_url") or "").strip()
+            for build in builds
+            if str(build.get("normalized_build_url") or "").strip()
+        }
+    )
+    direct_pod_names = {
+        str(build.get("pod_name") or "").strip()
+        for build in builds
+        if str(build.get("pod_name") or "").strip()
+    }
+    if not source_prow_job_ids and not normalized_build_urls and not direct_pod_names:
+        return {}
+
+    lifecycle_rows: list[Mapping[str, Any]] = []
+    if source_prow_job_ids:
+        lifecycle_rows.extend(
+            connection.execute(
+                FETCH_POD_LIFECYCLE_EVIDENCE_BY_PROW_JOB_ID,
+                {"source_prow_job_ids": source_prow_job_ids},
+            ).mappings()
+        )
+    if normalized_build_urls:
+        lifecycle_rows.extend(
+            connection.execute(
+                FETCH_POD_LIFECYCLE_EVIDENCE_BY_BUILD_URL,
+                {"normalized_build_urls": normalized_build_urls},
+            ).mappings()
+        )
+
+    lifecycle_by_prow_job_id: dict[str, Mapping[str, Any]] = {}
+    lifecycle_by_build_url: dict[str, Mapping[str, Any]] = {}
+    pod_names: set[str] = set()
+    for row in lifecycle_rows:
+        prow_job_id = str(row.get("source_prow_job_id") or "").strip()
+        if not prow_job_id or prow_job_id in lifecycle_by_prow_job_id:
+            pass
+        elif prow_job_id:
+            lifecycle_by_prow_job_id[prow_job_id] = row
+        normalized_build_url = str(row.get("normalized_build_url") or "").strip()
+        if normalized_build_url and normalized_build_url not in lifecycle_by_build_url:
+            lifecycle_by_build_url[normalized_build_url] = row
+        pod_name = str(row.get("pod_name") or "").strip()
+        if pod_name:
+            pod_names.add(pod_name)
+    pod_names.update(direct_pod_names)
+
+    event_rows = []
+    if pod_names:
+        event_rows = list(
+            connection.execute(
+                FETCH_POD_EVENT_EVIDENCE,
+                {"pod_names": sorted(pod_names)},
+            ).mappings()
+        )
+
+    event_summary_by_pod_name: dict[str, dict[str, str]] = {}
+    for row in event_rows:
+        pod_name = str(row.get("pod_name") or "").strip()
+        if not pod_name:
+            continue
+        summary = event_summary_by_pod_name.setdefault(
+            pod_name,
+            {
+                "pod_event_reporting_instances": "",
+                "pod_event_reasons": "",
+                "pod_event_types": "",
+                "pod_event_messages": "",
+            },
+        )
+        _append_newline_separated_token(summary, "pod_event_reporting_instances", row.get("reporting_instance"))
+        _append_newline_separated_token(summary, "pod_event_reasons", row.get("event_reason"))
+        _append_newline_separated_token(summary, "pod_event_types", row.get("event_type"))
+        _append_newline_separated_token(summary, "pod_event_messages", row.get("event_message"))
+
+    evidence_by_build_id: dict[int, dict[str, str]] = {}
+    for build in builds:
+        build_id = int(build["id"])
+        prow_job_id = str(build.get("source_prow_job_id") or "").strip()
+        normalized_build_url = str(build.get("normalized_build_url") or "").strip()
+        lifecycle = lifecycle_by_prow_job_id.get(prow_job_id)
+        if lifecycle is None and normalized_build_url:
+            lifecycle = lifecycle_by_build_url.get(normalized_build_url)
+        evidence: dict[str, str] = {}
+        pod_name = ""
+        if lifecycle is not None:
+            pod_name = str(lifecycle.get("pod_name") or "").strip()
+        if not pod_name:
+            pod_name = str(build.get("pod_name") or "").strip()
+        if pod_name:
+            evidence["pod_lifecycle_pod_name"] = pod_name
+        if lifecycle is not None:
+            abnormal_reason = str(lifecycle.get("abnormal_reason") or "").strip()
+            if abnormal_reason:
+                evidence["pod_lifecycle_abnormal_reason"] = abnormal_reason
+            abnormal_message = str(lifecycle.get("abnormal_message") or "").strip()
+            if abnormal_message:
+                evidence["pod_lifecycle_abnormal_message"] = abnormal_message
+        if pod_name and pod_name in event_summary_by_pod_name:
+            evidence.update(event_summary_by_pod_name[pod_name])
+        if evidence:
+            evidence_by_build_id[build_id] = evidence
+    return evidence_by_build_id
+
+
+def _append_newline_separated_token(summary: dict[str, str], key: str, raw_value: Any) -> None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return
+    existing = summary.get(key, "")
+    if not existing:
+        summary[key] = value
+        return
+    existing_items = existing.split("\n")
+    if value not in existing_items:
+        existing_items.append(value)
+        summary[key] = "\n".join(existing_items)
+
+
+def _enrich_build_evidence(build: Mapping[str, Any], *, pod_evidence: Mapping[str, str] | None = None) -> dict[str, Any]:
     enriched = dict(build)
     status = _parse_json_mapping(enriched.get("prow_status"))
     description = status.get("description") or status.get("Description")
@@ -371,6 +530,8 @@ def _enrich_build_evidence(build: Mapping[str, Any]) -> dict[str, Any]:
             enriched[field] = "1" if newer_version else "0"
         elif newer_version is not None:
             enriched[field] = str(newer_version)
+    if pod_evidence:
+        enriched.update(pod_evidence)
     return enriched
 
 

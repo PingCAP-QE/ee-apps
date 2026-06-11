@@ -934,11 +934,11 @@ def test_rule_engine_prefers_final_k8s_failure_over_jenkins_disconnect_noise() -
 
     assert classification is not None
     assert classification.l1_category == "INFRA"
-    assert classification.l2_subcategory == "K8S"
-    assert classification.source == "rule:infra_k8s_runtime"
+    assert classification.l2_subcategory == "K8S_STORAGE_EVICTED"
+    assert classification.source == "rule:infra_k8s_evicted"
 
 
-def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_infra() -> None:
+def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_node_shutdown() -> None:
     engine = RuleEngine.from_file()
 
     classification = engine.classify(
@@ -965,8 +965,69 @@ def test_rule_engine_classifies_kubelet_node_shutdown_as_k8s_infra() -> None:
 
     assert classification is not None
     assert classification.l1_category == "INFRA"
-    assert classification.l2_subcategory == "K8S"
-    assert classification.source == "rule:infra_k8s_runtime"
+    assert classification.l2_subcategory == "K8S_NODE_SHUTDOWN"
+    assert classification.source == "rule:infra_k8s_node_shutdown"
+
+
+def test_rule_engine_prefers_node_shutdown_over_agent_offline_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc seems to be removed or offline "
+            "(hudson.remoting.RequestAbortedException: java.nio.channels.ClosedChannelException); "
+            "will wait for 5 min 0 sec for it to come back online\n"
+            "Agent went offline during the build\n"
+            "Timeout waiting for agent to come back\n"
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+            "Pod [Failed][PodFailed] No message\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2748/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "K8S_NODE_SHUTDOWN"
+    assert classification.source == "rule:infra_k8s_node_shutdown"
+
+
+def test_rule_engine_classifies_spot_node_shutdown_as_spot_preempted() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc seems to be removed or offline "
+            "(hudson.remoting.RequestAbortedException: java.nio.channels.ClosedChannelException); "
+            "will wait for 5 min 0 sec for it to come back online\n"
+            "[PodInfo] jenkins-tidb/pingcap-tidb-pull-build-next-gen-2748-lbvc2-2csfh-rgklc\n"
+            "Container [golang] terminated [Completed] No message\n"
+            "Container [jnlp] terminated [Error] No message\n"
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+            "Pod [Failed][PodFailed] No message\n"
+            "Timeout waiting for agent to come back\n"
+            "Finished: ABORTED\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_build_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_build_next_gen/2748/"
+            ),
+            "pod_event_reporting_instances": "gke-prow-nap-c4d-highcpu-32-spot-1ops-91988024-qk46",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "SPOT_PREEMPTED"
+    assert classification.source == "rule:infra_spot_preempted"
 
 
 def test_rule_engine_classifies_agent_offline_as_jenkins_agent_offline() -> None:
