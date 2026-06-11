@@ -19,6 +19,7 @@ from ci_dashboard.jobs.build_url_matcher import (
     normalize_build_url,
     normalized_job_path_from_key,
 )
+from ci_dashboard.jobs.jenkins_timings import JenkinsTimingsEnricher
 
 LOG = logging.getLogger(__name__)
 
@@ -310,6 +311,7 @@ def run_consume_jenkins_events(
     topic: str | None = None,
     group_id: str | None = None,
     consumer: Any | None = None,
+    timings_enricher: Any | None = None,
 ) -> ConsumeJenkinsEventsSummary:
     summary = ConsumeJenkinsEventsSummary()
     resolved_topic = topic or settings.kafka.jenkins_events_topic
@@ -320,6 +322,8 @@ def run_consume_jenkins_events(
         group_id=resolved_group_id,
     )
     should_close_consumer = consumer is None
+    resolved_timings_enricher = timings_enricher or JenkinsTimingsEnricher(engine, settings)
+    should_close_timings_enricher = timings_enricher is None
 
     try:
         while max_messages is None or summary.messages_polled < max_messages:
@@ -340,7 +344,12 @@ def run_consume_jenkins_events(
 
                     summary.messages_polled += 1
                     try:
-                        result = process_jenkins_event_message(engine, settings, record.value)
+                        result = process_jenkins_event_message(
+                            engine,
+                            settings,
+                            record.value,
+                            timings_enricher=resolved_timings_enricher,
+                        )
                     except Exception:
                         summary.events_failed += 1
                         LOG.exception(
@@ -360,11 +369,19 @@ def run_consume_jenkins_events(
     finally:
         if should_close_consumer and hasattr(resolved_consumer, "close"):
             resolved_consumer.close()
+        if should_close_timings_enricher:
+            resolved_timings_enricher.close()
 
     return summary
 
 
-def process_jenkins_event_message(engine: Engine, settings: Settings, raw_value: bytes | str | Mapping[str, Any]) -> str:
+def process_jenkins_event_message(
+    engine: Engine,
+    settings: Settings,
+    raw_value: bytes | str | Mapping[str, Any],
+    *,
+    timings_enricher: Any | None = None,
+) -> str:
     payload = _decode_cloud_event_payload(raw_value)
     envelope = _extract_cloud_event_envelope(payload)
     payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -382,7 +399,7 @@ def process_jenkins_event_message(engine: Engine, settings: Settings, raw_value:
     try:
         parsed = parse_jenkins_finished_event(payload, settings)
         with engine.begin() as connection:
-            _upsert_build_from_jenkins_event(connection, parsed)
+            build_id = _upsert_build_from_jenkins_event(connection, parsed)
             connection.execute(
                 MARK_AUDIT_PROCESSED,
                 parsed.as_audit_params(
@@ -390,6 +407,20 @@ def process_jenkins_event_message(engine: Engine, settings: Settings, raw_value:
                     status=AUDIT_STATUS_PROCESSED,
                 ),
             )
+        if timings_enricher is not None:
+            try:
+                timings_enricher.submit(
+                    build_id=build_id,
+                    build_url=parsed.normalized_build_url,
+                )
+            except Exception:
+                LOG.exception(
+                    "failed to submit Jenkins timings enrichment",
+                    extra={
+                        "build_id": build_id,
+                        "build_url": parsed.normalized_build_url,
+                    },
+                )
         return "processed"
     except Exception as exc:
         with engine.begin() as connection:
@@ -588,7 +619,10 @@ def map_jenkins_result_to_state(result: str | None) -> str:
     return "error"
 
 
-def _upsert_build_from_jenkins_event(connection: Connection, parsed: ParsedJenkinsFinishedEvent) -> None:
+def _upsert_build_from_jenkins_event(
+    connection: Connection,
+    parsed: ParsedJenkinsFinishedEvent,
+) -> int:
     build_params = parsed.as_build_row_params()
     existing_by_prow_job_id, existing_by_build_url = fetch_existing_build_targets(
         connection,
@@ -603,11 +637,15 @@ def _upsert_build_from_jenkins_event(connection: Connection, parsed: ParsedJenki
         log_context={"job_name": JOB_NAME},
     )
     if target_id is None:
-        connection.execute(INSERT_BUILD_FROM_JENKINS, build_params)
-        return
+        result = connection.execute(INSERT_BUILD_FROM_JENKINS, build_params)
+        inserted_id = result.lastrowid
+        if inserted_id is None:
+            raise RuntimeError("Jenkins build insert did not return a row id")
+        return int(inserted_id)
 
     build_params["id"] = target_id
     connection.execute(UPDATE_BUILD_FROM_JENKINS, build_params)
+    return target_id
 
 
 def _ensure_audit_row(connection: Connection, *, envelope: CloudEventEnvelope, payload_json: str) -> str | None:

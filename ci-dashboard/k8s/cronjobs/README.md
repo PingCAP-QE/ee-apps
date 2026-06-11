@@ -52,6 +52,12 @@ Notes:
 
 - The Deployment should only be rolled out after the jobs image includes the V3 `consume-jenkins-events` command.
 - The worker is safe to restart because dedup happens by `event_id` in `ci_l1_jenkins_build_events`.
+- After a finished event is committed to TiDB, the worker submits one bounded,
+  asynchronous `/timings/` fetch. Fetch or parse failures are logged and do not
+  fail the Kafka event.
+- Historical repair is an explicit adhoc operation, for example
+  `ci-dashboard backfill-jenkins-timings --lookback-days 30`; there is no
+  recurring timings CronJob.
 - Current cluster values we already verified:
   - Kafka bootstrap service: `cluster-cd-kafka-bootstrap:9092`
   - Jenkins service DNS for internal callers: `http://jenkins.jenkins.svc.cluster.local`

@@ -146,6 +146,13 @@ class ConsumeJenkinsEventsSummary:
 
 
 @dataclass
+class BackfillJenkinsTimingsSummary:
+    builds_scanned: int = 0
+    builds_updated: int = 0
+    builds_failed: int = 0
+
+
+@dataclass
 class ArchiveErrorLogsSummary:
     builds_scanned: int = 0
     builds_archived: int = 0

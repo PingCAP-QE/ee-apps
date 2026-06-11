@@ -31,6 +31,15 @@ def _settings() -> Settings:
     )
 
 
+class _NoopTimingsEnricher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, str]] = []
+
+    def submit(self, *, build_id: int, build_url: str) -> bool:
+        self.calls.append((build_id, build_url))
+        return True
+
+
 def _finished_event_payload(*, event_id: str = "evt-1") -> dict[str, object]:
     return {
         "specversion": "1.0",
@@ -201,6 +210,44 @@ def test_process_jenkins_event_message_inserts_build_and_audit(sqlite_engine) ->
     assert audit["processing_status"] == "PROCESSED"
     assert audit["normalized_build_url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
     assert audit["result"] == "FAILURE"
+
+
+def test_process_jenkins_event_message_submits_timings_after_build_write(sqlite_engine) -> None:
+    enricher = _NoopTimingsEnricher()
+
+    result = process_jenkins_event_message(
+        sqlite_engine,
+        _settings(),
+        _finished_event_payload(),
+        timings_enricher=enricher,
+    )
+
+    assert result == "processed"
+    assert len(enricher.calls) == 1
+    build_id, build_url = enricher.calls[0]
+    assert build_id > 0
+    assert build_url.endswith("/ghpr_unit_test/301/")
+
+
+def test_process_jenkins_event_message_ignores_timings_submit_failure(sqlite_engine) -> None:
+    class _FailingEnricher:
+        def submit(self, *, build_id: int, build_url: str) -> bool:
+            del build_id, build_url
+            raise RuntimeError("queue unavailable")
+
+    result = process_jenkins_event_message(
+        sqlite_engine,
+        _settings(),
+        _finished_event_payload(),
+        timings_enricher=_FailingEnricher(),
+    )
+
+    assert result == "processed"
+    with sqlite_engine.begin() as connection:
+        status = connection.execute(
+            text("SELECT processing_status FROM ci_l1_jenkins_build_events")
+        ).scalar_one()
+    assert status == "PROCESSED"
 
 
 def test_process_jenkins_event_message_inserts_real_plugin_payload(sqlite_engine) -> None:
@@ -426,6 +473,7 @@ def test_run_consume_jenkins_events_commits_audited_failures(sqlite_engine) -> N
         _settings(),
         max_messages=2,
         consumer=consumer,
+        timings_enricher=_NoopTimingsEnricher(),
     )
 
     assert summary.messages_polled == 2
@@ -464,6 +512,7 @@ def test_run_consume_jenkins_events_respects_max_messages_across_partitions(sqli
         _settings(),
         max_messages=1,
         consumer=consumer,
+        timings_enricher=_NoopTimingsEnricher(),
     )
 
     assert summary.messages_polled == 1

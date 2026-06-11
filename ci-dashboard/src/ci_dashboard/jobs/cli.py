@@ -16,6 +16,7 @@ from ci_dashboard.jobs.refresh_build_derived import (
 )
 from ci_dashboard.jobs.repair_job_names import run_repair_job_names
 from ci_dashboard.jobs.jenkins_worker import run_consume_jenkins_events
+from ci_dashboard.jobs.jenkins_timings import run_backfill_jenkins_timings
 from ci_dashboard.jobs.sync_builds import run_sync_builds, run_sync_builds_for_time_window
 from ci_dashboard.jobs.sync_pr_events import (
     run_sync_pr_events,
@@ -58,6 +59,21 @@ def build_parser() -> argparse.ArgumentParser:
     consume_jenkins_parser.add_argument(
         "--topic",
         help="Override the Kafka topic name for this run",
+    )
+    backfill_jenkins_timings_parser = subparsers.add_parser(
+        "backfill-jenkins-timings",
+        help="Best-effort backfill of Jenkins timings for recent completed builds",
+    )
+    backfill_jenkins_timings_parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=30,
+        help="Completed-build lookback window in days. Default: 30",
+    )
+    backfill_jenkins_timings_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Process at most this many builds",
     )
     subparsers.add_parser("sync-pr-events", help="Sync github_tickets into ci_l1_pr_events")
     subparsers.add_parser(
@@ -236,6 +252,24 @@ def main() -> int:
         )
         logging.getLogger(__name__).info(
             "consume-jenkins-events finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
+    if args.command == "backfill-jenkins-timings":
+        if args.lookback_days <= 0:
+            parser.error("--lookback-days must be positive")
+        if args.limit is not None and args.limit <= 0:
+            parser.error("--limit must be positive")
+        engine = build_engine(settings)
+        summary = run_backfill_jenkins_timings(
+            engine,
+            settings,
+            lookback_days=args.lookback_days,
+            limit=args.limit,
+        )
+        logging.getLogger(__name__).info(
+            "backfill-jenkins-timings finished",
             extra={"summary": summary.__dict__},
         )
         return 0

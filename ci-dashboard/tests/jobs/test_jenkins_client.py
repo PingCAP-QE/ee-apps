@@ -118,6 +118,35 @@ def test_jenkins_client_fetch_console_tail_uses_progressive_text_probe_then_tail
     assert seen_starts[1] == len(full_log) - 10
 
 
+def test_jenkins_client_fetch_timings_html_uses_internal_url() -> None:
+    seen_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        return httpx.Response(200, text="<table class='jenkins-table'></table>")
+
+    client = JenkinsClient(
+        JenkinsSettings(
+            internal_base_url="http://jenkins.jenkins.svc.cluster.local:80",
+            http_timeout_seconds=30,
+        ),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    try:
+        html = client.fetch_timings_html(
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/",
+            timeout_seconds=5,
+        )
+    finally:
+        client.close()
+
+    assert html == "<table class='jenkins-table'></table>"
+    assert seen_urls == [
+        "http://jenkins.jenkins.svc.cluster.local/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/timings/"
+    ]
+
+
 def test_jenkins_client_fetch_failed_node_logs_collects_failed_stage_flow_nodes() -> None:
     seen_paths: list[str] = []
 
