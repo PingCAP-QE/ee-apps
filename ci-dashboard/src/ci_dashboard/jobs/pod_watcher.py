@@ -30,7 +30,6 @@ from ci_dashboard.jobs.sync_pods import (
     NormalizedPodEvent,
     PodMetadataSnapshot,
     _build_lifecycle_rows,
-    _build_requested_pods_relation,
     _coerce_str,
     _coerce_str_mapping,
     _decode_json_object,
@@ -44,7 +43,6 @@ from ci_dashboard.jobs.sync_pods import (
     _load_build_metadata_map,
     _load_jenkins_pod_name_url_prefix_map,
     _load_target_namespaces,
-    _null_safe_equals_sql,
     _parse_datetime,
     _pod_identity_from_values,
     _read_int_env,
@@ -838,66 +836,78 @@ def _load_existing_pod_metadata_snapshots(
 ) -> dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot]:
     if not identities:
         return {}
-    requested_pods_sql, params = _build_requested_pods_relation(identities)
-    rows = connection.execute(
-        text(
-            f"""
-            WITH requested_pods AS (
-              {requested_pods_sql}
-            )
-            SELECT
-              lifecycle.source_project,
-              lifecycle.namespace_name,
-              lifecycle.pod_uid,
-              lifecycle.pod_name,
-              lifecycle.pod_labels_json,
-              lifecycle.pod_annotations_json,
-              lifecycle.metadata_observed_at,
-              lifecycle.pod_created_at,
-              lifecycle.abnormal_reason,
-              lifecycle.abnormal_message
-            FROM ci_l1_pod_lifecycle AS lifecycle
-            JOIN requested_pods AS requested
-              ON lifecycle.source_project = requested.source_project
-             AND {_null_safe_equals_sql('lifecycle.namespace_name', 'requested.namespace_name', connection.dialect.name)}
-             AND {_null_safe_equals_sql('lifecycle.pod_uid', 'requested.pod_uid', connection.dialect.name)}
-             AND {_null_safe_equals_sql('lifecycle.pod_name', 'requested.pod_name', connection.dialect.name)}
-            """
-        ),
-        params,
-    ).mappings()
 
     snapshots: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot] = {}
-    for row in rows:
-        labels = _json_loads_str_mapping(row.get("pod_labels_json"))
-        annotations = _json_loads_str_mapping(row.get("pod_annotations_json"))
-        creation_timestamp = _parse_datetime(row.get("pod_created_at"))
-        abnormal_reason = _coerce_str(row.get("abnormal_reason"))
-        abnormal_message = _coerce_str(row.get("abnormal_message"))
-        if (
-            not labels
-            and not annotations
-            and creation_timestamp is None
-            and abnormal_reason is None
-            and abnormal_message is None
-        ):
-            continue
-        identity = _pod_identity_from_values(
-            source_project=_coerce_str(row.get("source_project")) or "",
-            namespace_name=_coerce_str(row.get("namespace_name")),
-            pod_uid=_coerce_str(row.get("pod_uid")),
-            pod_name=_coerce_str(row.get("pod_name")),
-        )
-        snapshots[identity] = PodMetadataSnapshot(
-            pod_uid=_coerce_str(row.get("pod_uid")),
-            labels=labels,
-            annotations=annotations,
-            observed_at=_parse_datetime(row.get("metadata_observed_at"))
-            or datetime.now(UTC).replace(tzinfo=None),
-            creation_timestamp=creation_timestamp,
-            abnormal_reason=abnormal_reason,
-            abnormal_message=abnormal_message,
-        )
+    for offset in range(0, len(identities), 50):
+        sub_batch = identities[offset : offset + 50]
+        branches: list[str] = []
+        params: dict[str, Any] = {}
+        for index, (source_project, namespace_name, pod_uid, pod_name) in enumerate(sub_batch):
+            conditions = [f"lifecycle.source_project = :metadata_source_project_{index}"]
+            params[f"metadata_source_project_{index}"] = source_project
+            for column_name, value in (
+                ("namespace_name", namespace_name),
+                ("pod_uid", pod_uid),
+                ("pod_name", pod_name),
+            ):
+                if value is None:
+                    conditions.append(f"lifecycle.{column_name} IS NULL")
+                else:
+                    param_name = f"metadata_{column_name}_{index}"
+                    conditions.append(f"lifecycle.{column_name} = :{param_name}")
+                    params[param_name] = value
+            branches.append(
+                f"""
+                SELECT
+                  lifecycle.source_project,
+                  lifecycle.namespace_name,
+                  lifecycle.pod_uid,
+                  lifecycle.pod_name,
+                  lifecycle.pod_labels_json,
+                  lifecycle.pod_annotations_json,
+                  lifecycle.metadata_observed_at,
+                  lifecycle.pod_created_at,
+                  lifecycle.abnormal_reason,
+                  lifecycle.abnormal_message
+                FROM ci_l1_pod_lifecycle AS lifecycle
+                WHERE {" AND ".join(conditions)}
+                """
+            )
+
+        rows = connection.execute(
+            text("\nUNION ALL\n".join(branches)),
+            params,
+        ).mappings()
+        for row in rows:
+            labels = _json_loads_str_mapping(row.get("pod_labels_json"))
+            annotations = _json_loads_str_mapping(row.get("pod_annotations_json"))
+            creation_timestamp = _parse_datetime(row.get("pod_created_at"))
+            abnormal_reason = _coerce_str(row.get("abnormal_reason"))
+            abnormal_message = _coerce_str(row.get("abnormal_message"))
+            if (
+                not labels
+                and not annotations
+                and creation_timestamp is None
+                and abnormal_reason is None
+                and abnormal_message is None
+            ):
+                continue
+            identity = _pod_identity_from_values(
+                source_project=_coerce_str(row.get("source_project")) or "",
+                namespace_name=_coerce_str(row.get("namespace_name")),
+                pod_uid=_coerce_str(row.get("pod_uid")),
+                pod_name=_coerce_str(row.get("pod_name")),
+            )
+            snapshots[identity] = PodMetadataSnapshot(
+                pod_uid=_coerce_str(row.get("pod_uid")),
+                labels=labels,
+                annotations=annotations,
+                observed_at=_parse_datetime(row.get("metadata_observed_at"))
+                or datetime.now(UTC).replace(tzinfo=None),
+                creation_timestamp=creation_timestamp,
+                abnormal_reason=abnormal_reason,
+                abnormal_message=abnormal_message,
+            )
     return snapshots
 
 

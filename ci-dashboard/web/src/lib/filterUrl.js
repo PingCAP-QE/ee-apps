@@ -98,6 +98,9 @@ export function readFiltersFromSearch(defaultRange, pathname, search) {
 }
 
 export function buildFilterSearch(filters, pathname) {
+  if (pathname === "/") {
+    return "";
+  }
   const normalized = normalizeFiltersForPath(pathname, filters);
   const params = new URLSearchParams();
   FILTER_QUERY_KEYS.forEach((key) => {

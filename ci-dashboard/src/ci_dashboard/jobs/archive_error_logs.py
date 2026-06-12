@@ -25,7 +25,18 @@ FETCH_CANDIDATE_BUILD_BY_ID = text(
     WHERE id = :build_id
       AND build_system = 'JENKINS'
       AND state IN :failure_states
-      AND (:force = 1 OR log_gcs_uri IS NULL)
+      AND log_gcs_uri IS NULL
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_CANDIDATE_BUILD_BY_ID_FORCE = text(
+    """
+    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+           start_time, completion_time
+    FROM ci_l1_builds
+    WHERE id = :build_id
+      AND build_system = 'JENKINS'
+      AND state IN :failure_states
     """
 ).bindparams(bindparam("failure_states", expanding=True))
 
@@ -36,7 +47,19 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
       AND state IN :failure_states
-      AND (:force = 1 OR log_gcs_uri IS NULL)
+      AND log_gcs_uri IS NULL
+    ORDER BY start_time DESC, id DESC
+    LIMIT :limit_value
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_CANDIDATE_BUILDS_SCAN_FORCE = text(
+    """
+    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+           start_time, completion_time
+    FROM ci_l1_builds
+    WHERE build_system = 'JENKINS'
+      AND state IN :failure_states
     ORDER BY start_time DESC, id DESC
     LIMIT :limit_value
     """
@@ -85,21 +108,19 @@ def run_archive_error_logs(
         if build_id is not None:
             candidates = list(
                 connection.execute(
-                    FETCH_CANDIDATE_BUILD_BY_ID,
+                    FETCH_CANDIDATE_BUILD_BY_ID_FORCE if force else FETCH_CANDIDATE_BUILD_BY_ID,
                     {
                         "build_id": build_id,
                         "failure_states": FAILURE_LIKE_STATES,
-                        "force": 1 if force else 0,
                     },
                 ).mappings()
             )
         else:
             candidates = list(
                 connection.execute(
-                    FETCH_CANDIDATE_BUILDS_SCAN,
+                    FETCH_CANDIDATE_BUILDS_SCAN_FORCE if force else FETCH_CANDIDATE_BUILDS_SCAN,
                     {
                         "failure_states": FAILURE_LIKE_STATES,
-                        "force": 1 if force else 0,
                         "limit_value": resolved_limit,
                     },
                 ).mappings()

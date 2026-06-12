@@ -295,6 +295,49 @@ def test_run_analyze_errors_classifies_via_rules(sqlite_engine) -> None:
     assert row["error_l2_subcategory"] == "NETWORK"
 
 
+def test_run_analyze_errors_scans_partial_machine_classification(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=102,
+        job_name="ghpr_check2",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/102.log",
+        error_l1_category="OTHERS",
+        error_l2_subcategory=None,
+    )
+    reader = _FakeReader(
+        {
+            ("ci-dashboard-test", "2604/102.log"): "fatal: dial tcp 10.0.0.1:443: i/o timeout",
+        }
+    )
+    classifier = _FakeClassifier(
+        ErrorClassification(
+            l1_category="OTHERS",
+            l2_subcategory="UNCLASSIFIED",
+            source="llm:test",
+        )
+    )
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        reader=reader,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=classifier,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_classified == 1
+    assert summary.builds_rule_classified == 1
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 102")
+        ).mappings().one()
+
+    assert row["error_l1_category"] == "INFRA"
+    assert row["error_l2_subcategory"] == "NETWORK"
+
+
 def test_run_analyze_errors_classifies_prow_superseded_abort_from_metadata(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,

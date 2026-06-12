@@ -14,6 +14,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_repo_group_stack_page,
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
+    get_cost_weekly_account_summaries_page,
     get_cost_weekly_overview_page,
     get_flaky_page,
     get_overview_page,
@@ -21,20 +22,7 @@ from ci_dashboard.api.queries.pages import (
 )
 from ci_dashboard.api.queries.runtime import get_error_builds, get_error_top_jobs
 from ci_dashboard.api.routes.common import get_common_filters
-from ci_dashboard.common.config import Settings, get_settings
-
-
 router = APIRouter(prefix="/api/v1/pages", tags=["pages"])
-
-
-@router.get("/navigation")
-def navigation_page(settings: Settings = Depends(get_settings)) -> dict[str, object]:
-    return {
-        "features": {
-            "runtime_insights_enabled": settings.features.runtime_insights_enabled,
-            "cost_dashboard_enabled": settings.features.cost_dashboard_enabled,
-        }
-    }
 
 
 @router.get("/overview")
@@ -98,6 +86,14 @@ def cost_weekly_overview_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_weekly_overview_page(engine, filters)
+
+
+@router.get("/cost-weekly-account-summaries")
+def cost_weekly_account_summaries_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_weekly_account_summaries_page(engine, filters)
 
 
 @router.get("/cost-repo-group-stack")

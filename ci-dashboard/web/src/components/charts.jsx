@@ -102,14 +102,30 @@ export function PageIntro({ eyebrow, title, description, kicker }) {
   );
 }
 
-export function StatCard({ label, value, detail, delta, tone = "default" }) {
+export function StatCard({
+  label,
+  value,
+  detail,
+  delta,
+  deltaTone,
+  tone = "default",
+}) {
+  const deltaClassName = [
+    "stat-card__delta",
+    deltaTone ? `stat-card__delta--${deltaTone}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <article className={`stat-card stat-card--${tone}`}>
       <span className="stat-card__label">{label}</span>
       <strong className="stat-card__value">{value}</strong>
       <div className="stat-card__meta">
         <span>{detail}</span>
-        {delta ? <span className="stat-card__delta">{delta}</span> : null}
+        {delta ? (
+          <span className={deltaClassName}>{delta}</span>
+        ) : null}
       </div>
     </article>
   );

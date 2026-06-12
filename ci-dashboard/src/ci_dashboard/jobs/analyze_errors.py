@@ -22,7 +22,87 @@ REMOTING_RULE_SOURCES = {
     "rule:infra_jenkins_remoting",
 }
 
-FETCH_CANDIDATE_BUILDS_SCAN = text(
+FETCH_UNCLASSIFIED_CANDIDATE_IDS = text(
+    """
+    SELECT b.id, b.start_time
+    FROM ci_l1_builds b
+    WHERE b.state = :failure_state
+      AND b.revise_error_l1_category IS NULL
+      AND b.revise_error_l2_subcategory IS NULL
+      AND b.log_gcs_uri IS NOT NULL
+      AND (
+        b.error_l1_category IS NULL
+        OR b.error_l2_subcategory IS NULL
+      )
+    ORDER BY b.start_time DESC, b.id DESC
+    LIMIT :limit_value
+    """
+)
+
+FETCH_UNCLASSIFIED_CANDIDATE_IDS_FORCE = text(
+    """
+    SELECT b.id, b.start_time
+    FROM ci_l1_builds b
+    WHERE b.state = :failure_state
+      AND b.revise_error_l1_category IS NULL
+      AND b.revise_error_l2_subcategory IS NULL
+      AND b.log_gcs_uri IS NOT NULL
+    ORDER BY b.start_time DESC, b.id DESC
+    LIMIT :limit_value
+    """
+)
+
+FETCH_SUPERSEDED_CANDIDATE_IDS = text(
+    """
+    SELECT b.id, b.start_time
+    FROM prow_jobs pj
+    JOIN ci_l1_builds b ON b.source_prow_job_id = pj.prowJobId
+    WHERE pj.state = 'aborted'
+      AND b.state IN :failure_states
+      AND b.revise_error_l1_category IS NULL
+      AND b.revise_error_l2_subcategory IS NULL
+      AND (
+        COALESCE(b.error_l1_category, '') <> 'OTHERS'
+        OR COALESCE(b.error_l2_subcategory, '') <> 'SUPERSEDED_BY_NEWER_BUILD'
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM ci_l1_builds newer
+        WHERE newer.repo_full_name = b.repo_full_name
+          AND newer.pr_number = b.pr_number
+          AND newer.job_name = b.job_name
+          AND newer.start_time > b.start_time
+          AND newer.id <> b.id
+      )
+    ORDER BY b.start_time DESC, b.id DESC
+    LIMIT :limit_value
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_SUPERSEDED_CANDIDATE_IDS_FORCE = text(
+    """
+    SELECT b.id, b.start_time
+    FROM prow_jobs pj
+    JOIN ci_l1_builds b ON b.source_prow_job_id = pj.prowJobId
+    WHERE pj.state = 'aborted'
+      AND b.state IN :failure_states
+      AND b.revise_error_l1_category IS NULL
+      AND b.revise_error_l2_subcategory IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM ci_l1_builds newer
+        WHERE newer.repo_full_name = b.repo_full_name
+          AND newer.pr_number = b.pr_number
+          AND newer.job_name = b.job_name
+          AND newer.start_time > b.start_time
+          AND newer.id <> b.id
+      )
+    ORDER BY b.start_time DESC, b.id DESC
+    LIMIT :limit_value
+    """
+).bindparams(bindparam("failure_states", expanding=True))
+
+FETCH_CANDIDATE_BUILDS_BY_IDS = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
            b.pr_number, b.head_sha, b.url, b.normalized_build_url, b.pod_name, b.log_gcs_uri,
@@ -54,46 +134,10 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
            END AS has_newer_pr_job_version_with_different_sha
     FROM ci_l1_builds b
     LEFT JOIN prow_jobs pj ON pj.prowJobId = b.source_prow_job_id
-    WHERE (b.log_gcs_uri IS NOT NULL OR (
-        pj.state = 'aborted'
-        AND EXISTS (
-          SELECT 1
-          FROM ci_l1_builds newer
-          WHERE newer.repo_full_name = b.repo_full_name
-            AND newer.pr_number = b.pr_number
-            AND newer.job_name = b.job_name
-            AND newer.start_time > b.start_time
-            AND newer.id <> b.id
-        )
-      ))
-      AND b.state IN :failure_states
-      AND b.revise_error_l1_category IS NULL
-      AND b.revise_error_l2_subcategory IS NULL
-      AND (
-        :force = 1
-        OR b.error_l1_category IS NULL
-        OR b.error_l2_subcategory IS NULL
-        OR (
-          pj.state = 'aborted'
-          AND EXISTS (
-            SELECT 1
-            FROM ci_l1_builds newer
-            WHERE newer.repo_full_name = b.repo_full_name
-              AND newer.pr_number = b.pr_number
-              AND newer.job_name = b.job_name
-              AND newer.start_time > b.start_time
-              AND newer.id <> b.id
-          )
-          AND (
-            COALESCE(b.error_l1_category, '') <> 'OTHERS'
-            OR COALESCE(b.error_l2_subcategory, '') <> 'SUPERSEDED_BY_NEWER_BUILD'
-          )
-        )
-      )
+    WHERE b.id IN :build_ids
     ORDER BY b.start_time DESC, b.id DESC
-    LIMIT :limit_value
     """
-).bindparams(bindparam("failure_states", expanding=True))
+).bindparams(bindparam("build_ids", expanding=True))
 
 FETCH_CANDIDATE_BUILD_BY_ID = text(
     """
@@ -246,15 +290,10 @@ def run_analyze_errors(
                 ).mappings()
             )
         else:
-            candidates = list(
-                connection.execute(
-                    FETCH_CANDIDATE_BUILDS_SCAN,
-                    {
-                        "failure_states": FAILURE_LIKE_STATES,
-                        "force": 1 if force else 0,
-                        "limit_value": resolved_limit,
-                    },
-                ).mappings()
+            candidates = _fetch_candidate_builds_scan(
+                connection,
+                limit=resolved_limit,
+                force=force,
             )
         pod_evidence_by_build_id = _load_pod_evidence_by_build_id(connection, candidates)
 
@@ -326,6 +365,47 @@ def run_analyze_errors(
             connection.execute(UPDATE_MACHINE_CLASSIFICATION, pending_updates)
 
     return summary
+
+
+def _fetch_candidate_builds_scan(
+    connection: Any,
+    *,
+    limit: int,
+    force: bool,
+) -> list[Mapping[str, Any]]:
+    candidate_rows: dict[int, Mapping[str, Any]] = {}
+    unclassified_query = (
+        FETCH_UNCLASSIFIED_CANDIDATE_IDS_FORCE if force else FETCH_UNCLASSIFIED_CANDIDATE_IDS
+    )
+    superseded_query = (
+        FETCH_SUPERSEDED_CANDIDATE_IDS_FORCE if force else FETCH_SUPERSEDED_CANDIDATE_IDS
+    )
+
+    for failure_state in FAILURE_LIKE_STATES:
+        params = {"failure_state": failure_state, "limit_value": limit}
+        for row in connection.execute(unclassified_query, params).mappings():
+            candidate_rows[int(row["id"])] = row
+
+    for row in connection.execute(
+        superseded_query,
+        {"failure_states": FAILURE_LIKE_STATES, "limit_value": limit},
+    ).mappings():
+        candidate_rows[int(row["id"])] = row
+
+    selected_rows = sorted(
+        candidate_rows.values(),
+        key=lambda row: (str(row["start_time"] or ""), int(row["id"])),
+        reverse=True,
+    )[:limit]
+    if not selected_rows:
+        return []
+
+    return list(
+        connection.execute(
+            FETCH_CANDIDATE_BUILDS_BY_IDS,
+            {"build_ids": [int(row["id"]) for row in selected_rows]},
+        ).mappings()
+    )
 
 
 def review_error_classification(

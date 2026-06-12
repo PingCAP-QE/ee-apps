@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ALL_COST_SOURCES, COST_PATH } from "./filterUrl";
+import { ALL_COST_SOURCES, COST_PATH } from "./filterUrl.js";
 
 function normalizePrefix(value) {
   if (!value || value === "/") {
@@ -10,7 +10,8 @@ function normalizePrefix(value) {
   return trimmed ? `/${trimmed}` : "";
 }
 
-const API_BASE = normalizePrefix(import.meta.env.VITE_API_BASE_URL || import.meta.env.BASE_URL);
+const viteEnv = import.meta.env || {};
+const API_BASE = normalizePrefix(viteEnv.VITE_API_BASE_URL || viteEnv.BASE_URL);
 export const COST_DATA_LAG_DAYS = 4;
 
 export function getDefaultDateRange() {
@@ -54,6 +55,29 @@ export function getPreviousDateRange(startDate, endDate) {
     start_date: toDateInputValue(previousStart),
     end_date: toDateInputValue(previousEnd),
   };
+}
+
+export function getPreviousCompleteMondayWeek(referenceDate = new Date()) {
+  const end = new Date(referenceDate);
+  end.setHours(0, 0, 0, 0);
+  const daysSincePreviousSunday = end.getDay() || 7;
+  end.setDate(end.getDate() - daysSincePreviousSunday);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  return {
+    start_date: toDateInputValue(start),
+    end_date: toDateInputValue(end),
+  };
+}
+
+export function getStableCostSummaryWeek(referenceDate = new Date()) {
+  const previousWeek = getPreviousCompleteMondayWeek(referenceDate);
+  const day = referenceDate.getDay();
+  const mondayBasedDay = day === 0 ? 7 : day;
+  if (mondayBasedDay >= 4) {
+    return previousWeek;
+  }
+  return getPreviousDateRange(previousWeek.start_date, previousWeek.end_date);
 }
 
 export function getPreviousCompleteSaturdayWeek(referenceDate = new Date()) {
@@ -192,6 +216,11 @@ export function averageSeriesPoints(series, key) {
 
 export function findGroup(groups, name) {
   return groups?.find((group) => group.name === name)?.values || null;
+}
+
+export function getLatestBranchValue(rows, branch) {
+  const row = (rows || []).find((item) => item.branch === branch);
+  return Number((row?.values || []).at(-1) || 0);
 }
 
 export function formatNumber(value) {

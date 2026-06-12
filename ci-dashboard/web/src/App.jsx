@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { DashboardLayout } from "./components/layout";
-import OverviewPage from "./pages/OverviewPage";
+import WeeklySummaryPage from "./pages/WeeklySummaryPage";
 import BuildTrendPage from "./pages/BuildTrendPage";
 import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
@@ -45,25 +45,7 @@ export default function App() {
   const filters = filtersByPath[location.pathname]
     || readFiltersFromSearch(defaultRange, location.pathname, location.search);
   const isCostPage = location.pathname === COST_PATH;
-  const navigation = useApiData("/api/v1/pages/navigation");
-  const runtimeInsightsEnabled = navigation.data?.features?.runtime_insights_enabled === true;
-  const costDashboardEnabled = navigation.data?.features?.cost_dashboard_enabled === true;
-  const runtimeInsightsReady = !navigation.loading;
-  const costDashboardReady = !navigation.loading;
-  const runtimeInsightsRoute = runtimeInsightsEnabled ? (
-    <RuntimeInsightsPage filters={filters} />
-  ) : runtimeInsightsReady ? (
-    <Navigate to={CI_STATUS_PATH} replace />
-  ) : (
-    <div className="empty-state">Loading feature settings...</div>
-  );
-  const costDashboardRoute = costDashboardEnabled ? (
-    <CostPage filters={filters} />
-  ) : costDashboardReady ? (
-    <Navigate to={CI_STATUS_PATH} replace />
-  ) : (
-    <div className="empty-state">Loading feature settings...</div>
-  );
+  const isWeeklySummaryPage = location.pathname === "/";
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -150,7 +132,7 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage,
+    !isCostPage && !isWeeklySummaryPage,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -158,11 +140,11 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  }, !isCostPage);
+  }, !isCostPage && !isWeeklySummaryPage);
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
-    isCostPage && costDashboardEnabled,
+    isCostPage,
   );
   const costSourceOptions = buildCostSourceOptions(
     costSources.data?.items,
@@ -224,16 +206,19 @@ export default function App() {
       filters={filters}
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
-      features={{ runtimeInsightsEnabled, costDashboardEnabled }}
       navSearchByPath={navSearchByPath}
+      showFilters={!isWeeklySummaryPage}
     >
       <Routes>
-        <Route path="/" element={<OverviewPage filters={filters} />} />
+        <Route path="/" element={<WeeklySummaryPage />} />
         <Route path={CI_STATUS_PATH} element={<BuildTrendPage filters={filters} />} />
         <Route path="/flaky" element={<FlakyPage filters={filters} />} />
         <Route path={MIGRATE_STATUS_PATH} element={<MigrateStatusPage filters={filters} />} />
-        <Route path={RUNTIME_INSIGHTS_PATH} element={runtimeInsightsRoute} />
-        <Route path={COST_PATH} element={costDashboardRoute} />
+        <Route
+          path={RUNTIME_INSIGHTS_PATH}
+          element={<RuntimeInsightsPage filters={filters} />}
+        />
+        <Route path={COST_PATH} element={<CostPage filters={filters} />} />
       </Routes>
     </DashboardLayout>
   );

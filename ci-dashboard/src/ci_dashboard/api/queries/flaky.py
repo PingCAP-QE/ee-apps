@@ -299,8 +299,14 @@ def get_distinct_flaky_case_counts_by_branch(
                   SELECT
                     pcr.branch,
                     pcr.case_name,
-                    {_normalize_case_build_key_expr(connection, "pcr.build_url")} AS build_key,
-                    {_case_cloud_phase_expr("pcr.build_url")} AS cloud_phase,
+                    COALESCE(
+                      NULLIF(pcr.normalized_build_key, ''),
+                      {_normalize_case_build_key_expr(connection, "pcr.build_url")}
+                    ) AS build_key,
+                    UPPER(COALESCE(
+                      NULLIF(pcr.cloud_phase, ''),
+                      {_case_cloud_phase_expr("pcr.build_url")}
+                    )) AS cloud_phase,
                     pcr.report_time,
                     CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
                   FROM problem_case_runs pcr
@@ -1097,8 +1103,14 @@ def _fetch_issue_weekly_rate_rows(
               SELECT
                 pcr.branch,
                 pcr.case_name,
-                {_normalize_case_build_key_expr(connection, "pcr.build_url")} AS build_key,
-                {_case_cloud_phase_expr("pcr.build_url")} AS cloud_phase,
+                COALESCE(
+                  NULLIF(pcr.normalized_build_key, ''),
+                  {_normalize_case_build_key_expr(connection, "pcr.build_url")}
+                ) AS build_key,
+                UPPER(COALESCE(
+                  NULLIF(pcr.cloud_phase, ''),
+                  {_case_cloud_phase_expr("pcr.build_url")}
+                )) AS cloud_phase,
                 pcr.report_time,
                 CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
               FROM problem_case_runs pcr
@@ -1264,8 +1276,14 @@ def _fetch_weekly_flaky_case_presence(
               SELECT
                 pcr.branch,
                 pcr.case_name,
-                {_normalize_case_build_key_expr(connection, "pcr.build_url")} AS build_key,
-                {_case_cloud_phase_expr("pcr.build_url")} AS cloud_phase,
+                COALESCE(
+                  NULLIF(pcr.normalized_build_key, ''),
+                  {_normalize_case_build_key_expr(connection, "pcr.build_url")}
+                ) AS build_key,
+                UPPER(COALESCE(
+                  NULLIF(pcr.cloud_phase, ''),
+                  {_case_cloud_phase_expr("pcr.build_url")}
+                )) AS cloud_phase,
                 pcr.report_time,
                 CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
               FROM problem_case_runs pcr
