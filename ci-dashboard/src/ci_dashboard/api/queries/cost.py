@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Mapping
 
@@ -12,6 +13,7 @@ from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, 
 
 COST_STACK_LIMIT = 8
 UNMATCHED_RESOURCE_LIMIT = 20
+UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
@@ -402,7 +404,113 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
     return {"items": items}
 
 
+def get_weekly_account_summaries(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    cost_filters = _cost_filters(filters)
+    previous_start, previous_end = _previous_window(cost_filters)
+    if (
+        cost_filters.start_date is None
+        or cost_filters.end_date is None
+        or previous_start is None
+        or previous_end is None
+    ):
+        return {"scope": cost_filters.meta(), "items": []}
+
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT
+                  s.vendor,
+                  s.account_id,
+                  s.display_name,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :current_start AND :current_end
+                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                  ) AS net_cost,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :previous_start AND :previous_end
+                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                  ) AS previous_net_cost
+                FROM cost_sources s
+                LEFT JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                 AND c.usage_date BETWEEN :previous_start AND :current_end
+                WHERE s.is_active = :is_active
+                GROUP BY s.vendor, s.account_id, s.display_name
+                ORDER BY s.vendor, s.account_id
+                """
+            ),
+            {
+                "current_start": cost_filters.start_date,
+                "current_end": cost_filters.end_date,
+                "previous_start": previous_start,
+                "previous_end": previous_end,
+                "is_active": 1,
+            },
+        ).mappings()
+        annual_budgets = _annual_budgets_by_account(
+            connection,
+            year=cost_filters.end_date.year,
+        )
+
+        items = []
+        for row in rows:
+            vendor = str(row["vendor"])
+            account_id = str(row["account_id"])
+            annual_budget = annual_budgets.get(
+                (vendor, account_id),
+            )
+            net_cost = _money(row["net_cost"])
+            previous_net_cost = _money(row["previous_net_cost"])
+            weekly_budget = round(annual_budget / 52, 2) if annual_budget is not None else None
+            items.append(
+                {
+                    "cost_source": _cost_source_value(
+                        vendor,
+                        account_id,
+                    ),
+                    "vendor": vendor,
+                    "account_id": account_id,
+                    "display_name": str(row["display_name"] or ""),
+                    "net_cost": net_cost,
+                    "previous_net_cost": previous_net_cost,
+                    "net_cost_wow_pct": rate_pct(
+                        net_cost - previous_net_cost,
+                        previous_net_cost,
+                    ),
+                    "annual_budget": annual_budget,
+                    "weekly_budget": weekly_budget,
+                    "over_budget": weekly_budget is not None and net_cost > weekly_budget,
+                }
+            )
+
+    return {
+        "scope": cost_filters.meta(),
+        "previous_scope": {
+            **cost_filters.meta(),
+            "start_date": previous_start.isoformat(),
+            "end_date": previous_end.isoformat(),
+        },
+        "items": items,
+    }
+
+
 def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    requested_filters = filters
+    if (
+        filters.start_date is not None
+        and filters.end_date is not None
+        and (filters.end_date - filters.start_date).days + 1 > UNMATCHED_RESOURCE_MAX_WINDOW_DAYS
+    ):
+        filters = replace(
+            filters,
+            start_date=filters.end_date - timedelta(days=UNMATCHED_RESOURCE_MAX_WINDOW_DAYS - 1),
+        )
+
     with engine.begin() as connection:
         attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
         resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
@@ -536,7 +644,15 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
 
     return {
         "items": items,
-        "meta": {**filters.meta(), "limit": UNMATCHED_RESOURCE_LIMIT},
+        "meta": {
+            **filters.meta(),
+            "requested_start_date": (
+                requested_filters.start_date.isoformat() if requested_filters.start_date else None
+            ),
+            "window_limited": filters.start_date != requested_filters.start_date,
+            "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
+            "limit": UNMATCHED_RESOURCE_LIMIT,
+        },
     }
 
 
@@ -854,10 +970,12 @@ def _annual_budget_for_filters(
         "year_start": year_start,
         "year_end": year_end,
     }
-    source_wide_total = connection.execute(
+    source_wide_row = connection.execute(
         text(
             """
-            SELECT COALESCE(SUM(budget_amount), 0) AS budget_amount
+            SELECT
+              COUNT(*) AS budget_count,
+              COALESCE(SUM(budget_amount), 0) AS budget_amount
             FROM cost_budgets
             WHERE vendor = :vendor
               AND account_id = :account_id
@@ -870,15 +988,17 @@ def _annual_budget_for_filters(
             """
         ),
         params,
-    ).scalar_one()
-    source_wide_budget = _money(source_wide_total)
-    if source_wide_budget > 0:
+    ).mappings().one()
+    source_wide_budget = _money(source_wide_row["budget_amount"])
+    if int(source_wide_row["budget_count"] or 0) > 0:
         return round(source_wide_budget, 2)
 
-    fallback_total = connection.execute(
+    fallback_row = connection.execute(
         text(
             """
-            SELECT COALESCE(SUM(budget_amount), 0) AS budget_amount
+            SELECT
+              COUNT(*) AS budget_count,
+              COALESCE(SUM(budget_amount), 0) AS budget_amount
             FROM cost_budgets
             WHERE vendor = :vendor
               AND account_id = :account_id
@@ -889,11 +1009,88 @@ def _annual_budget_for_filters(
             """
         ),
         params,
-    ).scalar_one()
-    fallback_budget = _money(fallback_total)
-    if fallback_budget <= 0:
+    ).mappings().one()
+    fallback_budget = _money(fallback_row["budget_amount"])
+    if int(fallback_row["budget_count"] or 0) == 0:
         return None
     return round(fallback_budget, 2)
+
+
+def _annual_budgets_by_account(
+    connection: Connection,
+    *,
+    year: int,
+) -> dict[tuple[str, str], float]:
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+    rows = connection.execute(
+        text(
+            """
+            SELECT
+              vendor,
+              account_id,
+              SUM(
+                CASE
+                  WHEN group_id IS NULL
+                    AND manager_id IS NULL
+                    AND repo IS NULL
+                    AND label_filters IS NULL
+                  THEN budget_amount
+                  ELSE 0
+                END
+              ) AS source_wide_budget,
+              SUM(
+                CASE
+                  WHEN group_id IS NULL
+                    AND manager_id IS NULL
+                    AND repo IS NULL
+                    AND label_filters IS NULL
+                  THEN 1
+                  ELSE 0
+                END
+              ) AS source_wide_budget_count,
+              SUM(
+                CASE
+                  WHEN group_id IS NULL AND manager_id IS NULL
+                  THEN budget_amount
+                  ELSE 0
+                END
+              ) AS fallback_budget,
+              SUM(
+                CASE
+                  WHEN group_id IS NULL AND manager_id IS NULL
+                  THEN 1
+                  ELSE 0
+                END
+              ) AS fallback_budget_count
+            FROM cost_budgets
+            WHERE period_start_date <= :year_start
+              AND period_end_date >= :year_end
+            GROUP BY vendor, account_id
+            """
+        ),
+        {
+            "year_start": year_start,
+            "year_end": year_end,
+        },
+    ).mappings()
+
+    budgets: dict[tuple[str, str], float] = {}
+    for row in rows:
+        source_wide_budget = _money(row["source_wide_budget"])
+        fallback_budget = _money(row["fallback_budget"])
+        if int(row["source_wide_budget_count"] or 0) > 0:
+            annual_budget = source_wide_budget
+        elif int(row["fallback_budget_count"] or 0) > 0:
+            annual_budget = fallback_budget
+        else:
+            continue
+        if annual_budget >= 0:
+            budgets[(str(row["vendor"]), str(row["account_id"]))] = round(
+                annual_budget,
+                2,
+            )
+    return budgets
 
 
 def _annual_budgets_for_filters(

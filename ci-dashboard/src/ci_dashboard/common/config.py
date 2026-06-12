@@ -24,22 +24,6 @@ def _read_int(environ: Mapping[str, str], key: str, default: int) -> int:
     return value
 
 
-def _read_bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
-    raw = environ.get(key)
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if value == "":
-        return default
-    if value in {"1", "true", "yes", "y", "on"}:
-        return True
-    if value in {"0", "false", "no", "n", "off"}:
-        return False
-    raise ValueError(
-        f"{key} must be a boolean (accepted values: true/false, yes/no, 1/0, on/off), got {raw!r}"
-    )
-
-
 def _read_csv(environ: Mapping[str, str], key: str, default: tuple[str, ...]) -> tuple[str, ...]:
     raw = environ.get(key)
     if raw is None:
@@ -106,12 +90,6 @@ class LLMSettings:
 
 
 @dataclass(frozen=True)
-class FeatureSettings:
-    runtime_insights_enabled: bool = False
-    cost_dashboard_enabled: bool = False
-
-
-@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     jobs: JobSettings
@@ -120,7 +98,6 @@ class Settings:
     jenkins_ingest: JenkinsIngestSettings = JenkinsIngestSettings()
     archive: ArchiveSettings = ArchiveSettings()
     llm: LLMSettings = LLMSettings()
-    features: FeatureSettings = FeatureSettings()
     log_level: str = "INFO"
 
 
@@ -201,18 +178,6 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             api_key=env.get("CI_DASHBOARD_LLM_API_KEY") or None,
             base_url=env.get("CI_DASHBOARD_LLM_BASE_URL") or None,
             reasoning_effort=env.get("CI_DASHBOARD_LLM_REASONING_EFFORT") or None,
-        ),
-        features=FeatureSettings(
-            runtime_insights_enabled=_read_bool(
-                env,
-                "CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS",
-                False,
-            ),
-            cost_dashboard_enabled=_read_bool(
-                env,
-                "CI_DASHBOARD_ENABLE_COST_DASHBOARD",
-                False,
-            ),
         ),
         log_level=(env.get("CI_DASHBOARD_LOG_LEVEL") or "INFO").upper(),
     )

@@ -8,13 +8,11 @@ export function DashboardLayout({
   filters,
   onFilterChange,
   filterOptions,
-  features = {},
   navSearchByPath = {},
+  showFilters = true,
   children,
 }) {
   const currentVersion = packageInfo.version;
-  const showRuntimeInsights = features.runtimeInsightsEnabled === true;
-  const showCostDashboard = features.costDashboardEnabled === true;
 
   return (
     <div className="app-shell">
@@ -25,7 +23,12 @@ export function DashboardLayout({
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
-          <NavItem to="/" search={navSearchByPath["/"]} label="Overview" caption="Signal at a glance" />
+          <NavItem
+            to="/"
+            search={navSearchByPath["/"]}
+            label="Weekly Summary"
+            caption="Last complete Monday-Sunday week"
+          />
           <NavItem
             to="/ci-status"
             search={navSearchByPath["/ci-status"]}
@@ -44,22 +47,18 @@ export function DashboardLayout({
             label="GCP Migration"
             caption="GCP rollout and runtime drift"
           />
-          {showCostDashboard && (
-            <NavItem
-              to="/cost"
-              search={navSearchByPath["/cost"]}
-              label="Cost"
-              caption="Spend by repo and engineering ownership"
-            />
-          )}
-          {showRuntimeInsights && (
-            <NavItem
-              to="/runtime-insights"
-              search={navSearchByPath["/runtime-insights"]}
-              label="CI details insight"
-              caption="Pod and Jenkins diagnosis"
-            />
-          )}
+          <NavItem
+            to="/cost"
+            search={navSearchByPath["/cost"]}
+            label="Cost"
+            caption="Spend by repo and engineering ownership"
+          />
+          <NavItem
+            to="/runtime-insights"
+            search={navSearchByPath["/runtime-insights"]}
+            label="CI details insight"
+            caption="Pod and Jenkins diagnosis"
+          />
         </nav>
 
         <div className="sidebar-note">
@@ -72,11 +71,13 @@ export function DashboardLayout({
       </aside>
 
       <div className="main-column">
-        <FilterBar
-          filters={filters}
-          onFilterChange={onFilterChange}
-          filterOptions={filterOptions}
-        />
+        {showFilters ? (
+          <FilterBar
+            filters={filters}
+            onFilterChange={onFilterChange}
+            filterOptions={filterOptions}
+          />
+        ) : null}
         <main className="page-content">{children}</main>
       </div>
     </div>

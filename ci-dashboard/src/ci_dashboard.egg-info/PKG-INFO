@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: ci-dashboard
-Version: 0.3.6
+Version: 0.4.1
 Summary: CI dashboard jobs and API scaffold
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -87,6 +87,7 @@ Notes:
 - local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
+- the Cost and CI details insight tabs are always available
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes
@@ -94,6 +95,11 @@ Notes:
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 - `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest
 - `scripts/render_archive_error_logs_cronjob.sh` renders the V3 Jenkins error-log archive CronJob manifest
+- Jenkins finished events asynchronously enrich the canonical build row from the
+  Jenkins `/timings/` page. This fetch is best-effort and does not block Kafka
+  offset commits.
+- `backfill-jenkins-timings --lookback-days 30` provides a one-off historical
+  repair command; it is intentionally not deployed as a recurring CronJob.
 
 ## Local Frontend Against TiDB
 

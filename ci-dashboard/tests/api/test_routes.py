@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date, datetime, timezone
 import json
 from pathlib import Path
@@ -15,7 +14,6 @@ from ci_dashboard.api.main import app, create_app
 from ci_dashboard.api.queries import cost as cost_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
-from ci_dashboard.common.config import FeatureSettings, get_settings, load_settings
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
 
 
@@ -1030,52 +1028,6 @@ def test_frontend_uses_configured_static_dir(tmp_path: Path, monkeypatch) -> Non
 
     assert response.status_code == 200
     assert response.text == "configured-ok"
-
-
-def _get_navigation_response(
-    runtime_insights_enabled: bool,
-    *,
-    cost_dashboard_enabled: bool = False,
-):
-    settings = replace(
-        load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///:memory:"}),
-        features=FeatureSettings(
-            runtime_insights_enabled=runtime_insights_enabled,
-            cost_dashboard_enabled=cost_dashboard_enabled,
-        ),
-    )
-    test_app = create_app()
-    test_app.dependency_overrides[get_settings] = lambda: settings
-
-    try:
-        with TestClient(test_app) as client:
-            return client.get("/api/v1/pages/navigation")
-    finally:
-        test_app.dependency_overrides.clear()
-
-
-def test_navigation_page_hides_runtime_insights_by_default() -> None:
-    response = _get_navigation_response(False)
-
-    assert response.status_code == 200
-    assert response.json()["features"]["runtime_insights_enabled"] is False
-    assert response.json()["features"]["cost_dashboard_enabled"] is False
-
-
-def test_navigation_page_can_enable_runtime_insights() -> None:
-    response = _get_navigation_response(True)
-
-    assert response.status_code == 200
-    assert response.json()["features"]["runtime_insights_enabled"] is True
-    assert response.json()["features"]["cost_dashboard_enabled"] is False
-
-
-def test_navigation_page_can_enable_cost_dashboard() -> None:
-    response = _get_navigation_response(False, cost_dashboard_enabled=True)
-
-    assert response.status_code == 200
-    assert response.json()["features"]["runtime_insights_enabled"] is False
-    assert response.json()["features"]["cost_dashboard_enabled"] is True
 
 
 def test_status_and_filter_endpoints(api_client: TestClient, sqlite_engine) -> None:
@@ -2454,6 +2406,22 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
     assert items[1]["last_seen_date"] == "2026-05-31"
     assert items[1]["observed_days"] is None
 
+    bounded_response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-01-01",
+            "end_date": "2026-05-31",
+            "granularity": "week",
+        },
+    )
+
+    assert bounded_response.status_code == 200
+    bounded_meta = bounded_response.json()["meta"]
+    assert bounded_meta["start_date"] == "2026-05-01"
+    assert bounded_meta["requested_start_date"] == "2026-01-01"
+    assert bounded_meta["window_limited"] is True
+    assert bounded_meta["max_window_days"] == 31
+
 
 def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> None:
     _insert_roster_group(
@@ -2694,6 +2662,103 @@ def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestCli
         ["2026-05-11", 0.0],
         ["2026-05-18", 0.0],
         ["2026-05-25", 0.0],
+    ]
+
+
+def test_cost_weekly_account_summaries_route(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    for vendor, account_id, display_name, annual_budget in [
+        ("aws", "946646677266", "qa-infra-dev", 5200.0),
+        ("gcp", "pingcap-testing-account", "pingcap-testing-account", 10400.0),
+        ("gcp", "qa-infra-dev", "qa-infra-dev", 2600.0),
+    ]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            display_name=display_name,
+        )
+        _insert_cost_budget(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            period_start_date="2026-01-01",
+            period_end_date="2026-12-31",
+            budget_amount=annual_budget,
+        )
+
+    for usage_date, vendor, account_id, net_cost in [
+        ("2026-05-28", "aws", "946646677266", 80),
+        ("2026-06-04", "aws", "946646677266", 120),
+        ("2026-05-28", "gcp", "pingcap-testing-account", 160),
+        ("2026-06-04", "gcp", "pingcap-testing-account", 240),
+        ("2026-05-28", "gcp", "qa-infra-dev", 50),
+        ("2026-06-04", "gcp", "qa-infra-dev", 40),
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date=usage_date,
+            vendor=vendor,
+            account_id=account_id,
+            repo="tidb",
+            group_id=None,
+            net_cost=net_cost,
+            list_cost=net_cost,
+            dimension_hash=f"{usage_date}-{vendor}-{account_id}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-weekly-account-summaries",
+        params={
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-07",
+            "granularity": "week",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_scope"]["start_date"] == "2026-05-25"
+    assert body["previous_scope"]["end_date"] == "2026-05-31"
+    assert body["items"] == [
+        {
+            "cost_source": "aws:946646677266",
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "display_name": "qa-infra-dev",
+            "net_cost": 120.0,
+            "previous_net_cost": 80.0,
+            "net_cost_wow_pct": 50.0,
+            "annual_budget": 5200.0,
+            "weekly_budget": 100.0,
+            "over_budget": True,
+        },
+        {
+            "cost_source": "gcp:pingcap-testing-account",
+            "vendor": "gcp",
+            "account_id": "pingcap-testing-account",
+            "display_name": "pingcap-testing-account",
+            "net_cost": 240.0,
+            "previous_net_cost": 160.0,
+            "net_cost_wow_pct": 50.0,
+            "annual_budget": 10400.0,
+            "weekly_budget": 200.0,
+            "over_budget": True,
+        },
+        {
+            "cost_source": "gcp:qa-infra-dev",
+            "vendor": "gcp",
+            "account_id": "qa-infra-dev",
+            "display_name": "qa-infra-dev",
+            "net_cost": 40.0,
+            "previous_net_cost": 50.0,
+            "net_cost_wow_pct": -20.0,
+            "annual_budget": 2600.0,
+            "weekly_budget": 50.0,
+            "over_budget": False,
+        },
     ]
 
 
@@ -3329,6 +3394,89 @@ def test_annual_budget_for_filters_prefers_source_wide_budget_rows(
     assert budget == 300.0
 
 
+def test_annual_budget_for_filters_keeps_zero_budget_rows(
+    sqlite_engine,
+) -> None:
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="zero-budget",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=0.0,
+        budget_name="Explicit zero",
+    )
+
+    with sqlite_engine.begin() as connection:
+        budget = cost_queries._annual_budget_for_filters(
+            connection,
+            CommonFilters(
+                cost_vendor="gcp",
+                cost_account_id="zero-budget",
+            ),
+            year=2026,
+        )
+
+    assert budget == 0.0
+
+
+def test_annual_budgets_by_account_preserves_source_wide_and_fallback_rules(
+    sqlite_engine,
+) -> None:
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="qa-infra-dev",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=300.0,
+        budget_name="Whole source",
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="qa-infra-dev",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=120.0,
+        budget_name="Apps",
+        label_filters={"repo": "apps"},
+        repo="apps",
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="aws",
+        account_id="946646677266",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=80.0,
+        budget_name="Infra",
+        label_filters={"repo": "infra"},
+        repo="infra",
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="zero-budget",
+        period_start_date="2026-01-01",
+        period_end_date="2026-12-31",
+        budget_amount=0.0,
+        budget_name="Explicit zero",
+    )
+
+    with sqlite_engine.begin() as connection:
+        budgets = cost_queries._annual_budgets_by_account(
+            connection,
+            year=2026,
+        )
+
+    assert budgets == {
+        ("aws", "946646677266"): 80.0,
+        ("gcp", "qa-infra-dev"): 300.0,
+        ("gcp", "zero-budget"): 0.0,
+    }
+
+
 def test_cost_repo_group_stack_keeps_distinct_repo_keys_on_slug_collisions(sqlite_engine, api_client: TestClient) -> None:
     _insert_roster_group(
         sqlite_engine,
@@ -3493,6 +3641,72 @@ def test_migration_fixed_window_comparison_rows(
         "success_count": 1,
         "success_rate_pct": 50.0,
         "success_avg_total_s": 180,
+    }
+
+
+def test_ci_status_cloud_migration_summary(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    fixtures = [
+        (2200, "migration-share-gcp-1", "GCP", 300),
+        (2201, "migration-share-gcp-2", "GCP", 100),
+        (2202, "migration-share-idc-1", "IDC", 400),
+    ]
+    for source_prow_row_id, source_prow_job_id, cloud_phase, total_seconds in fixtures:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=source_prow_row_id,
+            source_prow_job_id=source_prow_job_id,
+            repo_full_name="pingcap/migration-share",
+            target_branch="master",
+            base_ref="master",
+            job_name="migration-share-job",
+            state="success",
+            cloud_phase=cloud_phase,
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time="2026-06-03 01:00:00",
+            run_seconds=max(total_seconds - 20, 0),
+            total_seconds=total_seconds,
+            pr_number=82000 + source_prow_row_id,
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/ci-status",
+        params={
+            "repo": "pingcap/migration-share",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-07",
+            "granularity": "week",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cloud_migration_summary"] == {
+        "gcp_build_count": 2,
+        "idc_build_count": 1,
+        "total_build_count": 3,
+        "gcp_build_share_pct": 66.67,
+        "gcp_total_duration_s": 400,
+        "idc_total_duration_s": 400,
+        "total_duration_s": 800,
+        "gcp_duration_share_pct": 50.0,
+        "meta": {
+            "repo": "pingcap/migration-share",
+            "branch": None,
+            "job_name": None,
+            "job_names": [],
+            "cloud_phase": None,
+            "issue_status": None,
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-07",
+            "granularity": "week",
+            "cost_vendor": None,
+            "cost_account_id": None,
+            "cost_source": None,
+        },
     }
 
 

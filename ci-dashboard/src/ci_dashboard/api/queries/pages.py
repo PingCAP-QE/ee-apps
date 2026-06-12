@@ -9,6 +9,7 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.queries.builds import (
     get_cloud_comparison,
+    get_cloud_migration_summary,
     get_cloud_posture_trend,
     get_cloud_repo_share,
     get_duration_trend,
@@ -20,6 +21,7 @@ from ci_dashboard.api.queries.builds import (
 )
 from ci_dashboard.api.queries.cost import (
     get_cost_page,
+    get_weekly_account_summaries,
     list_cost_sources,
     get_cost_trend,
     get_engineering_group_share,
@@ -109,6 +111,7 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
         {
             "outcome_trend": lambda: get_outcome_trend(engine, filters),
             "duration_trend": lambda: get_duration_trend(engine, filters),
+            "cloud_migration_summary": lambda: get_cloud_migration_summary(engine, filters),
             "cloud_posture_trend": lambda: get_cloud_posture_trend(engine, filters),
             "longest_avg_success_jobs": lambda: get_longest_avg_success_jobs(engine, filters),
             "lowest_success_rate_jobs": lambda: get_lowest_success_rate_jobs(engine, filters),
@@ -245,6 +248,13 @@ def get_cost_weekly_overview_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_weekly_overview(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_weekly_account_summaries_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_weekly_account_summaries(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_repo_group_stack_page(

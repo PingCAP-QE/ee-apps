@@ -31,19 +31,15 @@ answer:
 - which failures are likely infra/runtime failures instead of test failures
 - whether Jenkins error categories reveal actionable improvement areas
 
-This document defines the first design for that experimental tab.
+This document defines the first design for that tab.
 
 ## 2. Product Positioning
 
-Add a standalone dashboard tab named `Runtime Insights`.
-
-The tab is hidden by default in production while the charts are still being
-validated. Operators can expose it by setting
-`CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS=true`.
+Add a standalone dashboard tab named `Runtime Insights`. The tab is available
+by default in production.
 
 Purpose:
-- provide an experimental space for pod, Jenkins, and error-classification
-  charts
+- provide a focused space for pod, Jenkins, and error-classification charts
 - validate which charts produce useful CI efficiency and quality insights
 - later promote the most valuable charts into the formal `CI Status` tab
 

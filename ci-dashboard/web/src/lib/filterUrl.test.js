@@ -49,6 +49,20 @@ test("serializes non-empty filters into request-compatible URL parameters", () =
   assert.equal(params.get("granularity"), "day");
 });
 
+test("weekly summary never serializes filters into the root URL", () => {
+  const search = buildFilterSearch(
+    {
+      ...buildDefaultFilters(defaultRange, "/"),
+      repo: "pingcap/tidb",
+      start_date: "2026-05-01",
+      end_date: "2026-06-01",
+    },
+    "/",
+  );
+
+  assert.equal(search, "");
+});
+
 test("keeps cost dashboard month buckets but normalizes invalid values", () => {
   assert.equal(
     readFiltersFromSearch(defaultRange, "/cost", "?granularity=month").granularity,

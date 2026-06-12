@@ -15,7 +15,6 @@ from ci_dashboard.jobs.sync_pods import (
     POD_EVENT_REASONS,
     PodMetadataSnapshot,
     _build_ci_job_from_build_metadata,
-    _build_requested_pods_relation,
     _build_jenkins_url_from_label_and_ci_job,
     _coerce_str_mapping,
     _compute_start_from,
@@ -244,15 +243,6 @@ def test_sync_pod_helper_functions_cover_common_edge_cases(sqlite_engine, monkey
         "Unhealthy",
         "Preempting",
     }.issubset(POD_EVENT_REASONS)
-    relation_sql, params = _build_requested_pods_relation([("p1", "ns", "uid", "pod")])
-    assert "UNION ALL" not in relation_sql
-    assert params == {
-        "source_project_0": "p1",
-        "namespace_name_0": "ns",
-        "pod_uid_0": "uid",
-        "pod_name_0": "pod",
-    }
-
 
 def test_sync_pods_http_and_kubernetes_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _decode_json_object(b'{"ok": true}', error_context="Logging API") == {"ok": True}

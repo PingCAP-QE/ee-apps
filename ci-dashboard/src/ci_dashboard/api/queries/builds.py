@@ -18,7 +18,7 @@ from ci_dashboard.api.queries.base import (
     rate_pct,
     success_expr,
 )
-from ci_dashboard.jobs.build_url_matcher import build_job_url
+from ci_dashboard.jobs.build_url_matcher import build_job_url, normalized_job_path_from_key
 
 MIGRATION_WINDOW_DAYS = 14
 MIGRATION_MIN_SUCCESS_RUNS = 5
@@ -310,6 +310,54 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
     }
 
 
+def get_cloud_migration_summary(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    with engine.begin() as connection:
+        where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        row = connection.execute(
+            text(
+                f"""
+                SELECT
+                  SUM(CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'GCP' THEN 1 ELSE 0 END)
+                    AS gcp_build_count,
+                  SUM(CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'IDC' THEN 1 ELSE 0 END)
+                    AS idc_build_count,
+                  SUM(
+                    CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'GCP'
+                      THEN COALESCE(b.total_seconds, 0) ELSE 0 END
+                  ) AS gcp_total_duration_s,
+                  SUM(
+                    CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'IDC'
+                      THEN COALESCE(b.total_seconds, 0) ELSE 0 END
+                  ) AS idc_total_duration_s
+                FROM {builds_table}
+                WHERE {where_clause}
+                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
+                """
+            ),
+            params,
+        ).mappings().one()
+
+    gcp_build_count = int(row["gcp_build_count"] or 0)
+    idc_build_count = int(row["idc_build_count"] or 0)
+    gcp_total_duration_s = int(row["gcp_total_duration_s"] or 0)
+    idc_total_duration_s = int(row["idc_total_duration_s"] or 0)
+    total_build_count = gcp_build_count + idc_build_count
+    total_duration_s = gcp_total_duration_s + idc_total_duration_s
+
+    return {
+        "gcp_build_count": gcp_build_count,
+        "idc_build_count": idc_build_count,
+        "total_build_count": total_build_count,
+        "gcp_build_share_pct": rate_pct(gcp_build_count, total_build_count),
+        "gcp_total_duration_s": gcp_total_duration_s,
+        "idc_total_duration_s": idc_total_duration_s,
+        "total_duration_s": total_duration_s,
+        "gcp_duration_share_pct": rate_pct(gcp_total_duration_s, total_duration_s),
+        "meta": filters.meta(),
+    }
+
+
 def get_longest_avg_success_jobs(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
@@ -571,7 +619,6 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
         where_clause, params = build_common_where(scope_filters, table_alias="b")
         builds_table = builds_table_expr(connection, scope_filters, alias="b")
         success_where = success_expr("b")
-        normalized_job_path = _normalized_job_path_expr(connection, "b")
         anchor_end_date = filters.end_date or _find_latest_gcp_success_date(
             connection,
             where_clause,
@@ -603,8 +650,9 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                 f"""
                 WITH scoped_success_builds AS (
                   SELECT
+                    b.repo_full_name,
                     b.job_name,
-                    {normalized_job_path} AS normalized_job_path,
+                    b.normalized_build_url,
                     UPPER(COALESCE(b.cloud_phase, '')) AS cloud_phase,
                     b.start_time,
                     b.run_seconds
@@ -612,46 +660,53 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                   WHERE {where_clause}
                     AND {success_where}
                     AND b.run_seconds IS NOT NULL
+                    AND b.start_time >= :migration_history_start
                     AND b.start_time < :anchor_end_exclusive
                     AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
-                    AND {normalized_job_path} IS NOT NULL
+                    AND b.repo_full_name IS NOT NULL
+                    AND b.job_name IS NOT NULL
+                    AND b.normalized_build_url IS NOT NULL
                 ),
                 first_gcp AS (
                   SELECT
-                    s.normalized_job_path,
-                    MIN(s.start_time) AS first_gcp_success_at,
-                    MIN(s.job_name) AS job_name
+                    s.repo_full_name,
+                    s.job_name,
+                    MIN(s.start_time) AS first_gcp_success_at
                   FROM scoped_success_builds s
                   WHERE s.cloud_phase = 'GCP'
-                  GROUP BY s.normalized_job_path
+                  GROUP BY s.repo_full_name, s.job_name
                 ),
                 recent_gcp AS (
                   SELECT
-                    s.normalized_job_path,
-                    MIN(s.job_name) AS job_name,
+                    s.repo_full_name,
+                    s.job_name,
+                    MIN(s.normalized_build_url) AS sample_build_url,
                     COUNT(*) AS gcp_success_count,
                     AVG(s.run_seconds) AS gcp_recent_avg_run_s
                   FROM scoped_success_builds s
                   WHERE s.cloud_phase = 'GCP'
                     AND s.start_time >= :recent_window_start
-                  GROUP BY s.normalized_job_path
+                  GROUP BY s.repo_full_name, s.job_name
                 ),
                 idc_baseline AS (
                   SELECT
-                    s.normalized_job_path,
+                    s.repo_full_name,
+                    s.job_name,
                     COUNT(*) AS idc_success_count,
                     AVG(s.run_seconds) AS idc_baseline_avg_run_s
                   FROM scoped_success_builds s
                   JOIN first_gcp fg
-                    ON fg.normalized_job_path = s.normalized_job_path
+                    ON fg.repo_full_name = s.repo_full_name
+                   AND fg.job_name = s.job_name
                   WHERE s.cloud_phase = 'IDC'
                     AND s.start_time >= {baseline_window_start}
                     AND s.start_time < fg.first_gcp_success_at
-                  GROUP BY s.normalized_job_path
+                  GROUP BY s.repo_full_name, s.job_name
                 )
                 SELECT
-                  COALESCE(rg.job_name, fg.job_name) AS job_name,
-                  fg.normalized_job_path,
+                  fg.repo_full_name,
+                  fg.job_name,
+                  rg.sample_build_url,
                   fg.first_gcp_success_at,
                   ib.idc_success_count,
                   rg.gcp_success_count,
@@ -668,36 +723,43 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                   END AS delta_pct
                 FROM first_gcp fg
                 JOIN recent_gcp rg
-                  ON rg.normalized_job_path = fg.normalized_job_path
+                  ON rg.repo_full_name = fg.repo_full_name
+                 AND rg.job_name = fg.job_name
                 JOIN idc_baseline ib
-                  ON ib.normalized_job_path = fg.normalized_job_path
+                  ON ib.repo_full_name = fg.repo_full_name
+                 AND ib.job_name = fg.job_name
                 WHERE ib.idc_success_count >= :min_success_runs_each_side
                   AND rg.gcp_success_count >= :min_success_runs_each_side
-                ORDER BY delta_run_s ASC, fg.normalized_job_path ASC
+                ORDER BY delta_run_s ASC, fg.repo_full_name ASC, fg.job_name ASC
                 """
             ),
             {
                 **params,
+                "migration_history_start": MIGRATION_FIXED_BASELINE_START,
                 "anchor_end_exclusive": anchor_end_exclusive,
                 "recent_window_start": recent_window_start,
                 "min_success_runs_each_side": MIGRATION_MIN_SUCCESS_RUNS,
             },
         ).mappings()
 
-        items = [
-            {
-                "job_name": str(row["job_name"]),
-                "normalized_job_path": str(row["normalized_job_path"]),
-                "idc_baseline_avg_run_s": round(float(row["idc_baseline_avg_run_s"] or 0)),
-                "gcp_recent_avg_run_s": round(float(row["gcp_recent_avg_run_s"] or 0)),
-                "delta_run_s": round(float(row["delta_run_s"] or 0)),
-                "delta_pct": round(float(row["delta_pct"] or 0), 2),
-                "idc_success_count": int(row["idc_success_count"] or 0),
-                "gcp_success_count": int(row["gcp_success_count"] or 0),
-                "first_gcp_success_at": _coerce_isoformat_utc(row["first_gcp_success_at"]),
-            }
-            for row in rows
-        ]
+        items = []
+        for row in rows:
+            normalized_job_path = normalized_job_path_from_key(row["sample_build_url"])
+            if normalized_job_path is None:
+                continue
+            items.append(
+                {
+                    "job_name": str(row["job_name"]),
+                    "normalized_job_path": normalized_job_path,
+                    "idc_baseline_avg_run_s": round(float(row["idc_baseline_avg_run_s"] or 0)),
+                    "gcp_recent_avg_run_s": round(float(row["gcp_recent_avg_run_s"] or 0)),
+                    "delta_run_s": round(float(row["delta_run_s"] or 0)),
+                    "delta_pct": round(float(row["delta_pct"] or 0), 2),
+                    "idc_success_count": int(row["idc_success_count"] or 0),
+                    "gcp_success_count": int(row["gcp_success_count"] or 0),
+                    "first_gcp_success_at": _coerce_isoformat_utc(row["first_gcp_success_at"]),
+                }
+            )
 
     improved = [
         item for item in items if item["delta_run_s"] < 0

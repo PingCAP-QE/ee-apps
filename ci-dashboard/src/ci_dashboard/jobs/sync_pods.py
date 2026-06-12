@@ -993,57 +993,63 @@ def _load_abnormal_event_summaries(
     if not pods:
         return {}
 
-    requested_pods_sql, params = _build_requested_pods_relation(pods)
-    reason_placeholders: list[str] = []
-    for index, reason in enumerate(sorted(ABNORMAL_EVENT_REASONS)):
-        param_name = f"abnormal_reason_{index}"
-        reason_placeholders.append(f":{param_name}")
-        params[param_name] = reason
-
-    rows = connection.execute(
-        text(
-            f"""
-            WITH requested_pods AS (
-              {requested_pods_sql}
-            )
-            SELECT
-              events.source_project,
-              events.namespace_name,
-              events.pod_uid,
-              events.pod_name,
-              events.event_reason,
-              events.event_message,
-              events.event_timestamp
-            FROM {_pod_events_table_expr(connection.dialect.name)}
-            JOIN requested_pods AS requested
-              ON events.source_project = requested.source_project
-             AND {_null_safe_equals_sql('events.namespace_name', 'requested.namespace_name', connection.dialect.name)}
-             AND {_null_safe_equals_sql('events.pod_uid', 'requested.pod_uid', connection.dialect.name)}
-             AND {_null_safe_equals_sql('events.pod_name', 'requested.pod_name', connection.dialect.name)}
-            WHERE events.event_reason IN ({", ".join(reason_placeholders)})
-            """
-        ),
-        params,
-    ).mappings()
-
     candidates_by_identity: dict[tuple[str, str | None, str | None, str | None], list[dict[str, Any]]] = (
         defaultdict(list)
     )
-    for row in rows:
-        identity = _pod_identity_from_values(
-            source_project=_coerce_str(row.get("source_project")) or "",
-            namespace_name=_coerce_str(row.get("namespace_name")),
-            pod_uid=_coerce_str(row.get("pod_uid")),
-            pod_name=_coerce_str(row.get("pod_name")),
-        )
-        candidates_by_identity[identity].append(
-            {
-                "reason": _coerce_str(row.get("event_reason")),
-                "message": _coerce_str(row.get("event_message")),
-                "timestamp": row.get("event_timestamp"),
-                "source_rank": 1,
-            }
-        )
+    events_table = _pod_events_table_expr(connection.dialect.name)
+    for offset in range(0, len(pods), _MAX_LIFECYCLE_UNION_PODS):
+        sub_batch = pods[offset : offset + _MAX_LIFECYCLE_UNION_PODS]
+        branches: list[str] = []
+        params: dict[str, Any] = {}
+        for index, (source_project, namespace_name, pod_uid, pod_name) in enumerate(sub_batch):
+            where_clause, branch_params = _build_lifecycle_aggregate_where(
+                index,
+                source_project,
+                namespace_name,
+                pod_uid,
+                pod_name,
+            )
+            reason_placeholders: list[str] = []
+            for reason_index, reason in enumerate(sorted(ABNORMAL_EVENT_REASONS)):
+                param_name = f"abnormal_reason_{index}_{reason_index}"
+                reason_placeholders.append(f":{param_name}")
+                branch_params[param_name] = reason
+            branches.append(
+                f"""
+                SELECT
+                  events.source_project,
+                  events.namespace_name,
+                  events.pod_uid,
+                  events.pod_name,
+                  events.event_reason,
+                  events.event_message,
+                  events.event_timestamp
+                FROM {events_table}
+                WHERE {where_clause}
+                  AND events.event_reason IN ({", ".join(reason_placeholders)})
+                """
+            )
+            params.update(branch_params)
+
+        rows = connection.execute(
+            text("\nUNION ALL\n".join(branches)),
+            params,
+        ).mappings()
+        for row in rows:
+            identity = _pod_identity_from_values(
+                source_project=_coerce_str(row.get("source_project")) or "",
+                namespace_name=_coerce_str(row.get("namespace_name")),
+                pod_uid=_coerce_str(row.get("pod_uid")),
+                pod_name=_coerce_str(row.get("pod_name")),
+            )
+            candidates_by_identity[identity].append(
+                {
+                    "reason": _coerce_str(row.get("event_reason")),
+                    "message": _coerce_str(row.get("event_message")),
+                    "timestamp": row.get("event_timestamp"),
+                    "source_rank": 1,
+                }
+            )
 
     summaries: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
     for identity, candidates in candidates_by_identity.items():
@@ -1062,26 +1068,6 @@ def _pod_events_table_expr(dialect_name: str) -> str:
     if dialect_name != "sqlite":
         table = "ci_l1_pod_events events USE INDEX(idx_ci_l1_pod_events_identity_time)"
     return table
-
-
-def _build_requested_pods_relation(
-    pods: list[tuple[str, str | None, str | None, str | None]],
-) -> tuple[str, dict[str, Any]]:
-    selects: list[str] = []
-    params: dict[str, Any] = {}
-    for index, (source_project, namespace_name, pod_uid, pod_name) in enumerate(pods):
-        selects.append(
-            "SELECT "
-            f":source_project_{index} AS source_project, "
-            f":namespace_name_{index} AS namespace_name, "
-            f":pod_uid_{index} AS pod_uid, "
-            f":pod_name_{index} AS pod_name"
-        )
-        params[f"source_project_{index}"] = source_project
-        params[f"namespace_name_{index}"] = namespace_name
-        params[f"pod_uid_{index}"] = pod_uid
-        params[f"pod_name_{index}"] = pod_name
-    return "\nUNION ALL\n".join(selects), params
 
 
 def _null_safe_equals_sql(left: str, right: str, dialect_name: str) -> str:
@@ -1353,16 +1339,30 @@ def _load_jenkins_pod_name_url_prefix_map(
     rows = connection.execute(
         text(
             f"""
+            WITH latest_job_samples AS (
+              SELECT
+                job_name,
+                MAX(start_time) AS latest_start_time
+              FROM ci_l1_builds
+              WHERE build_system = 'JENKINS'
+                AND job_name IS NOT NULL
+                AND pod_name IS NOT NULL
+                AND normalized_build_url IS NOT NULL
+                AND {start_time_clause}
+              GROUP BY job_name
+            )
             SELECT
-              pod_name,
-              normalized_build_url,
-              start_time
-            FROM ci_l1_builds
-            WHERE build_system = 'JENKINS'
-              AND pod_name IS NOT NULL
-              AND normalized_build_url IS NOT NULL
-              AND {start_time_clause}
-            ORDER BY start_time DESC
+              b.pod_name,
+              b.normalized_build_url,
+              b.start_time
+            FROM ci_l1_builds b
+            JOIN latest_job_samples latest
+              ON latest.job_name = b.job_name
+             AND latest.latest_start_time = b.start_time
+            WHERE b.build_system = 'JENKINS'
+              AND b.pod_name IS NOT NULL
+              AND b.normalized_build_url IS NOT NULL
+            ORDER BY b.start_time DESC, b.id DESC
             """
         ),
         {"cutoff": cutoff},

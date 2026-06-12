@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ci_dashboard.common.config import _read_bool, get_settings, load_settings
+from ci_dashboard.common.config import get_settings, load_settings
 from ci_dashboard.common.db import _build_connect_args, build_engine, install_sqlite_functions
 from ci_dashboard.common.logging import configure_logging
 
@@ -35,8 +35,6 @@ def test_load_settings_supports_db_url() -> None:
             "CI_DASHBOARD_LLM_API_KEY": "test-key",
             "CI_DASHBOARD_LLM_BASE_URL": "https://api-vip.codex-for.me/v1",
             "CI_DASHBOARD_LLM_REASONING_EFFORT": "high",
-            "CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS": "true",
-            "CI_DASHBOARD_ENABLE_COST_DASHBOARD": "true",
             "CI_DASHBOARD_LOG_LEVEL": "debug",
         }
     )
@@ -64,41 +62,7 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.llm.api_key == "test-key"
     assert settings.llm.base_url == "https://api-vip.codex-for.me/v1"
     assert settings.llm.reasoning_effort == "high"
-    assert settings.features.runtime_insights_enabled is True
-    assert settings.features.cost_dashboard_enabled is True
     assert settings.log_level == "DEBUG"
-
-
-def test_load_settings_hides_runtime_insights_by_default() -> None:
-    settings = load_settings({"CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db"})
-    assert settings.features.runtime_insights_enabled is False
-    assert settings.features.cost_dashboard_enabled is False
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [
-        ("1", True),
-        ("true", True),
-        (" TRUE ", True),
-        ("yes", True),
-        ("Y", True),
-        ("on", True),
-        ("0", False),
-        ("false", False),
-        (" False ", False),
-        ("no", False),
-        ("N", False),
-        ("off", False),
-    ],
-)
-def test_read_bool_accepts_common_boolean_values(raw: str, expected: bool) -> None:
-    assert _read_bool({"TEST_FLAG": raw}, "TEST_FLAG", not expected) is expected
-
-
-def test_read_bool_uses_default_for_missing_or_empty_values() -> None:
-    assert _read_bool({}, "TEST_FLAG", True) is True
-    assert _read_bool({"TEST_FLAG": "   "}, "TEST_FLAG", False) is False
 
 
 def test_load_settings_requires_tidb_fields_without_db_url() -> None:
@@ -180,32 +144,6 @@ def test_load_settings_rejects_invalid_archive_limit() -> None:
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
                 "CI_DASHBOARD_ARCHIVE_BUILD_LIMIT": "0",
-            }
-        )
-
-
-def test_load_settings_rejects_invalid_runtime_insights_flag() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS must be a boolean .* got 'maybe'",
-    ):
-        load_settings(
-            {
-                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
-                "CI_DASHBOARD_ENABLE_RUNTIME_INSIGHTS": "maybe",
-            }
-        )
-
-
-def test_load_settings_rejects_invalid_cost_dashboard_flag() -> None:
-    with pytest.raises(
-        ValueError,
-        match=r"CI_DASHBOARD_ENABLE_COST_DASHBOARD must be a boolean .* got 'maybe'",
-    ):
-        load_settings(
-            {
-                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
-                "CI_DASHBOARD_ENABLE_COST_DASHBOARD": "maybe",
             }
         )
 

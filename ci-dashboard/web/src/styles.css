@@ -338,6 +338,45 @@ select {
   gap: 1rem;
 }
 
+.weekly-summary {
+  gap: 1.25rem;
+}
+
+.weekly-summary__section {
+  display: grid;
+  gap: 1rem;
+}
+
+.weekly-summary__section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding-top: 0.25rem;
+}
+
+.weekly-summary__section-header > span {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(15, 124, 130, 0.2);
+  border-radius: 6px;
+  background: rgba(15, 124, 130, 0.08);
+  color: var(--teal);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.weekly-summary__section-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.weekly-summary__section-header p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+}
+
 .page-intro {
   display: flex;
   justify-content: space-between;
@@ -654,6 +693,96 @@ select {
   font-weight: 600;
 }
 
+.stat-card__delta--improved,
+.progress-card__metric-delta--improved {
+  color: #1f7a70;
+}
+
+.stat-card__delta--regressed,
+.progress-card__metric-delta--regressed {
+  color: #b23b49;
+}
+
+.stat-card__delta--neutral,
+.progress-card__metric-delta--neutral {
+  color: var(--muted);
+}
+
+.migration-rate-card {
+  gap: 0.85rem;
+  grid-column: span 2;
+}
+
+.migration-rate-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.migration-rate-card__metric {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.migration-rate-card__metric > span,
+.migration-rate-card__detail {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.migration-rate-card__metric > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.migration-rate-card__metric strong {
+  color: var(--ink);
+  font-size: clamp(1.6rem, 2.2vw, 2.15rem);
+  line-height: 1;
+}
+
+.migration-rate-card__detail {
+  line-height: 1.4;
+}
+
+.weekly-summary__cost-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.cost-account-card {
+  border: 1px solid rgba(49, 87, 114, 0.08);
+  background: rgba(255, 253, 248, 0.82);
+}
+
+.cost-account-card--over-budget {
+  border-color: rgba(178, 59, 73, 0.16);
+  background: linear-gradient(180deg, rgba(200, 79, 93, 0.14), rgba(255, 251, 244, 0.88));
+}
+
+.cost-account-card__account {
+  color: var(--navy);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.weekly-summary__section-state {
+  grid-column: 1 / -1;
+  min-height: 7rem;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.weekly-summary__section-state--error {
+  color: var(--rose);
+}
+
 .progress-card {
   display: grid;
   gap: 0.9rem;
@@ -673,7 +802,6 @@ select {
 
 .progress-card__header {
   display: grid;
-  gap: 0.28rem;
 }
 
 .progress-card__title {
@@ -740,6 +868,12 @@ select {
 
 .progress-card__state--error {
   color: var(--rose);
+}
+
+.weekly-summary__flaky-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.9rem;
 }
 
 .page-grid {
@@ -1928,6 +2062,7 @@ select {
 
   .stats-grid,
   .progress-summary-grid,
+  .weekly-summary__cost-grid,
   .cost-weekly-overview__grid,
   .page-grid--overview,
   .flaky-highlight-row,
@@ -1939,6 +2074,10 @@ select {
   .runtime-compare-grid,
   .donut-card__body {
     grid-template-columns: 1fr;
+  }
+
+  .weekly-summary__flaky-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -1960,6 +2099,7 @@ select {
   .filter-grid,
   .stats-grid,
   .progress-summary-grid,
+  .weekly-summary__cost-grid,
   .cost-weekly-overview__grid,
   .page-grid--overview,
   .flaky-highlight-row,
@@ -1986,6 +2126,52 @@ select {
   .freshness-chip {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .migration-rate-card__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .migration-rate-card {
+    grid-column: span 1;
+  }
+
+  .weekly-summary__flaky-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .weekly-summary__flaky-grid .stat-card,
+  .weekly-summary__flaky-grid .progress-card {
+    gap: 0.4rem;
+    padding: 0.8rem 0.65rem;
+    border-radius: 18px;
+  }
+
+  .weekly-summary__flaky-grid .stat-card__label,
+  .weekly-summary__flaky-grid .stat-card__meta,
+  .weekly-summary__flaky-grid .progress-card__title,
+  .weekly-summary__flaky-grid .progress-card__metric-label,
+  .weekly-summary__flaky-grid .progress-card__metric-delta {
+    font-size: 0.72rem;
+  }
+
+  .weekly-summary__flaky-grid .stat-card__value,
+  .weekly-summary__flaky-grid .progress-card__metric-value {
+    font-size: 1.5rem;
+  }
+
+  .weekly-summary__flaky-grid .stat-card__meta,
+  .weekly-summary__flaky-grid .progress-card__row-head {
+    gap: 0.35rem;
+  }
+
+  .weekly-summary__flaky-grid .progress-card__rows {
+    gap: 0.55rem;
+  }
+
+  .weekly-summary__flaky-grid .progress-card__row {
+    padding-top: 0.55rem;
   }
 
   .runtime-compare-item__header {
