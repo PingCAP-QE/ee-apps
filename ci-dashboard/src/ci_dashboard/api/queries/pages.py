@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.queries.builds import (
+    get_build_count_breakdown_trend,
     get_cloud_comparison,
     get_cloud_migration_summary,
     get_cloud_posture_trend,
@@ -112,6 +113,10 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
             "outcome_trend": lambda: get_outcome_trend(engine, filters),
             "duration_trend": lambda: get_duration_trend(engine, filters),
             "cloud_migration_summary": lambda: get_cloud_migration_summary(engine, filters),
+            "build_count_breakdown_trend": lambda: get_build_count_breakdown_trend(
+                engine,
+                filters,
+            ),
             "cloud_posture_trend": lambda: get_cloud_posture_trend(engine, filters),
             "longest_avg_success_jobs": lambda: get_longest_avg_success_jobs(engine, filters),
             "lowest_success_rate_jobs": lambda: get_lowest_success_rate_jobs(engine, filters),
@@ -260,8 +265,14 @@ def get_cost_weekly_account_summaries_page(
 def get_cost_repo_group_stack_page(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    group_by: str = "repo",
 ) -> dict[str, Any]:
-    return get_repo_group_cost_stack(engine, _normalize_cost_filters(filters))
+    return get_repo_group_cost_stack(
+        engine,
+        _normalize_cost_filters(filters),
+        group_by=group_by,
+    )
 
 
 def get_cost_engineering_group_share_page(

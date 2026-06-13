@@ -12,6 +12,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
 
 COST_STACK_LIMIT = 8
+VALID_COST_STACK_GROUPS = frozenset({"repo", "author", "team"})
 UNMATCHED_RESOURCE_LIMIT = 20
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 ENGINEERING_GROUP_NAME = "Engineering Group"
@@ -255,76 +256,85 @@ def _get_engineering_share_by_level_threshold(
         )
 
 
-def get_repo_group_cost_stack(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_repo_group_cost_stack(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    group_by: str = "repo",
+) -> dict[str, Any]:
+    if group_by not in VALID_COST_STACK_GROUPS:
+        group_by = "repo"
+
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
+        dimension = _cost_stack_dimension(connection, group_by)
         top_rows = connection.execute(
             text(
                 f"""
                 SELECT
-                  COALESCE(NULLIF(c.repo, ''), '(no repo)') AS repo_name,
+                  {dimension["expr"]} AS dimension_name,
                   SUM(c.list_cost) AS list_cost
-                FROM cost_attribution_daily c
+                FROM {dimension["from_clause"]}
                 WHERE {where_clause}
-                GROUP BY repo_name
-                ORDER BY list_cost DESC, repo_name
+                GROUP BY dimension_name
+                ORDER BY list_cost DESC, dimension_name
                 LIMIT :limit
                 """
             ),
-            {**params, "limit": COST_STACK_LIMIT},
+            {**params, **dimension["params"], "limit": COST_STACK_LIMIT},
         ).mappings()
-        top_repos = [str(row["repo_name"]) for row in top_rows]
-        if not top_repos:
+        top_dimensions = [str(row["dimension_name"] or dimension["empty_label"]) for row in top_rows]
+        if not top_dimensions:
             return {
                 "series": [],
                 "items": [],
-                "meta": {**filters.meta(), "limit": COST_STACK_LIMIT},
+                "meta": {**filters.meta(), "limit": COST_STACK_LIMIT, "group_by": group_by},
             }
 
         dimension_conditions = []
         dimension_params: dict[str, Any] = {}
-        for index, repo_name in enumerate(top_repos):
-            repo_key = f"repo_{index}"
+        for index, dimension_name in enumerate(top_dimensions):
+            dimension_key = f"dimension_{index}"
             dimension_conditions.append(
-                f"COALESCE(NULLIF(c.repo, ''), '(no repo)') = :{repo_key}"
+                f"{dimension['expr']} = :{dimension_key}"
             )
-            dimension_params[repo_key] = repo_name
+            dimension_params[dimension_key] = dimension_name
 
         rows = connection.execute(
             text(
                 f"""
                 SELECT
                   {bucket} AS bucket_start,
-                  COALESCE(NULLIF(c.repo, ''), '(no repo)') AS repo_name,
+                  {dimension["expr"]} AS dimension_name,
                   SUM(c.list_cost) AS list_cost
-                FROM cost_attribution_daily c
+                FROM {dimension["from_clause"]}
                 WHERE {where_clause}
                   AND ({" OR ".join(dimension_conditions)})
-                GROUP BY bucket_start, repo_name
-                ORDER BY bucket_start, repo_name
+                GROUP BY bucket_start, dimension_name
+                ORDER BY bucket_start, dimension_name
                 """
             ),
-            {**params, **dimension_params},
+            {**params, **dimension["params"], **dimension_params},
         ).mappings()
         data_rows = [dict(row) for row in rows]
 
     buckets = _bucket_starts(filters, data_rows)
     values_by_key = {
-        _repo_key(repo_name, index): {bucket: 0.0 for bucket in buckets}
-        for index, repo_name in enumerate(top_repos)
+        _cost_stack_key(group_by, dimension_name, index): {bucket: 0.0 for bucket in buckets}
+        for index, dimension_name in enumerate(top_dimensions)
     }
     labels_by_key = {
-        _repo_key(repo_name, index): repo_name
-        for index, repo_name in enumerate(top_repos)
+        _cost_stack_key(group_by, dimension_name, index): dimension_name
+        for index, dimension_name in enumerate(top_dimensions)
     }
-    repo_key_by_name = {
-        repo_name: _repo_key(repo_name, index)
-        for index, repo_name in enumerate(top_repos)
+    key_by_name = {
+        dimension_name: _cost_stack_key(group_by, dimension_name, index)
+        for index, dimension_name in enumerate(top_dimensions)
     }
     for row in data_rows:
-        repo_name = str(row["repo_name"])
-        key = repo_key_by_name[repo_name]
+        dimension_name = str(row["dimension_name"] or dimension["empty_label"])
+        key = key_by_name[dimension_name]
         values_by_key[key][str(row["bucket_start"])] = _money(row["list_cost"])
 
     return {
@@ -344,7 +354,7 @@ def get_repo_group_cost_stack(engine: Engine, filters: CommonFilters) -> dict[st
             }
             for key in values_by_key
         ],
-        "meta": {**filters.meta(), "limit": COST_STACK_LIMIT},
+        "meta": {**filters.meta(), "limit": COST_STACK_LIMIT, "group_by": group_by},
     }
 
 
@@ -1157,10 +1167,61 @@ def _null_safe_eq(connection: Connection, left_expr: str, right_expr: str) -> st
     return f"{left_expr} <=> {right_expr}"
 
 
-def _repo_key(repo_name: str, index: int) -> str:
-    if repo_name == "(no repo)":
+def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, Any]:
+    if group_by not in VALID_COST_STACK_GROUPS:
+        group_by = "repo"
+
+    if group_by == "author":
+        return {
+            "expr": "COALESCE(NULLIF(c.author, ''), '(unknown author)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(unknown author)",
+        }
+    if group_by == "team":
+        team_match = _like_prefix_expr(connection, "c_group.path", "target_group.path")
+        return {
+            "expr": "COALESCE(NULLIF(target_group.name, ''), '(no team)')",
+            "from_clause": f"""
+                cost_attribution_daily c
+                LEFT JOIN roster_groups c_group
+                  ON c_group.id = c.group_id
+                LEFT JOIN (
+                  SELECT id, path
+                  FROM roster_groups
+                  WHERE name = :cost_stack_root_group_name
+                    AND is_active = 1
+                  ORDER BY id
+                  LIMIT 1
+                ) root_group
+                  ON 1=1
+                LEFT JOIN roster_groups target_parent
+                  ON target_parent.is_active = 1
+                 AND target_parent.parent_id = root_group.id
+                LEFT JOIN roster_groups target_group
+                  ON target_group.is_active = 1
+                 AND target_group.parent_id = target_parent.id
+                 AND {team_match}
+            """,
+            "params": {"cost_stack_root_group_name": ENGINEERING_GROUP_NAME},
+            "empty_label": "(no team)",
+        }
+    return {
+        "expr": "COALESCE(NULLIF(c.repo, ''), '(no repo)')",
+        "from_clause": "cost_attribution_daily c",
+        "params": {},
+        "empty_label": "(no repo)",
+    }
+
+
+def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
+    if group_by == "repo" and dimension_name == "(no repo)":
         return "repo__no_repo"
-    return f"repo__{index}"
+    if group_by == "author" and dimension_name == "(unknown author)":
+        return "author__unknown_author"
+    if group_by == "team" and dimension_name == "(no team)":
+        return "team__no_team"
+    return f"{group_by}__{index}"
 
 
 def _cost_source_value(vendor: str, account_id: str) -> str:

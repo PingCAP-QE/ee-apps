@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   formatCostSourceLabel,
@@ -19,12 +19,15 @@ import {
   TrendChart,
   UnmatchedResourceTable,
 } from "../components/charts";
+import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
 const SHARED_COST_GROUP = "Efficiency & Quality";
 
 export default function CostPage({ filters }) {
   const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
   const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
+  const [costStackGroupBy, setCostStackGroupBy] = useState("repo");
+  const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
@@ -42,25 +45,26 @@ export default function CostPage({ filters }) {
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
   };
+  const costStackFilters = {
+    ...costFilters,
+    group_by: costStackGroupBy,
+  };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costFilters);
-  const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costFilters);
+  const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
   const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
   const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
   const summary = trend.data?.meta?.summary || {};
   const configuredAnnualBudget = Number(weeklyOverview.data?.budget_health?.annual_budget || 0);
   const hasConfiguredBudget = configuredAnnualBudget > 0;
-  const stackTotal = (repoGroupStack.data?.items || []).reduce(
-    (sum, item) => sum + Number(item.value || 0),
-    0,
-  );
-  const level1Total = engineeringGroupShare.data?.level1?.meta?.total_list_cost || 0;
-  const level2Total = engineeringGroupShare.data?.level2?.meta?.total_list_cost || 0;
   const costTrendSeries = withBudgetSeries(
     trend.data?.series,
     costFilters.granularity,
     trend.data?.meta?.annual_budgets,
   );
+  const activeCostStackGroup = COST_STACK_GROUPS.find(
+    (group) => group.key === costStackGroupBy,
+  ) || COST_STACK_GROUPS[0];
   const weeklyLevel2Items = withSharedCostAllocation(
     weeklyOverview.data?.level2_share?.items,
     isWeeklyLevel2Shared,
@@ -69,6 +73,15 @@ export default function CostPage({ filters }) {
     engineeringGroupShare.data?.level2?.items,
     isSelectedLevel2Shared,
   );
+
+  useEffect(() => {
+    if (!selectedCostStackName) {
+      return;
+    }
+    if (!hasCostStackItem(repoGroupStack.data?.items, selectedCostStackName)) {
+      setSelectedCostStackName("");
+    }
+  }, [repoGroupStack.data?.items, selectedCostStackName]);
 
   return (
     <div className="page-stack">
@@ -199,21 +212,24 @@ export default function CostPage({ filters }) {
         </Panel>
 
         <Panel
-          title="Repo cost stack"
-          subtitle="Top repos stacked by list cost bucket."
+          title={`${activeCostStackGroup.label} cost stack`}
+          subtitle={`Top ${activeCostStackGroup.description} stacked by list cost bucket.`}
           loading={repoGroupStack.loading}
           error={repoGroupStack.error}
+          actions={
+            <CostStackGroupSelector
+              value={costStackGroupBy}
+              onChange={(nextGroup) => {
+                setCostStackGroupBy(nextGroup);
+                setSelectedCostStackName("");
+              }}
+            />
+          }
         >
-          <TrendChart
-            series={repoGroupStack.data?.series}
-            yFormatter={formatCompactCurrency}
-            height={300}
-            compactY
-            stackBars
-            yTickMode="thousands-rounded"
-            yTickSegments={5}
-            barGroupWidthFactor={0.56}
-            barMaxWidth={58}
+          <CostStackTrend
+            data={repoGroupStack.data}
+            selectedName={selectedCostStackName}
+            onSelect={setSelectedCostStackName}
           />
         </Panel>
       </div>
@@ -272,6 +288,75 @@ export default function CostPage({ filters }) {
       </Panel>
     </div>
   );
+}
+
+const COST_STACK_GROUPS = [
+  { key: "repo", label: "Repo", description: "repos" },
+  { key: "author", label: "Author", description: "authors" },
+  { key: "team", label: "Team", description: "teams" },
+];
+
+function CostStackGroupSelector({ value, onChange }) {
+  return (
+    <SegmentedControl
+      ariaLabel="Cost stack grouping"
+      options={COST_STACK_GROUPS}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function CostStackTrend({ data, selectedName, onSelect }) {
+  const items = data?.items || [];
+  const series = selectedName
+    ? (data?.series || []).filter((item) => item.label === selectedName)
+    : data?.series;
+
+  if (!items.length || !series?.length) {
+    return <div className="empty-state">No cost stack data for the current filters.</div>;
+  }
+
+  return (
+    <div className="build-count-breakdown">
+      <TrendChart
+        series={series}
+        yFormatter={formatCompactCurrency}
+        height={300}
+        compactY
+        stackBars={!selectedName}
+        yTickMode="thousands-rounded"
+        yTickSegments={5}
+        barGroupWidthFactor={0.56}
+        barMaxWidth={58}
+      />
+      <div className="dimension-selector" aria-label="Cost stack value selector">
+        <button
+          type="button"
+          className={buildDimensionChipClassName(!selectedName)}
+          onClick={() => onSelect("")}
+        >
+          All
+        </button>
+        {items.map((item) => (
+          <button
+            key={item.name}
+            type="button"
+            className={buildDimensionChipClassName(selectedName === item.name)}
+            title={`${item.name}: ${formatCurrency(item.value)}`}
+            onClick={() => onSelect(selectedName === item.name ? "" : item.name)}
+          >
+            <span>{item.name}</span>
+            <strong>{formatCompactCurrency(item.value)}</strong>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function hasCostStackItem(items, name) {
+  return (items || []).some((item) => item.name === name);
 }
 
 function withSharedCostAllocation(items, enabled) {

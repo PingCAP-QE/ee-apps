@@ -25,6 +25,7 @@ MIGRATION_MIN_SUCCESS_RUNS = 5
 MIGRATION_IMPROVED_LIMIT = 10
 MIGRATION_REGRESSED_LIMIT = 10
 BUILD_TREND_JOB_RANKING_LIMIT = 10
+BUILD_COUNT_BREAKDOWN_LIMIT = 8
 MIGRATION_FIXED_BASELINE_START = date(2025, 12, 15)
 MIGRATION_FIXED_BASELINE_END = date(2026, 1, 14)
 MIGRATION_FIXED_RECENT_START = date(2026, 4, 15)
@@ -355,6 +356,163 @@ def get_cloud_migration_summary(engine: Engine, filters: CommonFilters) -> dict[
         "total_duration_s": total_duration_s,
         "gcp_duration_share_pct": rate_pct(gcp_total_duration_s, total_duration_s),
         "meta": filters.meta(),
+    }
+
+
+def get_build_count_breakdown_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    return {
+        "repo": _get_build_count_dimension_trend(
+            engine,
+            filters,
+            dimension_key="repo",
+            dimension_expr="COALESCE(NULLIF(b.repo_full_name, ''), '(unknown repo)')",
+            empty_label="(unknown repo)",
+        ),
+        "branch": _get_build_count_dimension_trend(
+            engine,
+            filters,
+            dimension_key="branch",
+            dimension_expr=f"COALESCE(NULLIF({branch_expr('b')}, ''), '(unknown branch)')",
+            empty_label="(unknown branch)",
+        ),
+        "author": _get_build_count_dimension_trend(
+            engine,
+            filters,
+            dimension_key="author",
+            dimension_expr="COALESCE(NULLIF(b.author, ''), '(unknown author)')",
+            empty_label="(unknown author)",
+        ),
+        "meta": {
+            **filters.meta(),
+            "limit": BUILD_COUNT_BREAKDOWN_LIMIT,
+        },
+    }
+
+
+def _get_build_count_dimension_trend(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    dimension_key: str,
+    dimension_expr: str,
+    empty_label: str,
+) -> dict[str, Any]:
+    with engine.begin() as connection:
+        where_clause, params = build_common_where(filters, table_alias="b")
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        bucket = bucket_expr(connection, "b.start_time", filters.granularity)
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT
+                  {bucket} AS bucket_start,
+                  {dimension_expr} AS dimension_name,
+                  COUNT(*) AS build_count
+                FROM {builds_table}
+                WHERE {where_clause}
+                GROUP BY bucket_start, {dimension_expr}
+                ORDER BY bucket_start, build_count DESC, dimension_name ASC
+                """
+            ),
+            params,
+        ).mappings()
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
+
+    totals: dict[str, int] = {}
+    buckets: set[str] = set()
+    counts_by_dimension: dict[str, dict[str, int]] = {}
+    for row in data_rows:
+        bucket_start = str(row["bucket_start"])
+        dimension_name = str(row["dimension_name"] or empty_label)
+        build_count = int(row["build_count"] or 0)
+        buckets.add(bucket_start)
+        totals[dimension_name] = totals.get(dimension_name, 0) + build_count
+        counts_by_dimension.setdefault(dimension_name, {})[bucket_start] = build_count
+
+    ordered_buckets = sorted(buckets)
+    if not ordered_buckets:
+        return {
+            "items": [],
+            "series": [],
+            "meta": {
+                **filters.meta(),
+                "dimension": dimension_key,
+                "limit": BUILD_COUNT_BREAKDOWN_LIMIT,
+            },
+        }
+
+    total_builds = sum(totals.values())
+    ordered_dimensions = sorted(
+        totals,
+        key=lambda name: (-totals[name], name),
+    )
+    visible_dimensions = ordered_dimensions[:BUILD_COUNT_BREAKDOWN_LIMIT]
+    overflow_dimensions = ordered_dimensions[BUILD_COUNT_BREAKDOWN_LIMIT:]
+
+    items = [
+        {
+            "name": dimension_name,
+            "value": totals[dimension_name],
+            "share_pct": rate_pct(totals[dimension_name], total_builds),
+        }
+        for dimension_name in visible_dimensions
+    ]
+    if overflow_dimensions:
+        other_total = sum(totals[dimension_name] for dimension_name in overflow_dimensions)
+        items.append(
+            {
+                "name": "Others",
+                "value": other_total,
+                "share_pct": rate_pct(other_total, total_builds),
+            }
+        )
+
+    series = [
+        {
+            "key": f"{dimension_key}:{dimension_name}",
+            "label": dimension_name,
+            "type": "bar",
+            "points": [
+                [bucket_start, counts_by_dimension.get(dimension_name, {}).get(bucket_start, 0)]
+                for bucket_start in ordered_buckets
+            ],
+        }
+        for dimension_name in visible_dimensions
+    ]
+    if overflow_dimensions:
+        series.append(
+            {
+                "key": f"{dimension_key}:Others",
+                "label": "Others",
+                "type": "bar",
+                "points": [
+                    [
+                        bucket_start,
+                        sum(
+                            counts_by_dimension.get(dimension_name, {}).get(bucket_start, 0)
+                            for dimension_name in overflow_dimensions
+                        ),
+                    ]
+                    for bucket_start in ordered_buckets
+                ],
+            }
+        )
+
+    return {
+        "items": items,
+        "series": series,
+        "meta": {
+            **filters.meta(),
+            "dimension": dimension_key,
+            "limit": BUILD_COUNT_BREAKDOWN_LIMIT,
+            "total_builds": total_builds,
+        },
     }
 
 
