@@ -172,7 +172,7 @@ def test_run_archive_error_logs_archives_failed_jenkins_build(sqlite_engine) -> 
     assert summary.builds_archived == 1
     assert summary.builds_failed == 0
     assert fetcher.calls == [
-        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/101/display/redirect", 1024)
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/101/", 1024)
     ]
     assert uploader.calls[0][0] == "ci-dashboard-test"
     assert uploader.calls[0][1] == "2604/101.log"
@@ -208,7 +208,7 @@ def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine)
 
     assert summary.builds_archived == 1
     assert fetcher.failed_node_calls == [
-        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/151/display/redirect"
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/151/"
     ]
     assert "Connection reset by peer" in uploader.calls[0][2]
     assert "Build completed, 1 test FAILED" in uploader.calls[0][2]
@@ -236,7 +236,7 @@ def test_run_archive_error_logs_appends_live_signal_excerpts_for_remoting_tail(s
 
     assert summary.builds_archived == 1
     assert fetcher.signal_calls == [
-        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/161/display/redirect"
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/161/"
     ]
     assert "Timeout waiting for agent to come back" in uploader.calls[0][2]
     assert "Container [golang] terminated [OOMKilled]" in uploader.calls[0][2]
@@ -287,6 +287,35 @@ def test_run_archive_error_logs_force_overwrites_existing_path(sqlite_engine) ->
     assert summary.builds_archived == 1
     assert uploader.calls[0][0] == "ci-dashboard-test"
     assert uploader.calls[0][1] == "custom/path/build-301.log"
+
+
+def test_run_archive_error_logs_force_works_after_url_column_drop(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=302,
+        log_gcs_uri="gcs://ci-dashboard-test/custom/path/build-302.log",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE ci_l1_builds DROP COLUMN url"))
+
+    fetcher = _FakeFetcher("password=very-secret\n")
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine,
+        _settings(),
+        build_id=302,
+        force=True,
+        fetcher=fetcher,
+        uploader=uploader,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_archived == 1
+    assert fetcher.calls == [
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/302/", 1024)
+    ]
+    assert uploader.calls[0][1] == "custom/path/build-302.log"
 
 
 def test_build_archive_object_ref_reuses_existing_uri_on_force(sqlite_engine) -> None:

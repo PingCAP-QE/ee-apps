@@ -22,7 +22,6 @@ def test_normalized_build_row_as_db_params_converts_booleans() -> None:
         pr_number=123,
         is_pr_build=True,
         context=None,
-        url="https://example.test",
         normalized_build_url="https://prow.tidb.net/job/1/",
         author="alice",
         retest=True,

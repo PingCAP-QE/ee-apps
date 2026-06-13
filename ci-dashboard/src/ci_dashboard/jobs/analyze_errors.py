@@ -105,7 +105,8 @@ FETCH_SUPERSEDED_CANDIDATE_IDS_FORCE = text(
 FETCH_CANDIDATE_BUILDS_BY_IDS = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
-           b.pr_number, b.head_sha, b.url, b.normalized_build_url, b.pod_name, b.log_gcs_uri,
+           b.pr_number, b.head_sha, b.normalized_build_url,
+           b.pod_name, b.log_gcs_uri,
            b.error_l1_category, b.error_l2_subcategory,
            b.revise_error_l1_category, b.revise_error_l2_subcategory,
            pj.state AS prow_state, pj.status AS prow_status,
@@ -142,7 +143,8 @@ FETCH_CANDIDATE_BUILDS_BY_IDS = text(
 FETCH_CANDIDATE_BUILD_BY_ID = text(
     """
     SELECT b.id, b.source_prow_job_id, b.job_name, b.job_type, b.repo_full_name,
-           b.pr_number, b.head_sha, b.url, b.normalized_build_url, b.pod_name, b.log_gcs_uri,
+           b.pr_number, b.head_sha, b.normalized_build_url,
+           b.pod_name, b.log_gcs_uri,
            b.error_l1_category, b.error_l2_subcategory,
            b.revise_error_l1_category, b.revise_error_l2_subcategory,
            pj.state AS prow_state, pj.status AS prow_status,
@@ -677,7 +679,7 @@ def _append_live_signal_excerpts(
     if not callable(fetch_console_signal_excerpts):
         return log_text
 
-    build_url = str(build.get("url") or "").strip()
+    build_url = str(build.get("normalized_build_url") or "").strip()
     if not build_url:
         return log_text
 

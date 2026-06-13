@@ -1,0 +1,2 @@
+ALTER TABLE ci_l1_builds
+  DROP COLUMN IF EXISTS url;

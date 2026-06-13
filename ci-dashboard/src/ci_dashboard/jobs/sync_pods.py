@@ -148,8 +148,6 @@ class PodMetadataSnapshot:
             "pod_org": _coerce_str(self.labels.get("org")),
             "pod_repo": _coerce_str(self.labels.get("repo")),
             "jenkins_label": _coerce_str(self.labels.get("jenkins/label")),
-            "jenkins_label_digest": _coerce_str(self.labels.get("jenkins/label-digest")),
-            "jenkins_controller": _coerce_str(self.labels.get("kubernetes.jenkins.io/controller")),
             "ci_job": _coerce_str(self.annotations.get("ci_job")),
         }
 
@@ -1219,7 +1217,7 @@ def _load_direct_build_metadata_map(
               repo_full_name,
               job_name,
               author,
-              url,
+              build_system,
               start_time
             FROM ci_l1_builds
             WHERE pod_name IN ({", ".join(placeholders)})
@@ -1235,7 +1233,7 @@ def _load_direct_build_metadata_map(
         if pod_name is None or pod_name in metadata_by_pod_name:
             continue
         payload = dict(row)
-        build_system = classify_build_system(payload.get("url"))
+        build_system = payload.get("build_system") or classify_build_system(payload.get("normalized_build_url"))
         metadata_by_pod_name[pod_name] = {
             "build_system": build_system,
             "source_prow_job_id": payload.get("source_prow_job_id"),
@@ -1534,8 +1532,6 @@ def _empty_pod_metadata_fields() -> dict[str, Any]:
         "pod_org": None,
         "pod_repo": None,
         "jenkins_label": None,
-        "jenkins_label_digest": None,
-        "jenkins_controller": None,
         "ci_job": None,
     }
 
@@ -2035,7 +2031,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
               source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
               build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
               abnormal_reason, abnormal_message,
-              pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
+              pod_author, pod_org, pod_repo, jenkins_label, ci_job,
               source_prow_job_id, normalized_build_url, repo_full_name, job_name,
               scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
               last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
@@ -2043,7 +2039,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
               :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
               :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
               :abnormal_reason, :abnormal_message,
-              :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
+              :pod_author, :pod_org, :pod_repo, :jenkins_label, :ci_job,
               :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
               :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
               :last_failed_scheduling_at, :failed_scheduling_count, :last_event_at, :schedule_to_started_seconds
@@ -2062,8 +2058,6 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
               pod_org = excluded.pod_org,
               pod_repo = excluded.pod_repo,
               jenkins_label = excluded.jenkins_label,
-              jenkins_label_digest = excluded.jenkins_label_digest,
-              jenkins_controller = excluded.jenkins_controller,
               ci_job = excluded.ci_job,
               source_prow_job_id = excluded.source_prow_job_id,
               normalized_build_url = excluded.normalized_build_url,
@@ -2087,7 +2081,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
           source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
           build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
           abnormal_reason, abnormal_message,
-          pod_author, pod_org, pod_repo, jenkins_label, jenkins_label_digest, jenkins_controller, ci_job,
+          pod_author, pod_org, pod_repo, jenkins_label, ci_job,
           source_prow_job_id, normalized_build_url, repo_full_name, job_name,
           scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
           last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
@@ -2095,7 +2089,7 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
           :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
           :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
           :abnormal_reason, :abnormal_message,
-          :pod_author, :pod_org, :pod_repo, :jenkins_label, :jenkins_label_digest, :jenkins_controller, :ci_job,
+          :pod_author, :pod_org, :pod_repo, :jenkins_label, :ci_job,
           :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
           :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
           :last_failed_scheduling_at, :failed_scheduling_count, :last_event_at, :schedule_to_started_seconds
@@ -2114,8 +2108,6 @@ def _build_pod_lifecycle_upsert_statement(connection: Connection):
           pod_org = VALUES(pod_org),
           pod_repo = VALUES(pod_repo),
           jenkins_label = VALUES(jenkins_label),
-          jenkins_label_digest = VALUES(jenkins_label_digest),
-          jenkins_controller = VALUES(jenkins_controller),
           ci_job = VALUES(ci_job),
           source_prow_job_id = VALUES(source_prow_job_id),
           normalized_build_url = VALUES(normalized_build_url),

@@ -1556,7 +1556,6 @@ def get_error_builds(
                 SELECT
                   b.id AS build_row_id,
                   b.build_id,
-                  b.url,
                   b.normalized_build_url,
                   b.completion_time,
                   b.start_time
@@ -2148,7 +2147,7 @@ def _job_ranking_item(row: Any, *, value_key: str, extra_keys: tuple[str, ...] =
 
 
 def _error_build_item(row: Any, *, include_completion_time: bool = False) -> dict[str, Any]:
-    build_url = normalize_build_url(row.get("normalized_build_url")) or normalize_build_url(row.get("url"))
+    build_url = normalize_build_url(row.get("normalized_build_url"))
     build_number_from_url = _build_number_from_url(build_url)
     raw_build_number = str(row.get("build_id") or "").strip()
     if build_number_from_url:

@@ -1147,17 +1147,17 @@ def test_append_live_signal_excerpts_handles_missing_fetcher_url_and_signal() ->
     assert (
         _append_live_signal_excerpts(
             "tail",
-            build={"url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
+            build={"normalized_build_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
             jenkins_fetcher=object(),
         )
         == "tail"
     )
     fetcher = _FakeJenkinsFetcher({})
-    assert _append_live_signal_excerpts("tail", build={"url": ""}, jenkins_fetcher=fetcher) == "tail"
+    assert _append_live_signal_excerpts("tail", build={"normalized_build_url": ""}, jenkins_fetcher=fetcher) == "tail"
     assert (
         _append_live_signal_excerpts(
             "tail",
-            build={"url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
+            build={"normalized_build_url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/1/"},
             jenkins_fetcher=fetcher,
         )
         == "tail"

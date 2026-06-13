@@ -17,8 +17,6 @@ CREATE TABLE IF NOT EXISTS ci_l1_pod_lifecycle (
   pod_org VARCHAR(255) NULL,
   pod_repo VARCHAR(255) NULL,
   jenkins_label VARCHAR(255) NULL,
-  jenkins_label_digest VARCHAR(255) NULL,
-  jenkins_controller VARCHAR(255) NULL,
   ci_job VARCHAR(255) NULL,
   source_prow_job_id VARCHAR(128) NULL,
   normalized_build_url VARCHAR(1024) NULL,

@@ -19,7 +19,7 @@ FAILURE_LIKE_STATES = ("failure", "error", "timeout", "timed_out", "aborted")
 
 FETCH_CANDIDATE_BUILD_BY_ID = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE id = :build_id
@@ -31,7 +31,7 @@ FETCH_CANDIDATE_BUILD_BY_ID = text(
 
 FETCH_CANDIDATE_BUILD_BY_ID_FORCE = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE id = :build_id
@@ -42,7 +42,7 @@ FETCH_CANDIDATE_BUILD_BY_ID_FORCE = text(
 
 FETCH_CANDIDATE_BUILDS_SCAN = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
@@ -55,7 +55,7 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
 
 FETCH_CANDIDATE_BUILDS_SCAN_FORCE = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
@@ -236,7 +236,7 @@ def _archive_single_build(
     if not force and build.get("log_gcs_uri"):
         return False
 
-    build_url = str(build.get("url") or "").strip()
+    build_url = str(build.get("normalized_build_url") or "").strip()
     if not build_url:
         raise ValueError(f"build {build['id']} is missing Jenkins build URL")
 

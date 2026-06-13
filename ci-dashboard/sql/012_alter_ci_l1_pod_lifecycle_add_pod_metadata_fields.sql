@@ -20,10 +20,4 @@ ALTER TABLE ci_l1_pod_lifecycle
   ADD COLUMN IF NOT EXISTS jenkins_label VARCHAR(255) NULL AFTER pod_repo;
 
 ALTER TABLE ci_l1_pod_lifecycle
-  ADD COLUMN IF NOT EXISTS jenkins_label_digest VARCHAR(255) NULL AFTER jenkins_label;
-
-ALTER TABLE ci_l1_pod_lifecycle
-  ADD COLUMN IF NOT EXISTS jenkins_controller VARCHAR(255) NULL AFTER jenkins_label_digest;
-
-ALTER TABLE ci_l1_pod_lifecycle
-  ADD COLUMN IF NOT EXISTS ci_job VARCHAR(255) NULL AFTER jenkins_controller;
+  ADD COLUMN IF NOT EXISTS ci_job VARCHAR(255) NULL AFTER jenkins_label;
