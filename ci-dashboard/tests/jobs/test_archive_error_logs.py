@@ -289,6 +289,35 @@ def test_run_archive_error_logs_force_overwrites_existing_path(sqlite_engine) ->
     assert uploader.calls[0][1] == "custom/path/build-301.log"
 
 
+def test_run_archive_error_logs_force_works_after_url_column_drop(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=302,
+        log_gcs_uri="gcs://ci-dashboard-test/custom/path/build-302.log",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE ci_l1_builds DROP COLUMN url"))
+
+    fetcher = _FakeFetcher("password=very-secret\n")
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine,
+        _settings(),
+        build_id=302,
+        force=True,
+        fetcher=fetcher,
+        uploader=uploader,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_archived == 1
+    assert fetcher.calls == [
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/302/", 1024)
+    ]
+    assert uploader.calls[0][1] == "custom/path/build-302.log"
+
+
 def test_build_archive_object_ref_reuses_existing_uri_on_force(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,

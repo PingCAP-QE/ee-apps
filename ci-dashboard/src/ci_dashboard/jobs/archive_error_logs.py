@@ -31,7 +31,7 @@ FETCH_CANDIDATE_BUILD_BY_ID = text(
 
 FETCH_CANDIDATE_BUILD_BY_ID_FORCE = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE id = :build_id
@@ -55,7 +55,7 @@ FETCH_CANDIDATE_BUILDS_SCAN = text(
 
 FETCH_CANDIDATE_BUILDS_SCAN_FORCE = text(
     """
-    SELECT id, url, normalized_build_url, log_gcs_uri, state, build_system,
+    SELECT id, normalized_build_url, log_gcs_uri, state, build_system,
            start_time, completion_time
     FROM ci_l1_builds
     WHERE build_system = 'JENKINS'
