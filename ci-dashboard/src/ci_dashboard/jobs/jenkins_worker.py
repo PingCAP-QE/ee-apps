@@ -115,7 +115,6 @@ INSERT_BUILD_FROM_JENKINS = text(
       pr_number,
       is_pr_build,
       context,
-      url,
       normalized_build_url,
       author,
       retest,
@@ -148,7 +147,6 @@ INSERT_BUILD_FROM_JENKINS = text(
       :pr_number,
       :is_pr_build,
       :context,
-      :url,
       :normalized_build_url,
       :author,
       :retest,
@@ -174,7 +172,6 @@ UPDATE_BUILD_FROM_JENKINS = text(
     UPDATE ci_l1_builds
     SET source_prow_job_id = COALESCE(source_prow_job_id, :source_prow_job_id),
         state = :state,
-        url = COALESCE(url, :url),
         normalized_build_url = COALESCE(normalized_build_url, :normalized_build_url),
         job_name = CASE
           WHEN :job_name IS NULL THEN job_name
@@ -270,7 +267,6 @@ class ParsedJenkinsFinishedEvent:
             "pr_number": self.pr_number,
             "is_pr_build": int(self.is_pr_build),
             "context": self.context,
-            "url": self.build_url,
             "normalized_build_url": self.normalized_build_url,
             "author": self.author,
             "retest": None,

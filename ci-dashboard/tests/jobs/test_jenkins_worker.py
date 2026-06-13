@@ -259,7 +259,7 @@ def test_process_jenkins_event_message_inserts_real_plugin_payload(sqlite_engine
         build = connection.execute(
             text(
                 """
-                SELECT source_prow_job_id, state, job_name, url, normalized_build_url, job_type, repo_full_name, pr_number, author, head_sha, build_system, cloud_phase
+                SELECT source_prow_job_id, state, job_name, normalized_build_url, job_type, repo_full_name, pr_number, author, head_sha, build_system, cloud_phase
                 FROM ci_l1_builds
                 """
             )
@@ -276,7 +276,6 @@ def test_process_jenkins_event_message_inserts_real_plugin_payload(sqlite_engine
     assert build["source_prow_job_id"] == "3bfe389c-e361-4a6d-a1d6-679fb87b0e13"
     assert build["state"] == "success"
     assert build["job_name"] == "pingcap/tidb/pull_mysql_client_test"
-    assert build["url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/"
     assert build["normalized_build_url"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/"
     assert build["job_type"] == "presubmit"
     assert build["repo_full_name"] == "pingcap/tidb"

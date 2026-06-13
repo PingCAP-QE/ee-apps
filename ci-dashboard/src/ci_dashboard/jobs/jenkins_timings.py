@@ -261,9 +261,11 @@ def run_backfill_jenkins_timings(
     limit_clause = "LIMIT :limit_value" if limit is not None else ""
     query = text(
         f"""
-        SELECT id, COALESCE(normalized_build_url, url) AS build_url
+        SELECT id, normalized_build_url AS build_url
         FROM ci_l1_builds
         WHERE build_system = 'JENKINS'
+          AND normalized_build_url IS NOT NULL
+          AND normalized_build_url <> ''
           AND completion_time IS NOT NULL
           AND completion_time >= :cutoff
           AND jenkins_queue_total_subtasks_sum IS NULL

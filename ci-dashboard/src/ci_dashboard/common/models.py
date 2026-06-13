@@ -22,7 +22,6 @@ class NormalizedBuildRow:
     pr_number: int | None
     is_pr_build: bool
     context: str | None
-    url: str
     normalized_build_url: str | None
     author: str | None
     retest: bool | None
