@@ -17,11 +17,14 @@ import {
   StatCard,
   TrendChart,
 } from "../components/charts";
+import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
 export default function BuildTrendPage({ filters }) {
   const page = useApiData("/api/v1/pages/ci-status", filters);
   const [selectedRepoSlice, setSelectedRepoSlice] = useState(null);
   const [selectedErrorCatalog, setSelectedErrorCatalog] = useState("");
+  const [buildCountDimension, setBuildCountDimension] = useState("repo");
+  const [selectedBuildCountTrend, setSelectedBuildCountTrend] = useState("");
 
   const outcomeSummary = page.data?.outcome_trend?.meta?.summary || {};
   const totalBuilds = Number(
@@ -72,6 +75,11 @@ export default function BuildTrendPage({ filters }) {
   const errorDetailsTitle = selectedErrorCatalog
     ? `${formatErrorCatalogName(selectedErrorCatalog)} Error Details`
     : "Top Error Details";
+  const buildCountBreakdownTrend = page.data?.build_count_breakdown_trend || {};
+  const activeBuildCountTrend = buildCountBreakdownTrend[buildCountDimension];
+  const activeBuildCountDimension = BUILD_COUNT_DIMENSIONS.find(
+    (dimension) => dimension.key === buildCountDimension,
+  ) || BUILD_COUNT_DIMENSIONS[0];
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -96,6 +104,15 @@ export default function BuildTrendPage({ filters }) {
       setSelectedErrorCatalog("");
     }
   }, [errorCatalogItems, selectedErrorCatalog]);
+
+  useEffect(() => {
+    if (!selectedBuildCountTrend) {
+      return;
+    }
+    if (!hasDimensionItem(activeBuildCountTrend?.items, selectedBuildCountTrend)) {
+      setSelectedBuildCountTrend("");
+    }
+  }, [activeBuildCountTrend?.items, selectedBuildCountTrend]);
 
   return (
     <div className="page-stack">
@@ -195,6 +212,30 @@ export default function BuildTrendPage({ filters }) {
         >
           <TrendChart series={page.data?.duration_trend?.series} yFormatter={formatSeconds} />
         </Panel>
+
+        <Panel
+          title={`Build count by ${activeBuildCountDimension.label.toLowerCase()}`}
+          subtitle={`Bucketed build-count trend split by ${activeBuildCountDimension.description} in the current CI scope.`}
+          loading={page.loading}
+          error={page.error}
+          actions={
+            <DimensionModeSelector
+              value={buildCountDimension}
+              onChange={(nextDimension) => {
+                setBuildCountDimension(nextDimension);
+                setSelectedBuildCountTrend("");
+              }}
+            />
+          }
+        >
+          <BuildCountDimensionTrend
+            dimension={activeBuildCountTrend}
+            selectedName={selectedBuildCountTrend}
+            onSelect={setSelectedBuildCountTrend}
+            emptyMessage={`No ${activeBuildCountDimension.label.toLowerCase()} build-count trend data for the current filters.`}
+          />
+        </Panel>
+
         <Panel
           title="Longest avg success time jobs"
           subtitle="Success-only average run time ranked inside the current repo, branch, cloud, and date scope."
@@ -311,6 +352,77 @@ export default function BuildTrendPage({ filters }) {
       ) : null}
     </div>
   );
+}
+
+const BUILD_COUNT_DIMENSIONS = [
+  { key: "repo", label: "Repo", description: "repo" },
+  { key: "branch", label: "Branch", description: "target branch" },
+  { key: "author", label: "Author", description: "author" },
+];
+
+function DimensionModeSelector({ value, onChange }) {
+  return (
+    <SegmentedControl
+      ariaLabel="Build count grouping"
+      options={BUILD_COUNT_DIMENSIONS}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function BuildCountDimensionTrend({
+  dimension,
+  selectedName,
+  onSelect,
+  emptyMessage,
+}) {
+  const items = dimension?.items || [];
+  const series = selectedName
+    ? (dimension?.series || []).filter((item) => item.label === selectedName)
+    : dimension?.series;
+
+  if (!items.length || !series?.length) {
+    return <div className="empty-state">{emptyMessage}</div>;
+  }
+
+  return (
+    <div className="build-count-breakdown">
+      <TrendChart
+        series={series}
+        yFormatter={formatCompact}
+        stackBars={!selectedName}
+        yTickMode="integer"
+        height={320}
+        barMaxWidth={38}
+      />
+      <div className="dimension-selector" aria-label="Build count trend dimension selector">
+        <button
+          type="button"
+          className={buildDimensionChipClassName(!selectedName)}
+          onClick={() => onSelect("")}
+        >
+          All
+        </button>
+        {items.map((item) => (
+          <button
+            key={item.name}
+            type="button"
+            className={buildDimensionChipClassName(selectedName === item.name)}
+            title={`${item.name}: ${formatCompact(item.value)} builds`}
+            onClick={() => onSelect(selectedName === item.name ? "" : item.name)}
+          >
+            <span>{item.name}</span>
+            <strong>{formatCompact(item.value)}</strong>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function hasDimensionItem(items, name) {
+  return (items || []).some((item) => item.name === name);
 }
 
 function limitRepoShareItems(cloudShare, maxItems = 10, minSharePct = 1) {

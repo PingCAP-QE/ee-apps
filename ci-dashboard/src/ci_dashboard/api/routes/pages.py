@@ -98,10 +98,11 @@ def cost_weekly_account_summaries_page(
 
 @router.get("/cost-repo-group-stack")
 def cost_repo_group_stack_page(
+    group_by: str = Query("repo", pattern="^(repo|author|team)$"),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_repo_group_stack_page(engine, filters)
+    return get_cost_repo_group_stack_page(engine, filters, group_by=group_by)
 
 
 @router.get("/cost-engineering-group-share")

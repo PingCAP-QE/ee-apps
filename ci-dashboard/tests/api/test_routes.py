@@ -67,6 +67,7 @@ def _insert_build(
     pr_number: int = 100,
     normalized_build_url: str | None = None,
     build_id: str = "1",
+    author: str = "alice",
     error_l1_category: str | None = None,
     error_l2_subcategory: str | None = None,
 ) -> None:
@@ -89,7 +90,7 @@ def _insert_build(
                   :source_prow_row_id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   0, 1, :org, :repo, :repo_full_name, :base_ref, :pr_number, 1,
                   'unit-test', :url,
-                  :normalized_build_url, 'alice', 0, 'guid', :build_id, NULL, NULL, :start_time,
+                  :normalized_build_url, :author, 0, 'guid', :build_id, NULL, NULL, :start_time,
                   :start_time, :queue_wait_seconds, :run_seconds, :total_seconds, 'sha', :target_branch, :cloud_phase, :is_flaky,
                   :is_retry_loop, 0, :failure_category, NULL, :error_l1_category, :error_l2_subcategory
                 )
@@ -108,6 +109,7 @@ def _insert_build(
                 "url": f"{build_url}display/redirect",
                 "normalized_build_url": build_url,
                 "build_id": build_id,
+                "author": author,
                 "start_time": start_time,
                 "queue_wait_seconds": queue_wait_seconds,
                 "run_seconds": run_seconds,
@@ -782,6 +784,7 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=200,
         total_seconds=225,
         pr_number=200,
+        author="bob",
         error_l1_category="OTHERS",
         error_l2_subcategory="UNCLASSIFIED",
     )
@@ -803,6 +806,7 @@ def api_client(sqlite_engine, monkeypatch):
         run_seconds=450,
         total_seconds=540,
         pr_number=103,
+        author="carol",
     )
     _insert_success_run_series(
         sqlite_engine,
@@ -1971,6 +1975,41 @@ def test_page_routes(api_client: TestClient) -> None:
     )
     assert build_trend_all.status_code == 200
     build_trend_all_body = build_trend_all.json()
+    build_count_breakdown = build_trend_all_body["build_count_breakdown_trend"]
+    assert build_count_breakdown["repo"]["items"] == [
+        {"name": "pingcap/tidb", "value": 6, "share_pct": 85.71},
+        {"name": "pingcap/tiflash", "value": 1, "share_pct": 14.29},
+    ]
+    repo_series = {
+        item["label"]: item["points"]
+        for item in build_count_breakdown["repo"]["series"]
+    }
+    assert repo_series["pingcap/tidb"] == [["2026-04-10", 3], ["2026-04-11", 3]]
+    assert repo_series["pingcap/tiflash"] == [["2026-04-10", 0], ["2026-04-11", 1]]
+    assert build_count_breakdown["branch"]["items"] == [
+        {"name": "master", "value": 5, "share_pct": 71.43},
+        {"name": "main", "value": 1, "share_pct": 14.29},
+        {"name": "release-8.5", "value": 1, "share_pct": 14.29},
+    ]
+    branch_series = {
+        item["label"]: item["points"]
+        for item in build_count_breakdown["branch"]["series"]
+    }
+    assert branch_series["master"] == [["2026-04-10", 3], ["2026-04-11", 2]]
+    assert branch_series["main"] == [["2026-04-10", 0], ["2026-04-11", 1]]
+    assert branch_series["release-8.5"] == [["2026-04-10", 0], ["2026-04-11", 1]]
+    assert build_count_breakdown["author"]["items"] == [
+        {"name": "alice", "value": 5, "share_pct": 71.43},
+        {"name": "bob", "value": 1, "share_pct": 14.29},
+        {"name": "carol", "value": 1, "share_pct": 14.29},
+    ]
+    author_series = {
+        item["label"]: item["points"]
+        for item in build_count_breakdown["author"]["series"]
+    }
+    assert author_series["alice"] == [["2026-04-10", 3], ["2026-04-11", 2]]
+    assert author_series["bob"] == [["2026-04-10", 0], ["2026-04-11", 1]]
+    assert author_series["carol"] == [["2026-04-10", 0], ["2026-04-11", 1]]
     cloud_repo_share = {
         item["cloud_phase"]: item for item in build_trend_all_body["cloud_repo_share"]["clouds"]
     }
@@ -2483,6 +2522,7 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
     assert stack_response.status_code == 200
     stack_body = stack_response.json()
     assert stack_body["meta"]["granularity"] == "week"
+    assert stack_body["meta"]["group_by"] == "repo"
     assert stack_body["items"] == [{"name": "(no repo)", "value": 10.0}]
     assert stack_body["series"] == [
         {
@@ -2497,6 +2537,42 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
                 ["2026-05-25", 0.0],
             ],
         }
+    ]
+
+    author_stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "author"},
+    )
+    assert author_stack_response.status_code == 200
+    author_stack_body = author_stack_response.json()
+    assert author_stack_body["meta"]["group_by"] == "author"
+    assert author_stack_body["items"] == [{"name": "alice", "value": 10.0}]
+    assert author_stack_body["series"][0]["key"] == "author__0"
+    assert author_stack_body["series"][0]["label"] == "alice"
+    assert author_stack_body["series"][0]["points"] == [
+        ["2026-04-27", 10.0],
+        ["2026-05-04", 0.0],
+        ["2026-05-11", 0.0],
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 0.0],
+    ]
+
+    team_stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "team"},
+    )
+    assert team_stack_response.status_code == 200
+    team_stack_body = team_stack_response.json()
+    assert team_stack_body["meta"]["group_by"] == "team"
+    assert team_stack_body["items"] == [{"name": "TiDB", "value": 10.0}]
+    assert team_stack_body["series"][0]["key"] == "team__0"
+    assert team_stack_body["series"][0]["label"] == "TiDB"
+    assert team_stack_body["series"][0]["points"] == [
+        ["2026-04-27", 10.0],
+        ["2026-05-04", 0.0],
+        ["2026-05-11", 0.0],
+        ["2026-05-18", 0.0],
+        ["2026-05-25", 0.0],
     ]
 
     share_response = api_client.get("/api/v1/pages/cost-engineering-group-share", params=params)
@@ -3179,8 +3255,14 @@ def test_cost_query_helpers_cover_edge_cases(sqlite_engine) -> None:
         "2026-06-01",
         "2026-07-01",
     ]
-    assert cost_queries._repo_key("(no repo)", 0) == "repo__no_repo"
-    assert cost_queries._repo_key("repo-1", 0) != cost_queries._repo_key("repo.1", 1)
+    assert cost_queries._cost_stack_key("repo", "(no repo)", 0) == "repo__no_repo"
+    assert cost_queries._cost_stack_key("repo", "repo-1", 0) != cost_queries._cost_stack_key(
+        "repo",
+        "repo.1",
+        1,
+    )
+    assert cost_queries._cost_stack_key("author", "(unknown author)", 0) == "author__unknown_author"
+    assert cost_queries._cost_stack_key("team", "(no team)", 0) == "team__no_team"
 
 
 def test_budget_health_snapshot_marks_warning_when_over_pace(
