@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -217,14 +218,14 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
 	s.logger.Info().Msgf("devbuild.ingestEvent")
 
-	// Extract DevBuild ID from subject
-	if p.Subject == nil {
-		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "missing subject"}
-	}
-
-	buildID, err := strconv.Atoi(*p.Subject)
+	// Extract DevBuild ID from PipelineRun annotations
+	buildID, err := s.extractDevBuildID(p.Data, p.Source)
 	if err != nil {
-		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "invalid subject format"}
+		s.logger.Err(err).Msg("failed to extract devbuild id from event")
+		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: err.Error()}
+	}
+	if buildID == 0 {
+		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "not a devbuild event"}
 	}
 
 	// Get the existing build
@@ -236,8 +237,8 @@ func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIn
 		return nil, err
 	}
 
-	// Extract status from event data
-	status := s.extractBuildStatus(p.Data)
+	// Extract status from event type
+	status := s.extractBuildStatusFromEventType(p.Type)
 
 	// Update build status
 	updater := s.dbClient.DevBuild.UpdateOneID(build.ID)
@@ -263,30 +264,51 @@ func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIn
 	}, nil
 }
 
-func (s *devbuildsrvc) extractBuildStatus(data any) string {
-	if data == nil {
-		return ""
+func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
+	// First try to extract from PipelineRun annotations (Tekton callback)
+	if data != nil {
+		if dataMap, ok := data.(map[string]any); ok {
+			if pipelineRun, ok := dataMap["pipelineRun"].(map[string]any); ok {
+				if metadata, ok := pipelineRun["metadata"].(map[string]any); ok {
+					if annotations, ok := metadata["annotations"].(map[string]any); ok {
+						if ceContext, ok := annotations["tekton.dev/ce-context"].(string); ok {
+							var context struct {
+								Source  string `json:"source"`
+								Subject string `json:"subject"`
+							}
+							if err := json.Unmarshal([]byte(ceContext), &context); err == nil {
+								if strings.Contains(context.Source, "tibuild.pingcap.net/api/devbuild") {
+									return strconv.Atoi(context.Subject)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
-	dataMap, ok := data.(map[string]any)
-	if !ok {
-		return ""
+	// Fallback: try to extract from event source
+	if strings.Contains(source, "tibuild.pingcap.net/api/devbuilds/") {
+		parts := strings.Split(source, "/")
+		if len(parts) > 0 {
+			return strconv.Atoi(parts[len(parts)-1])
+		}
 	}
 
-	status, ok := dataMap["status"].(string)
-	if !ok {
-		return ""
-	}
+	return 0, nil
+}
 
-	switch strings.ToLower(status) {
-	case "success", "succeeded", "completed":
-		return "success"
-	case "failure", "failed", "error":
-		return "failure"
-	case "running", "in_progress":
+func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string {
+	switch eventType {
+	case "dev.tekton.event.pipelinerun.started.v1":
 		return "running"
+	case "dev.tekton.event.pipelinerun.successful.v1":
+		return "success"
+	case "dev.tekton.event.pipelinerun.failed.v1":
+		return "failure"
 	default:
-		return status
+		return ""
 	}
 }
 
