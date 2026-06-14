@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,13 +135,6 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 		return nil, err
 	}
 
-	// When user requests sync the build status.
-	if p.Sync {
-		if _, err := s.syncBuildStatus(ctx, build); err != nil {
-			return nil, err
-		}
-	}
-
 	res := transformDevBuild(build)
 	if res.Status.BuildReport == nil {
 		return res, nil
@@ -222,7 +216,112 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 
 func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
 	s.logger.Info().Msgf("devbuild.ingestEvent")
-	return nil, nil
+
+	// Extract DevBuild ID from subject
+	if p.Subject == nil {
+		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "missing subject"}
+	}
+
+	buildID, err := strconv.Atoi(*p.Subject)
+	if err != nil {
+		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "invalid subject format"}
+	}
+
+	// Get the existing build
+	build, err := s.dbClient.DevBuild.Get(ctx, buildID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, &devbuild.HTTPError{Code: http.StatusNotFound, Message: "Devbuild not found"}
+		}
+		return nil, err
+	}
+
+	// Extract status from event data
+	status := s.extractBuildStatus(p.Data)
+
+	// Update build status
+	updater := s.dbClient.DevBuild.UpdateOneID(build.ID)
+	if status != "" {
+		updater.SetStatus(status)
+	}
+	updater.SetUpdatedAt(time.Now())
+
+	// Update tekton status if available
+	if tektonStatus := s.extractTektonStatus(p.Data); tektonStatus != nil {
+		updater.SetTektonStatus(tektonStatus)
+	}
+
+	if _, err := updater.Save(ctx); err != nil {
+		s.logger.Err(err).Msg("failed to update build status from event")
+		return nil, err
+	}
+
+	return &devbuild.CloudEventResponse{
+		ID:      p.ID,
+		Status:  "accepted",
+		Message: ptr("Event processed successfully"),
+	}, nil
+}
+
+func (s *devbuildsrvc) extractBuildStatus(data any) string {
+	if data == nil {
+		return ""
+	}
+
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	status, ok := dataMap["status"].(string)
+	if !ok {
+		return ""
+	}
+
+	switch strings.ToLower(status) {
+	case "success", "succeeded", "completed":
+		return "success"
+	case "failure", "failed", "error":
+		return "failure"
+	case "running", "in_progress":
+		return "running"
+	default:
+		return status
+	}
+}
+
+func (s *devbuildsrvc) extractTektonStatus(data any) map[string]any {
+	if data == nil {
+		return nil
+	}
+
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	// Extract pipeline run info from event data
+	pipelineName, ok := dataMap["pipelineName"].(string)
+	if !ok || pipelineName == "" {
+		return nil
+	}
+
+	pipeline := map[string]any{
+		"name": pipelineName,
+	}
+	if status, ok := dataMap["status"].(string); ok {
+		pipeline["status"] = status
+	}
+	if startTime, ok := dataMap["startTime"].(string); ok {
+		pipeline["start_at"] = startTime
+	}
+	if endTime, ok := dataMap["endTime"].(string); ok {
+		pipeline["end_at"] = endTime
+	}
+
+	return map[string]any{
+		"pipelines": []map[string]any{pipeline},
+	}
 }
 
 func (s *devbuildsrvc) getInternalImageURL(img string) *string {
