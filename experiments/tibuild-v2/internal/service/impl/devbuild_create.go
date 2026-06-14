@@ -45,7 +45,6 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetNillablePipelineEngine(p.Request.PipelineEngine).
 		SetStatus("pending")
 
-	// TODO: get the commit sha and set it in `create`.
 	return create.Save(ctx)
 }
 
