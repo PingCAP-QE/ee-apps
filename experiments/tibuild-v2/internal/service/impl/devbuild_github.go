@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/go-github/v69/github"
@@ -16,7 +17,7 @@ func NewGitHubClient(token string) *github.Client {
 	return github.NewClient(nil).WithAuthToken(token)
 }
 
-func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, ref string) string {
+func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, gitRef string) string {
 	if ghClient == nil {
 		return ""
 	}
@@ -27,12 +28,38 @@ func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, ref str
 	}
 
 	owner, repo := parts[0], parts[1]
-	branch, _, err := ghClient.Repositories.GetBranch(ctx, owner, repo, ref, 10)
-	if err != nil {
-		return ""
+
+	switch {
+	case strings.HasPrefix(gitRef, "branch/"):
+		branchName := strings.TrimPrefix(gitRef, "branch/")
+		branch, _, err := ghClient.Repositories.GetBranch(ctx, owner, repo, branchName, 10)
+		if err != nil {
+			return ""
+		}
+		return branch.Commit.GetSHA()
+
+	case strings.HasPrefix(gitRef, "tag/"):
+		tagName := strings.TrimPrefix(gitRef, "tag/")
+		ref, _, err := ghClient.Git.GetRef(ctx, owner, repo, "refs/tags/"+tagName)
+		if err != nil {
+			return ""
+		}
+		return ref.Object.GetSHA()
+
+	case strings.HasPrefix(gitRef, "pull/"):
+		prNumberStr := strings.TrimPrefix(gitRef, "pull/")
+		prNumber, err := strconv.Atoi(prNumberStr)
+		if err != nil {
+			return ""
+		}
+		pr, _, err := ghClient.PullRequests.Get(ctx, owner, repo, prNumber)
+		if err != nil {
+			return ""
+		}
+		return pr.Head.GetSHA()
 	}
 
-	return branch.Commit.GetSHA()
+	return ""
 }
 
 func newFakeGitHubPushEventPayload(fullRepo, ref, sha string) *github.PushEvent {
