@@ -26,6 +26,10 @@ class StorageBatchOperationsJobStatus:
     complete_time: datetime | None
 
 
+class StorageBatchOperationsTransientError(RuntimeError):
+    """Raised when polling should retry after a transient API failure."""
+
+
 def create_delete_job(
     *,
     project_id: str,
@@ -111,20 +115,27 @@ def wait_for_delete_job(
         credentials.refresh(GoogleAuthRequest())
 
     request_url = f"https://storagebatchoperations.googleapis.com/v1/{job_name}"
-    deadline = timeout_seconds
     elapsed = 0
     while True:
-        payload = _get_job_payload(request_url=request_url, token=credentials.token)
+        try:
+            payload = _get_job_payload(request_url=request_url, token=credentials.token)
+        except StorageBatchOperationsTransientError:
+            elapsed = _sleep_or_raise_timeout(
+                job_name=job_name,
+                timeout_seconds=timeout_seconds,
+                poll_interval_seconds=poll_interval_seconds,
+                elapsed=elapsed,
+            )
+            continue
         state = str(payload.get("state") or "STATE_UNSPECIFIED")
         if state not in {"RUNNING", "QUEUED", "STATE_UNSPECIFIED"}:
             return _coerce_job_status(job_name=job_name, payload=payload)
-        if elapsed >= timeout_seconds:
-            raise RuntimeError(
-                f"Storage Batch Operations job timed out after {timeout_seconds}s: {job_name}"
-            )
-        sleep(poll_interval_seconds)
-        elapsed += poll_interval_seconds
-        deadline -= poll_interval_seconds
+        elapsed = _sleep_or_raise_timeout(
+            job_name=job_name,
+            timeout_seconds=timeout_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+            elapsed=elapsed,
+        )
 
 
 def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
@@ -140,10 +151,14 @@ def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code in {429, 500, 502, 503, 504}:
+            raise StorageBatchOperationsTransientError(
+                f"Storage Batch Operations get job transient failure ({exc.code}): {detail}"
+            ) from exc
         raise RuntimeError(f"Storage Batch Operations get job failed ({exc.code}): {detail}") from exc
     except URLError as exc:
-        raise RuntimeError(
-            f"Storage Batch Operations get job failed: {str(exc.reason)}"
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations get job transient failure: {str(exc.reason)}"
         ) from exc
 
 
@@ -180,3 +195,18 @@ def _coerce_optional_datetime(value: object) -> datetime | None:
     if isinstance(value, str):
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     raise ValueError(f"Unsupported datetime value: {value!r}")
+
+
+def _sleep_or_raise_timeout(
+    *,
+    job_name: str,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
+    elapsed: int,
+) -> int:
+    if elapsed >= timeout_seconds:
+        raise RuntimeError(
+            f"Storage Batch Operations job timed out after {timeout_seconds}s: {job_name}"
+        )
+    sleep(poll_interval_seconds)
+    return elapsed + poll_interval_seconds
