@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +9,7 @@ from cost_insight.common.config import AwsBillingSettings, DatabaseSettings, Gcp
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
 from cost_insight.jobs.backfill_cost_refine_from_raw import BackfillCostRefineFromRawSummary
+from cost_insight.jobs.bootstrap_gcs_cache_last_seen import BootstrapGcsCacheLastSeenResult
 from cost_insight.jobs.cleanup_gcs_cache import CleanupGcsCacheSummary
 from cost_insight.jobs.refresh_attribution_daily import CostAttributionSource, RefreshAttributionSummary
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
@@ -251,6 +252,52 @@ def test_cli_runs_sync_gcs_cache_last_seen_without_database(monkeypatch, capsys)
     assert '"distinct_objects": 45' in capsys.readouterr().out
 
 
+def test_cli_runs_bootstrap_gcs_cache_last_seen_without_database(monkeypatch, capsys) -> None:
+    calls = []
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
+        gcs_cache=SimpleNamespace(),
+        log_level="INFO",
+    )
+
+    def fake_get_settings(require_database=True):
+        calls.append(require_database)
+        return settings
+
+    monkeypatch.setattr(cli, "get_settings", fake_get_settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(
+        cli,
+        "run_bootstrap_gcs_cache_last_seen",
+        lambda **kwargs: BootstrapGcsCacheLastSeenResult(
+            account_id="pingcap-testing-account",
+            bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
+            start_date=date(2026, 5, 25),
+            end_date=date(2026, 6, 9),
+            source_rows_seen=456,
+            distinct_objects=78,
+            dry_run=True,
+            bytes_processed=910,
+        ),
+    )
+
+    exit_code = cli.main(
+        [
+            "bootstrap-gcs-cache-last-seen",
+            "--start-date",
+            "2026-05-25",
+            "--end-date",
+            "2026-06-09",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls == [False]
+    assert '"distinct_objects": 78' in capsys.readouterr().out
+
+
 def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> None:
     calls = []
     settings = SimpleNamespace(
@@ -272,17 +319,23 @@ def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> Non
         lambda **kwargs: CleanupGcsCacheSummary(
             account_id="pingcap-testing-account",
             bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
+            run_id="run-001",
             mode="dry-run",
+            execute_kind="all",
             dry_run=True,
-            ac_retention_days=28,
-            cas_retention_days=42,
+            ac_retention_days=14,
+            cas_retention_days=21,
+            safety_buffer_days=1,
             candidate_object_count=99,
+            selected_object_count=0,
             ac_candidate_count=10,
             cas_candidate_count=89,
             oldest_last_seen_at=None,
             newest_last_seen_at=None,
             sample_candidates=(),
             bytes_processed=456,
+            run_started_at=datetime(2026, 6, 15, 0, 0, tzinfo=UTC),
+            run_finished_at=datetime(2026, 6, 15, 0, 0, tzinfo=UTC),
         ),
     )
 
@@ -293,7 +346,7 @@ def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> Non
     assert '"candidate_object_count": 99' in capsys.readouterr().out
 
 
-def test_cli_surfaces_cleanup_gcs_cache_mode_error(monkeypatch) -> None:
+def test_cli_surfaces_cleanup_gcs_cache_delete_requires_specific_execute_kind(monkeypatch) -> None:
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
         aws_billing=AwsBillingSettings(),
@@ -304,7 +357,7 @@ def test_cli_surfaces_cleanup_gcs_cache_mode_error(monkeypatch) -> None:
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
 
-    with pytest.raises(ValueError, match="only supports --mode dry-run"):
+    with pytest.raises(ValueError, match="requires --execute-kind ac, cas, or mixed-canary"):
         cli.main(["cleanup-gcs-cache", "--mode", "delete"])
 
 
@@ -322,6 +375,15 @@ def test_cli_rejects_non_positive_cleanup_sample_limit(capsys) -> None:
 
     with pytest.raises(SystemExit, match="2"):
         parser.parse_args(["cleanup-gcs-cache", "--sample-limit", "-1"])
+
+    assert "expected a positive integer" in capsys.readouterr().err
+
+
+def test_cli_rejects_non_positive_cleanup_safety_buffer_days(capsys) -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["cleanup-gcs-cache", "--safety-buffer-days", "0"])
 
     assert "expected a positive integer" in capsys.readouterr().err
 

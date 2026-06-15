@@ -1,685 +1,585 @@
-# GCS Bazel Cache Cleanup Design
+# GCS Bazel Cache Historical Silent Object Evaluation Design
 
 ## Context
 
 CI Bazel jobs use the GCS bucket
 `pingcap-ci-bazel-remote-cache-us-central1` as a remote cache backend.
 
-As of 2026-06-09, this bucket is the dominant storage consumer in the
-`pingcap-testing-account` project:
+As of 2026-06-14:
 
-- bucket size: about `589.97 TiB`
-- lifecycle: none
-- access log source: `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access`
-- log sink: `ci-bazel-cache-gcs-data-access-to-bq`
+- access-log source:
+  `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access`
+- access-log window:
+  `2026-05-25 07:01:34 UTC` to `2026-06-14 08:49:38 UTC`
+- current `last_seen` object set:
+  `80,725,633` objects in
+  `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current`
+- inventory snapshot:
+  `gs://pingcap-ci-console-logs-us-central1/gcs-cache-inventory/2026-06-10/`
+- inventory manifest row count:
+  `248,734,953`
+- inventory snapshot time:
+  `2026-06-11T00:28:58.390558Z`
 
-The bucket is already exporting Cloud Storage Data Access audit logs into
-BigQuery. The next step is to turn that access history into a safe cleanup
-workflow based on `last_seen_at`, not object age.
+The daily BigQuery summary job is already running and maintaining
+`gcs_cache_object_last_seen_current` from `storage.objects.get` and
+`storage.objects.create` logs. That solves the steady-state access-history
+problem for the post-log window, but it still leaves a large historical blind
+spot:
 
-One important caveat is that the access log was enabled recently, not at
-bucket inception. This bucket already contains a large historical object set,
-and many older objects may have produced neither `storage.objects.create` nor
-`storage.objects.get` events during the current audit-log window.
+- objects that already existed before `2026-05-25 07:01:34 UTC`
+- were never read or recreated after the log window began
+- still occupy space in the bucket today
 
-This design keeps the implementation in `cost-insight`, because the project
-already owns:
+Those objects are visible in inventory, but absent from `last_seen`.
 
-- BigQuery-backed cost and usage jobs
-- recurring batch jobs packaged into `cost-insight-jobs`
-- the `ee-apps` to `ee-ops` CronJob rollout flow
+## Goal
 
-## Goals
+Perform a one-time evaluation of the current bucket population to answer:
 
-1. Compute object-level `last_seen_at` for the Bazel remote cache with low
-   recurring BigQuery cost.
-2. Support a weekly dry-run and delete workflow based on "N days without
-   access".
-3. Keep the logic versioned in `ee-apps`, with deployment through `ee-ops`
-   CronJobs.
-4. Make the first slice conservative enough to observe safely before enabling
-   deletes.
-5. Cover the full current bucket object set before enabling delete, including
-   historical objects that predate the audit-log window.
+1. how many current objects were already present before
+   `2026-05-25 07:01:34 UTC` and still have no post-window access record
+2. what percentage of the current bucket object count they represent
+3. what percentage of the current bucket bytes they represent
+4. how that population splits across `ac/`, `cas/`, and `other`
+
+This design deliberately stops at evaluation and delete preparation. It does
+not define the production delete execution yet.
 
 ## Non-goals
 
-- Adding a dashboard page in the first slice.
-- Building a general GCS janitor for arbitrary buckets.
-- Exact deleted-byte accounting in the first slice.
-- Replacing GCS lifecycle rules for buckets whose retention can be expressed by
-  object age alone.
-- Enabling production delete from a logs-only view of the bucket.
+- Adding a long-lived inventory sync pipeline.
+- Adding a new CronJob or CLI command for this one-time evaluation.
+- Mirroring object-level cache state into TiDB.
+- Enabling delete directly from this document.
+- Replacing the existing `last_seen` daily job.
 
 ## Live Findings
 
-### Access window maturity
+### What `last_seen` already covers
 
-As of 2026-06-09, the access-log table covers:
+`gcs_cache_object_last_seen_current` is built from both
+`storage.objects.get` and `storage.objects.create`.
 
-- `first_ts = 2026-05-25 07:01:34 UTC`
-- `last_ts = 2026-06-09 06:35:08 UTC`
+That means an object is present in `last_seen` if it has had any observed
+read or create activity during the current log window. The table is therefore
+the correct post-window visibility surface for this one-time evaluation.
 
-That is enough to evaluate short-term reuse and to start a dry-run workflow,
-but not enough to claim that a `28-day no access` deletion policy is already
-validated by a full 28-day window. The earliest date when a full 28-day policy
-can be judged from this log stream is approximately 2026-06-22.
+### The historical silent gap
 
-### Read activity shape
+For this task, the target population is:
 
-Recent log shape from the live table:
+- object is present in the current inventory snapshot
+- `time_created < 2026-05-25 07:01:34 UTC`
+- `object_name` does not exist in
+  `gcs_cache_object_last_seen_current`
 
-- total rows in current window: about `659.7M`
-- `storage.objects.get`: about `575.0M`
-- `storage.objects.create`: about `84.7M`
-- one sampled day (`2026-06-08`) had about `39.6M` gets and about `7.24M`
-  creates
+Operationally, these are "inventory-only historical objects":
 
-### Reuse sample
+- they existed before the audit-log window began
+- they have no observed `get` or `create` since that moment
+- they still exist in the bucket now
 
-A deterministic `0.1%` sample of objects created between 2026-05-26 and
-2026-06-01 was checked against subsequent reads through 2026-06-09.
+This is the exact population that a logs-only cleanup design cannot see.
 
-Key findings:
+### Measured historical silent population
 
-- sampled cohort size: `23,199` objects
-- `75.1%` were never read again after create
-- only `0.35%` were still read on or after day 7
-- only `0.14%` were still read on or after day 10
-- only `0.02%` were still read on or after day 14
+The one-time evaluation was executed on 2026-06-14 against:
 
-Split by kind:
+- inventory snapshot time: `2026-06-11T00:28:58.390558Z`
+- current `last_seen` table as of the same working session
 
-- `ac/` cools slightly faster than `cas/`
-- both prefixes become very cold after the first few days
+Measured result:
 
-This supports a future LRU cleanup policy, but the first delete threshold
-should still be conservative because the available observation window is short.
+- `historical_silent_object_count = 178,554,492`
+- `historical_silent_object_ratio_vs_all_inventory = 71.79%`
+- `historical_silent_object_ratio_vs_pre_20260525_inventory = 99.30%`
+- `historical_silent_size_bytes = 495,343,299,908,013`
+- `historical_silent_size_ratio_vs_all_inventory_bytes = 69.78%`
+- `historical_silent_size_ratio_vs_pre_20260525_inventory_bytes = 99.68%`
 
-### Historical object gap
+Split by prefix:
 
-Objects that were created before `2026-05-25` and have not produced any
-`storage.objects.get` or `storage.objects.create` event since that date will
-not be visible to the first-slice summary tables. This is not a small edge
-case. Because the access log was enabled after the bucket had already been in
-use, there may be a large historical population of still-existing objects that
-are completely invisible to the log-derived tables.
+- `ac`: `55,790,841` objects, `29,486,820,553` bytes
+- `cas`: `122,763,651` objects, `495,313,813,087,460` bytes
+- `other`: `0`
 
-That means:
+This result changes the practical rollout order:
 
-1. the current `last_seen` tables are accurate only for the log-visible subset
-   of objects
-2. a logs-only dry-run can help validate query shape and recent reuse behavior,
-   but it is not a complete candidate view for the whole bucket
-3. production delete must not rely only on the log-derived tables
+1. first handle the one-time historical silent population
+2. then design recurring steady-state cleanup for post-window objects
 
-The design correction is to add a full object inventory source before delete.
-The recommended approach is GCS Inventory or Storage Insights exported into
-BigQuery, then joined with the log-derived `last_seen` state.
+### Delete-related operational constraints
 
-After inventory is added, historical silent objects can still participate in a
-conservative LRU policy:
+Current live bucket state relevant to delete:
 
-- if an object existed before `2026-05-25` and no read has been observed since
-  `2026-05-25 07:01:34 UTC`, then by `2026-06-22 07:01:34 UTC` it is provably
-  at least 28 days cold
-- the same logic makes `42-day` silence provable on
-  `2026-07-06 07:01:34 UTC`
+- soft delete is disabled:
+  `soft_delete_policy.retentionDurationSeconds = 0`
+- no lifecycle rule is present
+- `storagebatchoperations.googleapis.com` was not enabled as of
+  2026-06-14
+- Storage batch operations additionally requires Storage Intelligence to be
+  enabled for the bucket's project scope
+- local `gcloud` version used for this work is `565.0.0`
 
-So the real missing piece is not only `last_seen_at`, but full object
-enumeration.
+Because soft delete is disabled, any object delete is permanent. That raises
+the bar for the first deletion slice:
 
-## Why Keep Object State in BigQuery
+- no direct full-scale delete
+- no best-effort high-concurrency custom script
+- all first-pass deletion inputs must be auditable and generation-safe
 
-The canonical object-access state should live in BigQuery, not TiDB.
+## Why Keep This Evaluation In BigQuery
+
+This one-time analysis should stay entirely in BigQuery.
 
 Reasons:
 
-1. The source of truth already lives in BigQuery.
-2. Object cardinality is high enough that daily object-level upserts would make
-   TiDB a poor fit for the first slice.
-3. The primary consumer is the cleanup job, not a latency-sensitive product
-   API.
-4. Keeping object state close to the source avoids an extra BigQuery -> app ->
-   TiDB transport step for millions of objects per day.
+1. the source of truth is already in BigQuery and GCS
+2. object cardinality is too high for a temporary TiDB mirror to be worth it
+3. the result is an offline operational analysis, not a latency-sensitive API
+4. BigQuery already holds the post-window `last_seen` table we need for the
+   join
 
-TiDB may still be useful later for small control-plane or reporting tables, but
-the first slice should not mirror object-level cache state into TiDB.
+## One-Time Evaluation Approach
 
-## Proposed Architecture
+### Input A: current `last_seen` state
 
-```text
-GCS Data Access logs
-  -> BigQuery raw table
-  -> cost-insight daily summary job
-  -> BigQuery object_last_seen tables
-
-GCS Inventory / Storage Insights
-  -> BigQuery inventory snapshot table
-
-object_last_seen + inventory snapshot
-  -> cleanup state / candidate query
-  -> cost-insight weekly cleanup job
-  -> GCS delete operations
-```
-
-Implementation ownership:
-
-- `ee-apps/cost-insight`
-  - Python job code
-  - SQL templates
-  - design docs
-- `ee-ops/apps/gcp/cost-insight`
-  - CronJob manifests
-  - service account wiring
-  - rollout sequencing
-
-## BigQuery Data Model
-
-Use the existing dataset `ci_bazel_cache_logs` in project
-`pingcap-testing-account`, because it is already in the same region as the raw
-audit-log table.
-
-### `gcs_cache_object_last_seen_daily`
-
-Daily object-level aggregation from both `storage.objects.get` and
-`storage.objects.create`.
-
-Suggested schema:
-
-```sql
-CREATE TABLE IF NOT EXISTS `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_daily` (
-  ds DATE NOT NULL,
-  object_name STRING NOT NULL,
-  object_kind STRING NOT NULL,
-  first_seen_at TIMESTAMP NOT NULL,
-  last_seen_at TIMESTAMP NOT NULL,
-  get_count_in_day INT64 NOT NULL,
-  updated_at TIMESTAMP NOT NULL
-)
-PARTITION BY ds
-CLUSTER BY object_kind, object_name;
-```
-
-Column meanings:
-
-- `ds`: logical source day from `DATE(timestamp)`
-- `object_name`: extracted from
-  `protopayload_auditlog.resourceName`
-- `object_kind`: `cas`, `ac`, or `other`
-- `first_seen_at`: earliest event timestamp for that object in that day
-- `last_seen_at`: latest create-or-read timestamp for that object in that day
-- `get_count_in_day`: daily read count for that object
-- `updated_at`: job write timestamp
-
-### `gcs_cache_object_last_seen_current`
-
-Current object state, one row per object.
-
-Suggested schema:
-
-```sql
-CREATE TABLE IF NOT EXISTS `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current` (
-  object_name STRING NOT NULL,
-  object_kind STRING NOT NULL,
-  first_seen_at TIMESTAMP,
-  last_seen_at TIMESTAMP NOT NULL,
-  last_seen_date DATE NOT NULL,
-  total_get_count INT64 NOT NULL,
-  updated_at TIMESTAMP NOT NULL
-)
-CLUSTER BY object_kind, last_seen_date;
-```
-
-This table is one input to the weekly cleanup job, but it is not sufficient by
-itself for full-bucket cleanup decisions.
-
-By itself, this table is not a full-bucket inventory. It only tracks objects
-that are visible in the current audit-log window.
-
-### Required second-source table: `gcs_cache_object_inventory_current`
-
-Current object inventory, one row per object currently present in the bucket.
-
-Suggested schema:
-
-```sql
-CREATE TABLE IF NOT EXISTS `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_inventory_current` (
-  snapshot_date DATE NOT NULL,
-  object_name STRING NOT NULL,
-  object_kind STRING NOT NULL,
-  time_created TIMESTAMP,
-  size_bytes INT64,
-  updated_at TIMESTAMP NOT NULL
-)
-PARTITION BY snapshot_date
-CLUSTER BY object_kind, object_name;
-```
-
-Expected source:
-
-- preferred: GCS Inventory or Storage Insights export into BigQuery
-- fallback: a one-time bootstrap listing job plus periodic refresh, if the
-  platform path for inventory is blocked
-
-Purpose:
-
-- enumerate the whole current bucket object set
-- provide size metadata for better dry-run reporting
-- expose historical silent objects that do not appear in audit logs
-
-### Derived cleanup view: `gcs_cache_object_cleanup_state_current`
-
-This can be a table or a query-level CTE. It joins current inventory with
-log-derived `last_seen` state.
-
-Suggested fields:
-
-- `object_name`
-- `object_kind`
-- `time_created`
-- `size_bytes`
-- `log_first_seen_at`
-- `log_last_seen_at`
-- `has_log_activity`
-- `is_pre_window_inventory_only`
-- `no_access_observed_since`
-
-Semantics:
-
-- for log-visible objects, `log_last_seen_at` is the cleanup decision input
-- for inventory-only historical objects, `log_last_seen_at` is unknown, but
-  `no_access_observed_since = 2026-05-25 07:01:34 UTC` is still provable if the
-  object exists in inventory and has no post-window log activity
-- delete eligibility for inventory-only historical objects must be based on
-  provable silence since log start, not guessed last access time
-
-### Optional future table: `gcs_cache_cleanup_run_reports`
-
-The first slice can log run summaries to stdout and Cloud Logging only.
-If later we want durable run history in BigQuery, add a small report table such
-as:
-
-- `run_ts`
-- `mode`
-- `ac_retention_days`
-- `cas_retention_days`
-- `candidate_object_count`
-- `deleted_object_count`
-- `error_count`
-
-No object-level candidate archive is required in the first slice.
-
-## Job Design
-
-### 1. Daily summary job
-
-CLI shape:
-
-```bash
-cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08
-```
-
-Responsibilities:
-
-1. Read one source day from
-   `ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access`
-2. Filter to:
-   - `resource.labels.bucket_name = "pingcap-ci-bazel-remote-cache-us-central1"`
-   - `protopayload_auditlog.methodName IN ("storage.objects.get", "storage.objects.create")`
-3. Extract `object_name`
-4. Classify `object_kind`
-5. Seed newly created objects into the summary even if they were never read
-6. Aggregate into `gcs_cache_object_last_seen_daily`
-7. `MERGE` daily results into `gcs_cache_object_last_seen_current`
-8. Emit a JSON summary with:
-   - source rows scanned
-   - distinct objects touched
-   - BigQuery bytes processed
-   - run date
-
-Important behavior:
-
-- rerunnable for the same `run-date`
-- one source day per run
-- no GCS delete behavior
-- not a complete bucket inventory on its own
-
-Suggested merge behavior:
-
-- `first_seen_at`: keep the earliest known timestamp
-- `last_seen_at`: keep the greatest value
-- `total_get_count`: add only `storage.objects.get` counts
-- `updated_at`: set to current run time
-
-### 2. Weekly cleanup job
-
-CLI shape:
-
-```bash
-cost-insight cleanup-gcs-cache --mode dry-run
-cost-insight cleanup-gcs-cache --mode delete
-```
-
-Responsibilities:
-
-1. Read the inventory-backed cleanup state
-2. Join with `gcs_cache_object_inventory_current` so the job sees the full
-   current bucket object set
-3. Build candidates with separate retention windows for `ac` and `cas`
-4. Exclude `other`
-5. In `dry-run` mode:
-   - print summary
-   - split counts into `log-visible` and `inventory-only historical`
-   - print example candidate samples
-   - exit without deleting
-6. In `delete` mode:
-   - delete candidates in batches
-   - collect success and error counts
-   - stop if safety thresholds are exceeded
-
-Suggested first-slice flags:
+Use the existing table:
 
 ```text
---mode dry-run|delete
---ac-retention-days 28
---cas-retention-days 42
---max-delete-objects 50000
---batch-size 1000
---sample-limit 100
+pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current
 ```
 
-Deletion should use the Python GCS client rather than shelling out to
-`gcloud storage rm`, so retries and per-object error handling stay in one
-process.
+This is the authoritative view of all objects that had any observed
+`storage.objects.get` or `storage.objects.create` activity during the current
+log window.
 
-## Query Shapes
+### Input B: one-time inventory snapshot
 
-### Daily summary query
+Use the existing Storage Insights inventory export:
 
-Core aggregation shape:
+```text
+gs://pingcap-ci-console-logs-us-central1/gcs-cache-inventory/2026-06-10/
+```
+
+The report is not productized into a recurring pipeline. Instead, we import it
+once into a temporary BigQuery table for this evaluation and for the first
+delete-preparation pass next week.
+
+### Temporary BigQuery tables
+
+Use two one-time tables in dataset `ci_bazel_cache_logs`:
+
+1. raw staging table loaded from parquet
+2. normalized analysis table with only the fields we actually need
+
+Suggested names:
+
+```text
+pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_inventory_raw_20260611
+pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_inventory_20260611
+```
+
+The raw staging table exists only because the parquet schema uses source field
+names such as `name`, `size`, and `timeCreated`. The normalized table is the
+one used for analysis.
+
+Normalized table schema:
 
 ```sql
+CREATE OR REPLACE TABLE `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_inventory_20260611` AS
 SELECT
-  DATE(timestamp) AS ds,
-  REGEXP_EXTRACT(protopayload_auditlog.resourceName, r"/objects/(.+)$") AS object_name,
-  CASE
-    WHEN STARTS_WITH(REGEXP_EXTRACT(protopayload_auditlog.resourceName, r"/objects/(.+)$"), "cas/") THEN "cas"
-    WHEN STARTS_WITH(REGEXP_EXTRACT(protopayload_auditlog.resourceName, r"/objects/(.+)$"), "ac/") THEN "ac"
-    ELSE "other"
-  END AS object_kind,
-  MIN(timestamp) AS first_seen_at,
-  MAX(timestamp) AS last_seen_at,
-  COUNTIF(protopayload_auditlog.methodName = "storage.objects.get") AS get_count_in_day,
-  CURRENT_TIMESTAMP() AS updated_at
-FROM `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access`
-WHERE DATE(timestamp) = @run_date
-  AND resource.labels.bucket_name = "pingcap-ci-bazel-remote-cache-us-central1"
-  AND protopayload_auditlog.methodName IN ("storage.objects.get", "storage.objects.create")
-GROUP BY ds, object_name, object_kind;
+  name AS object_name,
+  timeCreated AS time_created,
+  size AS size_bytes
+FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_inventory_raw_20260611`
+WHERE bucket = "pingcap-ci-bazel-remote-cache-us-central1";
 ```
 
-Measured dry-run cost for one daily source partition:
+Only these fields are retained:
 
-- bytes processed: `9,885,639,778` bytes
-- about `9.89 GB`
+- `object_name STRING`
+- `time_created TIMESTAMP`
+- `size_bytes INT64`
 
-### Weekly cleanup query
+These fields are intentionally not retained in the normalized table:
 
-The weekly cleanup job should not read the raw audit-log table. It should read
-the inventory-backed cleanup state built from
-`gcs_cache_object_last_seen_current` plus
-`gcs_cache_object_inventory_current`.
+- `snapshot_date`
+- `snapshot_time`
+- `storage_class`
+- `object_kind`
+- `generation`
 
-Example candidate query:
+`snapshot_time` still matters, but only as run metadata in the runbook and
+operator notes. It does not need to be stored per row.
+
+## Core Analysis Definition
+
+The historical silent object population is defined as:
+
+1. object exists in the normalized inventory table
+2. `time_created < TIMESTAMP("2026-05-25 07:01:34 UTC")`
+3. `LEFT JOIN` to `gcs_cache_object_last_seen_current` by `object_name`
+4. `WHERE last_seen.object_name IS NULL`
+
+That yields the exact one-time cohort we want:
+
+- existed before the log window
+- still exists today
+- no observed `storage.objects.get` or `storage.objects.create` in the current
+  log window
+
+`ac/`, `cas/`, and `other` are not stored in the temporary table. They are
+derived at query time from `object_name`:
 
 ```sql
-SELECT object_name, object_kind, size_bytes, effective_last_seen_at
-FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_cleanup_state_current`
-WHERE (
-    object_kind = 'ac'
-    AND (
-      (
-        has_log_activity
-        AND effective_last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @ac_retention_days DAY)
-      ) OR (
-        is_pre_window_inventory_only
-        AND no_access_observed_since <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @ac_retention_days DAY)
-      )
-    )
-  ) OR (
-    object_kind = 'cas'
-    AND (
-      (
-        has_log_activity
-        AND effective_last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @cas_retention_days DAY)
-      ) OR (
-        is_pre_window_inventory_only
-        AND no_access_observed_since <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @cas_retention_days DAY)
-      )
-    )
-  )
-ORDER BY object_kind, effective_last_seen_at
-LIMIT @max_delete_objects;
+CASE
+  WHEN STARTS_WITH(object_name, "ac/") THEN "ac"
+  WHEN STARTS_WITH(object_name, "cas/") THEN "cas"
+  ELSE "other"
+END
 ```
 
-## Cost Model
+## Output Metrics
 
-BigQuery scheduled queries and manual queries are priced the same. The first
-slice will run from a CronJob in `ee-ops`, but the underlying pricing model is
-still regular BigQuery query processing.
+The one-time evaluation must produce these metrics:
 
-At the current documented on-demand US rate:
+### Object-count metrics
 
-- first `1 TiB` per month per billing account: free
-- above that: `US $6.25 / TiB`
+- `historical_silent_object_count`
+- `historical_silent_object_ratio_vs_all_inventory`
+- `historical_silent_object_ratio_vs_pre_20260525_inventory`
 
-Reference:
+### Byte metrics
 
-- [BigQuery pricing](https://cloud.google.com/bigquery/pricing?hl=en_US)
-- [Scheduling queries](https://docs.cloud.google.com/bigquery/docs/scheduling-queries)
+- `historical_silent_size_bytes`
+- `historical_silent_size_ratio_vs_all_inventory_bytes`
+- `historical_silent_size_ratio_vs_pre_20260525_inventory_bytes`
 
-### Estimated recurring scan cost
+### Prefix split
 
-Measured daily summary query:
+Each of the above should also be split by:
 
-- about `9.89 GB/day`
-- about `69.2 GB/week`
-- about `0.0629 TiB/week`
-- about `US $0.39/week` at on-demand pricing before free-tier effects
+- `ac`
+- `cas`
+- `other`
 
-This means the recurring summary pipeline is cheap enough to run daily.
+### Spot-check sample
 
-### Why daily instead of weekly summary
+The evaluation should also produce a small object-name sample for manual
+verification before any delete design is finalized.
 
-Daily summary is not chosen because it is dramatically cheaper than an ideal
-weekly incremental summary. If both scan each source day exactly once, total
-scan volume is similar.
+## Cost Estimate
 
-Daily summary is chosen because it gives:
+This section is intentionally approximate and is based on the current report
+size and current BigQuery pricing as checked on 2026-06-14.
 
-1. smaller failure domains
-2. simpler reruns
-3. a stable object-state table for weekly cleanup
-4. no need for the weekly cleaner to rescan raw access logs
+Official pricing references:
 
-### Ad hoc analysis cost
+- query: `US $6.25 / TiB scanned`
+- first `1 TiB / month` of on-demand query usage: free
+- load data: free
+- active logical storage: about `US $0.02 / GiB-month`
 
-Measured sample query cost for a 14-day cohort study:
+References:
 
-- bytes processed: `128,657,528,203`
-- about `128.7 GB`
-- about `US $0.73/run`
+- [BigQuery pricing](https://cloud.google.com/bigquery/pricing)
+- [External tables pricing](https://docs.cloud.google.com/bigquery/docs/external-tables)
+- [Estimate query costs](https://docs.cloud.google.com/bigquery/docs/best-practices-costs)
+- [BigQuery data type sizes](https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/data-types)
 
-A similar 28-day access-pattern study would be expected to cost on the order of
-`~US $1.46/run`, assuming roughly linear growth in scanned days.
+Inventory-report scale used for the estimate:
 
-This is acceptable for one-off validation, but it is not the right shape for a
-recurring weekly cleanup decision path.
+- parquet files total size: about `25.3 GB`
+- manifest rows: `248,734,953`
+- observed average `object_name` length in current `last_seen` table:
+  about `67.7` bytes
 
-## What the First Slice Will Not Measure Exactly
+Approximate cost envelope for the one-time workflow:
 
-The current access-log table is strong on access recency, but weak on object
-size and whole-bucket coverage:
+- load parquet into raw staging table: `US $0`
+- normalized inventory table logical size: about `19.8 GiB`
+- temporary-table storage:
+  - about `US $0.013 / day`
+  - about `US $0.09 / week`
+  - about `US $0.40 / month`
+- one query that scans only the normalized inventory table:
+  about `US $0.12`
+- one query that scans normalized inventory plus
+  `gcs_cache_object_last_seen_current` for the join:
+  about `US $0.15`
 
-- `storage.objects.get` rows often contain `metadataJson.requested_bytes`
-- `storage.objects.create` rows do not reliably expose full object size
-- historical silent objects may have no log rows in the current window
+Important notes:
 
-Therefore, the first slice should report:
+- if the billing account has not exhausted the monthly free `1 TiB` on-demand
+  query allowance, the actual billed query cost can be lower or zero
+- these are logical-byte estimates, not billing-export-confirmed charges
+- the `US $0` statement applies to the parquet `load` step itself; the later
+  SQL projection and join analysis are normal BigQuery queries
 
-- candidate object count
-- candidate split by `ac` and `cas`
-- oldest and newest candidate `last_seen_at`
-- example candidate names
+## Validation
 
-The first slice should not promise exact reclaimable TiB per run.
+Before using the result for delete planning, all of the following checks should
+pass:
 
-If exact deleted-byte accounting and full-bucket coverage are required, add a
-second source such as GCS Inventory or Storage Insights and join it by
-`object_name`.
+1. normalized inventory row count matches manifest `recordsProcessed`
+2. `historical_silent_object_count <= pre_20260525_inventory_object_count <= all_inventory_object_count`
+3. `historical_silent_size_bytes <= pre_20260525_inventory_size_bytes <= all_inventory_size_bytes`
+4. `ac + cas + other = total`
+5. at least 10 sample objects are manually checked to confirm:
+   - they exist in inventory
+   - `time_created` is earlier than `2026-05-25 07:01:34 UTC`
+   - they do not exist in `gcs_cache_object_last_seen_current`
 
-## Recommended Retention Policy
+## Delete Execution Design
 
-### Dry-run phase
+This section defines the first production delete design for the historical
+silent population only.
 
-Start immediately with weekly dry-runs:
+It intentionally does not merge that work with the later recurring LRU cleanup
+for post-window objects.
 
-- `ac`: `28 days no access`
-- `cas`: `42 days no access`
+### Why not use a custom delete script first
 
-Reasoning:
+For this first slice, a custom script that issues individual delete requests is
+not the preferred path.
 
-- the sample shows very fast cooling
-- `cas` is the dominant storage consumer, but it is safer to retain longer in
-  the first delete slice
-- `ac` can be more aggressive because cache misses on action metadata are less
-  risky than a broken reference chain to missing content blobs
+Reasons:
 
-### Delete phase
+1. the target set is extremely large: `178,554,492` objects
+2. the bucket has no soft delete protection
+3. the initial object-write guideline for a flat bucket is on the order of
+   `~1000` write or delete requests per second, and Google recommends gradual
+   ramp-up
+4. Cloud Storage now provides a managed bulk-delete path specifically for
+   millions or billions of objects
 
-Do not enable recurring delete until both conditions are true:
+Preferred path:
 
-1. the access-log window has matured far enough for the chosen retention
-2. inventory has been added so historical silent objects are not invisible
+- use Cloud Storage Storage batch operations with manifest files
+- include object `generation` in every manifest row
+- enable Cloud Logging for both `succeeded` and `failed` transforms
 
-Earliest possible dates after the current log start are:
+### Candidate materialization
 
-- `ac = 28 days`: approximately `2026-06-22 07:01:34 UTC`
-- `cas = 42 days`: approximately `2026-07-06 07:01:34 UTC`
+The temporary normalized inventory table is sufficient for evaluation, but not
+for safe delete execution because it dropped `generation`.
 
-These dates are necessary but not sufficient. Delete should still remain
-blocked until the inventory join is in place.
+Delete execution should therefore build a one-time candidate table from the raw
+staging inventory table plus `gcs_cache_object_last_seen_current`.
 
-Even after that date, the first production step should be:
-
-1. keep the delete CronJob present but suspended
-2. run dry-run for at least 2-3 consecutive weeks
-3. inspect candidate volume and job health
-4. unsuspend delete with conservative per-run limits
-
-## Safety Guards
-
-The weekly delete job should include the following guards:
-
-1. `dry-run` as the default mode
-2. separate retention windows for `ac` and `cas`
-3. exclude `other`
-4. `concurrencyPolicy: Forbid`
-5. `suspend: true` for delete CronJob at initial rollout
-6. per-run maximum object limit
-7. batch delete limit
-8. stop the run if error rate exceeds a threshold
-9. idempotent handling for already-missing objects
-10. inventory snapshot freshness check before any delete run
-
-Suggested first values:
-
-- `max-delete-objects = 50,000`
-- `batch-size = 1,000`
-- stop if delete errors exceed `1%` or a fixed small absolute threshold
-
-Because exact object bytes are not available in the first slice, a strict
-`max-delete-bytes` guard should be deferred until inventory is added.
-
-## Rollout Shape
-
-### Code placement
-
-Add new code under:
+Suggested one-time table:
 
 ```text
-cost-insight/
-  docs/gcs-bazel-cache-cleanup-design.md
-  src/cost_insight/jobs/sync_gcs_cache_last_seen.py
-  src/cost_insight/jobs/cleanup_gcs_cache.py
+pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_delete_candidates_20260614
 ```
 
-CLI additions in:
+Suggested schema:
+
+- `bucket STRING`
+- `object_name STRING`
+- `generation INT64`
+- `object_kind STRING`
+- `time_created TIMESTAMP`
+- `size_bytes INT64`
+- `shard_id INT64`
+- `candidate_reason STRING`
+- `candidate_generated_at TIMESTAMP`
+
+`shard_id` should be deterministic:
+
+```sql
+MOD(ABS(FARM_FINGERPRINT(object_name)), 256)
+```
+
+`candidate_reason` for this slice is fixed to:
 
 ```text
-cost-insight/src/cost_insight/jobs/cli.py
+historical_silent_pre_20260525_no_post_window_activity
 ```
 
-### CronJob placement
+### Why generation is required
 
-Add new manifests beside the existing cost-insight CronJobs in:
+The manifest format used by Storage batch operations allows an optional
+`generation` column.
+
+This must be included for the first slice.
+
+Reason:
+
+- if a manifest contains only `bucket` and `name`, Cloud Storage deletes the
+  current live object for that name
+- some objects may have been recreated after the inventory snapshot
+- using `generation` pins deletion to the exact snapshot generation and avoids
+  deleting a newer live object that reused the same name
+
+### Delete phases
+
+The delete rollout should be split into four phases.
+
+#### Phase 0: final freeze and refresh
+
+Before any delete job is created:
+
+1. refresh `gcs_cache_object_last_seen_current` through the latest complete UTC
+   day
+2. rebuild the delete candidate table from the inventory snapshot plus the
+   refreshed `last_seen`
+3. export immutable manifests from that candidate table
+4. do not modify the candidate table after manifest export
+
+This phase exists to make the delete input auditable and reproducible.
+
+#### Phase 1: `ac` canary
+
+Create one small canary manifest for `ac` only.
+
+Suggested size:
+
+- `10,000` objects
+
+Suggested ordering:
+
+- oldest `time_created` first
+
+After the canary batch job completes:
+
+- wait `12-24` hours
+- inspect Cloud Logging job results
+- inspect CI behavior for unexpected cache-miss amplification
+
+#### Phase 2: remaining `ac`
+
+If the canary is clean:
+
+- delete the remaining `ac` historical silent objects
+
+This is still meaningful as a safety gate even though `ac` bytes are tiny,
+because it validates:
+
+- manifest generation handling
+- batch-operation observability
+- operator workflow
+
+#### Phase 3: `cas` main cleanup
+
+Delete `cas` candidates in shard groups.
+
+Suggested shard plan:
+
+- total shards: `256`
+- one batch job per `8` shards
+- initial concurrency: `1` batch job
+- if the first jobs are healthy, raise to `2-4` concurrent jobs
+
+This keeps rollout pressure deliberate without inventing custom client-side
+rate control.
+
+#### Phase 4: post-delete re-measurement
+
+After the historical silent sweep completes:
+
+1. generate a fresh inventory report
+2. rerun the one-time evaluation query shape
+3. confirm that the historical silent population collapsed as expected
+4. only then move on to recurring steady-state LRU delete design
+
+### Storage batch operations requirements
+
+Prerequisites for the first delete slice:
+
+1. enable `storagebatchoperations.googleapis.com`
+2. enable Storage Intelligence for the project scope that contains the bucket
+   and make an explicit edition decision
+3. use a principal with `roles/storage.admin` on the project or bucket
+4. store manifests in a Cloud Storage bucket path that the operator can read
+5. enable job logging with:
+   - `--log-actions=transform`
+   - `--log-action-states=succeeded,failed`
+
+Because the bucket already has Storage Insights inventory configured, the
+remaining missing prerequisite is Storage Intelligence enrollment for batch
+operations.
+
+### Manifest strategy
+
+Manifests should be created as CSV files with header:
 
 ```text
-ee-ops/apps/gcp/cost-insight/cronjobs.yaml
+bucket,name,generation
 ```
 
-Suggested CronJobs:
+Each manifest should contain objects from only one source bucket:
 
-1. `cost-insight-sync-gcs-cache-last-seen`
-   - daily
-   - BQ read + BQ merge only
-2. `cost-insight-sync-gcs-cache-inventory`
-   - daily or weekly, depending on inventory export frequency
-   - refresh inventory-backed current table
-3. `cost-insight-cleanup-gcs-cache-dry-run`
-   - weekly
-   - full-bucket dry-run only
-4. `cost-insight-cleanup-gcs-cache-delete`
-   - weekly
-   - initially `suspend: true`
+```text
+pingcap-ci-bazel-remote-cache-us-central1
+```
 
-The same `cost-insight-jobs` image can own all three commands.
+Suggested manifest layout:
 
-### IAM and runtime
+```text
+gs://pingcap-ci-console-logs-us-central1/gcs-cache-delete-manifests/2026-06-14/
+  ac-canary.csv
+  ac-rest.csv
+  cas-shards-000-007.csv
+  cas-shards-008-015.csv
+  ...
+```
 
-The CronJob service account needs:
+### Stop conditions
 
-- BigQuery job execution
-- read/write access to dataset `ci_bazel_cache_logs`
-- GCS object delete permission on
-  `pingcap-ci-bazel-remote-cache-us-central1`
+The delete rollout should stop immediately if any of the following occurs:
 
-If the existing `ci-dashboard` workload identity path is reused, add only the
-minimum incremental GCS permission needed for delete.
+1. unexpected failed transforms exceed `0.1%`
+2. unexpected failed transforms exceed `1000` objects for a job
+3. CI cache behavior shows clear regression after the `ac` canary
+4. operator validation reveals manifest-generation mismatch or candidate drift
 
-## Concurrency and Recovery
+Expected non-fatal outcomes:
 
-Only one active instance of each cleanup job type should run at a time.
+- `not found`
+- generation mismatch against newer objects
 
-Recommended rules:
+These should be recorded and reviewed, but they are not by themselves a reason
+to treat the whole job as unsafe.
 
-- summary job may rerun safely for the same day
-- inventory sync may rerun safely for the same snapshot day
-- dry-run and delete must never overlap
-- a failed delete run should be rerunnable without manual cleanup of partially
-  processed object lists
+### Separation from future steady-state cleanup
 
-If later we need stronger operator visibility, add a small run-state table in
-TiDB or a BigQuery run-report table. That is not required for the first slice.
+This delete design is only for the historical silent population identified by
+the inventory snapshot.
 
-## Open Questions
+The later recurring cleanup design should remain separate:
 
-1. Do we want to use GCS Inventory or Storage Insights as the full object
-   inventory source?
-2. If inventory export is not immediately available, do we want a one-time
-   bootstrap listing job as an interim fallback?
-3. Should the first delete slice remove only `ac`, or is `ac=28d` and
-   `cas=42d` acceptable immediately after the dry-run period?
-4. Do we want a small API or SQL report later for cleanup history, or are
-   CronJob logs enough?
+- input: post-window `last_seen` candidates
+- cadence: weekly
+- retention: still expected to start from `ac=28d`, `cas=42d`
+- implementation home: existing `cost-insight` plus `ee-ops` CronJob path
+
+Do not combine the first historical cleanup with that steady-state workflow in
+the same initial rollout.
+
+## Relationship To The Existing `last_seen` Pipeline
+
+The current daily job remains unchanged:
+
+- `sync-gcs-cache-last-seen` continues to summarize one UTC day of access logs
+- `gcs_cache_object_last_seen_current` continues to be the steady-state
+  post-window access table
+
+This one-time inventory-based analysis is additive. It closes the pre-log blind
+spot without introducing a new recurring pipeline yet.
+
+## Next Step After This Evaluation
+
+After the historical silent population is quantified, the next delete design
+discussion can decide:
+
+1. the exact manifest export queries and batch-job commands
+2. the canary timing and approval checkpoint
+3. the shard grouping for `cas`
+4. whether the ongoing steady-state cleanup should continue to rely on
+   `last_seen` plus future inventory refreshes
+
+That delete execution design is intentionally deferred until the one-time
+evaluation result is in hand.

@@ -180,13 +180,25 @@ Summarize one day of access logs into BigQuery object last-seen tables:
 cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08
 ```
 
+Bootstrap the current last-seen table from the historical audit-log window in
+one scan:
+
+```bash
+cost-insight bootstrap-gcs-cache-last-seen --start-date 2026-05-25 --end-date 2026-06-09
+```
+
+This command rebuilds `gcs_cache_object_last_seen_current` directly from the
+raw audit-log window. It is intended for one-time historical seeding before the
+daily incremental sync continues.
+
 Validate the query shape without writing BigQuery summary tables:
 
 ```bash
 cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08 --dry-run
 ```
 
-Build a weekly dry-run candidate report from the current last-seen table:
+Build a daily steady-state dry-run candidate report from the current last-seen
+table:
 
 ```bash
 cost-insight cleanup-gcs-cache --mode dry-run
@@ -195,5 +207,24 @@ cost-insight cleanup-gcs-cache --mode dry-run
 Override retention windows during validation:
 
 ```bash
-cost-insight cleanup-gcs-cache --mode dry-run --ac-retention-days 21 --cas-retention-days 35
+cost-insight cleanup-gcs-cache \
+  --mode dry-run \
+  --ac-retention-days 14 \
+  --cas-retention-days 21 \
+  --safety-buffer-days 1
+```
+
+Run a real-delete steady-state canary with `500 ac + 500 cas`:
+
+```bash
+cost-insight cleanup-gcs-cache --mode delete --execute-kind mixed-canary
+```
+
+Run a real-delete `ac` cleanup wave with an explicit hard cap:
+
+```bash
+cost-insight cleanup-gcs-cache \
+  --mode delete \
+  --execute-kind ac \
+  --max-delete-objects 10000000
 ```
