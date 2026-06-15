@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
+from cost_insight.common.datetime_utils import coerce_datetime, coerce_optional_datetime
 from cost_insight.common.storage_batch_operations import (
     StorageBatchOperationsJob,
     StorageBatchOperationsJobStatus,
@@ -99,7 +100,7 @@ def run_cleanup_gcs_cache(
         CleanupGcsCacheSample(
             object_name=str(item["object_name"]),
             object_kind=str(item["object_kind"]),
-            last_seen_at=_coerce_datetime(item["last_seen_at"]),
+            last_seen_at=coerce_datetime(item["last_seen_at"]),
             idle_days=int(item["idle_days"]),
         )
         for item in (row.get("sample_candidates") or [])
@@ -108,8 +109,8 @@ def run_cleanup_gcs_cache(
     candidate_object_count = int(row.get("candidate_object_count", 0) or 0)
     ac_candidate_count = int(row.get("ac_candidate_count", 0) or 0)
     cas_candidate_count = int(row.get("cas_candidate_count", 0) or 0)
-    oldest_last_seen_at = _coerce_optional_datetime(row.get("oldest_last_seen_at"))
-    newest_last_seen_at = _coerce_optional_datetime(row.get("newest_last_seen_at"))
+    oldest_last_seen_at = coerce_optional_datetime(row.get("oldest_last_seen_at"))
+    newest_last_seen_at = coerce_optional_datetime(row.get("newest_last_seen_at"))
 
     if mode == "dry-run":
         run_finished_at = now()
@@ -513,17 +514,3 @@ def _validate_mode_and_execute_kind(*, mode: str, execute_kind: str) -> None:
         )
     if mode == "delete" and execute_kind == "all":
         raise ValueError("cleanup-gcs-cache --mode delete requires --execute-kind ac, cas, or mixed-canary")
-
-
-def _coerce_optional_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    return _coerce_datetime(value)
-
-
-def _coerce_datetime(value: object) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    raise ValueError(f"Unsupported datetime value: {value!r}")

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+from cost_insight.common.datetime_utils import coerce_optional_datetime
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -120,6 +125,12 @@ def wait_for_delete_job(
         try:
             payload = _get_job_payload(request_url=request_url, token=credentials.token)
         except StorageBatchOperationsTransientError:
+            logger.debug(
+                "Polling Storage Batch Operations job %s hit transient error after %ss",
+                job_name,
+                elapsed,
+                exc_info=True,
+            )
             elapsed = _sleep_or_raise_timeout(
                 job_name=job_name,
                 timeout_seconds=timeout_seconds,
@@ -128,6 +139,12 @@ def wait_for_delete_job(
             )
             continue
         state = str(payload.get("state") or "STATE_UNSPECIFIED")
+        logger.debug(
+            "Polling Storage Batch Operations job %s: state=%s elapsed=%ss",
+            job_name,
+            state,
+            elapsed,
+        )
         if state not in {"RUNNING", "QUEUED", "STATE_UNSPECIFIED"}:
             return _coerce_job_status(job_name=job_name, payload=payload)
         elapsed = _sleep_or_raise_timeout(
@@ -177,7 +194,7 @@ def _coerce_job_status(
         succeeded_object_count=_coerce_counter(counters.get("succeededObjectCount")),
         failed_object_count=_coerce_counter(counters.get("failedObjectCount")),
         total_bytes_transformed=_coerce_counter(counters.get("totalBytesTransformed")),
-        complete_time=_coerce_optional_datetime(payload.get("completeTime")),
+        complete_time=coerce_optional_datetime(payload.get("completeTime")),
     )
 
 
@@ -185,16 +202,6 @@ def _coerce_counter(value: object) -> int:
     if value is None:
         return 0
     return int(str(value))
-
-
-def _coerce_optional_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    raise ValueError(f"Unsupported datetime value: {value!r}")
 
 
 def _sleep_or_raise_timeout(
