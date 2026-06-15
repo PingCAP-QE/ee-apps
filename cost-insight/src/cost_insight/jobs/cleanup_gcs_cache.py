@@ -7,10 +7,17 @@ from uuid import uuid4
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
-from cost_insight.common.storage_batch_operations import StorageBatchOperationsJob, create_delete_job
+from cost_insight.common.datetime_utils import coerce_datetime, coerce_optional_datetime
+from cost_insight.common.storage_batch_operations import (
+    StorageBatchOperationsJob,
+    StorageBatchOperationsJobStatus,
+    create_delete_job,
+    wait_for_delete_job,
+)
 
 QueryExecutor = Callable[[str, list[BigQueryParameter]], BigQueryQueryResult]
 BatchJobCreator = Callable[..., StorageBatchOperationsJob]
+BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
 
 VALID_EXECUTE_KINDS = ("all", "ac", "cas", "mixed-canary")
 
@@ -60,6 +67,7 @@ def run_cleanup_gcs_cache(
     sample_limit: int | None = None,
     execute: QueryExecutor = execute_query,
     create_batch_job: BatchJobCreator = create_delete_job,
+    wait_for_batch_job: BatchJobWaiter = wait_for_delete_job,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     run_id_factory: Callable[[], str] = lambda: str(uuid4()),
 ) -> CleanupGcsCacheSummary:
@@ -92,7 +100,7 @@ def run_cleanup_gcs_cache(
         CleanupGcsCacheSample(
             object_name=str(item["object_name"]),
             object_kind=str(item["object_kind"]),
-            last_seen_at=_coerce_datetime(item["last_seen_at"]),
+            last_seen_at=coerce_datetime(item["last_seen_at"]),
             idle_days=int(item["idle_days"]),
         )
         for item in (row.get("sample_candidates") or [])
@@ -101,8 +109,8 @@ def run_cleanup_gcs_cache(
     candidate_object_count = int(row.get("candidate_object_count", 0) or 0)
     ac_candidate_count = int(row.get("ac_candidate_count", 0) or 0)
     cas_candidate_count = int(row.get("cas_candidate_count", 0) or 0)
-    oldest_last_seen_at = _coerce_optional_datetime(row.get("oldest_last_seen_at"))
-    newest_last_seen_at = _coerce_optional_datetime(row.get("newest_last_seen_at"))
+    oldest_last_seen_at = coerce_optional_datetime(row.get("oldest_last_seen_at"))
+    newest_last_seen_at = coerce_optional_datetime(row.get("newest_last_seen_at"))
 
     if mode == "dry-run":
         run_finished_at = now()
@@ -197,6 +205,27 @@ def run_cleanup_gcs_cache(
             ),
         )
         batch_job_name = batch_job.job_name
+        batch_status = wait_for_batch_job(job_name=batch_job.job_name)
+        if batch_status.state != "SUCCEEDED":
+            raise RuntimeError(
+                f"Storage Batch Operations job did not succeed for {batch_job.job_name}: "
+                f"state={batch_status.state}"
+            )
+        if batch_status.failed_object_count > 0:
+            raise RuntimeError(
+                f"Storage Batch Operations job reported failed objects for {batch_job.job_name}: "
+                f"{batch_status.failed_object_count}"
+            )
+        reconcile_result = execute(
+            build_cleanup_gcs_cache_reconcile_current_table_query(
+                settings,
+                candidate_table=candidate_table,
+            ),
+            parameters=[],
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total, reconcile_result.total_bytes_processed
+        )
 
     run_finished_at = now()
     return CleanupGcsCacheSummary(
@@ -353,6 +382,21 @@ ORDER BY last_seen_at ASC, object_name ASC
 """.strip()
 
 
+def build_cleanup_gcs_cache_reconcile_current_table_query(
+    settings: GcsCacheSettings,
+    *,
+    candidate_table: str,
+) -> str:
+    current_table = _table_ref(settings.project_id, settings.dataset, settings.last_seen_current_table)
+    return f"""
+DELETE FROM {current_table}
+WHERE STRUCT(object_name, last_seen_at) IN (
+  SELECT AS STRUCT object_name, last_seen_at
+  FROM {candidate_table}
+)
+""".strip()
+
+
 def _candidate_filter_clause(*, execute_kind: str) -> str:
     if execute_kind == "ac":
         return (
@@ -470,17 +514,3 @@ def _validate_mode_and_execute_kind(*, mode: str, execute_kind: str) -> None:
         )
     if mode == "delete" and execute_kind == "all":
         raise ValueError("cleanup-gcs-cache --mode delete requires --execute-kind ac, cas, or mixed-canary")
-
-
-def _coerce_optional_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    return _coerce_datetime(value)
-
-
-def _coerce_datetime(value: object) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    raise ValueError(f"Unsupported datetime value: {value!r}")

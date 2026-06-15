@@ -1,16 +1,38 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
+from datetime import datetime
+from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+from cost_insight.common.datetime_utils import coerce_optional_datetime
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class StorageBatchOperationsJob:
     job_name: str
     operation_name: str | None
+
+
+@dataclass(frozen=True)
+class StorageBatchOperationsJobStatus:
+    job_name: str
+    state: str
+    total_object_count: int
+    succeeded_object_count: int
+    failed_object_count: int
+    total_bytes_transformed: int
+    complete_time: datetime | None
+
+
+class StorageBatchOperationsTransientError(RuntimeError):
+    """Raised when polling should retry after a transient API failure."""
 
 
 def create_delete_job(
@@ -82,3 +104,116 @@ def create_delete_job(
         job_name=f"projects/{project_id}/locations/global/jobs/{job_id}",
         operation_name=payload.get("name"),
     )
+
+
+def wait_for_delete_job(
+    *,
+    job_name: str,
+    timeout_seconds: int = 7200,
+    poll_interval_seconds: int = 10,
+) -> StorageBatchOperationsJobStatus:
+    from google.auth import default
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+
+    credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    if not credentials.valid:
+        credentials.refresh(GoogleAuthRequest())
+
+    request_url = f"https://storagebatchoperations.googleapis.com/v1/{job_name}"
+    elapsed = 0
+    while True:
+        try:
+            payload = _get_job_payload(request_url=request_url, token=credentials.token)
+        except StorageBatchOperationsTransientError:
+            logger.debug(
+                "Polling Storage Batch Operations job %s hit transient error after %ss",
+                job_name,
+                elapsed,
+                exc_info=True,
+            )
+            elapsed = _sleep_or_raise_timeout(
+                job_name=job_name,
+                timeout_seconds=timeout_seconds,
+                poll_interval_seconds=poll_interval_seconds,
+                elapsed=elapsed,
+            )
+            continue
+        state = str(payload.get("state") or "STATE_UNSPECIFIED")
+        logger.debug(
+            "Polling Storage Batch Operations job %s: state=%s elapsed=%ss",
+            job_name,
+            state,
+            elapsed,
+        )
+        if state not in {"RUNNING", "QUEUED", "STATE_UNSPECIFIED"}:
+            return _coerce_job_status(job_name=job_name, payload=payload)
+        elapsed = _sleep_or_raise_timeout(
+            job_name=job_name,
+            timeout_seconds=timeout_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+            elapsed=elapsed,
+        )
+
+
+def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
+    request = Request(
+        request_url,
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code in {429, 500, 502, 503, 504}:
+            raise StorageBatchOperationsTransientError(
+                f"Storage Batch Operations get job transient failure ({exc.code}): {detail}"
+            ) from exc
+        raise RuntimeError(f"Storage Batch Operations get job failed ({exc.code}): {detail}") from exc
+    except URLError as exc:
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations get job transient failure: {str(exc.reason)}"
+        ) from exc
+
+
+def _coerce_job_status(
+    *,
+    job_name: str,
+    payload: dict[str, object],
+) -> StorageBatchOperationsJobStatus:
+    counters = payload.get("counters") or {}
+    if not isinstance(counters, dict):
+        counters = {}
+    return StorageBatchOperationsJobStatus(
+        job_name=job_name,
+        state=str(payload.get("state") or "STATE_UNSPECIFIED"),
+        total_object_count=_coerce_counter(counters.get("totalObjectCount")),
+        succeeded_object_count=_coerce_counter(counters.get("succeededObjectCount")),
+        failed_object_count=_coerce_counter(counters.get("failedObjectCount")),
+        total_bytes_transformed=_coerce_counter(counters.get("totalBytesTransformed")),
+        complete_time=coerce_optional_datetime(payload.get("completeTime")),
+    )
+
+
+def _coerce_counter(value: object) -> int:
+    if value is None:
+        return 0
+    return int(str(value))
+
+
+def _sleep_or_raise_timeout(
+    *,
+    job_name: str,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
+    elapsed: int,
+) -> int:
+    if elapsed >= timeout_seconds:
+        raise RuntimeError(
+            f"Storage Batch Operations job timed out after {timeout_seconds}s: {job_name}"
+        )
+    sleep(poll_interval_seconds)
+    return elapsed + poll_interval_seconds
