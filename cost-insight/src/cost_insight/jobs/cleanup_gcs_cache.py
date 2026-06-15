@@ -75,13 +75,15 @@ def run_cleanup_gcs_cache(
     cas_cutoff_days = resolved_cas_days + resolved_safety_buffer_days
 
     bytes_processed_total = 0
+    summary_parameters = _summary_query_parameters(
+        execute_kind=execute_kind,
+        ac_cutoff_days=ac_cutoff_days,
+        cas_cutoff_days=cas_cutoff_days,
+        sample_limit=resolved_sample_limit,
+    )
     summary_result = execute(
         build_cleanup_gcs_cache_summary_query(settings, execute_kind=execute_kind),
-        parameters=[
-            BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
-            BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days),
-            BigQueryParameter("sample_limit", "INT64", resolved_sample_limit),
-        ],
+        parameters=summary_parameters,
     )
     bytes_processed_total = _add_bytes(bytes_processed_total, summary_result.total_bytes_processed)
     row = summary_result.rows[0] if summary_result.rows else {}
@@ -141,13 +143,14 @@ def run_cleanup_gcs_cache(
             execute_kind=execute_kind,
             candidate_table=candidate_table,
         ),
-        parameters=[
-            BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
-            BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days),
-            BigQueryParameter("run_id", "STRING", run_id),
-            BigQueryParameter("limit", "INT64", limit),
-            BigQueryParameter("ttl_days", "INT64", settings.cleanup_candidate_ttl_days),
-        ],
+        parameters=_candidate_table_query_parameters(
+            execute_kind=execute_kind,
+            ac_cutoff_days=ac_cutoff_days,
+            cas_cutoff_days=cas_cutoff_days,
+            run_id=run_id,
+            limit=limit,
+            ttl_days=settings.cleanup_candidate_ttl_days,
+        ),
     )
     bytes_processed_total = _add_bytes(
         bytes_processed_total, create_candidate_result.total_bytes_processed
@@ -413,6 +416,43 @@ def _selected_limit(
     if execute_kind == "mixed-canary":
         return min(ac_candidate_count, 500) + min(cas_candidate_count, 500)
     return min(candidate_object_count, max_delete_objects)
+
+
+def _summary_query_parameters(
+    *,
+    execute_kind: str,
+    ac_cutoff_days: int,
+    cas_cutoff_days: int,
+    sample_limit: int,
+) -> list[BigQueryParameter]:
+    parameters = [BigQueryParameter("sample_limit", "INT64", sample_limit)]
+    if execute_kind in {"all", "ac", "mixed-canary"}:
+        parameters.insert(0, BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days))
+    if execute_kind in {"all", "cas", "mixed-canary"}:
+        parameters.insert(0, BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days))
+    return parameters
+
+
+def _candidate_table_query_parameters(
+    *,
+    execute_kind: str,
+    ac_cutoff_days: int,
+    cas_cutoff_days: int,
+    run_id: str,
+    limit: int,
+    ttl_days: int,
+) -> list[BigQueryParameter]:
+    parameters = [
+        BigQueryParameter("run_id", "STRING", run_id),
+        BigQueryParameter("ttl_days", "INT64", ttl_days),
+    ]
+    if execute_kind in {"ac", "mixed-canary"}:
+        parameters.append(BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days))
+    if execute_kind in {"cas", "mixed-canary"}:
+        parameters.append(BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days))
+    if execute_kind != "mixed-canary":
+        parameters.append(BigQueryParameter("limit", "INT64", limit))
+    return parameters
 
 
 def _add_bytes(total: int, value: int | None) -> int:

@@ -117,6 +117,43 @@ def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
     assert summary.run_finished_at == now
 
 
+def test_run_cleanup_gcs_cache_dry_run_ac_only_passes_only_used_parameters() -> None:
+    captured = {}
+
+    def fake_execute(query, parameters):
+        captured["parameters"] = {param.name: param.value for param in parameters}
+        return BigQueryQueryResult(
+            rows=(
+                {
+                    "candidate_object_count": 2,
+                    "ac_candidate_count": 2,
+                    "cas_candidate_count": 0,
+                    "oldest_last_seen_at": None,
+                    "newest_last_seen_at": None,
+                    "sample_candidates": [],
+                },
+            ),
+            total_bytes_processed=1,
+        )
+
+    run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="dry-run",
+        execute_kind="ac",
+        ac_retention_days=14,
+        cas_retention_days=21,
+        safety_buffer_days=1,
+        sample_limit=3,
+        execute=fake_execute,
+        now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
+    )
+
+    assert captured["parameters"] == {
+        "ac_cutoff_days": 15,
+        "sample_limit": 3,
+    }
+
+
 def test_run_cleanup_gcs_cache_delete_ac_creates_manifest_and_batch_job() -> None:
     captured_queries = []
     created_jobs = []
@@ -180,6 +217,16 @@ def test_run_cleanup_gcs_cache_delete_ac_creates_manifest_and_batch_job() -> Non
     assert summary.batch_job_name == "projects/pingcap-testing-account/locations/global/jobs/job-1"
     assert summary.bytes_processed == 375
     assert len(captured_queries) == 4
+    assert captured_queries[0][1] == {
+        "ac_cutoff_days": 15,
+        "sample_limit": 10,
+    }
+    assert captured_queries[1][1] == {
+        "run_id": "steady-run-001",
+        "ttl_days": 7,
+        "ac_cutoff_days": 15,
+        "limit": 7,
+    }
     assert created_jobs[0]["manifest_uri"] == summary.manifest_uri
     assert created_jobs[0]["dry_run"] is False
     assert created_jobs[0]["bucket_name"] == "pingcap-ci-bazel-remote-cache-us-central1"
@@ -227,8 +274,70 @@ def test_run_cleanup_gcs_cache_delete_mixed_canary_uses_fixed_500_per_kind() -> 
 
     create_query, create_params = captured_queries[1]
     assert create_query.count("LIMIT 500") == 2
-    assert create_params["limit"] == 1000
+    assert captured_queries[0][1] == {
+        "ac_cutoff_days": 15,
+        "cas_cutoff_days": 22,
+        "sample_limit": 10,
+    }
+    assert create_params == {
+        "run_id": "steady-canary-001",
+        "ttl_days": 7,
+        "ac_cutoff_days": 15,
+        "cas_cutoff_days": 22,
+    }
     assert summary.selected_object_count == 1000
+
+
+def test_run_cleanup_gcs_cache_delete_cas_passes_only_used_parameters() -> None:
+    captured_queries = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append((query, {param.name: param.value for param in parameters}))
+        if "ARRAY_AGG(" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_object_count": 9,
+                        "ac_candidate_count": 0,
+                        "cas_candidate_count": 9,
+                        "oldest_last_seen_at": None,
+                        "newest_last_seen_at": None,
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=10,
+            )
+        if "CREATE OR REPLACE TABLE" in query:
+            return BigQueryQueryResult(rows=(), total_bytes_processed=20)
+        if "selected_object_count" in query:
+            return BigQueryQueryResult(rows=({"selected_object_count": 9},), total_bytes_processed=5)
+        if "EXPORT DATA OPTIONS" in query:
+            return BigQueryQueryResult(rows=(), total_bytes_processed=3)
+        raise AssertionError(f"Unexpected query: {query}")
+
+    run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="delete",
+        execute_kind="cas",
+        execute=fake_execute,
+        create_batch_job=lambda **_: StorageBatchOperationsJob(
+            job_name="projects/pingcap-testing-account/locations/global/jobs/job-cas",
+            operation_name="operations/op-cas",
+        ),
+        now=lambda: datetime(2026, 6, 15, 8, 0, tzinfo=UTC),
+        run_id_factory=lambda: "steady-cas-001",
+    )
+
+    assert captured_queries[0][1] == {
+        "cas_cutoff_days": 22,
+        "sample_limit": 10,
+    }
+    assert captured_queries[1][1] == {
+        "run_id": "steady-cas-001",
+        "ttl_days": 7,
+        "cas_cutoff_days": 22,
+        "limit": 9,
+    }
 
 
 def test_run_cleanup_gcs_cache_rejects_delete_without_specific_execute_kind() -> None:
