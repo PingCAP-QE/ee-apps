@@ -104,3 +104,31 @@ def test_wait_for_delete_job_times_out_for_non_terminal_state(
         )
 
     assert sleeps == [10, 10]
+
+
+def test_wait_for_delete_job_returns_terminal_failure_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_google_auth(monkeypatch)
+
+    monkeypatch.setattr(
+        storage_batch_operations,
+        "_get_job_payload",
+        lambda **_: {"state": "FAILED"},
+    )
+
+    status = storage_batch_operations.wait_for_delete_job(
+        job_name="projects/test/locations/global/jobs/job-3",
+        timeout_seconds=20,
+        poll_interval_seconds=10,
+    )
+
+    assert status == storage_batch_operations.StorageBatchOperationsJobStatus(
+        job_name="projects/test/locations/global/jobs/job-3",
+        state="FAILED",
+        total_object_count=0,
+        succeeded_object_count=0,
+        failed_object_count=0,
+        total_bytes_transformed=0,
+        complete_time=None,
+    )

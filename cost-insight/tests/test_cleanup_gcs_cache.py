@@ -453,6 +453,59 @@ def test_run_cleanup_gcs_cache_delete_does_not_reconcile_when_batch_job_has_fail
         )
 
 
+def test_run_cleanup_gcs_cache_delete_raises_when_batch_job_state_is_not_succeeded() -> None:
+    captured_queries = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append((query, {param.name: param.value for param in parameters}))
+        if "ARRAY_AGG(" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_object_count": 7,
+                        "ac_candidate_count": 7,
+                        "cas_candidate_count": 0,
+                        "oldest_last_seen_at": None,
+                        "newest_last_seen_at": None,
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=10,
+            )
+        if "CREATE OR REPLACE TABLE" in query:
+            return BigQueryQueryResult(rows=(), total_bytes_processed=20)
+        if "selected_object_count" in query:
+            return BigQueryQueryResult(rows=({"selected_object_count": 7},), total_bytes_processed=5)
+        if "EXPORT DATA OPTIONS" in query:
+            return BigQueryQueryResult(rows=(), total_bytes_processed=3)
+        if query.startswith("DELETE FROM "):
+            raise AssertionError("Reconcile query should not run when batch job is not succeeded")
+        raise AssertionError(f"Unexpected query: {query}")
+
+    with pytest.raises(RuntimeError, match="did not succeed"):
+        run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+            mode="delete",
+            execute_kind="ac",
+            execute=fake_execute,
+            create_batch_job=lambda **_: StorageBatchOperationsJob(
+                job_name="projects/pingcap-testing-account/locations/global/jobs/job-failed",
+                operation_name="operations/op-failed",
+            ),
+            wait_for_batch_job=lambda **_: StorageBatchOperationsJobStatus(
+                job_name="projects/pingcap-testing-account/locations/global/jobs/job-failed",
+                state="FAILED",
+                total_object_count=7,
+                succeeded_object_count=0,
+                failed_object_count=7,
+                total_bytes_transformed=100,
+                complete_time=datetime(2026, 6, 15, 8, 1, tzinfo=UTC),
+            ),
+            now=lambda: datetime(2026, 6, 15, 8, 0, tzinfo=UTC),
+            run_id_factory=lambda: "steady-failed-state-001",
+        )
+
+
 def test_run_cleanup_gcs_cache_rejects_delete_without_specific_execute_kind() -> None:
     with pytest.raises(
         ValueError,
