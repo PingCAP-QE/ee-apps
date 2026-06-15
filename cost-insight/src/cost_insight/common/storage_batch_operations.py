@@ -75,7 +75,7 @@ def create_delete_job(
         ) from exc
     except URLError as exc:
         raise RuntimeError(
-            f"Storage Batch Operations create job failed for {job_id}: {exc.reason}"
+            f"Storage Batch Operations create job failed for {job_id}: {str(exc.reason)}"
         ) from exc
 
     return StorageBatchOperationsJob(

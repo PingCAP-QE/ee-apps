@@ -42,6 +42,9 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcp_billing.billing_table == DEFAULT_GCP_BILLING_TABLE
     assert settings.aws_billing.billing_table == DEFAULT_AWS_BILLING_TABLE
     assert settings.aws_billing.account_id is None
+    assert settings.gcs_cache.ac_retention_days == 14
+    assert settings.gcs_cache.cas_retention_days == 21
+    assert settings.gcs_cache.cleanup_safety_buffer_days == 1
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:

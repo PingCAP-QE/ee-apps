@@ -229,7 +229,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS",
                     "COST_GCS_CACHE_AC_RETENTION_DAYS",
                 ),
-                28,
+                14,
             ),
             cas_retention_days=_read_positive_int_any(
                 env,
