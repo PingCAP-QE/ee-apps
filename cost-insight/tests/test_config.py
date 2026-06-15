@@ -42,6 +42,9 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcp_billing.billing_table == DEFAULT_GCP_BILLING_TABLE
     assert settings.aws_billing.billing_table == DEFAULT_AWS_BILLING_TABLE
     assert settings.aws_billing.account_id is None
+    assert settings.gcs_cache.ac_retention_days == 14
+    assert settings.gcs_cache.cas_retention_days == 21
+    assert settings.gcs_cache.cleanup_safety_buffer_days == 1
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:
@@ -99,9 +102,13 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE": "current_table",
             "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS": "21",
             "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS": "35",
+            "COST_INSIGHT_GCS_CACHE_SAFETY_BUFFER_DAYS": "2",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT": "25",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "500",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE": "50",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET": "manifest-bucket",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX": "manifest-prefix",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_CANDIDATE_TTL_DAYS": "9",
         },
         require_database=False,
     )
@@ -114,9 +121,13 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.last_seen_current_table == "current_table"
     assert settings.gcs_cache.ac_retention_days == 21
     assert settings.gcs_cache.cas_retention_days == 35
+    assert settings.gcs_cache.cleanup_safety_buffer_days == 2
     assert settings.gcs_cache.cleanup_sample_limit == 25
     assert settings.gcs_cache.cleanup_max_delete_objects == 500
     assert settings.gcs_cache.cleanup_batch_size == 50
+    assert settings.gcs_cache.cleanup_manifest_bucket == "manifest-bucket"
+    assert settings.gcs_cache.cleanup_manifest_prefix == "manifest-prefix"
+    assert settings.gcs_cache.cleanup_candidate_ttl_days == 9
 
 
 def test_load_settings_requires_database_when_not_skipped() -> None:

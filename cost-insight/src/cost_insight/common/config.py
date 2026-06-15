@@ -18,6 +18,8 @@ DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"
 DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE = "cloudaudit_googleapis_com_data_access"
 DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE = "gcs_cache_object_last_seen_daily"
 DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE = "gcs_cache_object_last_seen_current"
+DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
+DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
 
 
 @dataclass(frozen=True)
@@ -62,11 +64,15 @@ class GcsCacheSettings:
     audit_log_table: str = DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE
     last_seen_daily_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE
     last_seen_current_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE
-    ac_retention_days: int = 28
-    cas_retention_days: int = 42
-    cleanup_sample_limit: int = 100
-    cleanup_max_delete_objects: int = 50000
+    ac_retention_days: int = 14
+    cas_retention_days: int = 21
+    cleanup_safety_buffer_days: int = 1
+    cleanup_sample_limit: int = 10
+    cleanup_max_delete_objects: int = 10000000
     cleanup_batch_size: int = 1000
+    cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
+    cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
+    cleanup_candidate_ttl_days: int = 7
 
 
 @dataclass(frozen=True)
@@ -223,7 +229,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS",
                     "COST_GCS_CACHE_AC_RETENTION_DAYS",
                 ),
-                28,
+                14,
             ),
             cas_retention_days=_read_positive_int_any(
                 env,
@@ -231,7 +237,15 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS",
                     "COST_GCS_CACHE_CAS_RETENTION_DAYS",
                 ),
-                42,
+                21,
+            ),
+            cleanup_safety_buffer_days=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_SAFETY_BUFFER_DAYS",
+                    "COST_GCS_CACHE_SAFETY_BUFFER_DAYS",
+                ),
+                1,
             ),
             cleanup_sample_limit=_read_positive_int_any(
                 env,
@@ -239,7 +253,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT",
                     "COST_GCS_CACHE_CLEANUP_SAMPLE_LIMIT",
                 ),
-                100,
+                10,
             ),
             cleanup_max_delete_objects=_read_positive_int_any(
                 env,
@@ -247,7 +261,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS",
                     "COST_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS",
                 ),
-                50000,
+                10000000,
             ),
             cleanup_batch_size=_read_positive_int_any(
                 env,
@@ -256,6 +270,26 @@ def load_settings(
                     "COST_GCS_CACHE_CLEANUP_BATCH_SIZE",
                 ),
                 1000,
+            ),
+            cleanup_manifest_bucket=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET,
+                "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET",
+                "COST_GCS_CACHE_CLEANUP_MANIFEST_BUCKET",
+            ),
+            cleanup_manifest_prefix=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX,
+                "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX",
+                "COST_GCS_CACHE_CLEANUP_MANIFEST_PREFIX",
+            ),
+            cleanup_candidate_ttl_days=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_CANDIDATE_TTL_DAYS",
+                    "COST_GCS_CACHE_CLEANUP_CANDIDATE_TTL_DAYS",
+                ),
+                7,
             ),
         ),
         log_level=_read_any(env, "INFO", "COST_INSIGHT_LOG_LEVEL", "COST_LOG_LEVEL").upper(),

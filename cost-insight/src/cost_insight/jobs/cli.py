@@ -11,6 +11,7 @@ from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, g
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs.backfill_cost_refine_from_raw import run_backfill_cost_refine_from_raw
+from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
 from cost_insight.jobs.refresh_attribution_daily import (
@@ -138,9 +139,18 @@ def build_parser() -> argparse.ArgumentParser:
     sync_gcs_cache.add_argument("--run-date", type=_parse_date, default=None)
     sync_gcs_cache.add_argument("--dry-run", action="store_true")
 
+    bootstrap_gcs_cache = subparsers.add_parser(
+        "bootstrap-gcs-cache-last-seen",
+        help="Bootstrap GCS Bazel cache last-seen state from a historical BigQuery log window",
+    )
+    bootstrap_gcs_cache.set_defaults(require_database=False)
+    bootstrap_gcs_cache.add_argument("--start-date", type=_parse_date, required=True)
+    bootstrap_gcs_cache.add_argument("--end-date", type=_parse_date, default=None)
+    bootstrap_gcs_cache.add_argument("--dry-run", action="store_true")
+
     cleanup_gcs_cache = subparsers.add_parser(
         "cleanup-gcs-cache",
-        help="Build dry-run cleanup candidates from GCS cache last-seen summaries",
+        help="Build steady-state cleanup candidates from GCS cache last-seen summaries",
     )
     cleanup_gcs_cache.set_defaults(require_database=False)
     cleanup_gcs_cache.add_argument(
@@ -148,8 +158,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("dry-run", "delete"),
         default="dry-run",
     )
+    cleanup_gcs_cache.add_argument(
+        "--execute-kind",
+        choices=("all", "ac", "cas", "mixed-canary"),
+        default="all",
+    )
     cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--safety-buffer-days", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument("--max-delete-objects", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
     return parser
@@ -322,12 +339,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
         return 0
 
+    if args.command == "bootstrap-gcs-cache-last-seen":
+        summary = run_bootstrap_gcs_cache_last_seen(
+            settings=settings.gcs_cache,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
+        return 0
+
     if args.command == "cleanup-gcs-cache":
         summary = run_cleanup_gcs_cache(
             settings=settings.gcs_cache,
             mode=args.mode,
+            execute_kind=args.execute_kind,
             ac_retention_days=args.ac_retention_days,
             cas_retention_days=args.cas_retention_days,
+            safety_buffer_days=args.safety_buffer_days,
+            max_delete_objects=args.max_delete_objects,
             sample_limit=args.sample_limit,
         )
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
