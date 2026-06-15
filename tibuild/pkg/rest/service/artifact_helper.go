@@ -46,7 +46,7 @@ var target_image_reg *regexp.Regexp
 
 func init() {
 	source_image_reg = regexp.MustCompile(`^(hub\.pingcap\.net|us-docker.pkg.dev/pingcap-testing-account/(hotfix|hub))/(pingcap|tikv)/[\w-/]+:v\d+\.\d+\.\d+-\d{8,}.*$`)
-	target_image_reg = regexp.MustCompile(`^(docker\.io/)?pingcap/[\w-]+:v\d+\.\d+\.\d+-\d{8,}.*$`)
+	target_image_reg = regexp.MustCompile(`^((docker\.io/)?pingcap/[\w-]+|gcr\.io/pingcap-public/dbaas/[\w-]+):v\d+\.\d+\.\d+-\d{8,}.*$`)
 }
 
 func NewArtifactHelper(jenkins Jenkins) *ArtifactHelper {
