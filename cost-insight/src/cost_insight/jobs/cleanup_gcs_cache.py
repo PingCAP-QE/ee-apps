@@ -7,10 +7,16 @@ from uuid import uuid4
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
-from cost_insight.common.storage_batch_operations import StorageBatchOperationsJob, create_delete_job
+from cost_insight.common.storage_batch_operations import (
+    StorageBatchOperationsJob,
+    StorageBatchOperationsJobStatus,
+    create_delete_job,
+    wait_for_delete_job,
+)
 
 QueryExecutor = Callable[[str, list[BigQueryParameter]], BigQueryQueryResult]
 BatchJobCreator = Callable[..., StorageBatchOperationsJob]
+BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
 
 VALID_EXECUTE_KINDS = ("all", "ac", "cas", "mixed-canary")
 
@@ -60,6 +66,7 @@ def run_cleanup_gcs_cache(
     sample_limit: int | None = None,
     execute: QueryExecutor = execute_query,
     create_batch_job: BatchJobCreator = create_delete_job,
+    wait_for_batch_job: BatchJobWaiter = wait_for_delete_job,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     run_id_factory: Callable[[], str] = lambda: str(uuid4()),
 ) -> CleanupGcsCacheSummary:
@@ -197,6 +204,27 @@ def run_cleanup_gcs_cache(
             ),
         )
         batch_job_name = batch_job.job_name
+        batch_status = wait_for_batch_job(job_name=batch_job.job_name)
+        if batch_status.state != "SUCCEEDED":
+            raise RuntimeError(
+                f"Storage Batch Operations job did not succeed for {batch_job.job_name}: "
+                f"state={batch_status.state}"
+            )
+        if batch_status.failed_object_count > 0:
+            raise RuntimeError(
+                f"Storage Batch Operations job reported failed objects for {batch_job.job_name}: "
+                f"{batch_status.failed_object_count}"
+            )
+        reconcile_result = execute(
+            build_cleanup_gcs_cache_reconcile_current_table_query(
+                settings,
+                candidate_table=candidate_table,
+            ),
+            parameters=[],
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total, reconcile_result.total_bytes_processed
+        )
 
     run_finished_at = now()
     return CleanupGcsCacheSummary(
@@ -350,6 +378,21 @@ SELECT
   object_name AS name
 FROM {candidate_table}
 ORDER BY last_seen_at ASC, object_name ASC
+""".strip()
+
+
+def build_cleanup_gcs_cache_reconcile_current_table_query(
+    settings: GcsCacheSettings,
+    *,
+    candidate_table: str,
+) -> str:
+    current_table = _table_ref(settings.project_id, settings.dataset, settings.last_seen_current_table)
+    return f"""
+DELETE FROM {current_table}
+WHERE STRUCT(object_name, last_seen_at) IN (
+  SELECT AS STRUCT object_name, last_seen_at
+  FROM {candidate_table}
+)
 """.strip()
 
 
