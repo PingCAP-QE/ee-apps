@@ -45,6 +45,8 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcs_cache.ac_retention_days == 14
     assert settings.gcs_cache.cas_retention_days == 21
     assert settings.gcs_cache.cleanup_safety_buffer_days == 1
+    assert settings.gcs_cache.last_seen_excluded_get_user_agent == "TransferService"
+    assert settings.gcs_cache.last_seen_excluded_get_principal_email is None
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:
@@ -100,6 +102,8 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_AUDIT_LOG_TABLE": "raw_table",
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_DAILY_TABLE": "daily_table",
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE": "current_table",
+            "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT": "CustomTransferService",
+            "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL": "cleanup@example.com",
             "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS": "21",
             "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS": "35",
             "COST_INSIGHT_GCS_CACHE_SAFETY_BUFFER_DAYS": "2",
@@ -119,6 +123,8 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.audit_log_table == "raw_table"
     assert settings.gcs_cache.last_seen_daily_table == "daily_table"
     assert settings.gcs_cache.last_seen_current_table == "current_table"
+    assert settings.gcs_cache.last_seen_excluded_get_user_agent == "CustomTransferService"
+    assert settings.gcs_cache.last_seen_excluded_get_principal_email == "cleanup@example.com"
     assert settings.gcs_cache.ac_retention_days == 21
     assert settings.gcs_cache.cas_retention_days == 35
     assert settings.gcs_cache.cleanup_safety_buffer_days == 2

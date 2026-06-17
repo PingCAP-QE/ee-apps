@@ -21,6 +21,12 @@ def test_sync_gcs_cache_last_seen_dry_run_uses_expected_query_shape() -> None:
     assert "COALESCE(SUM(event_count_in_day), 0) AS source_rows_seen" in query
     assert "COUNTIF(method_name = \"storage.objects.get\") AS get_count_in_day" in query
     assert "resource.labels.bucket_name = @bucket_name" in query
+    assert "callerSuppliedUserAgent" in query
+    where_section = query.partition("WHERE DATE(timestamp) = @run_date")[2].partition(")\nSELECT")[0]
+    assert "callerSuppliedUserAgent" in where_section
+    assert "@excluded_get_user_agent" in where_section
+    assert "@excluded_get_principal_email" in where_section
+    assert "authenticationInfo.principalEmail" in where_section
 
 
 def test_sync_gcs_cache_last_seen_query_creates_and_merges_tables() -> None:
@@ -65,6 +71,8 @@ def test_run_sync_gcs_cache_last_seen_returns_summary_from_executor() -> None:
     assert captured["parameters"] == {
         "run_date": date(2026, 6, 8),
         "bucket_name": "pingcap-ci-bazel-remote-cache-us-central1",
+        "excluded_get_user_agent": "TransferService",
+        "excluded_get_principal_email": "",
     }
     assert summary.account_id == "pingcap-testing-account"
     assert summary.run_date == date(2026, 6, 8)
@@ -99,3 +107,77 @@ def test_run_sync_gcs_cache_last_seen_defaults_to_yesterday_utc(monkeypatch) -> 
 
     assert captured["parameters"]["run_date"] == date(2026, 6, 9)
     assert summary.run_date == date(2026, 6, 9)
+
+
+def test_run_sync_gcs_cache_last_seen_passes_optional_principal_email_filter() -> None:
+    captured = {}
+
+    def fake_execute(query, parameters):
+        captured["parameters"] = {param.name: param.value for param in parameters}
+        return BigQueryQueryResult(
+            rows=({"distinct_objects": 0, "source_rows_seen": 0},),
+            total_bytes_processed=None,
+        )
+
+    run_sync_gcs_cache_last_seen(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            last_seen_excluded_get_principal_email=(
+                "ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com"
+            ),
+        ),
+        run_date=date(2026, 6, 16),
+        dry_run=True,
+        execute=fake_execute,
+    )
+
+    assert captured["parameters"]["excluded_get_user_agent"] == "TransferService"
+    assert (
+        captured["parameters"]["excluded_get_principal_email"]
+        == "ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com"
+    )
+
+
+def test_sync_gcs_cache_last_seen_skips_exclusion_clause_for_blank_user_agent() -> None:
+    query = build_sync_gcs_cache_last_seen_dry_run_query(
+        GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            last_seen_excluded_get_user_agent="   ",
+            last_seen_excluded_get_principal_email=(
+                "ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com"
+            ),
+        )
+    )
+
+    where_section = query.partition("WHERE DATE(timestamp) = @run_date")[2].partition(")\nSELECT")[0]
+    assert "callerSuppliedUserAgent" not in where_section
+    assert "authenticationInfo.principalEmail" not in where_section
+
+
+def test_run_sync_gcs_cache_last_seen_skips_exclusion_parameters_for_blank_user_agent() -> None:
+    captured = {}
+
+    def fake_execute(query, parameters):
+        captured["parameters"] = {param.name: param.value for param in parameters}
+        return BigQueryQueryResult(
+            rows=({"distinct_objects": 0, "source_rows_seen": 0},),
+            total_bytes_processed=None,
+        )
+
+    run_sync_gcs_cache_last_seen(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            last_seen_excluded_get_user_agent="",
+            last_seen_excluded_get_principal_email=(
+                "ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com"
+            ),
+        ),
+        run_date=date(2026, 6, 16),
+        dry_run=True,
+        execute=fake_execute,
+    )
+
+    assert captured["parameters"] == {
+        "run_date": date(2026, 6, 16),
+        "bucket_name": "pingcap-ci-bazel-remote-cache-us-central1",
+    }

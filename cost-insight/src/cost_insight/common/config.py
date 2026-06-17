@@ -18,6 +18,7 @@ DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"
 DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE = "cloudaudit_googleapis_com_data_access"
 DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE = "gcs_cache_object_last_seen_daily"
 DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE = "gcs_cache_object_last_seen_current"
+DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT = "TransferService"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
 
@@ -64,6 +65,8 @@ class GcsCacheSettings:
     audit_log_table: str = DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE
     last_seen_daily_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE
     last_seen_current_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE
+    last_seen_excluded_get_user_agent: str = DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT
+    last_seen_excluded_get_principal_email: str | None = None
     ac_retention_days: int = 14
     cas_retention_days: int = 21
     cleanup_safety_buffer_days: int = 1
@@ -222,6 +225,17 @@ def load_settings(
                 DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE,
                 "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE",
                 "COST_GCS_CACHE_LAST_SEEN_CURRENT_TABLE",
+            ),
+            last_seen_excluded_get_user_agent=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT,
+                "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT",
+                "COST_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT",
+            ),
+            last_seen_excluded_get_principal_email=_read_optional_any(
+                env,
+                "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL",
+                "COST_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL",
             ),
             ac_retention_days=_read_positive_int_any(
                 env,
