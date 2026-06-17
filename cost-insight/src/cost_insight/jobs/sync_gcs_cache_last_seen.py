@@ -32,6 +32,16 @@ def run_sync_gcs_cache_last_seen(
     parameters = [
         BigQueryParameter("run_date", "DATE", resolved_run_date),
         BigQueryParameter("bucket_name", "STRING", settings.bucket_name),
+        BigQueryParameter(
+            "excluded_get_user_agent",
+            "STRING",
+            settings.last_seen_excluded_get_user_agent,
+        ),
+        BigQueryParameter(
+            "excluded_get_principal_email",
+            "STRING",
+            settings.last_seen_excluded_get_principal_email or "",
+        ),
     ]
     query = (
         build_sync_gcs_cache_last_seen_dry_run_query(settings)
@@ -182,6 +192,14 @@ WITH extracted AS (
   WHERE DATE(timestamp) = @run_date
     AND resource.labels.bucket_name = @bucket_name
     AND protopayload_auditlog.methodName IN ("storage.objects.get", "storage.objects.create")
+    AND NOT (
+      protopayload_auditlog.methodName = "storage.objects.get"
+      AND COALESCE(protopayload_auditlog.requestMetadata.callerSuppliedUserAgent, "") = @excluded_get_user_agent
+      AND (
+        @excluded_get_principal_email = ""
+        OR COALESCE(protopayload_auditlog.authenticationInfo.principalEmail, "") = @excluded_get_principal_email
+      )
+    )
 )
 SELECT
   ds,
