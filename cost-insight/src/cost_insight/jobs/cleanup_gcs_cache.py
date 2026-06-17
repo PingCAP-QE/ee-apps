@@ -198,6 +198,9 @@ def run_cleanup_gcs_cache(
             bucket_name=settings.bucket_name,
             manifest_uri=manifest_uri,
             dry_run=False,
+            # sync-gcs-cache-last-seen filters TransferService GET audit events
+            # emitted by Storage Batch Operations. If delete execution changes to a
+            # different service/user-agent path, keep that filter in sync.
             description=(
                 "Steady-state GCS cache cleanup "
                 f"{execute_kind} run {run_id} "

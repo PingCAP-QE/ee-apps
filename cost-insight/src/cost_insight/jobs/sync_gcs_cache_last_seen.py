@@ -29,25 +29,30 @@ def run_sync_gcs_cache_last_seen(
     execute: QueryExecutor = execute_query,
 ) -> SyncGcsCacheLastSeenResult:
     resolved_run_date = run_date or (datetime.now(timezone.utc).date() - timedelta(days=1))
-    parameters = [
-        BigQueryParameter("run_date", "DATE", resolved_run_date),
-        BigQueryParameter("bucket_name", "STRING", settings.bucket_name),
-        BigQueryParameter(
-            "excluded_get_user_agent",
-            "STRING",
-            settings.last_seen_excluded_get_user_agent,
-        ),
-        BigQueryParameter(
-            "excluded_get_principal_email",
-            "STRING",
-            settings.last_seen_excluded_get_principal_email or "",
-        ),
-    ]
     query = (
         build_sync_gcs_cache_last_seen_dry_run_query(settings)
         if dry_run
         else build_sync_gcs_cache_last_seen_query(settings)
     )
+    parameters = [
+        BigQueryParameter("run_date", "DATE", resolved_run_date),
+        BigQueryParameter("bucket_name", "STRING", settings.bucket_name),
+    ]
+    if settings.last_seen_excluded_get_user_agent.strip():
+        parameters.extend(
+            [
+                BigQueryParameter(
+                    "excluded_get_user_agent",
+                    "STRING",
+                    settings.last_seen_excluded_get_user_agent.strip(),
+                ),
+                BigQueryParameter(
+                    "excluded_get_principal_email",
+                    "STRING",
+                    settings.last_seen_excluded_get_principal_email or "",
+                ),
+            ]
+        )
     result = execute(query, parameters=parameters)
     row = result.rows[0] if result.rows else {}
     return SyncGcsCacheLastSeenResult(
@@ -181,6 +186,18 @@ def _build_daily_rollup_select(settings: GcsCacheSettings) -> str:
         settings.dataset,
         settings.audit_log_table,
     )
+    excluded_get_user_agent = settings.last_seen_excluded_get_user_agent.strip()
+    excluded_get_clause = ""
+    if excluded_get_user_agent:
+        excluded_get_clause = f"""
+    AND NOT (
+      protopayload_auditlog.methodName = "storage.objects.get"
+      AND COALESCE(protopayload_auditlog.requestMetadata.callerSuppliedUserAgent, "") = @excluded_get_user_agent
+      AND (
+        @excluded_get_principal_email = ""
+        OR COALESCE(protopayload_auditlog.authenticationInfo.principalEmail, "") = @excluded_get_principal_email
+      )
+    )"""
     return f"""
 WITH extracted AS (
   SELECT
@@ -192,14 +209,7 @@ WITH extracted AS (
   WHERE DATE(timestamp) = @run_date
     AND resource.labels.bucket_name = @bucket_name
     AND protopayload_auditlog.methodName IN ("storage.objects.get", "storage.objects.create")
-    AND NOT (
-      protopayload_auditlog.methodName = "storage.objects.get"
-      AND COALESCE(protopayload_auditlog.requestMetadata.callerSuppliedUserAgent, "") = @excluded_get_user_agent
-      AND (
-        @excluded_get_principal_email = ""
-        OR COALESCE(protopayload_auditlog.authenticationInfo.principalEmail, "") = @excluded_get_principal_email
-      )
-    )
+{excluded_get_clause}
 )
 SELECT
   ds,
