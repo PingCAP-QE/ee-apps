@@ -67,6 +67,43 @@ func BuildDownloadFilePayload(ociDownloadFileRepository string, ociDownloadFileT
 	return v, nil
 }
 
+// BuildHeadFilePayload builds the payload for the oci head-file endpoint from
+// CLI flags.
+func BuildHeadFilePayload(ociHeadFileRepository string, ociHeadFileTag string, ociHeadFileFile string, ociHeadFileFileRegex string) (*oci.HeadFilePayload, error) {
+	var err error
+	var repository string
+	{
+		repository = ociHeadFileRepository
+	}
+	var tag string
+	{
+		tag = ociHeadFileTag
+	}
+	var file *string
+	{
+		if ociHeadFileFile != "" {
+			file = &ociHeadFileFile
+		}
+	}
+	var fileRegex *string
+	{
+		if ociHeadFileFileRegex != "" {
+			fileRegex = &ociHeadFileFileRegex
+			err = goa.MergeErrors(err, goa.ValidateFormat("file_regex", *fileRegex, goa.FormatRegexp))
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	v := &oci.HeadFilePayload{}
+	v.Repository = repository
+	v.Tag = tag
+	v.File = file
+	v.FileRegex = fileRegex
+
+	return v, nil
+}
+
 // BuildDownloadFileSha256Payload builds the payload for the oci
 // download-file-sha256 endpoint from CLI flags.
 func BuildDownloadFileSha256Payload(ociDownloadFileSha256Repository string, ociDownloadFileSha256File string, ociDownloadFileSha256Tag string) (*oci.DownloadFileSha256Payload, error) {

@@ -90,31 +90,12 @@ func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) 
 		return nil, nil, err
 	}
 
-	if p.File != nil {
-		return s.downloadFile(ctx, repository, p.Tag, *p.File)
+	targetFile, err := s.resolveFile(ctx, repository, p.Tag, p.File, p.FileRegex)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	if p.FileRegex != nil {
-		pattern, err := regexp.Compile(*p.FileRegex)
-		if err != nil {
-			return nil, nil, oci.MakeInvalidFilePath(err)
-		}
-
-		files, err := pkgoci.ListFiles(ctx, repository, p.Tag)
-		if err != nil {
-			return nil, nil, oci.MakeInvalidFilePath(err)
-		}
-
-		for _, file := range files {
-			if pattern.MatchString(file) {
-				return s.downloadFile(ctx, repository, p.Tag, file)
-			}
-		}
-
-		return nil, nil, oci.MakeInvalidFilePath(fmt.Errorf("could not locate file for download: %s", *p.FileRegex))
-	}
-
-	return nil, nil, oci.MakeInvalidFilePath(errors.New("none `file` or `file_regex` param given"))
+	return s.downloadFile(ctx, repository, p.Tag, targetFile)
 }
 
 func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag, file string) (res *oci.DownloadFileResult, resp io.ReadCloser, err error) {
@@ -128,6 +109,59 @@ func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag
 		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(file),
 	}
 	return res, rc, nil
+}
+
+// HeadFile implements head-file.
+func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.HeadFileResult, error) {
+	s.logger.Print("oci.head-file")
+
+	repository, err := s.GetTargetRepo(p.Repository)
+	if err != nil {
+		return nil, err
+	}
+
+	targetFile, err := s.resolveFile(ctx, repository, p.Tag, p.File, p.FileRegex)
+	if err != nil {
+		return nil, err
+	}
+
+	descriptor, err := pkgoci.FetchFileDescriptor(ctx, repository, p.Tag, targetFile)
+	if err != nil {
+		return nil, oci.MakeInvalidFilePath(err)
+	}
+
+	return &oci.HeadFileResult{
+		Length:             descriptor.Size,
+		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(targetFile),
+	}, nil
+}
+
+func (s *ocisrvc) resolveFile(ctx context.Context, repo *remote.Repository, tag string, file *string, fileRegex *string) (string, error) {
+	if file != nil {
+		return *file, nil
+	}
+
+	if fileRegex != nil {
+		pattern, err := regexp.Compile(*fileRegex)
+		if err != nil {
+			return "", oci.MakeInvalidFilePath(err)
+		}
+
+		files, err := pkgoci.ListFiles(ctx, repo, tag)
+		if err != nil {
+			return "", oci.MakeInvalidFilePath(err)
+		}
+
+		for _, f := range files {
+			if pattern.MatchString(f) {
+				return f, nil
+			}
+		}
+
+		return "", oci.MakeInvalidFilePath(fmt.Errorf("could not locate file: %s", *fileRegex))
+	}
+
+	return "", oci.MakeInvalidFilePath(errors.New("none `file` or `file_regex` param given"))
 }
 
 // DownloadFileSha256 implements download-file-sha256.

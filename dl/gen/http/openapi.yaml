@@ -91,6 +91,45 @@ paths:
                             type: int64
             schemes:
                 - http
+        head:
+            tags:
+                - oci
+            summary: head-file oci
+            operationId: oci#head-file
+            parameters:
+                - name: tag
+                  in: query
+                  description: OCI artifact tag
+                  required: true
+                  type: string
+                - name: file
+                  in: query
+                  description: file name in OCI artifact
+                  required: false
+                  type: string
+                - name: file_regex
+                  in: query
+                  description: file name regex pattern in OCI artifact
+                  required: false
+                  type: string
+                  format: regexp
+                - name: repository
+                  in: path
+                  description: OCI artifact repository
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    headers:
+                        Content-Disposition:
+                            description: Content-Disposition header value
+                            type: string
+                        Content-Length:
+                            description: Content length in bytes.
+                            type: int64
+            schemes:
+                - http
     /oci-files/{repository}:
         get:
             tags:
@@ -115,7 +154,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Et aut labore veniam et maiores qui.
+                            example: Quo hic.
             schemes:
                 - http
     /s3-obj/{bucket}/{key}:

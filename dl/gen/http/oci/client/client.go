@@ -26,6 +26,10 @@ type Client struct {
 	// download-file endpoint.
 	DownloadFileDoer goahttp.Doer
 
+	// HeadFile Doer is the HTTP client used to make requests to the head-file
+	// endpoint.
+	HeadFileDoer goahttp.Doer
+
 	// DownloadFileSha256 Doer is the HTTP client used to make requests to the
 	// download-file-sha256 endpoint.
 	DownloadFileSha256Doer goahttp.Doer
@@ -52,6 +56,7 @@ func NewClient(
 	return &Client{
 		ListFilesDoer:          doer,
 		DownloadFileDoer:       doer,
+		HeadFileDoer:           doer,
 		DownloadFileSha256Doer: doer,
 		RestoreResponseBody:    restoreBody,
 		scheme:                 scheme,
@@ -111,6 +116,30 @@ func (c *Client) DownloadFile() goa.Endpoint {
 			return nil, err
 		}
 		return &oci.DownloadFileResponseData{Result: res.(*oci.DownloadFileResult), Body: resp.Body}, nil
+	}
+}
+
+// HeadFile returns an endpoint that makes HTTP requests to the oci service
+// head-file server.
+func (c *Client) HeadFile() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeHeadFileRequest(c.encoder)
+		decodeResponse = DecodeHeadFileResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildHeadFileRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.HeadFileDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("oci", "head-file", err)
+		}
+		return decodeResponse(resp)
 	}
 }
 

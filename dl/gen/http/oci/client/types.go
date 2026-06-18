@@ -21,6 +21,16 @@ func NewDownloadFileResultOK(length int64, contentDisposition string) *oci.Downl
 	return v
 }
 
+// NewHeadFileResultOK builds a "oci" service "head-file" endpoint result from
+// a HTTP "OK" response.
+func NewHeadFileResultOK(length int64, contentDisposition string) *oci.HeadFileResult {
+	v := &oci.HeadFileResult{}
+	v.Length = length
+	v.ContentDisposition = contentDisposition
+
+	return v
+}
+
 // NewDownloadFileSha256ResultOK builds a "oci" service "download-file-sha256"
 // endpoint result from a HTTP "OK" response.
 func NewDownloadFileSha256ResultOK(length int64, contentDisposition string) *oci.DownloadFileSha256Result {

@@ -18,14 +18,16 @@ import (
 type Client struct {
 	ListFilesEndpoint          goa.Endpoint
 	DownloadFileEndpoint       goa.Endpoint
+	HeadFileEndpoint           goa.Endpoint
 	DownloadFileSha256Endpoint goa.Endpoint
 }
 
 // NewClient initializes a "oci" service client given the endpoints.
-func NewClient(listFiles, downloadFile, downloadFileSha256 goa.Endpoint) *Client {
+func NewClient(listFiles, downloadFile, headFile, downloadFileSha256 goa.Endpoint) *Client {
 	return &Client{
 		ListFilesEndpoint:          listFiles,
 		DownloadFileEndpoint:       downloadFile,
+		HeadFileEndpoint:           headFile,
 		DownloadFileSha256Endpoint: downloadFileSha256,
 	}
 }
@@ -53,6 +55,20 @@ func (c *Client) DownloadFile(ctx context.Context, p *DownloadFilePayload) (res 
 	}
 	o := ires.(*DownloadFileResponseData)
 	return o.Result, o.Body, nil
+}
+
+// HeadFile calls the "head-file" endpoint of the "oci" service.
+// HeadFile may return the following errors:
+//   - "invalid_file_path" (type *goa.ServiceError): Could not locate file
+//   - "internal_error" (type *goa.ServiceError): Processing error
+//   - error: internal error
+func (c *Client) HeadFile(ctx context.Context, p *HeadFilePayload) (res *HeadFileResult, err error) {
+	var ires any
+	ires, err = c.HeadFileEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*HeadFileResult), nil
 }
 
 // DownloadFileSha256 calls the "download-file-sha256" endpoint of the "oci"

@@ -23,6 +23,7 @@ type Server struct {
 	Mounts             []*MountPoint
 	ListFiles          http.Handler
 	DownloadFile       http.Handler
+	HeadFile           http.Handler
 	DownloadFileSha256 http.Handler
 }
 
@@ -55,10 +56,12 @@ func New(
 		Mounts: []*MountPoint{
 			{"ListFiles", "GET", "/oci-files/{*repository}"},
 			{"DownloadFile", "GET", "/oci-file/{*repository}"},
+			{"HeadFile", "HEAD", "/oci-file/{*repository}"},
 			{"DownloadFileSha256", "GET", "/oci-file-sha256/{*repository}"},
 		},
 		ListFiles:          NewListFilesHandler(e.ListFiles, mux, decoder, encoder, errhandler, formatter),
 		DownloadFile:       NewDownloadFileHandler(e.DownloadFile, mux, decoder, encoder, errhandler, formatter),
+		HeadFile:           NewHeadFileHandler(e.HeadFile, mux, decoder, encoder, errhandler, formatter),
 		DownloadFileSha256: NewDownloadFileSha256Handler(e.DownloadFileSha256, mux, decoder, encoder, errhandler, formatter),
 	}
 }
@@ -70,6 +73,7 @@ func (s *Server) Service() string { return "oci" }
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.ListFiles = m(s.ListFiles)
 	s.DownloadFile = m(s.DownloadFile)
+	s.HeadFile = m(s.HeadFile)
 	s.DownloadFileSha256 = m(s.DownloadFileSha256)
 }
 
@@ -80,6 +84,7 @@ func (s *Server) MethodNames() []string { return oci.MethodNames[:] }
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountListFilesHandler(mux, h.ListFiles)
 	MountDownloadFileHandler(mux, h.DownloadFile)
+	MountHeadFileHandler(mux, h.HeadFile)
 	MountDownloadFileSha256Handler(mux, h.DownloadFileSha256)
 }
 
@@ -225,6 +230,59 @@ func NewDownloadFileHandler(
 		if _, err := io.Copy(w, buf); err != nil {
 			http.NewResponseController(w).Flush()
 			panic(http.ErrAbortHandler) // too late to write an error
+		}
+	})
+}
+
+// MountHeadFileHandler configures the mux to serve the "oci" service
+// "head-file" endpoint.
+func MountHeadFileHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("HEAD", "/oci-file/{*repository}", f)
+}
+
+// NewHeadFileHandler creates a HTTP handler which loads the HTTP request and
+// calls the "oci" service "head-file" endpoint.
+func NewHeadFileHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeHeadFileRequest(mux, decoder)
+		encodeResponse = EncodeHeadFileResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "head-file")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "oci")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
 		}
 	})
 }

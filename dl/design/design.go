@@ -89,6 +89,39 @@ var _ = Service("oci", func() {
 		})
 	})
 
+	Method("head-file", func() {
+		Payload(func() {
+			Field(1, "repository", String, "OCI artifact repository")
+			Field(2, "tag", String, "OCI artifact tag")
+			Field(3, "file", String, "file name in OCI artifact")
+			Field(4, "file_regex", String, "file name regexp pattern", func() {
+				Format(FormatRegexp)
+			})
+			Required("repository", "tag")
+		})
+
+		Result(func() {
+			Attribute("length", Int64, "Content length in bytes.")
+			Attribute("contentDisposition", String, "Content-Disposition header value")
+			Required("length", "contentDisposition")
+		})
+
+		Error("invalid_file_path", ErrorResult, "Could not locate file")
+		Error("internal_error", ErrorResult, "Processing error")
+
+		HTTP(func() {
+			HEAD("/oci-file/{*repository}")
+			Param("tag", String, "OCI artifact tag")
+			Param("file", String, "file name in OCI artifact")
+			Param("file_regex", String, "file name regex pattern in OCI artifact")
+
+			Response(func() {
+				Header("length:Content-Length")
+				Header("contentDisposition:Content-Disposition")
+			})
+		})
+	})
+
 	Method("download-file-sha256", func() {
 		Payload(func() {
 			Field(1, "repository", String, "OCI artifact repository")

@@ -18,6 +18,7 @@ import (
 type Endpoints struct {
 	ListFiles          goa.Endpoint
 	DownloadFile       goa.Endpoint
+	HeadFile           goa.Endpoint
 	DownloadFileSha256 goa.Endpoint
 }
 
@@ -44,6 +45,7 @@ func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		ListFiles:          NewListFilesEndpoint(s),
 		DownloadFile:       NewDownloadFileEndpoint(s),
+		HeadFile:           NewHeadFileEndpoint(s),
 		DownloadFileSha256: NewDownloadFileSha256Endpoint(s),
 	}
 }
@@ -52,6 +54,7 @@ func NewEndpoints(s Service) *Endpoints {
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.ListFiles = m(e.ListFiles)
 	e.DownloadFile = m(e.DownloadFile)
+	e.HeadFile = m(e.HeadFile)
 	e.DownloadFileSha256 = m(e.DownloadFileSha256)
 }
 
@@ -74,6 +77,15 @@ func NewDownloadFileEndpoint(s Service) goa.Endpoint {
 			return nil, err
 		}
 		return &DownloadFileResponseData{Result: res, Body: body}, nil
+	}
+}
+
+// NewHeadFileEndpoint returns an endpoint function that calls the method
+// "head-file" of service "oci".
+func NewHeadFileEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*HeadFilePayload)
+		return s.HeadFile(ctx, p)
 	}
 }
 

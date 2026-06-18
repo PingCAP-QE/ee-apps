@@ -24,6 +24,8 @@ type Service interface {
 	// Consider [goa.design/goa/v3/pkg.SkipResponseWriter] to adapt existing
 	// implementations.
 	DownloadFile(context.Context, *DownloadFilePayload) (res *DownloadFileResult, body io.ReadCloser, err error)
+	// HeadFile implements head-file.
+	HeadFile(context.Context, *HeadFilePayload) (res *HeadFileResult, err error)
 	// DownloadFileSha256 implements download-file-sha256.
 
 	// If body implements [io.WriterTo], that implementation will be used instead.
@@ -46,7 +48,7 @@ const ServiceName = "oci"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [3]string{"list-files", "download-file", "download-file-sha256"}
+var MethodNames = [4]string{"list-files", "download-file", "head-file", "download-file-sha256"}
 
 // DownloadFilePayload is the payload type of the oci service download-file
 // method.
@@ -87,6 +89,26 @@ type DownloadFileSha256Result struct {
 	// Length is the downloaded content length in bytes.
 	Length int64
 	// Content-Disposition header for downloading
+	ContentDisposition string
+}
+
+// HeadFilePayload is the payload type of the oci service head-file method.
+type HeadFilePayload struct {
+	// OCI artifact repository
+	Repository string
+	// OCI artifact tag
+	Tag string
+	// file name in OCI artifact
+	File *string
+	// file name regexp pattern
+	FileRegex *string
+}
+
+// HeadFileResult is the result type of the oci service head-file method.
+type HeadFileResult struct {
+	// Content length in bytes.
+	Length int64
+	// Content-Disposition header value
 	ContentDisposition string
 }
 
