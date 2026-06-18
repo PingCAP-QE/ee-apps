@@ -30,7 +30,7 @@ func ListFiles(ctx context.Context, repository *remote.Repository, tag string) (
 func NewFileReadCloser(ctx context.Context, repository *remote.Repository, tag, filename string) (io.ReadCloser, int64, error) {
 	// 1. get desired file descriptor in the artifact.
 	// destination := strings.Join([]string{repo, tag}, ":")
-	desiredFileDescriptor, err := fetchFileDescriptor(ctx, repository, tag, filename)
+	desiredFileDescriptor, err := FetchFileDescriptor(ctx, repository, tag, filename)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -48,7 +48,7 @@ func NewFileReadCloser(ctx context.Context, repository *remote.Repository, tag, 
 func GetFileSHA256(ctx context.Context, repository oras.ReadOnlyTarget, tag, filename string) (string, error) {
 	// 1. get desired file descriptor in the artifact.
 	// destination := strings.Join([]string{repo, tag}, ":")
-	desiredFileDescriptor, err := fetchFileDescriptor(ctx, repository, tag, filename)
+	desiredFileDescriptor, err := FetchFileDescriptor(ctx, repository, tag, filename)
 	if err != nil {
 		return "", err
 	}
@@ -70,7 +70,8 @@ func listArtifactLayers(ctx context.Context, target oras.ReadOnlyTarget, ref str
 	return manifest.Layers, nil
 }
 
-func fetchFileDescriptor(ctx context.Context, target oras.ReadOnlyTarget, ref, filename string) (*ocispec.Descriptor, error) {
+// FetchFileDescriptor finds the descriptor for a specific file in an OCI artifact.
+func FetchFileDescriptor(ctx context.Context, target oras.ReadOnlyTarget, ref, filename string) (*ocispec.Descriptor, error) {
 	layers, err := listArtifactLayers(ctx, target, ref)
 	if err != nil {
 		return nil, err
