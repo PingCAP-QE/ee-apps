@@ -166,6 +166,7 @@ func (s DevbuildServer) Rerun(ctx context.Context, id int, option DevBuildSaveOp
 		return nil, err
 	}
 	obj := DevBuild{}
+	obj.Meta.CreatedBy = old.Meta.CreatedBy
 	obj.Spec = old.Spec
 	return s.Create(ctx, obj, option)
 }
@@ -368,12 +369,7 @@ func fillWithDefaults(req *DevBuild) {
 	fillGithubRepo(spec)
 	fillForFIPS(spec)
 	if req.Spec.PipelineEngine == "" {
-		// switch to tekton engine for common dev-build for tikv components.
-		if (req.Spec.Product == ProductTikv || req.Spec.Product == ProductTiflash) && !req.Spec.IsHotfix {
-			req.Spec.PipelineEngine = TektonEngine
-		} else {
-			req.Spec.PipelineEngine = JenkinsEngine
-		}
+		req.Spec.PipelineEngine = TektonEngine
 	}
 }
 

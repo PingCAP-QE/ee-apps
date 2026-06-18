@@ -300,9 +300,9 @@ func TestTriggerBuild(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, build)
 
-		// Assert the engine and status are as expected (jenkins/processing)
-		assert.Equal(t, "jenkins", *build.Spec.PipelineEngine)
-		assert.Equal(t, devbuild.BuildStatus("processing"), build.Status.Status)
+		// Assert the engine and status are as expected (tekton/pending)
+		assert.Equal(t, "tekton", *build.Spec.PipelineEngine)
+		assert.Equal(t, devbuild.BuildStatus("pending"), build.Status.Status)
 
 		// Based on the symbol list, it appears tekton is the default engine
 		// Only one of these should be true based on the default engine implementation
@@ -435,6 +435,6 @@ func TestDevBuildRerun(t *testing.T) {
 		assert.Equal(t, created.Spec.Product, rerun.Spec.Product)
 		assert.Equal(t, created.Spec.Edition, rerun.Spec.Edition)
 		assert.Equal(t, created.Spec.Version, rerun.Spec.Version)
-		assert.Equal(t, "jenkins", *rerun.Spec.PipelineEngine)
+		assert.Equal(t, "tekton", *rerun.Spec.PipelineEngine)
 	})
 }

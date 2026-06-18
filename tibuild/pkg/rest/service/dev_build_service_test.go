@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-github/v61/github"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bndr/gojenkins"
@@ -67,42 +68,50 @@ func (m *mockTrigger) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
 	return m.err
 }
 
+type mockGHClient struct{}
+
+func (m *mockGHClient) GetHash(ctx context.Context, owner, repo, ref string) (string, error) {
+	return "abc123", nil
+}
+func (m *mockGHClient) GetPullRequestInfo(ctx context.Context, owner, repo string, prNum int) (*github.PullRequest, error) {
+	return &github.PullRequest{
+		Head: &github.PullRequestBranch{SHA: github.String("abc123")},
+		Base: &github.PullRequestBranch{Ref: github.String("master")},
+	}, nil
+}
+func (m *mockGHClient) GetBranchesForCommit(ctx context.Context, owner, repo, commit string) ([]string, error) {
+	return []string{"master"}, nil
+}
+
 func TestDevBuildCreate(t *testing.T) {
 	mockedJenkins := &mockJenkins{resume: make(chan struct{})}
 	mockedRepo := mockRepo{}
 	server := DevbuildServer{
-		Repo:    &mockedRepo,
-		Jenkins: mockedJenkins,
-		Now:     time.Now,
-		Tekton:  &mockTrigger{},
+		Repo:     &mockedRepo,
+		Jenkins:  mockedJenkins,
+		Now:      time.Now,
+		Tekton:   &mockTrigger{},
+		GHClient: &mockGHClient{},
 	}
 
 	t.Run("ok", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master", GithubRepo: "pingcap/tidb"}},
+			DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master", GithubRepo: "pingcap/tidb"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, 1, entity.ID)
 		require.Equal(t, BuildStatusPending, entity.Status.Status)
-		require.Equal(t, int64(0), entity.Status.PipelineBuildID)
-		require.Equal(t, map[string]string{"Edition": "enterprise", "GitRef": "pull/23", "Product": "tidb",
-			"Version": "v6.1.2", "PluginGitRef": "master", "IsPushGCR": "false", "IsHotfix": "false", "Features": "",
-			"GithubRepo": "pingcap/tidb", "TiBuildID": "1", "BuildEnv": "", "ProductDockerfile": "", "BuilderImg": "",
-			"ProductBaseImg": "", "TargetImg": ""}, mockedJenkins.params)
-		mockedJenkins.resume <- struct{}{}
-		time.Sleep(time.Millisecond)
-		require.Equal(t, int64(2), mockedRepo.saved.Status.PipelineBuildID)
 	})
 	t.Run("auto fill plugin for devbuild", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23"}},
+			DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23"}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1", entity.Spec.PluginGitRef)
 	})
 	t.Run("auto fill plugin for hotfix", func(t *testing.T) {
 		entity, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2-20240125-5de58f5", Edition: EditionEnterprise, GitRef: "pull/23", IsHotfix: true}},
+			DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2-20240125-5de58f5", Edition: EditionEnterprise, GitRef: "pull/23", IsHotfix: true}},
 			DevBuildSaveOption{})
 		require.NoError(t, err)
 		require.Equal(t, "release-6.1.2", entity.Spec.PluginGitRef)
@@ -123,23 +132,23 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 	t.Run("bad enterprise plugin", func(t *testing.T) {
 		_, err := server.Create(context.TODO(),
-			DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "maste"}},
+			DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "maste"}},
 			DevBuildSaveOption{})
 		require.ErrorContains(t, err, "pluginGitRef is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("bad product", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ""}}, DevBuildSaveOption{})
+		_, err := server.Create(context.TODO(), DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ""}}, DevBuildSaveOption{})
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 
 	t.Run("bad version", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "av6.1.2", Edition: EditionCommunity}}, DevBuildSaveOption{})
+		_, err := server.Create(context.TODO(), DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "av6.1.2", Edition: EditionCommunity}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "version is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("validate gitRef", func(t *testing.T) {
-		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "pull/1234 "}}
+		obj := DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "pull/1234 "}}
 		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "gitRef is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
@@ -162,7 +171,7 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 
 	t.Run("validate target image", func(t *testing.T) {
-		obj := DevBuild{Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "branch/feature/somefeat"}}
+		obj := DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionCommunity, GitRef: "branch/feature/somefeat"}}
 		_, err := server.Create(context.TODO(), obj, DevBuildSaveOption{})
 		require.NoError(t, err)
 
@@ -179,7 +188,7 @@ func TestDevBuildCreate(t *testing.T) {
 	})
 
 	t.Run("bad githubRepo", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
+		_, err := server.Create(context.TODO(), DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
 			Version: "v6.1.2", Edition: EditionCommunity, GithubRepo: "aa/bb/cc"}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "githubRepo is not valid")
 		require.ErrorIs(t, err, ErrBadRequest)
@@ -200,12 +209,12 @@ func TestDevBuildCreate(t *testing.T) {
 		require.ErrorIs(t, err, ErrBadRequest)
 	})
 	t.Run("hotfix ok", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "branch/master",
+		_, err := server.Create(context.TODO(), DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, GitRef: "branch/master",
 			Version: "v6.1.2-20230102", Edition: EditionCommunity, IsHotfix: true}}, DevBuildSaveOption{})
 		require.NoError(t, err)
 	})
 	t.Run("hotfix check", func(t *testing.T) {
-		_, err := server.Create(context.TODO(), DevBuild{Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
+		_, err := server.Create(context.TODO(), DevBuild{Meta: DevBuildMeta{CreatedBy: "test@pingcap.com"}, Spec: DevBuildSpec{Product: ProductTidb, GitRef: "pull/23",
 			Version: "v6.1.2", Edition: EditionCommunity, IsHotfix: true}}, DevBuildSaveOption{})
 		require.ErrorContains(t, err, "verion must be like v7.0.0-20230102... for hotfix")
 		require.ErrorIs(t, err, ErrBadRequest)
@@ -357,12 +366,14 @@ func TestMergeTektonStatus(t *testing.T) {
 func TestDevBuildRerun(t *testing.T) {
 	mockedRepo := mockRepo{}
 	server := DevbuildServer{
-		Repo:    &mockedRepo,
-		Jenkins: &mockJenkins{},
-		Now:     time.Now,
-		Tekton:  &mockTrigger{},
+		Repo:     &mockedRepo,
+		Jenkins:  &mockJenkins{},
+		Now:      time.Now,
+		Tekton:   &mockTrigger{},
+		GHClient: &mockGHClient{},
 	}
 	mockedRepo.saved = DevBuild{ID: 2,
+		Meta:   DevBuildMeta{CreatedBy: "test@pingcap.com"},
 		Spec:   DevBuildSpec{Product: ProductTidb, Version: "v6.1.2", Edition: EditionEnterprise, GitRef: "pull/23", PluginGitRef: "master"},
 		Status: DevBuildStatus{PipelineBuildID: 4}}
 	entity, err := server.Rerun(context.TODO(), 1, DevBuildSaveOption{})

@@ -129,7 +129,7 @@ func (DevBuildSpec) Fields() []ent.Field {
 		field.String("pipeline_engine").
 			Optional().
 			MaxLen(16).
-			Default("jenkins").
+			Default("tekton").
 			Comment("Pipeline engine used"),
 
 		field.String("platform").

@@ -41,7 +41,7 @@ Optional options for trigger:
   --productBaseImg string   Product base image
   --builderImg string       Docker image for builder
   --targetImg string        Target image
-  --engine string           Pipeline engine (jenkins or tekton, default: jenkins, 'tekton' is in beta)
+  --engine string           Pipeline engine (tekton or jenkins(deprecated), default: tekton)
 
 Use '/devbuild --help' or '/devbuild -h' to see this message.
 `
