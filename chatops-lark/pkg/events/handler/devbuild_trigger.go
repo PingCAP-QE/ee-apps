@@ -166,12 +166,5 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 }
 
 func defaultEngineForProduct(product string) string {
-	peMap := map[string]string{
-		"tikv":          "tekton",
-		"tiflash":       "tekton",
-		"tidb-operator": "tekton",
-		"tiproxy":       "tekton",
-		"tici":          "tekton",
-	}
-	return peMap[product]
+	return "tekton"
 }
