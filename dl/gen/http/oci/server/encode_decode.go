@@ -110,6 +110,61 @@ func DecodeDownloadFileRequest(mux goahttp.Muxer, decoder func(*http.Request) go
 	}
 }
 
+// EncodeHeadFileResponse returns an encoder for responses returned by the oci
+// head-file endpoint.
+func EncodeHeadFileResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*oci.HeadFileResult)
+		{
+			val := res.Length
+			lengths := strconv.FormatInt(val, 10)
+			w.Header().Set("Content-Length", lengths)
+		}
+		w.Header().Set("Content-Disposition", res.ContentDisposition)
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+}
+
+// DecodeHeadFileRequest returns a decoder for requests sent to the oci
+// head-file endpoint.
+func DecodeHeadFileRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*oci.HeadFilePayload, error) {
+	return func(r *http.Request) (*oci.HeadFilePayload, error) {
+		var (
+			repository string
+			tag        string
+			file       *string
+			fileRegex  *string
+			err        error
+
+			params = mux.Vars(r)
+		)
+		repository = params["repository"]
+		qp := r.URL.Query()
+		tag = qp.Get("tag")
+		if tag == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("tag", "query string"))
+		}
+		fileRaw := qp.Get("file")
+		if fileRaw != "" {
+			file = &fileRaw
+		}
+		fileRegexRaw := qp.Get("file_regex")
+		if fileRegexRaw != "" {
+			fileRegex = &fileRegexRaw
+		}
+		if fileRegex != nil {
+			err = goa.MergeErrors(err, goa.ValidateFormat("file_regex", *fileRegex, goa.FormatRegexp))
+		}
+		if err != nil {
+			return nil, err
+		}
+		payload := NewHeadFilePayload(repository, tag, file, fileRegex)
+
+		return payload, nil
+	}
+}
+
 // EncodeDownloadFileSha256Response returns an encoder for responses returned
 // by the oci download-file-sha256 endpoint.
 func EncodeDownloadFileSha256Response(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {

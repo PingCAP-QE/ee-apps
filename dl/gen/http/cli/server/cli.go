@@ -24,15 +24,15 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() []string {
 	return []string{
-		"oci (list-files|download-file|download-file-sha256)",
+		"oci (list-files|download-file|head-file|download-file-sha256)",
 		"ks3 download-object",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Quis omnis earum quia pariatur nostrum cupiditate." --tag "Explicabo cum a."` + "\n" +
-		os.Args[0] + ` ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "Veniam et maiores qui." --tag "Voluptatem incidunt qui."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."` + "\n" +
 		""
 }
 
@@ -58,6 +58,12 @@ func ParseEndpoint(
 		ociDownloadFileFileFlag       = ociDownloadFileFlags.String("file", "", "")
 		ociDownloadFileFileRegexFlag  = ociDownloadFileFlags.String("file-regex", "", "")
 
+		ociHeadFileFlags          = flag.NewFlagSet("head-file", flag.ExitOnError)
+		ociHeadFileRepositoryFlag = ociHeadFileFlags.String("repository", "REQUIRED", "OCI artifact repository")
+		ociHeadFileTagFlag        = ociHeadFileFlags.String("tag", "REQUIRED", "")
+		ociHeadFileFileFlag       = ociHeadFileFlags.String("file", "", "")
+		ociHeadFileFileRegexFlag  = ociHeadFileFlags.String("file-regex", "", "")
+
 		ociDownloadFileSha256Flags          = flag.NewFlagSet("download-file-sha256", flag.ExitOnError)
 		ociDownloadFileSha256RepositoryFlag = ociDownloadFileSha256Flags.String("repository", "REQUIRED", "OCI artifact repository")
 		ociDownloadFileSha256FileFlag       = ociDownloadFileSha256Flags.String("file", "REQUIRED", "")
@@ -72,6 +78,7 @@ func ParseEndpoint(
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
 	ociDownloadFileFlags.Usage = ociDownloadFileUsage
+	ociHeadFileFlags.Usage = ociHeadFileUsage
 	ociDownloadFileSha256Flags.Usage = ociDownloadFileSha256Usage
 
 	ks3Flags.Usage = ks3Usage
@@ -119,6 +126,9 @@ func ParseEndpoint(
 			case "download-file":
 				epf = ociDownloadFileFlags
 
+			case "head-file":
+				epf = ociHeadFileFlags
+
 			case "download-file-sha256":
 				epf = ociDownloadFileSha256Flags
 
@@ -160,6 +170,9 @@ func ParseEndpoint(
 			case "download-file":
 				endpoint = c.DownloadFile()
 				data, err = ocic.BuildDownloadFilePayload(*ociDownloadFileRepositoryFlag, *ociDownloadFileTagFlag, *ociDownloadFileFileFlag, *ociDownloadFileFileRegexFlag)
+			case "head-file":
+				endpoint = c.HeadFile()
+				data, err = ocic.BuildHeadFilePayload(*ociHeadFileRepositoryFlag, *ociHeadFileTagFlag, *ociHeadFileFileFlag, *ociHeadFileFileRegexFlag)
 			case "download-file-sha256":
 				endpoint = c.DownloadFileSha256()
 				data, err = ocic.BuildDownloadFileSha256Payload(*ociDownloadFileSha256RepositoryFlag, *ociDownloadFileSha256FileFlag, *ociDownloadFileSha256TagFlag)
@@ -187,6 +200,7 @@ func ociUsage() {
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    list-files: ListFiles implements list-files.`)
 	fmt.Fprintln(os.Stderr, `    download-file: DownloadFile implements download-file.`)
+	fmt.Fprintln(os.Stderr, `    head-file: HeadFile implements head-file.`)
 	fmt.Fprintln(os.Stderr, `    download-file-sha256: DownloadFileSha256 implements download-file-sha256.`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
@@ -210,7 +224,7 @@ func ociListFilesUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Quis omnis earum quia pariatur nostrum cupiditate." --tag "Explicabo cum a."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Veniam et maiores qui." --tag "Voluptatem incidunt qui."`)
 }
 
 func ociDownloadFileUsage() {
@@ -238,6 +252,31 @@ func ociDownloadFileUsage() {
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file --repository "hub.pingcap.net/pingcap/tidb/package" --tag "v8.1.0_darwin_arm64" --file "tidb-v7.5.0-darwin-arm64.tar.gz" --file-regex "tidb-.+[.]tar[.]gz"`)
 }
 
+func ociHeadFileUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] oci head-file", os.Args[0])
+	fmt.Fprint(os.Stderr, " -repository STRING")
+	fmt.Fprint(os.Stderr, " -tag STRING")
+	fmt.Fprint(os.Stderr, " -file STRING")
+	fmt.Fprint(os.Stderr, " -file-regex STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `HeadFile implements head-file.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -repository STRING: OCI artifact repository`)
+	fmt.Fprintln(os.Stderr, `    -tag STRING: `)
+	fmt.Fprintln(os.Stderr, `    -file STRING: `)
+	fmt.Fprintln(os.Stderr, `    -file-regex STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Quo quidem fugiat tempore sapiente." --tag "Et laborum impedit." --file "Vero dolores amet possimus quasi libero nesciunt." --file-regex "9ut.*"`)
+}
+
 func ociDownloadFileSha256Usage() {
 	// Header with flags
 	fmt.Fprintf(os.Stderr, "%s [flags] oci download-file-sha256", os.Args[0])
@@ -258,7 +297,7 @@ func ociDownloadFileSha256Usage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Quis maiores hic et commodi aut." --file "Corrupti qui qui iusto." --tag "Enim animi exercitationem voluptate perferendis ut."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Eum quia." --file "Nobis possimus eaque dolor sunt similique." --tag "Quod nulla nostrum voluptatem soluta reprehenderit reiciendis."`)
 }
 
 // ks3Usage displays the usage of the ks3 command and its subcommands.
@@ -289,5 +328,5 @@ func ks3DownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Reiciendis eligendi magnam officiis recusandae est fugiat." --key "Provident temporibus occaecati unde."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."`)
 }

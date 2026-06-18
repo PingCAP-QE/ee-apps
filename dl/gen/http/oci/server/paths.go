@@ -21,6 +21,11 @@ func DownloadFileOciPath(repository string) string {
 	return fmt.Sprintf("/oci-file/%v", repository)
 }
 
+// HeadFileOciPath returns the URL path to the oci service head-file HTTP endpoint.
+func HeadFileOciPath(repository string) string {
+	return fmt.Sprintf("/oci-file/%v", repository)
+}
+
 // DownloadFileSha256OciPath returns the URL path to the oci service download-file-sha256 HTTP endpoint.
 func DownloadFileSha256OciPath(repository string) string {
 	return fmt.Sprintf("/oci-file-sha256/%v", repository)

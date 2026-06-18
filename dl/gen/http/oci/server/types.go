@@ -31,6 +31,17 @@ func NewDownloadFilePayload(repository string, tag string, file *string, fileReg
 	return v
 }
 
+// NewHeadFilePayload builds a oci service head-file endpoint payload.
+func NewHeadFilePayload(repository string, tag string, file *string, fileRegex *string) *oci.HeadFilePayload {
+	v := &oci.HeadFilePayload{}
+	v.Repository = repository
+	v.Tag = tag
+	v.File = file
+	v.FileRegex = fileRegex
+
+	return v
+}
+
 // NewDownloadFileSha256Payload builds a oci service download-file-sha256
 // endpoint payload.
 func NewDownloadFileSha256Payload(repository string, file string, tag string) *oci.DownloadFileSha256Payload {

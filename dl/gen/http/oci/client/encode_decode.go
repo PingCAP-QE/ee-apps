@@ -191,6 +191,104 @@ func DecodeDownloadFileResponse(decoder func(*http.Response) goahttp.Decoder, re
 	}
 }
 
+// BuildHeadFileRequest instantiates a HTTP request object with method and path
+// set to call the "oci" service "head-file" endpoint
+func (c *Client) BuildHeadFileRequest(ctx context.Context, v any) (*http.Request, error) {
+	var (
+		repository string
+	)
+	{
+		p, ok := v.(*oci.HeadFilePayload)
+		if !ok {
+			return nil, goahttp.ErrInvalidType("oci", "head-file", "*oci.HeadFilePayload", v)
+		}
+		repository = p.Repository
+	}
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: HeadFileOciPath(repository)}
+	req, err := http.NewRequest("HEAD", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("oci", "head-file", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeHeadFileRequest returns an encoder for requests sent to the oci
+// head-file server.
+func EncodeHeadFileRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*oci.HeadFilePayload)
+		if !ok {
+			return goahttp.ErrInvalidType("oci", "head-file", "*oci.HeadFilePayload", v)
+		}
+		values := req.URL.Query()
+		values.Add("tag", p.Tag)
+		if p.File != nil {
+			values.Add("file", *p.File)
+		}
+		if p.FileRegex != nil {
+			values.Add("file_regex", *p.FileRegex)
+		}
+		req.URL.RawQuery = values.Encode()
+		return nil
+	}
+}
+
+// DecodeHeadFileResponse returns a decoder for responses returned by the oci
+// head-file endpoint. restoreBody controls whether the response body should be
+// restored after having been read.
+func DecodeHeadFileResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				length             int64
+				contentDisposition string
+				err                error
+			)
+			{
+				lengthRaw := resp.Header.Get("Content-Length")
+				if lengthRaw == "" {
+					return nil, goahttp.ErrValidationError("oci", "head-file", goa.MissingFieldError("length", "header"))
+				}
+				v, err2 := strconv.ParseInt(lengthRaw, 10, 64)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("length", lengthRaw, "integer"))
+				}
+				length = v
+			}
+			contentDispositionRaw := resp.Header.Get("Content-Disposition")
+			if contentDispositionRaw == "" {
+				err = goa.MergeErrors(err, goa.MissingFieldError("contentDisposition", "header"))
+			}
+			contentDisposition = contentDispositionRaw
+			if err != nil {
+				return nil, goahttp.ErrValidationError("oci", "head-file", err)
+			}
+			res := NewHeadFileResultOK(length, contentDisposition)
+			return res, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("oci", "head-file", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // BuildDownloadFileSha256Request instantiates a HTTP request object with
 // method and path set to call the "oci" service "download-file-sha256" endpoint
 func (c *Client) BuildDownloadFileSha256Request(ctx context.Context, v any) (*http.Request, error) {
