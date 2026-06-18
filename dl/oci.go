@@ -115,7 +115,7 @@ func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag
 func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.HeadFileResult, error) {
 	s.logger.Print("oci.head-file")
 
-	repository, err := s.getTargetRepo(p.Repository)
+	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.He
 		return nil, err
 	}
 
-	descriptor, err := pkgoci.GetFileDescriptor(ctx, repository, p.Tag, targetFile)
+	descriptor, err := pkgoci.FetchFileDescriptor(ctx, repository, p.Tag, targetFile)
 	if err != nil {
 		return nil, oci.MakeInvalidFilePath(err)
 	}

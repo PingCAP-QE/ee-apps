@@ -56,12 +56,6 @@ func GetFileSHA256(ctx context.Context, repository oras.ReadOnlyTarget, tag, fil
 	return desiredFileDescriptor.Digest.Encoded(), nil
 }
 
-// GetFileDescriptor returns the OCI descriptor for a specific file in an artifact
-// without downloading the blob. Use this for HEAD-like existence checks.
-func GetFileDescriptor(ctx context.Context, repository *remote.Repository, tag, filename string) (*ocispec.Descriptor, error) {
-	return fetchFileDescriptor(ctx, repository, tag, filename)
-}
-
 func listArtifactLayers(ctx context.Context, target oras.ReadOnlyTarget, ref string) ([]ocispec.Descriptor, error) {
 	// fetch manifest manifestBytes
 	_, manifestBytes, err := oras.FetchBytes(ctx, target, ref, oras.DefaultFetchBytesOptions)
