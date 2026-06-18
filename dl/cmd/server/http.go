@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,11 +21,18 @@ import (
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
+	"oras.land/oras-go/v2/registry/remote"
 )
+
+// ociRepoProvider is implemented by OCI service types that can create authenticated repository clients.
+type ociRepoProvider interface {
+	GetTargetRepo(repo string) (*remote.Repository, error)
+}
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
 
 	// Setup goa log adapter.
 	var (
@@ -81,6 +91,9 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	// here apply to all the service endpoints.
 	var handler http.Handler = mux
 	{
+		if provider, ok := ociSvc.(ociRepoProvider); ok {
+			handler = headOCIMiddleware(provider, logger)(handler)
+		}
 		handler = httpmdlwr.Log(adapter)(handler)
 		handler = httpmdlwr.RequestID()(handler)
 	}
@@ -127,5 +140,93 @@ func errorHandler(logger *log.Logger) func(context.Context, http.ResponseWriter,
 		id := ctx.Value(middleware.RequestIDKey).(string)
 		_, _ = w.Write([]byte("[" + id + "] encoding: " + err.Error()))
 		logger.Printf("[%s] ERROR: %s", id, err.Error())
+	}
+}
+
+// headOCIMiddleware intercepts HEAD requests to /oci-file/{*repository} and
+// checks file existence without downloading the blob, enabling wget --spider.
+func headOCIMiddleware(provider ociRepoProvider, logger *log.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodHead {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !strings.HasPrefix(r.URL.Path, "/oci-file/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			repository := strings.TrimPrefix(r.URL.Path, "/oci-file/")
+			if repository == "" {
+				http.Error(w, "missing repository", http.StatusBadRequest)
+				return
+			}
+
+			qp := r.URL.Query()
+			tag := qp.Get("tag")
+			if tag == "" {
+				http.Error(w, "missing tag query parameter", http.StatusBadRequest)
+				return
+			}
+
+			file := qp.Get("file")
+			fileRegex := qp.Get("file_regex")
+
+			repo, err := provider.GetTargetRepo(repository)
+			if err != nil {
+				logger.Printf("HEAD oci-file: getTargetRepo: %v", err)
+				http.Error(w, "failed to resolve repository", http.StatusInternalServerError)
+				return
+			}
+
+			ctx := r.Context()
+			var targetFile string
+
+			if file != "" {
+				targetFile = file
+			} else if fileRegex != "" {
+				pattern, err := regexp.Compile(fileRegex)
+				if err != nil {
+					http.Error(w, "invalid file_regex", http.StatusBadRequest)
+					return
+				}
+
+				files, err := pkgoci.ListFiles(ctx, repo, tag)
+				if err != nil {
+					logger.Printf("HEAD oci-file: ListFiles: %v", err)
+					http.Error(w, "failed to list files", http.StatusInternalServerError)
+					return
+				}
+
+				for _, f := range files {
+					if pattern.MatchString(f) {
+						targetFile = f
+						break
+					}
+				}
+
+				if targetFile == "" {
+					http.Error(w, "file not found", http.StatusNotFound)
+					return
+				}
+			} else {
+				http.Error(w, "missing file or file_regex parameter", http.StatusBadRequest)
+				return
+			}
+
+			descriptor, err := pkgoci.FetchFileDescriptor(ctx, repo, tag, targetFile)
+			if err != nil {
+				logger.Printf("HEAD oci-file: FetchFileDescriptor: %v", err)
+				http.Error(w, "file not found", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.QueryEscape(targetFile))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", descriptor.Size))
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+		})
 	}
 }

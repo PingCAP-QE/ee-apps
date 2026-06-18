@@ -51,7 +51,7 @@ func NewOci(logger *log.Logger, cfgFile *string) oci.Service {
 func (s *ocisrvc) ListFiles(ctx context.Context, p *oci.ListFilesPayload) (res []string, err error) {
 	s.logger.Print("oci.list-files")
 
-	repository, err := s.getTargetRepo(p.Repository)
+	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,8 @@ func (s *ocisrvc) ListFiles(ctx context.Context, p *oci.ListFilesPayload) (res [
 	return files, nil
 }
 
-func (s *ocisrvc) getTargetRepo(repo string) (*remote.Repository, error) {
+// GetTargetRepo creates a remote.Repository with auth configured for the given repo string.
+func (s *ocisrvc) GetTargetRepo(repo string) (*remote.Repository, error) {
 	repository, err := remote.NewRepository(repo)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,7 @@ func (s *ocisrvc) getTargetRepo(repo string) (*remote.Repository, error) {
 func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) (res *oci.DownloadFileResult, resp io.ReadCloser, err error) {
 	s.logger.Print("oci.download-file")
 
-	repository, err := s.getTargetRepo(p.Repository)
+	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -133,7 +134,7 @@ func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag
 func (s *ocisrvc) DownloadFileSha256(ctx context.Context, p *oci.DownloadFileSha256Payload) (res *oci.DownloadFileSha256Result, resp io.ReadCloser, err error) {
 	s.logger.Print("oci.download-file-sha256")
 
-	repository, err := s.getTargetRepo(p.Repository)
+	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
 		return nil, nil, err
 	}
