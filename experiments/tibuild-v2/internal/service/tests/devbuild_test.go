@@ -435,6 +435,6 @@ func TestDevBuildRerun(t *testing.T) {
 		assert.Equal(t, created.Spec.Product, rerun.Spec.Product)
 		assert.Equal(t, created.Spec.Edition, rerun.Spec.Edition)
 		assert.Equal(t, created.Spec.Version, rerun.Spec.Version)
-		assert.Equal(t, "jenkins", *rerun.Spec.PipelineEngine)
+		assert.Equal(t, "tekton", *rerun.Spec.PipelineEngine)
 	})
 }
