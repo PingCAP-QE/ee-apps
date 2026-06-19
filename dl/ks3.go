@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 
