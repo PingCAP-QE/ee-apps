@@ -17,6 +17,7 @@ import (
 	httpmdlwr "goa.design/goa/v3/http/middleware"
 	"goa.design/goa/v3/middleware"
 
+	dl "github.com/PingCAP-QE/ee-apps/dl"
 	ks3svr "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/server"
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
@@ -223,7 +224,7 @@ func headOCIMiddleware(provider ociRepoProvider, logger *log.Logger) func(http.H
 				return
 			}
 
-			w.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.QueryEscape(targetFile))
+			w.Header().Set("Content-Disposition", dl.ContentDisposition(targetFile))
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", descriptor.Size))
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.WriteHeader(http.StatusOK)

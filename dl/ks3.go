@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 
@@ -78,7 +77,7 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 		if getObjectOutput.ContentDisposition != nil {
 			res.ContentDisposition = *getObjectOutput.ContentDisposition
 		} else {
-			res.ContentDisposition = `attachment; filename*=UTF-8''` + url.QueryEscape(filepath.Base(p.Key))
+			res.ContentDisposition = ContentDisposition(filepath.Base(p.Key))
 		}
 	}
 

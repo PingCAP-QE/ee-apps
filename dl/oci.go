@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -106,7 +105,7 @@ func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag
 
 	res = &oci.DownloadFileResult{
 		Length:             length,
-		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(file),
+		ContentDisposition: ContentDisposition(file),
 	}
 	return res, rc, nil
 }
@@ -132,7 +131,7 @@ func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.He
 
 	return &oci.HeadFileResult{
 		Length:             descriptor.Size,
-		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(targetFile),
+		ContentDisposition: ContentDisposition(targetFile),
 	}, nil
 }
 
@@ -179,7 +178,7 @@ func (s *ocisrvc) DownloadFileSha256(ctx context.Context, p *oci.DownloadFileSha
 
 	res = &oci.DownloadFileSha256Result{
 		Length:             int64(len(value)),
-		ContentDisposition: `attachment; filename*=UTF-8''` + url.QueryEscape(p.File) + ".sha256",
+		ContentDisposition: ContentDisposition(p.File + ".sha256"),
 	}
 	return res, io.NopCloser(strings.NewReader(value)), nil
 }
