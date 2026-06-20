@@ -16,6 +16,17 @@
 
 # IDEs
 .vscode/
+.cursor
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+.venv/
+venv/
 
 # go work files
 go.work
