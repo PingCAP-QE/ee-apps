@@ -21,9 +21,9 @@ interface ConnectionContextType extends ConnectionState {
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined);
 
 export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
-  const [connectionState, setConnectionState] = useState<ConnectionState>({ 
+  const [connectionState, setConnectionState] = useState<ConnectionState>({
       connectionString: null,
-      isConnected: false, 
+      isConnected: false,
       selectedTableName: null,
       apiType: null,
       apiKey: null,
@@ -31,24 +31,24 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
 
   const setConnection = (connectionString: string, status: boolean) => {
     console.log('Setting connection context:', status ? connectionString : null);
-    setConnectionState(prevState => ({ 
+    setConnectionState(prevState => ({
         ...prevState,
-        connectionString: status ? connectionString : null, 
+        connectionString: status ? connectionString : null,
         isConnected: status,
         selectedTableName: status ? prevState.selectedTableName : null,
         apiType: prevState.apiType,
         apiKey: prevState.apiKey,
     }));
   };
-  
+
   const clearConnection = () => {
       console.log('Clearing connection context');
-      setConnectionState({ 
-          connectionString: null, 
-          isConnected: false, 
-          selectedTableName: null, 
-          apiType: null, 
-          apiKey: null 
+      setConnectionState({
+          connectionString: null,
+          isConnected: false,
+          selectedTableName: null,
+          apiType: null,
+          apiKey: null
       });
   };
 
@@ -75,4 +75,4 @@ export const useConnection = (): ConnectionContextType => {
     throw new Error('useConnection must be used within a ConnectionProvider');
   }
   return context;
-}; 
+};

@@ -32,11 +32,11 @@ interface ValidationStatus {
 
 export function ApiConfigurationCard() {
   const { apiType: contextApiType, apiKey: contextApiKey, setApiConfig } = useConnection();
-  
+
   // Local state to manage input before saving to context
   const [localApiType, setLocalApiType] = useState<ApiType>('google');
   const [localApiKey, setLocalApiKey] = useState('');
-  
+
   // Validation state
   const [validationStatus, setValidationStatus] = useState<ValidationStatus>({
       isValidating: false,
@@ -67,21 +67,21 @@ export function ApiConfigurationCard() {
 
     setValidationStatus({ isValidating: true, isValid: null, message: null });
     setIsSaved(false);
-    
+
     try {
         // Construct API URL using environment variable
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
         const apiUrl = `${apiBaseUrl}/api/validate_api_key`;
         console.log("Fetching from:", apiUrl);
-        
+
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key_type: localApiType, api_key: localApiKey })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             // Validation successful - update context
             setApiConfig(localApiType, localApiKey);
@@ -97,9 +97,9 @@ export function ApiConfigurationCard() {
     } catch (error) {
         console.error("API Key validation error:", error);
         setApiConfig(null, null);
-        setValidationStatus({ 
-            isValidating: false, 
-            isValid: false, 
+        setValidationStatus({
+            isValidating: false,
+            isValid: false,
             message: error instanceof Error ? error.message : "An unexpected error occurred during validation."
         });
     }
@@ -147,8 +147,8 @@ export function ApiConfigurationCard() {
             </div>
       </CardContent>
       <CardFooter className="flex justify-between items-center">
-          <Button 
-              onClick={handleSaveConfig} 
+          <Button
+              onClick={handleSaveConfig}
               disabled={!localApiKey || !localApiType || validationStatus.isValidating}
           >
               {validationStatus.isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -162,4 +162,4 @@ export function ApiConfigurationCard() {
       </CardFooter>
     </Card>
   );
-} 
+}

@@ -46,19 +46,19 @@ export function TableManagementCard() {
        setIsLoading(false);
        return;
     }
-    
+
     setIsLoading(true);
     setError(null);
     setTables([]);
     console.log("Fetching table list via POST /api/list_tables...");
     try {
-      const response = await fetch(`/api/list_tables`, { 
+      const response = await fetch(`/api/list_tables`, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
           },
           body: JSON.stringify({ connection_string: connectionString }),
-          cache: 'no-store' 
+          cache: 'no-store'
       });
       const data = await response.json();
 
@@ -76,7 +76,7 @@ export function TableManagementCard() {
       setIsLoading(false);
     }
   }, [isConnected, connectionString]); // Add dependencies for useCallback
-  
+
   // Fetch tables when connection status changes to connected
   useEffect(() => {
     if (isConnected) {
@@ -90,12 +90,12 @@ export function TableManagementCard() {
 
   // Renamed from handleListTables to avoid confusion
   const handleRefreshTables = () => {
-    fetchTables(); 
+    fetchTables();
   };
 
   const confirmDeleteTable = async () => {
     if (!tableToDelete) return;
-    
+
     if (!isConnected || !connectionString) {
        setError("Database connection not established or invalid. Cannot delete table.");
        setTableToDelete(null); // Close dialog
@@ -107,7 +107,7 @@ export function TableManagementCard() {
     const deletingName = tableToDelete;
     setTableToDelete(null); // Close dialog
     console.log(`Deleting table via /api/drop_table: ${deletingName}`);
-    
+
     try {
       const response = await fetch('/api/drop_table', {
         method: 'POST',
@@ -115,19 +115,19 @@ export function TableManagementCard() {
           'Content-Type': 'application/json',
         },
         // Include connection string in the body
-        body: JSON.stringify({ 
-            table_name: deletingName, 
-            connection_string: connectionString 
-        }), 
+        body: JSON.stringify({
+            table_name: deletingName,
+            connection_string: connectionString
+        }),
       });
-      
+
       const data = await response.json();
 
       if (!response.ok || !data.success) {
         setError(data.message || `Failed to delete table "${deletingName}" (status: ${response.status})`);
       } else {
         // Refresh table list after successful deletion
-        await fetchTables(); 
+        await fetchTables();
       }
     } catch (err) {
        console.error("Delete table error:", err);
@@ -160,8 +160,8 @@ export function TableManagementCard() {
         <div className="table-container border rounded-md max-h-60 overflow-y-auto">
           <Table>
             <TableCaption>
-              {tables.length === 0 && !isLoading 
-                ? "No tables found or list not loaded yet." 
+              {tables.length === 0 && !isLoading
+                ? "No tables found or list not loaded yet."
                 : "List of existing vector tables."
               }
             </TableCaption>
@@ -173,14 +173,14 @@ export function TableManagementCard() {
             </TableHeader>
             <TableBody>
               {tables.map((table) => (
-                <TableRow 
+                <TableRow
                     key={table.name}
                     className={selectedTableName === table.name ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
                 >
                   <TableCell className="font-medium">{table.name}</TableCell>
                   <TableCell className="text-right space-x-1">
-                     <Button 
-                       variant="outline" 
+                     <Button
+                       variant="outline"
                        size="sm"
                        onClick={() => handleUseTable(table.name)}
                        disabled={selectedTableName === table.name}
@@ -190,11 +190,11 @@ export function TableManagementCard() {
                      </Button>
                      <Dialog open={tableToDelete === table.name} onOpenChange={(open) => !open && setTableToDelete(null)}>
                        <DialogTrigger asChild>
-                         <Button 
-                           variant="ghost" 
-                           size="icon" 
+                         <Button
+                           variant="ghost"
+                           size="icon"
                            onClick={() => setTableToDelete(table.name)}
-                           disabled={!!isDeleting} 
+                           disabled={!!isDeleting}
                            title={`Delete table ${table.name}`}
                            className="hover:bg-red-100 dark:hover:bg-red-900/50"
                          >
@@ -209,8 +209,8 @@ export function TableManagementCard() {
                          <DialogHeader>
                            <DialogTitle>Confirm Deletion</DialogTitle>
                            <DialogDescription>
-                             Are you sure you want to delete the table &quot;{table.name}&quot;? 
-                             This action also deletes the associated metadata table ({table.name}_metadata) if it exists. 
+                             Are you sure you want to delete the table &quot;{table.name}&quot;?
+                             This action also deletes the associated metadata table ({table.name}_metadata) if it exists.
                              This action cannot be undone.
                            </DialogDescription>
                          </DialogHeader>
@@ -218,12 +218,12 @@ export function TableManagementCard() {
                             <DialogClose asChild>
                               <Button variant="outline">Cancel</Button>
                             </DialogClose>
-                           <Button 
-                             variant="destructive" 
-                             onClick={confirmDeleteTable} 
+                           <Button
+                             variant="destructive"
+                             onClick={confirmDeleteTable}
                              disabled={isDeleting === table.name}
                            >
-                             {isDeleting === table.name && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                             {isDeleting === table.name && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                              Delete Table
                            </Button>
                          </DialogFooter>
@@ -248,4 +248,4 @@ export function TableManagementCard() {
       </CardFooter>
     </Card>
   );
-} 
+}

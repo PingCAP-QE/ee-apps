@@ -32,7 +32,7 @@ You need to run both the Flask backend and the Next.js frontend simultaneously.
      npm run dev
      ```
      # Create a virtual environment using uv (recommended)
-     
+
      ```
    *   Run the Flask server:
      ```bash

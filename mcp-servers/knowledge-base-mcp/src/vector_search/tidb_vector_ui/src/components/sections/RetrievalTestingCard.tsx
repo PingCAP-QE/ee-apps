@@ -39,7 +39,7 @@ export function RetrievalTestingCard() {
     }
     // Optional: Clear input if selectedTableName becomes null?
     // else {
-    //   setTableName(''); 
+    //   setTableName('');
     // }
   }, [selectedTableName]);
 
@@ -47,18 +47,18 @@ export function RetrievalTestingCard() {
 
   const handleExecuteQuery = async () => {
     if (!isFormValid()) return;
-    
+
     setIsLoading(true);
     setResult(null);
-    
+
     console.log("Sending request to /api/test_retrieval");
 
     try {
       // Construct API URL using environment variable
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || ''; // Default to relative path if not set
       const apiUrl = `${apiBaseUrl}/api/test_retrieval`;
-      console.log("Fetching from:", apiUrl); 
-      
+      console.log("Fetching from:", apiUrl);
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -76,31 +76,31 @@ export function RetrievalTestingCard() {
       });
 
       const data: RetrievalResult = await response.json();
-      
+
       if (!response.ok) {
-         setResult({ 
-           success: false, 
+         setResult({
+           success: false,
            message: data?.message || `Request failed with status: ${response.status}`
          });
       } else {
         // Ensure results field is always an array, even if empty or missing from backend response
-        setResult({ 
-           success: data.success, 
+        setResult({
+           success: data.success,
            message: data.message, // Include message even on success if present (e.g., partial success info?)
-           results: Array.isArray(data.results) ? data.results : [] 
+           results: Array.isArray(data.results) ? data.results : []
         });
       }
     } catch (error) {
       console.error("Failed to execute retrieval test:", error);
-      setResult({ 
-        success: false, 
+      setResult({
+        success: false,
         message: error instanceof Error ? error.message : "An unknown error occurred while contacting the server."
       });
     }
-    
+
     setIsLoading(false);
   };
-  
+
   const isFormValid = (): boolean => {
      const valid = isConnected && !!tableName && !!query && kValue > 0 && threshold >= 0 && threshold <= 1 && !!apiType && !!apiKey;
       if (!valid) {
@@ -147,7 +147,7 @@ export function RetrievalTestingCard() {
              <Input id="retrieval-threshold" type="number" min="0" max="1" step="0.05" value={threshold} onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)} disabled={isLoading} />
            </div>
          </div>
-        
+
         {/* Results Area */}
         {isLoading && (
              <div className="flex items-center text-sm text-muted-foreground">
@@ -196,4 +196,4 @@ export function RetrievalTestingCard() {
       </CardFooter>
     </Card>
   );
-} 
+}
