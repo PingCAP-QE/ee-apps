@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     if (!connection_string) {
          return NextResponse.json(
-           { success: false, message: 'Connection string is required in the request body.' }, 
+           { success: false, message: 'Connection string is required in the request body.' },
            { status: 400 }
          );
     }
@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
     // ** Flask's /api/list_tables MUST be updated to handle POST and read this value **
     const formData = new URLSearchParams();
     formData.append('connection_string', connection_string);
-    
+
     console.log(`Proxying list_tables POST request for (masked): ${connection_string.substring(0, 20)}...`);
-    
+
     const flaskResponse = await fetch(`${backendApiUrl}/api/list_tables`, {
       // Using POST now
       method: 'POST',
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         'Cookie': request.headers.get('cookie') || '', // Keep cookie for Flask session just in case it's still needed for other things
       },
       body: formData.toString(), // Send connection string in body
-      cache: 'no-store', 
+      cache: 'no-store',
     });
 
     const data = await flaskResponse.json();
@@ -45,12 +45,12 @@ export async function POST(request: NextRequest) {
       // Check if Flask returned the specific session error
       if (flaskResponse.status === 400 && data.message?.includes('Connection string not found')) {
          return NextResponse.json(
-           { success: false, message: 'Connection invalid or Flask backend session error. Please test connection again. (Flask backend may need update)' }, 
+           { success: false, message: 'Connection invalid or Flask backend session error. Please test connection again. (Flask backend may need update)' },
            { status: 400 }
          );
       } else if (flaskResponse.status === 405) { // Method Not Allowed
            return NextResponse.json(
-             { success: false, message: 'Flask backend /api/list_tables does not support POST. (Flask backend needs update)' }, 
+             { success: false, message: 'Flask backend /api/list_tables does not support POST. (Flask backend needs update)' },
              { status: 405 }
            );
       }
@@ -71,4 +71,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ success: false, message: 'An unexpected error occurred: ' + errorMessage }, { status: 500 });
   }
-} 
+}

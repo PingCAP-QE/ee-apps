@@ -292,7 +292,7 @@ def test_retrieval():
          return jsonify({'success': False, 'message': 'Failed to initialize embeddings model'}), 500
     app.logger.info("Embeddings model initialized successfully for retrieval.")
 
-    # --- Retrieval --- 
+    # --- Retrieval ---
     try:
         app.logger.info(f"Initializing TiDBVectorStore for table '{table_name}'...")
         vector_store = TiDBVectorStore(
@@ -348,7 +348,7 @@ def validate_api_key():
     # Store original keys to restore later
     original_openai_key = os.environ.get('OPENAI_API_KEY')
     original_google_key = os.environ.get('GOOGLE_API_KEY')
-    
+
     validation_success = False
     validation_message = "Validation failed."
     embeddings = None
@@ -368,12 +368,12 @@ def validate_api_key():
 
         # Attempt to initialize embeddings
         embeddings = setup_embeddings()
-        
+
         if embeddings:
             app.logger.info(f"{api_key_type.capitalize()} initialized. Testing embedding...")
             # Try a basic embedding call
             try:
-                embeddings.embed_query("test") 
+                embeddings.embed_query("test")
                 validation_success = True
                 validation_message = f"{api_key_type.capitalize()} API key is valid."
                 app.logger.info(f"{api_key_type.capitalize()} embedding test successful.")
@@ -399,7 +399,7 @@ def validate_api_key():
         if "api_key" in str(e).lower() or "authentication" in str(e).lower():
              msg = f"Auth failed during setup for {api_key_type}. Check Key."
         validation_message = msg
-             
+
     finally:
         # Restore original environment variables
         app.logger.debug("Restoring original API keys in environment...")
@@ -407,7 +407,7 @@ def validate_api_key():
             os.environ['OPENAI_API_KEY'] = original_openai_key
         else:
             os.environ.pop('OPENAI_API_KEY', None)
-            
+
         if original_google_key:
             os.environ['GOOGLE_API_KEY'] = original_google_key
         else:
