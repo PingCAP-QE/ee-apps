@@ -31,13 +31,13 @@ export function DatabaseConnectionCard() {
     setIsLoading(true);
     setStatus(null);
     setConnection(connectionStringInput, false); // Clear previous connection status in context immediately
-    
+
     try {
       // Construct API URL using environment variable
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
       const apiUrl = `${apiBaseUrl}/api/ping_tidb`;
       console.log("Fetching from:", apiUrl);
-      
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -49,23 +49,23 @@ export function DatabaseConnectionCard() {
       const data: ConnectionStatus & { message: string } = await response.json();
 
       if (!response.ok) {
-        setStatus({ 
-          success: false, 
-          message: data?.message || `Request failed with status: ${response.status}` 
+        setStatus({
+          success: false,
+          message: data?.message || `Request failed with status: ${response.status}`
         });
         setConnection(connectionStringInput, false); // Update context: connection failed
       } else {
-        setStatus({ 
-          success: data.success, 
-          message: data.message 
+        setStatus({
+          success: data.success,
+          message: data.message
         });
         // Update context only if backend confirms success
-        setConnection(connectionStringInput, data.success); 
+        setConnection(connectionStringInput, data.success);
       }
     } catch (error) {
       console.error("Failed to test connection:", error);
-      setStatus({ 
-        success: false, 
+      setStatus({
+        success: false,
         message: error instanceof Error ? error.message : "An unknown error occurred while contacting the server."
       });
       setConnection(connectionStringInput, false); // Update context: connection failed
@@ -86,19 +86,19 @@ export function DatabaseConnectionCard() {
             <Label htmlFor="connection-string">TiDB Connection String</Label>
             <p className="text-sm text-muted-foreground">
               Learn how to{' '}
-              <a 
-                href="https://docs.pingcap.com/tidb/stable/dev-guide-build-cluster-in-cloud/#step-1-create-a-tidb-cloud-serverless-cluster" 
-                target="_blank" 
+              <a
+                href="https://docs.pingcap.com/tidb/stable/dev-guide-build-cluster-in-cloud/#step-1-create-a-tidb-cloud-serverless-cluster"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="underline text-blue-600 hover:text-blue-800"
               >
                 create a TiDB Serverless cluster and get the connection string
               </a>.
             </p>
-            <Input 
-              id="connection-string" 
-              type="password" 
-              placeholder="mysql+pymysql://user:pass@host:port/db" 
+            <Input
+              id="connection-string"
+              type="password"
+              placeholder="mysql+pymysql://user:pass@host:port/db"
               value={connectionStringInput} // Bind to local input state
               onChange={(e) => setConnectionStringInput(e.target.value)} // Update local input state
               disabled={isLoading}
@@ -121,8 +121,8 @@ export function DatabaseConnectionCard() {
         </div>
       </CardContent>
       <CardFooter>
-        <Button 
-          onClick={handleTestConnection} 
+        <Button
+          onClick={handleTestConnection}
           disabled={isLoading || !connectionStringInput} // Disable based on local input
           className="disabled:opacity-70 disabled:cursor-not-allowed"
         >
@@ -132,4 +132,4 @@ export function DatabaseConnectionCard() {
       </CardFooter>
     </Card>
   );
-} 
+}

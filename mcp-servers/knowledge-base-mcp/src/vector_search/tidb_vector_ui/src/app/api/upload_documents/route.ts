@@ -12,10 +12,10 @@ export async function POST(request: NextRequest) {
   try {
     // Next.js automatically handles multipart/form-data
     const formData = await request.formData();
-    
+
     // Expect connection_string in the FormData
     const connection_string = formData.get('connection_string');
-    
+
     // Log received form data (excluding files for brevity)
     console.log('Received formData keys:', Array.from(formData.keys()));
     console.log('connection_string present:', !!connection_string);
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     if (!formData.get('table_name') || !formData.get('api_key_type') || !formData.get('api_key')) {
        return NextResponse.json({ success: false, message: 'Missing required fields (table name, api type, api key)' }, { status: 400 });
     }
-    
+
     // Check if files are present (essential now)
     const files = formData.getAll('files[]');
     if (!files || files.length === 0 || (files.length === 1 && (files[0] as File).size === 0)) {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       // Handle specific errors like connection failure
       if (flaskResponse.status === 400 && data.message?.includes('Connection string not found')) {
          return NextResponse.json(
-           { success: false, message: 'Connection test failed or not performed. Please test connection again.' }, 
+           { success: false, message: 'Connection test failed or not performed. Please test connection again.' },
            { status: 400 }
          );
        }
@@ -75,4 +75,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ success: false, message: 'An unexpected error occurred: ' + errorMessage }, { status: 500 });
   }
-} 
+}

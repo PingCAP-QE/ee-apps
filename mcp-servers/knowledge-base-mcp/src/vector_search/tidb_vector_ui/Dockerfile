@@ -23,11 +23,11 @@ ENV NODE_ENV=production
 # Define the default port Next.js will run on
 ENV PORT=3000
 # Default Backend URL (can be overridden at runtime)
-ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:5000 
+ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
 
 # Copy necessary files from the build stage
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=node:node /app/.next/standalone ./ 
+COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
 # Expose the port the app runs on
@@ -37,4 +37,4 @@ EXPOSE 3000
 USER node
 
 # Start the Next.js production server
-CMD ["node", "server.js"] 
+CMD ["node", "server.js"]

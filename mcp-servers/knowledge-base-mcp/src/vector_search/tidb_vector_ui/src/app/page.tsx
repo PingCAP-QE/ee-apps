@@ -1,5 +1,5 @@
 import {
-  Alert, AlertDescription, AlertTitle 
+  Alert, AlertDescription, AlertTitle
 } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
 import { DatabaseConnectionCard } from "@/components/sections/DatabaseConnectionCard";

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
        // Special handling for connection error
        if (flaskResponse.status === 400 && data.message?.includes('Connection string not found')) {
          return NextResponse.json(
-           { success: false, message: 'Connection test failed or not performed. Please test connection again.' }, 
+           { success: false, message: 'Connection test failed or not performed. Please test connection again.' },
            { status: 400 }
          );
        }
@@ -58,4 +58,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ success: false, message: 'An unexpected error occurred: ' + errorMessage }, { status: 500 });
   }
-} 
+}
