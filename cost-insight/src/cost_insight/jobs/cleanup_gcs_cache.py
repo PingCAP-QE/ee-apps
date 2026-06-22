@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import islice
 from uuid import uuid4
 
@@ -106,6 +106,11 @@ def run_cleanup_gcs_cache(
     )
     bytes_processed_total = _add_bytes(bytes_processed_total, index_ready_result.total_bytes_processed)
     _assert_cleanup_index_ready(index_ready_result.rows)
+    _assert_cleanup_index_fresh(
+        index_ready_result.rows,
+        run_started_at=run_started_at,
+        max_index_staleness_hours=settings.ac_reference_max_index_staleness_hours,
+    )
 
     summary_result = execute(
         build_cleanup_gcs_cache_summary_query(settings),
@@ -410,7 +415,9 @@ def build_cleanup_gcs_cache_index_ready_query(settings: GcsCacheSettings) -> str
     return f"""
 SELECT
   COUNT(*) AS total_shards,
-  COUNTIF(indexed_through IS NOT NULL) AS ready_shards
+  COUNTIF(indexed_through IS NOT NULL) AS ready_shards,
+  MIN(indexed_through) AS oldest_indexed_through,
+  MAX(indexed_through) AS newest_indexed_through
 FROM {state_table}
 """.strip()
 
@@ -798,6 +805,33 @@ def _assert_cleanup_index_ready(rows: Sequence[dict[str, object]]) -> None:
         raise RuntimeError(
             "AC reference index is not ready for CAS cleanup: "
             f"ready_shards={ready_shards}, total_shards={total_shards}"
+        )
+
+
+def _assert_cleanup_index_fresh(
+    rows: Sequence[dict[str, object]],
+    *,
+    run_started_at: datetime,
+    max_index_staleness_hours: int,
+) -> None:
+    row = rows[0] if rows else {}
+    oldest_indexed_through = coerce_optional_datetime(row.get("oldest_indexed_through"))
+    newest_indexed_through = coerce_optional_datetime(row.get("newest_indexed_through"))
+    if oldest_indexed_through is None:
+        raise RuntimeError("AC reference index has no indexed_through watermark for CAS cleanup")
+
+    cutoff = run_started_at - timedelta(hours=max_index_staleness_hours)
+    if oldest_indexed_through < cutoff:
+        spread = (
+            f"index_spread={oldest_indexed_through.isoformat()}..{newest_indexed_through.isoformat()}"
+            if newest_indexed_through is not None
+            else f"oldest_indexed_through={oldest_indexed_through.isoformat()}"
+        )
+        raise RuntimeError(
+            "AC reference index is too stale for CAS cleanup: "
+            f"{spread}, "
+            f"required_at_or_after={cutoff.isoformat()}, "
+            f"max_staleness_hours={max_index_staleness_hours}"
         )
 
 
