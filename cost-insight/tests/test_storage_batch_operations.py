@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import io
+import json
 from datetime import UTC, datetime
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -22,6 +25,193 @@ def _install_fake_google_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(google.auth, "default", lambda scopes=None: (_FakeCredentials(), "test"))
     monkeypatch.setattr(requests, "Request", lambda: object())
+
+
+class _FakeHttpResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return json.dumps(self._payload).encode("utf-8")
+
+    def __enter__(self) -> _FakeHttpResponse:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+def test_create_delete_job_posts_expected_request_and_returns_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_google_auth(monkeypatch)
+    seen_request: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout: int):
+        seen_request["url"] = request.full_url
+        seen_request["method"] = request.get_method()
+        seen_request["authorization"] = request.headers["Authorization"]
+        seen_request["content_type"] = request.headers["Content-type"]
+        seen_request["body"] = json.loads(request.data.decode("utf-8"))
+        assert timeout == 120
+        return _FakeHttpResponse({"name": "operations/delete-job-1"})
+
+    monkeypatch.setattr(storage_batch_operations, "urlopen", fake_urlopen)
+
+    job = storage_batch_operations.create_delete_job(
+        project_id="test-project",
+        job_id="delete-job-1",
+        bucket_name="test-bucket",
+        manifest_uri="gs://manifest-bucket/path/manifest.csv",
+        dry_run=False,
+        description="steady-state cleanup",
+    )
+
+    assert job == storage_batch_operations.StorageBatchOperationsJob(
+        job_name="projects/test-project/locations/global/jobs/delete-job-1",
+        operation_name="operations/delete-job-1",
+    )
+    assert seen_request == {
+        "url": (
+            "https://storagebatchoperations.googleapis.com/v1/projects/test-project/"
+            "locations/global/jobs?jobId=delete-job-1"
+        ),
+        "method": "POST",
+        "authorization": "Bearer test-token",
+        "content_type": "application/json",
+        "body": {
+            "bucketList": {
+                "buckets": [
+                    {
+                        "bucket": "test-bucket",
+                        "manifest": {
+                            "manifestLocation": "gs://manifest-bucket/path/manifest.csv",
+                        },
+                    }
+                ]
+            },
+            "deleteObject": {"permanentObjectDeletionEnabled": True},
+            "dryRun": False,
+            "loggingConfig": {
+                "logActions": ["TRANSFORM"],
+                "logActionStates": ["SUCCEEDED", "FAILED"],
+            },
+            "description": "steady-state cleanup",
+        },
+    }
+
+
+def test_create_delete_job_wraps_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_google_auth(monkeypatch)
+
+    def fake_urlopen(_request, timeout: int):
+        assert timeout == 120
+        raise HTTPError(
+            url="https://example.invalid/job",
+            code=400,
+            msg="bad request",
+            hdrs=None,
+            fp=io.BytesIO(b'{"error":"boom"}'),
+        )
+
+    monkeypatch.setattr(storage_batch_operations, "urlopen", fake_urlopen)
+
+    with pytest.raises(
+        RuntimeError,
+        match='Storage Batch Operations create job failed \\(400\\) for delete-job-2: \\{"error":"boom"\\}',
+    ):
+        storage_batch_operations.create_delete_job(
+            project_id="test-project",
+            job_id="delete-job-2",
+            bucket_name="test-bucket",
+            manifest_uri="gs://manifest-bucket/path/manifest.csv",
+            dry_run=True,
+        )
+
+
+def test_create_delete_job_wraps_url_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_google_auth(monkeypatch)
+    monkeypatch.setattr(
+        storage_batch_operations,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(URLError("network down")),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Storage Batch Operations create job failed for delete-job-3: network down",
+    ):
+        storage_batch_operations.create_delete_job(
+            project_id="test-project",
+            job_id="delete-job-3",
+            bucket_name="test-bucket",
+            manifest_uri="gs://manifest-bucket/path/manifest.csv",
+            dry_run=True,
+        )
+
+
+def test_get_job_payload_handles_success_and_error_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = iter(
+        [
+            _FakeHttpResponse({"state": "RUNNING"}),
+            HTTPError(
+                url="https://example.invalid/job",
+                code=503,
+                msg="unavailable",
+                hdrs=None,
+                fp=io.BytesIO(b"temporary outage"),
+            ),
+            HTTPError(
+                url="https://example.invalid/job",
+                code=404,
+                msg="missing",
+                hdrs=None,
+                fp=io.BytesIO(b"missing"),
+            ),
+            URLError("socket timeout"),
+        ]
+    )
+
+    def fake_urlopen(_request, timeout: int):
+        assert timeout == 120
+        response = next(responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(storage_batch_operations, "urlopen", fake_urlopen)
+
+    assert storage_batch_operations._get_job_payload(
+        request_url="https://example.invalid/job",
+        token="test-token",
+    ) == {"state": "RUNNING"}
+
+    with pytest.raises(
+        storage_batch_operations.StorageBatchOperationsTransientError,
+        match="Storage Batch Operations get job transient failure \\(503\\): temporary outage",
+    ):
+        storage_batch_operations._get_job_payload(
+            request_url="https://example.invalid/job",
+            token="test-token",
+        )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Storage Batch Operations get job failed \\(404\\): missing",
+    ):
+        storage_batch_operations._get_job_payload(
+            request_url="https://example.invalid/job",
+            token="test-token",
+        )
+
+    with pytest.raises(
+        storage_batch_operations.StorageBatchOperationsTransientError,
+        match="Storage Batch Operations get job transient failure: socket timeout",
+    ):
+        storage_batch_operations._get_job_payload(
+            request_url="https://example.invalid/job",
+            token="test-token",
+        )
 
 
 def test_wait_for_delete_job_retries_transient_errors_and_state_unspecified(
