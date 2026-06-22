@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+import sys
+from types import ModuleType
+
+import pytest
+
+from cost_insight.common import gcs_cache_references
 from cost_insight.common.gcs_cache_references import (
     extract_cas_references_from_action_result_bytes,
     extract_cas_references_from_tree_bytes,
@@ -71,6 +79,125 @@ def test_extract_cas_references_from_tree_bytes_reads_root_and_children() -> Non
         "cas/root-file",
         "cas/child-file",
     }
+
+
+def test_create_storage_client_expands_http_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    mounted: list[tuple[str, object]] = []
+
+    class _FakeAdapter:
+        def __init__(self, *, pool_connections: int = 10, pool_maxsize: int = 10, max_retries: int = 3) -> None:
+            self._pool_connections = pool_connections
+            self._pool_maxsize = pool_maxsize
+            self.max_retries = max_retries
+
+    class _MountedAdapter(_FakeAdapter):
+        pass
+
+    class _FakeSession:
+        def __init__(self) -> None:
+            self.adapters = {
+                "https://": _FakeAdapter(pool_connections=10, pool_maxsize=10, max_retries=5),
+                "http://": _FakeAdapter(pool_connections=8, pool_maxsize=8, max_retries=2),
+            }
+
+        def mount(self, prefix: str, adapter: object) -> None:
+            mounted.append((prefix, adapter))
+            self.adapters[prefix] = adapter
+
+    class _FakeClient:
+        def __init__(self, *, project: str) -> None:
+            self.project = project
+            self._http = _FakeSession()
+
+    cloud_module = ModuleType("google.cloud")
+    storage_module = ModuleType("google.cloud.storage")
+    requests_module = ModuleType("requests")
+    requests_adapters_module = ModuleType("requests.adapters")
+
+    def _client_factory(project=None):
+        return _FakeClient(project=project)
+
+    def _adapter_factory(*, pool_connections: int, pool_maxsize: int, max_retries):
+        return _MountedAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            max_retries=max_retries,
+        )
+
+    storage_module.Client = _client_factory
+    cloud_module.storage = storage_module
+    requests_adapters_module.HTTPAdapter = _adapter_factory
+    requests_module.adapters = requests_adapters_module
+
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud_module)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", storage_module)
+    monkeypatch.setitem(sys.modules, "requests", requests_module)
+    monkeypatch.setitem(sys.modules, "requests.adapters", requests_adapters_module)
+
+    client = gcs_cache_references._create_storage_client(project_id="test-project", pool_maxsize=32)
+
+    assert client.project == "test-project"
+    assert [prefix for prefix, _ in mounted] == ["https://", "http://"]
+    https_adapter = client._http.adapters["https://"]
+    http_adapter = client._http.adapters["http://"]
+    assert https_adapter._pool_connections == 10
+    assert https_adapter._pool_maxsize == 32
+    assert https_adapter.max_retries == 5
+    assert http_adapter._pool_connections == 8
+    assert http_adapter._pool_maxsize == 32
+    assert http_adapter.max_retries == 2
+
+
+def test_extract_action_cache_references_batch_uses_worker_count_for_http_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_pool_sizes: list[int] = []
+
+    class _FakeBucket:
+        def blob(self, object_name: str):
+            class _FakeBlob:
+                def download_as_bytes(self) -> bytes:
+                    return b""
+
+            return _FakeBlob()
+
+    class _FakeClient:
+        def bucket(self, bucket_name: str) -> _FakeBucket:
+            assert bucket_name == "test-bucket"
+            return _FakeBucket()
+
+    def _fake_create_storage_client(*, project_id: str, pool_maxsize: int):
+        assert project_id == "test-project"
+        observed_pool_sizes.append(pool_maxsize)
+        return _FakeClient()
+
+    monkeypatch.setattr(gcs_cache_references, "_create_storage_client", _fake_create_storage_client)
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "extract_cas_references_from_action_result_bytes",
+        lambda action_result_bytes, *, fetch_cas_blob: {"cas/a", "cas/b"},
+    )
+
+    rows = gcs_cache_references.extract_action_cache_references_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        ac_object_names=("ac/one", "ac/two"),
+        max_workers=32,
+    )
+
+    assert observed_pool_sizes == [32]
+    assert rows == (
+        gcs_cache_references.AcReferenceExtraction(
+            ac_object_name="ac/one",
+            exists=True,
+            cas_object_names=("cas/a", "cas/b"),
+        ),
+        gcs_cache_references.AcReferenceExtraction(
+            ac_object_name="ac/two",
+            exists=True,
+            cas_object_names=("cas/a", "cas/b"),
+        ),
+    )
 
 
 def _action_result(*, output_files=(), output_directories=(), stdout_digest=None, stderr_digest=None) -> bytes:

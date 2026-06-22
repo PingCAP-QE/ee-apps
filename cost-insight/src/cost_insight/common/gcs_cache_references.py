@@ -33,13 +33,12 @@ def extract_action_cache_references_batch(
     max_workers: int = 64,
 ) -> tuple[AcReferenceExtraction, ...]:
     from google.api_core.exceptions import NotFound
-    from google.cloud import storage
 
     names = tuple(ac_object_names)
     if not names:
         return ()
 
-    client = storage.Client(project=project_id)
+    client = _create_storage_client(project_id=project_id, pool_maxsize=max_workers)
     bucket = client.bucket(bucket_name)
 
     def extract_one(ac_object_name: str) -> AcReferenceExtraction:
@@ -86,6 +85,42 @@ def extract_action_cache_references_batch(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         return tuple(executor.map(extract_one, names))
+
+
+def _create_storage_client(*, project_id: str, pool_maxsize: int):
+    from google.cloud import storage
+
+    client = storage.Client(project=project_id)
+    _configure_storage_client_http_pool(client=client, pool_maxsize=pool_maxsize)
+    return client
+
+
+def _configure_storage_client_http_pool(*, client, pool_maxsize: int) -> None:
+    if pool_maxsize <= 0:
+        return
+
+    session = getattr(client, "_http", None)
+    if session is None:
+        return
+
+    adapters = getattr(session, "adapters", None)
+    if not isinstance(adapters, dict):
+        return
+
+    from requests.adapters import HTTPAdapter
+
+    for prefix in ("https://", "http://"):
+        current_adapter = adapters.get(prefix)
+        pool_connections = getattr(current_adapter, "_pool_connections", pool_maxsize)
+        max_retries = getattr(current_adapter, "max_retries", 0)
+        session.mount(
+            prefix,
+            HTTPAdapter(
+                pool_connections=pool_connections,
+                pool_maxsize=pool_maxsize,
+                max_retries=max_retries,
+            ),
+        )
 
 
 def extract_cas_references_from_action_result_bytes(
