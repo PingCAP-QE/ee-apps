@@ -25,6 +25,7 @@ from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatche
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
+from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -148,9 +149,23 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_gcs_cache.add_argument("--end-date", type=_parse_date, default=None)
     bootstrap_gcs_cache.add_argument("--dry-run", action="store_true")
 
+    sync_gcs_cache_ac_refs = subparsers.add_parser(
+        "sync-gcs-cache-ac-references",
+        help="Build and refresh the AC to CAS reference index for GCS Bazel cache cleanup",
+    )
+    sync_gcs_cache_ac_refs.set_defaults(require_database=False)
+    sync_gcs_cache_ac_refs.add_argument(
+        "--mode",
+        choices=("bootstrap", "incremental"),
+        required=True,
+    )
+    sync_gcs_cache_ac_refs.add_argument("--shard-start", type=_parse_non_negative_int, default=0)
+    sync_gcs_cache_ac_refs.add_argument("--shard-end", type=_parse_non_negative_int, default=None)
+    sync_gcs_cache_ac_refs.add_argument("--dry-run", action="store_true")
+
     cleanup_gcs_cache = subparsers.add_parser(
         "cleanup-gcs-cache",
-        help="Build steady-state cleanup candidates from GCS cache last-seen summaries",
+        help="Run CAS-driven cascading cleanup from GCS cache last-seen summaries",
     )
     cleanup_gcs_cache.set_defaults(require_database=False)
     cleanup_gcs_cache.add_argument(
@@ -160,10 +175,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cleanup_gcs_cache.add_argument(
         "--execute-kind",
-        choices=("all", "ac", "cas", "mixed-canary"),
+        choices=("all", "cas"),
         default="all",
     )
-    cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--safety-buffer-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--max-delete-objects", type=_parse_positive_int, default=None)
@@ -349,12 +363,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
         return 0
 
+    if args.command == "sync-gcs-cache-ac-references":
+        summary = run_sync_gcs_cache_ac_references(
+            settings=settings.gcs_cache,
+            mode=args.mode,
+            shard_start=args.shard_start,
+            shard_end=args.shard_end,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
+        return 0
+
     if args.command == "cleanup-gcs-cache":
         summary = run_cleanup_gcs_cache(
             settings=settings.gcs_cache,
             mode=args.mode,
             execute_kind=args.execute_kind,
-            ac_retention_days=args.ac_retention_days,
             cas_retention_days=args.cas_retention_days,
             safety_buffer_days=args.safety_buffer_days,
             max_delete_objects=args.max_delete_objects,
@@ -377,6 +401,16 @@ def _parse_positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from exc
     if parsed <= 0:
         raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
+    return parsed
+
+
+def _parse_non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a non-negative integer, got {value!r}") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(f"expected a non-negative integer, got {value!r}")
     return parsed
 
 

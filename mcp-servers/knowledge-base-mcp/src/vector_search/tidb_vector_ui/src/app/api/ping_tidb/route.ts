@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         errorMessage = `Could not connect to the backend service at ${backendApiUrl}. Please ensure it's running.`;
         return NextResponse.json({ success: false, message: errorMessage }, { status: 503 }); // Service Unavailable
     }
-    
+
     return NextResponse.json({ success: false, message: 'An unexpected error occurred: ' + errorMessage }, { status: 500 });
   }
-} 
+}

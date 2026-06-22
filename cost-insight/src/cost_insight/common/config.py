@@ -19,6 +19,8 @@ DEFAULT_GCS_CACHE_AUDIT_LOG_TABLE = "cloudaudit_googleapis_com_data_access"
 DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE = "gcs_cache_object_last_seen_daily"
 DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE = "gcs_cache_object_last_seen_current"
 DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT = "TransferService"
+DEFAULT_GCS_CACHE_AC_CAS_REFERENCES_TABLE = "gcs_cache_ac_cas_references"
+DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE = "gcs_cache_ac_reference_index_state"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
 
@@ -67,6 +69,11 @@ class GcsCacheSettings:
     last_seen_current_table: str = DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE
     last_seen_excluded_get_user_agent: str = DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT
     last_seen_excluded_get_principal_email: str | None = None
+    ac_cas_references_table: str = DEFAULT_GCS_CACHE_AC_CAS_REFERENCES_TABLE
+    ac_reference_index_state_table: str = DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE
+    ac_reference_shard_count: int = 256
+    ac_reference_batch_size: int = 500
+    ac_reference_download_workers: int = 64
     ac_retention_days: int = 14
     cas_retention_days: int = 21
     cleanup_safety_buffer_days: int = 1
@@ -236,6 +243,42 @@ def load_settings(
                 env,
                 "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL",
                 "COST_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL",
+            ),
+            ac_cas_references_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_AC_CAS_REFERENCES_TABLE,
+                "COST_INSIGHT_GCS_CACHE_AC_CAS_REFERENCES_TABLE",
+                "COST_GCS_CACHE_AC_CAS_REFERENCES_TABLE",
+            ),
+            ac_reference_index_state_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE,
+                "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE",
+                "COST_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE",
+            ),
+            ac_reference_shard_count=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_SHARD_COUNT",
+                    "COST_GCS_CACHE_AC_REFERENCE_SHARD_COUNT",
+                ),
+                256,
+            ),
+            ac_reference_batch_size=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_BATCH_SIZE",
+                    "COST_GCS_CACHE_AC_REFERENCE_BATCH_SIZE",
+                ),
+                500,
+            ),
+            ac_reference_download_workers=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_DOWNLOAD_WORKERS",
+                    "COST_GCS_CACHE_AC_REFERENCE_DOWNLOAD_WORKERS",
+                ),
+                64,
             ),
             ac_retention_days=_read_positive_int_any(
                 env,

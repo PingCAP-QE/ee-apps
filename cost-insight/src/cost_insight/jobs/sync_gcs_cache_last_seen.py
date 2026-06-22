@@ -189,7 +189,7 @@ def _build_daily_rollup_select(settings: GcsCacheSettings) -> str:
     excluded_get_user_agent = settings.last_seen_excluded_get_user_agent.strip()
     excluded_get_clause = ""
     if excluded_get_user_agent:
-        excluded_get_clause = f"""
+        excluded_get_clause = """
     AND NOT (
       protopayload_auditlog.methodName = "storage.objects.get"
       AND COALESCE(protopayload_auditlog.requestMetadata.callerSuppliedUserAgent, "") = @excluded_get_user_agent
