@@ -100,6 +100,9 @@ class SyncFlakyIssuesSummary:
     source_rows_scanned: int = 0
     rows_written: int = 0
     issue_pr_links_written: int = 0
+    linked_pr_rows_written: int = 0
+    linked_pr_fetch_attempted: int = 0
+    linked_pr_fetch_failed: int = 0
     branch_fetch_attempted: int = 0
     branch_fetch_failed: int = 0
     last_ticket_updated_at: str | None = None
@@ -111,6 +114,9 @@ class BackfillFlakyIssuePrLinksSummary:
     source_rows_scanned: int = 0
     issue_rows_touched: int = 0
     issue_pr_links_written: int = 0
+    linked_pr_rows_written: int = 0
+    linked_pr_fetch_attempted: int = 0
+    linked_pr_fetch_failed: int = 0
     last_ticket_updated_at: str | None = None
 
 

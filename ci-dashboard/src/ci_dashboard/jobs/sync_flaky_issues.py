@@ -74,6 +74,18 @@ class FlakyIssuePrLinkRow:
     source_ticket_updated_at: datetime
 
 
+@dataclass(frozen=True)
+class FlakyLinkedPrRow:
+    pr_repo: str
+    pr_number: int
+    pr_url: str
+    pr_title: str
+    pr_state: str
+    pr_created_at: datetime
+    pr_closed_at: datetime | None
+    pr_merged_at: datetime | None
+
+
 def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssuesSummary:
     with engine.begin() as connection:
         watermark = _load_watermark(connection)
@@ -89,6 +101,7 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
         summary.source_rows_scanned = len(source_rows)
 
         prepared_batches: list[tuple[FlakyIssueRow, list[FlakyIssuePrLinkRow]]] = []
+        fetched_linked_prs: set[tuple[str, int]] = set()
         latest_updated_at: datetime | None = None
 
         for row in source_rows:
@@ -115,9 +128,12 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
             prepared_batches.append((issue_row, link_rows))
 
         for batch in chunked(prepared_batches, settings.jobs.batch_size):
+            link_rows = [link_row for _issue_row, links in batch for link_row in links]
+            linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
+                _filter_unseen_link_rows(link_rows, fetched_linked_prs)
+            )
             with engine.begin() as connection:
                 issue_rows = [item[0] for item in batch]
-                link_rows = [link_row for _issue_row, links in batch for link_row in links]
                 issue_keys = [(issue_row.repo, issue_row.issue_number) for issue_row in issue_rows]
 
                 _upsert_flaky_issues(connection, issue_rows)
@@ -126,18 +142,20 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
                     issue_keys=issue_keys,
                     rows=link_rows,
                 )
+                _upsert_flaky_linked_prs(connection, linked_pr_rows)
                 summary.rows_written += len(issue_rows)
                 summary.issue_pr_links_written += len(link_rows)
+                summary.linked_pr_rows_written += len(linked_pr_rows)
+                summary.linked_pr_fetch_attempted += linked_pr_attempted
+                summary.linked_pr_fetch_failed += linked_pr_failed
 
-        new_watermark = {
-            "last_ticket_updated_at": latest_updated_at.isoformat().replace("+00:00", "Z")
-            if latest_updated_at
-            else None
-        }
+        last_ticket_updated_at = _format_watermark_datetime(latest_updated_at)
+        new_watermark = {"last_ticket_updated_at": last_ticket_updated_at}
         with engine.begin() as connection:
+            _delete_orphaned_flaky_linked_prs(connection)
             mark_job_succeeded(connection, JOB_NAME, new_watermark)
 
-        summary.last_ticket_updated_at = new_watermark["last_ticket_updated_at"]
+        summary.last_ticket_updated_at = last_ticket_updated_at
         return summary
     except Exception as exc:
         with engine.begin() as connection:
@@ -155,6 +173,7 @@ def run_backfill_flaky_issue_pr_links(
         source_rows = _fetch_source_issue_rows(connection, DEFAULT_FLAKY_ISSUE_REPOS)
 
     summary.source_rows_scanned = len(source_rows)
+    fetched_linked_prs: set[tuple[str, int]] = set()
     latest_updated_at: datetime | None = None
 
     for batch in chunked(source_rows, settings.jobs.batch_size):
@@ -174,22 +193,28 @@ def run_backfill_flaky_issue_pr_links(
                 )
             )
 
+        linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
+            _filter_unseen_link_rows(link_rows, fetched_linked_prs)
+        )
         with engine.begin() as connection:
             _replace_flaky_issue_pr_links(
                 connection,
                 issue_keys=issue_keys,
                 rows=link_rows,
             )
+            _upsert_flaky_linked_prs(connection, linked_pr_rows)
 
         summary.batches_processed += 1
         summary.issue_rows_touched += len(issue_keys)
         summary.issue_pr_links_written += len(link_rows)
+        summary.linked_pr_rows_written += len(linked_pr_rows)
+        summary.linked_pr_fetch_attempted += linked_pr_attempted
+        summary.linked_pr_fetch_failed += linked_pr_failed
 
-    summary.last_ticket_updated_at = (
-        latest_updated_at.isoformat().replace("+00:00", "Z")
-        if latest_updated_at
-        else None
-    )
+    with engine.begin() as connection:
+        _delete_orphaned_flaky_linked_prs(connection)
+
+    summary.last_ticket_updated_at = _format_watermark_datetime(latest_updated_at)
     return summary
 
 
@@ -213,6 +238,17 @@ def fetch_issue_details_via_github_api(
         if isinstance(comments_payload, list):
             comments = [item for item in comments_payload if isinstance(item, dict)]
     return body, comments
+
+
+def fetch_pull_details_via_github_api(
+    *,
+    repo: str,
+    pr_number: int,
+) -> dict[str, Any]:
+    payload = _fetch_github_api_json(f"{GITHUB_API_BASE_URL}/repos/{repo}/pulls/{pr_number}")
+    if not isinstance(payload, dict):
+        raise RuntimeError("GitHub pull payload is not an object")
+    return payload
 
 
 def _fetch_github_api_json(url: str) -> Any:
@@ -501,6 +537,70 @@ def _extract_linked_pr_rows(
     )
 
 
+def _fetch_linked_pr_metadata_rows(
+    link_rows: list[FlakyIssuePrLinkRow],
+) -> tuple[list[FlakyLinkedPrRow], int, int]:
+    unique_prs = sorted({(row.pr_repo, row.pr_number) for row in link_rows})
+    rows: list[FlakyLinkedPrRow] = []
+    failed = 0
+
+    for pr_repo, pr_number in unique_prs:
+        try:
+            payload = fetch_pull_details_via_github_api(repo=pr_repo, pr_number=pr_number)
+            rows.append(
+                _build_flaky_linked_pr_row(
+                    payload,
+                    pr_repo=pr_repo,
+                    pr_number=pr_number,
+                )
+            )
+        except Exception:
+            failed += 1
+            LOG.exception("failed to fetch linked flaky PR %s#%s", pr_repo, pr_number)
+
+    return rows, len(unique_prs), failed
+
+
+def _filter_unseen_link_rows(
+    link_rows: list[FlakyIssuePrLinkRow],
+    seen_prs: set[tuple[str, int]],
+) -> list[FlakyIssuePrLinkRow]:
+    unseen_rows: list[FlakyIssuePrLinkRow] = []
+    for row in link_rows:
+        key = (row.pr_repo, row.pr_number)
+        if key in seen_prs:
+            continue
+        seen_prs.add(key)
+        unseen_rows.append(row)
+    return unseen_rows
+
+
+def _build_flaky_linked_pr_row(
+    payload: dict[str, Any],
+    *,
+    pr_repo: str,
+    pr_number: int,
+) -> FlakyLinkedPrRow:
+    pr_state = str(payload.get("state") or "unknown")
+    if pr_state not in {"open", "closed", "unknown"}:
+        LOG.warning(
+            "unexpected linked flaky PR state %r for %s#%s",
+            pr_state,
+            pr_repo,
+            pr_number,
+        )
+    return FlakyLinkedPrRow(
+        pr_repo=pr_repo,
+        pr_number=pr_number,
+        pr_url=str(payload.get("html_url") or f"https://github.com/{pr_repo}/pull/{pr_number}"),
+        pr_title=str(payload.get("title") or ""),
+        pr_state=pr_state,
+        pr_created_at=_parse_datetime(payload.get("created_at")),
+        pr_closed_at=_parse_optional_datetime(payload.get("closed_at")),
+        pr_merged_at=_parse_optional_datetime(payload.get("merged_at")),
+    )
+
+
 def _parse_timeline(value: Any) -> list[dict[str, Any]]:
     if value is None:
         return []
@@ -537,10 +637,25 @@ def _extract_issue_lifecycle(
 
 def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    raise ValueError(f"Unsupported datetime value: {value!r}")
+        parsed = value
+    elif isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    else:
+        raise ValueError(f"Unsupported datetime value: {value!r}")
+    return _normalize_datetime_key(parsed)
+
+
+def _parse_optional_datetime(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    return _parse_datetime(value)
+
+
+def _format_watermark_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    normalized = _normalize_datetime_key(value)
+    return f"{normalized.isoformat()}Z"
 
 
 def _normalize_datetime_key(value: datetime) -> datetime:
@@ -569,6 +684,29 @@ def _replace_flaky_issue_pr_links(
     if rows:
         statement = _build_issue_pr_links_upsert_statement(connection)
         connection.execute(statement, [_issue_pr_link_to_params(row) for row in rows])
+
+
+def _upsert_flaky_linked_prs(connection: Connection, rows: list[FlakyLinkedPrRow]) -> None:
+    if not rows:
+        return
+    statement = _build_flaky_linked_prs_upsert_statement(connection)
+    connection.execute(statement, [_linked_pr_to_params(row) for row in rows])
+
+
+def _delete_orphaned_flaky_linked_prs(connection: Connection) -> None:
+    connection.execute(
+        text(
+            """
+            DELETE FROM ci_l1_flaky_linked_prs
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM ci_l1_flaky_issue_pr_links l
+              WHERE l.pr_repo = ci_l1_flaky_linked_prs.pr_repo
+                AND l.pr_number = ci_l1_flaky_linked_prs.pr_number
+            )
+            """
+        )
+    )
 
 
 def _row_to_params(row: FlakyIssueRow) -> dict[str, Any]:
@@ -604,6 +742,19 @@ def _issue_pr_link_to_params(row: FlakyIssuePrLinkRow) -> dict[str, Any]:
         "source_event_id": row.source_event_id,
         "linked_at": row.linked_at,
         "source_ticket_updated_at": row.source_ticket_updated_at,
+    }
+
+
+def _linked_pr_to_params(row: FlakyLinkedPrRow) -> dict[str, Any]:
+    return {
+        "pr_repo": row.pr_repo,
+        "pr_number": row.pr_number,
+        "pr_url": row.pr_url,
+        "pr_title": row.pr_title,
+        "pr_state": row.pr_state,
+        "pr_created_at": row.pr_created_at,
+        "pr_closed_at": row.pr_closed_at,
+        "pr_merged_at": row.pr_merged_at,
     }
 
 
@@ -824,6 +975,77 @@ def _build_issue_pr_links_upsert_statement(connection: Connection):
           source_event_id = VALUES(source_event_id),
           linked_at = VALUES(linked_at),
           source_ticket_updated_at = VALUES(source_ticket_updated_at),
+          updated_at = CURRENT_TIMESTAMP
+        """
+    )
+
+
+def _build_flaky_linked_prs_upsert_statement(connection: Connection):
+    if connection.dialect.name == "sqlite":
+        return text(
+            """
+            INSERT INTO ci_l1_flaky_linked_prs (
+              pr_repo,
+              pr_number,
+              pr_url,
+              pr_title,
+              pr_state,
+              pr_created_at,
+              pr_closed_at,
+              pr_merged_at,
+              created_at,
+              updated_at
+            ) VALUES (
+              :pr_repo,
+              :pr_number,
+              :pr_url,
+              :pr_title,
+              :pr_state,
+              :pr_created_at,
+              :pr_closed_at,
+              :pr_merged_at,
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP
+            )
+            ON CONFLICT(pr_repo, pr_number) DO UPDATE SET
+              pr_url = excluded.pr_url,
+              pr_title = excluded.pr_title,
+              pr_state = excluded.pr_state,
+              pr_created_at = excluded.pr_created_at,
+              pr_closed_at = excluded.pr_closed_at,
+              pr_merged_at = excluded.pr_merged_at,
+              updated_at = CURRENT_TIMESTAMP
+            """
+        )
+
+    return text(
+        """
+        INSERT INTO ci_l1_flaky_linked_prs (
+          pr_repo,
+          pr_number,
+          pr_url,
+          pr_title,
+          pr_state,
+          pr_created_at,
+          pr_closed_at,
+          pr_merged_at
+        ) VALUES (
+          :pr_repo,
+          :pr_number,
+          :pr_url,
+          :pr_title,
+          :pr_state,
+          :pr_created_at,
+          :pr_closed_at,
+          :pr_merged_at
+        )
+        ON DUPLICATE KEY UPDATE
+          pr_url = VALUES(pr_url),
+          pr_title = VALUES(pr_title),
+          pr_state = VALUES(pr_state),
+          pr_created_at = VALUES(pr_created_at),
+          pr_closed_at = VALUES(pr_closed_at),
+          pr_merged_at = VALUES(pr_merged_at),
           updated_at = CURRENT_TIMESTAMP
         """
     )
