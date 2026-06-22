@@ -16,6 +16,7 @@ from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResul
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
 from cost_insight.jobs.sync_gcp_unmatched_resources import SyncGcpUnmatchedResourcesSummary
+from cost_insight.jobs.sync_gcs_cache_ac_references import SyncGcsCacheAcReferencesSummary
 
 
 def _sqlite_source_engine():
@@ -321,15 +322,15 @@ def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> Non
             bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
             run_id="run-001",
             mode="dry-run",
-            execute_kind="all",
+            execute_kind="cas",
             dry_run=True,
-            ac_retention_days=14,
             cas_retention_days=21,
             safety_buffer_days=1,
-            candidate_object_count=99,
-            selected_object_count=0,
-            ac_candidate_count=10,
-            cas_candidate_count=89,
+            candidate_cas_object_count=99,
+            candidate_ac_object_count=10,
+            candidate_cas_delete_object_count=89,
+            selected_ac_object_count=0,
+            selected_cas_object_count=0,
             oldest_last_seen_at=None,
             newest_last_seen_at=None,
             sample_candidates=(),
@@ -343,7 +344,7 @@ def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> Non
 
     assert exit_code == 0
     assert calls == [False]
-    assert '"candidate_object_count": 99' in capsys.readouterr().out
+    assert '"candidate_cas_object_count": 99' in capsys.readouterr().out
 
 
 def test_cli_surfaces_cleanup_gcs_cache_delete_requires_specific_execute_kind(monkeypatch) -> None:
@@ -357,17 +358,8 @@ def test_cli_surfaces_cleanup_gcs_cache_delete_requires_specific_execute_kind(mo
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
 
-    with pytest.raises(ValueError, match="requires --execute-kind ac, cas, or mixed-canary"):
+    with pytest.raises(ValueError, match="requires --execute-kind cas"):
         cli.main(["cleanup-gcs-cache", "--mode", "delete"])
-
-
-def test_cli_rejects_non_positive_cleanup_retention_days(capsys) -> None:
-    parser = cli.build_parser()
-
-    with pytest.raises(SystemExit, match="2"):
-        parser.parse_args(["cleanup-gcs-cache", "--ac-retention-days", "0"])
-
-    assert "expected a positive integer" in capsys.readouterr().err
 
 
 def test_cli_rejects_non_positive_cleanup_sample_limit(capsys) -> None:
@@ -386,6 +378,69 @@ def test_cli_rejects_non_positive_cleanup_safety_buffer_days(capsys) -> None:
         parser.parse_args(["cleanup-gcs-cache", "--safety-buffer-days", "0"])
 
     assert "expected a positive integer" in capsys.readouterr().err
+
+
+def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, capsys) -> None:
+    calls = []
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
+        gcs_cache=SimpleNamespace(),
+        log_level="INFO",
+    )
+
+    def fake_get_settings(require_database=True):
+        calls.append(require_database)
+        return settings
+
+    monkeypatch.setattr(cli, "get_settings", fake_get_settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(
+        cli,
+        "run_sync_gcs_cache_ac_references",
+        lambda **kwargs: SyncGcsCacheAcReferencesSummary(
+            account_id="pingcap-testing-account",
+            bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
+            mode="bootstrap",
+            shard_start=0,
+            shard_end=15,
+            source_object_count=11,
+            missing_object_count=1,
+            replaced_ac_object_count=11,
+            reference_row_count=22,
+            dry_run=True,
+            indexed_through=datetime(2026, 6, 22, 0, 0, tzinfo=UTC),
+            bytes_processed=33,
+            run_started_at=datetime(2026, 6, 22, 0, 0, tzinfo=UTC),
+            run_finished_at=datetime(2026, 6, 22, 0, 0, tzinfo=UTC),
+        ),
+    )
+
+    exit_code = cli.main(
+        [
+            "sync-gcs-cache-ac-references",
+            "--mode",
+            "bootstrap",
+            "--shard-start",
+            "0",
+            "--shard-end",
+            "15",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls == [False]
+    assert '"reference_row_count": 22' in capsys.readouterr().out
+
+
+def test_cli_rejects_negative_cleanup_shard_start(capsys) -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["sync-gcs-cache-ac-references", "--mode", "bootstrap", "--shard-start", "-1"])
+
+    assert "expected a non-negative integer" in capsys.readouterr().err
 
 
 def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:

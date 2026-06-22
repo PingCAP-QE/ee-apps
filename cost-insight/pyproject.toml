@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 dependencies = [
   "google-auth>=2.0.0",
   "google-cloud-bigquery>=3.25.0",
+  "google-cloud-storage>=2.19.0",
+  "protobuf>=5.28.0",
   "PyMySQL>=1.1.0",
   "SQLAlchemy>=2.0.0",
 ]
