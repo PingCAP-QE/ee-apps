@@ -1,10 +1,3 @@
-from __future__ import annotations
-
-import sys
-from types import ModuleType
-
-import pytest
-
 from cost_insight.common import gcs_objects
 
 
@@ -33,23 +26,12 @@ class _FakeClient:
         return self._bucket
 
 
-def _install_fake_storage(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    bucket: _FakeBucket,
-) -> None:
-    cloud_module = ModuleType("google.cloud")
-    storage_module = ModuleType("google.cloud.storage")
-    storage_module.Client = lambda project=None: _FakeClient(project=project, bucket=bucket)
-    cloud_module.storage = storage_module
-    monkeypatch.setitem(sys.modules, "google.cloud", cloud_module)
-    monkeypatch.setitem(sys.modules, "google.cloud.storage", storage_module)
-
-
-def test_fetch_object_metadata_batch_returns_empty_tuple_for_empty_input(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _install_fake_storage(monkeypatch, bucket=_FakeBucket({}))
+def test_fetch_object_metadata_batch_returns_empty_tuple_for_empty_input(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gcs_objects,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: _FakeClient(project=project_id, bucket=_FakeBucket({})),
+    )
 
     assert gcs_objects.fetch_object_metadata_batch(
         project_id="test-project",
@@ -58,16 +40,18 @@ def test_fetch_object_metadata_batch_returns_empty_tuple_for_empty_input(
     ) == ()
 
 
-def test_fetch_object_metadata_batch_reads_objects_sequentially(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_fetch_object_metadata_batch_reads_objects_sequentially(monkeypatch) -> None:
     bucket = _FakeBucket(
         {
             "cas/present": _FakeBlob("123"),
             "cas/no-generation": _FakeBlob(None),
         }
     )
-    _install_fake_storage(monkeypatch, bucket=bucket)
+    monkeypatch.setattr(
+        gcs_objects,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: _FakeClient(project=project_id, bucket=bucket),
+    )
 
     metadata = gcs_objects.fetch_object_metadata_batch(
         project_id="test-project",
@@ -96,23 +80,29 @@ def test_fetch_object_metadata_batch_reads_objects_sequentially(
     assert bucket.requested_names == ["cas/present", "cas/missing", "cas/no-generation"]
 
 
-def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(monkeypatch) -> None:
     bucket = _FakeBucket(
         {
             "cas/one": _FakeBlob("11"),
             "cas/two": _FakeBlob("22"),
         }
     )
-    _install_fake_storage(monkeypatch, bucket=bucket)
+    observed_pool_sizes: list[int] = []
+    monkeypatch.setattr(
+        gcs_objects,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: (
+            observed_pool_sizes.append(pool_maxsize)
+            or _FakeClient(project=project_id, bucket=bucket)
+        ),
+    )
     used_max_workers: list[int] = []
 
     class _FakeExecutor:
         def __init__(self, *, max_workers: int) -> None:
             used_max_workers.append(max_workers)
 
-        def __enter__(self) -> _FakeExecutor:
+        def __enter__(self):
             return self
 
         def __exit__(self, exc_type, exc, tb) -> None:
@@ -131,6 +121,7 @@ def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(
     )
 
     assert used_max_workers == [4]
+    assert observed_pool_sizes == [4]
     assert metadata == (
         gcs_objects.GcsObjectMetadata(object_name="cas/one", exists=True, generation=11),
         gcs_objects.GcsObjectMetadata(object_name="cas/two", exists=True, generation=22),

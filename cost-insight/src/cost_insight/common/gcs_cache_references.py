@@ -4,6 +4,8 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+from cost_insight.common.gcs_client import create_storage_client
+
 
 @dataclass(frozen=True)
 class AcReferenceExtraction:
@@ -33,13 +35,12 @@ def extract_action_cache_references_batch(
     max_workers: int = 64,
 ) -> tuple[AcReferenceExtraction, ...]:
     from google.api_core.exceptions import NotFound
-    from google.cloud import storage
 
     names = tuple(ac_object_names)
     if not names:
         return ()
 
-    client = storage.Client(project=project_id)
+    client = create_storage_client(project_id=project_id, pool_maxsize=max_workers)
     bucket = client.bucket(bucket_name)
 
     def extract_one(ac_object_name: str) -> AcReferenceExtraction:

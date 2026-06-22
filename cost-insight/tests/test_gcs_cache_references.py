@@ -1,3 +1,4 @@
+from cost_insight.common import gcs_cache_references
 from cost_insight.common.gcs_cache_references import (
     extract_cas_references_from_action_result_bytes,
     extract_cas_references_from_tree_bytes,
@@ -71,6 +72,56 @@ def test_extract_cas_references_from_tree_bytes_reads_root_and_children() -> Non
         "cas/root-file",
         "cas/child-file",
     }
+
+
+def test_extract_action_cache_references_batch_uses_worker_count_for_http_pool(monkeypatch) -> None:
+    observed_pool_sizes: list[int] = []
+
+    class _FakeBucket:
+        def blob(self, object_name: str):
+            class _FakeBlob:
+                def download_as_bytes(self) -> bytes:
+                    return b""
+
+            return _FakeBlob()
+
+    class _FakeClient:
+        def bucket(self, bucket_name: str) -> _FakeBucket:
+            assert bucket_name == "test-bucket"
+            return _FakeBucket()
+
+    def _fake_create_storage_client(*, project_id: str, pool_maxsize: int):
+        assert project_id == "test-project"
+        observed_pool_sizes.append(pool_maxsize)
+        return _FakeClient()
+
+    monkeypatch.setattr(gcs_cache_references, "create_storage_client", _fake_create_storage_client)
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "extract_cas_references_from_action_result_bytes",
+        lambda action_result_bytes, *, fetch_cas_blob: {"cas/a", "cas/b"},
+    )
+
+    rows = gcs_cache_references.extract_action_cache_references_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        ac_object_names=("ac/one", "ac/two"),
+        max_workers=32,
+    )
+
+    assert observed_pool_sizes == [32]
+    assert rows == (
+        gcs_cache_references.AcReferenceExtraction(
+            ac_object_name="ac/one",
+            exists=True,
+            cas_object_names=("cas/a", "cas/b"),
+        ),
+        gcs_cache_references.AcReferenceExtraction(
+            ac_object_name="ac/two",
+            exists=True,
+            cas_object_names=("cas/a", "cas/b"),
+        ),
+    )
 
 
 def _action_result(*, output_files=(), output_directories=(), stdout_digest=None, stderr_digest=None) -> bytes:
