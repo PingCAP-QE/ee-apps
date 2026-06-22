@@ -35,6 +35,7 @@ def test_cleanup_gcs_cache_index_ready_query_targets_state_table() -> None:
 
     assert "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_reference_index_state`" in query
     assert "COUNTIF(indexed_through IS NOT NULL)" in query
+    assert "MIN(indexed_through)" in query
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
@@ -67,7 +68,14 @@ def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
         captured.setdefault("queries", []).append((query, {param.name: param.value for param in parameters}))
         if "COUNT(*) AS total_shards" in query:
             return BigQueryQueryResult(
-                rows=({"total_shards": 256, "ready_shards": 256},),
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 256,
+                        "oldest_indexed_through": datetime(2026, 6, 15, 11, 30, tzinfo=UTC),
+                        "newest_indexed_through": datetime(2026, 6, 15, 11, 55, tzinfo=UTC),
+                    },
+                ),
                 total_bytes_processed=5,
             )
         if "candidate_cas_object_count" in query:
@@ -130,7 +138,14 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         captured_queries.append((query, rendered))
         if "COUNT(*) AS total_shards" in query:
             return BigQueryQueryResult(
-                rows=({"total_shards": 256, "ready_shards": 256},),
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 256,
+                        "oldest_indexed_through": datetime(2026, 6, 15, 9, 30, tzinfo=UTC),
+                        "newest_indexed_through": datetime(2026, 6, 15, 10, 20, tzinfo=UTC),
+                    },
+                ),
                 total_bytes_processed=1,
             )
         if "candidate_cas_object_count" in query:
@@ -246,7 +261,14 @@ def test_run_cleanup_gcs_cache_fails_closed_when_index_not_ready() -> None:
     def fake_execute(query, parameters):
         if "COUNT(*) AS total_shards" in query:
             return BigQueryQueryResult(
-                rows=({"total_shards": 256, "ready_shards": 255},),
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 255,
+                        "oldest_indexed_through": datetime(2026, 6, 15, 11, 0, tzinfo=UTC),
+                        "newest_indexed_through": datetime(2026, 6, 15, 11, 0, tzinfo=UTC),
+                    },
+                ),
                 total_bytes_processed=1,
             )
         return BigQueryQueryResult(rows=(), total_bytes_processed=1)
@@ -256,4 +278,32 @@ def test_run_cleanup_gcs_cache_fails_closed_when_index_not_ready() -> None:
             settings=GcsCacheSettings(project_id="pingcap-testing-account"),
             mode="dry-run",
             execute=fake_execute,
+        )
+
+
+def test_run_cleanup_gcs_cache_fails_closed_when_index_is_stale() -> None:
+    def fake_execute(query, parameters):
+        if "COUNT(*) AS total_shards" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 256,
+                        "oldest_indexed_through": datetime(2026, 6, 14, 22, 59, tzinfo=UTC),
+                        "newest_indexed_through": datetime(2026, 6, 15, 11, 50, tzinfo=UTC),
+                    },
+                ),
+                total_bytes_processed=1,
+            )
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    with pytest.raises(RuntimeError, match="AC reference index is too stale"):
+        run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                ac_reference_max_index_staleness_hours=12,
+            ),
+            mode="dry-run",
+            execute=fake_execute,
+            now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
         )

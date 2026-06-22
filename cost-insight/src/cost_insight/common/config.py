@@ -74,6 +74,7 @@ class GcsCacheSettings:
     ac_reference_shard_count: int = 256
     ac_reference_batch_size: int = 500
     ac_reference_download_workers: int = 64
+    ac_reference_max_index_staleness_hours: int = 12
     ac_retention_days: int = 14
     cas_retention_days: int = 21
     cleanup_safety_buffer_days: int = 1
@@ -279,6 +280,14 @@ def load_settings(
                     "COST_GCS_CACHE_AC_REFERENCE_DOWNLOAD_WORKERS",
                 ),
                 64,
+            ),
+            ac_reference_max_index_staleness_hours=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS",
+                    "COST_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS",
+                ),
+                12,
             ),
             ac_retention_days=_read_positive_int_any(
                 env,
