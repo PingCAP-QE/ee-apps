@@ -90,6 +90,29 @@ def _insert_issue_ticket(
         )
 
 
+def _pull_payload(
+    *,
+    number: int,
+    state: str = "closed",
+    merged: bool = True,
+    created_at: str = "2026-04-16T10:11:25Z",
+    updated_at: str = "2026-04-23T08:05:41Z",
+    closed_at: str | None = "2026-04-23T08:05:40Z",
+    merged_at: str | None = "2026-04-23T08:05:40Z",
+) -> dict[str, object]:
+    return {
+        "number": number,
+        "html_url": f"https://github.com/pingcap/tidb/pull/{number}",
+        "title": f"stabilize flaky #{number}",
+        "state": state,
+        "merged": merged,
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "closed_at": closed_at,
+        "merged_at": merged_at,
+    }
+
+
 def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monkeypatch) -> None:
     _insert_issue_ticket(
         sqlite_engine,
@@ -301,11 +324,18 @@ def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
             AssertionError("GitHub API should not be called when source ticket has branch")
         ),
     )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **kwargs: _pull_payload(number=kwargs["pr_number"]),
+    )
 
     summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
 
     assert summary.rows_written == 1
     assert summary.issue_pr_links_written == 1
+    assert summary.linked_pr_rows_written == 1
+    assert summary.linked_pr_fetch_attempted == 1
+    assert summary.linked_pr_fetch_failed == 0
 
     with sqlite_engine.begin() as connection:
         links = connection.execute(
@@ -327,6 +357,22 @@ def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
                 """
             )
         ).mappings().all()
+        linked_pr = connection.execute(
+            text(
+                """
+                SELECT
+                  pr_number,
+                  pr_url,
+                  pr_title,
+                  pr_state,
+                  pr_created_at,
+                  pr_closed_at,
+                  pr_merged_at
+                FROM ci_l1_flaky_linked_prs
+                WHERE pr_repo = 'pingcap/tidb' AND pr_number = 67822
+                """
+            )
+        ).mappings().one()
 
     assert len(links) == 1
     assert links[0]["pr_repo"] == "pingcap/tidb"
@@ -335,6 +381,13 @@ def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
     assert links[0]["link_type"] == "linked_pull_request"
     assert links[0]["source_event_type"] == "cross-referenced"
     assert str(links[0]["linked_at"]).startswith("2026-04-16 10:11:26")
+    assert linked_pr["pr_number"] == 67822
+    assert linked_pr["pr_url"] == "https://github.com/pingcap/tidb/pull/67822"
+    assert linked_pr["pr_title"] == "stabilize flaky #67822"
+    assert linked_pr["pr_state"] == "closed"
+    assert str(linked_pr["pr_created_at"]).startswith("2026-04-16 10:11:25")
+    assert str(linked_pr["pr_closed_at"]).startswith("2026-04-23 08:05:40")
+    assert str(linked_pr["pr_merged_at"]).startswith("2026-04-23 08:05:40")
 
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -370,6 +423,7 @@ def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
 
     second_summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
     assert second_summary.issue_pr_links_written == 1
+    assert second_summary.linked_pr_rows_written == 1
 
     with sqlite_engine.begin() as connection:
         links = connection.execute(
@@ -382,12 +436,100 @@ def test_sync_flaky_issues_writes_and_replaces_issue_pr_links(
                 """
             )
         ).mappings().all()
+        linked_prs = connection.execute(
+            text(
+                """
+                SELECT pr_number
+                FROM ci_l1_flaky_linked_prs
+                ORDER BY pr_number
+                """
+            )
+        ).mappings().all()
 
     assert [row["pr_number"] for row in links] == [67871]
+    assert [row["pr_number"] for row in linked_prs] == [67871]
+
+
+def test_sync_flaky_issues_fetches_linked_pr_metadata_once_across_batches(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    timeline = [
+        {
+            "event": "cross-referenced",
+            "created_at": "2026-04-16T10:11:26Z",
+            "source": {
+                "type": "issue",
+                "issue": {
+                    "number": 67822,
+                    "title": "br/pkg/streamhelper: stabilize flaky TestShared",
+                    "repository": {"full_name": "pingcap/tidb"},
+                    "pull_request": {},
+                },
+            },
+        }
+    ]
+    for index, issue_number in enumerate((67740, 67741), start=1):
+        _insert_issue_ticket(
+            sqlite_engine,
+            ticket_id=20 + index,
+            repo="pingcap/tidb",
+            number=issue_number,
+            title=f"Flaky test: TestShared{index} in nightly",
+            body="Automated flaky test report.\n\n- Branch: master\n",
+            state="open",
+            created_at="2026-04-14T00:05:37Z",
+            updated_at=f"2026-04-24T04:09:5{index}Z",
+            timeline=timeline,
+        )
+
+    fetched_pr_numbers: list[int] = []
+
+    def _fetch_pull(**kwargs):
+        fetched_pr_numbers.append(kwargs["pr_number"])
+        return _pull_payload(number=kwargs["pr_number"])
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        _fetch_pull,
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=1))
+
+    assert summary.issue_pr_links_written == 2
+    assert summary.linked_pr_rows_written == 1
+    assert summary.linked_pr_fetch_attempted == 1
+    assert fetched_pr_numbers == [67822]
+
+    with sqlite_engine.begin() as connection:
+        links = connection.execute(
+            text(
+                """
+                SELECT issue_number, pr_number
+                FROM ci_l1_flaky_issue_pr_links
+                ORDER BY issue_number
+                """
+            )
+        ).mappings().all()
+        linked_prs = connection.execute(
+            text(
+                """
+                SELECT pr_number
+                FROM ci_l1_flaky_linked_prs
+                """
+            )
+        ).mappings().all()
+
+    assert [(row["issue_number"], row["pr_number"]) for row in links] == [
+        (67740, 67822),
+        (67741, 67822),
+    ]
+    assert [row["pr_number"] for row in linked_prs] == [67822]
 
 
 def test_backfill_flaky_issue_pr_links_rebuilds_links_without_touching_issue_rows(
     sqlite_engine,
+    monkeypatch,
 ) -> None:
     _insert_issue_ticket(
         sqlite_engine,
@@ -507,12 +649,20 @@ def test_backfill_flaky_issue_pr_links_rebuilds_links_without_touching_issue_row
             )
         )
 
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **kwargs: _pull_payload(number=kwargs["pr_number"]),
+    )
+
     summary = run_backfill_flaky_issue_pr_links(sqlite_engine, _settings(batch_size=1))
 
     assert summary.batches_processed == 1
     assert summary.source_rows_scanned == 1
     assert summary.issue_rows_touched == 1
     assert summary.issue_pr_links_written == 2
+    assert summary.linked_pr_rows_written == 2
+    assert summary.linked_pr_fetch_attempted == 2
+    assert summary.linked_pr_fetch_failed == 0
     assert summary.last_ticket_updated_at == "2026-04-26T09:15:00Z"
 
     with sqlite_engine.begin() as connection:
@@ -535,10 +685,20 @@ def test_backfill_flaky_issue_pr_links_rebuilds_links_without_touching_issue_row
                 """
             )
         ).mappings().all()
+        linked_prs = connection.execute(
+            text(
+                """
+                SELECT pr_number
+                FROM ci_l1_flaky_linked_prs
+                ORDER BY pr_number
+                """
+            )
+        ).mappings().all()
 
     assert issue_row["issue_branch"] == "release-8.4"
     assert issue_row["branch_source"] == "manual_seed"
     assert [row["pr_number"] for row in links] == [67601, 67644]
+    assert [row["pr_number"] for row in linked_prs] == [67601, 67644]
 
 
 def test_sync_flaky_issues_reuses_existing_branch_when_ticket_is_unchanged(
@@ -676,7 +836,7 @@ def test_sync_flaky_issue_helpers_cover_fallbacks_and_payload_shapes(monkeypatch
 
     now = datetime(2026, 4, 15, 9, 0, 0)
     assert _parse_datetime(now) == now
-    assert _parse_datetime("2026-04-15T09:00:00Z") == datetime.fromisoformat("2026-04-15T09:00:00+00:00")
+    assert _parse_datetime("2026-04-15T09:00:00Z") == datetime(2026, 4, 15, 9, 0, 0)
     with pytest.raises(ValueError, match="Unsupported datetime value"):
         _parse_datetime(123)
 

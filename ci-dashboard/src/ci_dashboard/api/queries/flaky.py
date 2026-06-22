@@ -736,12 +736,10 @@ def get_issue_fix_progress_snapshot(
         current_pull_rows = _fetch_linked_pull_rows(
             connection,
             [(str(row["repo"]), int(row["issue_number"])) for row in current_issue_rows],
-            branch=filters.branch,
         )
         previous_pull_rows = _fetch_linked_pull_rows(
             connection,
             [(str(row["repo"]), int(row["issue_number"])) for row in previous_issue_rows],
-            branch=filters.branch,
         )
 
     current_fixed_issue_count = sum(
@@ -783,7 +781,7 @@ def get_issue_fix_progress_snapshot(
             "ignores_cloud_phase": True,
             "ignores_issue_status": True,
             "ignores_branch_for_issues": True,
-            "applies_branch_to_prs": bool(filters.branch),
+            "applies_branch_to_prs": False,
         }
     )
 
@@ -1454,8 +1452,6 @@ def _fetch_issue_latest_rows(
 def _fetch_linked_pull_rows(
     connection: Connection,
     issue_keys: list[tuple[str, int]],
-    *,
-    branch: str | None = None,
 ) -> list[dict[str, Any]]:
     if not issue_keys:
         return []
@@ -1469,43 +1465,28 @@ def _fetch_linked_pull_rows(
         params[f"issue_repo_{index}"] = issue_repo
         params[f"issue_number_{index}"] = issue_number
 
-    branch_clause = ""
-    if branch:
-        branch_clause = f" AND {_pull_ticket_branch_expr(connection, 'p')} = :branch"
-        params["branch"] = branch
-
     rows = connection.execute(
         text(
             f"""
             SELECT DISTINCT
-              p.repo,
-              p.number,
-              p.state,
-              p.created_at,
-              p.closed_at,
-              p.merged,
-              p.merged_at
+              p.pr_repo AS repo,
+              p.pr_number AS number,
+              p.pr_state AS state,
+              p.pr_created_at AS created_at,
+              p.pr_closed_at AS closed_at,
+              CASE WHEN p.pr_merged_at IS NOT NULL THEN 1 ELSE 0 END AS merged,
+              p.pr_merged_at AS merged_at
             FROM ci_l1_flaky_issue_pr_links l
-            JOIN github_tickets p
-              ON p.type = 'pull'
-             AND p.repo = l.pr_repo
-             AND p.number = l.pr_number
+            JOIN ci_l1_flaky_linked_prs p
+              ON p.pr_repo = l.pr_repo
+             AND p.pr_number = l.pr_number
             WHERE ({' OR '.join(clauses)})
-            {branch_clause}
-            ORDER BY p.repo, p.number
+            ORDER BY p.pr_repo, p.pr_number
             """
         ),
         params,
     ).mappings()
     return [dict(row) for row in rows]
-
-
-def _pull_ticket_branch_expr(connection: Connection, table_alias: str) -> str:
-    prefix = f"{table_alias}."
-    if connection.dialect.name == "sqlite":
-        return f"json_extract({prefix}branches, '$.base.ref')"
-    return f"JSON_UNQUOTE(JSON_EXTRACT({prefix}branches, '$.base.ref'))"
-
 
 def _latest_complete_week_start(end_date: date | None) -> date | None:
     if end_date is None:

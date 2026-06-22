@@ -219,6 +219,26 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
+        CREATE TABLE ci_l1_flaky_linked_prs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pr_repo TEXT NOT NULL,
+          pr_number INTEGER NOT NULL,
+          pr_url TEXT NOT NULL,
+          pr_title TEXT NOT NULL,
+          pr_state TEXT NOT NULL,
+          pr_created_at TEXT NOT NULL,
+          pr_closed_at TEXT NULL,
+          pr_merged_at TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(pr_repo, pr_number)
+        )
+        """,
+        """
+        CREATE INDEX idx_ci_l1_flaky_linked_prs_state_time
+        ON ci_l1_flaky_linked_prs (pr_state, pr_merged_at)
+        """,
+        """
         CREATE TABLE ci_l1_pod_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           source_project TEXT NOT NULL,

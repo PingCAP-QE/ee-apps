@@ -315,40 +315,32 @@ def _insert_pull_ticket(
     number: int,
     state: str,
     created_at: str,
-    updated_at: str | None = None,
     closed_at: str | None = None,
     merged: int = 0,
     merged_at: str | None = None,
-    target_branch: str | None = "master",
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
             text(
                 """
-                INSERT INTO github_tickets (
-                  type, repo, number, title, body, comments, state, created_at, updated_at,
-                  closed_at, merged, merged_at, review, review_comments, timeline, branches
+                INSERT INTO ci_l1_flaky_linked_prs (
+                  pr_repo, pr_number, pr_url, pr_title, pr_state, pr_created_at,
+                  pr_closed_at, pr_merged_at
                 ) VALUES (
-                  'pull', :repo, :number, :title, NULL, '[]', :state, :created_at, :updated_at,
-                  :closed_at, :merged, :merged_at, '[]', '[]', '[]', :branches
+                  :repo, :number, :pr_url, :title, :state, :created_at,
+                  :closed_at, :merged_at
                 )
                 """
             ),
             {
                 "repo": repo,
                 "number": number,
+                "pr_url": f"https://github.com/{repo}/pull/{number}",
                 "title": f"PR {number}",
                 "state": state,
                 "created_at": created_at,
-                "updated_at": updated_at or closed_at or created_at,
                 "closed_at": closed_at,
-                "merged": merged,
-                "merged_at": merged_at,
-                "branches": (
-                    json.dumps({"base": {"ref": target_branch}})
-                    if target_branch is not None
-                    else None
-                ),
+                "merged_at": merged_at if merged else None,
             },
         )
 
@@ -4089,7 +4081,7 @@ def test_flaky_page_issue_fix_progress_snapshot(
     assert progress["meta"]["ignores_cloud_phase"] is True
     assert progress["meta"]["ignores_issue_status"] is True
     assert progress["meta"]["ignores_branch_for_issues"] is True
-    assert progress["meta"]["applies_branch_to_prs"] is True
+    assert progress["meta"]["applies_branch_to_prs"] is False
     assert progress["filed_issue_count"] == 5
     assert progress["filed_issue_delta"] == 1
     assert progress["fixed_issue_count"] == 2
@@ -4142,7 +4134,6 @@ def test_flaky_issue_queries_ignore_branch_filter(sqlite_engine) -> None:
         number=73001,
         state="open",
         created_at="2026-04-10 11:05:00",
-        target_branch="release-8.5",
     )
     _insert_pull_ticket(
         sqlite_engine,
@@ -4185,10 +4176,10 @@ def test_flaky_issue_queries_ignore_branch_filter(sqlite_engine) -> None:
     page_body = page_response.json()
     issue_fix_progress = page_body["issue_fix_progress"]
     assert issue_fix_progress["meta"]["ignores_branch_for_issues"] is True
-    assert issue_fix_progress["meta"]["applies_branch_to_prs"] is True
+    assert issue_fix_progress["meta"]["applies_branch_to_prs"] is False
     assert issue_fix_progress["filed_issue_count"] == 2
     assert issue_fix_progress["fixed_issue_count"] == 1
-    assert issue_fix_progress["in_review_pr_count"] == 0
+    assert issue_fix_progress["in_review_pr_count"] == 1
     assert issue_fix_progress["merged_pr_count"] == 1
 
     issue_lifecycle = page_body["issue_lifecycle"]
