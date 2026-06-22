@@ -163,6 +163,17 @@ def test_load_settings_rejects_invalid_gcs_cache_positive_int() -> None:
             }
         )
 
+    with pytest.raises(
+        ValueError,
+        match="COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS must be positive",
+    ):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
+                "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS": "0",
+            }
+        )
+
 
 def test_load_settings_rejects_invalid_int() -> None:
     with pytest.raises(ValueError, match="COST_INSIGHT_SYNC_OVERLAP_DAYS must be an integer"):

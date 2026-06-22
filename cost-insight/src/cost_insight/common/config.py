@@ -461,7 +461,10 @@ def _read_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: in
 
 
 def _read_positive_int_any(environ: Mapping[str, str], keys: tuple[str, ...], default: int) -> int:
-    return _read_int_any(environ, keys, default)
+    value = _read_int_any(environ, keys, default)
+    if value <= 0:
+        raise ValueError(f"{keys[0]} must be positive, got {value!r}")
+    return value
 
 
 def _read_non_negative_int(

@@ -297,13 +297,99 @@ def test_run_cleanup_gcs_cache_fails_closed_when_index_is_stale() -> None:
             )
         return BigQueryQueryResult(rows=(), total_bytes_processed=1)
 
-    with pytest.raises(RuntimeError, match="AC reference index is too stale"):
+    with pytest.raises(RuntimeError, match="index_spread="):
         run_cleanup_gcs_cache(
             settings=GcsCacheSettings(
                 project_id="pingcap-testing-account",
                 ac_reference_max_index_staleness_hours=12,
             ),
             mode="dry-run",
+            execute=fake_execute,
+            now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
+        )
+
+
+@pytest.mark.parametrize(
+    ("oldest_indexed_through", "should_raise"),
+    [
+        (datetime(2026, 6, 15, 0, 1, tzinfo=UTC), False),
+        (datetime(2026, 6, 14, 23, 59, tzinfo=UTC), True),
+    ],
+)
+def test_run_cleanup_gcs_cache_index_freshness_boundary(
+    oldest_indexed_through: datetime,
+    should_raise: bool,
+) -> None:
+    def fake_execute(query, parameters):
+        if "COUNT(*) AS total_shards" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 256,
+                        "oldest_indexed_through": oldest_indexed_through,
+                        "newest_indexed_through": datetime(2026, 6, 15, 11, 50, tzinfo=UTC),
+                    },
+                ),
+                total_bytes_processed=1,
+            )
+        if "candidate_cas_object_count" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_cas_object_count": 0,
+                        "candidate_ac_object_count": 0,
+                        "candidate_cas_delete_object_count": 0,
+                        "oldest_last_seen_at": None,
+                        "newest_last_seen_at": None,
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=1,
+            )
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    kwargs = dict(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_max_index_staleness_hours=12,
+        ),
+        mode="dry-run",
+        execute=fake_execute,
+        now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
+    )
+    if should_raise:
+        with pytest.raises(RuntimeError, match="AC reference index is too stale"):
+            run_cleanup_gcs_cache(**kwargs)
+    else:
+        summary = run_cleanup_gcs_cache(**kwargs)
+        assert summary.candidate_cas_object_count == 0
+
+
+def test_run_cleanup_gcs_cache_delete_fails_closed_when_index_is_stale() -> None:
+    def fake_execute(query, parameters):
+        if "COUNT(*) AS total_shards" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "total_shards": 256,
+                        "ready_shards": 256,
+                        "oldest_indexed_through": datetime(2026, 6, 14, 22, 0, tzinfo=UTC),
+                        "newest_indexed_through": datetime(2026, 6, 15, 11, 59, tzinfo=UTC),
+                    },
+                ),
+                total_bytes_processed=1,
+            )
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    with pytest.raises(RuntimeError, match="AC reference index is too stale"):
+        run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                ac_reference_max_index_staleness_hours=12,
+            ),
+            mode="delete",
+            execute_kind="cas",
             execute=fake_execute,
             now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
         )

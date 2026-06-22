@@ -816,14 +816,20 @@ def _assert_cleanup_index_fresh(
 ) -> None:
     row = rows[0] if rows else {}
     oldest_indexed_through = coerce_optional_datetime(row.get("oldest_indexed_through"))
+    newest_indexed_through = coerce_optional_datetime(row.get("newest_indexed_through"))
     if oldest_indexed_through is None:
         raise RuntimeError("AC reference index has no indexed_through watermark for CAS cleanup")
 
     cutoff = run_started_at - timedelta(hours=max_index_staleness_hours)
     if oldest_indexed_through < cutoff:
+        spread = (
+            f"index_spread={oldest_indexed_through.isoformat()}..{newest_indexed_through.isoformat()}"
+            if newest_indexed_through is not None
+            else f"oldest_indexed_through={oldest_indexed_through.isoformat()}"
+        )
         raise RuntimeError(
             "AC reference index is too stale for CAS cleanup: "
-            f"oldest_indexed_through={oldest_indexed_through.isoformat()}, "
+            f"{spread}, "
             f"required_at_or_after={cutoff.isoformat()}, "
             f"max_staleness_hours={max_index_staleness_hours}"
         )
