@@ -12,14 +12,16 @@ Prow already places the target branch on Kubernetes pods as:
 prow.k8s.io/refs.base_ref
 ```
 
-In GCP Cloud Billing detailed export, Kubernetes labels are exposed with the
-`k8s-label/` prefix. The normalized billing label key is:
+In GCP Cloud Billing detailed export, Kubernetes labels are usually exposed with
+the `k8s-label/` prefix. Some rows may also carry the raw Prow label key. Treat
+both as equivalent source labels:
 
 ```text
 k8s-label/prow.k8s.io/refs.base_ref
+prow.k8s.io/refs.base_ref
 ```
 
-The cost pipeline should map that source label to a product-facing
+The cost pipeline should map either source label to a product-facing
 `target_branch` column instead of leaking the Prow label key into dashboard
 queries.
 
@@ -212,7 +214,8 @@ without replacement can leave old branchless rows next to new branch-aware rows.
 
 ## Pipeline Flow
 
-1. GCP billing export query reads `k8s-label/prow.k8s.io/refs.base_ref`.
+1. GCP billing export query reads `k8s-label/prow.k8s.io/refs.base_ref` and
+   `prow.k8s.io/refs.base_ref`.
 2. Collector normalizes it into `target_branch`.
 3. Summary/raw/unmatched upserts persist the column.
 4. Attribution refresh copies `target_branch` from source rows to

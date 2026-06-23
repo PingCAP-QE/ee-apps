@@ -19,6 +19,7 @@ def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
     assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "prow.k8s.io/refs.base_ref" in query
     assert "target_branch" in query
     assert "k8s-workload-name" in query
     assert "cost_at_list" in query
@@ -47,6 +48,7 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
     assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "prow.k8s.io/refs.base_ref" in query
     assert "target_branch" in query
     assert "resource_name" not in query
     assert "service.description AS service_name" in query
@@ -65,6 +67,7 @@ def test_build_gcp_unmatched_resource_query_keeps_resource_context() -> None:
     assert "DATE(usage_start_time) BETWEEN @usage_start_date AND @usage_end_date" in query
     assert "k8s-workload-name" in query
     assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "prow.k8s.io/refs.base_ref" in query
     assert "target_branch" in query
     assert "resource.global_name" in query
     assert "usage_seconds" in query
