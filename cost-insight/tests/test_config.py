@@ -42,8 +42,8 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcp_billing.billing_table == DEFAULT_GCP_BILLING_TABLE
     assert settings.aws_billing.billing_table == DEFAULT_AWS_BILLING_TABLE
     assert settings.aws_billing.account_id is None
-    assert settings.gcs_cache.ac_retention_days == 14
-    assert settings.gcs_cache.cas_retention_days == 21
+    assert settings.gcs_cache.ac_retention_days == 10
+    assert settings.gcs_cache.cas_retention_days == 15
     assert settings.gcs_cache.cleanup_safety_buffer_days == 1
     assert settings.gcs_cache.last_seen_excluded_get_user_agent == "TransferService"
     assert settings.gcs_cache.last_seen_excluded_get_principal_email is None
@@ -111,6 +111,7 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_SAFETY_BUFFER_DAYS": "2",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT": "25",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "500",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS": "100",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE": "50",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET": "manifest-bucket",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX": "manifest-prefix",
@@ -133,6 +134,7 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.cleanup_safety_buffer_days == 2
     assert settings.gcs_cache.cleanup_sample_limit == 25
     assert settings.gcs_cache.cleanup_max_delete_objects == 500
+    assert settings.gcs_cache.cleanup_max_delete_cas_objects == 100
     assert settings.gcs_cache.cleanup_batch_size == 50
     assert settings.gcs_cache.cleanup_manifest_bucket == "manifest-bucket"
     assert settings.gcs_cache.cleanup_manifest_prefix == "manifest-prefix"
@@ -155,7 +157,9 @@ def test_load_settings_rejects_invalid_positive_int() -> None:
 
 
 def test_load_settings_rejects_invalid_gcs_cache_positive_int() -> None:
-    with pytest.raises(ValueError, match="COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS must be positive"):
+    with pytest.raises(
+        ValueError, match="COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS must be positive"
+    ):
         load_settings(
             {
                 "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
