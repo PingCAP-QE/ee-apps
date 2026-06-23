@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from itertools import islice
 from uuid import uuid4
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
 from cost_insight.common.datetime_utils import coerce_datetime, coerce_optional_datetime
+from cost_insight.common.gcs_cache_references import (
+    AcReferenceExtraction,
+    extract_action_cache_references_batch,
+)
 from cost_insight.common.gcs_objects import GcsObjectMetadata, fetch_object_metadata_batch
 from cost_insight.common.storage_batch_operations import (
     StorageBatchOperationsJob,
@@ -16,13 +20,11 @@ from cost_insight.common.storage_batch_operations import (
     create_delete_job,
     wait_for_delete_job,
 )
-from cost_insight.jobs.sync_gcs_cache_ac_references import (
-    build_ensure_gcs_cache_ac_reference_tables_query,
-)
 
 QueryExecutor = Callable[[str, Sequence[BigQueryParameter]], BigQueryQueryResult]
 RowStreamer = Callable[[str, Sequence[BigQueryParameter]], Iterator[dict[str, object]]]
 MetadataResolver = Callable[..., tuple[GcsObjectMetadata, ...]]
+ReferenceExtractor = Callable[..., tuple[AcReferenceExtraction, ...]]
 JsonLoader = Callable[[str, Sequence[dict[str, object]], Sequence[tuple[str, str]], str], None]
 BatchJobCreator = Callable[..., StorageBatchOperationsJob]
 BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
@@ -40,6 +42,12 @@ class CleanupGcsCacheSample:
 
 
 @dataclass(frozen=True)
+class CleanupGcsCacheParseErrorSample:
+    object_name: str
+    parse_error: str
+
+
+@dataclass(frozen=True)
 class CleanupGcsCacheSummary:
     account_id: str
     bucket_name: str
@@ -53,11 +61,13 @@ class CleanupGcsCacheSummary:
     candidate_cas_object_count: int
     candidate_ac_object_count: int
     candidate_cas_delete_object_count: int
+    ac_parse_error_count: int
     selected_ac_object_count: int
     selected_cas_object_count: int
     oldest_last_seen_at: datetime | None
     newest_last_seen_at: datetime | None
     sample_candidates: tuple[CleanupGcsCacheSample, ...]
+    sample_ac_parse_errors: tuple[CleanupGcsCacheParseErrorSample, ...]
     bytes_processed: int | None
     run_started_at: datetime
     run_finished_at: datetime
@@ -71,6 +81,12 @@ class CleanupGcsCacheSummary:
 class TableCountResult:
     object_count: int
     bytes_processed: int | None
+
+
+@dataclass(frozen=True)
+class AcStageResult:
+    parse_error_count: int
+    sample_parse_errors: tuple[CleanupGcsCacheParseErrorSample, ...]
 
 
 def run_cleanup_gcs_cache(
@@ -87,6 +103,7 @@ def run_cleanup_gcs_cache(
     execute: QueryExecutor = execute_query,
     stream_rows: RowStreamer | None = None,
     resolve_object_metadata: MetadataResolver = fetch_object_metadata_batch,
+    extract_references: ReferenceExtractor = extract_action_cache_references_batch,
     load_json_rows: JsonLoader | None = None,
     create_batch_job: BatchJobCreator = create_delete_job,
     wait_for_batch_job: BatchJobWaiter = wait_for_delete_job,
@@ -128,31 +145,10 @@ def run_cleanup_gcs_cache(
     cas_cutoff_days = resolved_cas_days + resolved_safety_buffer_days
 
     bytes_processed_total = 0
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_ensure_gcs_cache_ac_reference_tables_query(settings), parameters=[]
-        ).total_bytes_processed,
-    )
-    index_ready_result = execute(
-        build_cleanup_gcs_cache_index_ready_query(settings),
-        parameters=[],
-    )
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total, index_ready_result.total_bytes_processed
-    )
-    _assert_cleanup_index_ready(index_ready_result.rows)
-    _assert_cleanup_index_fresh(
-        index_ready_result.rows,
-        run_started_at=run_started_at,
-        max_index_staleness_hours=settings.ac_reference_max_index_staleness_hours,
-    )
-
     summary_result = execute(
         build_cleanup_gcs_cache_summary_query(settings),
         parameters=[
             BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
-            BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days),
             BigQueryParameter("sample_limit", "INT64", resolved_sample_limit),
         ],
     )
@@ -189,11 +185,13 @@ def run_cleanup_gcs_cache(
             candidate_cas_object_count=candidate_cas_object_count,
             candidate_ac_object_count=candidate_ac_object_count,
             candidate_cas_delete_object_count=candidate_cas_delete_object_count,
+            ac_parse_error_count=0,
             selected_ac_object_count=0,
             selected_cas_object_count=0,
             oldest_last_seen_at=oldest_last_seen_at,
             newest_last_seen_at=newest_last_seen_at,
             sample_candidates=sample_candidates,
+            sample_ac_parse_errors=(),
             bytes_processed=bytes_processed_total,
             run_started_at=run_started_at,
             run_finished_at=run_finished_at,
@@ -237,8 +235,6 @@ def run_cleanup_gcs_cache(
         bytes_processed_total,
         execute(
             build_cleanup_gcs_cache_run_references_table_query(
-                settings,
-                ac_candidate_table=ac_candidate_table,
                 run_references_table=run_references_table,
                 ttl_days=ttl_days,
             ),
@@ -258,16 +254,25 @@ def run_cleanup_gcs_cache(
             parameters=[],
         ).total_bytes_processed,
     )
-    _populate_metadata_stage_table(
+    ac_stage_result = _populate_ac_stage_tables(
         settings=settings,
         stream_rows=stream_rows,
         resolve_object_metadata=resolve_object_metadata,
-        load_json_rows=load_json_rows,
+        extract_references=extract_references,
         source_table=ac_candidate_table,
         live_table=ac_live_metadata_table,
         missing_table=ac_missing_metadata_table,
-        batch_size=settings.cleanup_batch_size,
+        references_table=run_references_table,
+        load_json_rows=load_json_rows,
+        stream_batch_size=settings.cleanup_batch_size,
+        reference_batch_size=settings.ac_reference_batch_size,
     )
+    cas_from_ac_count = _count_distinct_run_cas_rows(
+        execute=execute,
+        table_ref=run_references_table,
+    )
+    candidate_cas_object_count = cas_from_ac_count.object_count
+    bytes_processed_total = _add_bytes(bytes_processed_total, cas_from_ac_count.bytes_processed)
 
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
@@ -285,6 +290,7 @@ def run_cleanup_gcs_cache(
         execute(
             build_cleanup_gcs_cache_final_ac_delete_table_query(
                 ac_live_metadata_table=ac_live_metadata_table,
+                ac_missing_metadata_table=ac_missing_metadata_table,
                 candidate_table=ac_delete_table,
                 ttl_days=ttl_days,
             ),
@@ -399,6 +405,7 @@ def run_cleanup_gcs_cache(
     selected_cas_count = _count_table_rows(execute=execute, table_ref=cas_delete_table)
     selected_cas_object_count = selected_cas_count.object_count
     bytes_processed_total = _add_bytes(bytes_processed_total, selected_cas_count.bytes_processed)
+    candidate_cas_delete_object_count = selected_cas_object_count
 
     if selected_cas_object_count > 0:
         cas_manifest_uri = _manifest_uri(
@@ -459,11 +466,13 @@ def run_cleanup_gcs_cache(
         candidate_cas_object_count=candidate_cas_object_count,
         candidate_ac_object_count=candidate_ac_object_count,
         candidate_cas_delete_object_count=candidate_cas_delete_object_count,
+        ac_parse_error_count=ac_stage_result.parse_error_count,
         selected_ac_object_count=selected_ac_object_count,
         selected_cas_object_count=selected_cas_object_count,
         oldest_last_seen_at=oldest_last_seen_at,
         newest_last_seen_at=newest_last_seen_at,
         sample_candidates=(),
+        sample_ac_parse_errors=ac_stage_result.sample_parse_errors,
         bytes_processed=bytes_processed_total,
         run_started_at=run_started_at,
         run_finished_at=run_finished_at,
@@ -474,34 +483,15 @@ def run_cleanup_gcs_cache(
     )
 
 
-def build_cleanup_gcs_cache_index_ready_query(settings: GcsCacheSettings) -> str:
-    state_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_reference_index_state_table
-    )
-    return f"""
-SELECT
-  COUNT(*) AS total_shards,
-  COUNTIF(indexed_through IS NOT NULL) AS ready_shards,
-  MIN(indexed_through) AS oldest_indexed_through,
-  MAX(indexed_through) AS newest_indexed_through
-FROM {state_table}
-""".strip()
-
-
 def build_cleanup_gcs_cache_summary_query(settings: GcsCacheSettings) -> str:
-    """Build an upper-bound summary query for AC-driven CAS cleanup.
+    """Build an AC-only planning summary for per-run cascade cleanup.
 
-    The delete path applies max_delete_objects to cold AC first, deletes only that
-    selected subset, and then excludes CAS with any remaining AC reference. This
-    summary intentionally scans all cold ACs without that per-run cap, so
-    candidate_cas_delete_object_count is a planning upper bound rather than the
-    exact CAS count for the next delete run.
+    v3 no longer depends on a persistent global AC->CAS index. CAS candidates are
+    known only after the selected AC objects are downloaded and parsed in the
+    delete run, so the summary intentionally reports CAS counts as zero.
     """
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
-    )
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
     )
     return f"""
 WITH cold_ac AS (
@@ -512,39 +502,11 @@ WITH cold_ac AS (
   FROM {current_table}
   WHERE object_kind = 'ac'
     AND last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @ac_cutoff_days DAY)
-),
-cas_from_cold_ac AS (
-  SELECT DISTINCT ref.cas_object_name
-  FROM {references_table}
-  JOIN cold_ac AS ac
-    ON ac.object_name = ref.ac_object_name
-),
-cas_after_extra_idle AS (
-  SELECT
-    cas.object_name,
-    cas.last_seen_at
-  FROM cas_from_cold_ac AS candidate
-  JOIN {current_table} AS cas
-    ON cas.object_name = candidate.cas_object_name
-   AND cas.object_kind = 'cas'
-   AND cas.last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @cas_cutoff_days DAY)
-),
-cas_without_outside_refs AS (
-  SELECT cas.object_name
-  FROM cas_after_extra_idle AS cas
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM {references_table} AS ref
-    LEFT JOIN cold_ac AS ac
-      ON ac.object_name = ref.ac_object_name
-    WHERE ref.cas_object_name = cas.object_name
-      AND ac.object_name IS NULL
-  )
 )
 SELECT
-  (SELECT COUNT(*) FROM cas_from_cold_ac) AS candidate_cas_object_count,
+  0 AS candidate_cas_object_count,
   COUNT(*) AS candidate_ac_object_count,
-  (SELECT COUNT(*) FROM cas_without_outside_refs) AS candidate_cas_delete_object_count,
+  0 AS candidate_cas_delete_object_count,
   MIN(cold_ac.last_seen_at) AS oldest_last_seen_at,
   MAX(cold_ac.last_seen_at) AS newest_last_seen_at,
   ARRAY_AGG(
@@ -587,27 +549,18 @@ LIMIT @limit
 
 
 def build_cleanup_gcs_cache_run_references_table_query(
-    settings: GcsCacheSettings,
     *,
-    ac_candidate_table: str,
     run_references_table: str,
     ttl_days: int,
 ) -> str:
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
-    )
     return f"""
-CREATE OR REPLACE TABLE {run_references_table}
+CREATE OR REPLACE TABLE {run_references_table} (
+  ac_object_name STRING NOT NULL,
+  cas_object_name STRING NOT NULL
+)
 OPTIONS (
   expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY)
-) AS
-SELECT DISTINCT
-  ref.ac_object_name,
-  ref.cas_object_name
-FROM {ac_candidate_table} AS candidate
-JOIN {references_table} AS ref
-  ON ref.ac_object_name = candidate.object_name
-ORDER BY ref.ac_object_name ASC, ref.cas_object_name ASC
+)
 """.strip()
 
 
@@ -621,9 +574,6 @@ def build_cleanup_gcs_cache_cas_candidate_table_query(
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
-    )
     return f"""
 CREATE OR REPLACE TABLE {candidate_table}
 OPTIONS (
@@ -634,7 +584,7 @@ WITH cas_from_deleted_ac AS (
   FROM {run_references_table}
 ),
 cas_after_extra_idle AS (
-  SELECT
+  SELECT DISTINCT
     current.object_name,
     current.last_seen_at,
     TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), current.last_seen_at, DAY) AS idle_days
@@ -649,11 +599,6 @@ SELECT
   cas.last_seen_at,
   cas.idle_days
 FROM cas_after_extra_idle AS cas
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM {references_table} AS ref
-  WHERE ref.cas_object_name = cas.object_name
-)
 ORDER BY cas.last_seen_at ASC, cas.object_name ASC
 LIMIT @limit
 """.strip()
@@ -696,6 +641,7 @@ def build_cleanup_gcs_cache_metadata_stage_tables_query(
 def build_cleanup_gcs_cache_final_ac_delete_table_query(
     *,
     ac_live_metadata_table: str,
+    ac_missing_metadata_table: str,
     candidate_table: str,
     ttl_days: int,
 ) -> str:
@@ -707,7 +653,12 @@ OPTIONS (
 SELECT
   object_name,
   generation
-FROM {ac_live_metadata_table}
+FROM {ac_live_metadata_table} AS live
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM {ac_missing_metadata_table} AS missing
+  WHERE missing.object_name = live.object_name
+)
 ORDER BY object_name ASC
 """.strip()
 
@@ -764,16 +715,7 @@ def build_cleanup_gcs_cache_reconcile_missing_ac_query(
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
-    )
     return f"""
-DELETE FROM {references_table}
-WHERE ac_object_name IN (
-  SELECT object_name
-  FROM {missing_metadata_table}
-);
-
 DELETE FROM {current_table}
 WHERE object_kind = 'ac'
   AND object_name IN (
@@ -793,10 +735,8 @@ def build_cleanup_gcs_cache_reconcile_missing_cas_query(
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
-    # Intentionally do not delete gcs_cache_ac_cas_references rows by cas_object_name
-    # here. That would require a broad reference-table scan, and stale CAS edges do
-    # not create unsafe deletes because missing CAS rows are removed from current_table.
-    # The next AC reference sync replaces each AC's edge set and self-heals stale rows.
+    # The per-run reference table is a short-lived snapshot derived from selected AC
+    # objects. Missing CAS only needs to be reconciled from last_seen_current.
     return f"""
 DELETE FROM {current_table}
 WHERE STRUCT(object_name, last_seen_at) IN (
@@ -816,16 +756,7 @@ def build_cleanup_gcs_cache_reconcile_deleted_ac_query(
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
-    )
     return f"""
-DELETE FROM {references_table}
-WHERE ac_object_name IN (
-  SELECT object_name
-  FROM {candidate_table}
-);
-
 DELETE FROM {current_table}
 WHERE object_kind = 'ac'
   AND object_name IN (
@@ -926,6 +857,108 @@ def _populate_metadata_stage_table(
             )
 
 
+def _populate_ac_stage_tables(
+    *,
+    settings: GcsCacheSettings,
+    stream_rows: RowStreamer,
+    resolve_object_metadata: MetadataResolver,
+    extract_references: ReferenceExtractor,
+    source_table: str,
+    live_table: str,
+    missing_table: str,
+    references_table: str,
+    load_json_rows: JsonLoader,
+    stream_batch_size: int,
+    reference_batch_size: int,
+) -> AcStageResult:
+    parse_error_count = 0
+    sample_parse_errors: list[CleanupGcsCacheParseErrorSample] = []
+    rows = stream_rows(
+        f"SELECT object_name FROM {source_table} ORDER BY object_name ASC",
+        [],
+    )
+    for batch in _batched(rows, stream_batch_size):
+        object_names = tuple(str(row["object_name"]) for row in batch)
+        metadata_rows = resolve_object_metadata(
+            project_id=settings.project_id,
+            bucket_name=settings.bucket_name,
+            object_names=object_names,
+            max_workers=settings.ac_reference_download_workers,
+        )
+        live_rows = [
+            {
+                "object_name": item.object_name,
+                "generation": item.generation,
+            }
+            for item in metadata_rows
+            if item.exists and item.generation is not None
+        ]
+        live_object_names = tuple(row["object_name"] for row in live_rows)
+        extractions = tuple(
+            extraction
+            for reference_batch in _batched_values(live_object_names, reference_batch_size)
+            for extraction in extract_references(
+                project_id=settings.project_id,
+                bucket_name=settings.bucket_name,
+                ac_object_names=reference_batch,
+                max_workers=settings.ac_reference_download_workers,
+            )
+        )
+        parse_failed_names = {
+            extraction.ac_object_name for extraction in extractions if extraction.parse_error
+        }
+        parse_error_count += len(parse_failed_names)
+        for extraction in extractions:
+            if extraction.parse_error and len(sample_parse_errors) < 10:
+                sample_parse_errors.append(
+                    CleanupGcsCacheParseErrorSample(
+                        object_name=extraction.ac_object_name,
+                        parse_error=extraction.parse_error,
+                    )
+                )
+        deletable_live_rows = [
+            row for row in live_rows if row["object_name"] not in parse_failed_names
+        ]
+        reference_rows = [
+            {
+                "ac_object_name": extraction.ac_object_name,
+                "cas_object_name": cas_object_name,
+            }
+            for extraction in extractions
+            if extraction.exists and extraction.parse_error is None
+            for cas_object_name in extraction.cas_object_names
+        ]
+        missing_names = {item.object_name for item in metadata_rows if not item.exists} | {
+            extraction.ac_object_name for extraction in extractions if not extraction.exists
+        }
+        missing_rows = [{"object_name": object_name} for object_name in sorted(missing_names)]
+        if deletable_live_rows:
+            load_json_rows(
+                live_table,
+                deletable_live_rows,
+                (("object_name", "STRING"), ("generation", "INT64")),
+                "WRITE_APPEND",
+            )
+        if reference_rows:
+            load_json_rows(
+                references_table,
+                reference_rows,
+                (("ac_object_name", "STRING"), ("cas_object_name", "STRING")),
+                "WRITE_APPEND",
+            )
+        if missing_rows:
+            load_json_rows(
+                missing_table,
+                missing_rows,
+                (("object_name", "STRING"),),
+                "WRITE_APPEND",
+            )
+    return AcStageResult(
+        parse_error_count=parse_error_count,
+        sample_parse_errors=tuple(sample_parse_errors),
+    )
+
+
 def _count_table_rows(*, execute: QueryExecutor, table_ref: str) -> TableCountResult:
     result = execute(
         f"SELECT COUNT(*) AS object_count FROM {table_ref}",
@@ -938,42 +971,16 @@ def _count_table_rows(*, execute: QueryExecutor, table_ref: str) -> TableCountRe
     )
 
 
-def _assert_cleanup_index_ready(rows: Sequence[dict[str, object]]) -> None:
-    row = rows[0] if rows else {}
-    total_shards = int(row.get("total_shards", 0) or 0)
-    ready_shards = int(row.get("ready_shards", 0) or 0)
-    if total_shards == 0 or ready_shards != total_shards:
-        raise RuntimeError(
-            "AC reference index is not ready for CAS cleanup: "
-            f"ready_shards={ready_shards}, total_shards={total_shards}"
-        )
-
-
-def _assert_cleanup_index_fresh(
-    rows: Sequence[dict[str, object]],
-    *,
-    run_started_at: datetime,
-    max_index_staleness_hours: int,
-) -> None:
-    row = rows[0] if rows else {}
-    oldest_indexed_through = coerce_optional_datetime(row.get("oldest_indexed_through"))
-    newest_indexed_through = coerce_optional_datetime(row.get("newest_indexed_through"))
-    if oldest_indexed_through is None:
-        raise RuntimeError("AC reference index has no indexed_through watermark for CAS cleanup")
-
-    cutoff = run_started_at - timedelta(hours=max_index_staleness_hours)
-    if oldest_indexed_through < cutoff:
-        spread = (
-            f"index_spread={oldest_indexed_through.isoformat()}..{newest_indexed_through.isoformat()}"
-            if newest_indexed_through is not None
-            else f"oldest_indexed_through={oldest_indexed_through.isoformat()}"
-        )
-        raise RuntimeError(
-            "AC reference index is too stale for CAS cleanup: "
-            f"{spread}, "
-            f"required_at_or_after={cutoff.isoformat()}, "
-            f"max_staleness_hours={max_index_staleness_hours}"
-        )
+def _count_distinct_run_cas_rows(*, execute: QueryExecutor, table_ref: str) -> TableCountResult:
+    result = execute(
+        f"SELECT COUNT(DISTINCT cas_object_name) AS object_count FROM {table_ref}",
+        parameters=[],
+    )
+    row = result.rows[0] if result.rows else {}
+    return TableCountResult(
+        object_count=int(row.get("object_count", 0) or 0),
+        bytes_processed=result.total_bytes_processed,
+    )
 
 
 def _wait_for_successful_batch_job(
@@ -1081,6 +1088,15 @@ def _batched(
 ) -> Iterator[tuple[dict[str, object], ...]]:
     while True:
         batch = tuple(islice(values, batch_size))
+        if not batch:
+            return
+        yield batch
+
+
+def _batched_values(values: Iterable[str], batch_size: int) -> Iterator[tuple[str, ...]]:
+    iterator = iter(values)
+    while True:
+        batch = tuple(islice(iterator, batch_size))
         if not batch:
             return
         yield batch

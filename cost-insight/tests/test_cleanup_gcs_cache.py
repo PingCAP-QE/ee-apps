@@ -4,13 +4,15 @@ import pytest
 
 from cost_insight.common.bigquery import BigQueryQueryResult
 from cost_insight.common.config import GcsCacheSettings
+from cost_insight.common.gcs_cache_references import AcReferenceExtraction
 from cost_insight.common.gcs_objects import GcsObjectMetadata
 from cost_insight.common.storage_batch_operations import (
     StorageBatchOperationsJob,
     StorageBatchOperationsJobStatus,
 )
 from cost_insight.jobs.cleanup_gcs_cache import (
-    build_cleanup_gcs_cache_index_ready_query,
+    _populate_ac_stage_tables,
+    build_cleanup_gcs_cache_final_ac_delete_table_query,
     build_cleanup_gcs_cache_manifest_export_query,
     build_cleanup_gcs_cache_reconcile_deleted_cas_query,
     build_cleanup_gcs_cache_summary_query,
@@ -25,26 +27,11 @@ def test_cleanup_gcs_cache_summary_query_targets_current_and_reference_tables() 
     assert (
         "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current`" in query
     )
-    assert "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_references`" in query
     assert "candidate_cas_object_count" in query
     assert "candidate_ac_object_count" in query
     assert "@ac_cutoff_days" in query
-    assert "@cas_cutoff_days" in query
     assert "WITH cold_ac AS" in query
-    assert "cas_from_cold_ac AS" in query
-    assert "cas_after_extra_idle AS" in query
-    assert "cas_without_outside_refs AS" in query
-
-
-def test_cleanup_gcs_cache_index_ready_query_targets_state_table() -> None:
-    settings = GcsCacheSettings(project_id="pingcap-testing-account")
-    query = build_cleanup_gcs_cache_index_ready_query(settings)
-
-    assert (
-        "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_reference_index_state`" in query
-    )
-    assert "COUNTIF(indexed_through IS NOT NULL)" in query
-    assert "MIN(indexed_through)" in query
+    assert "0 AS candidate_cas_object_count" in query
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
@@ -75,6 +62,93 @@ def test_cleanup_gcs_cache_reconcile_deleted_cas_query_matches_object_name_and_l
     assert "FROM `project.dataset.candidates`" in query
 
 
+def test_cleanup_gcs_cache_final_ac_delete_table_excludes_missing_metadata() -> None:
+    query = build_cleanup_gcs_cache_final_ac_delete_table_query(
+        ac_live_metadata_table="`project.dataset.ac_live`",
+        ac_missing_metadata_table="`project.dataset.ac_missing`",
+        candidate_table="`project.dataset.delete_ac`",
+        ttl_days=7,
+    )
+
+    assert "FROM `project.dataset.ac_live` AS live" in query
+    assert "WHERE NOT EXISTS" in query
+    assert "FROM `project.dataset.ac_missing` AS missing" in query
+    assert "missing.object_name = live.object_name" in query
+
+
+def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:
+    loaded_rows = []
+
+    def fake_stream_rows(query, parameters):
+        del query, parameters
+        yield {"object_name": "ac/ok"}
+        yield {"object_name": "ac/corrupt"}
+        yield {"object_name": "ac/missing"}
+
+    def fake_resolve_object_metadata(**kwargs):
+        assert tuple(kwargs["object_names"]) == ("ac/ok", "ac/corrupt", "ac/missing")
+        return (
+            GcsObjectMetadata("ac/ok", True, 101),
+            GcsObjectMetadata("ac/corrupt", True, 102),
+            GcsObjectMetadata("ac/missing", False, None),
+        )
+
+    def fake_extract_references(**kwargs):
+        assert tuple(kwargs["ac_object_names"]) == ("ac/ok", "ac/corrupt")
+        return (
+            AcReferenceExtraction(
+                ac_object_name="ac/ok",
+                exists=True,
+                cas_object_names=("cas/one",),
+            ),
+            AcReferenceExtraction(
+                ac_object_name="ac/corrupt",
+                exists=True,
+                cas_object_names=(),
+                parse_error="Unsupported protobuf wire type: 3",
+            ),
+        )
+
+    def fake_load_json_rows(table_ref, rows, schema, write_disposition):
+        loaded_rows.append((table_ref, tuple(rows), tuple(schema), write_disposition))
+
+    result = _populate_ac_stage_tables(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        stream_rows=fake_stream_rows,
+        resolve_object_metadata=fake_resolve_object_metadata,
+        extract_references=fake_extract_references,
+        source_table="`project.dataset.candidate_ac`",
+        live_table="`project.dataset.ac_live`",
+        missing_table="`project.dataset.ac_missing`",
+        references_table="`project.dataset.run_refs`",
+        load_json_rows=fake_load_json_rows,
+        stream_batch_size=100,
+        reference_batch_size=100,
+    )
+
+    assert result.parse_error_count == 1
+    assert result.sample_parse_errors[0].object_name == "ac/corrupt"
+    assert result.sample_parse_errors[0].parse_error == "Unsupported protobuf wire type: 3"
+    assert (
+        "`project.dataset.ac_live`",
+        ({"object_name": "ac/ok", "generation": 101},),
+        (("object_name", "STRING"), ("generation", "INT64")),
+        "WRITE_APPEND",
+    ) in loaded_rows
+    assert (
+        "`project.dataset.run_refs`",
+        ({"ac_object_name": "ac/ok", "cas_object_name": "cas/one"},),
+        (("ac_object_name", "STRING"), ("cas_object_name", "STRING")),
+        "WRITE_APPEND",
+    ) in loaded_rows
+    assert (
+        "`project.dataset.ac_missing`",
+        ({"object_name": "ac/missing"},),
+        (("object_name", "STRING"),),
+        "WRITE_APPEND",
+    ) in loaded_rows
+
+
 def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
     captured = {}
 
@@ -82,25 +156,13 @@ def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
         captured.setdefault("queries", []).append(
             (query, {param.name: param.value for param in parameters})
         )
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 256,
-                        "oldest_indexed_through": datetime(2026, 6, 15, 11, 30, tzinfo=UTC),
-                        "newest_indexed_through": datetime(2026, 6, 15, 11, 55, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=5,
-            )
         if "candidate_cas_object_count" in query:
             return BigQueryQueryResult(
                 rows=(
                     {
-                        "candidate_cas_object_count": 20,
+                        "candidate_cas_object_count": 0,
                         "candidate_ac_object_count": 5,
-                        "candidate_cas_delete_object_count": 15,
+                        "candidate_cas_delete_object_count": 0,
                         "oldest_last_seen_at": datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
                         "newest_last_seen_at": datetime(2026, 5, 10, 0, 0, tzinfo=UTC),
                         "sample_candidates": [
@@ -134,14 +196,15 @@ def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
     assert summary.execute_kind == "cas"
     assert summary.ac_retention_days == 10
     assert summary.cas_retention_days == 15
-    assert summary.candidate_cas_object_count == 20
+    assert summary.candidate_cas_object_count == 0
     assert summary.candidate_ac_object_count == 5
-    assert summary.candidate_cas_delete_object_count == 15
+    assert summary.candidate_cas_delete_object_count == 0
+    assert summary.ac_parse_error_count == 0
     assert summary.selected_ac_object_count == 0
     assert summary.selected_cas_object_count == 0
     assert len(summary.sample_candidates) == 1
     assert summary.sample_candidates[0].object_name == "ac/foo"
-    assert summary.bytes_processed == 16
+    assert summary.bytes_processed == 10
     assert summary.run_started_at == now
     assert summary.run_finished_at == now
 
@@ -155,25 +218,13 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
     def fake_execute(query, parameters):
         rendered = {param.name: param.value for param in parameters}
         captured_queries.append((query, rendered))
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 256,
-                        "oldest_indexed_through": datetime(2026, 6, 15, 9, 30, tzinfo=UTC),
-                        "newest_indexed_through": datetime(2026, 6, 15, 10, 20, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=1,
-            )
         if "candidate_cas_object_count" in query:
             return BigQueryQueryResult(
                 rows=(
                     {
-                        "candidate_cas_object_count": 8,
+                        "candidate_cas_object_count": 0,
                         "candidate_ac_object_count": 3,
-                        "candidate_cas_delete_object_count": 5,
+                        "candidate_cas_delete_object_count": 0,
                         "oldest_last_seen_at": datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
                         "newest_last_seen_at": datetime(2026, 5, 8, 0, 0, tzinfo=UTC),
                         "sample_candidates": [],
@@ -181,6 +232,8 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
                 ),
                 total_bytes_processed=2,
             )
+        if "SELECT COUNT(DISTINCT cas_object_name) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 3},), total_bytes_processed=1)
         if "SELECT COUNT(*) AS object_count FROM" in query:
             if "delete_ac" in query:
                 return BigQueryQueryResult(rows=({"object_count": 1},), total_bytes_processed=1)
@@ -214,6 +267,22 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
             "cas/one": GcsObjectMetadata("cas/one", True, 201),
             "cas/two": GcsObjectMetadata("cas/two", True, 202),
             "cas/missing": GcsObjectMetadata("cas/missing", False, None),
+        }
+        return tuple(mapping[name] for name in names)
+
+    def fake_extract_references(**kwargs):
+        names = tuple(kwargs["ac_object_names"])
+        mapping = {
+            "ac/one": AcReferenceExtraction(
+                ac_object_name="ac/one",
+                exists=True,
+                cas_object_names=("cas/one", "cas/two", "cas/missing"),
+            ),
+            "ac/missing": AcReferenceExtraction(
+                ac_object_name="ac/missing",
+                exists=False,
+                cas_object_names=(),
+            ),
         }
         return tuple(mapping[name] for name in names)
 
@@ -252,6 +321,7 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         execute=fake_execute,
         stream_rows=fake_stream_rows,
         resolve_object_metadata=fake_resolve_object_metadata,
+        extract_references=fake_extract_references,
         load_json_rows=fake_load_json_rows,
         create_batch_job=fake_create_batch_job,
         wait_for_batch_job=fake_wait_for_batch_job,
@@ -259,9 +329,10 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         run_id_factory=lambda: "steady-run-001",
     )
 
-    assert summary.candidate_cas_object_count == 8
+    assert summary.candidate_cas_object_count == 3
     assert summary.candidate_ac_object_count == 3
-    assert summary.candidate_cas_delete_object_count == 5
+    assert summary.candidate_cas_delete_object_count == 2
+    assert summary.ac_parse_error_count == 0
     assert summary.selected_ac_object_count == 1
     assert summary.selected_cas_object_count == 2
     assert summary.ac_manifest_uri is not None
@@ -270,29 +341,23 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
     assert created_jobs[0]["manifest_uri"] == summary.ac_manifest_uri
     assert created_jobs[1]["manifest_uri"] == summary.cas_manifest_uri
     assert len(waited_jobs) == 2
-    assert any(
-        "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_references`"
-        in query
-        for query, _ in captured_queries
-    )
     assert any("manifest-*.csv" in query for query, _ in captured_queries)
     assert any("WRITE_APPEND" == disposition for _, _, _, disposition in loaded_rows)
     assert any(
-        "cas_from_deleted_ac" in query and params.get("limit") == 2
-        for query, params in captured_queries
+        "run_ac_cas_refs" in table_ref
+        and ("ac_object_name", "STRING") in schema
+        and ("cas_object_name", "STRING") in schema
+        for table_ref, _rows, schema, _disposition in loaded_rows
     )
     assert any(
-        "WHERE NOT EXISTS" in query
-        and "FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_references` AS ref"
-        in query
-        and "ref.cas_object_name = cas.object_name" in query
-        for query, _params in captured_queries
+        "cas_from_deleted_ac" in query and params.get("limit") == 2
+        for query, params in captured_queries
     )
     deleted_ac_reconcile_index = next(
         index
         for index, (query, _params) in enumerate(captured_queries)
         if "_tmp_gcs_cache_delete_ac_" in query
-        and "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_references`"
+        and "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current`"
         in query
     )
     cas_candidate_index = next(
@@ -309,142 +374,4 @@ def test_run_cleanup_gcs_cache_delete_requires_execute_kind_cas() -> None:
             settings=GcsCacheSettings(project_id="pingcap-testing-account"),
             mode="delete",
             execute_kind="all",
-        )
-
-
-def test_run_cleanup_gcs_cache_fails_closed_when_index_not_ready() -> None:
-    def fake_execute(query, parameters):
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 255,
-                        "oldest_indexed_through": datetime(2026, 6, 15, 11, 0, tzinfo=UTC),
-                        "newest_indexed_through": datetime(2026, 6, 15, 11, 0, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=1,
-            )
-        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
-
-    with pytest.raises(RuntimeError, match="AC reference index is not ready"):
-        run_cleanup_gcs_cache(
-            settings=GcsCacheSettings(project_id="pingcap-testing-account"),
-            mode="dry-run",
-            execute=fake_execute,
-        )
-
-
-def test_run_cleanup_gcs_cache_fails_closed_when_index_is_stale() -> None:
-    def fake_execute(query, parameters):
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 256,
-                        "oldest_indexed_through": datetime(2026, 6, 14, 22, 59, tzinfo=UTC),
-                        "newest_indexed_through": datetime(2026, 6, 15, 11, 50, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=1,
-            )
-        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
-
-    with pytest.raises(RuntimeError, match="index_spread="):
-        run_cleanup_gcs_cache(
-            settings=GcsCacheSettings(
-                project_id="pingcap-testing-account",
-                ac_reference_max_index_staleness_hours=12,
-            ),
-            mode="dry-run",
-            execute=fake_execute,
-            now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
-        )
-
-
-@pytest.mark.parametrize(
-    ("oldest_indexed_through", "should_raise"),
-    [
-        (datetime(2026, 6, 15, 0, 1, tzinfo=UTC), False),
-        (datetime(2026, 6, 14, 23, 59, tzinfo=UTC), True),
-    ],
-)
-def test_run_cleanup_gcs_cache_index_freshness_boundary(
-    oldest_indexed_through: datetime,
-    should_raise: bool,
-) -> None:
-    def fake_execute(query, parameters):
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 256,
-                        "oldest_indexed_through": oldest_indexed_through,
-                        "newest_indexed_through": datetime(2026, 6, 15, 11, 50, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=1,
-            )
-        if "candidate_cas_object_count" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "candidate_cas_object_count": 0,
-                        "candidate_ac_object_count": 0,
-                        "candidate_cas_delete_object_count": 0,
-                        "oldest_last_seen_at": None,
-                        "newest_last_seen_at": None,
-                        "sample_candidates": [],
-                    },
-                ),
-                total_bytes_processed=1,
-            )
-        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
-
-    kwargs = dict(
-        settings=GcsCacheSettings(
-            project_id="pingcap-testing-account",
-            ac_reference_max_index_staleness_hours=12,
-        ),
-        mode="dry-run",
-        execute=fake_execute,
-        now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
-    )
-    if should_raise:
-        with pytest.raises(RuntimeError, match="AC reference index is too stale"):
-            run_cleanup_gcs_cache(**kwargs)
-    else:
-        summary = run_cleanup_gcs_cache(**kwargs)
-        assert summary.candidate_cas_object_count == 0
-
-
-def test_run_cleanup_gcs_cache_delete_fails_closed_when_index_is_stale() -> None:
-    def fake_execute(query, parameters):
-        if "COUNT(*) AS total_shards" in query:
-            return BigQueryQueryResult(
-                rows=(
-                    {
-                        "total_shards": 256,
-                        "ready_shards": 256,
-                        "oldest_indexed_through": datetime(2026, 6, 14, 22, 0, tzinfo=UTC),
-                        "newest_indexed_through": datetime(2026, 6, 15, 11, 59, tzinfo=UTC),
-                    },
-                ),
-                total_bytes_processed=1,
-            )
-        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
-
-    with pytest.raises(RuntimeError, match="AC reference index is too stale"):
-        run_cleanup_gcs_cache(
-            settings=GcsCacheSettings(
-                project_id="pingcap-testing-account",
-                ac_reference_max_index_staleness_hours=12,
-            ),
-            mode="delete",
-            execute_kind="cas",
-            execute=fake_execute,
-            now=lambda: datetime(2026, 6, 15, 12, 0, tzinfo=UTC),
         )

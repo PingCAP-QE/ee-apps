@@ -19,6 +19,12 @@ JsonLoader = Callable[[str, Sequence[dict[str, object]]], None]
 
 
 @dataclass(frozen=True)
+class SyncGcsCacheAcReferenceParseErrorSample:
+    object_name: str
+    parse_error: str
+
+
+@dataclass(frozen=True)
 class SyncGcsCacheAcReferencesSummary:
     account_id: str
     bucket_name: str
@@ -27,8 +33,10 @@ class SyncGcsCacheAcReferencesSummary:
     shard_end: int
     source_object_count: int
     missing_object_count: int
+    parse_error_count: int
     replaced_ac_object_count: int
     reference_row_count: int
+    sample_parse_errors: tuple[SyncGcsCacheAcReferenceParseErrorSample, ...]
     dry_run: bool
     indexed_through: datetime
     bytes_processed: int | None
@@ -54,7 +62,9 @@ def run_sync_gcs_cache_ac_references(
 
     shard_count = settings.ac_reference_shard_count
     resolved_shard_end = shard_count - 1 if shard_end is None else shard_end
-    _validate_shard_range(shard_start=shard_start, shard_end=resolved_shard_end, shard_count=shard_count)
+    _validate_shard_range(
+        shard_start=shard_start, shard_end=resolved_shard_end, shard_count=shard_count
+    )
 
     stream_rows = _stream_query_rows if stream_rows is None else stream_rows
     load_json_rows = _load_json_rows if load_json_rows is None else load_json_rows
@@ -63,12 +73,16 @@ def run_sync_gcs_cache_ac_references(
     bytes_processed_total = 0
     source_object_count = 0
     missing_object_count = 0
+    parse_error_count = 0
     replaced_ac_object_count = 0
     reference_row_count = 0
+    sample_parse_errors: list[SyncGcsCacheAcReferenceParseErrorSample] = []
 
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
-        execute(build_ensure_gcs_cache_ac_reference_tables_query(settings), parameters=[]).total_bytes_processed,
+        execute(
+            build_ensure_gcs_cache_ac_reference_tables_query(settings), parameters=[]
+        ).total_bytes_processed,
     )
 
     run_id = run_started_at.strftime("%Y%m%dt%H%M%S")
@@ -97,10 +111,14 @@ def run_sync_gcs_cache_ac_references(
         )
 
     for shard in range(shard_start, resolved_shard_end + 1):
-        watermark = None if mode == "bootstrap" else _read_indexed_through(
-            execute=execute,
-            settings=settings,
-            shard=shard,
+        watermark = (
+            None
+            if mode == "bootstrap"
+            else _read_indexed_through(
+                execute=execute,
+                settings=settings,
+                shard=shard,
+            )
         )
         if mode == "incremental" and watermark is None:
             raise RuntimeError(
@@ -138,6 +156,16 @@ def run_sync_gcs_cache_ac_references(
             object_rows = []
             edge_rows = []
             for extraction in extractions:
+                if extraction.parse_error:
+                    parse_error_count += 1
+                    if len(sample_parse_errors) < 10:
+                        sample_parse_errors.append(
+                            SyncGcsCacheAcReferenceParseErrorSample(
+                                object_name=extraction.ac_object_name,
+                                parse_error=extraction.parse_error,
+                            )
+                        )
+                    continue
                 object_rows.append({"ac_object_name": extraction.ac_object_name})
                 replaced_ac_object_count += 1
                 if not extraction.exists:
@@ -190,8 +218,10 @@ def run_sync_gcs_cache_ac_references(
         shard_end=resolved_shard_end,
         source_object_count=source_object_count,
         missing_object_count=missing_object_count,
+        parse_error_count=parse_error_count,
         replaced_ac_object_count=replaced_ac_object_count,
         reference_row_count=reference_row_count,
+        sample_parse_errors=tuple(sample_parse_errors),
         dry_run=dry_run,
         indexed_through=run_started_at,
         bytes_processed=bytes_processed_total,
@@ -201,8 +231,12 @@ def run_sync_gcs_cache_ac_references(
 
 
 def build_ensure_gcs_cache_ac_reference_tables_query(settings: GcsCacheSettings) -> str:
-    references_table = _table_ref(settings.project_id, settings.dataset, settings.ac_cas_references_table)
-    state_table = _table_ref(settings.project_id, settings.dataset, settings.ac_reference_index_state_table)
+    references_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_references_table
+    )
+    state_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_reference_index_state_table
+    )
     return f"""
 CREATE TABLE IF NOT EXISTS {references_table} (
   ac_object_name STRING NOT NULL,
@@ -251,7 +285,9 @@ OPTIONS (
 
 
 def build_bootstrap_gcs_cache_ac_reference_source_query(settings: GcsCacheSettings) -> str:
-    current_table = _table_ref(settings.project_id, settings.dataset, settings.last_seen_current_table)
+    current_table = _table_ref(
+        settings.project_id, settings.dataset, settings.last_seen_current_table
+    )
     return f"""
 SELECT object_name
 FROM {current_table}
@@ -288,7 +324,9 @@ def build_replace_gcs_cache_ac_references_query(
     object_stage_table: str,
     edge_stage_table: str,
 ) -> str:
-    references_table = _table_ref(settings.project_id, settings.dataset, settings.ac_cas_references_table)
+    references_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_references_table
+    )
     return f"""
 DELETE FROM {references_table}
 WHERE ac_object_name IN (
@@ -308,7 +346,9 @@ FROM {edge_stage_table};
 
 
 def build_update_gcs_cache_ac_reference_index_state_query(settings: GcsCacheSettings) -> str:
-    state_table = _table_ref(settings.project_id, settings.dataset, settings.ac_reference_index_state_table)
+    state_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_reference_index_state_table
+    )
     return f"""
 UPDATE {state_table}
 SET indexed_through = @indexed_through
@@ -344,7 +384,9 @@ def _read_indexed_through(
     settings: GcsCacheSettings,
     shard: int,
 ) -> datetime | None:
-    state_table = _table_ref(settings.project_id, settings.dataset, settings.ac_reference_index_state_table)
+    state_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_reference_index_state_table
+    )
     result = execute(
         f"SELECT indexed_through FROM {state_table} WHERE shard = @shard",
         parameters=[BigQueryParameter("shard", "INT64", shard)],
@@ -367,7 +409,8 @@ def _stream_query_rows(
     client = bigquery.Client()
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter(param.name, param.type_, param.value) for param in parameters
+            bigquery.ScalarQueryParameter(param.name, param.type_, param.value)
+            for param in parameters
         ]
     )
     job = client.query(query, job_config=job_config)
@@ -403,7 +446,9 @@ def _load_json_rows(table_ref: str, rows: Sequence[dict[str, object]]) -> None:
     job.result()
 
 
-def _batched(values: Iterable[dict[str, object]], batch_size: int) -> Iterator[tuple[dict[str, object], ...]]:
+def _batched(
+    values: Iterable[dict[str, object]], batch_size: int
+) -> Iterator[tuple[dict[str, object], ...]]:
     iterator = iter(values)
     while True:
         batch = tuple(islice(iterator, batch_size))
@@ -424,11 +469,7 @@ def _validate_shard_range(*, shard_start: int, shard_end: int, shard_count: int)
 
 
 def _ac_shard_expression(column_name: str) -> str:
-    return (
-        "TO_CODE_POINTS(FROM_HEX(SUBSTR("
-        f"{column_name}, 4, 2"
-        ")))[OFFSET(0)]"
-    )
+    return f"TO_CODE_POINTS(FROM_HEX(SUBSTR({column_name}, 4, 2)))[OFFSET(0)]"
 
 
 def _table_ref(project_id: str, dataset: str, table: str) -> str:

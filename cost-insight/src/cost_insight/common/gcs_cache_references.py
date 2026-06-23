@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from threading import Event, Lock
 
 from cost_insight.common.gcs_client import create_storage_client
 
@@ -12,6 +13,7 @@ class AcReferenceExtraction:
     ac_object_name: str
     exists: bool
     cas_object_names: tuple[str, ...]
+    parse_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -42,9 +44,10 @@ def extract_action_cache_references_batch(
 
     client = create_storage_client(project_id=project_id, pool_maxsize=max_workers)
     bucket = client.bucket(bucket_name)
+    blob_cache: dict[str, bytes | None | Event | BaseException] = {}
+    blob_cache_lock = Lock()
 
     def extract_one(ac_object_name: str) -> AcReferenceExtraction:
-        blob_cache: dict[str, bytes] = {}
         blob = bucket.blob(ac_object_name)
         try:
             action_result_bytes = blob.download_as_bytes()
@@ -57,25 +60,62 @@ def extract_action_cache_references_batch(
 
         def fetch_cas_blob(hash_value: str) -> bytes | None:
             object_name = f"cas/{hash_value}"
-            cached = blob_cache.get(object_name)
-            if cached is not None:
-                return cached
+            with blob_cache_lock:
+                if object_name in blob_cache:
+                    cached = blob_cache[object_name]
+                    if not isinstance(cached, Event):
+                        if isinstance(cached, BaseException):
+                            raise cached
+                        return cached
+                    wait_for_download = cached
+                    should_download = False
+                else:
+                    wait_for_download = Event()
+                    blob_cache[object_name] = wait_for_download
+                    should_download = True
+
+            if not should_download:
+                wait_for_download.wait()
+                with blob_cache_lock:
+                    cached = blob_cache[object_name]
+                    if isinstance(cached, Event):
+                        raise RuntimeError(f"CAS blob cache still pending for {object_name}")
+                    if isinstance(cached, BaseException):
+                        raise cached
+                    return cached
+
             cas_blob = bucket.blob(object_name)
             try:
                 data = cas_blob.download_as_bytes()
             except NotFound:
-                return None
-            blob_cache[object_name] = data
-            return data
+                data = None
+            except BaseException as exc:
+                with blob_cache_lock:
+                    blob_cache[object_name] = exc
+                    wait_for_download.set()
+                raise
 
-        cas_object_names = tuple(
-            sorted(
-                extract_cas_references_from_action_result_bytes(
-                    action_result_bytes,
-                    fetch_cas_blob=fetch_cas_blob,
+            with blob_cache_lock:
+                blob_cache[object_name] = data
+                wait_for_download.set()
+                return data
+
+        try:
+            cas_object_names = tuple(
+                sorted(
+                    extract_cas_references_from_action_result_bytes(
+                        action_result_bytes,
+                        fetch_cas_blob=fetch_cas_blob,
+                    )
                 )
             )
-        )
+        except ValueError as exc:
+            return AcReferenceExtraction(
+                ac_object_name=ac_object_name,
+                exists=True,
+                cas_object_names=(),
+                parse_error=str(exc),
+            )
         return AcReferenceExtraction(
             ac_object_name=ac_object_name,
             exists=True,
@@ -251,17 +291,23 @@ def _parse_message(message_bytes: bytes) -> tuple[_WireField, ...]:
             fields.append(_WireField(field_number=field_number, wire_type=wire_type, value=value))
             continue
         if wire_type == 1:
+            if offset + 8 > len(message_bytes):
+                raise ValueError("Truncated protobuf fixed64 field")
             value = message_bytes[offset : offset + 8]
             offset += 8
             fields.append(_WireField(field_number=field_number, wire_type=wire_type, value=value))
             continue
         if wire_type == 2:
             length, offset = _read_varint(message_bytes, offset)
+            if offset + length > len(message_bytes):
+                raise ValueError("Truncated protobuf length-delimited field")
             value = message_bytes[offset : offset + length]
             offset += length
             fields.append(_WireField(field_number=field_number, wire_type=wire_type, value=value))
             continue
         if wire_type == 5:
+            if offset + 4 > len(message_bytes):
+                raise ValueError("Truncated protobuf fixed32 field")
             value = message_bytes[offset : offset + 4]
             offset += 4
             fields.append(_WireField(field_number=field_number, wire_type=wire_type, value=value))
@@ -273,7 +319,7 @@ def _parse_message(message_bytes: bytes) -> tuple[_WireField, ...]:
 def _read_varint(data: bytes, offset: int) -> tuple[int, int]:
     shift = 0
     result = 0
-    while True:
+    for _ in range(10):
         if offset >= len(data):
             raise ValueError("Unexpected end of protobuf varint")
         current = data[offset]
@@ -282,3 +328,4 @@ def _read_varint(data: bytes, offset: int) -> tuple[int, int]:
         if current < 0x80:
             return result, offset
         shift += 7
+    raise ValueError("Protobuf varint exceeds 10 bytes")
