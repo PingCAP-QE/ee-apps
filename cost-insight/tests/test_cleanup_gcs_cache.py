@@ -14,6 +14,7 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     _populate_ac_stage_tables,
     build_cleanup_gcs_cache_final_ac_delete_table_query,
     build_cleanup_gcs_cache_manifest_export_query,
+    build_cleanup_gcs_cache_metadata_stage_tables_query,
     build_cleanup_gcs_cache_reconcile_deleted_cas_query,
     build_cleanup_gcs_cache_summary_query,
     run_cleanup_gcs_cache,
@@ -74,6 +75,20 @@ def test_cleanup_gcs_cache_final_ac_delete_table_excludes_missing_metadata() -> 
     assert "WHERE NOT EXISTS" in query
     assert "FROM `project.dataset.ac_missing` AS missing" in query
     assert "missing.object_name = live.object_name" in query
+
+
+def test_cleanup_gcs_cache_metadata_stage_tables_query_separates_ddl_statements() -> None:
+    query = build_cleanup_gcs_cache_metadata_stage_tables_query(
+        ttl_days=7,
+        ac_live_metadata_table="`project.dataset.ac_live`",
+        ac_missing_metadata_table="`project.dataset.ac_missing`",
+        cas_live_metadata_table="`project.dataset.cas_live`",
+        cas_missing_metadata_table="`project.dataset.cas_missing`",
+    )
+
+    assert query.count("CREATE OR REPLACE TABLE") == 4
+    assert query.count(";\n\nCREATE OR REPLACE TABLE") == 3
+    assert "INTERVAL 7 DAY" in query
 
 
 def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:

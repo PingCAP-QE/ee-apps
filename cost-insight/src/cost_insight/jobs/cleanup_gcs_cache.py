@@ -612,7 +612,7 @@ def build_cleanup_gcs_cache_metadata_stage_tables_query(
     cas_live_metadata_table: str,
     cas_missing_metadata_table: str,
 ) -> str:
-    return "\n\n".join(
+    return ";\n\n".join(
         [
             _create_table_query(
                 ac_live_metadata_table,
