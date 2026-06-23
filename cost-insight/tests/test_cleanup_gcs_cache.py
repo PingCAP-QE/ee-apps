@@ -129,6 +129,43 @@ def test_cleanup_gcs_cache_cas_queries_avoid_current_reserved_alias() -> None:
         assert " AS current_obj\n" in query
 
 
+def test_cleanup_gcs_cache_final_cas_delete_ignores_cleanup_metadata_gets() -> None:
+    query = build_cleanup_gcs_cache_final_cas_delete_table_query(
+        GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            last_seen_excluded_get_principal_email=(
+                "ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com"
+            ),
+        ),
+        source_table="`project.dataset.candidate_cas`",
+        live_metadata_table="`project.dataset.cas_live`",
+        candidate_table="`project.dataset.delete_cas`",
+        ttl_days=7,
+    )
+
+    assert "FROM `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access` AS audit" in query
+    assert "audit.protopayload_auditlog.methodName IN" in query
+    assert "audit.timestamp > source.last_seen_at" in query
+    assert "AND NOT (" in query
+    assert "audit.protopayload_auditlog.methodName = 'storage.objects.get'" in query
+    assert (
+        "audit.protopayload_auditlog.authenticationInfo.principalEmail = "
+        "'ci-dashboard@pingcap-testing-account.iam.gserviceaccount.com'"
+    ) in query
+
+
+def test_cleanup_gcs_cache_final_cas_delete_keeps_all_audit_events_without_exclusion() -> None:
+    query = build_cleanup_gcs_cache_final_cas_delete_table_query(
+        GcsCacheSettings(project_id="pingcap-testing-account"),
+        source_table="`project.dataset.candidate_cas`",
+        live_metadata_table="`project.dataset.cas_live`",
+        candidate_table="`project.dataset.delete_cas`",
+        ttl_days=7,
+    )
+
+    assert "authenticationInfo.principalEmail" not in query
+
+
 def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:
     loaded_rows = []
 

@@ -675,6 +675,7 @@ def build_cleanup_gcs_cache_final_cas_delete_table_query(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
     audit_table = _table_ref(settings.project_id, settings.dataset, settings.audit_log_table)
+    ignored_cleanup_get_filter = _ignored_cleanup_get_filter(settings)
     return f"""
 CREATE OR REPLACE TABLE {candidate_table}
 OPTIONS (
@@ -702,6 +703,7 @@ WHERE NOT EXISTS (
     )
     AND REGEXP_EXTRACT(audit.protopayload_auditlog.resourceName, r"/objects/(.+)$") = source.object_name
     AND audit.timestamp > source.last_seen_at
+    {ignored_cleanup_get_filter}
 )
 ORDER BY source.last_seen_at ASC, source.object_name ASC
 """.strip()
@@ -1104,6 +1106,21 @@ def _batched_values(values: Iterable[str], batch_size: int) -> Iterator[tuple[st
 
 def _table_ref(project_id: str, dataset: str, table: str) -> str:
     return f"`{project_id}.{dataset}.{table}`"
+
+
+def _ignored_cleanup_get_filter(settings: GcsCacheSettings) -> str:
+    principal_email = (settings.last_seen_excluded_get_principal_email or "").strip()
+    if not principal_email:
+        return ""
+    return f"""
+    AND NOT (
+      audit.protopayload_auditlog.methodName = 'storage.objects.get'
+      AND audit.protopayload_auditlog.authenticationInfo.principalEmail = {_sql_string_literal(principal_email)}
+    )""".rstrip()
+
+
+def _sql_string_literal(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _add_bytes(total: int, value: int | None) -> int:
