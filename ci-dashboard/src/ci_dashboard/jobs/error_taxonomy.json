@@ -501,6 +501,15 @@
       ]
     },
     {
+      "name": "infra_bazel_cache_miss",
+      "l1": "INFRA",
+      "l2": "BAZEL_CACHE_MISS",
+      "text_patterns": [
+        "Failed to fetch blobs because they do not exist remotely\\.: Missing digest:",
+        "Missing digest: [0-9a-f]+/[0-9]+ for bazel-out/"
+      ]
+    },
+    {
       "name": "build_go_compile_failure",
       "l1": "BUILD",
       "l2": "COMPILE",

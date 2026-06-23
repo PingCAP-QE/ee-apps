@@ -1232,6 +1232,7 @@ def get_infra_l2_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
         "JENKINS",
         "JENKINS_CACHE",
         "JENKINS_GROOVY",
+        "BAZEL_CACHE_MISS",
         "SPOT_PREEMPTED",
         "K8S_NODE_SHUTDOWN",
         "K8S_STORAGE_EVICTED",

@@ -2153,6 +2153,39 @@ def test_rule_engine_prefers_build_compile_over_bazel_unit_wrapper_failure() -> 
     assert classification.source == "rule:build_go_compile_failure"
 
 
+def test_rule_engine_prefers_bazel_cache_miss_over_compile_noise() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "pkg/util/etcd/source.go:31:67: undefined: rpctypes.MetadataClientSourceKey\n"
+            "compilepkg: error running subcommand external/go_sdk/pkg/tool/linux_amd64/compile: "
+            "exit status 2\n"
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pull_unit_test_next_gen/"
+            "tidb/pkg/util/dbterror/plannererrors/BUILD.bazel:14:8: GoCompilePkg "
+            "pkg/util/dbterror/plannererrors/plannererrors_test~testmain.a failed: "
+            "Failed to fetch blobs because they do not exist remotely.: Missing digest: "
+            "1386cd831da726c032323b7b182802b6a9c2c71631b03ebd3a812beb36ec8389/3690 "
+            "for bazel-out/k8-fastbuild/bin/pkg/util/dbterror/plannererrors/"
+            "plannererrors_test_/testmain.go\n"
+            "//br/pkg/checkpoint:checkpoint_test FAILED TO BUILD\n"
+            "make: *** [Makefile:705: bazel_ci_test] Error 1\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_unit_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_unit_test_next_gen/5472/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "BAZEL_CACHE_MISS"
+    assert classification.source == "rule:infra_bazel_cache_miss"
+
+
 def test_rule_engine_classifies_pull_unit_nogo_validation_as_format_check() -> None:
     engine = RuleEngine.from_file()
 
@@ -2349,6 +2382,36 @@ def test_rule_engine_classifies_remote_cache_throttle_as_infra_network() -> None
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "NETWORK"
     assert classification.source == "rule:infra_remote_cache_throttle_network"
+
+
+def test_rule_engine_classifies_bazel_missing_remote_blob_as_infra_cache_miss() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "INFO: Analyzed 521 targets (2640 packages loaded, 31292 targets configured).\n"
+            "ERROR: /home/jenkins/agent/workspace/pingcap/tidb/pull_unit_test_next_gen/"
+            "tidb/pkg/util/dbterror/plannererrors/BUILD.bazel:14:8: GoCompilePkg "
+            "pkg/util/dbterror/plannererrors/plannererrors_test~testmain.a failed: "
+            "Failed to fetch blobs because they do not exist remotely.: Missing digest: "
+            "1386cd831da726c032323b7b182802b6a9c2c71631b03ebd3a812beb36ec8389/3690 "
+            "for bazel-out/k8-fastbuild/bin/pkg/util/dbterror/plannererrors/"
+            "plannererrors_test_/testmain.go\n"
+            "ERROR: Build did NOT complete successfully\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_unit_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_unit_test_next_gen/5472/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "BAZEL_CACHE_MISS"
+    assert classification.source == "rule:infra_bazel_cache_miss"
 
 
 def test_rule_engine_classifies_ghpr_check2_not_bootstrapped_realtikv_failure_as_it() -> None:
