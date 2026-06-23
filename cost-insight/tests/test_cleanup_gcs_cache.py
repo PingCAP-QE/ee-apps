@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -16,6 +17,7 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     build_cleanup_gcs_cache_manifest_export_query,
     build_cleanup_gcs_cache_metadata_stage_tables_query,
     build_cleanup_gcs_cache_reconcile_deleted_cas_query,
+    build_cleanup_gcs_cache_run_references_table_query,
     build_cleanup_gcs_cache_summary_query,
     run_cleanup_gcs_cache,
 )
@@ -89,6 +91,17 @@ def test_cleanup_gcs_cache_metadata_stage_tables_query_separates_ddl_statements(
     assert query.count("CREATE OR REPLACE TABLE") == 4
     assert query.count(";\n\nCREATE OR REPLACE TABLE") == 3
     assert "INTERVAL 7 DAY" in query
+
+
+def test_cleanup_gcs_cache_run_references_table_query_uses_nullable_load_schema() -> None:
+    query = build_cleanup_gcs_cache_run_references_table_query(
+        run_references_table="`project.dataset.run_refs`",
+        ttl_days=7,
+    )
+
+    assert "ac_object_name STRING," in query
+    assert "cas_object_name STRING" in query
+    assert "NOT NULL" not in query
 
 
 def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:
@@ -229,10 +242,12 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
     created_jobs = []
     waited_jobs = []
     loaded_rows = []
+    table_schemas = {}
 
     def fake_execute(query, parameters):
         rendered = {param.name: param.value for param in parameters}
         captured_queries.append((query, rendered))
+        _record_explicit_create_table_schemas(query, table_schemas)
         if "candidate_cas_object_count" in query:
             return BigQueryQueryResult(
                 rows=(
@@ -302,6 +317,7 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         return tuple(mapping[name] for name in names)
 
     def fake_load_json_rows(table_ref, rows, schema, write_disposition):
+        _assert_load_schema_matches_created_table(table_schemas, table_ref, schema)
         loaded_rows.append((table_ref, tuple(rows), tuple(schema), write_disposition))
 
     def fake_create_batch_job(**kwargs):
@@ -390,3 +406,41 @@ def test_run_cleanup_gcs_cache_delete_requires_execute_kind_cas() -> None:
             mode="delete",
             execute_kind="all",
         )
+
+
+def _record_explicit_create_table_schemas(
+    query: str,
+    table_schemas: dict[str, dict[str, tuple[str, str]]],
+) -> None:
+    for match in re.finditer(
+        r"CREATE OR REPLACE TABLE\s+(`[^`]+`)\s*\((.*?)\)\s*OPTIONS",
+        query,
+        flags=re.DOTALL,
+    ):
+        table_ref = match.group(1)
+        columns: dict[str, tuple[str, str]] = {}
+        for raw_line in match.group(2).splitlines():
+            line = raw_line.strip().rstrip(",")
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            mode = "REQUIRED" if "NOT NULL" in line.upper() else "NULLABLE"
+            columns[parts[0]] = (parts[1], mode)
+        table_schemas[table_ref] = columns
+
+
+def _assert_load_schema_matches_created_table(
+    table_schemas: dict[str, dict[str, tuple[str, str]]],
+    table_ref: str,
+    load_schema: tuple[tuple[str, str], ...],
+) -> None:
+    table_schema = table_schemas.get(table_ref)
+    assert table_schema is not None, f"load target table was not created first: {table_ref}"
+    for name, field_type in load_schema:
+        assert name in table_schema
+        created_type, created_mode = table_schema[name]
+        assert created_type == field_type
+        # load_table_from_json uses NULLABLE fields when mode is not explicitly set.
+        assert created_mode == "NULLABLE"

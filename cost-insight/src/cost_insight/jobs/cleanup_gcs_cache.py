@@ -555,8 +555,8 @@ def build_cleanup_gcs_cache_run_references_table_query(
 ) -> str:
     return f"""
 CREATE OR REPLACE TABLE {run_references_table} (
-  ac_object_name STRING NOT NULL,
-  cas_object_name STRING NOT NULL
+  ac_object_name STRING,
+  cas_object_name STRING
 )
 OPTIONS (
   expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY)
