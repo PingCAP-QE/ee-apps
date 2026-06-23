@@ -64,6 +64,7 @@ def _sqlite_engine():
                   namespace TEXT,
                   org TEXT,
                   repo TEXT,
+                  target_branch TEXT,
                   author TEXT,
                   resource_name TEXT NOT NULL,
                   usage_seconds REAL,
@@ -96,6 +97,7 @@ def _resource_row() -> dict[str, object]:
         "author": "hawkingrei",
         "org": "pingcap",
         "repo": "tidb",
+        "target_branch": "master",
         "resource_name": "tidb-test-pod-1",
         "usage_seconds": "3600.00",
         "list_cost": "10.00",
@@ -111,6 +113,9 @@ def test_unmatched_resource_hash_ignores_amount_changes() -> None:
     changed = {**row, "net_cost": "99.00"}
 
     assert build_unmatched_resource_row_hash(row) == build_unmatched_resource_row_hash(changed)
+    assert build_unmatched_resource_row_hash(row) != build_unmatched_resource_row_hash(
+        {**row, "target_branch": "release-8.5"}
+    )
 
 
 def test_normalize_resource_row_rejects_missing_resource_name() -> None:

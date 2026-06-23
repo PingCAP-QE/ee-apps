@@ -130,13 +130,14 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
         log_level="INFO",
     )
 
-    def fake_run(engine, *, settings, start_date, end_date, dry_run, limit):
+    def fake_run(engine, *, settings, start_date, end_date, dry_run, limit, replace_existing_dates):
         captured["engine"] = engine
         captured["settings"] = settings
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
         captured["limit"] = limit
+        captured["replace_existing_dates"] = replace_existing_dates
         return SyncGcpBillingSummary(
             account_id=settings.account_id,
             start_date=start_date,
@@ -161,6 +162,7 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
             "--limit",
             "10",
             "--dry-run",
+            "--replace-existing-dates",
         ]
     )
 
@@ -171,6 +173,7 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
     assert captured["end_date"] == date(2026, 5, 18)
     assert captured["dry_run"] is True
     assert captured["limit"] == 10
+    assert captured["replace_existing_dates"] is True
     assert '"rows_seen": 1' in output
 
 
@@ -187,8 +190,8 @@ def test_cli_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
         log_level="INFO",
     )
 
-    def fake_run(_engine, *, settings, start_date, end_date, dry_run, limit):
-        calls.append((start_date, end_date, dry_run, limit))
+    def fake_run(_engine, *, settings, start_date, end_date, dry_run, limit, replace_existing_dates):
+        calls.append((start_date, end_date, dry_run, limit, replace_existing_dates))
         return SyncGcpBillingSummary(
             account_id=settings.account_id,
             start_date=start_date,
@@ -218,9 +221,9 @@ def test_cli_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
     )
 
     assert calls == [
-        (date(2026, 5, 10), date(2026, 5, 10), False, None),
-        (date(2026, 5, 11), date(2026, 5, 11), False, None),
-        (date(2026, 5, 12), date(2026, 5, 12), False, None),
+        (date(2026, 5, 10), date(2026, 5, 10), False, None, False),
+        (date(2026, 5, 11), date(2026, 5, 11), False, None, False),
+        (date(2026, 5, 12), date(2026, 5, 12), False, None, False),
     ]
     assert '"start_date": "2026-05-10"' in capsys.readouterr().out
 
@@ -562,6 +565,7 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
             "--limit",
             "10",
             "--dry-run",
+            "--replace-existing-partitions",
         ]
     )
 
@@ -572,6 +576,7 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
     assert captured["export_partition_end"] == date(2026, 5, 18)
     assert captured["earliest_usage_date"] == date(2026, 1, 1)
     assert captured["limit"] == 10
+    assert captured["replace_existing_partitions"] is True
     assert '"touched_usage_dates": [' in output
 
 

@@ -345,6 +345,7 @@ def test_insert_sql_contains_roster_matching_and_daily_dimensions() -> None:
     assert "author_normalized" in sql
     assert "missing_author" in sql
     assert "resource_name" in sql
+    assert "target_branch" in sql
     assert "SHA2(" in sql
     assert "{normalized_" not in sql
 
@@ -357,6 +358,7 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "summary.sku_name" in sql
     assert "NULL AS resource_name" in sql
     assert "NULL AS usage_seconds" in sql
+    assert "target_branch" in sql
     assert "LEFT JOIN roster_employees github_employee" in sql
     assert "LEFT JOIN roster_employees override_employee" in sql
     assert "LOWER(github_employee.github_id) = LOWER(summary.author)" in sql

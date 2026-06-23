@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS cost_raw_details (
   author VARCHAR(255) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
+  target_branch VARCHAR(255) NULL,
   resource_name VARCHAR(512) NULL,
   usage_seconds DECIMAL(20, 2) NULL,
   list_cost DECIMAL(16, 2) NULL,
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS cost_attribution_daily (
   sku_name VARCHAR(255) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
+  target_branch VARCHAR(255) NULL,
   resource_name VARCHAR(512) NULL,
   author VARCHAR(255) NULL,
   owner VARCHAR(255) NULL,
@@ -76,6 +78,7 @@ CREATE TABLE IF NOT EXISTS cost_attribution_daily (
   UNIQUE KEY uk_cost_attribution_daily_dimension_hash (usage_date, dimension_hash),
   KEY idx_cost_attribution_daily_author (usage_date, author),
   KEY idx_cost_attribution_daily_repo (usage_date, org, repo),
+  KEY idx_cost_attribution_daily_branch (usage_date, target_branch),
   KEY idx_cost_attribution_daily_group (usage_date, group_id),
   KEY idx_cost_attribution_daily_manager (usage_date, manager_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

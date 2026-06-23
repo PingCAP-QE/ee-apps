@@ -507,6 +507,7 @@ def _insert_cost_attribution(
     employee_id: int | None = 1,
     usage_seconds: float = 3600,
     service_name: str = "Compute Engine",
+    target_branch: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -514,12 +515,12 @@ def _insert_cost_attribution(
                 """
                 INSERT INTO cost_attribution_daily (
                   usage_date, vendor, account_id, service_name, sku_name, org, repo,
-                  resource_name, author, owner, attribution_key, attribution_source,
+                  target_branch, resource_name, author, owner, attribution_key, attribution_source,
                   attribution_status, employee_id, group_id, manager_id, usage_seconds,
                   list_cost, effective_cost, credit_amount, net_cost, source_rows, dimension_hash
                 ) VALUES (
                   :usage_date, :vendor, :account_id, :service_name, 'runner',
-                  'pingcap', :repo, :resource_name, :author, :owner, :attribution_key, :attribution_source,
+                  'pingcap', :repo, :target_branch, :resource_name, :author, :owner, :attribution_key, :attribution_source,
                   :attribution_status, :employee_id, :group_id, NULL, :usage_seconds, :list_cost, :effective_cost,
                   0, :net_cost, 1, :dimension_hash
                 )
@@ -530,6 +531,7 @@ def _insert_cost_attribution(
                 "vendor": vendor,
                 "account_id": account_id,
                 "repo": repo,
+                "target_branch": target_branch,
                 "group_id": group_id,
                 "resource_name": resource_name,
                 "author": author,
@@ -563,6 +565,7 @@ def _insert_cost_raw_detail(
     service_name: str = "Compute Engine",
     sku_name: str = "runner",
     source_row_hash: str | None = None,
+    target_branch: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -570,11 +573,11 @@ def _insert_cost_raw_detail(
                 """
                 INSERT INTO cost_raw_details (
                   vendor, account_id, billing_account_id, usage_date, service_name, sku_name,
-                  region, namespace, author, org, repo, resource_name, usage_seconds,
+                  region, namespace, author, org, repo, target_branch, resource_name, usage_seconds,
                   list_cost, effective_cost, credit_amount, net_cost, source_export_time, source_row_hash
                 ) VALUES (
                   'gcp', 'pingcap-testing-account', 'billing-account-1', :usage_date, :service_name, :sku_name,
-                  'us-central1', :namespace, :author, 'pingcap', :repo, :resource_name, :usage_seconds,
+                  'us-central1', :namespace, :author, 'pingcap', :repo, :target_branch, :resource_name, :usage_seconds,
                   :list_cost, :effective_cost, 0, :net_cost, '2026-05-19 00:00:00', :source_row_hash
                 )
                 """
@@ -586,6 +589,7 @@ def _insert_cost_raw_detail(
                 "namespace": namespace,
                 "author": author,
                 "repo": repo,
+                "target_branch": target_branch,
                 "resource_name": resource_name,
                 "usage_seconds": usage_seconds,
                 "list_cost": list_cost,
@@ -614,6 +618,7 @@ def _insert_cost_unmatched_resource(
     service_name: str = "Compute Engine",
     sku_name: str = "runner",
     source_row_hash: str | None = None,
+    target_branch: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -621,12 +626,12 @@ def _insert_cost_unmatched_resource(
                 """
                 INSERT INTO cost_unmatched_resource_daily (
                   vendor, account_id, billing_account_id, export_partition_date, usage_date,
-                  service_name, sku_name, namespace, author, org, repo, resource_name,
+                  service_name, sku_name, namespace, author, org, repo, target_branch, resource_name,
                   usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
                   source_export_time, source_row_hash
                 ) VALUES (
                   :vendor, :account_id, :billing_account_id, :usage_date, :usage_date,
-                  :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :resource_name,
+                  :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :target_branch, :resource_name,
                   :usage_seconds, :list_cost, :effective_cost, 0, :net_cost,
                   '2026-05-19 00:00:00', :source_row_hash
                 )
@@ -642,6 +647,7 @@ def _insert_cost_unmatched_resource(
                 "namespace": namespace,
                 "author": author,
                 "repo": repo,
+                "target_branch": target_branch,
                 "resource_name": resource_name,
                 "usage_seconds": usage_seconds,
                 "list_cost": list_cost,
@@ -2567,6 +2573,16 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
         ["2026-05-25", 0.0],
     ]
 
+    branch_stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "target_branch"},
+    )
+    assert branch_stack_response.status_code == 200
+    branch_stack_body = branch_stack_response.json()
+    assert branch_stack_body["meta"]["group_by"] == "target_branch"
+    assert branch_stack_body["items"] == [{"name": "(no target branch)", "value": 10.0}]
+    assert branch_stack_body["series"][0]["key"] == "target_branch__no_target_branch"
+
     share_response = api_client.get("/api/v1/pages/cost-engineering-group-share", params=params)
     assert share_response.status_code == 200
     share_body = share_response.json()
@@ -2587,6 +2603,49 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
             "interactive": False,
         }
     ]
+
+
+def test_cost_routes_filter_by_target_branch(sqlite_engine, api_client: TestClient) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        repo="tidb",
+        group_id=111,
+        target_branch="master",
+        net_cost=8,
+        list_cost=10,
+        dimension_hash="master-cost",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        repo="tidb",
+        group_id=111,
+        target_branch="release-8.5",
+        net_cost=80,
+        list_cost=100,
+        dimension_hash="release-cost",
+    )
+
+    params = {
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+        "branch": "master",
+    }
+    trend_response = api_client.get("/api/v1/pages/cost-trend", params=params)
+    assert trend_response.status_code == 200
+    trend_body = trend_response.json()
+    assert trend_body["meta"]["branch"] == "master"
+    assert trend_body["meta"]["summary"]["list_cost"] == 10.0
+    assert trend_body["meta"]["summary"]["net_cost"] == 8.0
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "target_branch"},
+    )
+    assert stack_response.status_code == 200
+    stack_body = stack_response.json()
+    assert stack_body["items"] == [{"name": "master", "value": 10.0}]
 
 
 def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestClient) -> None:
@@ -2830,6 +2889,52 @@ def test_cost_weekly_account_summaries_route(
     ]
 
 
+def test_cost_weekly_account_summaries_filter_by_target_branch(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        display_name="pingcap-testing-account",
+    )
+    for usage_date, target_branch, net_cost in [
+        ("2026-05-28", "master", 80),
+        ("2026-06-04", "master", 120),
+        ("2026-05-28", "release-8.5", 800),
+        ("2026-06-04", "release-8.5", 1200),
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date=usage_date,
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            repo="tidb",
+            group_id=None,
+            target_branch=target_branch,
+            net_cost=net_cost,
+            list_cost=net_cost,
+            dimension_hash=f"{usage_date}-{target_branch}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-weekly-account-summaries",
+        params={
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-07",
+            "branch": "master",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scope"]["branch"] == "master"
+    assert body["items"][0]["net_cost"] == 120.0
+    assert body["items"][0]["previous_net_cost"] == 80.0
+    assert body["items"][0]["net_cost_wow_pct"] == 50.0
+
+
 def test_cost_weekly_overview_route(
     sqlite_engine,
     api_client: TestClient,
@@ -2974,6 +3079,45 @@ def test_cost_weekly_overview_route(
     assert body["level2_share"]["items"][-1]["value"] == 10.0
 
 
+def test_cost_weekly_overview_previous_window_filters_by_target_branch(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    for usage_date, target_branch, list_cost, net_cost in [
+        ("2026-05-18", "master", 10, 8),
+        ("2026-05-12", "master", 5, 4),
+        ("2026-05-18", "release-8.5", 100, 80),
+        ("2026-05-12", "release-8.5", 500, 400),
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date=usage_date,
+            repo="tidb",
+            group_id=None,
+            target_branch=target_branch,
+            list_cost=list_cost,
+            net_cost=net_cost,
+            dimension_hash=f"{usage_date}-{target_branch}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-weekly-overview",
+        params={
+            "start_date": "2026-05-16",
+            "end_date": "2026-05-22",
+            "branch": "master",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scope"]["branch"] == "master"
+    assert body["summary"]["list_cost"] == 10.0
+    assert body["summary"]["net_cost"] == 8.0
+    assert body["summary"]["previous_list_cost"] == 5.0
+    assert body["summary"]["previous_net_cost"] == 4.0
+
+
 def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     assert page_queries._get_previous_date_range(CommonFilters()) == (None, None)
     assert page_queries._get_previous_date_range(
@@ -3022,12 +3166,14 @@ def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.Monkey
             start_date=date(2026, 5, 1),
             end_date=date(2026, 5, 31),
             granularity="day",
+            branch="master",
             cost_vendor="aws",
             cost_account_id="946646677266",
         )
     ) == CommonFilters(
         start_date=date(2026, 5, 1),
         end_date=date(2026, 5, 31),
+        branch="master",
         granularity="week",
         cost_vendor="aws",
         cost_account_id="946646677266",

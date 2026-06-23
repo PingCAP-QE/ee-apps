@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_gcp.add_argument("--dry-run", action="store_true")
     sync_gcp.add_argument("--limit", type=int, default=None)
     sync_gcp.add_argument(
+        "--replace-existing-dates",
+        action="store_true",
+        help="Delete existing GCP raw rows for the requested usage date range before importing.",
+    )
+    sync_gcp.add_argument(
         "--split-by-day",
         action="store_true",
         help="Run one usage date at a time; recommended for backfills.",
@@ -55,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
     sync_summary.add_argument("--dry-run", action="store_true")
     sync_summary.add_argument("--limit", type=int, default=None)
+    sync_summary.add_argument(
+        "--replace-existing-partitions",
+        action="store_true",
+        help="Delete existing GCP summary rows for the requested export partition range before importing.",
+    )
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -197,6 +207,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
 
     if args.command == "sync-gcp-billing-export":
+        if args.replace_existing_dates and (args.start_date is None or args.end_date is None):
+            raise ValueError("--replace-existing-dates requires --start-date and --end-date")
         engine = build_engine(settings)
         try:
             summaries = []
@@ -208,6 +220,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.command == "sync-gcp-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
         engine = build_engine(settings)
         try:
             summaries = []
@@ -221,8 +239,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                         earliest_usage_date=args.earliest_usage_date,
                         dry_run=args.dry_run,
                         limit=args.limit,
+                        replace_existing_partitions=args.replace_existing_partitions,
                     )
-                )
+                    )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
@@ -435,6 +454,7 @@ def _run_sync_gcp_command(engine, *, settings, args):
                 end_date=usage_date,
                 dry_run=args.dry_run,
                 limit=args.limit,
+                replace_existing_dates=args.replace_existing_dates,
             )
             logger.info(
                 "sync-gcp-billing-export day finished",
@@ -450,6 +470,7 @@ def _run_sync_gcp_command(engine, *, settings, args):
         end_date=args.end_date,
         dry_run=args.dry_run,
         limit=args.limit,
+        replace_existing_dates=args.replace_existing_dates,
     )
     logger.info(
         "sync-gcp-billing-export finished",

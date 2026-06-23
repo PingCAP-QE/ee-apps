@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import pickle
+import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, BinaryIO
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -43,6 +45,7 @@ HASH_FIELDS = (
     "author",
     "org",
     "repo",
+    "target_branch",
 )
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -68,6 +71,7 @@ def run_sync_gcp_billing_summary(
     earliest_usage_date: date | None = None,
     dry_run: bool = False,
     limit: int | None = None,
+    replace_existing_partitions: bool = False,
     fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
 ) -> SyncGcpBillingSummaryResult:
     resolved_end = export_partition_end or (
@@ -102,24 +106,51 @@ def run_sync_gcp_billing_summary(
         rows_written = 0
         source_billing_account_ids: set[str] = set()
         batch: list[dict[str, Any]] = []
-        for source_row in fetch_rows(
-            billing_table=settings.billing_table,
-            account_id=settings.account_id,
-            export_partition_start=resolved_start,
-            export_partition_end=resolved_end,
-            earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
-            page_size=settings.page_size,
-            limit=limit,
-        ):
-            rows_seen += 1
-            normalized = _normalize_summary_row(source_row)
-            if normalized["billing_account_id"]:
-                source_billing_account_ids.add(normalized["billing_account_id"])
-            batch.append(normalized)
-            if len(batch) >= settings.page_size:
-                rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
-                batch.clear()
-        rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
+        if replace_existing_partitions:
+            with tempfile.TemporaryFile("w+b") as row_spool:
+                for source_row in fetch_rows(
+                    billing_table=settings.billing_table,
+                    account_id=settings.account_id,
+                    export_partition_start=resolved_start,
+                    export_partition_end=resolved_end,
+                    earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
+                    page_size=settings.page_size,
+                    limit=limit,
+                ):
+                    rows_seen += 1
+                    normalized = _normalize_summary_row(source_row)
+                    if normalized["billing_account_id"]:
+                        source_billing_account_ids.add(normalized["billing_account_id"])
+                    _dump_spooled_row(row_spool, normalized)
+                rows_written += replace_summary_partitions(
+                    engine,
+                    _iter_spooled_rows(row_spool),
+                    row_count=rows_seen,
+                    account_id=settings.account_id,
+                    export_partition_start=resolved_start,
+                    export_partition_end=resolved_end,
+                    dry_run=dry_run,
+                    batch_size=settings.page_size,
+                )
+        else:
+            for source_row in fetch_rows(
+                billing_table=settings.billing_table,
+                account_id=settings.account_id,
+                export_partition_start=resolved_start,
+                export_partition_end=resolved_end,
+                earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
+                page_size=settings.page_size,
+                limit=limit,
+            ):
+                rows_seen += 1
+                normalized = _normalize_summary_row(source_row)
+                if normalized["billing_account_id"]:
+                    source_billing_account_ids.add(normalized["billing_account_id"])
+                batch.append(normalized)
+                if len(batch) >= settings.page_size:
+                    rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
+                    batch.clear()
+            rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
 
         touched_usage_dates: tuple[date, ...] = ()
         if not dry_run:
@@ -210,6 +241,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "author": nullable_text(row.get("author")),
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
+        "target_branch": nullable_text(row.get("target_branch")),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
         "credit_amount": decimal_or_none(row.get("credit_amount")),
@@ -239,10 +271,59 @@ def write_summary_rows(engine: Engine, rows: Sequence[dict[str, Any]], *, dry_ru
         LOG.info("dry-run skipped cost_bq_export_summary_daily upsert", extra={"row_count": len(rows)})
         return 0
     with engine.begin() as connection:
-        _delete_legacy_summary_rows(connection, rows)
-        _delete_superseded_owner_override_rows(connection, rows)
-        connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
+        _write_summary_rows(connection, rows)
     return len(rows)
+
+
+def replace_summary_partitions(
+    engine: Engine,
+    rows: Iterable[dict[str, Any]],
+    *,
+    row_count: int,
+    account_id: str,
+    export_partition_start: date,
+    export_partition_end: date,
+    dry_run: bool,
+    batch_size: int,
+) -> int:
+    if dry_run:
+        LOG.info(
+            "dry-run skipped cost_bq_export_summary_daily partition replacement",
+            extra={
+                "row_count": row_count,
+                "account_id": account_id,
+                "export_partition_start": export_partition_start,
+                "export_partition_end": export_partition_end,
+            },
+        )
+        return 0
+    rows_written = 0
+    batch: list[dict[str, Any]] = []
+    with engine.begin() as connection:
+        _delete_existing_summary_partitions(
+            connection,
+            account_id=account_id,
+            export_partition_start=export_partition_start,
+            export_partition_end=export_partition_end,
+        )
+        for row in rows:
+            batch.append(row)
+            if len(batch) >= batch_size:
+                _write_summary_rows(connection, batch)
+                rows_written += len(batch)
+                batch.clear()
+        if batch:
+            _write_summary_rows(connection, batch)
+            rows_written += len(batch)
+    return rows_written
+
+
+def _write_summary_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    _delete_legacy_summary_rows(connection, rows)
+    _delete_superseded_owner_override_rows(connection, rows)
+    connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
 
 
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -290,6 +371,7 @@ def _delete_superseded_owner_override_rows(
                 "sku_name": row.get("sku_name") or "",
                 "org": row.get("org") or "",
                 "repo": row.get("repo") or "",
+                "target_branch": row.get("target_branch") or "",
             }
             for row in rows[offset : offset + OWNER_OVERRIDE_DELETE_CHUNK_SIZE]
             if _is_owner_override_row(row)
@@ -332,6 +414,24 @@ def _get_touched_usage_dates(
     return tuple(usage_dates)
 
 
+def _delete_existing_summary_partitions(
+    connection: Connection,
+    *,
+    account_id: str,
+    export_partition_start: date,
+    export_partition_end: date,
+) -> None:
+    connection.execute(
+        _DELETE_EXISTING_SUMMARY_PARTITIONS,
+        {
+            "vendor": "gcp",
+            "account_id": account_id,
+            "export_partition_start": export_partition_start,
+            "export_partition_end": export_partition_end,
+        },
+    )
+
+
 def _build_upsert_statement(connection: Connection):
     if connection.dialect.name == "sqlite":
         return text(
@@ -346,6 +446,7 @@ def _build_upsert_statement(connection: Connection):
               sku_name,
               org,
               repo,
+              target_branch,
               author,
               list_cost,
               effective_cost,
@@ -363,6 +464,7 @@ def _build_upsert_statement(connection: Connection):
               :sku_name,
               :org,
               :repo,
+              :target_branch,
               :author,
               :list_cost,
               :effective_cost,
@@ -396,6 +498,7 @@ def _build_upsert_statement(connection: Connection):
           sku_name,
           org,
           repo,
+          target_branch,
           author,
           list_cost,
           effective_cost,
@@ -413,6 +516,7 @@ def _build_upsert_statement(connection: Connection):
           :sku_name,
           :org,
           :repo,
+          :target_branch,
           :author,
           :list_cost,
           :effective_cost,
@@ -448,6 +552,16 @@ _SELECT_TOUCHED_USAGE_DATES = text(
 )
 
 
+_DELETE_EXISTING_SUMMARY_PARTITIONS = text(
+    """
+    DELETE FROM cost_bq_export_summary_daily
+    WHERE vendor = :vendor
+      AND account_id = :account_id
+      AND export_partition_date BETWEEN :export_partition_start AND :export_partition_end
+    """
+)
+
+
 _DELETE_LEGACY_SUMMARY_ROWS = text(
     """
     DELETE FROM cost_bq_export_summary_daily
@@ -472,6 +586,20 @@ _DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
       AND COALESCE(sku_name, '') = :sku_name
       AND COALESCE(org, '') = :org
       AND COALESCE(repo, '') = :repo
+      AND COALESCE(target_branch, '') = :target_branch
       AND author IS NULL
     """
 )
+
+
+def _dump_spooled_row(row_spool: BinaryIO, row: dict[str, Any]) -> None:
+    pickle.dump(row, row_spool, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _iter_spooled_rows(row_spool: BinaryIO) -> Iterable[dict[str, Any]]:
+    row_spool.seek(0)
+    while True:
+        try:
+            yield pickle.load(row_spool)
+        except EOFError:
+            return
