@@ -2,22 +2,17 @@
 
 ## Summary
 
-`CAS GC v3` changes the cleanup direction from CAS-driven to AC-driven
+`CAS GC v3` changes cleanup from standalone CAS LRU deletion to AC-driven
 cascading cleanup.
 
-The main goal is still to delete CAS objects, because CAS is the dominant source
-of bucket size. The v3 safety rule is:
+The goal is still to reduce CAS storage, because CAS is the dominant source of
+bucket size. The important change is that each cleanup run starts from cold AC
+objects, parses only those AC objects, and then deletes the CAS objects exposed
+by that selected AC set when the CAS objects are even colder.
 
-```text
-delete cold AC first
-then delete only CAS exposed by those AC objects
-only when CAS is extra cold
-and no AC reference remains in the reference index
-```
-
-This is intentionally more conservative than deleting CAS by LRU alone. `CAS
-last_seen_at` is not updated when Bazel reads an AC entry, so CAS age by itself
-does not prove that no AC still references it.
+This version intentionally does not require a full persistent `AC -> CAS`
+reference index bootstrap. It is a risk-controlled cleanup strategy, not a
+mathematically complete reachability GC.
 
 ## Retention
 
@@ -31,37 +26,29 @@ Effective AC cutoff:    11 days idle
 Effective CAS cutoff:   16 days idle
 ```
 
-The important property is:
+The key guardrail is:
 
 ```text
 effective_cas_idle_days > effective_ac_idle_days
 ```
 
-The extra CAS idle interval is a guardrail. It reduces risk, but it does not
-replace the AC reference check.
+CAS must be colder than the AC objects selected in the same run. This reduces
+the chance that a still-useful CAS object is removed immediately after an AC
+entry ages out.
 
 ## Persistent Tables
 
-v3 continues to use the minimal reference index from v2:
+v3 does not add a persistent run history table.
 
-```text
-gcs_cache_ac_cas_references
-- ac_object_name STRING
-- cas_object_name STRING
-```
-
-```text
-gcs_cache_ac_reference_index_state
-- shard INT64
-- indexed_through TIMESTAMP
-```
-
-There is still no persistent run history table. Per-run candidate and reference
-snapshot tables use short TTLs.
+The cleanup job continues to use `gcs_cache_object_last_seen_current` as the
+only persistent source for age selection. The existing AC reference index job
+can remain disabled for this cleanup path; v3 does not require
+`gcs_cache_ac_cas_references` or `gcs_cache_ac_reference_index_state` to be
+complete before deleting.
 
 ## Per-Run Temporary Tables
 
-Each delete run materializes:
+Each delete run materializes short-TTL tables:
 
 ```text
 candidate_ac
@@ -75,32 +62,30 @@ cas_missing_metadata
 delete_cas
 ```
 
-`run_ac_cas_refs` is created before AC deletion. It preserves the CAS set exposed
-by the selected AC objects even after successful AC reconcile removes persistent
-reference rows.
+`run_ac_cas_refs` is a per-run snapshot. It is populated by downloading and
+parsing the selected AC objects in that run. It is not a persistent global
+reference index.
 
 ## Delete Flow
 
-1. Verify all AC reference index shards are ready and fresh.
-2. Select cold AC from `gcs_cache_object_last_seen_current`.
-3. Materialize `run_ac_cas_refs` from `gcs_cache_ac_cas_references`.
-4. Resolve live AC metadata and generation.
-5. Reconcile missing AC out of `last_seen_current` and the reference index.
-6. Delete live AC by Storage Batch Operations with `bucket,name,generation`.
-7. Reconcile successfully deleted AC from `last_seen_current` and the reference
-   index.
-8. Build CAS candidates from `run_ac_cas_refs`.
-9. Keep only CAS with `last_seen_at < now - (cas_retention + buffer)`.
-10. Exclude any CAS that still has a remaining AC reference.
-11. Resolve live CAS metadata and generation.
-12. Reconcile missing CAS from `last_seen_current`.
-13. Run raw audit recheck in the final CAS delete table.
-14. Delete CAS by Storage Batch Operations with `bucket,name,generation`.
-15. Reconcile successfully deleted CAS from `last_seen_current`.
+1. Select cold AC from `gcs_cache_object_last_seen_current`.
+2. Resolve live AC metadata and generation.
+3. Download and parse selected AC objects to populate `run_ac_cas_refs`.
+4. Reconcile missing AC out of `last_seen_current`.
+5. Delete live AC by Storage Batch Operations with `bucket,name,generation`.
+6. Reconcile successfully deleted AC from `last_seen_current`.
+7. Build CAS candidates from `run_ac_cas_refs`.
+8. Keep only CAS with `last_seen_at < now - (cas_retention + buffer)`.
+9. Resolve live CAS metadata and generation.
+10. Reconcile missing CAS from `last_seen_current`.
+11. Run raw audit recheck in the final CAS delete table.
+12. Delete CAS by Storage Batch Operations with `bucket,name,generation`.
+13. Reconcile successfully deleted CAS from `last_seen_current`.
 
-If AC delete fails or partially fails, the job stops before CAS deletion.
-
-If the reference index is missing or stale, the job fails closed.
+If AC delete fails or partially fails, the job stops before CAS deletion. If an
+individual AC blob cannot be parsed, that AC is skipped for the current run: it
+is not deleted, it does not contribute CAS references, and the rest of the run
+continues.
 
 ## Safety Boundary
 
@@ -116,24 +101,39 @@ This is the v3 condition:
 CAS is referenced by AC selected in this run
 AND selected AC has been deleted or is already missing
 AND CAS idle is beyond the extra CAS cutoff
-AND no AC reference remains in gcs_cache_ac_cas_references
 AND raw audit has no later CAS get/create event
 AND live GCS generation still matches
 ```
 
-The outside-reference check is the main protection against known dangling AC.
-The extra CAS idle interval is an additional risk reducer.
+This does not prove no other AC object in the bucket references the same CAS.
+Instead, it relies on two operational facts:
+
+- AC objects are cheaper to delete and are selected first by age.
+- CAS deletion is delayed by a longer retention window and capped during rollout.
+
+The rollout cap is the main blast-radius limiter while we validate CI behavior.
+
+The known residual risk is shared CAS: a cold AC selected in this run and a warm
+AC outside this run may both reference the same extra-cold CAS object. v3 does
+not run a global outside-reference check, so rollout must keep a small CAS cap
+and monitor CI `Missing digest` errors before increasing the cap.
+
+## Dry-Run Semantics
+
+Dry-run remains useful as an AC backlog view. Because v3 only knows referenced
+CAS after downloading selected AC objects during a delete run, the dry-run
+summary intentionally reports CAS counts as zero.
+
+For CAS impact, use a small real canary cap. The canary performs the same
+selection, parsing, manifest export, and Batch Operations flow as production,
+but limits CAS deletion volume.
 
 ## Rollout
 
-1. Keep old CAS LRU delete disabled.
-2. Run dry-run and inspect:
-   - selected cold AC count
-   - CAS referenced by selected AC
-   - CAS surviving the extra idle guardrail
-   - CAS blocked by remaining AC references
+1. Keep old standalone CAS LRU delete disabled.
+2. Run dry-run and inspect cold AC backlog.
 3. Run a small AC + CAS canary with a small CAS cap.
-4. Watch CI for `Missing digest` failures.
+4. Watch CI for `Missing digest` failures and cache miss amplification.
 5. Increase CAS delete cap gradually only after stable canaries.
 
 ## Operational Defaults

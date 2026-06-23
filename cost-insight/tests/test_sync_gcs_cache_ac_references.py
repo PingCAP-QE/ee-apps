@@ -46,9 +46,10 @@ def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_r
     def fake_stream_rows(query, parameters):
         yield {"object_name": "ac/00aaaa"}
         yield {"object_name": "ac/00bbbb"}
+        yield {"object_name": "ac/00cccc"}
 
     def fake_extract_references(**kwargs):
-        assert kwargs["ac_object_names"] == ("ac/00aaaa", "ac/00bbbb")
+        assert kwargs["ac_object_names"] == ("ac/00aaaa", "ac/00bbbb", "ac/00cccc")
         return (
             AcReferenceExtraction(
                 ac_object_name="ac/00aaaa",
@@ -59,6 +60,12 @@ def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_r
                 ac_object_name="ac/00bbbb",
                 exists=False,
                 cas_object_names=(),
+            ),
+            AcReferenceExtraction(
+                ac_object_name="ac/00cccc",
+                exists=True,
+                cas_object_names=(),
+                parse_error="Unsupported protobuf wire type: 3",
             ),
         )
 
@@ -76,10 +83,13 @@ def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_r
     )
 
     assert summary.mode == "bootstrap"
-    assert summary.source_object_count == 2
+    assert summary.source_object_count == 3
     assert summary.missing_object_count == 1
+    assert summary.parse_error_count == 1
     assert summary.replaced_ac_object_count == 2
     assert summary.reference_row_count == 2
+    assert summary.sample_parse_errors[0].object_name == "ac/00cccc"
+    assert summary.sample_parse_errors[0].parse_error == "Unsupported protobuf wire type: 3"
     assert summary.indexed_through == now
 
 
@@ -127,8 +137,13 @@ def test_run_sync_gcs_cache_ac_references_incremental_updates_watermark_and_repl
 
     assert summary.mode == "incremental"
     assert summary.source_object_count == 1
+    assert summary.parse_error_count == 0
     assert summary.replaced_ac_object_count == 1
     assert summary.reference_row_count == 1
-    assert any("UPDATE `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_reference_index_state`" in query for query, _ in captured_queries)
+    assert any(
+        "UPDATE `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_reference_index_state`"
+        in query
+        for query, _ in captured_queries
+    )
     assert loaded_rows[0][1] == ({"ac_object_name": "ac/00cccc"},)
     assert loaded_rows[1][1] == ({"ac_object_name": "ac/00cccc", "cas_object_name": "cas/three"},)
