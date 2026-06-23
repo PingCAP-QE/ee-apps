@@ -13,6 +13,8 @@ from cost_insight.common.storage_batch_operations import (
 )
 from cost_insight.jobs.cleanup_gcs_cache import (
     _populate_ac_stage_tables,
+    build_cleanup_gcs_cache_cas_candidate_table_query,
+    build_cleanup_gcs_cache_final_cas_delete_table_query,
     build_cleanup_gcs_cache_final_ac_delete_table_query,
     build_cleanup_gcs_cache_manifest_export_query,
     build_cleanup_gcs_cache_metadata_stage_tables_query,
@@ -102,6 +104,29 @@ def test_cleanup_gcs_cache_run_references_table_query_uses_nullable_load_schema(
     assert "ac_object_name STRING," in query
     assert "cas_object_name STRING" in query
     assert "NOT NULL" not in query
+
+
+def test_cleanup_gcs_cache_cas_queries_avoid_current_reserved_alias() -> None:
+    settings = GcsCacheSettings(project_id="pingcap-testing-account")
+    queries = (
+        build_cleanup_gcs_cache_cas_candidate_table_query(
+            settings,
+            run_references_table="`project.dataset.run_refs`",
+            candidate_table="`project.dataset.candidate_cas`",
+            ttl_days=7,
+        ),
+        build_cleanup_gcs_cache_final_cas_delete_table_query(
+            settings,
+            source_table="`project.dataset.candidate_cas`",
+            live_metadata_table="`project.dataset.cas_live`",
+            candidate_table="`project.dataset.delete_cas`",
+            ttl_days=7,
+        ),
+    )
+
+    for query in queries:
+        assert " AS current\n" not in query
+        assert " AS current_obj\n" in query
 
 
 def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:

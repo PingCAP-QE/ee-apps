@@ -585,14 +585,14 @@ WITH cas_from_deleted_ac AS (
 ),
 cas_after_extra_idle AS (
   SELECT DISTINCT
-    current.object_name,
-    current.last_seen_at,
-    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), current.last_seen_at, DAY) AS idle_days
+    current_obj.object_name,
+    current_obj.last_seen_at,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), current_obj.last_seen_at, DAY) AS idle_days
   FROM cas_from_deleted_ac AS candidate
-  JOIN {current_table} AS current
-    ON current.object_name = candidate.cas_object_name
-   AND current.object_kind = 'cas'
-   AND current.last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @cas_cutoff_days DAY)
+  JOIN {current_table} AS current_obj
+    ON current_obj.object_name = candidate.cas_object_name
+   AND current_obj.object_kind = 'cas'
+   AND current_obj.last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @cas_cutoff_days DAY)
 )
 SELECT
   cas.object_name,
@@ -688,10 +688,10 @@ SELECT
 FROM {source_table} AS source
 JOIN {live_metadata_table} AS live
   USING (object_name)
-JOIN {current_table} AS current
-  ON current.object_name = source.object_name
- AND current.object_kind = 'cas'
- AND current.last_seen_at = source.last_seen_at
+JOIN {current_table} AS current_obj
+  ON current_obj.object_name = source.object_name
+ AND current_obj.object_kind = 'cas'
+ AND current_obj.last_seen_at = source.last_seen_at
 WHERE NOT EXISTS (
   SELECT 1
   FROM {audit_table} AS audit
