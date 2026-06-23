@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
@@ -64,6 +65,7 @@ def _sqlite_engine():
                   sku_name TEXT,
                   org TEXT,
                   repo TEXT,
+                  target_branch TEXT,
                   author TEXT,
                   list_cost REAL,
                   effective_cost REAL,
@@ -93,12 +95,70 @@ def _summary_row(day: str = "2026-05-18") -> dict[str, object]:
         "author": "hawkingrei",
         "org": "pingcap",
         "repo": "tidb",
+        "target_branch": "master",
         "list_cost": "10.00",
         "effective_cost": "8.00",
         "credit_amount": "-1.00",
         "net_cost": "7.00",
         "source_export_time": "2026-05-19T01:02:03Z",
     }
+
+
+def _sqlite_summary_row(row: dict[str, object]) -> dict[str, object]:
+    return {
+        **row,
+        "list_cost": float(row["list_cost"]),
+        "effective_cost": float(row["effective_cost"]),
+        "credit_amount": float(row["credit_amount"]),
+        "net_cost": float(row["net_cost"]),
+    }
+
+
+def _insert_summary_row(connection, row: dict[str, object]) -> None:
+    connection.execute(
+        text(
+            """
+            INSERT INTO cost_bq_export_summary_daily (
+              vendor,
+              account_id,
+              billing_account_id,
+              export_partition_date,
+              usage_date,
+              service_name,
+              sku_name,
+              org,
+              repo,
+              target_branch,
+              author,
+              list_cost,
+              effective_cost,
+              credit_amount,
+              net_cost,
+              source_export_time,
+              source_row_hash
+            ) VALUES (
+              :vendor,
+              :account_id,
+              :billing_account_id,
+              :export_partition_date,
+              :usage_date,
+              :service_name,
+              :sku_name,
+              :org,
+              :repo,
+              :target_branch,
+              :author,
+              :list_cost,
+              :effective_cost,
+              :credit_amount,
+              :net_cost,
+              :source_export_time,
+              :source_row_hash
+            )
+            """
+        ),
+        _sqlite_summary_row(row),
+    )
 
 
 def test_start_partition_from_state_uses_export_overlap() -> None:
@@ -129,6 +189,9 @@ def test_summary_hash_ignores_amount_changes() -> None:
     assert build_summary_row_hash(row) == build_summary_row_hash(changed)
     assert build_summary_row_hash(row) != build_summary_row_hash(
         {**row, "service_name": "Cloud Storage"}
+    )
+    assert build_summary_row_hash(row) != build_summary_row_hash(
+        {**row, "target_branch": "release-8.5"}
     )
 
 
@@ -173,6 +236,174 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
         engine.dispose()
 
 
+def test_run_sync_gcp_billing_summary_can_replace_existing_partitions() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row({**_summary_row(), "target_branch": None})
+    old_row = {
+        **old_row,
+        "list_cost": float(old_row["list_cost"]),
+        "effective_cost": float(old_row["effective_cost"]),
+        "credit_amount": float(old_row["credit_amount"]),
+        "net_cost": float(old_row["net_cost"]),
+    }
+    new_row = {**_summary_row(), "target_branch": "master"}
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      export_partition_date,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      org,
+                      repo,
+                      target_branch,
+                      author,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost,
+                      source_export_time,
+                      source_row_hash
+                    ) VALUES (
+                      :vendor,
+                      :account_id,
+                      :billing_account_id,
+                      :export_partition_date,
+                      :usage_date,
+                      :service_name,
+                      :sku_name,
+                      :org,
+                      :repo,
+                      :target_branch,
+                      :author,
+                      :list_cost,
+                      :effective_cost,
+                      :credit_amount,
+                      :net_cost,
+                      :source_export_time,
+                      :source_row_hash
+                    )
+                    """
+                ),
+                old_row,
+            )
+
+        run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=False,
+            replace_existing_partitions=True,
+            fetch_rows=lambda **_kwargs: [new_row],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT target_branch, ROUND(SUM(list_cost), 2) AS list_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY target_branch
+                    """
+                )
+            ).all()
+        assert rows == [("master", 10.0)]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_replace_keeps_old_rows_when_fetch_fails() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row({**_summary_row(), "target_branch": None})
+    old_row = {
+        **old_row,
+        "list_cost": float(old_row["list_cost"]),
+        "effective_cost": float(old_row["effective_cost"]),
+        "credit_amount": float(old_row["credit_amount"]),
+        "net_cost": float(old_row["net_cost"]),
+    }
+
+    def raise_fetch(**_kwargs):
+        raise RuntimeError("bigquery failed")
+        yield
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      export_partition_date,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      org,
+                      repo,
+                      target_branch,
+                      author,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost,
+                      source_export_time,
+                      source_row_hash
+                    ) VALUES (
+                      :vendor,
+                      :account_id,
+                      :billing_account_id,
+                      :export_partition_date,
+                      :usage_date,
+                      :service_name,
+                      :sku_name,
+                      :org,
+                      :repo,
+                      :target_branch,
+                      :author,
+                      :list_cost,
+                      :effective_cost,
+                      :credit_amount,
+                      :net_cost,
+                      :source_export_time,
+                      :source_row_hash
+                    )
+                    """
+                ),
+                old_row,
+            )
+
+        with pytest.raises(RuntimeError, match="bigquery failed"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                export_partition_start=date(2026, 5, 18),
+                export_partition_end=date(2026, 5, 18),
+                dry_run=False,
+                replace_existing_partitions=True,
+                fetch_rows=raise_fetch,
+            )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text("SELECT target_branch, ROUND(SUM(list_cost), 2) FROM cost_bq_export_summary_daily")
+            ).all()
+        assert rows == [(None, 10.0)]
+    finally:
+        engine.dispose()
+
+
 def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -> None:
     engine = _sqlite_engine()
     settings = GcpBillingSettings(account_id="pingcap-testing-account")
@@ -182,6 +413,7 @@ def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -
             "service_name": "Cloud Logging",
             "sku_name": "Log Storage cost",
             "author": None,
+            "target_branch": "master",
         }
     )
     old_row = {
@@ -213,6 +445,7 @@ def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -
                       sku_name,
                       org,
                       repo,
+                      target_branch,
                       author,
                       list_cost,
                       effective_cost,
@@ -230,6 +463,7 @@ def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -
                       :sku_name,
                       :org,
                       :repo,
+                      :target_branch,
                       :author,
                       :list_cost,
                       :effective_cost,
@@ -267,6 +501,112 @@ def test_run_sync_gcp_billing_summary_deletes_superseded_owner_override_rows() -
         engine.dispose()
 
 
+def test_run_sync_gcp_billing_summary_keeps_other_branch_owner_override_rows() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row(),
+            "service_name": "Cloud Logging",
+            "sku_name": "Log Storage cost",
+            "author": None,
+            "target_branch": "release-8.5",
+        }
+    )
+    new_row = {
+        **_summary_row(),
+        "service_name": "Cloud Logging",
+        "sku_name": "Log Storage cost",
+        "author": "wei_zheng",
+        "target_branch": "master",
+    }
+
+    try:
+        with engine.begin() as connection:
+            _insert_summary_row(connection, old_row)
+
+        run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=False,
+            fetch_rows=lambda **_kwargs: [new_row],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT target_branch, author, ROUND(SUM(list_cost), 2) AS list_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY target_branch, author
+                    ORDER BY target_branch, author
+                    """
+                )
+            ).all()
+        assert rows == [
+            ("master", "wei_zheng", 10.0),
+            ("release-8.5", None, 10.0),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_keeps_legacy_null_branch_owner_override_rows() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row(),
+            "service_name": "Cloud Logging",
+            "sku_name": "Log Storage cost",
+            "author": None,
+            "target_branch": None,
+        }
+    )
+    new_row = {
+        **_summary_row(),
+        "service_name": "Cloud Logging",
+        "sku_name": "Log Storage cost",
+        "author": "wei_zheng",
+        "target_branch": "master",
+    }
+
+    try:
+        with engine.begin() as connection:
+            _insert_summary_row(connection, old_row)
+
+        run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=False,
+            fetch_rows=lambda **_kwargs: [new_row],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT COALESCE(target_branch, '(null)') AS branch,
+                           author,
+                           ROUND(SUM(list_cost), 2) AS list_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY branch, author
+                    ORDER BY branch, author
+                    """
+                )
+            ).all()
+        assert rows == [
+            ("(null)", None, 10.0),
+            ("master", "wei_zheng", 10.0),
+        ]
+    finally:
+        engine.dispose()
+
+
 def test_run_sync_gcp_billing_summary_deletes_one_year_cud_superseded_rows() -> None:
     engine = _sqlite_engine()
     settings = GcpBillingSettings(account_id="pingcap-testing-account")
@@ -276,6 +616,7 @@ def test_run_sync_gcp_billing_summary_deletes_one_year_cud_superseded_rows() -> 
             "service_name": "Compute Engine",
             "sku_name": "Compute Flexible Committed Use Discounts - 1 Year",
             "author": None,
+            "target_branch": "master",
         }
     )
     old_row = {
@@ -307,6 +648,7 @@ def test_run_sync_gcp_billing_summary_deletes_one_year_cud_superseded_rows() -> 
                       sku_name,
                       org,
                       repo,
+                      target_branch,
                       author,
                       list_cost,
                       effective_cost,
@@ -324,6 +666,7 @@ def test_run_sync_gcp_billing_summary_deletes_one_year_cud_superseded_rows() -> 
                       :sku_name,
                       :org,
                       :repo,
+                      :target_branch,
                       :author,
                       :list_cost,
                       :effective_cost,

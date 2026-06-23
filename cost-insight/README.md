@@ -14,6 +14,7 @@ Current design:
 
 - [System design](docs/system-design.md)
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
+- [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 
 ## Local Setup

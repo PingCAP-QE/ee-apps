@@ -21,6 +21,7 @@ from ci_dashboard.api.queries.builds import (
     get_outcome_trend,
 )
 from ci_dashboard.api.queries.cost import (
+    _cost_filters as _normalize_cost_filters,
     get_cost_page,
     get_weekly_account_summaries,
     list_cost_sources,
@@ -280,16 +281,6 @@ def get_cost_engineering_group_share_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_engineering_group_share(engine, _normalize_cost_filters(filters))
-
-
-def _normalize_cost_filters(filters: CommonFilters) -> CommonFilters:
-    return CommonFilters(
-        start_date=filters.start_date,
-        end_date=filters.end_date,
-        granularity=filters.granularity if filters.granularity in {"week", "month"} else "week",
-        cost_vendor=filters.cost_vendor,
-        cost_account_id=filters.cost_account_id,
-    )
 
 
 def _get_previous_date_range(filters: CommonFilters) -> tuple[date | None, date | None]:

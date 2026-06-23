@@ -41,6 +41,7 @@ def _sqlite_engine():
               author TEXT,
               org TEXT,
               repo TEXT,
+              target_branch TEXT,
               resource_name TEXT,
               usage_seconds REAL,
               list_cost REAL,
@@ -63,6 +64,7 @@ def _sqlite_engine():
               sku_name TEXT,
               org TEXT,
               repo TEXT,
+              target_branch TEXT,
               author TEXT,
               list_cost REAL,
               effective_cost REAL,
@@ -88,6 +90,7 @@ def _sqlite_engine():
               namespace TEXT,
               org TEXT,
               repo TEXT,
+              target_branch TEXT,
               author TEXT,
               resource_name TEXT NOT NULL,
               usage_seconds REAL,
@@ -109,26 +112,26 @@ def _sqlite_engine():
                 """
                 INSERT INTO cost_raw_details (
                   vendor, account_id, billing_account_id, usage_date, service_name,
-                  sku_name, region, namespace, author, org, repo, resource_name,
+                  sku_name, region, namespace, author, org, repo, target_branch, resource_name,
                   usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
                   source_export_time, source_row_hash
                 ) VALUES
                   (
                     'gcp', 'pingcap-testing-account', 'billing-1', '2026-05-17',
                     'Compute Engine', 'Core running', 'us-central1', 'kube:unallocated',
-                    'alice', 'pingcap', 'tidb', 'runner-1',
+                    'alice', 'pingcap', 'tidb', 'master', 'runner-1',
                     3600, 10, 8, -1, 7, '2026-05-20 01:02:03', 'raw-1'
                   ),
                   (
                     'gcp', 'pingcap-testing-account', 'billing-1', '2026-05-17',
                     'Compute Engine', 'Core running', 'us-central1', 'kube:unallocated',
-                    'alice', 'pingcap', 'tidb', 'runner-1',
+                    'alice', 'pingcap', 'tidb', 'master', 'runner-1',
                     1800, 5, 4, -0.5, 3.5, '2026-05-20 02:02:03', 'raw-2'
                   ),
                   (
                     'gcp', 'pingcap-testing-account', 'billing-1', '2026-05-18',
                     'Cloud Logging', 'Storage', 'global', NULL,
-                    NULL, 'pingcap', 'platform', NULL,
+                    NULL, 'pingcap', 'platform', NULL, NULL,
                     NULL, 2, 2, 0, 2, NULL, 'raw-3'
                   )
                 """

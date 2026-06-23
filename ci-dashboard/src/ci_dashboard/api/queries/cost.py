@@ -12,7 +12,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
 
 COST_STACK_LIMIT = 8
-VALID_COST_STACK_GROUPS = frozenset({"repo", "author", "team"})
+VALID_COST_STACK_GROUPS = frozenset({"repo", "author", "team", "target_branch"})
 UNMATCHED_RESOURCE_LIMIT = 20
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 ENGINEERING_GROUP_NAME = "Engineering Group"
@@ -147,6 +147,7 @@ def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any
     previous_filters = CommonFilters(
         start_date=previous_start,
         end_date=previous_end,
+        branch=cost_filters.branch,
         granularity=cost_filters.granularity,
         cost_vendor=cost_filters.cost_vendor,
         cost_account_id=cost_filters.cost_account_id,
@@ -428,10 +429,21 @@ def get_weekly_account_summaries(
     ):
         return {"scope": cost_filters.meta(), "items": []}
 
+    branch_join_clause = "AND c.target_branch = :branch" if cost_filters.branch else ""
+    params = {
+        "current_start": cost_filters.start_date,
+        "current_end": cost_filters.end_date,
+        "previous_start": previous_start,
+        "previous_end": previous_end,
+        "is_active": 1,
+    }
+    if cost_filters.branch:
+        params["branch"] = cost_filters.branch
+
     with engine.begin() as connection:
         rows = connection.execute(
             text(
-                """
+                f"""
                 SELECT
                   s.vendor,
                   s.account_id,
@@ -449,18 +461,13 @@ def get_weekly_account_summaries(
                   ON c.vendor = s.vendor
                  AND c.account_id = s.account_id
                  AND c.usage_date BETWEEN :previous_start AND :current_end
+                 {branch_join_clause}
                 WHERE s.is_active = :is_active
                 GROUP BY s.vendor, s.account_id, s.display_name
                 ORDER BY s.vendor, s.account_id
                 """
             ),
-            {
-                "current_start": cost_filters.start_date,
-                "current_end": cost_filters.end_date,
-                "previous_start": previous_start,
-                "previous_end": previous_end,
-                "is_active": 1,
-            },
+            params,
         ).mappings()
         annual_budgets = _annual_budgets_by_account(
             connection,
@@ -1126,6 +1133,7 @@ def _cost_filters(filters: CommonFilters) -> CommonFilters:
     return CommonFilters(
         start_date=filters.start_date,
         end_date=filters.end_date,
+        branch=filters.branch,
         granularity=granularity,
         cost_vendor=filters.cost_vendor,
         cost_account_id=filters.cost_account_id,
@@ -1152,6 +1160,9 @@ def _build_cost_where(
     if filters.cost_account_id:
         conditions.append(f"{prefix}account_id = :cost_account_id")
         params["cost_account_id"] = filters.cost_account_id
+    if filters.branch:
+        conditions.append(f"{prefix}target_branch = :branch")
+        params["branch"] = filters.branch
     return " AND ".join(conditions), params
 
 
@@ -1206,6 +1217,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
             "params": {"cost_stack_root_group_name": ENGINEERING_GROUP_NAME},
             "empty_label": "(no team)",
         }
+    if group_by == "target_branch":
+        return {
+            "expr": "COALESCE(NULLIF(c.target_branch, ''), '(no target branch)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no target branch)",
+        }
     return {
         "expr": "COALESCE(NULLIF(c.repo, ''), '(no repo)')",
         "from_clause": "cost_attribution_daily c",
@@ -1221,6 +1239,8 @@ def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
         return "author__unknown_author"
     if group_by == "team" and dimension_name == "(no team)":
         return "team__no_team"
+    if group_by == "target_branch" and dimension_name == "(no target branch)":
+        return "target_branch__no_target_branch"
     return f"{group_by}__{index}"
 
 

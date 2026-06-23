@@ -113,6 +113,7 @@ def fetch_gcp_unmatched_resource_rows(
 def build_gcp_billing_query(*, billing_table: str, limit: int | None = None) -> str:
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     author_expr = _author_expr_with_overrides()
+    target_branch_expr = _target_branch_expr()
     return f"""
 WITH normalized AS (
   SELECT
@@ -126,6 +127,7 @@ WITH normalized AS (
     {author_expr} AS author,
     {_label_expr(("k8s-label/org", "org"))} AS org,
     {_label_expr(("k8s-label/repo", "repo"))} AS repo,
+    {target_branch_expr} AS target_branch,
     COALESCE(
       {_label_expr(("k8s-workload-name",))},
       NULLIF(resource.name, ''),
@@ -153,6 +155,7 @@ SELECT
   author,
   org,
   repo,
+  target_branch,
   resource_name,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0
@@ -182,6 +185,7 @@ GROUP BY
   author,
   org,
   repo,
+  target_branch,
   resource_name
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()
@@ -190,6 +194,7 @@ ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 def build_gcp_billing_summary_query(*, billing_table: str, limit: int | None = None) -> str:
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     author_expr = _author_expr_with_overrides()
+    target_branch_expr = _target_branch_expr()
     return f"""
 SELECT
   'gcp' AS vendor,
@@ -202,6 +207,7 @@ SELECT
   {author_expr} AS author,
   {_label_expr(("k8s-label/org", "org"))} AS org,
   {_label_expr(("k8s-label/repo", "repo"))} AS repo,
+  {target_branch_expr} AS target_branch,
   ROUND(SUM(cost_at_list), 2) AS list_cost,
   ROUND(SUM(cost), 2) AS effective_cost,
   ROUND(SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 2)
@@ -222,8 +228,9 @@ GROUP BY
   sku_name,
   author,
   org,
-  repo
-ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo{limit_clause}
+  repo,
+  target_branch
+ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo, target_branch{limit_clause}
 """.strip()
 
 
@@ -233,6 +240,7 @@ def build_gcp_unmatched_resource_query(*, billing_table: str, limit: int | None 
     author_expr = _author_expr_with_overrides()
     org_expr = _label_expr(("k8s-label/org", "org"))
     repo_expr = _label_expr(("k8s-label/repo", "repo"))
+    target_branch_expr = _target_branch_expr()
     workload_expr = _label_expr(("k8s-workload-name",))
     return f"""
 WITH normalized AS (
@@ -247,6 +255,7 @@ WITH normalized AS (
     {author_expr} AS author,
     {org_expr} AS org,
     {repo_expr} AS repo,
+    {target_branch_expr} AS target_branch,
     COALESCE(
       {workload_expr},
       NULLIF(resource.name, ''),
@@ -275,6 +284,7 @@ SELECT
   author,
   org,
   repo,
+  target_branch,
   resource_name,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0
@@ -306,6 +316,7 @@ GROUP BY
   author,
   org,
   repo,
+  target_branch,
   resource_name
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()
@@ -338,6 +349,15 @@ def _author_expr_with_overrides() -> str:
       END
     )
     """.strip()
+
+
+def _target_branch_expr() -> str:
+    return _label_expr(
+        (
+            "k8s-label/prow.k8s.io/refs.base_ref",
+            "prow.k8s.io/refs.base_ref",
+        )
+    )
 
 
 def decimal_or_none(value: Any) -> Decimal | None:

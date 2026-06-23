@@ -18,6 +18,8 @@ def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
     assert "`project.dataset.table`" in query
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
+    assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "target_branch" in query
     assert "k8s-workload-name" in query
     assert "cost_at_list" in query
     assert "pricing_unit NOT IN ('hour', 'minute', 'second')" in query
@@ -44,6 +46,8 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "DATE(usage_start_time) >= @earliest_usage_date" in query
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
+    assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "target_branch" in query
     assert "resource_name" not in query
     assert "service.description AS service_name" in query
     assert "sku.description AS sku_name" in query
@@ -60,6 +64,8 @@ def test_build_gcp_unmatched_resource_query_keeps_resource_context() -> None:
     assert "_PARTITIONDATE BETWEEN @export_partition_start AND @export_partition_end" in query
     assert "DATE(usage_start_time) BETWEEN @usage_start_date AND @usage_end_date" in query
     assert "k8s-workload-name" in query
+    assert "k8s-label/prow.k8s.io/refs.base_ref" in query
+    assert "target_branch" in query
     assert "resource.global_name" in query
     assert "usage_seconds" in query
     assert "service.description AS service_name" in query

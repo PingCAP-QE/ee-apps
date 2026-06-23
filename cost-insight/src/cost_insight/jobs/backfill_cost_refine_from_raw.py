@@ -194,6 +194,7 @@ _SELECT_SUMMARY_ROWS = text(
       author,
       org,
       repo,
+      target_branch,
       ROUND(SUM(list_cost), 2) AS list_cost,
       ROUND(SUM(effective_cost), 2) AS effective_cost,
       ROUND(SUM(credit_amount), 2) AS credit_amount,
@@ -213,8 +214,9 @@ _SELECT_SUMMARY_ROWS = text(
       sku_name,
       author,
       org,
-      repo
-    ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo
+      repo,
+      target_branch
+    ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo, target_branch
     """
 )
 
@@ -232,6 +234,7 @@ _SELECT_UNMATCHED_RESOURCE_ROWS = text(
       author,
       org,
       repo,
+      target_branch,
       resource_name,
       ROUND(SUM(usage_seconds), 2) AS usage_seconds,
       ROUND(SUM(list_cost), 2) AS list_cost,
@@ -257,6 +260,7 @@ _SELECT_UNMATCHED_RESOURCE_ROWS = text(
       author,
       org,
       repo,
+      target_branch,
       resource_name
     ORDER BY usage_date, service_name, sku_name, resource_name
     """

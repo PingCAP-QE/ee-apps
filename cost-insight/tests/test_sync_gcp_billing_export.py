@@ -33,12 +33,16 @@ def test_source_row_hash_ignores_amount_changes() -> None:
         "author": "hawkingrei",
         "org": "pingcap",
         "repo": "ticdc",
+        "target_branch": "master",
         "resource_name": "cap-ticdc-pull-123",
         "net_cost": Decimal("1.23"),
     }
     changed_amount = {**row, "net_cost": Decimal("2.34")}
 
     assert build_source_row_hash(row) == build_source_row_hash(changed_amount)
+    assert build_source_row_hash(row) != build_source_row_hash(
+        {**row, "target_branch": "release-8.5"}
+    )
 
 
 def test_normalize_row_adds_dimension_hash() -> None:
@@ -55,6 +59,7 @@ def test_normalize_row_adds_dimension_hash() -> None:
             "author": "hawkingrei",
             "org": "pingcap",
             "repo": "ticdc",
+            "target_branch": "master",
             "resource_name": "cap-ticdc-pull-123",
             "usage_seconds": "3600.00",
             "list_cost": "1.00",
@@ -163,6 +168,38 @@ def _sqlite_engine():
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_raw_details (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  vendor TEXT NOT NULL,
+                  account_id TEXT NOT NULL,
+                  billing_account_id TEXT,
+                  usage_date TEXT NOT NULL,
+                  service_name TEXT,
+                  sku_name TEXT,
+                  region TEXT,
+                  namespace TEXT,
+                  author TEXT,
+                  org TEXT,
+                  repo TEXT,
+                  target_branch TEXT,
+                  resource_name TEXT,
+                  usage_seconds REAL,
+                  list_cost REAL,
+                  effective_cost REAL,
+                  credit_amount REAL,
+                  net_cost REAL,
+                  source_export_time TEXT,
+                  source_row_hash TEXT NOT NULL,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE(vendor, account_id, source_row_hash)
+                )
+                """
+            )
+        )
     return engine
 
 
@@ -179,6 +216,7 @@ def _billing_row(day: str = "2026-05-18") -> dict[str, object]:
         "author": "hawkingrei",
         "org": "pingcap",
         "repo": "ticdc",
+        "target_branch": "master",
         "resource_name": "cap-ticdc-pull-123",
         "usage_seconds": "3600.00",
         "list_cost": "1.00",
@@ -302,6 +340,157 @@ def test_run_sync_gcp_billing_export_marks_failure(monkeypatch) -> None:
         assert state is not None
         assert state.last_status == "failed"
         assert "RuntimeError" in (state.last_error or "")
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_export_can_replace_existing_dates() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account", page_size=1)
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_raw_details (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      region,
+                      namespace,
+                      author,
+                      org,
+                      repo,
+                      target_branch,
+                      resource_name,
+                      usage_seconds,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost,
+                      source_export_time,
+                      source_row_hash
+                    ) VALUES (
+                      'gcp',
+                      'pingcap-testing-account',
+                      'billing-1',
+                      '2026-05-18',
+                      'Compute Engine',
+                      'old sku',
+                      'us-central1',
+                      'prow-test-pods',
+                      'hawkingrei',
+                      'pingcap',
+                      'ticdc',
+                      NULL,
+                      'old-resource',
+                      60.0,
+                      99.0,
+                      99.0,
+                      0.0,
+                      99.0,
+                      '2026-05-18T00:00:00',
+                      'old-hash'
+                    )
+                    """
+                )
+            )
+
+        summary = run_sync_gcp_billing_export(
+            engine,
+            settings=settings,
+            start_date=date(2026, 5, 18),
+            end_date=date(2026, 5, 18),
+            replace_existing_dates=True,
+            fetch_rows=lambda **_kwargs: [
+                _billing_row(),
+                {**_billing_row(), "resource_name": "cap-ticdc-pull-456"},
+            ],
+        )
+
+        assert summary.rows_seen == 2
+        assert summary.rows_written == 2
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT target_branch, resource_name, ROUND(net_cost, 2)
+                    FROM cost_raw_details
+                    ORDER BY resource_name
+                    """
+                )
+            ).all()
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
+            )
+        assert rows == [
+            ("master", "cap-ticdc-pull-123", 0.6),
+            ("master", "cap-ticdc-pull-456", 0.6),
+        ]
+        assert state is not None
+        assert state.last_status == "succeeded"
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_export_replace_keeps_old_rows_when_fetch_fails() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account", page_size=1)
+
+    def raise_fetch(**_kwargs):
+        raise RuntimeError("bigquery failed")
+        yield
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_raw_details (
+                      vendor,
+                      account_id,
+                      billing_account_id,
+                      usage_date,
+                      service_name,
+                      sku_name,
+                      resource_name,
+                      net_cost,
+                      source_row_hash
+                    ) VALUES (
+                      'gcp',
+                      'pingcap-testing-account',
+                      'billing-1',
+                      '2026-05-18',
+                      'Compute Engine',
+                      'old sku',
+                      'old-resource',
+                      99.0,
+                      'old-hash'
+                    )
+                    """
+                )
+            )
+
+        with pytest.raises(RuntimeError, match="bigquery failed"):
+            run_sync_gcp_billing_export(
+                engine,
+                settings=settings,
+                start_date=date(2026, 5, 18),
+                end_date=date(2026, 5, 18),
+                replace_existing_dates=True,
+                fetch_rows=raise_fetch,
+            )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text("SELECT resource_name, ROUND(net_cost, 2) FROM cost_raw_details")
+            ).all()
+        assert rows == [("old-resource", 99.0)]
     finally:
         engine.dispose()
 
