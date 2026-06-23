@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -30,14 +31,29 @@ from ci_dashboard.jobs.state_store import (
 LOG = logging.getLogger(__name__)
 
 JOB_NAME = "ci-sync-flaky-issues"
-DEFAULT_FLAKY_ISSUE_REPOS = ("pingcap/tidb",)
+DEFAULT_FLAKY_ISSUE_REPOS = ("pingcap/tidb", "tikv/pd")
+BODY_PR_FALLBACK_REPOS = {"tikv/pd"}
 TITLE_PATTERN = "Flaky test:%"
 CASE_NAME_PATTERN = re.compile(r"^Flaky test:\s*(.+?)\s+in\s+.+$")
 BRANCH_PATTERN = re.compile(r"- Branch:\s*([^\n<\"]+)")
+BODY_PR_LIST_PATTERN = re.compile(r"\bPRs?:\s*([0-9][0-9,\s]*)", re.IGNORECASE)
+GITHUB_PR_URL_PATTERN = re.compile(
+    r"https?://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([0-9]+)",
+    re.IGNORECASE,
+)
+PROW_PR_LOG_PATTERN = re.compile(
+    r"/pr-logs/pull/([A-Za-z0-9_.-]+_[A-Za-z0-9_.-]+)/([0-9]+)/",
+    re.IGNORECASE,
+)
 GITHUB_API_BASE_URL = "https://api.github.com"
 BOT_AUTHORS = {"ti-chi-bot", "ti-chi-bot[bot]"}
 DEFAULT_ISSUE_BRANCH = "master"
 DEFAULT_BRANCH_SOURCE = "default_master"
+GITHUB_API_MIN_INTERVAL_SECONDS = 0.1
+GITHUB_API_RATE_LIMIT_RETRIES = 3
+GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
+GITHUB_API_MAX_RETRY_DELAY_SECONDS = 30.0
+_last_github_api_request_monotonic: float | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +121,7 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
         latest_updated_at: datetime | None = None
 
         for row in source_rows:
+            row = _enrich_issue_row_for_pr_fallback(row)
             source_updated_at = _parse_datetime(row["updated_at"])
             if latest_updated_at is None or source_updated_at > latest_updated_at:
                 latest_updated_at = source_updated_at
@@ -129,10 +146,12 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
 
         for batch in chunked(prepared_batches, settings.jobs.batch_size):
             link_rows = [link_row for _issue_row, links in batch for link_row in links]
-            linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
-                _filter_unseen_link_rows(link_rows, fetched_linked_prs)
-            )
+            unseen_link_rows = _filter_unseen_link_rows(link_rows, fetched_linked_prs)
             with engine.begin() as connection:
+                linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
+                    connection,
+                    unseen_link_rows,
+                )
                 issue_rows = [item[0] for item in batch]
                 issue_keys = [(issue_row.repo, issue_row.issue_number) for issue_row in issue_rows]
 
@@ -181,6 +200,7 @@ def run_backfill_flaky_issue_pr_links(
         link_rows: list[FlakyIssuePrLinkRow] = []
 
         for row in batch:
+            row = _enrich_issue_row_for_pr_fallback(row)
             source_updated_at = _parse_datetime(row["updated_at"])
             if latest_updated_at is None or source_updated_at > latest_updated_at:
                 latest_updated_at = source_updated_at
@@ -193,10 +213,12 @@ def run_backfill_flaky_issue_pr_links(
                 )
             )
 
-        linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
-            _filter_unseen_link_rows(link_rows, fetched_linked_prs)
-        )
         with engine.begin() as connection:
+            unseen_link_rows = _filter_unseen_link_rows(link_rows, fetched_linked_prs)
+            linked_pr_rows, linked_pr_attempted, linked_pr_failed = _fetch_linked_pr_metadata_rows(
+                connection,
+                unseen_link_rows,
+            )
             _replace_flaky_issue_pr_links(
                 connection,
                 issue_keys=issue_keys,
@@ -252,6 +274,7 @@ def fetch_pull_details_via_github_api(
 
 
 def _fetch_github_api_json(url: str) -> Any:
+    global _last_github_api_request_monotonic
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "ci-dashboard-sync-flaky-issues",
@@ -262,16 +285,38 @@ def _fetch_github_api_json(url: str) -> Any:
         headers["Authorization"] = f"Bearer {token}"
 
     request = urllib_request.Request(url, headers=headers)
-    try:
-        with urllib_request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"GitHub API request failed for {url}: HTTP {exc.code}: {body}"
-        ) from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"GitHub API request failed for {url}: {exc.reason}") from exc
+    for attempt in range(GITHUB_API_RATE_LIMIT_RETRIES + 1):
+        now = time.monotonic()
+        if _last_github_api_request_monotonic is not None:
+            elapsed = now - _last_github_api_request_monotonic
+            remaining_delay = GITHUB_API_MIN_INTERVAL_SECONDS - elapsed
+            if remaining_delay > 0:
+                time.sleep(remaining_delay)
+        _last_github_api_request_monotonic = time.monotonic()
+
+        try:
+            with urllib_request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            if _should_retry_github_api_request(exc, body=body, attempt=attempt):
+                delay_seconds = _resolve_github_api_retry_delay(exc, attempt=attempt)
+                LOG.warning(
+                    "GitHub API rate limited flaky issue sync request; retrying",
+                    extra={
+                        "url": url,
+                        "attempt": attempt + 1,
+                        "delay_seconds": delay_seconds,
+                    },
+                )
+                time.sleep(delay_seconds)
+                continue
+            raise RuntimeError(
+                f"GitHub API request failed for {url}: HTTP {exc.code}: {body}"
+            ) from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError(f"GitHub API request failed for {url}: {exc.reason}") from exc
+    raise AssertionError("unreachable")
 
 
 def parse_issue_branch(issue_body: str) -> str | None:
@@ -359,6 +404,32 @@ def _extract_comment_author(comment: dict[str, Any]) -> str:
 def _extract_comment_body(comment: dict[str, Any]) -> str:
     body = comment.get("body")
     return str(body) if body is not None else ""
+
+
+def _enrich_issue_row_for_pr_fallback(row: dict[str, Any]) -> dict[str, Any]:
+    repo = str(row.get("repo") or "")
+    if repo not in BODY_PR_FALLBACK_REPOS:
+        return row
+    if str(row.get("body") or "").strip():
+        return row
+
+    try:
+        issue_body, comments = fetch_issue_details_via_github_api(
+            repo=repo,
+            issue_number=int(row["number"]),
+        )
+    except Exception:
+        LOG.exception(
+            "failed to enrich flaky issue body for PR fallback %s#%s",
+            repo,
+            row.get("number"),
+        )
+        return row
+
+    enriched_row = dict(row)
+    enriched_row["body"] = issue_body
+    enriched_row["comments"] = comments
+    return enriched_row
 
 
 def _load_watermark(connection: Connection) -> dict[str, Any]:
@@ -464,9 +535,37 @@ def _extract_linked_pr_rows(
     *,
     source_ticket_updated_at: datetime,
 ) -> list[FlakyIssuePrLinkRow]:
-    timeline = _parse_timeline(row.get("timeline"))
     issue_repo = str(row["repo"])
     issue_number = int(row["number"])
+    links_by_pr: dict[tuple[str, int], FlakyIssuePrLinkRow] = {}
+
+    for link_row in _extract_linked_pr_rows_from_timeline(
+        _parse_timeline(row.get("timeline")),
+        issue_repo=issue_repo,
+        issue_number=issue_number,
+        source_ticket_updated_at=source_ticket_updated_at,
+    ):
+        links_by_pr[(link_row.pr_repo, link_row.pr_number)] = link_row
+
+    for link_row in _extract_body_linked_pr_rows(
+        row,
+        source_ticket_updated_at=source_ticket_updated_at,
+    ):
+        links_by_pr.setdefault((link_row.pr_repo, link_row.pr_number), link_row)
+
+    return sorted(
+        links_by_pr.values(),
+        key=lambda item: (item.issue_repo, item.issue_number, item.pr_repo, item.pr_number),
+    )
+
+
+def _extract_linked_pr_rows_from_timeline(
+    timeline: list[dict[str, Any]],
+    *,
+    issue_repo: str,
+    issue_number: int,
+    source_ticket_updated_at: datetime,
+) -> list[FlakyIssuePrLinkRow]:
     links_by_pr: dict[tuple[str, int], FlakyIssuePrLinkRow] = {}
 
     for event in timeline:
@@ -502,9 +601,6 @@ def _extract_linked_pr_rows(
                 pr_repo = str(repo_name)
 
         linked_at = _parse_datetime(event.get("created_at") or event.get("updated_at"))
-        if linked_at is None:
-            continue
-
         source_event_id_raw = event.get("id")
         source_event_id = None
         if source_event_id_raw is not None:
@@ -537,15 +633,163 @@ def _extract_linked_pr_rows(
     )
 
 
+def _extract_body_linked_pr_rows(
+    row: dict[str, Any],
+    *,
+    source_ticket_updated_at: datetime,
+) -> list[FlakyIssuePrLinkRow]:
+    issue_repo = str(row["repo"])
+    issue_number = int(row["number"])
+    issue_body = str(row.get("body") or "")
+
+    if not issue_body.strip():
+        return []
+
+    links_by_pr: dict[tuple[str, int], FlakyIssuePrLinkRow] = {}
+    for pr_repo, pr_number, source_event_type in _parse_linked_pr_candidates_from_body(
+        issue_body,
+        issue_repo=issue_repo,
+    ):
+        links_by_pr[(pr_repo, pr_number)] = FlakyIssuePrLinkRow(
+            issue_repo=issue_repo,
+            issue_number=issue_number,
+            pr_repo=pr_repo,
+            pr_number=pr_number,
+            pr_url=f"https://github.com/{pr_repo}/pull/{pr_number}",
+            pr_title="",
+            link_type="linked_pull_request",
+            source_event_type=source_event_type,
+            source_event_id=None,
+            linked_at=source_ticket_updated_at,
+            source_ticket_updated_at=source_ticket_updated_at,
+        )
+
+    return sorted(
+        links_by_pr.values(),
+        key=lambda item: (item.issue_repo, item.issue_number, item.pr_repo, item.pr_number),
+    )
+
+
+def _parse_linked_pr_candidates_from_body(
+    issue_body: str,
+    *,
+    issue_repo: str,
+) -> list[tuple[str, int, str]]:
+    normalized = html.unescape(issue_body).replace("\r\n", "\n").replace("\\n", "\n")
+    candidates: list[tuple[str, int, str]] = []
+    seen: set[tuple[str, int]] = set()
+
+    def add_candidate(pr_repo: str, pr_number: int, source_event_type: str) -> None:
+        key = (pr_repo, pr_number)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append((pr_repo, pr_number, source_event_type))
+
+    for match in BODY_PR_LIST_PATTERN.finditer(normalized):
+        for raw_number in re.findall(r"[0-9]+", match.group(1)):
+            add_candidate(issue_repo, int(raw_number), "issue_body_pr_list")
+
+    for match in GITHUB_PR_URL_PATTERN.finditer(normalized):
+        add_candidate(match.group(1), int(match.group(2)), "issue_body_github_pr_url")
+
+    for match in PROW_PR_LOG_PATTERN.finditer(normalized):
+        add_candidate(
+            _parse_prow_pr_repo_slug(match.group(1), default_repo=issue_repo),
+            int(match.group(2)),
+            "issue_body_ci_link",
+        )
+
+    return candidates
+
+
+def _parse_prow_pr_repo_slug(raw_slug: str, *, default_repo: str) -> str:
+    org, separator, repo = raw_slug.partition("_")
+    if not separator or not org or not repo:
+        return default_repo
+    return f"{org}/{repo}"
+
+
+def _should_retry_github_api_request(
+    exc: urllib_error.HTTPError,
+    *,
+    body: str,
+    attempt: int,
+) -> bool:
+    if attempt >= GITHUB_API_RATE_LIMIT_RETRIES:
+        return False
+    if exc.code == 429:
+        return True
+    if exc.code != 403:
+        return False
+    retry_after = exc.headers.get("Retry-After") if exc.headers is not None else None
+    if retry_after:
+        return True
+    return "rate limit" in body.lower()
+
+
+def _resolve_github_api_retry_delay(exc: urllib_error.HTTPError, *, attempt: int) -> float:
+    retry_after = exc.headers.get("Retry-After") if exc.headers is not None else None
+    parsed_retry_after = _parse_retry_after_seconds(retry_after)
+    if parsed_retry_after is not None:
+        return min(parsed_retry_after, GITHUB_API_MAX_RETRY_DELAY_SECONDS)
+
+    rate_limit_reset = exc.headers.get("X-RateLimit-Reset") if exc.headers is not None else None
+    if rate_limit_reset:
+        try:
+            reset_seconds = float(rate_limit_reset) - time.time()
+        except ValueError:
+            reset_seconds = 0.0
+        if reset_seconds > 0:
+            return min(reset_seconds, GITHUB_API_MAX_RETRY_DELAY_SECONDS)
+
+    return min(
+        GITHUB_API_RETRY_BASE_DELAY_SECONDS * (2**attempt),
+        GITHUB_API_MAX_RETRY_DELAY_SECONDS,
+    )
+
+
+def _parse_retry_after_seconds(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
+
+
 def _fetch_linked_pr_metadata_rows(
+    connection: Connection,
     link_rows: list[FlakyIssuePrLinkRow],
 ) -> tuple[list[FlakyLinkedPrRow], int, int]:
     unique_prs = sorted({(row.pr_repo, row.pr_number) for row in link_rows})
     rows: list[FlakyLinkedPrRow] = []
+    source_rows = _load_linked_pr_source_rows(connection, unique_prs)
+    attempted = 0
     failed = 0
 
     for pr_repo, pr_number in unique_prs:
+        source_row = source_rows.get((pr_repo, pr_number))
+        if source_row is not None:
+            try:
+                rows.append(
+                    _build_flaky_linked_pr_row_from_source_ticket(
+                        source_row,
+                        pr_repo=pr_repo,
+                        pr_number=pr_number,
+                    )
+                )
+                continue
+            except Exception:
+                LOG.exception(
+                    "failed to build linked flaky PR metadata from github_tickets %s#%s",
+                    pr_repo,
+                    pr_number,
+                )
+
         try:
+            attempted += 1
             payload = fetch_pull_details_via_github_api(repo=pr_repo, pr_number=pr_number)
             rows.append(
                 _build_flaky_linked_pr_row(
@@ -558,7 +802,38 @@ def _fetch_linked_pr_metadata_rows(
             failed += 1
             LOG.exception("failed to fetch linked flaky PR %s#%s", pr_repo, pr_number)
 
-    return rows, len(unique_prs), failed
+    return rows, attempted, failed
+
+
+def _load_linked_pr_source_rows(
+    connection: Connection,
+    pr_keys: list[tuple[str, int]],
+) -> dict[tuple[str, int], dict[str, Any]]:
+    if not pr_keys:
+        return {}
+
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    for index, (repo, number) in enumerate(pr_keys):
+        clauses.append(f"(repo = :repo_{index} AND number = :number_{index})")
+        params[f"repo_{index}"] = repo
+        params[f"number_{index}"] = number
+
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT repo, number, title, state, created_at, closed_at, merged_at
+            FROM github_tickets
+            WHERE type = 'pull'
+              AND ({' OR '.join(clauses)})
+            """
+        ),
+        params,
+    ).mappings()
+    return {
+        (str(row["repo"]), int(row["number"])): dict(row)
+        for row in rows
+    }
 
 
 def _filter_unseen_link_rows(
@@ -598,6 +873,32 @@ def _build_flaky_linked_pr_row(
         pr_created_at=_parse_datetime(payload.get("created_at")),
         pr_closed_at=_parse_optional_datetime(payload.get("closed_at")),
         pr_merged_at=_parse_optional_datetime(payload.get("merged_at")),
+    )
+
+
+def _build_flaky_linked_pr_row_from_source_ticket(
+    ticket: dict[str, Any],
+    *,
+    pr_repo: str,
+    pr_number: int,
+) -> FlakyLinkedPrRow:
+    pr_state = str(ticket.get("state") or "unknown")
+    if pr_state not in {"open", "closed", "unknown"}:
+        LOG.warning(
+            "unexpected linked flaky PR state %r for %s#%s from github_tickets",
+            pr_state,
+            pr_repo,
+            pr_number,
+        )
+    return FlakyLinkedPrRow(
+        pr_repo=pr_repo,
+        pr_number=pr_number,
+        pr_url=f"https://github.com/{pr_repo}/pull/{pr_number}",
+        pr_title=str(ticket.get("title") or ""),
+        pr_state=pr_state,
+        pr_created_at=_parse_datetime(ticket.get("created_at")),
+        pr_closed_at=_parse_optional_datetime(ticket.get("closed_at")),
+        pr_merged_at=_parse_optional_datetime(ticket.get("merged_at")),
     )
 
 

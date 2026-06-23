@@ -15,7 +15,6 @@ import {
   useApiData,
 } from "./lib/api";
 import {
-  buildDefaultFilters,
   buildFilterSearch,
   buildNavSearchByPath,
   CI_STATUS_PATH,
@@ -28,11 +27,9 @@ import {
   WEEK_GRANULARITY_PATHS,
 } from "./lib/filterUrl";
 
-const REPO_OPTIONS = [{ value: "pingcap/tidb", label: "pingcap/tidb" }];
-const BRANCH_OPTIONS = [
-  { value: "main", label: "main" },
-  { value: "master", label: "master" },
-  { value: "release-8.5", label: "release-8.5" },
+const REPO_OPTIONS = [
+  { value: "pingcap/tidb", label: "pingcap/tidb" },
+  { value: "tikv/pd", label: "tikv/pd" },
 ];
 
 export default function App() {
@@ -134,6 +131,13 @@ export default function App() {
     },
     !isCostPage && !isWeeklySummaryPage,
   );
+  const branches = useApiData(
+    "/api/v1/filters/branches",
+    {
+      repo: filters.repo,
+    },
+    !isCostPage && !isWeeklySummaryPage,
+  );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
     branch: filters.branch,
@@ -194,7 +198,7 @@ export default function App() {
   const filterOptions = {
     isCostPage,
     repos: REPO_OPTIONS,
-    branches: BRANCH_OPTIONS,
+    branches: branches.data?.items || [],
     jobs: jobs.data?.items || [],
     cloudPhases: cloudPhases.data?.items || [],
     costSources: costSourceOptions,

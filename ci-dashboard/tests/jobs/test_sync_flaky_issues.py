@@ -14,6 +14,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     _build_flaky_issue_row,
     _build_issue_pr_links_upsert_statement,
     _build_upsert_statement,
+    _enrich_issue_row_for_pr_fallback,
     _extract_linked_pr_rows,
     _extract_issue_lifecycle,
     _fallback_issue_branch,
@@ -21,6 +22,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     _normalize_issue_comments,
     _parse_case_name,
     _parse_datetime,
+    _parse_linked_pr_candidates_from_body,
     _parse_timeline,
     _resolve_issue_branch,
     _reuse_existing_issue_branch_if_fresh,
@@ -93,6 +95,7 @@ def _insert_issue_ticket(
 def _pull_payload(
     *,
     number: int,
+    repo: str = "pingcap/tidb",
     state: str = "closed",
     merged: bool = True,
     created_at: str = "2026-04-16T10:11:25Z",
@@ -102,7 +105,7 @@ def _pull_payload(
 ) -> dict[str, object]:
     return {
         "number": number,
-        "html_url": f"https://github.com/pingcap/tidb/pull/{number}",
+        "html_url": f"https://github.com/{repo}/pull/{number}",
         "title": f"stabilize flaky #{number}",
         "state": state,
         "merged": merged,
@@ -111,6 +114,46 @@ def _pull_payload(
         "closed_at": closed_at,
         "merged_at": merged_at,
     }
+
+
+def _insert_pull_ticket(
+    sqlite_engine,
+    *,
+    ticket_id: int,
+    repo: str,
+    number: int,
+    title: str | None = None,
+    state: str = "closed",
+    created_at: str = "2026-04-16T10:11:25Z",
+    updated_at: str = "2026-04-23T08:05:41Z",
+    closed_at: str | None = "2026-04-23T08:05:40Z",
+    merged_at: str | None = "2026-04-23T08:05:40Z",
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO github_tickets (
+                  id, type, repo, number, title, body, state, created_at, updated_at, closed_at, merged, merged_at, timeline, branches
+                ) VALUES (
+                  :ticket_id, 'pull', :repo, :number, :title, NULL, :state, :created_at, :updated_at,
+                  :closed_at, :merged, :merged_at, '[]', NULL
+                )
+                """
+            ),
+            {
+                "ticket_id": ticket_id,
+                "repo": repo,
+                "number": number,
+                "title": title or f"stabilize flaky #{number}",
+                "state": state,
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "closed_at": closed_at,
+                "merged": merged_at is not None,
+                "merged_at": merged_at,
+            },
+        )
 
 
 def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monkeypatch) -> None:
@@ -527,6 +570,174 @@ def test_sync_flaky_issues_fetches_linked_pr_metadata_once_across_batches(
     assert [row["pr_number"] for row in linked_prs] == [67822]
 
 
+def test_sync_flaky_issues_supports_pd_body_pr_fallback(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=30,
+        repo="tikv/pd",
+        number=10858,
+        title="Flaky test: TestUpgradingPDAndTSOClusters",
+        body=None,
+        comments=None,
+        state="open",
+        created_at="2026-06-09T21:31:40Z",
+        updated_at="2026-06-09T21:31:40Z",
+        timeline=[
+            {
+                "event": "labeled",
+                "id": 26544302015,
+                "created_at": "2026-06-09T21:31:42Z",
+            }
+        ],
+    )
+    _insert_pull_ticket(sqlite_engine, ticket_id=31, repo="tikv/pd", number=10597)
+    _insert_pull_ticket(sqlite_engine, ticket_id=32, repo="tikv/pd", number=10600)
+    _insert_pull_ticket(sqlite_engine, ticket_id=33, repo="tikv/pd", number=10846)
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (
+            "## Flaky Test\n"
+            "### CI link\n"
+            "* https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/tikv_pd/10597/pull-unit-test-next-gen-3/2064319827626954752\n"
+            "### Anything else\n"
+            "* PRs: 10597, 10600, 10846\n",
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("linked PR metadata should come from github_tickets before GitHub API")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 1
+    assert summary.rows_written == 1
+    assert summary.issue_pr_links_written == 3
+    assert summary.linked_pr_rows_written == 3
+    assert summary.linked_pr_fetch_attempted == 0
+    assert summary.linked_pr_fetch_failed == 0
+
+    with sqlite_engine.begin() as connection:
+        issue_row = connection.execute(
+            text(
+                """
+                SELECT repo, issue_number, issue_status, issue_branch, branch_source
+                FROM ci_l1_flaky_issues
+                WHERE repo = 'tikv/pd' AND issue_number = 10858
+                """
+            )
+        ).mappings().one()
+        links = connection.execute(
+            text(
+                """
+                SELECT pr_repo, pr_number, source_event_type
+                FROM ci_l1_flaky_issue_pr_links
+                WHERE issue_repo = 'tikv/pd' AND issue_number = 10858
+                ORDER BY pr_number
+                """
+            )
+        ).mappings().all()
+        linked_prs = connection.execute(
+            text(
+                """
+                SELECT pr_repo, pr_number
+                FROM ci_l1_flaky_linked_prs
+                ORDER BY pr_number
+                """
+            )
+        ).mappings().all()
+
+    assert issue_row["issue_status"] == "open"
+    assert issue_row["issue_branch"] == "master"
+    assert issue_row["branch_source"] == "default_master"
+    assert [(row["pr_repo"], row["pr_number"], row["source_event_type"]) for row in links] == [
+        ("tikv/pd", 10597, "issue_body_pr_list"),
+        ("tikv/pd", 10600, "issue_body_pr_list"),
+        ("tikv/pd", 10846, "issue_body_pr_list"),
+    ]
+    assert [(row["pr_repo"], row["pr_number"]) for row in linked_prs] == [
+        ("tikv/pd", 10597),
+        ("tikv/pd", 10600),
+        ("tikv/pd", 10846),
+    ]
+
+
+def test_sync_flaky_issues_merges_timeline_and_fetched_body_pr_links_for_pd(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=34,
+        repo="tikv/pd",
+        number=10859,
+        title="Flaky test: TestUpgradingPDAndTSOClusters",
+        body=None,
+        comments=None,
+        state="open",
+        created_at="2026-06-09T21:31:40Z",
+        updated_at="2026-06-09T21:31:40Z",
+        timeline=[
+            {
+                "event": "cross-referenced",
+                "id": 26544302016,
+                "created_at": "2026-06-09T21:31:42Z",
+                "source": {
+                    "type": "issue",
+                    "issue": {
+                        "number": 10597,
+                        "title": "stabilize flaky",
+                        "repository": {"full_name": "tikv/pd"},
+                        "pull_request": {},
+                    },
+                },
+            }
+        ],
+    )
+    _insert_pull_ticket(sqlite_engine, ticket_id=35, repo="tikv/pd", number=10597)
+    _insert_pull_ticket(sqlite_engine, ticket_id=36, repo="tikv/pd", number=10600)
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: ("PRs: 10597, 10600", []),
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("linked PR metadata should come from github_tickets before GitHub API")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 1
+    assert summary.issue_pr_links_written == 2
+
+    with sqlite_engine.begin() as connection:
+        links = connection.execute(
+            text(
+                """
+                SELECT pr_repo, pr_number, source_event_type
+                FROM ci_l1_flaky_issue_pr_links
+                WHERE issue_repo = 'tikv/pd' AND issue_number = 10859
+                ORDER BY pr_number
+                """
+            )
+        ).mappings().all()
+
+    assert [(row["pr_repo"], row["pr_number"], row["source_event_type"]) for row in links] == [
+        ("tikv/pd", 10597, "cross-referenced"),
+        ("tikv/pd", 10600, "issue_body_pr_list"),
+    ]
+
+
 def test_backfill_flaky_issue_pr_links_rebuilds_links_without_touching_issue_rows(
     sqlite_engine,
     monkeypatch,
@@ -924,6 +1135,58 @@ def test_sync_flaky_issue_helpers_cover_fallbacks_and_payload_shapes(monkeypatch
     ]
     assert str(link_rows[0].linked_at).startswith("2026-04-16 10:11:26")
 
+    assert _parse_linked_pr_candidates_from_body(
+        "PRs: 10597, 10600\n"
+        "https://github.com/tikv/pd/pull/10846\n"
+        "https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/tikv_pd/10597/pull-unit-test-next-gen-3/2064319827626954752\n",
+        issue_repo="tikv/pd",
+    ) == [
+        ("tikv/pd", 10597, "issue_body_pr_list"),
+        ("tikv/pd", 10600, "issue_body_pr_list"),
+        ("tikv/pd", 10846, "issue_body_github_pr_url"),
+    ]
+    assert _parse_linked_pr_candidates_from_body(
+        "https://prow.tidb.net/view/gs/prow-tidb-logs/pr-logs/pull/pingcap_tidb/67822/pull-unit-test-next-gen/1\n",
+        issue_repo="tikv/pd",
+    ) == [
+        ("pingcap/tidb", 67822, "issue_body_ci_link"),
+    ]
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: ("PRs: 10597, 10600", []),
+    )
+    assert _enrich_issue_row_for_pr_fallback(
+        {
+            "repo": "tikv/pd",
+            "number": 10858,
+            "body": None,
+            "updated_at": "2026-06-09T21:31:40Z",
+            "timeline": [{"event": "labeled"}],
+        }
+    )["body"] == "PRs: 10597, 10600"
+    assert _enrich_issue_row_for_pr_fallback(
+        {
+            "repo": "tikv/pd",
+            "number": 10858,
+            "body": None,
+            "updated_at": "2026-06-09T21:31:40Z",
+            "timeline": [
+                {
+                    "event": "cross-referenced",
+                    "source": {
+                        "type": "issue",
+                        "issue": {
+                            "number": 10597,
+                            "repository": {"full_name": "tikv/pd"},
+                            "pull_request": {},
+                        },
+                    },
+                }
+            ],
+        }
+    )["body"] == "PRs: 10597, 10600"
+
     existing = {
         "issue_branch": "release-8.5",
         "branch_source": "github_api_body",
@@ -1007,6 +1270,62 @@ def test_fetch_github_api_json_and_issue_details_wrap_http_failures(monkeypatch:
     )
     with pytest.raises(RuntimeError, match="timeout"):
         _fetch_github_api_json("https://api.github.com/repos/pingcap/tidb/issues/1")
+
+
+def test_fetch_github_api_json_retries_rate_limited_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Response:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return self._payload
+
+    class _HTTPError(urllib_error.HTTPError):
+        def __init__(self) -> None:
+            super().__init__(
+                "https://api.github.com",
+                429,
+                "rate limited",
+                hdrs={"Retry-After": "0"},
+                fp=None,
+            )
+
+        def read(self) -> bytes:
+            return b'{"message":"rate limit exceeded"}'
+
+    responses = iter(
+        [
+            _HTTPError(),
+            _Response(json.dumps({"ok": True})),
+        ]
+    )
+    sleep_calls: list[float] = []
+
+    def _fake_urlopen(request, timeout=0):
+        response = next(responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues._last_github_api_request_monotonic",
+        None,
+    )
+    monkeypatch.setattr("ci_dashboard.jobs.sync_flaky_issues.urllib_request.urlopen", _fake_urlopen)
+    monkeypatch.setattr("ci_dashboard.jobs.sync_flaky_issues.time.sleep", sleep_calls.append)
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.time.monotonic",
+        iter([0.0, 0.0, 1.0, 1.0]).__next__,
+    )
+
+    assert _fetch_github_api_json("https://api.github.com/repos/pingcap/tidb/issues/1") == {"ok": True}
+    assert sleep_calls == [0.0]
 
 
 def test_upsert_flaky_issues_accepts_empty_rows_and_tidb_statement(sqlite_engine) -> None:
