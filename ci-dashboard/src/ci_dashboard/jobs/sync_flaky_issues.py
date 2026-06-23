@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -40,11 +41,19 @@ GITHUB_PR_URL_PATTERN = re.compile(
     r"https?://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([0-9]+)",
     re.IGNORECASE,
 )
-PROW_PR_LOG_PATTERN = re.compile(r"/pr-logs/pull/[A-Za-z0-9_]+/([0-9]+)/", re.IGNORECASE)
+PROW_PR_LOG_PATTERN = re.compile(
+    r"/pr-logs/pull/([A-Za-z0-9_.-]+_[A-Za-z0-9_.-]+)/([0-9]+)/",
+    re.IGNORECASE,
+)
 GITHUB_API_BASE_URL = "https://api.github.com"
 BOT_AUTHORS = {"ti-chi-bot", "ti-chi-bot[bot]"}
 DEFAULT_ISSUE_BRANCH = "master"
 DEFAULT_BRANCH_SOURCE = "default_master"
+GITHUB_API_MIN_INTERVAL_SECONDS = 0.1
+GITHUB_API_RATE_LIMIT_RETRIES = 3
+GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
+GITHUB_API_MAX_RETRY_DELAY_SECONDS = 30.0
+_last_github_api_request_monotonic: float | None = None
 
 
 @dataclass(frozen=True)
@@ -265,6 +274,7 @@ def fetch_pull_details_via_github_api(
 
 
 def _fetch_github_api_json(url: str) -> Any:
+    global _last_github_api_request_monotonic
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "ci-dashboard-sync-flaky-issues",
@@ -275,16 +285,38 @@ def _fetch_github_api_json(url: str) -> Any:
         headers["Authorization"] = f"Bearer {token}"
 
     request = urllib_request.Request(url, headers=headers)
-    try:
-        with urllib_request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"GitHub API request failed for {url}: HTTP {exc.code}: {body}"
-        ) from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"GitHub API request failed for {url}: {exc.reason}") from exc
+    for attempt in range(GITHUB_API_RATE_LIMIT_RETRIES + 1):
+        now = time.monotonic()
+        if _last_github_api_request_monotonic is not None:
+            elapsed = now - _last_github_api_request_monotonic
+            remaining_delay = GITHUB_API_MIN_INTERVAL_SECONDS - elapsed
+            if remaining_delay > 0:
+                time.sleep(remaining_delay)
+        _last_github_api_request_monotonic = time.monotonic()
+
+        try:
+            with urllib_request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            if _should_retry_github_api_request(exc, body=body, attempt=attempt):
+                delay_seconds = _resolve_github_api_retry_delay(exc, attempt=attempt)
+                LOG.warning(
+                    "GitHub API rate limited flaky issue sync request; retrying",
+                    extra={
+                        "url": url,
+                        "attempt": attempt + 1,
+                        "delay_seconds": delay_seconds,
+                    },
+                )
+                time.sleep(delay_seconds)
+                continue
+            raise RuntimeError(
+                f"GitHub API request failed for {url}: HTTP {exc.code}: {body}"
+            ) from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError(f"GitHub API request failed for {url}: {exc.reason}") from exc
+    raise AssertionError("unreachable")
 
 
 def parse_issue_branch(issue_body: str) -> str | None:
@@ -379,13 +411,6 @@ def _enrich_issue_row_for_pr_fallback(row: dict[str, Any]) -> dict[str, Any]:
     if repo not in BODY_PR_FALLBACK_REPOS:
         return row
     if str(row.get("body") or "").strip():
-        return row
-    if _extract_linked_pr_rows_from_timeline(
-        _parse_timeline(row.get("timeline")),
-        issue_repo=repo,
-        issue_number=int(row["number"]),
-        source_ticket_updated_at=_parse_datetime(row["updated_at"]),
-    ):
         return row
 
     try:
@@ -522,12 +547,11 @@ def _extract_linked_pr_rows(
     ):
         links_by_pr[(link_row.pr_repo, link_row.pr_number)] = link_row
 
-    if not links_by_pr:
-        for link_row in _extract_body_linked_pr_rows(
-            row,
-            source_ticket_updated_at=source_ticket_updated_at,
-        ):
-            links_by_pr[(link_row.pr_repo, link_row.pr_number)] = link_row
+    for link_row in _extract_body_linked_pr_rows(
+        row,
+        source_ticket_updated_at=source_ticket_updated_at,
+    ):
+        links_by_pr.setdefault((link_row.pr_repo, link_row.pr_number), link_row)
 
     return sorted(
         links_by_pr.values(),
@@ -670,9 +694,69 @@ def _parse_linked_pr_candidates_from_body(
         add_candidate(match.group(1), int(match.group(2)), "issue_body_github_pr_url")
 
     for match in PROW_PR_LOG_PATTERN.finditer(normalized):
-        add_candidate(issue_repo, int(match.group(1)), "issue_body_ci_link")
+        add_candidate(
+            _parse_prow_pr_repo_slug(match.group(1), default_repo=issue_repo),
+            int(match.group(2)),
+            "issue_body_ci_link",
+        )
 
     return candidates
+
+
+def _parse_prow_pr_repo_slug(raw_slug: str, *, default_repo: str) -> str:
+    org, separator, repo = raw_slug.partition("_")
+    if not separator or not org or not repo:
+        return default_repo
+    return f"{org}/{repo}"
+
+
+def _should_retry_github_api_request(
+    exc: urllib_error.HTTPError,
+    *,
+    body: str,
+    attempt: int,
+) -> bool:
+    if attempt >= GITHUB_API_RATE_LIMIT_RETRIES:
+        return False
+    if exc.code == 429:
+        return True
+    if exc.code != 403:
+        return False
+    retry_after = exc.headers.get("Retry-After") if exc.headers is not None else None
+    if retry_after:
+        return True
+    return "rate limit" in body.lower()
+
+
+def _resolve_github_api_retry_delay(exc: urllib_error.HTTPError, *, attempt: int) -> float:
+    retry_after = exc.headers.get("Retry-After") if exc.headers is not None else None
+    parsed_retry_after = _parse_retry_after_seconds(retry_after)
+    if parsed_retry_after is not None:
+        return min(parsed_retry_after, GITHUB_API_MAX_RETRY_DELAY_SECONDS)
+
+    rate_limit_reset = exc.headers.get("X-RateLimit-Reset") if exc.headers is not None else None
+    if rate_limit_reset:
+        try:
+            reset_seconds = float(rate_limit_reset) - time.time()
+        except ValueError:
+            reset_seconds = 0.0
+        if reset_seconds > 0:
+            return min(reset_seconds, GITHUB_API_MAX_RETRY_DELAY_SECONDS)
+
+    return min(
+        GITHUB_API_RETRY_BASE_DELAY_SECONDS * (2**attempt),
+        GITHUB_API_MAX_RETRY_DELAY_SECONDS,
+    )
+
+
+def _parse_retry_after_seconds(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _fetch_linked_pr_metadata_rows(
