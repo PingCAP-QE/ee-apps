@@ -178,9 +178,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("all", "cas"),
         default="all",
     )
+    cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--safety-buffer-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--max-delete-objects", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument(
+        "--max-delete-cas-objects", type=_parse_positive_int, default=None
+    )
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
     return parser
@@ -379,9 +383,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             settings=settings.gcs_cache,
             mode=args.mode,
             execute_kind=args.execute_kind,
+            ac_retention_days=args.ac_retention_days,
             cas_retention_days=args.cas_retention_days,
             safety_buffer_days=args.safety_buffer_days,
             max_delete_objects=args.max_delete_objects,
+            max_delete_cas_objects=args.max_delete_cas_objects,
             sample_limit=args.sample_limit,
         )
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
@@ -459,7 +465,11 @@ def _run_refresh_attribution_command(engine, *, source: CostAttributionSource, a
         for usage_date in _date_range(args.start_date, args.end_date):
             logger.info(
                 "refresh-cost-attribution-daily day started",
-                extra={"vendor": source.vendor, "account_id": source.account_id, "usage_date": usage_date},
+                extra={
+                    "vendor": source.vendor,
+                    "account_id": source.account_id,
+                    "usage_date": usage_date,
+                },
             )
             summary = run_refresh_cost_attribution_daily(
                 engine,
@@ -496,7 +506,11 @@ def _run_refresh_attribution_from_summary_command(engine, *, source: CostAttribu
         for usage_date in _date_range(args.start_date, args.end_date):
             logger.info(
                 "refresh-cost-attribution-from-summary day started",
-                extra={"vendor": source.vendor, "account_id": source.account_id, "usage_date": usage_date},
+                extra={
+                    "vendor": source.vendor,
+                    "account_id": source.account_id,
+                    "usage_date": usage_date,
+                },
             )
             summary = run_refresh_cost_attribution_from_summary(
                 engine,
@@ -587,11 +601,7 @@ def _summaries_to_json(summaries: Sequence[object]) -> object:
 
 
 def _summary_to_json(summary) -> dict[str, object]:
-    return {
-        key: _jsonable(value)
-        for key, value in vars(summary).items()
-        if value is not None
-    }
+    return {key: _jsonable(value) for key, value in vars(summary).items() if value is not None}
 
 
 def _jsonable(value):
@@ -609,11 +619,7 @@ def _jsonable(value):
     if isinstance(value, dict):
         return {key: _jsonable(item) for key, item in value.items()}
     if hasattr(value, "__dict__"):
-        return {
-            key: _jsonable(item)
-            for key, item in vars(value).items()
-            if item is not None
-        }
+        return {key: _jsonable(item) for key, item in vars(value).items() if item is not None}
     return value
 
 

@@ -5,13 +5,21 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from cost_insight.common import db
-from cost_insight.common.config import AwsBillingSettings, DatabaseSettings, GcpBillingSettings, Settings
+from cost_insight.common.config import (
+    AwsBillingSettings,
+    DatabaseSettings,
+    GcpBillingSettings,
+    Settings,
+)
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
 from cost_insight.jobs.backfill_cost_refine_from_raw import BackfillCostRefineFromRawSummary
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import BootstrapGcsCacheLastSeenResult
 from cost_insight.jobs.cleanup_gcs_cache import CleanupGcsCacheSummary
-from cost_insight.jobs.refresh_attribution_daily import CostAttributionSource, RefreshAttributionSummary
+from cost_insight.jobs.refresh_attribution_daily import (
+    CostAttributionSource,
+    RefreshAttributionSummary,
+)
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
@@ -324,7 +332,8 @@ def test_cli_runs_cleanup_gcs_cache_without_database(monkeypatch, capsys) -> Non
             mode="dry-run",
             execute_kind="cas",
             dry_run=True,
-            cas_retention_days=21,
+            ac_retention_days=10,
+            cas_retention_days=15,
             safety_buffer_days=1,
             candidate_cas_object_count=99,
             candidate_ac_object_count=10,
@@ -438,7 +447,9 @@ def test_cli_rejects_negative_cleanup_shard_start(capsys) -> None:
     parser = cli.build_parser()
 
     with pytest.raises(SystemExit, match="2"):
-        parser.parse_args(["sync-gcs-cache-ac-references", "--mode", "bootstrap", "--shard-start", "-1"])
+        parser.parse_args(
+            ["sync-gcs-cache-ac-references", "--mode", "bootstrap", "--shard-start", "-1"]
+        )
 
     assert "expected a non-negative integer" in capsys.readouterr().err
 
@@ -908,7 +919,9 @@ def test_cli_runs_sync_aws_unmatched_resources_command(monkeypatch, capsys) -> N
     assert '"rows_seen": 5' in output
 
 
-def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
+def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
+    monkeypatch, capsys
+) -> None:
     calls = []
 
     class Engine:

@@ -7,8 +7,7 @@ from functools import lru_cache
 from typing import Mapping
 
 DEFAULT_GCP_BILLING_TABLE = (
-    "gcp-digital-bi.gcp_billing_detailed."
-    "gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
+    "gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
@@ -75,11 +74,12 @@ class GcsCacheSettings:
     ac_reference_batch_size: int = 500
     ac_reference_download_workers: int = 64
     ac_reference_max_index_staleness_hours: int = 12
-    ac_retention_days: int = 14
-    cas_retention_days: int = 21
+    ac_retention_days: int = 10
+    cas_retention_days: int = 15
     cleanup_safety_buffer_days: int = 1
     cleanup_sample_limit: int = 10
     cleanup_max_delete_objects: int = 10000000
+    cleanup_max_delete_cas_objects: int = 500
     cleanup_batch_size: int = 1000
     cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
     cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
@@ -295,7 +295,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS",
                     "COST_GCS_CACHE_AC_RETENTION_DAYS",
                 ),
-                14,
+                10,
             ),
             cas_retention_days=_read_positive_int_any(
                 env,
@@ -303,7 +303,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS",
                     "COST_GCS_CACHE_CAS_RETENTION_DAYS",
                 ),
-                21,
+                15,
             ),
             cleanup_safety_buffer_days=_read_positive_int_any(
                 env,
@@ -328,6 +328,14 @@ def load_settings(
                     "COST_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS",
                 ),
                 10000000,
+            ),
+            cleanup_max_delete_cas_objects=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS",
+                    "COST_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS",
+                ),
+                500,
             ),
             cleanup_batch_size=_read_positive_int_any(
                 env,
@@ -373,8 +381,7 @@ def _load_database_settings(
     require_database: bool,
 ) -> DatabaseSettings:
     database_url = (
-        _read_any(environ, "", "COST_INSIGHT_DB_URL", "COST_DB_URL", "CI_DASHBOARD_DB_URL")
-        or None
+        _read_any(environ, "", "COST_INSIGHT_DB_URL", "COST_DB_URL", "CI_DASHBOARD_DB_URL") or None
     )
     ssl_ca = _read_any(environ, "", "COST_INSIGHT_TIDB_SSL_CA", "COST_TIDB_SSL_CA", "TIDB_SSL_CA")
     ssl_ca = ssl_ca or None
