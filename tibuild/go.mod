@@ -24,6 +24,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
+	k8s.io/client-go v0.32.7
 )
 
 require (
