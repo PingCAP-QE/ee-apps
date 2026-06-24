@@ -74,7 +74,7 @@ CHECKS: list[Check] = [
         name="archive_error_logs",
         level="MEDIUM",
         description="Pending error-log archivals within the last 4 hours",
-        threshold_description="0 pending",
+        threshold_description="100 pending",
         sql=(
             "SELECT COUNT(*) FROM ci_l1_builds"
             " WHERE state IN ('failure','error','timeout','aborted')"
@@ -217,6 +217,16 @@ def _parse_timestamp(raw: str) -> datetime:
     return datetime.fromisoformat(raw)
 
 
+def _parse_count_threshold(threshold_description: str) -> int:
+    """Parse a count threshold like '100 pending' → 100."""
+    import re
+
+    m = re.match(r"(\d+)\s+pending", threshold_description.lower())
+    if not m:
+        raise ValueError(f"Unsupported count threshold: {threshold_description!r}")
+    return int(m.group(1))
+
+
 def _threshold_timedelta(threshold_description: str) -> timedelta:
     """Parse a threshold string like '4 hours', '30 hours', '4 days', '10 days'."""
     import re
@@ -346,13 +356,14 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
 
     if check.is_count_check:
         count = int(raw_value)
-        passed = count == 0
+        max_allowed = _parse_count_threshold(check.threshold_description)
+        passed = count <= max_allowed
         return CheckResult(
             check=check,
             passed=passed,
             value=count,
             lag_description=f"{count} pending",
-            error=None if passed else f"{count} rows pending archival",
+            error=None if passed else f"{count} pending (max allowed: {max_allowed})",
         )
 
     # Timestamp check — coerce string / date → datetime so subtraction works.
@@ -360,7 +371,8 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
         raw_value = _parse_timestamp(raw_value)
     elif isinstance(raw_value, date) and not isinstance(raw_value, datetime):
         raw_value = datetime.combine(raw_value, datetime.min.time())
-    now = datetime.now()
+    # DB stores naive UTC; compare against naive UTC now to avoid timezone skew.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     lag: timedelta = now - raw_value  # type: ignore[operator]
     threshold = _threshold_timedelta(check.threshold_description)
@@ -419,7 +431,7 @@ def run_all_checks(ci_engine: Engine, cost_engine: Engine | None) -> Report:
                 results.append(result)
 
     return Report(
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
         results=results,
     )
 
@@ -430,65 +442,136 @@ def run_all_checks(ci_engine: Engine, cost_engine: Engine | None) -> Report:
 
 
 def _format_lark_message(report: Report) -> str:
-    """Format the freshness report as a Lark incoming-webhook card message."""
-    date_str = report.timestamp.strftime("%Y-%m-%d %H:%M UTC")
+    """Format the freshness report for a Lark text message.
 
-    failed_by_level: dict[str, list[CheckResult]] = {}
-    for r in report.failed:
-        failed_by_level.setdefault(r.check.level, []).append(r)
-
+    Summary line at the top, followed by failure details grouped by severity.
+    """
+    # report.timestamp is UTC; convert to CST for display.
+    cst = report.timestamp + timedelta(hours=8)
+    date_str = cst.strftime("%Y-%m-%d %H:%M CST")
     passed = [r for r in report.results if r.passed and not r.skipped]
     skipped = [r for r in report.results if r.skipped]
+    failed = report.failed
 
-    blocks: list[str] = []
+    failed_by_level: dict[str, list[CheckResult]] = {}
+    for r in failed:
+        failed_by_level.setdefault(r.check.level, []).append(r)
 
-    if not report.failed:
-        parts = [f"✅ All {len(passed)} checks passed"]
-        if skipped:
-            parts.append(f"{len(skipped)} skipped")
-        parts.append("— all data pipelines are fresh.")
-        blocks.append(" ".join(parts))
-    else:
-        blocks.append(f"📊 Daily Data Freshness Check — {date_str}\n")
+    lines: list[str] = []
 
-        for level in ("HIGH", "MEDIUM", "LOW"):
-            items = failed_by_level.get(level, [])
-            if not items:
-                continue
-            emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "⚪"}.get(level, "❓")
-            blocks.append(f"{emoji} {level} ({len(items)}):")
-            for r in items:
-                blocks.append(
-                    f"  • {r.check.description}: {r.lag_description}"
-                    f" (threshold: {r.check.threshold_description})"
-                )
+    # Summary line (always first).
+    parts = [f"📊 Daily Freshness — {date_str}"]
+    parts.append(f"{len(failed)} failed, {len(passed)} passed")
+    if skipped:
+        parts.append(f"{len(skipped)} skipped")
+    lines.append(" | ".join(parts))
 
-        passed_count = len(passed)
-        if passed_count:
-            passed_names = [r.check.name for r in passed]
-            blocks.append(f"\n✅ Passed ({passed_count}): {', '.join(passed_names)}")
-        if skipped:
-            skipped_names = [r.check.name for r in skipped]
-            blocks.append(f"⏭️ Skipped ({len(skipped)}): {', '.join(skipped_names)}")
+    if not failed:
+        lines.append("✅ All pipelines are fresh.")
+        return "\n".join(lines)
 
-    return "\n".join(blocks)
+    # Failure details, grouped by severity.
+    lines.append("")
+    for level in ("HIGH", "MEDIUM", "LOW"):
+        items = failed_by_level.get(level, [])
+        if not items:
+            continue
+        emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "⚪"}.get(level, "❓")
+        lines.append(f"{emoji} {level} ({len(items)}):")
+        for r in items:
+            lines.append(
+                f"  • {r.check.name}: {r.lag_description}"
+                f" (threshold: {r.check.threshold_description})"
+            )
+
+    if skipped:
+        skipped_names = [r.check.name for r in skipped]
+        lines.append(f"\n⏭️ Skipped: {', '.join(skipped_names)}")
+
+    return "\n".join(lines)
 
 
-def _send_lark_alert(webhook_url: str, text: str) -> None:
-    """Send a text message to a Lark group via incoming webhook."""
-    payload = json.dumps({"msg_type": "text", "content": {"text": text}}).encode("utf-8")
-    req = urllib.request.Request(
-        webhook_url,
-        data=payload,
+def _send_lark_dm(text: str) -> bool:
+    """Send a text message to a specific Lark user via the IM API.
+
+    Reads LARK_APP_ID, LARK_APP_SECRET, and FRESHNESS_NOTIFY_OPEN_ID from the
+    environment.  Returns True when the message was delivered successfully.
+    """
+    app_id = os.getenv("LARK_APP_ID")
+    app_secret = os.getenv("LARK_APP_SECRET")
+    open_id = os.getenv("FRESHNESS_NOTIFY_OPEN_ID")
+
+    if not app_id or not app_secret:
+        logger.warning("LARK_APP_ID/LARK_APP_SECRET not set — cannot send DM")
+        return False
+    if not open_id:
+        logger.warning("FRESHNESS_NOTIFY_OPEN_ID not set — cannot send DM")
+        return False
+
+    # 1. Obtain tenant access token.
+    token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    token_payload = json.dumps(
+        {"app_id": app_id, "app_secret": app_secret}
+    ).encode("utf-8")
+    token_req = urllib.request.Request(
+        token_url,
+        data=token_payload,
         headers={"Content-Type": "application/json; charset=utf-8"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read().decode("utf-8")
-            logger.info("Lark webhook response: %s", body)
+        with urllib.request.urlopen(token_req, timeout=15) as resp:
+            token_body = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
-        logger.error("Failed to send Lark alert: %s", exc)
+        logger.error("Failed to obtain Lark tenant access token: %s", exc)
+        return False
+
+    if token_body.get("code") != 0:
+        logger.error("Lark token response error: %s", token_body)
+        return False
+
+    access_token = token_body.get("tenant_access_token")
+    if not access_token:
+        logger.error(
+            "Lark token response missing tenant_access_token: %s",
+            token_body,
+        )
+        return False
+
+    # 2. Send text message to the user.
+    msg_body = json.dumps(
+        {
+            "receive_id": open_id,
+            "msg_type": "text",
+            "content": json.dumps({"text": text}),
+        }
+    ).encode("utf-8")
+    msg_req = urllib.request.Request(
+        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
+        data=msg_body,
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Bearer {access_token}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(msg_req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        logger.error("Failed to send Lark DM: %s", exc)
+        return False
+
+    if result.get("code") != 0:
+        logger.error(
+            "Lark IM send returned non-zero code %s: %s",
+            result.get("code"),
+            result.get("msg", ""),
+        )
+        return False
+
+    logger.info("Lark DM sent successfully: %s", result.get("data", {}).get("message_id", ""))
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -515,20 +598,24 @@ def run_check_data_freshness(settings: Settings) -> Report:
         if cost_engine:
             cost_engine.dispose()
 
-    webhook_url = os.getenv("LARK_ALERT_WEBHOOK_URL")
     dry_run = os.getenv("FRESHNESS_DRY_RUN", "false").lower() == "true"
 
-    message = _format_lark_message(report)
-
-    if dry_run:
-        logger.info("DRY RUN — would send:\n%s", message)
-        print(message)
-    elif webhook_url:
-        _send_lark_alert(webhook_url, message)
-        logger.info("Alert sent: %d/%d checks failed", len(report.failed), len(report.results))
-    else:
-        logger.warning("LARK_ALERT_WEBHOOK_URL not set — alert not sent")
-        print(message)
+    if report.failed:
+        message = _format_lark_message(report)
+        if dry_run:
+            logger.info("DRY RUN — would send:\n%s", message)
+            print(message)
+        else:
+            sent = _send_lark_dm(message)
+            logger.info(
+                "Alert %s: %d/%d checks failed",
+                "sent" if sent else "failed to send",
+                len(report.failed),
+                len(report.results),
+            )
+    elif dry_run:
+        # Print all-clear message for canary testing.
+        print(_format_lark_message(report))
 
     # Log summary
     for r in report.failed:
