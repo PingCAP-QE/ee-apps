@@ -4,6 +4,7 @@ package configs
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jinzhu/configor"
 )
@@ -34,6 +35,14 @@ type ConfigYaml struct {
 
 	// ImageMirrorURLMap is a map prefixes for transformation between direct url to mirror url.
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map,omitempty" json:"image_mirror_url_map,omitempty"`
+
+	// TektonReconciler configures the background reconciler for Tekton PipelineRun status.
+	TektonReconciler struct {
+		Enabled        bool          `yaml:"enabled" json:"enabled"`
+		Namespace      string        `yaml:"namespace" json:"namespace"`
+		Interval       time.Duration `yaml:"interval" json:"interval"`
+		StaleThreshold time.Duration `yaml:"stale_threshold" json:"stale_threshold"`
+	} `yaml:"tekton_reconciler,omitempty" json:"tekton_reconciler,omitempty"`
 }
 
 type RestApiSecret struct {
