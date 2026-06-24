@@ -75,6 +75,20 @@ func main() {
 			if devbuildSvc == nil {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}
+
+			// Start Tekton reconciler if namespace is configured
+			if cfg.Tekton.Namespace != "" {
+				reconcilerLogger := zerolog.New(os.Stderr).With().Timestamp().Str("service", "tekton-reconciler").Logger()
+				dbClient, err := impl.NewStoreClient(cfg.Store)
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to create store client for reconciler")
+				}
+				reconciler, err := impl.NewTektonReconciler(&reconcilerLogger, dbClient, cfg.Tekton.Namespace)
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to create tekton reconciler")
+				}
+				go reconciler.Start(ctx)
+			}
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", hotfix.ServiceName).Logger()

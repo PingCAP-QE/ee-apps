@@ -35,7 +35,7 @@ type devbuildsrvc struct {
 }
 
 func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
-	dbClient, err := newStoreClient(cfg.Store)
+	dbClient, err := NewStoreClient(cfg.Store)
 	if err != nil {
 		logger.Err(err).Msg("failed to create store client")
 		return nil
@@ -358,7 +358,8 @@ func (s *devbuildsrvc) getInternalImageURL(img string) *string {
 	return nil
 }
 
-func newStoreClient(cfg config.Store) (*ent.Client, error) {
+// NewStoreClient creates a new Ent client and runs auto migration.
+func NewStoreClient(cfg config.Store) (*ent.Client, error) {
 	db, err := ent.Open(cfg.Driver, cfg.DSN)
 	if err != nil {
 		return nil, err
