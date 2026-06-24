@@ -201,6 +201,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
 		SetIsPushGcr(existingBuild.IsPushGcr).
+		SetPlatform(existingBuild.Platform).
 		SetStatus("pending").
 		SetCreatedAt(time.Now()).
 		Save(ctx)
