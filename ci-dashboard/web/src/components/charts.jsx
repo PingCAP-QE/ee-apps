@@ -1484,10 +1484,20 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
   }
 
   const highlightStartIndex = Math.max(weeks.length - 2, 0);
+  const tableWidthPx = 360 + weeks.length * 170;
 
   return (
     <div className={`table-scroll ${scrollClassName}`.trim()}>
-      <table className="data-table data-table--issue-weekly">
+      <table
+        className="data-table data-table--issue-weekly"
+        style={{ "--issue-table-width": `${tableWidthPx}px` }}
+      >
+        <colgroup>
+          <col className="issue-weekly-case-col" />
+          {weeks.map((week) => (
+            <col className="issue-weekly-week-col" key={week} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             <th>Case name</th>
