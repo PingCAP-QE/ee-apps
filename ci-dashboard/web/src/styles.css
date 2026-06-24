@@ -1958,7 +1958,19 @@ select {
 }
 
 .data-table--issue-weekly {
-  min-width: 1120px;
+  --issue-case-column-width: 360px;
+  --issue-week-column-width: 170px;
+  width: max(100%, var(--issue-table-width));
+  min-width: max(1120px, var(--issue-table-width));
+  table-layout: fixed;
+}
+
+.data-table--issue-weekly .issue-weekly-case-col {
+  width: var(--issue-case-column-width);
+}
+
+.data-table--issue-weekly .issue-weekly-week-col {
+  width: var(--issue-week-column-width);
 }
 
 .data-table th,
@@ -2014,9 +2026,9 @@ select {
 
 .data-table--issue-weekly thead th:first-child,
 .data-table--issue-weekly tbody th {
-  width: 360px;
-  min-width: 360px;
-  max-width: 360px;
+  width: var(--issue-case-column-width);
+  min-width: var(--issue-case-column-width);
+  max-width: var(--issue-case-column-width);
 }
 
 .data-table--issue-weekly thead th:first-child {
@@ -2025,6 +2037,7 @@ select {
 
 .data-table--issue-weekly .issue-cell {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
 }
 
