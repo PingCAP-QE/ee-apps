@@ -171,4 +171,3 @@ func TestRetryableConsumer_calculateBackoff(t *testing.T) {
 	assert.True(t, backoff2 <= rc.maxBackoff)
 	assert.True(t, backoff3 <= rc.maxBackoff)
 }
-

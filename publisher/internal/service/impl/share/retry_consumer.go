@@ -231,7 +231,7 @@ func (rc *RetryableConsumer) updateRedisState(ctx context.Context, eventID, stat
 func (rc *RetryableConsumer) calculateBackoff(attempt int) time.Duration {
 	// Exponential backoff: base * 2^attempt
 	backoff := float64(rc.backoffBase) * math.Pow(2, float64(attempt))
-	
+
 	// Add jitter: rand(0, base)
 	jitter := rand.Float64() * float64(rc.backoffBase)
 	backoff += jitter

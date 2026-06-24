@@ -146,4 +146,3 @@ func initWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logg
 
 	return kafkaReader, worker, nil
 }
-
