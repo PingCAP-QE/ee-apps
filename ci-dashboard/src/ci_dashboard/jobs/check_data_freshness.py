@@ -244,6 +244,7 @@ class CheckResult:
     value: Any  # raw DB result
     lag_description: str  # human-readable lag, e.g. "6h 30m" or "—"
     error: str | None = None
+    skipped: bool = False  # True when the check was not executed (e.g. no DB)
 
 
 @dataclass
@@ -253,7 +254,7 @@ class Report:
 
     @property
     def failed(self) -> list[CheckResult]:
-        return [r for r in self.results if not r.passed]
+        return [r for r in self.results if not r.passed and not r.skipped]
 
     @property
     def passed_all(self) -> bool:
@@ -410,6 +411,7 @@ def run_all_checks(ci_engine: Engine, cost_engine: Engine | None) -> Report:
                             passed=True,
                             value=None,
                             lag_description="skipped — no cost db configured",
+                            skipped=True,
                         )
                     )
                     continue
@@ -435,11 +437,17 @@ def _format_lark_message(report: Report) -> str:
     for r in report.failed:
         failed_by_level.setdefault(r.check.level, []).append(r)
 
-    # Build blocks for each severity level
+    passed = [r for r in report.results if r.passed and not r.skipped]
+    skipped = [r for r in report.results if r.skipped]
+
     blocks: list[str] = []
 
     if not report.failed:
-        blocks.append(f"✅ All {len(report.results)} checks passed — all data pipelines are fresh.")
+        parts = [f"✅ All {len(passed)} checks passed"]
+        if skipped:
+            parts.append(f"{len(skipped)} skipped")
+        parts.append("— all data pipelines are fresh.")
+        blocks.append(" ".join(parts))
     else:
         blocks.append(f"📊 Daily Data Freshness Check — {date_str}\n")
 
@@ -455,10 +463,13 @@ def _format_lark_message(report: Report) -> str:
                     f" (threshold: {r.check.threshold_description})"
                 )
 
-        passed_count = len(report.results) - len(report.failed)
+        passed_count = len(passed)
         if passed_count:
-            passed_names = [r.check.name for r in report.results if r.passed]
-            blocks.append(f"\n✅ All clear ({passed_count}): {', '.join(passed_names)}")
+            passed_names = [r.check.name for r in passed]
+            blocks.append(f"\n✅ Passed ({passed_count}): {', '.join(passed_names)}")
+        if skipped:
+            skipped_names = [r.check.name for r in skipped]
+            blocks.append(f"⏭️ Skipped ({len(skipped)}): {', '.join(skipped_names)}")
 
     return "\n".join(blocks)
 

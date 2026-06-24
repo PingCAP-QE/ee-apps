@@ -410,7 +410,7 @@ class TestRunAllChecks:
 
         for r in report.results:
             if r.check.db == "cost":
-                assert r.passed is True
+                assert r.skipped is True
                 assert "skipped" in r.lag_description
 
     def test_runs_all_checks_with_cost_engine(
@@ -494,6 +494,7 @@ class TestFormatLarkMessage:
 
         assert "✅" in msg
         assert "2 checks passed" in msg
+        assert "skipped" not in msg
 
     def test_formats_high_medium_low(self) -> None:
         results = [
@@ -532,7 +533,55 @@ class TestFormatLarkMessage:
         assert "⚪" in msg
         assert "LOW" in msg
         assert "ci_l1_builds" in msg
-        assert "✅ All clear" in msg
+        assert "✅ Passed" in msg
+
+    def test_failure_report_with_skipped(self) -> None:
+        """⏭️ appears in failure reports when some checks were skipped."""
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=False,
+                value=datetime(2026, 6, 25, 2, 0),
+                lag_description="5h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["cost_attribution_daily"],
+                passed=True,
+                value=None,
+                lag_description="skipped — no cost db configured",
+                skipped=True,
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "⏭️" in msg
+        assert "Skipped (1)" in msg
+
+    def test_all_clear_with_skipped(self) -> None:
+        """When some checks are skipped, the message distinguishes them."""
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=True,
+                value=datetime.now(),
+                lag_description="0h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["cost_attribution_daily"],
+                passed=True,
+                value=None,
+                lag_description="skipped — no cost db configured",
+                skipped=True,
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "✅" in msg
+        assert "1 checks passed" in msg
+        assert "1 skipped" in msg
+        assert "⏭️" not in msg  # only appears in failure report, not all-clear
 
 
 # ---------------------------------------------------------------------------
@@ -658,16 +707,21 @@ class TestRunCheckDataFreshness:
         cost_results = [r for r in report.results if r.check.db == "cost"]
         assert len(cost_results) > 0
         for r in cost_results:
-            assert r.passed is True
+            assert r.skipped is True
             assert "skipped" in r.lag_description
         # CI checks with seeded data should all pass (except archive_error_logs
         # which uses MySQL-specific NOW() - INTERVAL syntax, unsupported in SQLite).
         ci_failures = [
             r for r in report.results
-            if r.check.db == "ci" and not r.passed
+            if r.check.db == "ci" and not r.passed and not r.skipped
             and r.check.name != "archive_error_logs"
         ]
         assert ci_failures == [], f"Unexpected CI failures: {ci_failures}"
+        # skipped checks don't count as failures, but archive_error_logs
+        # fails in SQLite (NOW() - INTERVAL unsupported), so passed_all is
+        # False for that single SQLite-only failure.
+        assert len(report.failed) == 1
+        assert report.failed[0].check.name == "archive_error_logs"
 
 
 # ---------------------------------------------------------------------------
