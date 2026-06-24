@@ -215,9 +215,8 @@ func (rc *RetryableConsumer) getLastError(ctx context.Context, eventID string) e
 	val, err := rc.redisClient.Get(ctx, errorKey).Result()
 	if err != nil {
 		if err == redis.Nil {
-	return nil
-}
-
+			return nil
+		}
 		return fmt.Errorf("failed to get last error from Redis: %v", err)
 	}
 	return fmt.Errorf("%s", val)
