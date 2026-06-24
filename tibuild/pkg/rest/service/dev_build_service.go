@@ -133,9 +133,11 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 				entity.Status.TektonStatus = &TektonStatus{}
 			}
 			entity.Status.TektonStatus.EventID = eventID
-			entity, err = s.Repo.Update(ctx, entity.ID, entity)
+			updated, err := s.Repo.Update(ctx, entity.ID, entity)
 			if err != nil {
 				log.Error().Err(err).Msg("save eventID failed")
+			} else {
+				entity = *updated
 			}
 		}
 	}
