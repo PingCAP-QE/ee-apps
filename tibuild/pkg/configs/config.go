@@ -25,7 +25,8 @@ type ConfigYaml struct {
 
 	RestApiSecret RestApiSecret `yaml:"restapisecret,omitempty" json:"restapisecret,omitempty"`
 	CloudEvent    struct {
-		Endpoint string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+		Endpoint          string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+		TektonDirectTrigger bool   `yaml:"tekton_direct_trigger,omitempty" json:"tekton_direct_trigger,omitempty"`
 	} `yaml:"cloudevent,omitempty" json:"cloudevent,omitempty"`
 
 	TektonViewURL    string `yaml:"tektonviewurl,omitempty" json:"tektonviewurl,omitempty"`

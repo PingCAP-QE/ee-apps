@@ -115,6 +115,7 @@ type DevBuildStatus struct {
 }
 
 type TektonStatus struct {
+	EventID   string           `json:"eventID,omitempty"`
 	Pipelines []TektonPipeline `json:"pipelines"`
 }
 

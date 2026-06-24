@@ -117,7 +117,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			s.Repo.Update(ctx, entity.ID, entity)
 		}(entity)
 	case TektonEngine:
-		err = s.Tekton.TriggerDevBuild(ctx, entity)
+		eventID, err := s.Tekton.TriggerDevBuild(ctx, entity)
 		if err != nil {
 			log.Error().Err(err).Msg("trigger tekton failed")
 			entity.Status.Status = BuildStatusError
@@ -127,6 +127,16 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 				log.Error().Err(err).Msg("save triggered entity failed")
 			}
 			return nil, fmt.Errorf("trigger Tekton fail: %w", ErrInternalError)
+		}
+		if eventID != "" {
+			if entity.Status.TektonStatus == nil {
+				entity.Status.TektonStatus = &TektonStatus{}
+			}
+			entity.Status.TektonStatus.EventID = eventID
+			entity, err = s.Repo.Update(ctx, entity.ID, entity)
+			if err != nil {
+				log.Error().Err(err).Msg("save eventID failed")
+			}
 		}
 	}
 

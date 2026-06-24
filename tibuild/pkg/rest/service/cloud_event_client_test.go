@@ -50,7 +50,7 @@ func TestTrigger(t *testing.T) {
 	if os.Getenv("TEST_FANOUT") == "" {
 		t.Skip("Skipping send event")
 	}
-	trigger := NewCEClient("http://localhost:8000")
-	err := trigger.TriggerDevBuild(context.TODO(), sampleDevBuild())
+	trigger := NewCEClient("http://localhost:8000", false)
+	_, err := trigger.TriggerDevBuild(context.TODO(), sampleDevBuild())
 	require.NoError(t, err)
 }
