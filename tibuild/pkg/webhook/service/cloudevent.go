@@ -112,4 +112,3 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 		EndAt:        endAt,
 	}, nil
 }
-
