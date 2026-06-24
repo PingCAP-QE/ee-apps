@@ -74,7 +74,7 @@ CHECKS: list[Check] = [
         name="archive_error_logs",
         level="MEDIUM",
         description="Pending error-log archivals within the last 4 hours",
-        threshold_description="0 pending",
+        threshold_description="100 pending",
         sql=(
             "SELECT COUNT(*) FROM ci_l1_builds"
             " WHERE state IN ('failure','error','timeout','aborted')"
@@ -217,6 +217,16 @@ def _parse_timestamp(raw: str) -> datetime:
     return datetime.fromisoformat(raw)
 
 
+def _parse_count_threshold(threshold_description: str) -> int:
+    """Parse a count threshold like '100 pending' → 100."""
+    import re
+
+    m = re.match(r"(\d+)\s+pending", threshold_description.lower())
+    if not m:
+        raise ValueError(f"Unsupported count threshold: {threshold_description!r}")
+    return int(m.group(1))
+
+
 def _threshold_timedelta(threshold_description: str) -> timedelta:
     """Parse a threshold string like '4 hours', '30 hours', '4 days', '10 days'."""
     import re
@@ -346,13 +356,14 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
 
     if check.is_count_check:
         count = int(raw_value)
-        passed = count == 0
+        max_allowed = _parse_count_threshold(check.threshold_description)
+        passed = count <= max_allowed
         return CheckResult(
             check=check,
             passed=passed,
             value=count,
             lag_description=f"{count} pending",
-            error=None if passed else f"{count} rows pending archival",
+            error=None if passed else f"{count} pending (max allowed: {max_allowed})",
         )
 
     # Timestamp check — coerce string / date → datetime so subtraction works.
@@ -360,7 +371,8 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
         raw_value = _parse_timestamp(raw_value)
     elif isinstance(raw_value, date) and not isinstance(raw_value, datetime):
         raw_value = datetime.combine(raw_value, datetime.min.time())
-    now = datetime.now()
+    # DB stores naive UTC; compare against naive UTC now to avoid timezone skew.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     lag: timedelta = now - raw_value  # type: ignore[operator]
     threshold = _threshold_timedelta(check.threshold_description)
@@ -419,7 +431,7 @@ def run_all_checks(ci_engine: Engine, cost_engine: Engine | None) -> Report:
                 results.append(result)
 
     return Report(
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
         results=results,
     )
 
@@ -434,7 +446,9 @@ def _format_lark_message(report: Report) -> str:
 
     Summary line at the top, followed by failure details grouped by severity.
     """
-    date_str = report.timestamp.strftime("%Y-%m-%d %H:%M CST")
+    # report.timestamp is UTC; convert to CST for display.
+    cst = report.timestamp + timedelta(hours=8)
+    date_str = cst.strftime("%Y-%m-%d %H:%M CST")
     passed = [r for r in report.results if r.passed and not r.skipped]
     skipped = [r for r in report.results if r.skipped]
     failed = report.failed

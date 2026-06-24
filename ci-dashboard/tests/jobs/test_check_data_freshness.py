@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +29,9 @@ from ci_dashboard.jobs.check_data_freshness import (
 # ---------------------------------------------------------------------------
 
 CHECKS_BY_NAME: dict[str, Check] = {c.name: c for c in CHECKS}
+
+# Seed timestamps in UTC so they align with run_check's UTC `now`.
+_utcnow = lambda: datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _exec(engine: Engine, sql: str, params: dict | None = None) -> None:
@@ -97,7 +100,7 @@ def fresh_engine(sqlite_engine: Engine) -> Engine:
 
 
 def _seed_all_checks(engine: Engine) -> None:
-    now = datetime.now()
+    now = _utcnow()
     today = date.today()
     _exec(engine, "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
           {"ts": (now - timedelta(hours=1)).isoformat()})
@@ -188,7 +191,7 @@ class TestThresholdTimedelta:
 
 class TestRunCheckTimestamp:
     def test_passes_when_fresh(self, fresh_engine: Engine) -> None:
-        now = datetime.now()
+        now = _utcnow()
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
               {"ts": (now - timedelta(hours=2)).isoformat()})
@@ -202,7 +205,7 @@ class TestRunCheckTimestamp:
         assert result.error is None
 
     def test_fails_when_stale(self, fresh_engine: Engine) -> None:
-        old = datetime.now() - timedelta(hours=10)
+        old = _utcnow() - timedelta(hours=10)
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
               {"ts": old.isoformat()})
@@ -272,9 +275,9 @@ class TestRunCheckCount:
         assert result.passed is False
         assert result.lag_description == "query error"
 
-    def test_count_check_passes_with_zero(self, fresh_engine: Engine) -> None:
+    def test_count_check_passes_when_below_threshold(self, fresh_engine: Engine) -> None:
         check = Check(name="test_count", level="MEDIUM", description="test",
-                      threshold_description="0 pending",
+                      threshold_description="100 pending",
                       sql="SELECT COUNT(*) FROM ci_l1_builds WHERE state = 'nonexistent'",
                       db="ci", is_count_check=True)
         with fresh_engine.begin() as conn:
@@ -282,16 +285,29 @@ class TestRunCheckCount:
         assert result.passed is True
         assert result.value == 0
 
-    def test_count_check_fails_when_positive(self, fresh_engine: Engine) -> None:
-        _exec(fresh_engine, "INSERT INTO ci_l1_builds (state) VALUES ('failure')")
+    def test_count_check_fails_when_above_threshold(self, fresh_engine: Engine) -> None:
+        for _ in range(3):
+            _exec(fresh_engine, "INSERT INTO ci_l1_builds (state) VALUES ('failure')")
         check = Check(name="test_count", level="MEDIUM", description="test",
-                      threshold_description="0 pending",
+                      threshold_description="2 pending",
                       sql="SELECT COUNT(*) FROM ci_l1_builds WHERE state = 'failure'",
                       db="ci", is_count_check=True)
         with fresh_engine.begin() as conn:
             result = run_check(conn, check)
         assert result.passed is False
-        assert result.value == 1
+        assert result.value == 3
+
+    def test_count_check_passes_at_threshold(self, fresh_engine: Engine) -> None:
+        for _ in range(5):
+            _exec(fresh_engine, "INSERT INTO ci_l1_builds (state) VALUES ('failure')")
+        check = Check(name="test_count", level="MEDIUM", description="test",
+                      threshold_description="5 pending",
+                      sql="SELECT COUNT(*) FROM ci_l1_builds WHERE state = 'failure'",
+                      db="ci", is_count_check=True)
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, check)
+        assert result.passed is True
+        assert result.value == 5
 
 
 # ---------------------------------------------------------------------------
@@ -321,17 +337,17 @@ class TestRunAllChecks:
 
 class TestReport:
     def test_passed_all_when_no_failures(self) -> None:
-        report = Report(timestamp=datetime.now(), results=[
+        report = Report(timestamp=_utcnow(), results=[
             CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
         ])
         assert report.passed_all is True
         assert report.failed == []
 
     def test_failed_filters_only_failures(self) -> None:
-        report = Report(timestamp=datetime.now(), results=[
+        report = Report(timestamp=_utcnow(), results=[
             CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
             CheckResult(check=CHECKS_BY_NAME["ci_l1_pod_lifecycle"], passed=False,
                         value=None, lag_description="6h 0m", error="stale"),
         ])
@@ -340,9 +356,9 @@ class TestReport:
         assert report.failed[0].check.name == "ci_l1_pod_lifecycle"
 
     def test_skipped_not_counted_as_failed(self) -> None:
-        report = Report(timestamp=datetime.now(), results=[
+        report = Report(timestamp=_utcnow(), results=[
             CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
             CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
                         value=None, lag_description="skipped", skipped=True),
         ])
@@ -359,9 +375,9 @@ class TestFormatLarkMessage:
     def test_all_clear(self) -> None:
         results = [
             CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
             CheckResult(check=CHECKS_BY_NAME["ci_l1_flaky_issues"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
         ]
         report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
         msg = _format_lark_message(report)
@@ -379,7 +395,7 @@ class TestFormatLarkMessage:
             CheckResult(check=CHECKS_BY_NAME["cost_unmatched_resource_daily"], passed=False,
                         value=date(2026, 5, 1), lag_description="55d 0h 0m"),
             CheckResult(check=CHECKS_BY_NAME["ci_l1_pod_lifecycle"], passed=True,
-                        value=datetime.now(), lag_description="0h 5m"),
+                        value=_utcnow(), lag_description="0h 5m"),
         ]
         report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
         msg = _format_lark_message(report)
@@ -399,7 +415,7 @@ class TestFormatLarkMessage:
     def test_all_clear_with_skipped(self) -> None:
         results = [
             CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=datetime.now(), lag_description="0h 0m"),
+                        value=_utcnow(), lag_description="0h 0m"),
             CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
                         value=None, lag_description="skipped", skipped=True),
         ]
@@ -526,7 +542,7 @@ class TestRunCheckDataFreshness:
         from ci_dashboard.common.config import get_settings, load_settings
 
         # Seed only checks that work in SQLite (skip archive_error_logs).
-        now = datetime.now()
+        now = _utcnow()
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
               {"ts": (now - timedelta(hours=1)).isoformat()})
@@ -674,7 +690,7 @@ class TestLagDescription:
         (172800, "2d 0h 0m"),
     ])
     def test_lag_formatting(self, fresh_engine: Engine, seconds: int, expected: str) -> None:
-        now = datetime.now()
+        now = _utcnow()
         ts = now - timedelta(seconds=seconds)
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
@@ -695,7 +711,7 @@ class TestLagDescription:
 
 class TestRunCheckJobState:
     def test_passes_when_job_recent(self, fresh_engine: Engine) -> None:
-        recent = datetime.now() - timedelta(hours=5)
+        recent = _utcnow() - timedelta(hours=5)
         _exec(fresh_engine,
               "INSERT OR REPLACE INTO ci_job_state"
               " (job_name, watermark_json, last_succeeded_at, last_status)"
@@ -706,7 +722,7 @@ class TestRunCheckJobState:
         assert result.passed is True
 
     def test_fails_when_job_stale(self, fresh_engine: Engine) -> None:
-        stale = datetime.now() - timedelta(hours=40)
+        stale = _utcnow() - timedelta(hours=40)
         _exec(fresh_engine,
               "INSERT OR REPLACE INTO ci_job_state"
               " (job_name, watermark_json, last_succeeded_at, last_status)"
@@ -734,7 +750,7 @@ class TestRunCheckExternalTables:
               "INSERT INTO prow_jobs"
               " (prowJobId, namespace, jobName, type, state, org, repo, url, startTime)"
               " VALUES ('pj1', 'ns', 'job', 'presubmit', 'success', 'o', 'r', 'http://x', :ts)",
-              {"ts": (datetime.now() - timedelta(hours=2)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=2)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["prow_jobs"])
         assert result.passed is True
@@ -743,7 +759,7 @@ class TestRunCheckExternalTables:
         _exec(fresh_engine,
               "INSERT INTO github_tickets (type, repo, number, updated_at)"
               " VALUES ('issue', 'pingcap/tidb', 1, :ts)",
-              {"ts": (datetime.now() - timedelta(hours=3)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=3)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["github_tickets"])
         assert result.passed is True
@@ -752,7 +768,7 @@ class TestRunCheckExternalTables:
         _exec(fresh_engine,
               "INSERT INTO github_tickets (type, repo, number, updated_at)"
               " VALUES ('issue', 'pingcap/tidb', 1, :ts)",
-              {"ts": (datetime.now() - timedelta(hours=40)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=40)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["github_tickets"])
         assert result.passed is False
@@ -762,7 +778,7 @@ class TestRunCheckExternalTables:
               "INSERT INTO ci_l1_pr_events"
               " (repo, pr_number, event_key, event_time, event_type)"
               " VALUES ('pingcap/tidb', 1, 'k1', :ts, 'committed')",
-              {"ts": (datetime.now() - timedelta(hours=1)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=1)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["ci_l1_pr_events"])
         assert result.passed is True
@@ -772,7 +788,7 @@ class TestRunCheckExternalTables:
               "INSERT INTO problem_case_runs"
               " (repo, case_name, build_url, flaky, timecost_ms, report_time)"
               " VALUES ('pingcap/tidb', 'TestX', 'http://x', 0, 100, :ts)",
-              {"ts": (datetime.now() - timedelta(hours=1)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=1)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["problem_case_runs"])
         assert result.passed is True
@@ -810,7 +826,7 @@ class TestRunCheckCostAndRoster:
         _exec(fresh_engine,
               "INSERT INTO roster_employees (lark_id, name, updated_at)"
               " VALUES ('l1', 'alice', :ts)",
-              {"ts": (datetime.now() - timedelta(hours=5)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=5)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["roster_employees"])
         assert result.passed is True
@@ -819,7 +835,7 @@ class TestRunCheckCostAndRoster:
         _exec(fresh_engine,
               "INSERT INTO ci_l1_pod_lifecycle (source_project, source_prow_job_id, last_event_at)"
               " VALUES ('proj', 'pj1', :ts)",
-              {"ts": (datetime.now() - timedelta(hours=1)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=1)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["ci_l1_pod_lifecycle"])
         assert result.passed is True
@@ -829,7 +845,7 @@ class TestRunCheckCostAndRoster:
               "INSERT OR REPLACE INTO ci_job_state"
               " (job_name, watermark_json, last_succeeded_at, last_status)"
               " VALUES ('ci-refresh-build-derived', '{}', :ts, 'succeeded')",
-              {"ts": (datetime.now() - timedelta(hours=2)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=2)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds_derived"])
         assert result.passed is True
@@ -839,7 +855,7 @@ class TestRunCheckCostAndRoster:
               "INSERT OR REPLACE INTO cost_job_state"
               " (job_name, watermark_json, last_succeeded_at, last_status)"
               " VALUES ('sync-gcs-cache-last-seen', '{}', :ts, 'succeeded')",
-              {"ts": (datetime.now() - timedelta(hours=5)).isoformat()})
+              {"ts": (_utcnow() - timedelta(hours=5)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["sync_gcs_cache_last_seen"])
         assert result.passed is True
@@ -854,14 +870,14 @@ class TestEdgeCases:
     def test_future_timestamp_handled(self, fresh_engine: Engine) -> None:
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
-              {"ts": (datetime.now() + timedelta(hours=1)).isoformat()})
+              {"ts": (_utcnow() + timedelta(hours=1)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
         assert result.passed is True
         assert result.lag_description == "0h 0m"
 
     def test_max_used_not_min(self, fresh_engine: Engine) -> None:
-        now = datetime.now()
+        now = _utcnow()
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('s', :ts1)",
               {"ts1": (now - timedelta(hours=10)).isoformat()})
@@ -895,7 +911,7 @@ class TestEdgeCases:
         assert dt == datetime(2026, 6, 25, 7, 0, 0)
 
     def test_format_failure_callback(self, fresh_engine: Engine) -> None:
-        now = datetime.now()
+        now = _utcnow()
         _exec(fresh_engine,
               "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
               {"ts": (now - timedelta(hours=10)).isoformat()})
