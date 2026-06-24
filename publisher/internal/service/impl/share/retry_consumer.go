@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
@@ -145,8 +146,8 @@ func (rc *RetryableConsumer) Handle(event cloudevents.Event) cloudevents.Result 
 
 	// NACK from processing failure: increment retry count and store error
 	var lastError error
-	if receipt, ok := result.(*cloudevents.Receipt); ok {
-		lastError = fmt.Errorf("%s", receipt.Error())
+	if receipt, ok := result.(*protocol.Receipt); ok {
+		lastError = fmt.Errorf("%s", receipt.Err.Error())
 	}
 	if err := rc.incrementRetryCount(ctx, eventID, lastError); err != nil {
 		rc.logger.Err(err).Str("event_id", eventID).Msg("Failed to increment retry count")
@@ -161,14 +162,10 @@ func (rc *RetryableConsumer) isSkippedResult(result cloudevents.Result) bool {
 	if result == nil {
 		return false
 	}
-	// Check if the result message indicates a skip
-	// Workers return NACK with specific messages for filtering
-	if _, ok := result.(*cloudevents.Receipt); ok {
-		// If the receipt indicates success (ACK) but is NACK, it's likely a skip
-		// Actually, we need to check the message content
-		// For now, we'll check if it's a standard NACK without error details
-		// This is a heuristic - workers should ideally return a specific skip result
-		return false
+	// Check if the result is a Receipt with an error
+	// If it has an error, it's a processing failure, not a skip
+	if receipt, ok := result.(*protocol.Receipt); ok {
+		return receipt.Err == nil
 	}
 	return false
 }
