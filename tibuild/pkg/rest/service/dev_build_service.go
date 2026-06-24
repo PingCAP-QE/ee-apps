@@ -40,6 +40,7 @@ type DevbuildServer struct {
 	OciFileserverURL string
 
 	ImageMirrorURLMap map[string]string
+	Notifier          Notifier
 }
 
 type DevBuildRepository interface {
@@ -234,7 +235,21 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	if obj.Spec.PipelineEngine == TektonEngine {
 		computeTektonStatus(tekton, &obj.Status)
 	}
-	return s.Update(ctx, id, *obj, options)
+	result, err := s.Update(ctx, id, *obj, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send notification if build reached terminal state
+	if s.Notifier != nil && IsBuildStatusCompleted(result.Status.Status) {
+		go func() {
+			if notifyErr := s.Notifier.Notify(context.Background(), result); notifyErr != nil {
+				log.Error().Err(notifyErr).Int("build_id", id).Msg("failed to send notification")
+			}
+		}()
+	}
+
+	return result, nil
 }
 
 func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {

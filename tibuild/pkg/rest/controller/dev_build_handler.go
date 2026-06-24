@@ -38,6 +38,7 @@ func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, cfg *configs.Config
 		TektonViewURL:     cfg.TektonViewURL,
 		OciFileserverURL:  cfg.OciFileserverURL,
 		ImageMirrorURLMap: cfg.ImageMirrorURLMap,
+		Notifier:          service.NewLarkNotifier(cfg.Lark.WebhookURL, cfg.Lark.Enabled),
 	}
 }
 

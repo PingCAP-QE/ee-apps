@@ -43,6 +43,12 @@ type ConfigYaml struct {
 		Interval       time.Duration `yaml:"interval" json:"interval"`
 		StaleThreshold time.Duration `yaml:"stale_threshold" json:"stale_threshold"`
 	} `yaml:"tekton_reconciler,omitempty" json:"tekton_reconciler,omitempty"`
+
+	// Lark configures Lark notifications for build completion events.
+	Lark struct {
+		Enabled    bool   `yaml:"enabled" json:"enabled"`
+		WebhookURL string `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
+	} `yaml:"lark,omitempty" json:"lark,omitempty"`
 }
 
 type RestApiSecret struct {
