@@ -33,12 +33,11 @@ func NewDevBuildServer(jenkins service.Jenkins, db *gorm.DB, cfg *configs.Config
 		Repo:              repo.DevBuildRepo{Db: db},
 		Jenkins:           jenkins,
 		Now:               time.Now,
-		Tekton:            service.NewCEClient(cfg.CloudEvent.Endpoint, cfg.CloudEvent.TektonDirectTrigger),
+		Tekton:            service.NewCEClient(cfg.CloudEvent.Endpoint),
 		GHClient:          service.NewGHClient(cfg.Github.Token),
 		TektonViewURL:     cfg.TektonViewURL,
 		OciFileserverURL:  cfg.OciFileserverURL,
 		ImageMirrorURLMap: cfg.ImageMirrorURLMap,
-		Notifier:          service.NewLarkNotifier(cfg.Lark.WebhookURL, cfg.Lark.Enabled),
 	}
 }
 

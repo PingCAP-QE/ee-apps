@@ -113,20 +113,6 @@ func routeRestAPI(router *gin.Engine, cfg *configs.ConfigYaml) {
 		devBuildGroup.POST("/:id/rerun", devBuildHandler.Rerun)
 	}
 
-	// Start Tekton reconciler if enabled
-	repo := devBuildServer.(*service.DevbuildServer).Repo
-	reconcilerConfig := service.TektonReconcilerConfig{
-		Enabled:        cfg.TektonReconciler.Enabled,
-		Namespace:      cfg.TektonReconciler.Namespace,
-		Interval:       cfg.TektonReconciler.Interval,
-		StaleThreshold: cfg.TektonReconciler.StaleThreshold,
-	}
-	reconciler, err := service.NewTektonReconciler(repo, reconcilerConfig)
-	if err != nil {
-		panic(err)
-	}
-	reconciler.Start(context.Background())
-
 	artifactHelper := controllers.NewArtifactHelperHandler(jenkins)
 	artifactGroup := apiGroup.Group("/artifact")
 	{
