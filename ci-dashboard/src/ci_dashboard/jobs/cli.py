@@ -26,6 +26,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     run_backfill_flaky_issue_pr_links,
     run_sync_flaky_issues,
 )
+from ci_dashboard.jobs.check_data_freshness import run_check_data_freshness
 from ci_dashboard.jobs.pod_watcher import run_watch_pods
 from ci_dashboard.jobs.sync_pods import run_reconcile_pod_linkage_for_time_window, run_sync_pods
 
@@ -222,6 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--end-date",
         type=_parse_iso_date,
         help="Inclusive build date in YYYY-MM-DD; defaults to open-ended",
+    )
+    subparsers.add_parser(
+        "check-data-freshness",
+        help="Daily data freshness check and Lark alert",
     )
     return parser
 
@@ -466,6 +471,19 @@ def main() -> int:
             },
         )
         return 0
+
+    if args.command == "check-data-freshness":
+        report = run_check_data_freshness(settings)
+        exit_code = 0 if report.passed_all else 1
+        logging.getLogger(__name__).info(
+            "check-data-freshness finished",
+            extra={
+                "passed": len(report.results) - len(report.failed),
+                "failed": len(report.failed),
+                "total": len(report.results),
+            },
+        )
+        return exit_code
 
     if args.command == "backfill-range":
         if args.end_date is not None and args.start_date > args.end_date:

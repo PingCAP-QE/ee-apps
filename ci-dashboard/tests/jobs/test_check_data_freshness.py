@@ -1,0 +1,1145 @@
+"""Tests for daily data freshness check job."""
+
+from __future__ import annotations
+
+import os
+from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+from ci_dashboard.common.config import Settings
+from ci_dashboard.jobs.check_data_freshness import (
+    CHECKS,
+    Check,
+    CheckResult,
+    Report,
+    _build_engine_for_db,
+    _format_lark_message,
+    _threshold_timedelta,
+    run_all_checks,
+    run_check,
+    run_check_data_freshness,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+CHECKS_BY_NAME: dict[str, Check] = {c.name: c for c in CHECKS}
+
+
+def _exec(engine: Engine, sql: str, params: dict | None = None) -> None:
+    """Execute a SQL statement within a short-lived transaction."""
+    with engine.begin() as conn:
+        conn.execute(text(sql), params or {})
+
+
+def _create_missing_tables(engine: Engine) -> None:
+    """Create tables needed by freshness checks that are not in conftest."""
+    _exec(
+        engine,
+        """
+        CREATE TABLE IF NOT EXISTS cost_bq_export_summary_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          billing_account_id TEXT NULL,
+          export_partition_date TEXT NOT NULL,
+          usage_date TEXT NOT NULL,
+          service_name TEXT NULL,
+          sku_name TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          author TEXT NULL,
+          list_cost REAL NULL,
+          effective_cost REAL NULL,
+          credit_amount REAL NULL,
+          net_cost REAL NULL,
+          source_export_time TEXT NULL,
+          source_row_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    _exec(
+        engine,
+        """
+        CREATE TABLE IF NOT EXISTS cost_job_state (
+          job_name TEXT PRIMARY KEY,
+          watermark_json TEXT NOT NULL,
+          last_started_at TEXT NULL,
+          last_succeeded_at TEXT NULL,
+          last_status TEXT NOT NULL DEFAULT 'never',
+          last_error TEXT NULL,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    _exec(
+        engine,
+        """
+        CREATE TABLE IF NOT EXISTS roster_employees (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          lark_id TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          en_name TEXT NULL,
+          employee_no TEXT NULL,
+          email TEXT NULL UNIQUE,
+          github_id TEXT NULL UNIQUE,
+          join_time TEXT NULL,
+          manager_id INTEGER NULL,
+          manager_path TEXT NULL,
+          group_id INTEGER NULL,
+          group_path TEXT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          last_seen_at TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_engine(sqlite_engine: Engine) -> Engine:
+    _create_missing_tables(sqlite_engine)
+    return sqlite_engine
+
+
+def _seed_all_checks(engine: Engine) -> None:
+    """Insert minimal data so every freshness check passes."""
+    now = datetime.now()
+    today = date.today()
+
+    _exec(
+        engine,
+        "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+        {"ts": (now - timedelta(hours=1)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO ci_l1_pod_lifecycle (source_project, source_prow_job_id, last_event_at)"
+        " VALUES ('proj', 'pj1', :ts)",
+        {"ts": (now - timedelta(hours=1)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO prow_jobs (prowJobId, namespace, jobName, type, state, org, repo, url, startTime)"
+        " VALUES ('pj1', 'ns', 'j', 'presubmit', 'success', 'o', 'r', 'http://x', :ts)",
+        {"ts": (now - timedelta(hours=2)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO github_tickets (type, repo, number, updated_at)"
+        " VALUES ('issue', 'pingcap/tidb', 1, :ts)",
+        {"ts": (now - timedelta(hours=3)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT OR REPLACE INTO ci_job_state"
+        " (job_name, watermark_json, last_succeeded_at, last_status)"
+        " VALUES ('ci-sync-flaky-issues', '{}', :ts, 'succeeded')",
+        {"ts": (now - timedelta(hours=5)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT OR REPLACE INTO ci_job_state"
+        " (job_name, watermark_json, last_succeeded_at, last_status)"
+        " VALUES ('ci-refresh-build-derived', '{}', :ts, 'succeeded')",
+        {"ts": (now - timedelta(hours=2)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO ci_l1_pr_events (repo, pr_number, event_key, event_time, event_type)"
+        " VALUES ('pingcap/tidb', 1, 'k1', :ts, 'committed')",
+        {"ts": (now - timedelta(hours=1)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO problem_case_runs"
+        " (repo, case_name, build_url, flaky, timecost_ms, report_time)"
+        " VALUES ('pingcap/tidb', 'TestX', 'http://x', 0, 100, :ts)",
+        {"ts": (now - timedelta(hours=1)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO cost_bq_export_summary_daily"
+        " (vendor, account_id, export_partition_date, usage_date, source_row_hash)"
+        " VALUES ('GCP', 'acct', :ep, :ud, 'h')",
+        {"ep": today.isoformat(), "ud": today.isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO cost_attribution_daily"
+        " (usage_date, vendor, account_id, attribution_key,"
+        "  attribution_source, attribution_status, dimension_hash)"
+        " VALUES (:d, 'GCP', 'acct', 'k', 'src', 'ok', 'h')",
+        {"d": today.isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO cost_unmatched_resource_daily"
+        " (vendor, account_id, export_partition_date, usage_date, resource_name, source_row_hash)"
+        " VALUES ('GCP', 'acct', :ep, :ud, 'res', 'h')",
+        {"ep": (today - timedelta(days=5)).isoformat(),
+         "ud": (today - timedelta(days=5)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT OR REPLACE INTO cost_job_state"
+        " (job_name, watermark_json, last_succeeded_at, last_status)"
+        " VALUES ('sync-gcs-cache-last-seen', '{}', :ts, 'succeeded')",
+        {"ts": (now - timedelta(hours=5)).isoformat()},
+    )
+    _exec(
+        engine,
+        "INSERT INTO roster_employees (lark_id, name, updated_at)"
+        " VALUES ('l1', 'alice', :ts)",
+        {"ts": (now - timedelta(hours=5)).isoformat()},
+    )
+
+
+# ---------------------------------------------------------------------------
+# _threshold_timedelta
+# ---------------------------------------------------------------------------
+
+
+class TestThresholdTimedelta:
+    def test_parses_hours(self) -> None:
+        assert _threshold_timedelta("4 hours") == timedelta(hours=4)
+        assert _threshold_timedelta("1 hour") == timedelta(hours=1)
+        assert _threshold_timedelta("30 hours") == timedelta(hours=30)
+
+    def test_parses_days(self) -> None:
+        assert _threshold_timedelta("4 days") == timedelta(days=4)
+        assert _threshold_timedelta("10 days") == timedelta(days=10)
+        assert _threshold_timedelta("1 day") == timedelta(days=1)
+
+    def test_raises_on_unknown_format(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported threshold format"):
+            _threshold_timedelta("0 pending")
+
+
+# ---------------------------------------------------------------------------
+# run_check — timestamp
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckTimestamp:
+    def test_passes_when_fresh(self, fresh_engine: Engine) -> None:
+        now = datetime.now()
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": (now - timedelta(hours=2)).isoformat()},
+        )
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": (now - timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
+
+        assert result.passed is True
+        assert result.value is not None
+        assert result.error is None
+
+    def test_fails_when_stale(self, fresh_engine: Engine) -> None:
+        old = datetime.now() - timedelta(hours=10)
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": old.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
+
+        assert result.passed is False
+        assert "h" in result.lag_description
+
+    def test_returns_error_on_null_value(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', NULL)",
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
+
+        assert result.passed is False
+        assert result.error == "no timestamp found"
+        assert result.value is None
+
+    def test_returns_error_on_empty_table(self, fresh_engine: Engine) -> None:
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_pod_lifecycle"])
+
+        assert result.passed is False
+        assert result.error == "no timestamp found"
+
+    def test_handles_sql_error(self, fresh_engine: Engine) -> None:
+        bad_check = Check(
+            name="bad",
+            level="HIGH",
+            description="bad",
+            threshold_description="4 hours",
+            sql="SELECT * FROM nonexistent_table",
+            db="ci",
+        )
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, bad_check)
+
+        assert result.passed is False
+        assert result.error is not None
+        assert result.lag_description == "query error"
+
+    def test_handles_date_column_as_fresh(self, fresh_engine: Engine) -> None:
+        """DATE columns return datetime.date — must not TypeError."""
+        today = date.today()
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_attribution_daily"
+            " (usage_date, vendor, account_id, attribution_key,"
+            "  attribution_source, attribution_status, dimension_hash)"
+            " VALUES (:d, 'GCP', 'acct', 'k', 'src', 'ok', 'h')",
+            {"d": today.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["cost_attribution_daily"])
+
+        assert result.passed is True
+
+    def test_handles_date_column_as_stale(self, fresh_engine: Engine) -> None:
+        """DATE column that is out of threshold must fail."""
+        old_date = date.today() - timedelta(days=10)
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_attribution_daily"
+            " (usage_date, vendor, account_id, attribution_key,"
+            "  attribution_source, attribution_status, dimension_hash)"
+            " VALUES (:d, 'GCP', 'acct', 'k', 'src', 'ok', 'h')",
+            {"d": old_date.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["cost_attribution_daily"])
+
+        assert result.passed is False
+
+
+# ---------------------------------------------------------------------------
+# run_check — count
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckCount:
+    def test_archive_error_logs_sqlite_unsupported(self, fresh_engine: Engine) -> None:
+        """SQLite does not support NOW() - INTERVAL, so the query errors out.
+
+        This is expected — the check is designed for MySQL/TiDB. The
+        run_check function must handle the error gracefully.
+        """
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["archive_error_logs"])
+
+        assert result.passed is False
+        assert result.lag_description == "query error"
+
+    def test_count_check_passes_with_zero(self, fresh_engine: Engine) -> None:
+        """Count check with portable SQL passes when count is 0."""
+        check = Check(
+            name="test_count",
+            level="MEDIUM",
+            description="test",
+            threshold_description="0 pending",
+            sql="SELECT COUNT(*) FROM ci_l1_builds WHERE state = 'nonexistent'",
+            db="ci",
+            is_count_check=True,
+        )
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, check)
+
+        assert result.passed is True
+        assert result.value == 0
+
+    def test_count_check_fails_when_positive(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state) VALUES ('failure')",
+        )
+        check = Check(
+            name="test_count",
+            level="MEDIUM",
+            description="test",
+            threshold_description="0 pending",
+            sql="SELECT COUNT(*) FROM ci_l1_builds WHERE state = 'failure'",
+            db="ci",
+            is_count_check=True,
+        )
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, check)
+
+        assert result.passed is False
+        assert result.value == 1
+
+
+# ---------------------------------------------------------------------------
+# run_all_checks
+# ---------------------------------------------------------------------------
+
+
+class TestRunAllChecks:
+    def test_skips_cost_checks_when_engine_is_none(
+        self, fresh_engine: Engine
+    ) -> None:
+        report = run_all_checks(fresh_engine, None)
+
+        for r in report.results:
+            if r.check.db == "cost":
+                assert r.skipped is True
+                assert "skipped" in r.lag_description
+
+    def test_runs_all_checks_with_cost_engine(
+        self, fresh_engine: Engine
+    ) -> None:
+        report = run_all_checks(fresh_engine, fresh_engine)
+
+        assert len(report.results) == len(CHECKS)
+        for r in report.results:
+            assert "skipped" not in r.lag_description
+
+
+# ---------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------
+
+
+class TestReport:
+    def test_passed_all_when_no_failures(self) -> None:
+        report = Report(
+            timestamp=datetime.now(),
+            results=[
+                CheckResult(
+                    check=CHECKS_BY_NAME["ci_l1_builds"],
+                    passed=True,
+                    value=datetime.now(),
+                    lag_description="0h 0m",
+                ),
+            ],
+        )
+        assert report.passed_all is True
+        assert report.failed == []
+
+    def test_failed_filters_only_failures(self) -> None:
+        report = Report(
+            timestamp=datetime.now(),
+            results=[
+                CheckResult(
+                    check=CHECKS_BY_NAME["ci_l1_builds"],
+                    passed=True,
+                    value=datetime.now(),
+                    lag_description="0h 0m",
+                ),
+                CheckResult(
+                    check=CHECKS_BY_NAME["ci_l1_pod_lifecycle"],
+                    passed=False,
+                    value=None,
+                    lag_description="6h 0m",
+                    error="stale",
+                ),
+            ],
+        )
+        assert report.passed_all is False
+        assert len(report.failed) == 1
+        assert report.failed[0].check.name == "ci_l1_pod_lifecycle"
+
+
+# ---------------------------------------------------------------------------
+# _format_lark_message
+# ---------------------------------------------------------------------------
+
+
+class TestFormatLarkMessage:
+    def test_all_clear(self) -> None:
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=True,
+                value=datetime.now(),
+                lag_description="0h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_flaky_issues"],
+                passed=True,
+                value=datetime.now(),
+                lag_description="0h 0m",
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "✅" in msg
+        assert "2 checks passed" in msg
+        assert "skipped" not in msg
+
+    def test_formats_high_medium_low(self) -> None:
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=False,
+                value=datetime(2026, 6, 25, 2, 0),
+                lag_description="5h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_flaky_issues"],
+                passed=False,
+                value=datetime(2026, 6, 23, 2, 0),
+                lag_description="53h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["cost_unmatched_resource_daily"],
+                passed=False,
+                value=date(2026, 5, 1),
+                lag_description="55d 0h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_pod_lifecycle"],
+                passed=True,
+                value=datetime.now(),
+                lag_description="0h 5m",
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "🔴" in msg
+        assert "HIGH" in msg
+        assert "🟡" in msg
+        assert "MEDIUM" in msg
+        assert "⚪" in msg
+        assert "LOW" in msg
+        assert "ci_l1_builds" in msg
+        assert "✅ Passed" in msg
+
+    def test_failure_report_with_skipped(self) -> None:
+        """⏭️ appears in failure reports when some checks were skipped."""
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=False,
+                value=datetime(2026, 6, 25, 2, 0),
+                lag_description="5h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["cost_attribution_daily"],
+                passed=True,
+                value=None,
+                lag_description="skipped — no cost db configured",
+                skipped=True,
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "⏭️" in msg
+        assert "Skipped (1)" in msg
+
+    def test_all_clear_with_skipped(self) -> None:
+        """When some checks are skipped, the message distinguishes them."""
+        results = [
+            CheckResult(
+                check=CHECKS_BY_NAME["ci_l1_builds"],
+                passed=True,
+                value=datetime.now(),
+                lag_description="0h 0m",
+            ),
+            CheckResult(
+                check=CHECKS_BY_NAME["cost_attribution_daily"],
+                passed=True,
+                value=None,
+                lag_description="skipped — no cost db configured",
+                skipped=True,
+            ),
+        ]
+        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
+        msg = _format_lark_message(report)
+
+        assert "✅" in msg
+        assert "1 checks passed" in msg
+        assert "1 skipped" in msg
+        assert "⏭️" not in msg  # only appears in failure report, not all-clear
+
+
+# ---------------------------------------------------------------------------
+# _build_engine_for_db
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEngineForDb:
+    def test_returns_ci_engine(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        get_settings.cache_clear()
+        engine = _build_engine_for_db("ci", load_settings())
+        assert engine is not None
+
+    def test_returns_none_when_cost_not_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
+        monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        get_settings.cache_clear()
+        engine = _build_engine_for_db("cost", load_settings())
+        assert engine is None
+
+    def test_does_not_fallback_to_ci_db_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
+        monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        get_settings.cache_clear()
+        engine = _build_engine_for_db("cost", load_settings())
+        assert engine is None
+
+
+# ---------------------------------------------------------------------------
+# run_check_data_freshness — integration
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckDataFreshness:
+    def test_sends_alert_when_webhook_configured(
+        self, fresh_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", str(fresh_engine.url))
+        monkeypatch.setenv("LARK_ALERT_WEBHOOK_URL", "https://example.com/hook")
+        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        _seed_all_checks(fresh_engine)
+
+        # Clear lru_cache to avoid stale settings from other tests.
+        get_settings.cache_clear()
+        settings = load_settings()
+        with patch(
+            "ci_dashboard.jobs.check_data_freshness._send_lark_alert"
+        ) as mock_send:
+            report = run_check_data_freshness(settings)
+
+        assert len(report.results) == len(CHECKS)
+        mock_send.assert_called_once()
+
+    def test_dry_run_does_not_send(
+        self, fresh_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", str(fresh_engine.url))
+        monkeypatch.setenv("LARK_ALERT_WEBHOOK_URL", "https://example.com/hook")
+        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
+        monkeypatch.setenv("FRESHNESS_DRY_RUN", "true")
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        _seed_all_checks(fresh_engine)
+
+        get_settings.cache_clear()
+        settings = load_settings()
+        with patch(
+            "ci_dashboard.jobs.check_data_freshness._send_lark_alert"
+        ) as mock_send:
+            report = run_check_data_freshness(settings)
+
+        mock_send.assert_not_called()
+        assert report is not None
+
+    def test_prints_when_no_webhook(
+        self, fresh_engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", str(fresh_engine.url))
+        monkeypatch.delenv("LARK_ALERT_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        _seed_all_checks(fresh_engine)
+
+        get_settings.cache_clear()
+        settings = load_settings()
+        report = run_check_data_freshness(settings)
+        out = capsys.readouterr().out
+        # The report is printed to stdout (contains check results).
+        assert report is not None
+        # At minimum the report contains structured content.
+        assert len(out) > 0
+
+    def test_skips_cost_gracefully_when_not_configured(
+        self, fresh_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", str(fresh_engine.url))
+        monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
+        monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        _seed_all_checks(fresh_engine)
+
+        get_settings.cache_clear()
+        settings = load_settings()
+        report = run_check_data_freshness(settings)
+
+        cost_results = [r for r in report.results if r.check.db == "cost"]
+        assert len(cost_results) > 0
+        for r in cost_results:
+            assert r.skipped is True
+            assert "skipped" in r.lag_description
+        # CI checks with seeded data should all pass (except archive_error_logs
+        # which uses MySQL-specific NOW() - INTERVAL syntax, unsupported in SQLite).
+        ci_failures = [
+            r for r in report.results
+            if r.check.db == "ci" and not r.passed and not r.skipped
+            and r.check.name != "archive_error_logs"
+        ]
+        assert ci_failures == [], f"Unexpected CI failures: {ci_failures}"
+        # skipped checks don't count as failures, but archive_error_logs
+        # fails in SQLite (NOW() - INTERVAL unsupported), so passed_all is
+        # False for that single SQLite-only failure.
+        assert len(report.failed) == 1
+        assert report.failed[0].check.name == "archive_error_logs"
+
+
+# ---------------------------------------------------------------------------
+# Check definitions — structural integrity
+# ---------------------------------------------------------------------------
+
+
+class TestCheckDefinitions:
+    def test_no_duplicate_names(self) -> None:
+        names = [c.name for c in CHECKS]
+        assert len(names) == len(set(names)), f"Duplicate: {names}"
+
+    def test_all_have_sql(self) -> None:
+        for c in CHECKS:
+            assert c.sql, f"{c.name} missing SQL"
+
+    def test_all_have_valid_level(self) -> None:
+        for c in CHECKS:
+            assert c.level in ("HIGH", "MEDIUM", "LOW"), f"{c.name}: {c.level}"
+
+    def test_all_have_valid_db(self) -> None:
+        for c in CHECKS:
+            assert c.db in ("ci", "cost"), f"{c.name}: {c.db}"
+
+    def test_count_checks_have_is_count_check(self) -> None:
+        count_names = {c.name for c in CHECKS if c.is_count_check}
+        assert "archive_error_logs" in count_names
+
+    def test_expected_count(self) -> None:
+        assert len(CHECKS) == 14, f"Expected 14, got {len(CHECKS)}"
+
+    def test_every_check_has_parsable_threshold(self) -> None:
+        for c in CHECKS:
+            if not c.is_count_check:
+                _threshold_timedelta(c.threshold_description)
+
+    def test_high_checks_are_hours(self) -> None:
+        for c in CHECKS:
+            if c.level == "HIGH":
+                assert "hour" in c.threshold_description, (
+                    f"{c.name} HIGH check should have hours threshold"
+                )
+
+    def test_gcs_cache_check_uses_cost_db(self) -> None:
+        gcs = [c for c in CHECKS if c.name == "sync_gcs_cache_last_seen"]
+        assert len(gcs) == 1
+        assert gcs[0].db == "cost"
+
+
+# ---------------------------------------------------------------------------
+# Lag description formatting
+# ---------------------------------------------------------------------------
+
+
+class TestLagDescription:
+    @pytest.mark.parametrize(
+        "seconds,expected",
+        [
+            (0, "0h 0m"),
+            (60, "0h 1m"),
+            (3600, "1h 0m"),
+            (3660, "1h 1m"),
+            (86400, "1d 0h 0m"),
+            (90000, "1d 1h 0m"),
+            (172800, "2d 0h 0m"),
+        ],
+    )
+    def test_lag_formatting(
+        self, fresh_engine: Engine, seconds: int, expected: str
+    ) -> None:
+        now = datetime.now()
+        ts = now - timedelta(seconds=seconds)
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": ts.isoformat()},
+        )
+
+        check = Check(
+            name="lag_test",
+            level="MEDIUM",
+            description="test",
+            threshold_description="100 days",
+            sql="SELECT MAX(start_time) FROM ci_l1_builds WHERE start_time IS NOT NULL",
+            db="ci",
+        )
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, check)
+
+        assert result.lag_description == expected
+
+
+# ---------------------------------------------------------------------------
+# Lark webhook HTTP error resilience
+# ---------------------------------------------------------------------------
+
+
+class TestSendLarkAlert:
+    def test_handles_http_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ci_dashboard.jobs.check_data_freshness import _send_lark_alert
+
+        def _raise(*_args, **_kwargs):
+            raise OSError("connection refused")
+
+        monkeypatch.setattr("urllib.request.urlopen", _raise)
+        _send_lark_alert("https://example.com/hook", "test message")
+
+
+# ---------------------------------------------------------------------------
+# Job-state based checks
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckJobState:
+    def test_passes_when_job_recent(self, fresh_engine: Engine) -> None:
+        recent = datetime.now() - timedelta(hours=5)
+        _exec(
+            fresh_engine,
+            "INSERT OR REPLACE INTO ci_job_state"
+            " (job_name, watermark_json, last_succeeded_at, last_status)"
+            " VALUES ('ci-sync-flaky-issues', '{}', :ts, 'succeeded')",
+            {"ts": recent.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_flaky_issues"])
+
+        assert result.passed is True
+
+    def test_fails_when_job_stale(self, fresh_engine: Engine) -> None:
+        stale = datetime.now() - timedelta(hours=40)
+        _exec(
+            fresh_engine,
+            "INSERT OR REPLACE INTO ci_job_state"
+            " (job_name, watermark_json, last_succeeded_at, last_status)"
+            " VALUES ('ci-sync-flaky-issues', '{}', :ts, 'succeeded')",
+            {"ts": stale.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_flaky_issues"])
+
+        assert result.passed is False
+
+    def test_none_when_job_never_run(self, fresh_engine: Engine) -> None:
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_flaky_issues"])
+
+        assert result.passed is False
+        assert result.error == "query returned no rows"
+
+
+# ---------------------------------------------------------------------------
+# External tables (prow_jobs, github_tickets, ci_l1_pr_events, problem_case_runs)
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckExternalTables:
+    def test_prow_jobs_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO prow_jobs"
+            " (prowJobId, namespace, jobName, type, state, org, repo, url, startTime)"
+            " VALUES ('pj1', 'ns', 'job', 'presubmit', 'success', 'o', 'r', 'http://x', :ts)",
+            {"ts": (datetime.now() - timedelta(hours=2)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["prow_jobs"])
+
+        assert result.passed is True
+
+    def test_github_tickets_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO github_tickets (type, repo, number, updated_at)"
+            " VALUES ('issue', 'pingcap/tidb', 1, :ts)",
+            {"ts": (datetime.now() - timedelta(hours=3)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["github_tickets"])
+
+        assert result.passed is True
+
+    def test_github_tickets_fails_when_stale(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO github_tickets (type, repo, number, updated_at)"
+            " VALUES ('issue', 'pingcap/tidb', 1, :ts)",
+            {"ts": (datetime.now() - timedelta(hours=40)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["github_tickets"])
+
+        assert result.passed is False
+
+    def test_pr_events_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_pr_events"
+            " (repo, pr_number, event_key, event_time, event_type)"
+            " VALUES ('pingcap/tidb', 1, 'k1', :ts, 'committed')",
+            {"ts": (datetime.now() - timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_pr_events"])
+
+        assert result.passed is True
+
+    def test_problem_case_runs_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO problem_case_runs"
+            " (repo, case_name, build_url, flaky, timecost_ms, report_time)"
+            " VALUES ('pingcap/tidb', 'TestX', 'http://x', 0, 100, :ts)",
+            {"ts": (datetime.now() - timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["problem_case_runs"])
+
+        assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
+# Cost and roster table checks
+# ---------------------------------------------------------------------------
+
+
+class TestRunCheckCostAndRoster:
+    def test_bq_export_summary_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_bq_export_summary_daily"
+            " (vendor, account_id, export_partition_date, usage_date, source_row_hash)"
+            " VALUES ('GCP', 'acct', :ep, :ud, 'h')",
+            {"ep": date.today().isoformat(), "ud": date.today().isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["cost_bq_export_summary_daily"])
+
+        assert result.passed is True
+
+    def test_unmatched_resource_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_unmatched_resource_daily"
+            " (vendor, account_id, export_partition_date, usage_date,"
+            "  resource_name, source_row_hash)"
+            " VALUES ('GCP', 'acct', :ep, :ud, 'res', 'h')",
+            {"ep": (date.today() - timedelta(days=5)).isoformat(),
+             "ud": (date.today() - timedelta(days=5)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["cost_unmatched_resource_daily"])
+
+        assert result.passed is True
+
+    def test_roster_employees_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO roster_employees (lark_id, name, updated_at)"
+            " VALUES ('l1', 'alice', :ts)",
+            {"ts": (datetime.now() - timedelta(hours=5)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["roster_employees"])
+
+        assert result.passed is True
+
+    def test_pod_lifecycle_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_pod_lifecycle"
+            " (source_project, source_prow_job_id, last_event_at)"
+            " VALUES ('proj', 'pj1', :ts)",
+            {"ts": (datetime.now() - timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_pod_lifecycle"])
+
+        assert result.passed is True
+
+    def test_refresh_build_derived_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT OR REPLACE INTO ci_job_state"
+            " (job_name, watermark_json, last_succeeded_at, last_status)"
+            " VALUES ('ci-refresh-build-derived', '{}', :ts, 'succeeded')",
+            {"ts": (datetime.now() - timedelta(hours=2)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds_derived"])
+
+        assert result.passed is True
+
+    def test_gcs_cache_job_state_passes(self, fresh_engine: Engine) -> None:
+        _exec(
+            fresh_engine,
+            "INSERT OR REPLACE INTO cost_job_state"
+            " (job_name, watermark_json, last_succeeded_at, last_status)"
+            " VALUES ('sync-gcs-cache-last-seen', '{}', :ts, 'succeeded')",
+            {"ts": (datetime.now() - timedelta(hours=5)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["sync_gcs_cache_last_seen"])
+
+        assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCases:
+    def test_future_timestamp_handled(self, fresh_engine: Engine) -> None:
+        """A future timestamp produces 0 lag, not negative."""
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": (datetime.now() + timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
+
+        assert result.passed is True
+        assert result.lag_description == "0h 0m"
+
+    def test_max_used_not_min(self, fresh_engine: Engine) -> None:
+        """MAX() picks the freshest row, so 1h-old beats 10h-old."""
+        now = datetime.now()
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('s', :ts1)",
+            {"ts1": (now - timedelta(hours=10)).isoformat()},
+        )
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('s', :ts2)",
+            {"ts2": (now - timedelta(hours=1)).isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds"])
+
+        assert result.passed is True
+
+    def test_parse_timestamp_fromisoformat_fallback(self) -> None:
+        """The last-resort fromisoformat path is exercised by an ISO string."""
+        from ci_dashboard.jobs.check_data_freshness import _parse_timestamp
+
+        dt = _parse_timestamp("2026-06-25T07:00:00")
+        assert dt == datetime(2026, 6, 25, 7, 0, 0)
+
+    def test_format_failure_callback(self, fresh_engine: Engine) -> None:
+        """format_failure overrides lag_description when set."""
+        now = datetime.now()
+        _exec(
+            fresh_engine,
+            "INSERT INTO ci_l1_builds (state, start_time) VALUES ('success', :ts)",
+            {"ts": (now - timedelta(hours=10)).isoformat()},
+        )
+        check = Check(
+            name="custom_format",
+            level="HIGH",
+            description="test",
+            threshold_description="4 hours",
+            sql="SELECT MAX(start_time) FROM ci_l1_builds WHERE start_time IS NOT NULL",
+            db="ci",
+            format_failure=lambda v: f"custom:{v}",
+        )
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, check)
+
+        assert "custom:" in result.lag_description
+
+    def test_cost_db_with_url_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When COST_INSIGHT_DB_URL is set, engine uses URL path."""
+        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
+        monkeypatch.setenv("COST_INSIGHT_DB_URL", "sqlite:///:memory:")
+        from ci_dashboard.common.config import get_settings, load_settings
+
+        get_settings.cache_clear()
+        engine = _build_engine_for_db("cost", load_settings())
+        assert engine is not None
+        engine.dispose()
+
+    def test_gcp_vendor_filter(self, fresh_engine: Engine) -> None:
+        """cost_bq_export_summary_daily filters on vendor='GCP'; AWS rows ignored."""
+        today = date.today()
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_bq_export_summary_daily"
+            " (vendor, account_id, export_partition_date, usage_date, source_row_hash)"
+            " VALUES ('AWS', 'acct', :ep, :ud, 'h')",
+            {"ep": (date.today() - timedelta(days=30)).isoformat(),
+             "ud": (date.today() - timedelta(days=30)).isoformat()},
+        )
+        _exec(
+            fresh_engine,
+            "INSERT INTO cost_bq_export_summary_daily"
+            " (vendor, account_id, export_partition_date, usage_date, source_row_hash)"
+            " VALUES ('GCP', 'acct', :ep, :ud, 'h')",
+            {"ep": today.isoformat(), "ud": today.isoformat()},
+        )
+
+        with fresh_engine.begin() as conn:
+            result = run_check(conn, CHECKS_BY_NAME["cost_bq_export_summary_daily"])
+
+        assert result.passed is True
