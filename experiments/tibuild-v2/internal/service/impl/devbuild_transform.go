@@ -94,7 +94,16 @@ func transformTektonStatus(status map[string]any) *devbuild.TektonStatus {
 
 	tektonStatus := &devbuild.TektonStatus{}
 
-	// Add your transformation logic here.
+	// Parse triggers_event_ids
+	if eventIDsRaw, ok := status["triggers_event_ids"].([]any); ok {
+		eventIDs := make([]string, 0, len(eventIDsRaw))
+		for _, id := range eventIDsRaw {
+			if idStr, ok := id.(string); ok {
+				eventIDs = append(eventIDs, idStr)
+			}
+		}
+		tektonStatus.TriggersEventIds = eventIDs
+	}
 
 	return tektonStatus
 }
