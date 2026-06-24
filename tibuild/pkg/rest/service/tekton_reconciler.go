@@ -249,26 +249,11 @@ func (r *TektonReconciler) pipelineRunToTektonPipeline(pr tekton.PipelineRun) *T
 		}
 	}
 
-	// Parse platform from params
-	platform := ""
-	for _, p := range pr.Spec.Params {
-		if p.Name == "os" {
-			platform = p.Value.StringVal
-		}
-		if p.Name == "arch" && platform != "" {
-			platform = platform + "/" + p.Value.StringVal
-		}
-	}
-
-	// Parse git hash
-	gitHash := ""
-	for _, p := range pr.Spec.Params {
-		if p.Name == "git-revision" {
-			v := p.Value.StringVal
-			if len(v) == 40 {
-				gitHash = v
-			}
-		}
+	// Extract artifacts and images from PipelineRun results
+	ociArtifacts := ConvertOciArtifacts(pr)
+	images, err := ParseTektonImage(pr.Status.PipelineResults)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to parse tekton images")
 	}
 
 	var startAt, endAt *time.Time
@@ -280,12 +265,14 @@ func (r *TektonReconciler) pipelineRunToTektonPipeline(pr tekton.PipelineRun) *T
 	}
 
 	return &TektonPipeline{
-		Name:     pr.Name,
-		Platform: platform,
-		GitHash:  gitHash,
-		Status:   status,
-		StartAt:  startAt,
-		EndAt:    endAt,
+		Name:         pr.Name,
+		Platform:     ParsePlatform(pr),
+		GitHash:      ParseGitHash(pr),
+		Status:       status,
+		OciArtifacts: ociArtifacts,
+		Images:       images,
+		StartAt:      startAt,
+		EndAt:        endAt,
 	}
 }
 

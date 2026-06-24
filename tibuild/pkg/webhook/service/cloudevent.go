@@ -11,7 +11,6 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"gopkg.in/yaml.v3"
 
 	rest "github.com/PingCAP-QE/ee-apps/tibuild/pkg/rest/service"
 )
@@ -92,7 +91,7 @@ func eventToDevbuildTekton(event cloudevents.Event) (pipeline *rest.TektonPipeli
 }
 
 func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, error) {
-	images, err := parseTektonImage(pipeline.Status.PipelineResults)
+	images, err := rest.ParseTektonImage(pipeline.Status.PipelineResults)
 	if err != nil {
 		return nil, fmt.Errorf("parse image failed:%w", err)
 	}
@@ -105,114 +104,12 @@ func toDevbuildPipeline(pipeline tekton.PipelineRun) (*rest.TektonPipeline, erro
 	}
 	return &rest.TektonPipeline{
 		Name:         pipeline.Name,
-		Platform:     parsePlatform(pipeline),
-		GitHash:      parseGitHash(pipeline),
-		OciArtifacts: convertOciArtifacts(pipeline),
+		Platform:     rest.ParsePlatform(pipeline),
+		GitHash:      rest.ParseGitHash(pipeline),
+		OciArtifacts: rest.ConvertOciArtifacts(pipeline),
 		Images:       images,
 		StartAt:      startAt,
 		EndAt:        endAt,
 	}, nil
 }
 
-func parsePlatform(pipeline tekton.PipelineRun) string {
-	os := ""
-	arch := ""
-	for _, p := range pipeline.Spec.Params {
-		switch p.Name {
-		case "os":
-			os = p.Value.StringVal
-		case "arch":
-			arch = p.Value.StringVal
-		}
-	}
-	if os != "" && arch != "" {
-		return os + "/" + arch
-	} else {
-		return ""
-	}
-}
-
-func parseGitHash(pipeline tekton.PipelineRun) string {
-	for _, p := range pipeline.Spec.Params {
-		if p.Name == "git-revision" {
-			v := p.Value.StringVal
-			if len(v) == 40 {
-				return v
-			}
-		}
-	}
-	return ""
-}
-
-func convertOciArtifacts(pipeline tekton.PipelineRun) []rest.OciArtifact {
-	var rt []rest.OciArtifact
-	for _, r := range pipeline.Status.PipelineResults {
-		if r.Name == "pushed-binaries" {
-			v, err := convertOciArtifact(r.Value.StringVal)
-			if err != nil {
-				slog.Error("can not parse oci file", "error", err.Error())
-				// this make error can be seen by frontend, and not block other result
-				v = &rest.OciArtifact{Repo: "parse_error", Tag: r.Value.StringVal, Files: []string{"error_parse_artifact"}}
-			}
-			rt = append(rt, *v)
-		}
-	}
-	return rt
-}
-
-type TektonOciArtifactStruct struct {
-	OCI struct {
-		Repo   string `json:"repo"`
-		Tag    string `json:"tag"`
-		Digest string `json:"digest"`
-	} `json:"oci"`
-	Files []string `json:"files"`
-}
-
-func convertOciArtifact(text string) (*rest.OciArtifact, error) {
-	tekton_oci_artifact := TektonOciArtifactStruct{}
-	err := yaml.Unmarshal([]byte(text), &tekton_oci_artifact)
-	if err != nil {
-		return nil, err
-	}
-	return &rest.OciArtifact{
-		Repo:  tekton_oci_artifact.OCI.Repo,
-		Tag:   tekton_oci_artifact.OCI.Tag,
-		Files: tekton_oci_artifact.Files,
-	}, nil
-}
-
-type TektonImageStruct struct {
-	Images []struct {
-		Repo          string   `json:"repo" yaml:"repo"`
-		Platform      string   `json:"platform" yaml:"platform"` // TODO: implement the field in tekton result.
-		Tag           string   `json:"tag" yaml:"tag"`
-		Tags          []string `json:"tags" yaml:"tags"`
-		MultiArchTags []string `json:"multi_arch_tags" yaml:"multi_arch_tags"`
-		URL           string   `json:"url" yaml:"url"`
-	} `json:"images" yaml:"images"`
-}
-
-func parseTektonImage(results []tekton.PipelineRunResult) ([]rest.ImageArtifact, error) {
-	var rt []rest.ImageArtifact
-	for _, r := range results {
-		if r.Name == "pushed-images" {
-			images := TektonImageStruct{}
-			err := yaml.Unmarshal([]byte(r.Value.StringVal), &images)
-			if err != nil {
-				return nil, err
-			}
-			for _, image := range images.Images {
-				imgURL := fmt.Sprintf("%s:%s", image.Repo, image.Tag)
-				rt = append(rt, rest.ImageArtifact{URL: imgURL, Platform: image.Platform})
-
-				// if it has multi arch tags, then we append the multi-arch image with the first tag.
-				if len(image.MultiArchTags) > 0 {
-					multiArchImgURL := fmt.Sprintf("%s:%s", image.Repo, image.MultiArchTags[0])
-					rt = append(rt, rest.ImageArtifact{URL: multiArchImgURL, Platform: rest.MultiArch})
-				}
-			}
-		}
-	}
-	return rt, nil
-}

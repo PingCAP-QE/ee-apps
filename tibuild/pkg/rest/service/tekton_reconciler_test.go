@@ -226,7 +226,7 @@ func TestTektonReconciler_UpdatesCompletedPipelineRun(t *testing.T) {
 		StaleThreshold: 5 * time.Minute,
 	}
 
-	// Create a fake PipelineRun
+	// Create a fake PipelineRun with artifacts
 	startTime := metav1.NewTime(now.Add(-10 * time.Minute))
 	completionTime := metav1.NewTime(now.Add(-2 * time.Minute))
 	pipelineRun := &tekton.PipelineRun{
@@ -256,6 +256,20 @@ func TestTektonReconciler_UpdatesCompletedPipelineRun(t *testing.T) {
 			PipelineRunStatusFields: tekton.PipelineRunStatusFields{
 				StartTime:      &startTime,
 				CompletionTime: &completionTime,
+				PipelineResults: []tekton.PipelineRunResult{
+					{
+						Name: "pushed-binaries",
+						Value: tekton.ArrayOrString{
+							StringVal: `{"oci":{"repo":"test-repo","tag":"v1.0","digest":"sha256:abc123"},"files":["file1.tar.gz","file2.tar.gz"]}`,
+						},
+					},
+					{
+						Name: "pushed-images",
+						Value: tekton.ArrayOrString{
+							StringVal: `{"images":[{"repo":"test-image","tag":"v1.0","platform":"linux/amd64"}]}`,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -273,6 +287,17 @@ func TestTektonReconciler_UpdatesCompletedPipelineRun(t *testing.T) {
 	assert.Equal(t, BuildStatusSuccess, updated.Status.TektonStatus.Pipelines[0].Status)
 	assert.Equal(t, "test-pipeline-run", updated.Status.TektonStatus.Pipelines[0].Name)
 	assert.Equal(t, "linux/amd64", updated.Status.TektonStatus.Pipelines[0].Platform)
+	assert.Equal(t, "abc123def456abc123def456abc123def456abc1", updated.Status.TektonStatus.Pipelines[0].GitHash)
+
+	// Verify artifacts are extracted
+	require.Len(t, updated.Status.TektonStatus.Pipelines[0].OciArtifacts, 1)
+	assert.Equal(t, "test-repo", updated.Status.TektonStatus.Pipelines[0].OciArtifacts[0].Repo)
+	assert.Equal(t, "v1.0", updated.Status.TektonStatus.Pipelines[0].OciArtifacts[0].Tag)
+	assert.Equal(t, []string{"file1.tar.gz", "file2.tar.gz"}, updated.Status.TektonStatus.Pipelines[0].OciArtifacts[0].Files)
+
+	require.Len(t, updated.Status.TektonStatus.Pipelines[0].Images, 1)
+	assert.Equal(t, "test-image:v1.0", updated.Status.TektonStatus.Pipelines[0].Images[0].URL)
+	assert.Equal(t, "linux/amd64", updated.Status.TektonStatus.Pipelines[0].Images[0].Platform)
 }
 
 func TestTektonReconciler_NoPipelineRunsFound(t *testing.T) {
