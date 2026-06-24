@@ -27,6 +27,7 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			IsHotfix:          &build.IsHotfix,
 			IsPushGcr:         &build.IsPushGcr,
 			PipelineEngine:    &build.PipelineEngine,
+			Platform:          build.Platform,
 			PluginGitRef:      &build.PluginGitRef,
 			Product:           build.Product,
 			ProductBaseImg:    &build.ProductBaseImg,

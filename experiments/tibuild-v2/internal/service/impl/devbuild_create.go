@@ -43,6 +43,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetCreatedBy(p.CreatedBy).
 		SetNillablePluginGitRef(p.Request.PluginGitRef).
 		SetNillablePipelineEngine(p.Request.PipelineEngine).
+		SetPlatform(p.Request.Platform).
 		SetStatus("pending")
 
 	return create.Save(ctx)
