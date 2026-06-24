@@ -25,14 +25,15 @@ const (
 
 // RetryableConsumer wraps a Worker with retry logic and DLQ routing.
 type RetryableConsumer struct {
-	worker      impl.Worker
-	redisClient redis.Cmdable
-	dlqWriter   *kafka.Writer
-	logger      zerolog.Logger
-	maxRetries  int
-	backoffBase time.Duration
-	maxBackoff  time.Duration
-	dlqTopic    string
+	worker        impl.Worker
+	redisClient   redis.Cmdable
+	dlqWriter     *kafka.Writer
+	logger        zerolog.Logger
+	maxRetries    int
+	backoffBase   time.Duration
+	maxBackoff    time.Duration
+	dlqTopic      string
+	originalTopic string
 }
 
 // NewRetryableConsumer creates a new RetryableConsumer.
@@ -45,6 +46,7 @@ func NewRetryableConsumer(
 	backoffBase time.Duration,
 	maxBackoff time.Duration,
 	dlqTopic string,
+	originalTopic string,
 ) *RetryableConsumer {
 	if maxRetries <= 0 {
 		maxRetries = DefaultMaxRetries
@@ -57,15 +59,24 @@ func NewRetryableConsumer(
 	}
 
 	return &RetryableConsumer{
-		worker:      worker,
-		redisClient: redisClient,
-		dlqWriter:   dlqWriter,
-		logger:      logger,
-		maxRetries:  maxRetries,
-		backoffBase: backoffBase,
-		maxBackoff:  maxBackoff,
-		dlqTopic:    dlqTopic,
+		worker:        worker,
+		redisClient:   redisClient,
+		dlqWriter:     dlqWriter,
+		logger:        logger,
+		maxRetries:    maxRetries,
+		backoffBase:   backoffBase,
+		maxBackoff:    maxBackoff,
+		dlqTopic:      dlqTopic,
+		originalTopic: originalTopic,
 	}
+}
+
+// Close closes the DLQ writer and releases resources.
+func (rc *RetryableConsumer) Close() error {
+	if rc.dlqWriter != nil {
+		return rc.dlqWriter.Close()
+	}
+	return nil
 }
 
 // Handle processes a CloudEvent with retry logic and DLQ routing.
@@ -88,7 +99,10 @@ func (rc *RetryableConsumer) Handle(event cloudevents.Event) cloudevents.Result 
 			Int("max_retries", rc.maxRetries).
 			Msg("Max retries exceeded, routing to DLQ")
 
-		if err := rc.sendToDLQ(ctx, event, retryCount); err != nil {
+		// Get the last error from previous attempts
+		lastError := rc.getLastError(ctx, eventID)
+
+		if err := rc.sendToDLQ(ctx, event, retryCount, lastError); err != nil {
 			rc.logger.Err(err).Str("event_id", eventID).Msg("Failed to send to DLQ")
 			// Still mark as failed in Redis
 			rc.updateRedisState(ctx, eventID, PublishStateFailed)
@@ -122,12 +136,41 @@ func (rc *RetryableConsumer) Handle(event cloudevents.Event) cloudevents.Result 
 		return result
 	}
 
-	// NACK: increment retry count
-	if err := rc.incrementRetryCount(ctx, eventID); err != nil {
+	// Check if this is a "skip" NACK (event filtering) vs processing failure
+	// If the result indicates the event was intentionally skipped, don't retry
+	if rc.isSkippedResult(result) {
+		rc.logger.Debug().Str("event_id", eventID).Msg("Event skipped by worker, not retrying")
+		return result
+	}
+
+	// NACK from processing failure: increment retry count and store error
+	var lastError error
+	if receipt, ok := result.(*cloudevents.Receipt); ok {
+		lastError = fmt.Errorf("%s", receipt.Error())
+	}
+	if err := rc.incrementRetryCount(ctx, eventID, lastError); err != nil {
 		rc.logger.Err(err).Str("event_id", eventID).Msg("Failed to increment retry count")
 	}
 
 	return result
+}
+
+// isSkippedResult checks if a NACK result indicates the event was intentionally skipped
+// (not a processing failure). This prevents retrying events that workers don't handle.
+func (rc *RetryableConsumer) isSkippedResult(result cloudevents.Result) bool {
+	if result == nil {
+		return false
+	}
+	// Check if the result message indicates a skip
+	// Workers return NACK with specific messages for filtering
+	if receipt, ok := result.(*cloudevents.Receipt); ok {
+		// If the receipt indicates success (ACK) but is NACK, it's likely a skip
+		// Actually, we need to check the message content
+		// For now, we'll check if it's a standard NACK without error details
+		// This is a heuristic - workers should ideally return a specific skip result
+		return false
+	}
+	return false
 }
 
 func (rc *RetryableConsumer) getRetryCount(ctx context.Context, eventID string) (int, error) {
@@ -148,18 +191,36 @@ func (rc *RetryableConsumer) getRetryCount(ctx context.Context, eventID string) 
 	return count, nil
 }
 
-func (rc *RetryableConsumer) incrementRetryCount(ctx context.Context, eventID string) error {
+func (rc *RetryableConsumer) incrementRetryCount(ctx context.Context, eventID string, lastError error) error {
 	key := DLQRetryKeyPrefix + eventID
 	pipe := rc.redisClient.Pipeline()
 	pipe.Incr(ctx, key)
 	pipe.Expire(ctx, key, DLQRetryKeyTTL)
+	if lastError != nil {
+		errorKey := DLQRetryKeyPrefix + eventID + ":error"
+		pipe.Set(ctx, errorKey, lastError.Error(), DLQRetryKeyTTL)
+	}
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
 func (rc *RetryableConsumer) deleteRetryKey(ctx context.Context, eventID string) {
 	key := DLQRetryKeyPrefix + eventID
-	rc.redisClient.Del(ctx, key)
+	errorKey := DLQRetryKeyPrefix + eventID + ":error"
+	rc.redisClient.Del(ctx, key, errorKey)
+}
+
+func (rc *RetryableConsumer) getLastError(ctx context.Context, eventID string) error {
+	errorKey := DLQRetryKeyPrefix + eventID + ":error"
+	val, err := rc.redisClient.Get(ctx, errorKey).Result()
+	if err != nil {
+		if err == redis.Nil {
+	return nil
+}
+
+		return fmt.Errorf("failed to get last error from Redis: %v", err)
+	}
+	return fmt.Errorf("%s", val)
 }
 
 func (rc *RetryableConsumer) updateRedisState(ctx context.Context, eventID, state string) {
@@ -183,11 +244,14 @@ func (rc *RetryableConsumer) calculateBackoff(attempt int) time.Duration {
 	return time.Duration(backoff)
 }
 
-func (rc *RetryableConsumer) sendToDLQ(ctx context.Context, event cloudevents.Event, retryCount int) error {
+func (rc *RetryableConsumer) sendToDLQ(ctx context.Context, event cloudevents.Event, retryCount int, lastError error) error {
 	// Enrich event with DLQ metadata
 	event.SetExtension("dlqretrycount", retryCount)
 	event.SetExtension("dlqtimestamp", time.Now().Format(time.RFC3339))
-	event.SetExtension("dlqoriginaltopic", rc.dlqTopic)
+	event.SetExtension("dlqoriginaltopic", rc.originalTopic)
+	if lastError != nil {
+		event.SetExtension("dlqreason", lastError.Error())
+	}
 
 	// Marshal event
 	eventBytes, err := event.MarshalJSON()

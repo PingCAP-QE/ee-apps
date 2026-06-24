@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
@@ -25,10 +26,20 @@ func (m *MockWorker) Handle(event cloudevents.Event) cloudevents.Result {
 	return args.Get(0).(cloudevents.Result)
 }
 
+func setupMiniredis(t *testing.T) (*miniredis.Miniredis, redis.Cmdable) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return mr, redisClient
+}
+
 func TestRetryableConsumer_Handle_Success(t *testing.T) {
 	// Setup
 	worker := new(MockWorker)
-	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	mr, redisClient := setupMiniredis(t)
+	defer mr.Close()
 	dlqWriter := &kafka.Writer{}
 	logger := zerolog.Nop()
 
@@ -41,6 +52,7 @@ func TestRetryableConsumer_Handle_Success(t *testing.T) {
 		10*time.Second,
 		5*time.Minute,
 		"dlq-topic",
+		"source-topic",
 	)
 
 	event := cloudevents.NewEvent()
@@ -62,7 +74,8 @@ func TestRetryableConsumer_Handle_Success(t *testing.T) {
 func TestRetryableConsumer_Handle_NACK_IncrementsRetry(t *testing.T) {
 	// Setup
 	worker := new(MockWorker)
-	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	mr, redisClient := setupMiniredis(t)
+	defer mr.Close()
 	dlqWriter := &kafka.Writer{}
 	logger := zerolog.Nop()
 
@@ -75,6 +88,7 @@ func TestRetryableConsumer_Handle_NACK_IncrementsRetry(t *testing.T) {
 		10*time.Second,
 		5*time.Minute,
 		"dlq-topic",
+		"source-topic",
 	)
 
 	event := cloudevents.NewEvent()
@@ -103,7 +117,8 @@ func TestRetryableConsumer_Handle_ExceedsMaxRetries_SendsToDLQ(t *testing.T) {
 	// This test would require mocking the Kafka writer
 	// For now, we'll test the logic without actual Kafka
 	worker := new(MockWorker)
-	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	mr, redisClient := setupMiniredis(t)
+	defer mr.Close()
 	dlqWriter := &kafka.Writer{}
 	logger := zerolog.Nop()
 
@@ -116,6 +131,7 @@ func TestRetryableConsumer_Handle_ExceedsMaxRetries_SendsToDLQ(t *testing.T) {
 		10*time.Second,
 		5*time.Minute,
 		"dlq-topic",
+		"source-topic",
 	)
 
 	event := cloudevents.NewEvent()
@@ -155,3 +171,4 @@ func TestRetryableConsumer_calculateBackoff(t *testing.T) {
 	assert.True(t, backoff2 <= rc.maxBackoff)
 	assert.True(t, backoff3 <= rc.maxBackoff)
 }
+

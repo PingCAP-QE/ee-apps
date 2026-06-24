@@ -38,6 +38,10 @@ func newWorkerFunc(ctx context.Context, workerName string, wf workerFactory, wor
 
 	return func() {
 		defer reader.Close()
+		// Close worker if it implements io.Closer (e.g., RetryableConsumer)
+		if closer, ok := worker.(interface{ Close() error }); ok {
+			defer closer.Close()
+		}
 		wl.Info().Msg("Kafka consumer started")
 
 		for {
@@ -126,6 +130,7 @@ func initWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logg
 			backoffBase,
 			maxBackoff,
 			cfg.DLQ.Topic,
+			cfg.Kafka.Topic,
 		)
 	}
 
@@ -141,3 +146,4 @@ func initWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logg
 
 	return kafkaReader, worker, nil
 }
+
