@@ -163,7 +163,7 @@ func (rc *RetryableConsumer) isSkippedResult(result cloudevents.Result) bool {
 	}
 	// Check if the result message indicates a skip
 	// Workers return NACK with specific messages for filtering
-	if receipt, ok := result.(*cloudevents.Receipt); ok {
+	if _, ok := result.(*cloudevents.Receipt); ok {
 		// If the receipt indicates success (ACK) but is NACK, it's likely a skip
 		// Actually, we need to check the message content
 		// For now, we'll check if it's a standard NACK without error details
