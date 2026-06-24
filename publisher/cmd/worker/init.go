@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
@@ -11,6 +13,7 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
 
@@ -59,7 +62,13 @@ func newWorkerFunc(ctx context.Context, workerName string, wf workerFactory, wor
 					Str("ce-type", cloudEvent.Type()).
 					Str("ce-subject", cloudEvent.Subject()).
 					Msg("received cloud event")
-				worker.Handle(cloudEvent)
+				result := worker.Handle(cloudEvent)
+				if cloudevents.IsNACK(result) {
+					wl.Warn().
+						Str("ce-id", cloudEvent.ID()).
+						Err(result).
+						Msg("CloudEvent processing NACKed")
+				}
 			}
 		}
 	}
@@ -86,6 +95,38 @@ func initWorkerFromConfig(cfg *config.Worker, wf workerFactory, wl *zerolog.Logg
 	worker, err := wf(wl, redisClient, cfg.Options)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Wrap worker with RetryableConsumer if DLQ is enabled
+	if cfg.DLQ.Enabled {
+		// Parse backoff durations
+		backoffBase, err := time.ParseDuration(cfg.DLQ.BackoffBase)
+		if err != nil {
+			backoffBase = share.DefaultBackoffBase
+		}
+		maxBackoff, err := time.ParseDuration(cfg.DLQ.MaxBackoff)
+		if err != nil {
+			maxBackoff = share.DefaultMaxBackoff
+		}
+
+		// Create DLQ Kafka writer
+		dlqWriter := kafka.NewWriter(kafka.WriterConfig{
+			Brokers:  cfg.Kafka.Brokers,
+			Topic:    cfg.DLQ.Topic,
+			Balancer: &kafka.LeastBytes{},
+			Logger:   kafka.LoggerFunc(wl.Printf),
+		})
+
+		worker = share.NewRetryableConsumer(
+			worker,
+			redisClient,
+			dlqWriter,
+			*wl,
+			cfg.DLQ.MaxRetries,
+			backoffBase,
+			maxBackoff,
+			cfg.DLQ.Topic,
+		)
 	}
 
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{

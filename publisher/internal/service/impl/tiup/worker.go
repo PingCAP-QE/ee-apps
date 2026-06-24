@@ -25,9 +25,6 @@ const (
 	tiupPublishingMutexExpiry     = 10 * time.Minute
 	tiupPublishingMutexTries      = 300
 	tiupPublishingMutexRetryDelay = time.Second
-
-	tiupUploadingMaxRetries = 3
-	tiupUploadingRetryDelay = time.Minute
 )
 
 type tiupWorker struct {
@@ -157,23 +154,8 @@ func (p *tiupWorker) handle(data *PublishRequestTiUP) cloudevents.Result {
 	}
 	p.logger.Info().Msg("download file success")
 
-	// 2. publish the tarball to the mirror with retries.
-	for i := range tiupUploadingMaxRetries {
-		if err = p.publish(saveTo, &data.Publish); err == nil {
-			break
-		}
-
-		if i < tiupUploadingMaxRetries-1 {
-			p.logger.Warn().
-				Int("tried", i+1).
-				Int("max_retries", tiupUploadingMaxRetries).
-				Err(err).
-				Msgf("publish to mirror failed, i will retry after %s.", tiupUploadingRetryDelay)
-			time.Sleep(tiupUploadingRetryDelay)
-		}
-	}
-
-	if err != nil {
+	// 2. publish the tarball to the mirror.
+	if err = p.publish(saveTo, &data.Publish); err != nil {
 		p.logger.Err(err).Msg("publish to mirror failed")
 		return cloudevents.NewReceipt(false, "publish to mirror failed: %v", err)
 	}
