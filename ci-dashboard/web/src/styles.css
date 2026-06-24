@@ -1957,6 +1957,10 @@ select {
   min-width: 420px;
 }
 
+.data-table--issue-weekly {
+  min-width: 1120px;
+}
+
 .data-table th,
 .data-table td {
   padding: 0.8rem 0.9rem;
@@ -2006,6 +2010,29 @@ select {
 .data-table tbody tr:hover th,
 .data-table tbody tr:hover td {
   background: rgba(15, 124, 130, 0.08);
+}
+
+.data-table--issue-weekly thead th:first-child,
+.data-table--issue-weekly tbody th {
+  width: 360px;
+  min-width: 360px;
+  max-width: 360px;
+}
+
+.data-table--issue-weekly thead th:first-child {
+  box-shadow: 12px 0 18px -18px rgba(26, 42, 51, 0.45);
+}
+
+.data-table--issue-weekly .issue-cell {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.data-table--issue-weekly .issue-cell a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-row--interactive th,

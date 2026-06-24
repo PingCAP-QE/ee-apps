@@ -1487,7 +1487,7 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
 
   return (
     <div className={`table-scroll ${scrollClassName}`.trim()}>
-      <table className="data-table">
+      <table className="data-table data-table--issue-weekly">
         <thead>
           <tr>
             <th>Case name</th>
@@ -1503,7 +1503,7 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
             <tr key={`${row.issue_number}-${row.case_name}`}>
               <th scope="row">
                 <div className="issue-cell">
-                  <a href={row.issue_url} target="_blank" rel="noreferrer">
+                  <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
                     {row.display_name}
                   </a>
                   <div className="issue-cell__meta">

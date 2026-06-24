@@ -12,6 +12,7 @@ from sqlalchemy import text
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app, create_app
 from ci_dashboard.api.queries import cost as cost_queries
+from ci_dashboard.api.queries import flaky as flaky_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
@@ -2151,6 +2152,33 @@ def test_page_routes(api_client: TestClient) -> None:
     assert flaky_with_open_issues_body["failure_category_share"] == flaky_body["failure_category_share"]
     assert flaky_with_open_issues_body["failure_category_trend"] == flaky_body["failure_category_trend"]
     assert flaky_with_open_issues_body["period_comparison"] == flaky_body["period_comparison"]
+
+
+def test_flaky_page_falls_back_to_build_url_when_build_key_column_is_missing(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(flaky_queries, "_table_has_column", lambda *_args, **_kwargs: False)
+
+    flaky = api_client.get(
+        "/api/v1/pages/flaky",
+        params={
+            "repo": "pingcap/tidb",
+            "branch": "master",
+            "start_date": "2026-04-10",
+            "end_date": "2026-04-11",
+        },
+    )
+
+    assert flaky.status_code == 200
+    flaky_body = flaky.json()
+    # Two flaky problem-case runs (TestCaseAlpha, TestCaseBeta) seeded by the
+    # api_client fixture, both on pingcap/tidb master → 2 distinct cases.
+    assert flaky_body["distinct_flaky_case_counts"]["rows"] == [
+        {"branch": "master", "values": [2]}
+    ]
+    # TestCaseAlpha has issue #66726; 1/1 flaky occurrence is issue-filtered.
+    assert flaky_body["issue_case_weekly_rates"]["rows"][0]["cells"] == ["100.00% (1/1)"]
 
 
 def test_cost_page_route(sqlite_engine, api_client: TestClient) -> None:
