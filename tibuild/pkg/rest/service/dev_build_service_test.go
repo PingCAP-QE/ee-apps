@@ -59,13 +59,14 @@ func (mock mockJenkins) BuildURL(jobName string, number int64) string {
 }
 
 type mockTrigger struct {
-	dev DevBuild
-	err error
+	dev     DevBuild
+	eventID string
+	err     error
 }
 
-func (m *mockTrigger) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
+func (m *mockTrigger) TriggerDevBuild(ctx context.Context, dev DevBuild) (string, error) {
 	m.dev = dev
-	return m.err
+	return m.eventID, m.err
 }
 
 type mockGHClient struct{}

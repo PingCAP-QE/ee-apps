@@ -40,6 +40,7 @@ type DevbuildServer struct {
 	OciFileserverURL string
 
 	ImageMirrorURLMap map[string]string
+	Notifier          Notifier
 }
 
 type DevBuildRepository interface {
@@ -117,7 +118,7 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 			s.Repo.Update(ctx, entity.ID, entity)
 		}(entity)
 	case TektonEngine:
-		err = s.Tekton.TriggerDevBuild(ctx, entity)
+		eventID, err := s.Tekton.TriggerDevBuild(ctx, entity)
 		if err != nil {
 			log.Error().Err(err).Msg("trigger tekton failed")
 			entity.Status.Status = BuildStatusError
@@ -127,6 +128,18 @@ func (s DevbuildServer) Create(ctx context.Context, req DevBuild, option DevBuil
 				log.Error().Err(err).Msg("save triggered entity failed")
 			}
 			return nil, fmt.Errorf("trigger Tekton fail: %w", ErrInternalError)
+		}
+		if eventID != "" {
+			if entity.Status.TektonStatus == nil {
+				entity.Status.TektonStatus = &TektonStatus{}
+			}
+			entity.Status.TektonStatus.EventID = eventID
+			updated, err := s.Repo.Update(ctx, entity.ID, entity)
+			if err != nil {
+				log.Error().Err(err).Msg("save eventID failed")
+			} else {
+				entity = *updated
+			}
 		}
 	}
 
@@ -222,7 +235,21 @@ func (s DevbuildServer) MergeTektonStatus(ctx context.Context, id int, pipeline 
 	if obj.Spec.PipelineEngine == TektonEngine {
 		computeTektonStatus(tekton, &obj.Status)
 	}
-	return s.Update(ctx, id, *obj, options)
+	result, err := s.Update(ctx, id, *obj, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send notification if build reached terminal state
+	if s.Notifier != nil && IsBuildStatusCompleted(result.Status.Status) {
+		go func() {
+			if notifyErr := s.Notifier.Notify(context.Background(), result); notifyErr != nil {
+				log.Error().Err(notifyErr).Int("build_id", id).Msg("failed to send notification")
+			}
+		}()
+	}
+
+	return result, nil
 }
 
 func (s DevbuildServer) sync(ctx context.Context, entity *DevBuild) (*DevBuild, error) {

@@ -4,6 +4,7 @@ package configs
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jinzhu/configor"
 )
@@ -25,7 +26,8 @@ type ConfigYaml struct {
 
 	RestApiSecret RestApiSecret `yaml:"restapisecret,omitempty" json:"restapisecret,omitempty"`
 	CloudEvent    struct {
-		Endpoint string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+		Endpoint          string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+		TektonDirectTrigger bool   `yaml:"tekton_direct_trigger,omitempty" json:"tekton_direct_trigger,omitempty"`
 	} `yaml:"cloudevent,omitempty" json:"cloudevent,omitempty"`
 
 	TektonViewURL    string `yaml:"tektonviewurl,omitempty" json:"tektonviewurl,omitempty"`
@@ -33,6 +35,20 @@ type ConfigYaml struct {
 
 	// ImageMirrorURLMap is a map prefixes for transformation between direct url to mirror url.
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map,omitempty" json:"image_mirror_url_map,omitempty"`
+
+	// TektonReconciler configures the background reconciler for Tekton PipelineRun status.
+	TektonReconciler struct {
+		Enabled        bool          `yaml:"enabled" json:"enabled"`
+		Namespace      string        `yaml:"namespace" json:"namespace"`
+		Interval       time.Duration `yaml:"interval" json:"interval"`
+		StaleThreshold time.Duration `yaml:"stale_threshold" json:"stale_threshold"`
+	} `yaml:"tekton_reconciler,omitempty" json:"tekton_reconciler,omitempty"`
+
+	// Lark configures Lark notifications for build completion events.
+	Lark struct {
+		Enabled    bool   `yaml:"enabled" json:"enabled"`
+		WebhookURL string `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
+	} `yaml:"lark,omitempty" json:"lark,omitempty"`
 }
 
 type RestApiSecret struct {

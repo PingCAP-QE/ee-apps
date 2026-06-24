@@ -16,6 +16,13 @@ restapisecret:
 
 cloudevent:
   endpoint: "http://localhost:8000"
+  tekton_direct_trigger: false
 
 tektonviewurl: "https://do.pingcap.net/tekton/#/namespaces/ee-cd/pipelineruns"
 ocifileserverurl: "https://internal.do.pingcap.net:30443/dl/oci-file"
+
+tekton_reconciler:
+  enabled: false
+  namespace: "ee-cd"
+  interval: 60s
+  stale_threshold: 5m
