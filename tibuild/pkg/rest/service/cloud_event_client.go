@@ -22,67 +22,40 @@ const (
 )
 
 type BuildTrigger interface {
-	TriggerDevBuild(ctx context.Context, dev DevBuild) (eventID string, err error)
+	TriggerDevBuild(ctx context.Context, dev DevBuild) error
 }
 
-func NewCEClient(endpoint string, directTrigger bool) CloudEventClient {
+func NewCEClient(endpoint string) CloudEventClient {
 	client, err := cloudevents.NewClientHTTP()
 	if err != nil {
 		slog.Error("create cloudevent http client failed", "reason", err)
 	}
 	return CloudEventClient{
-		client:         client,
-		endpoint:       endpoint,
-		directTrigger:  directTrigger,
+		client:   client,
+		endpoint: endpoint,
 	}
 }
 
 type CloudEventClient struct {
-	client        cloudevents.Client
-	endpoint      string
-	directTrigger bool
+	client   cloudevents.Client
+	endpoint string
 }
 
-func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) (string, error) {
+func (s CloudEventClient) TriggerDevBuild(ctx context.Context, dev DevBuild) error {
 	events, err := newDevBuildCloudEvents(dev)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	if s.directTrigger {
-		return s.sendDirect(ctx, events)
-	}
-	return s.sendViaFanout(ctx, events)
-}
-
-func (s CloudEventClient) sendDirect(ctx context.Context, events []cloudevents.Event) (string, error) {
-	var eventID string
-	for _, event := range events {
-		c := cloudevents.ContextWithTarget(ctx, s.endpoint)
-		resp, result := s.client.Request(c, event)
-		if !protocol.IsACK(result) {
-			slog.ErrorContext(ctx, "failed to send", "reason", result)
-			return "", fmt.Errorf("failed to send ce:%w", result)
-		}
-		if resp != nil {
-			id := resp.Context.GetID()
-			if id != "" {
-				eventID = id
-			}
-		}
-	}
-	return eventID, nil
-}
-
-func (s CloudEventClient) sendViaFanout(ctx context.Context, events []cloudevents.Event) (string, error) {
 	for _, event := range events {
 		c := cloudevents.ContextWithTarget(ctx, s.endpoint)
 		if result := s.client.Send(c, event); !protocol.IsACK(result) {
 			slog.ErrorContext(ctx, "failed to send", "reason", result)
-			return "", fmt.Errorf("failed to send ce:%w", result)
+			return fmt.Errorf("failed to send ce:%w", result)
 		}
 	}
-	return "", nil
+
+	return nil
 }
 
 func newDevBuildCloudEvents(dev DevBuild) ([]cloudevents.Event, error) {
