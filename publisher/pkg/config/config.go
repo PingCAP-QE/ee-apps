@@ -14,6 +14,16 @@ type Worker struct {
 	} `yaml:"kafka,omitempty" json:"kafka,omitzero"`
 	Redis   Redis             `yaml:"redis" json:"redis"`
 	Options map[string]string `yaml:"options,omitempty" json:"options,omitempty"`
+	DLQ     DLQConfig         `yaml:"dlq,omitempty" json:"dlq,omitempty"`
+}
+
+// DLQConfig represents the configuration for Dead Letter Queue.
+type DLQConfig struct {
+	Enabled     bool   `yaml:"enabled" json:"enabled"`
+	Topic       string `yaml:"topic" json:"topic,omitempty"`
+	MaxRetries int    `yaml:"max_retries" json:"max_retries,omitempty"`
+	BackoffBase string `yaml:"backoff_base" json:"backoff_base,omitempty"`
+	MaxBackoff  string `yaml:"max_backoff" json:"max_backoff,omitempty"`
 }
 
 // Service represents the configuration for a service.
