@@ -12,11 +12,15 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const nextgenCalendarTagThreshold = "v26.0.0"
+const (
+	nextgenCalendarTagThreshold = "v26.0.0"
+	v263FixedVersion            = "v26.3.99"
+)
 
 var (
 	legacyNextgenImageTagRegexp         = regexp.MustCompile(`^v\d+\.\d+\.\d+-nextgen\.\d{6}\.\d+$`)
 	calendarSemverNextgenImageTagRegexp = regexp.MustCompile(`^v2[6-9]\.\d+\.\d+(-nextgen)?$`)
+	v263VersionRegexp                   = regexp.MustCompile(`^v26\.3\.\d+$`)
 )
 
 // UpdateComponentVersionInCloudconfig implements
@@ -62,6 +66,10 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 	slices.Sort(components)
 
 	componentVersion := strings.SplitN(imageTag, "-", 2)[0]
+
+	// Normalize v26.3.* versions to v26.3.99 as a transition measure.
+	// See: https://github.com/pingcap-qe/ee-apps/issues/FLA-223
+	componentVersion = normalizeComponentVersion(componentVersion)
 
 	for _, component := range components {
 		c := stageCfg.Components[component]
@@ -194,4 +202,11 @@ func isSupportedNextgenImageTag(tag string) bool {
 	}
 
 	return false
+}
+
+func normalizeComponentVersion(version string) string {
+	if v263VersionRegexp.MatchString(version) {
+		return v263FixedVersion
+	}
+	return version
 }
