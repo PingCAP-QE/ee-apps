@@ -16,23 +16,21 @@ import (
 
 // Endpoints wraps the "devbuild" service endpoints.
 type Endpoints struct {
-	List        goa.Endpoint
-	Create      goa.Endpoint
-	Get         goa.Endpoint
-	Update      goa.Endpoint
-	Rerun       goa.Endpoint
-	IngestEvent goa.Endpoint
+	List   goa.Endpoint
+	Create goa.Endpoint
+	Get    goa.Endpoint
+	Update goa.Endpoint
+	Rerun  goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "devbuild" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		List:        NewListEndpoint(s),
-		Create:      NewCreateEndpoint(s),
-		Get:         NewGetEndpoint(s),
-		Update:      NewUpdateEndpoint(s),
-		Rerun:       NewRerunEndpoint(s),
-		IngestEvent: NewIngestEventEndpoint(s),
+		List:   NewListEndpoint(s),
+		Create: NewCreateEndpoint(s),
+		Get:    NewGetEndpoint(s),
+		Update: NewUpdateEndpoint(s),
+		Rerun:  NewRerunEndpoint(s),
 	}
 }
 
@@ -43,7 +41,6 @@ func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.Get = m(e.Get)
 	e.Update = m(e.Update)
 	e.Rerun = m(e.Rerun)
-	e.IngestEvent = m(e.IngestEvent)
 }
 
 // NewListEndpoint returns an endpoint function that calls the method "list" of
@@ -88,14 +85,5 @@ func NewRerunEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*RerunPayload)
 		return s.Rerun(ctx, p)
-	}
-}
-
-// NewIngestEventEndpoint returns an endpoint function that calls the method
-// "ingestEvent" of service "devbuild".
-func NewIngestEventEndpoint(s Service) goa.Endpoint {
-	return func(ctx context.Context, req any) (any, error) {
-		p := req.(*CloudEventIngestEventPayload)
-		return s.IngestEvent(ctx, p)
 	}
 }

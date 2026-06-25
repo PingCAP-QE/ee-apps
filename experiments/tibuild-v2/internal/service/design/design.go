@@ -181,27 +181,6 @@ var _ = Service("devbuild", func() {
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
-
-	Method("ingestEvent", func() {
-		Description("Ingest a CloudEvent for build events")
-		Payload(CloudEvent, func() {
-			Required("id", "source", "type", "specversion", "time", "data")
-		})
-		Result(CloudEventResponse)
-		HTTP(func() {
-			POST("/events")
-			PUT("/events")
-			Header("datacontenttype:Content-Type")
-			Header("id:ce-id")
-			Header("source:ce-source")
-			Header("type:ce-type")
-			Header("specversion:ce-specversion")
-			Header("time:ce-time")
-			Response(StatusOK)
-			Response("BadRequest", StatusBadRequest)
-			Response("InternalServerError", StatusInternalServerError)
-		})
-	})
 })
 
 var _ = Service("hotfix", func() {
@@ -454,21 +433,6 @@ var CloudEvent = Type("CloudEvent", func() {
 			"duration": 3600,
 		})
 	})
-})
-
-var CloudEventResponse = Type("CloudEventResponse", func() {
-	Attribute("id", String, "The ID of the processed CloudEvent", func() {
-		Example("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
-	})
-	Attribute("status", String, "Processing status", func() {
-		Enum("accepted", "processing", "error")
-		Example("accepted")
-	})
-	Attribute("message", String, "Additional information about processing result", func() {
-		Example("Event successfully queued for processing")
-	})
-
-	Required("id", "status")
 })
 
 var HotfixTagResult = Type("HotfixTagResult", func() {

@@ -17,49 +17,49 @@ func NewGitHubClient(token string) *github.Client {
 	return github.NewClient(nil).WithAuthToken(token)
 }
 
-func getGhRefSha(ctx context.Context, ghClient *github.Client, fullRepo, gitRef string) string {
+func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqGitRef string) (string, string) {
 	if ghClient == nil {
-		return ""
+		return "", ""
 	}
 
 	parts := strings.SplitN(fullRepo, "/", 2)
 	if len(parts) != 2 {
-		return ""
+		return "", ""
 	}
 
 	owner, repo := parts[0], parts[1]
 
 	switch {
-	case strings.HasPrefix(gitRef, "branch/"):
-		branchName := strings.TrimPrefix(gitRef, "branch/")
+	case strings.HasPrefix(reqGitRef, "branch/"):
+		branchName := strings.TrimPrefix(reqGitRef, "branch/")
 		branch, _, err := ghClient.Repositories.GetBranch(ctx, owner, repo, branchName, 10)
 		if err != nil {
-			return ""
+			return "", ""
 		}
-		return branch.Commit.GetSHA()
+		return strings.Join([]string{"refs", "heads", branchName}, "/"), branch.Commit.GetSHA()
 
-	case strings.HasPrefix(gitRef, "tag/"):
-		tagName := strings.TrimPrefix(gitRef, "tag/")
+	case strings.HasPrefix(reqGitRef, "tag/"):
+		tagName := strings.TrimPrefix(reqGitRef, "tag/")
 		ref, _, err := ghClient.Git.GetRef(ctx, owner, repo, "refs/tags/"+tagName)
 		if err != nil {
-			return ""
+			return "", ""
 		}
-		return ref.Object.GetSHA()
+		return strings.Join([]string{"refs", "tags", tagName}, "/"), ref.Object.GetSHA()
 
-	case strings.HasPrefix(gitRef, "pull/"):
-		prNumberStr := strings.TrimPrefix(gitRef, "pull/")
+	case strings.HasPrefix(reqGitRef, "pull/"):
+		prNumberStr := strings.TrimPrefix(reqGitRef, "pull/")
 		prNumber, err := strconv.Atoi(prNumberStr)
 		if err != nil {
-			return ""
+			return "", ""
 		}
 		pr, _, err := ghClient.PullRequests.Get(ctx, owner, repo, prNumber)
 		if err != nil {
-			return ""
+			return "", ""
 		}
-		return pr.Head.GetSHA()
+		return *pr.Base.Ref, pr.Head.GetSHA()
 	}
 
-	return ""
+	return "", ""
 }
 
 func newFakeGitHubPushEventPayload(fullRepo, ref, sha string) *github.PushEvent {

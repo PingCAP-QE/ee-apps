@@ -27,7 +27,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	}
 
 	// 2. get the commit sha
-	commitSha := getGhRefSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
+	_, commitSha := getGhRefAndSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
 
 	// 3. create the entity
 	edition := normalizeEdition(p.Request.Edition)
