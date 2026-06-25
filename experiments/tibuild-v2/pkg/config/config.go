@@ -32,4 +32,6 @@ type Tekton struct {
 	CloudeventEndpoint string `yaml:"cloudevent_endpoint,omitempty" json:"cloudevent_endpoint,omitempty"`
 	ViewURL            string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
 	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
+	Namespace          string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	ReconcilerInterval string `yaml:"reconciler_interval,omitempty" json:"reconciler_interval,omitempty"`
 }

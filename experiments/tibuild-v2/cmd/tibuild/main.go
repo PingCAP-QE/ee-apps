@@ -11,7 +11,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/go-co-op/gocron/v2"
 	"github.com/rs/zerolog"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
@@ -74,6 +76,41 @@ func main() {
 			devbuildSvc = impl.NewDevbuild(&logger, cfg)
 			if devbuildSvc == nil {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
+			}
+
+			// Start Tekton reconciler
+			if cfg.Tekton.ViewURL != "" {
+				interval := 1 * time.Minute // default
+				if cfg.Tekton.ReconcilerInterval != "" {
+					if d, err := time.ParseDuration(cfg.Tekton.ReconcilerInterval); err == nil {
+						interval = d
+					} else {
+						log.Fatalf(ctx, err, "invalid reconciler_interval: %s", cfg.Tekton.ReconcilerInterval)
+					}
+				}
+
+				s, err := gocron.NewScheduler()
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to create scheduler")
+				}
+
+				_, err = s.NewJob(
+					gocron.DurationJob(interval),
+					gocron.NewTask(func() {
+						if reconciler, ok := devbuildSvc.(interface{ Reconcile(context.Context) }); ok {
+							reconciler.Reconcile(context.Background())
+						}
+					}),
+					gocron.WithSingletonMode(gocron.LimitModeReschedule),
+				)
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to add reconciler job")
+				}
+
+				s.Start()
+				defer func() { _ = s.Shutdown() }()
+
+				logger.Info().Dur("interval", interval).Msg("started tekton reconciler")
 			}
 		}
 		{
