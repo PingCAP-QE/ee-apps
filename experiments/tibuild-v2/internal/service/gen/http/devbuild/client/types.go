@@ -263,6 +263,7 @@ type TektonStatusResponse struct {
 // TektonPipelineResponse is used to define fields on response body types.
 type TektonPipelineResponse struct {
 	Name         *string                  `form:"name,omitempty" json:"name,omitempty" xml:"name,omitempty"`
+	Namespace    *string                  `form:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
 	Status       *string                  `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
 	StartAt      *string                  `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                  `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
@@ -386,6 +387,7 @@ type TektonStatusResponseBody struct {
 // TektonPipelineResponseBody is used to define fields on response body types.
 type TektonPipelineResponseBody struct {
 	Name         *string                      `form:"name,omitempty" json:"name,omitempty" xml:"name,omitempty"`
+	Namespace    *string                      `form:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
 	Status       *string                      `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
 	StartAt      *string                      `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                      `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
@@ -458,6 +460,7 @@ type TektonStatusRequestBody struct {
 // TektonPipelineRequestBody is used to define fields on request body types.
 type TektonPipelineRequestBody struct {
 	Name         string                      `form:"name" json:"name" xml:"name"`
+	Namespace    string                      `form:"namespace" json:"namespace" xml:"namespace"`
 	Status       string                      `form:"status" json:"status" xml:"status"`
 	StartAt      *string                     `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                     `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
@@ -1217,6 +1220,9 @@ func ValidateTektonPipelineResponse(body *TektonPipelineResponse) (err error) {
 	if body.Name == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
 	}
+	if body.Namespace == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("namespace", "body"))
+	}
 	if body.Status == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
@@ -1498,6 +1504,9 @@ func ValidateTektonStatusResponseBody(body *TektonStatusResponseBody) (err error
 func ValidateTektonPipelineResponseBody(body *TektonPipelineResponseBody) (err error) {
 	if body.Name == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Namespace == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("namespace", "body"))
 	}
 	if body.Status == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))

@@ -853,13 +853,14 @@ func marshalDevbuildTektonStatusToTektonStatusResponse(v *devbuild.TektonStatus)
 // *TektonPipelineResponse from a value of type *devbuild.TektonPipeline.
 func marshalDevbuildTektonPipelineToTektonPipelineResponse(v *devbuild.TektonPipeline) *TektonPipelineResponse {
 	res := &TektonPipelineResponse{
-		Name:     v.Name,
-		Status:   string(v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      v.Name,
+		Namespace: v.Namespace,
+		Status:    string(v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*ImageArtifactResponse, len(v.Images))
@@ -1111,13 +1112,14 @@ func marshalDevbuildTektonStatusToTektonStatusResponseBody(v *devbuild.TektonSta
 // *devbuild.TektonPipeline.
 func marshalDevbuildTektonPipelineToTektonPipelineResponseBody(v *devbuild.TektonPipeline) *TektonPipelineResponseBody {
 	res := &TektonPipelineResponseBody{
-		Name:     v.Name,
-		Status:   string(v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      v.Name,
+		Namespace: v.Namespace,
+		Status:    string(v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*ImageArtifactResponseBody, len(v.Images))
@@ -1290,13 +1292,14 @@ func unmarshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusReque
 // *TektonPipelineRequestBody.
 func unmarshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineRequestBody) *devbuild.TektonPipeline {
 	res := &devbuild.TektonPipeline{
-		Name:     *v.Name,
-		Status:   devbuild.BuildStatus(*v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      *v.Name,
+		Namespace: *v.Namespace,
+		Status:    devbuild.BuildStatus(*v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
