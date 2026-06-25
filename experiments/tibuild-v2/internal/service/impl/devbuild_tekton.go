@@ -60,10 +60,7 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 	// 3. Store the eventIDs in TektonStatus
 	if len(eventIDs) > 0 {
 		tektonStatus := record.TektonStatus
-		if tektonStatus == nil {
-			tektonStatus = map[string]any{}
-		}
-		tektonStatus["triggers_event_ids"] = eventIDs
+		tektonStatus.TriggersEventIds = eventIDs
 		record, err = s.dbClient.DevBuild.UpdateOneID(record.ID).
 			SetTektonStatus(tektonStatus).
 			Save(ctx)

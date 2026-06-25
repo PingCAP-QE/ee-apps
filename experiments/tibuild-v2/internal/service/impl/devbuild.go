@@ -15,6 +15,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
@@ -160,7 +161,28 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 		updater.SetStatus(string(p.Status.Status))
 	}
 	if p.Status.TektonStatus != nil {
-		updater.SetTektonStatus(map[string]any{"pipelines": p.Status.TektonStatus.Pipelines})
+		// Convert Goa TektonStatus to schema TektonStatus
+		tektonStatus := schema.TektonStatus{
+			TriggersEventIds: p.Status.TektonStatus.TriggersEventIds,
+		}
+		// Convert pipelines if present
+		if len(p.Status.TektonStatus.Pipelines) > 0 {
+			pipelines := make([]schema.TektonPipeline, 0, len(p.Status.TektonStatus.Pipelines))
+			for _, p := range p.Status.TektonStatus.Pipelines {
+				pipeline := schema.TektonPipeline{
+					Name:     p.Name,
+					Status:   string(p.Status),
+					Platform: derefString(p.Platform),
+					URL:      derefString(p.URL),
+					GitSha:   derefString(p.GitSha),
+					StartAt:  derefString(p.StartAt),
+					EndAt:    derefString(p.EndAt),
+				}
+				pipelines = append(pipelines, pipeline)
+			}
+			tektonStatus.Pipelines = pipelines
+		}
+		updater.SetTektonStatus(tektonStatus)
 	}
 	updater.SetUpdatedAt(time.Now())
 
@@ -250,7 +272,7 @@ func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIn
 
 	// Update tekton status if available
 	if tektonStatus := s.extractTektonStatus(p.Data); tektonStatus != nil {
-		updater.SetTektonStatus(tektonStatus)
+		updater.SetTektonStatus(*tektonStatus)
 	}
 
 	if _, err := updater.Save(ctx); err != nil {
@@ -313,7 +335,7 @@ func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string 
 	}
 }
 
-func (s *devbuildsrvc) extractTektonStatus(data any) map[string]any {
+func (s *devbuildsrvc) extractTektonStatus(data any) *schema.TektonStatus {
 	if data == nil {
 		return nil
 	}
@@ -329,21 +351,21 @@ func (s *devbuildsrvc) extractTektonStatus(data any) map[string]any {
 		return nil
 	}
 
-	pipeline := map[string]any{
-		"name": pipelineName,
+	pipeline := schema.TektonPipeline{
+		Name: pipelineName,
 	}
 	if status, ok := dataMap["status"].(string); ok {
-		pipeline["status"] = status
+		pipeline.Status = status
 	}
 	if startTime, ok := dataMap["startTime"].(string); ok {
-		pipeline["start_at"] = startTime
+		pipeline.StartAt = startTime
 	}
 	if endTime, ok := dataMap["endTime"].(string); ok {
-		pipeline["end_at"] = endTime
+		pipeline.EndAt = endTime
 	}
 
-	return map[string]any{
-		"pipelines": []map[string]any{pipeline},
+	return &schema.TektonStatus{
+		Pipelines: []schema.TektonPipeline{pipeline},
 	}
 }
 
@@ -356,6 +378,14 @@ func (s *devbuildsrvc) getInternalImageURL(img string) *string {
 	}
 
 	return nil
+}
+
+// derefString safely dereferences a string pointer, returning empty string if nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func newStoreClient(cfg config.Store) (*ent.Client, error) {

@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
 // DevBuildUpdate is the builder for updating DevBuild entities.
@@ -522,8 +523,16 @@ func (_u *DevBuildUpdate) ClearBuildReport() *DevBuildUpdate {
 }
 
 // SetTektonStatus sets the "tekton_status" field.
-func (_u *DevBuildUpdate) SetTektonStatus(v map[string]interface{}) *DevBuildUpdate {
+func (_u *DevBuildUpdate) SetTektonStatus(v schema.TektonStatus) *DevBuildUpdate {
 	_u.mutation.SetTektonStatus(v)
+	return _u
+}
+
+// SetNillableTektonStatus sets the "tekton_status" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillableTektonStatus(v *schema.TektonStatus) *DevBuildUpdate {
+	if v != nil {
+		_u.SetTektonStatus(*v)
+	}
 	return _u
 }
 
@@ -1346,8 +1355,16 @@ func (_u *DevBuildUpdateOne) ClearBuildReport() *DevBuildUpdateOne {
 }
 
 // SetTektonStatus sets the "tekton_status" field.
-func (_u *DevBuildUpdateOne) SetTektonStatus(v map[string]interface{}) *DevBuildUpdateOne {
+func (_u *DevBuildUpdateOne) SetTektonStatus(v schema.TektonStatus) *DevBuildUpdateOne {
 	_u.mutation.SetTektonStatus(v)
+	return _u
+}
+
+// SetNillableTektonStatus sets the "tekton_status" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillableTektonStatus(v *schema.TektonStatus) *DevBuildUpdateOne {
+	if v != nil {
+		_u.SetTektonStatus(*v)
+	}
 	return _u
 }
 
