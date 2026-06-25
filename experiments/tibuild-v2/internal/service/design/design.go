@@ -392,6 +392,7 @@ var TektonStatus = Type("TektonStatus", func() {
 
 var TektonPipeline = Type("TektonPipeline", func() {
 	Attribute("name", String)
+	Attribute("namespace", String)
 	Attribute("status", BuildStatus)
 	Attribute("start_at", String, func() { Format(FormatDateTime) })
 	Attribute("end_at", String, func() { Format(FormatDateTime) })
@@ -401,7 +402,7 @@ var TektonPipeline = Type("TektonPipeline", func() {
 	Attribute("platform", String)
 	Attribute("url", String, func() { Format(FormatURI) })
 
-	Required("name", "status")
+	Required("name", "namespace", "status")
 })
 
 var OciArtifact = Type("OciArtifact", func() {

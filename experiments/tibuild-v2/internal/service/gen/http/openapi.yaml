@@ -582,35 +582,35 @@ definitions:
         properties:
             component:
                 type: string
-                example: Et et.
+                example: Delectus sunt atque unde.
             oci_file:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Odio atque et repellendus officiis.
+                example: Molestias distinctio voluptatem ducimus exercitationem adipisci consequatur.
             sha256_oci_file:
                 $ref: '#/definitions/OciFile'
             sha256_url:
                 type: string
-                example: http://toy.net/aubree.larson
+                example: http://cassin.biz/petra
                 format: uri
             url:
                 type: string
-                example: http://mannswaniawski.info/trenton.waelchi
+                example: http://halvorson.com/kristina
                 format: uri
         example:
-            component: Eius velit dignissimos et voluptatem culpa architecto.
+            component: Fugit molestias repellendus iste harum ratione.
             oci_file:
                 file: Non ratione reiciendis minus sapiente doloremque rerum.
                 repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
                 tag: Nulla et saepe ratione est ut.
-            platform: Nam dolorem et dolores voluptatem ut officiis.
+            platform: Totam suscipit pariatur.
             sha256_oci_file:
                 file: Non ratione reiciendis minus sapiente doloremque rerum.
                 repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
                 tag: Nulla et saepe ratione est ut.
-            sha256_url: http://kutchchristiansen.biz/marisa_white
-            url: http://hettinger.org/eric.gulgowski
+            sha256_url: http://dubuqueleuschke.biz/marietta
+            url: http://bayer.name/gennaro
     BuildReport:
         title: BuildReport
         type: object
@@ -646,7 +646,7 @@ definitions:
                       url: http://beier.com/felicia
             git_sha:
                 type: string
-                example: 6yg
+                example: l6h
                 maxLength: 40
             images:
                 type: array
@@ -659,13 +659,16 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
             plugin_git_sha:
                 type: string
-                example: eto
+                example: vvo
                 maxLength: 40
             printed_version:
                 type: string
-                example: Laudantium natus et illo error.
+                example: Tempora dolorem error.
         example:
             binaries:
                 - component: Et provident qui dolores quis quia.
@@ -704,19 +707,7 @@ definitions:
                     tag: Nulla et saepe ratione est ut.
                   sha256_url: http://stromanshanahan.info/oma
                   url: http://beier.com/felicia
-                - component: Et provident qui dolores quis quia.
-                  oci_file:
-                    file: Non ratione reiciendis minus sapiente doloremque rerum.
-                    repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
-                    tag: Nulla et saepe ratione est ut.
-                  platform: Consectetur vitae sapiente nihil earum sint.
-                  sha256_oci_file:
-                    file: Non ratione reiciendis minus sapiente doloremque rerum.
-                    repo: Consequatur repellendus saepe rerum tenetur vero eveniet.
-                    tag: Nulla et saepe ratione est ut.
-                  sha256_url: http://stromanshanahan.info/oma
-                  url: http://beier.com/felicia
-            git_sha: uy9
+            git_sha: xe8
             images:
                 - internal_url: http://walshlebsack.org/manuela_nikolaus
                   platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -724,8 +715,11 @@ definitions:
                 - internal_url: http://walshlebsack.org/manuela_nikolaus
                   platform: Consectetur iusto ut sed corporis molestiae harum.
                   url: http://lesch.info/maia
-            plugin_git_sha: l9i
-            printed_version: Necessitatibus vero dignissimos.
+                - internal_url: http://walshlebsack.org/manuela_nikolaus
+                  platform: Consectetur iusto ut sed corporis molestiae harum.
+                  url: http://lesch.info/maia
+            plugin_git_sha: y0j
+            printed_version: Laudantium possimus est doloremque quibusdam.
     CloudEvent:
         title: CloudEvent
         type: object
@@ -788,7 +782,7 @@ definitions:
         properties:
             id:
                 type: integer
-                example: 8922536377226007154
+                example: 7453414749602277212
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -797,7 +791,7 @@ definitions:
             status:
                 $ref: '#/definitions/DevBuildStatus'
         example:
-            id: 8435984368180476305
+            id: 3197486759358650526
             meta:
                 created_at: 8887-09-90 78:69:93
                 created_by: lenora@hodkiewiczdietrich.net
@@ -897,8 +891,8 @@ definitions:
                 status: success
                 tekton_status:
                     pipelines:
-                        - end_at: "1979-04-06T12:59:53Z"
-                          git_sha: n8a
+                        - end_at: "1986-09-12T19:43:22Z"
+                          git_sha: bqu
                           images:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -909,26 +903,33 @@ definitions:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
                               url: http://lesch.info/maia
+                            - internal_url: http://walshlebsack.org/manuela_nikolaus
+                              platform: Consectetur iusto ut sed corporis molestiae harum.
+                              url: http://lesch.info/maia
                           name: Debitis dolorem occaecati omnis sunt a.
+                          namespace: Ratione minus sunt voluptas eius.
                           oci_artifacts:
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
-                          platform: Quas minus et autem molestiae.
-                          start_at: "1988-08-04T04:14:58Z"
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                            - files:
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                          platform: Delectus quo et et aut iure.
+                          start_at: "1986-05-12T19:12:00Z"
                           status: pending
-                          url: http://waelchi.org/annabel
-                        - end_at: "1979-04-06T12:59:53Z"
-                          git_sha: n8a
+                          url: http://dickikris.com/enola
+                        - end_at: "1986-09-12T19:43:22Z"
+                          git_sha: bqu
                           images:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -939,26 +940,33 @@ definitions:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
                               url: http://lesch.info/maia
+                            - internal_url: http://walshlebsack.org/manuela_nikolaus
+                              platform: Consectetur iusto ut sed corporis molestiae harum.
+                              url: http://lesch.info/maia
                           name: Debitis dolorem occaecati omnis sunt a.
+                          namespace: Ratione minus sunt voluptas eius.
                           oci_artifacts:
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
-                          platform: Quas minus et autem molestiae.
-                          start_at: "1988-08-04T04:14:58Z"
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                            - files:
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                          platform: Delectus quo et et aut iure.
+                          start_at: "1986-05-12T19:12:00Z"
                           status: pending
-                          url: http://waelchi.org/annabel
-                        - end_at: "1979-04-06T12:59:53Z"
-                          git_sha: n8a
+                          url: http://dickikris.com/enola
+                        - end_at: "1986-09-12T19:43:22Z"
+                          git_sha: bqu
                           images:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -969,27 +977,36 @@ definitions:
                             - internal_url: http://walshlebsack.org/manuela_nikolaus
                               platform: Consectetur iusto ut sed corporis molestiae harum.
                               url: http://lesch.info/maia
+                            - internal_url: http://walshlebsack.org/manuela_nikolaus
+                              platform: Consectetur iusto ut sed corporis molestiae harum.
+                              url: http://lesch.info/maia
                           name: Debitis dolorem occaecati omnis sunt a.
+                          namespace: Ratione minus sunt voluptas eius.
                           oci_artifacts:
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
                             - files:
-                                - Quaerat earum.
-                                - Est labore deleniti sint nesciunt ducimus non.
-                                - Labore et.
-                              repo: Quia similique voluptatem esse facere.
-                              tag: In quia.
-                          platform: Quas minus et autem molestiae.
-                          start_at: "1988-08-04T04:14:58Z"
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                            - files:
+                                - Nesciunt ducimus non voluptas labore et accusamus.
+                                - Similique voluptatem.
+                              repo: Facere ut in quia minima quas.
+                              tag: Et autem molestiae aliquam.
+                          platform: Delectus quo et et aut iure.
+                          start_at: "1986-05-12T19:12:00Z"
                           status: pending
-                          url: http://waelchi.org/annabel
+                          url: http://dickikris.com/enola
                     triggers_event_ids:
-                        - b147376e-673b-4f90-9ba5-5dd39d23715c
-                        - 9ab48183-f303-46c2-9753-671fcbd352d3
+                        - 4b119f7d-56f0-41f4-a2b6-5b292004d5fe
+                        - 080adca8-9527-48f9-bbff-aad1c21dad3c
+                        - 9685206c-c4cd-4b99-9b02-f89d7b9752eb
+                        - 515fe407-131e-4664-9c8a-1e0846d78785
         required:
             - id
             - meta
@@ -1001,20 +1018,20 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: 0715-19-60 64:56:78
+                example: 1289-77-83 02:09:07
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             created_by:
                 type: string
-                example: jameson@rosenbaum.info
+                example: danielle@oreilly.com
                 format: email
             updated_at:
                 type: string
-                example: 8901-11-42 22:83:70
+                example: 8405-88-29 63:10:46
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 2652-96-88 13:47:44
-            created_by: buster@ruecker.net
-            updated_at: 9211-12-44 30:89:24
+            created_at: 6508-95-14 85:98:17
+            created_by: adrian@nolandouglas.info
+            updated_at: 6363-75-29 14:00:35
         required:
             - created_at
             - created_by
@@ -1025,13 +1042,13 @@ definitions:
         properties:
             build_env:
                 type: string
-                example: Blanditiis et.
+                example: Nihil omnis officia sequi.
             builder_img:
                 type: string
-                example: Dolore vitae molestias.
+                example: Dolorum quia nam.
             edition:
                 type: string
-                example: experiment
+                example: nextgen
                 enum:
                     - enterprise
                     - community
@@ -1043,16 +1060,16 @@ definitions:
             features:
                 type: string
                 description: '[Deprecated] use build_env for custom features'
-                example: Voluptates ut voluptatem facilis.
+                example: Non quos.
             git_ref:
                 type: string
-                example: Molestias eligendi veniam voluptas et et fuga.
+                example: Voluptates delectus.
             git_sha:
                 type: string
-                example: Id magni ut ea consequatur sint et.
+                example: Minima suscipit tempore libero.
             github_repo:
                 type: string
-                example: Id ea inventore nihil culpa quis doloribus.
+                example: Omnis et laboriosam delectus id aut fugiat.
             is_hotfix:
                 type: boolean
                 example: true
@@ -1061,14 +1078,14 @@ definitions:
                 example: true
             pipeline_engine:
                 type: string
-                example: tekton
+                example: jenkins
                 enum:
                     - jenkins
                     - tekton
             platform:
                 type: string
                 default: linux
-                example: linux/amd64
+                example: linux
                 enum:
                     - all
                     - linux
@@ -1079,10 +1096,10 @@ definitions:
                     - darwin/arm64
             plugin_git_ref:
                 type: string
-                example: Dolores vero.
+                example: Molestiae quos amet vel.
             product:
                 type: string
-                example: tici
+                example: dumpling
                 enum:
                     - dm
                     - enterprise-plugin
@@ -1106,34 +1123,34 @@ definitions:
                     - tiproxy
             product_base_img:
                 type: string
-                example: Vitae eius minus iure qui officiis eius.
+                example: Laborum et placeat voluptatum soluta.
             product_dockerfile:
                 type: string
-                example: Voluptas aperiam odio delectus vero.
+                example: Maiores quibusdam qui et.
             target_img:
                 type: string
-                example: Similique exercitationem perspiciatis sed itaque beatae.
+                example: Deserunt sit voluptates ea dolorum sint.
             version:
                 type: string
-                example: Numquam sit minima tenetur ut pariatur.
+                example: Numquam molestiae numquam voluptates consequatur facilis quas.
         example:
-            build_env: Perferendis quos et.
-            builder_img: Omnis suscipit.
-            edition: nextgen
-            features: Occaecati deserunt.
-            git_ref: Ducimus molestias dolores est enim qui.
-            git_sha: Maiores vel magnam maiores dolore iure.
-            github_repo: Nobis labore labore nemo.
-            is_hotfix: true
-            is_push_gcr: false
-            pipeline_engine: jenkins
-            platform: linux
-            plugin_git_ref: Quia eius blanditiis.
-            product: tikv
-            product_base_img: Facere aspernatur esse quod amet.
-            product_dockerfile: Saepe nam.
-            target_img: Voluptate saepe ut.
-            version: Dignissimos est in quia molestiae exercitationem.
+            build_env: Dicta temporibus sint facere.
+            builder_img: Natus et eius.
+            edition: experiment
+            features: Sed et.
+            git_ref: Nesciunt provident et.
+            git_sha: Veniam nostrum error.
+            github_repo: Sed est eius velit dignissimos.
+            is_hotfix: false
+            is_push_gcr: true
+            pipeline_engine: tekton
+            platform: darwin
+            plugin_git_ref: At nam dolorem et dolores.
+            product: tidb-binlog
+            product_base_img: Officiis enim quisquam aut.
+            product_dockerfile: Explicabo excepturi ut sequi voluptatem.
+            target_img: Ea ratione.
+            version: Et earum id magnam ab.
         required:
             - product
             - version
@@ -1147,35 +1164,37 @@ definitions:
                 $ref: '#/definitions/BuildReport'
             err_msg:
                 type: string
-                example: Sed sed consequatur vero fuga.
+                example: Officiis cum dolores et nobis.
             pipeline_build_id:
                 type: integer
-                example: 2386094731174904267
+                example: 1090509605296489869
                 format: int64
             pipeline_end_at:
                 type: string
-                example: 7413-15-49 95:82:87
+                example: 9046-70-46 87:72:51
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_start_at:
                 type: string
-                example: 3103-60-00 86:36:06
+                example: 7482-97-46 15:73:65
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_view_url:
                 type: string
-                example: http://cartwrightking.biz/gillian_dietrich
+                example: http://mrazlarson.org/asa
                 format: uri
             pipeline_view_urls:
                 type: array
                 items:
                     type: string
-                    example: http://franecki.com/paolo.weber
+                    example: http://rutherford.info/effie
                     format: uri
                 example:
-                    - http://little.net/javier.waelchi
-                    - http://romaguera.net/meredith
+                    - http://faylittle.org/virgil
+                    - http://welchweber.name/dalton.emmerich
+                    - http://schuppe.info/misty_ratke
+                    - http://wiegand.biz/sally
             status:
                 type: string
-                example: aborted
+                example: error
                 enum:
                     - pending
                     - processing
@@ -1249,20 +1268,19 @@ definitions:
                       url: http://lesch.info/maia
                 plugin_git_sha: s8a
                 printed_version: Cum quasi culpa eos voluptas voluptas.
-            err_msg: Eos et reiciendis numquam.
-            pipeline_build_id: 2828153065304978875
-            pipeline_end_at: 4577-05-47 50:93:80
-            pipeline_start_at: 5883-16-40 75:01:56
-            pipeline_view_url: http://lednerward.name/devonte.hahn
+            err_msg: Architecto error laboriosam.
+            pipeline_build_id: 2253332126528857199
+            pipeline_end_at: 7674-42-85 52:64:19
+            pipeline_start_at: 6459-45-64 97:41:31
+            pipeline_view_url: http://stokes.info/emmy
             pipeline_view_urls:
-                - http://faywehner.org/rodrigo
-                - http://sengerboyer.org/jasper.huel
-                - http://white.name/ottis
-            status: failure
+                - http://labadiekerluke.info/brandi
+                - http://pfannerstill.name/brian.hintz
+            status: aborted
             tekton_status:
                 pipelines:
-                    - end_at: "1979-04-06T12:59:53Z"
-                      git_sha: n8a
+                    - end_at: "1986-09-12T19:43:22Z"
+                      git_sha: bqu
                       images:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1273,26 +1291,33 @@ definitions:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
                           url: http://lesch.info/maia
+                        - internal_url: http://walshlebsack.org/manuela_nikolaus
+                          platform: Consectetur iusto ut sed corporis molestiae harum.
+                          url: http://lesch.info/maia
                       name: Debitis dolorem occaecati omnis sunt a.
+                      namespace: Ratione minus sunt voluptas eius.
                       oci_artifacts:
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
-                      platform: Quas minus et autem molestiae.
-                      start_at: "1988-08-04T04:14:58Z"
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                        - files:
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                      platform: Delectus quo et et aut iure.
+                      start_at: "1986-05-12T19:12:00Z"
                       status: pending
-                      url: http://waelchi.org/annabel
-                    - end_at: "1979-04-06T12:59:53Z"
-                      git_sha: n8a
+                      url: http://dickikris.com/enola
+                    - end_at: "1986-09-12T19:43:22Z"
+                      git_sha: bqu
                       images:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1303,26 +1328,33 @@ definitions:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
                           url: http://lesch.info/maia
+                        - internal_url: http://walshlebsack.org/manuela_nikolaus
+                          platform: Consectetur iusto ut sed corporis molestiae harum.
+                          url: http://lesch.info/maia
                       name: Debitis dolorem occaecati omnis sunt a.
+                      namespace: Ratione minus sunt voluptas eius.
                       oci_artifacts:
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
-                      platform: Quas minus et autem molestiae.
-                      start_at: "1988-08-04T04:14:58Z"
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                        - files:
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                      platform: Delectus quo et et aut iure.
+                      start_at: "1986-05-12T19:12:00Z"
                       status: pending
-                      url: http://waelchi.org/annabel
-                    - end_at: "1979-04-06T12:59:53Z"
-                      git_sha: n8a
+                      url: http://dickikris.com/enola
+                    - end_at: "1986-09-12T19:43:22Z"
+                      git_sha: bqu
                       images:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1333,27 +1365,36 @@ definitions:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
                           url: http://lesch.info/maia
+                        - internal_url: http://walshlebsack.org/manuela_nikolaus
+                          platform: Consectetur iusto ut sed corporis molestiae harum.
+                          url: http://lesch.info/maia
                       name: Debitis dolorem occaecati omnis sunt a.
+                      namespace: Ratione minus sunt voluptas eius.
                       oci_artifacts:
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
-                      platform: Quas minus et autem molestiae.
-                      start_at: "1988-08-04T04:14:58Z"
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                        - files:
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                      platform: Delectus quo et et aut iure.
+                      start_at: "1986-05-12T19:12:00Z"
                       status: pending
-                      url: http://waelchi.org/annabel
+                      url: http://dickikris.com/enola
                 triggers_event_ids:
-                    - b147376e-673b-4f90-9ba5-5dd39d23715c
-                    - 9ab48183-f303-46c2-9753-671fcbd352d3
+                    - 4b119f7d-56f0-41f4-a2b6-5b292004d5fe
+                    - 080adca8-9527-48f9-bbff-aad1c21dad3c
+                    - 9685206c-c4cd-4b99-9b02-f89d7b9752eb
+                    - 515fe407-131e-4664-9c8a-1e0846d78785
         required:
             - status
     DevbuildCreateRequestBody:
@@ -1363,30 +1404,30 @@ definitions:
             created_by:
                 type: string
                 description: Creator of build
-                example: madie@considine.biz
+                example: jaquan@hodkiewicz.info
                 format: email
             request:
                 $ref: '#/definitions/DevBuildSpec'
         example:
-            created_by: zackery@moore.name
+            created_by: immanuel.witting@marquardtlittel.biz
             request:
-                build_env: Consequuntur fuga tempore.
-                builder_img: Veniam quia minus odio neque incidunt.
-                edition: community
-                features: Ea ullam beatae.
-                git_ref: Omnis voluptas cumque sunt laboriosam velit.
-                git_sha: Autem natus molestiae quia.
-                github_repo: Ducimus quia accusantium laborum ipsum nihil eum.
+                build_env: Accusantium voluptatem.
+                builder_img: Consectetur omnis at doloribus non eos unde.
+                edition: failpoint
+                features: Voluptatem eveniet impedit enim voluptatem qui.
+                git_ref: Eligendi ex.
+                git_sha: Aut voluptas.
+                github_repo: Asperiores repellendus omnis itaque dicta.
                 is_hotfix: false
                 is_push_gcr: false
                 pipeline_engine: tekton
-                platform: darwin/amd64
-                plugin_git_ref: Minus odit qui facere inventore nemo.
-                product: drainer
-                product_base_img: Molestiae et repellat quis necessitatibus et.
-                product_dockerfile: Nisi omnis veritatis assumenda quo dolores enim.
-                target_img: Qui accusantium voluptatum aut omnis.
-                version: Sunt esse et impedit voluptatem.
+                platform: linux/amd64
+                plugin_git_ref: Pariatur optio ut.
+                product: tiflash
+                product_base_img: Labore omnis.
+                product_dockerfile: Deserunt occaecati velit eaque quia et.
+                target_img: Totam reiciendis doloribus velit.
+                version: Omnis illum in maxime.
         required:
             - created_by
             - request
@@ -1400,162 +1441,274 @@ definitions:
             status:
                 build_report:
                     binaries:
-                        - component: Qui vitae nostrum aut blanditiis possimus voluptate.
+                        - component: Incidunt ut unde natus atque nesciunt fugit.
                           oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          platform: Et labore.
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          platform: Eius rerum aut dolorem est non.
                           sha256_oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          sha256_url: http://batzmarks.net/delfina.walter
-                          url: http://okon.net/casimir
-                        - component: Qui vitae nostrum aut blanditiis possimus voluptate.
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          sha256_url: http://mosciski.name/chad_marvin
+                          url: http://kerluke.name/brady
+                        - component: Incidunt ut unde natus atque nesciunt fugit.
                           oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          platform: Et labore.
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          platform: Eius rerum aut dolorem est non.
                           sha256_oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          sha256_url: http://batzmarks.net/delfina.walter
-                          url: http://okon.net/casimir
-                        - component: Qui vitae nostrum aut blanditiis possimus voluptate.
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          sha256_url: http://mosciski.name/chad_marvin
+                          url: http://kerluke.name/brady
+                        - component: Incidunt ut unde natus atque nesciunt fugit.
                           oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          platform: Et labore.
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          platform: Eius rerum aut dolorem est non.
                           sha256_oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          sha256_url: http://batzmarks.net/delfina.walter
-                          url: http://okon.net/casimir
-                        - component: Qui vitae nostrum aut blanditiis possimus voluptate.
-                          oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          platform: Et labore.
-                          sha256_oci_file:
-                            file: Ut quia quod nisi est.
-                            repo: Praesentium est necessitatibus hic.
-                            tag: Nam doloremque.
-                          sha256_url: http://batzmarks.net/delfina.walter
-                          url: http://okon.net/casimir
-                    git_sha: jh6
+                            file: Eos quae neque eligendi nisi dolor aliquid.
+                            repo: Et aut.
+                            tag: Nesciunt sapiente voluptatem illo quia itaque.
+                          sha256_url: http://mosciski.name/chad_marvin
+                          url: http://kerluke.name/brady
+                    git_sha: cr9
                     images:
-                        - internal_url: http://hauck.name/baron
-                          platform: Tenetur labore placeat id explicabo iste rem.
-                          url: http://streich.biz/sophie
-                        - internal_url: http://hauck.name/baron
-                          platform: Tenetur labore placeat id explicabo iste rem.
-                          url: http://streich.biz/sophie
-                    plugin_git_sha: 1l6
-                    printed_version: Rem atque veritatis.
-                err_msg: Ab tempora autem.
-                pipeline_build_id: 8771877194158390155
-                pipeline_end_at: 0369-44-93 09:74:67
-                pipeline_start_at: 9953-90-66 13:84:41
-                pipeline_view_url: http://wisoky.net/madaline_hegmann
+                        - internal_url: http://runolfsdottir.name/mack
+                          platform: Quam laudantium vitae omnis est ipsa.
+                          url: http://bailey.org/macy
+                        - internal_url: http://runolfsdottir.name/mack
+                          platform: Quam laudantium vitae omnis est ipsa.
+                          url: http://bailey.org/macy
+                        - internal_url: http://runolfsdottir.name/mack
+                          platform: Quam laudantium vitae omnis est ipsa.
+                          url: http://bailey.org/macy
+                        - internal_url: http://runolfsdottir.name/mack
+                          platform: Quam laudantium vitae omnis est ipsa.
+                          url: http://bailey.org/macy
+                    plugin_git_sha: vf4
+                    printed_version: Et necessitatibus incidunt sint maxime rerum.
+                err_msg: Molestiae ratione.
+                pipeline_build_id: 5296324622588537949
+                pipeline_end_at: 2609-81-93 80:41:24
+                pipeline_start_at: 3896-66-73 16:91:38
+                pipeline_view_url: http://buckridge.com/austen.lindgren
                 pipeline_view_urls:
-                    - http://kunde.org/cristina
-                    - http://daniel.org/jeramie.schimmel
-                status: failure
+                    - http://botsford.com/ethan
+                    - http://bartoletti.net/jadyn_willms
+                    - http://steuber.info/modesto_beatty
+                    - http://kozeyritchie.biz/desmond
+                status: processing
                 tekton_status:
                     pipelines:
-                        - end_at: "1987-12-16T02:33:04Z"
-                          git_sha: x4x
+                        - end_at: "2005-02-24T06:03:05Z"
+                          git_sha: d39
                           images:
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                          name: Animi quia tempora.
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                          name: Quo est laborum est.
+                          namespace: Velit velit id omnis aut.
                           oci_artifacts:
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
-                          platform: In laborum earum doloribus dignissimos sed doloremque.
-                          start_at: "1981-03-16T04:12:58Z"
-                          status: failure
-                          url: http://pollichtreutel.org/paolo_schowalter
-                        - end_at: "1987-12-16T02:33:04Z"
-                          git_sha: x4x
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                          platform: Ex ut quia.
+                          start_at: "1982-06-17T14:56:38Z"
+                          status: processing
+                          url: http://roob.biz/isobel
+                        - end_at: "2005-02-24T06:03:05Z"
+                          git_sha: d39
                           images:
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                            - internal_url: http://hauck.name/baron
-                              platform: Tenetur labore placeat id explicabo iste rem.
-                              url: http://streich.biz/sophie
-                          name: Animi quia tempora.
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                          name: Quo est laborum est.
+                          namespace: Velit velit id omnis aut.
                           oci_artifacts:
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
                             - files:
-                                - Beatae non fugit molestiae.
-                                - Temporibus optio id iure.
-                              repo: Praesentium hic.
-                              tag: Adipisci rerum neque temporibus quia exercitationem qui.
-                          platform: In laborum earum doloribus dignissimos sed doloremque.
-                          start_at: "1981-03-16T04:12:58Z"
-                          status: failure
-                          url: http://pollichtreutel.org/paolo_schowalter
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                          platform: Ex ut quia.
+                          start_at: "1982-06-17T14:56:38Z"
+                          status: processing
+                          url: http://roob.biz/isobel
+                        - end_at: "2005-02-24T06:03:05Z"
+                          git_sha: d39
+                          images:
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                          name: Quo est laborum est.
+                          namespace: Velit velit id omnis aut.
+                          oci_artifacts:
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                          platform: Ex ut quia.
+                          start_at: "1982-06-17T14:56:38Z"
+                          status: processing
+                          url: http://roob.biz/isobel
+                        - end_at: "2005-02-24T06:03:05Z"
+                          git_sha: d39
+                          images:
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                            - internal_url: http://runolfsdottir.name/mack
+                              platform: Quam laudantium vitae omnis est ipsa.
+                              url: http://bailey.org/macy
+                          name: Quo est laborum est.
+                          namespace: Velit velit id omnis aut.
+                          oci_artifacts:
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                            - files:
+                                - Deserunt laboriosam.
+                                - Ullam animi expedita non et.
+                                - Totam libero beatae possimus aut est.
+                                - Velit perferendis eligendi voluptatem eaque.
+                              repo: Corporis ut vel architecto in.
+                              tag: Facilis laborum et id quis ea deserunt.
+                          platform: Ex ut quia.
+                          start_at: "1982-06-17T14:56:38Z"
+                          status: processing
+                          url: http://roob.biz/isobel
                     triggers_event_ids:
-                        - e9166f26-9ee4-44e1-9fa5-18192ccf4dc9
-                        - eaefb056-e6de-4158-b30d-7cffdfa16d73
-                        - a808b70b-9a09-4785-ac0f-4d3278bc37cf
-                        - 426843cc-e5ad-409e-a876-bb39a7c56ea7
+                        - 127c5daa-4349-48f5-a744-f5c7572f0d8a
+                        - 3fa52e8d-db8a-4e10-b988-b70dc1b455b2
         required:
             - status
     HTTPError:
@@ -1564,15 +1717,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 719128964453386823
+                example: 4193075688939847648
                 format: int64
             message:
                 type: string
-                example: Nihil ducimus quisquam aspernatur occaecati eos laborum.
+                example: Magni ut.
         description: Bad Request
         example:
-            code: 8091817607347491116
-            message: Soluta aut.
+            code: 6081486933309898139
+            message: Sint et quis id ea.
         required:
             - code
             - message
@@ -1653,19 +1806,19 @@ definitions:
         properties:
             internal_url:
                 type: string
-                example: http://robertstorp.org/cory_bosco
+                example: http://blandanolan.org/bernita
                 format: uri
             platform:
                 type: string
-                example: Quisquam aperiam odit laborum suscipit aliquam.
+                example: Praesentium ea quod voluptas.
             url:
                 type: string
-                example: http://ferry.com/kristina
+                example: http://metz.name/aiden_gottlieb
                 format: uri
         example:
-            internal_url: http://bradtke.biz/johanna
-            platform: Facere sint.
-            url: http://wehnerschiller.name/halie_carter
+            internal_url: http://kunze.net/leopold_abshire
+            platform: Odio dolorum assumenda quam dolor temporibus.
+            url: http://hartmann.net/bernard
         required:
             - platform
             - url
@@ -1675,13 +1828,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Minus ullam eum.
+                example: Commodi blanditiis et natus dolore vitae molestias.
             target:
                 type: string
-                example: Asperiores neque corporis eligendi rerum.
+                example: Laudantium illum voluptates.
         example:
-            source: Nam necessitatibus impedit distinctio beatae.
-            target: Possimus cupiditate rem quidem corporis quam.
+            source: Voluptatem facilis.
+            target: Molestias eligendi veniam voluptas et et fuga.
         required:
             - source
             - target
@@ -1693,24 +1846,22 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Deserunt vero quia.
+                    example: Excepturi et qui aut.
                 example:
-                    - Nihil consequatur qui.
-                    - Praesentium occaecati sunt occaecati.
+                    - Suscipit dolor quia ipsa iusto dolorum quis.
+                    - Earum voluptatum cumque.
             repo:
                 type: string
-                example: Beatae minima at labore voluptatem magnam.
+                example: Ab et asperiores non illo voluptatibus placeat.
             tag:
                 type: string
-                example: Quisquam adipisci maxime impedit.
+                example: Repudiandae ipsa ut.
         example:
             files:
-                - Fugiat est omnis soluta.
-                - Tempora maxime repudiandae.
-                - Sint voluptate sed ad.
-                - Et excepturi.
-            repo: Voluptates eos et qui.
-            tag: Facere sed expedita voluptatibus odio.
+                - Illo possimus illum dolore eaque.
+                - Dolores suscipit.
+            repo: Quae ipsam vitae ratione ullam ullam.
+            tag: Culpa iusto quod.
         required:
             - files
             - repo
@@ -1721,17 +1872,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Quas quaerat dolores ut aut qui.
+                example: Eaque officiis excepturi beatae quia.
             repo:
                 type: string
-                example: Ad nihil non quo nihil quia.
+                example: Libero sit et mollitia.
             tag:
                 type: string
-                example: Asperiores commodi accusantium recusandae.
+                example: Sunt consequatur.
         example:
-            file: Ipsa ut cupiditate repellat quisquam.
-            repo: Tempore voluptatem at harum magnam temporibus.
-            tag: Totam reprehenderit iure unde perferendis.
+            file: Et excepturi sint doloribus et ducimus quia.
+            repo: Est mollitia rem qui tempore nihil quod.
+            tag: Qui animi fugit vel.
         required:
             - file
             - repo
@@ -1742,11 +1893,11 @@ definitions:
         properties:
             end_at:
                 type: string
-                example: "2015-05-24T03:37:14Z"
+                example: "1989-06-25T00:17:31Z"
                 format: date-time
             git_sha:
                 type: string
-                example: kpe
+                example: yzi
                 maxLength: 40
             images:
                 type: array
@@ -1759,48 +1910,43 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
             name:
                 type: string
-                example: Enim voluptatum.
+                example: Assumenda sed ut iste.
+            namespace:
+                type: string
+                example: Labore corrupti dicta quis.
             oci_artifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                    - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                    - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
             platform:
                 type: string
-                example: Sapiente nihil corporis veritatis aut sed.
+                example: Deserunt et porro nulla ut maiores voluptatem.
             start_at:
                 type: string
-                example: "1996-06-30T22:23:54Z"
+                example: "2011-09-20T03:22:39Z"
                 format: date-time
             status:
                 type: string
-                example: error
+                example: aborted
                 enum:
                     - pending
                     - processing
@@ -1810,11 +1956,11 @@ definitions:
                     - error
             url:
                 type: string
-                example: http://koss.com/tillman.stiedemann
+                example: http://gaylordhuel.com/kendall_bayer
                 format: uri
         example:
-            end_at: "1974-01-02T20:50:26Z"
-            git_sha: wie
+            end_at: "1985-10-31T01:28:35Z"
+            git_sha: gnd
             images:
                 - internal_url: http://walshlebsack.org/manuela_nikolaus
                   platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1825,26 +1971,39 @@ definitions:
                 - internal_url: http://walshlebsack.org/manuela_nikolaus
                   platform: Consectetur iusto ut sed corporis molestiae harum.
                   url: http://lesch.info/maia
-            name: Consequatur necessitatibus quia est quos ut.
+                - internal_url: http://walshlebsack.org/manuela_nikolaus
+                  platform: Consectetur iusto ut sed corporis molestiae harum.
+                  url: http://lesch.info/maia
+            name: Laborum minima.
+            namespace: Assumenda quas.
             oci_artifacts:
                 - files:
-                    - Quaerat earum.
-                    - Est labore deleniti sint nesciunt ducimus non.
-                    - Labore et.
-                  repo: Quia similique voluptatem esse facere.
-                  tag: In quia.
+                    - Nesciunt ducimus non voluptas labore et accusamus.
+                    - Similique voluptatem.
+                  repo: Facere ut in quia minima quas.
+                  tag: Et autem molestiae aliquam.
                 - files:
-                    - Quaerat earum.
-                    - Est labore deleniti sint nesciunt ducimus non.
-                    - Labore et.
-                  repo: Quia similique voluptatem esse facere.
-                  tag: In quia.
-            platform: Assumenda possimus.
-            start_at: "1995-09-16T08:38:32Z"
-            status: aborted
-            url: http://trantow.biz/jovani
+                    - Nesciunt ducimus non voluptas labore et accusamus.
+                    - Similique voluptatem.
+                  repo: Facere ut in quia minima quas.
+                  tag: Et autem molestiae aliquam.
+                - files:
+                    - Nesciunt ducimus non voluptas labore et accusamus.
+                    - Similique voluptatem.
+                  repo: Facere ut in quia minima quas.
+                  tag: Et autem molestiae aliquam.
+                - files:
+                    - Nesciunt ducimus non voluptas labore et accusamus.
+                    - Similique voluptatem.
+                  repo: Facere ut in quia minima quas.
+                  tag: Et autem molestiae aliquam.
+            platform: Recusandae consequatur dolorum eos fuga eius quod.
+            start_at: "1984-07-20T19:47:23Z"
+            status: failure
+            url: http://kautzer.biz/ayden.hermiston
         required:
             - name
+            - namespace
             - status
     TektonStatus:
         title: TektonStatus
@@ -1855,8 +2014,8 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - end_at: "1979-04-06T12:59:53Z"
-                      git_sha: n8a
+                    - end_at: "1986-09-12T19:43:22Z"
+                      git_sha: bqu
                       images:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1867,26 +2026,33 @@ definitions:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
                           url: http://lesch.info/maia
+                        - internal_url: http://walshlebsack.org/manuela_nikolaus
+                          platform: Consectetur iusto ut sed corporis molestiae harum.
+                          url: http://lesch.info/maia
                       name: Debitis dolorem occaecati omnis sunt a.
+                      namespace: Ratione minus sunt voluptas eius.
                       oci_artifacts:
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
-                      platform: Quas minus et autem molestiae.
-                      start_at: "1988-08-04T04:14:58Z"
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                        - files:
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                      platform: Delectus quo et et aut iure.
+                      start_at: "1986-05-12T19:12:00Z"
                       status: pending
-                      url: http://waelchi.org/annabel
-                    - end_at: "1979-04-06T12:59:53Z"
-                      git_sha: n8a
+                      url: http://dickikris.com/enola
+                    - end_at: "1986-09-12T19:43:22Z"
+                      git_sha: bqu
                       images:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1897,37 +2063,44 @@ definitions:
                         - internal_url: http://walshlebsack.org/manuela_nikolaus
                           platform: Consectetur iusto ut sed corporis molestiae harum.
                           url: http://lesch.info/maia
+                        - internal_url: http://walshlebsack.org/manuela_nikolaus
+                          platform: Consectetur iusto ut sed corporis molestiae harum.
+                          url: http://lesch.info/maia
                       name: Debitis dolorem occaecati omnis sunt a.
+                      namespace: Ratione minus sunt voluptas eius.
                       oci_artifacts:
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
                         - files:
-                            - Quaerat earum.
-                            - Est labore deleniti sint nesciunt ducimus non.
-                            - Labore et.
-                          repo: Quia similique voluptatem esse facere.
-                          tag: In quia.
-                      platform: Quas minus et autem molestiae.
-                      start_at: "1988-08-04T04:14:58Z"
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                        - files:
+                            - Nesciunt ducimus non voluptas labore et accusamus.
+                            - Similique voluptatem.
+                          repo: Facere ut in quia minima quas.
+                          tag: Et autem molestiae aliquam.
+                      platform: Delectus quo et et aut iure.
+                      start_at: "1986-05-12T19:12:00Z"
                       status: pending
-                      url: http://waelchi.org/annabel
+                      url: http://dickikris.com/enola
             triggers_event_ids:
                 type: array
                 items:
                     type: string
-                    example: ee884165-bf2c-4063-9878-ddfa6cf61130
+                    example: 5939780d-994b-499c-96db-c6e73bb1b92a
                     format: uuid
                 example:
-                    - 8f3d5a92-7c0a-4fc0-a1f9-982e13dd6789
-                    - 07cf2727-ba98-4ef5-b4c5-123857376ed6
+                    - c0e96238-2e5c-4d48-af3b-99f1836b6a53
+                    - 0b5bb5df-1175-4b2a-b279-b99c09f8068d
         example:
             pipelines:
-                - end_at: "1979-04-06T12:59:53Z"
-                  git_sha: n8a
+                - end_at: "1986-09-12T19:43:22Z"
+                  git_sha: bqu
                   images:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1938,26 +2111,33 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
                   name: Debitis dolorem occaecati omnis sunt a.
+                  namespace: Ratione minus sunt voluptas eius.
                   oci_artifacts:
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                  platform: Quas minus et autem molestiae.
-                  start_at: "1988-08-04T04:14:58Z"
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                    - files:
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                  platform: Delectus quo et et aut iure.
+                  start_at: "1986-05-12T19:12:00Z"
                   status: pending
-                  url: http://waelchi.org/annabel
-                - end_at: "1979-04-06T12:59:53Z"
-                  git_sha: n8a
+                  url: http://dickikris.com/enola
+                - end_at: "1986-09-12T19:43:22Z"
+                  git_sha: bqu
                   images:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1968,26 +2148,33 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
                   name: Debitis dolorem occaecati omnis sunt a.
+                  namespace: Ratione minus sunt voluptas eius.
                   oci_artifacts:
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                  platform: Quas minus et autem molestiae.
-                  start_at: "1988-08-04T04:14:58Z"
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                    - files:
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                  platform: Delectus quo et et aut iure.
+                  start_at: "1986-05-12T19:12:00Z"
                   status: pending
-                  url: http://waelchi.org/annabel
-                - end_at: "1979-04-06T12:59:53Z"
-                  git_sha: n8a
+                  url: http://dickikris.com/enola
+                - end_at: "1986-09-12T19:43:22Z"
+                  git_sha: bqu
                   images:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -1998,26 +2185,33 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
                   name: Debitis dolorem occaecati omnis sunt a.
+                  namespace: Ratione minus sunt voluptas eius.
                   oci_artifacts:
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                  platform: Quas minus et autem molestiae.
-                  start_at: "1988-08-04T04:14:58Z"
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                    - files:
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                  platform: Delectus quo et et aut iure.
+                  start_at: "1986-05-12T19:12:00Z"
                   status: pending
-                  url: http://waelchi.org/annabel
-                - end_at: "1979-04-06T12:59:53Z"
-                  git_sha: n8a
+                  url: http://dickikris.com/enola
+                - end_at: "1986-09-12T19:43:22Z"
+                  git_sha: bqu
                   images:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
@@ -2028,28 +2222,36 @@ definitions:
                     - internal_url: http://walshlebsack.org/manuela_nikolaus
                       platform: Consectetur iusto ut sed corporis molestiae harum.
                       url: http://lesch.info/maia
+                    - internal_url: http://walshlebsack.org/manuela_nikolaus
+                      platform: Consectetur iusto ut sed corporis molestiae harum.
+                      url: http://lesch.info/maia
                   name: Debitis dolorem occaecati omnis sunt a.
+                  namespace: Ratione minus sunt voluptas eius.
                   oci_artifacts:
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
                     - files:
-                        - Quaerat earum.
-                        - Est labore deleniti sint nesciunt ducimus non.
-                        - Labore et.
-                      repo: Quia similique voluptatem esse facere.
-                      tag: In quia.
-                  platform: Quas minus et autem molestiae.
-                  start_at: "1988-08-04T04:14:58Z"
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                    - files:
+                        - Nesciunt ducimus non voluptas labore et accusamus.
+                        - Similique voluptatem.
+                      repo: Facere ut in quia minima quas.
+                      tag: Et autem molestiae aliquam.
+                  platform: Delectus quo et et aut iure.
+                  start_at: "1986-05-12T19:12:00Z"
                   status: pending
-                  url: http://waelchi.org/annabel
+                  url: http://dickikris.com/enola
             triggers_event_ids:
-                - 05109187-51bd-46a3-98a3-863314eb7c90
-                - 4ba92b1d-1b7c-42a9-92b1-125936df9e25
-                - 0b37312b-14a2-4c21-b4f9-7814f59a1886
+                - 37b4a39a-f700-4cad-a6e6-0d52ade8f539
+                - f34039f3-db04-419f-81a2-739564f519bf
+                - 49392970-b4b5-4145-8b5c-30472c503eed
+                - 5d9e8209-c24b-42f8-be8f-9d83ae8d4649
         required:
             - pipelines
     TiDBxBumpTagMeta:
