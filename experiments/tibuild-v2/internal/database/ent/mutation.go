@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
 const (
@@ -60,7 +61,7 @@ type DevBuildMutation struct {
 	pipeline_start_at    *time.Time
 	pipeline_end_at      *time.Time
 	build_report         *map[string]interface{}
-	tekton_status        *map[string]interface{}
+	tekton_status        *schema.TektonStatus
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*DevBuild, error)
@@ -1422,12 +1423,12 @@ func (m *DevBuildMutation) ResetBuildReport() {
 }
 
 // SetTektonStatus sets the "tekton_status" field.
-func (m *DevBuildMutation) SetTektonStatus(value map[string]interface{}) {
-	m.tekton_status = &value
+func (m *DevBuildMutation) SetTektonStatus(ss schema.TektonStatus) {
+	m.tekton_status = &ss
 }
 
 // TektonStatus returns the value of the "tekton_status" field in the mutation.
-func (m *DevBuildMutation) TektonStatus() (r map[string]interface{}, exists bool) {
+func (m *DevBuildMutation) TektonStatus() (r schema.TektonStatus, exists bool) {
 	v := m.tekton_status
 	if v == nil {
 		return
@@ -1438,7 +1439,7 @@ func (m *DevBuildMutation) TektonStatus() (r map[string]interface{}, exists bool
 // OldTektonStatus returns the old "tekton_status" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldTektonStatus(ctx context.Context) (v map[string]interface{}, err error) {
+func (m *DevBuildMutation) OldTektonStatus(ctx context.Context) (v schema.TektonStatus, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldTektonStatus is only allowed on UpdateOne operations")
 	}
@@ -1903,7 +1904,7 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetBuildReport(v)
 		return nil
 	case devbuild.FieldTektonStatus:
-		v, ok := value.(map[string]interface{})
+		v, ok := value.(schema.TektonStatus)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

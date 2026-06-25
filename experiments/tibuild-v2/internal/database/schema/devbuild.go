@@ -199,7 +199,7 @@ func (DevBuildStatus) Fields() []ent.Field {
 			Optional().
 			Comment("JSON report of the build"),
 
-		field.JSON("tekton_status", map[string]any{}).
+		field.JSON("tekton_status", TektonStatus{}).
 			Optional().
 			Comment("Tekton status"),
 	}
