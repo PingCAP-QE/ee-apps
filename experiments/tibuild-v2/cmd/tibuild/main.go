@@ -11,9 +11,10 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/go-co-op/gocron/v2"
 	"github.com/rs/zerolog"
-	"github.com/robfig/cron/v3"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
@@ -86,19 +87,33 @@ func main() {
 				}
 				reconciler := impl.NewTektonReconciler(&reconcilerLogger, dbClient, cfg.Tekton.ViewURL)
 
-				schedule := cfg.Tekton.ReconcilerSchedule
-				if schedule == "" {
-					schedule = "0 * * * * *" // default: every minute
+				interval := 1 * time.Minute // default
+				if cfg.Tekton.ReconcilerInterval != "" {
+					if d, err := time.ParseDuration(cfg.Tekton.ReconcilerInterval); err == nil {
+						interval = d
+					} else {
+						log.Fatalf(ctx, err, "invalid reconciler_interval: %s", cfg.Tekton.ReconcilerInterval)
+					}
 				}
 
-				c := cron.New(cron.WithSeconds())
-				if _, err := c.AddFunc(schedule, func() { reconciler.Reconcile(context.Background()) }); err != nil {
-					log.Fatalf(ctx, err, "failed to add reconciler cron job")
+				s, err := gocron.NewScheduler()
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to create scheduler")
 				}
-				c.Start()
-				defer c.Stop()
 
-				logger.Info().Str("schedule", schedule).Msg("started tekton reconciler")
+				_, err = s.NewJob(
+					gocron.DurationJob(interval),
+					gocron.NewTask(func() { reconciler.Reconcile(context.Background()) }),
+					gocron.WithSingletonMode(gocron.LimitModeReschedule),
+				)
+				if err != nil {
+					log.Fatalf(ctx, err, "failed to add reconciler job")
+				}
+
+				s.Start()
+				defer func() { _ = s.Shutdown() }()
+
+				logger.Info().Dur("interval", interval).Msg("started tekton reconciler")
 			}
 		}
 		{
