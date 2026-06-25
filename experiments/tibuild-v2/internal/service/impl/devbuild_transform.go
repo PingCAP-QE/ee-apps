@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 )
 
@@ -86,15 +87,56 @@ func transformBuildReport(report map[string]any) *devbuild.BuildReport {
 	return buildReport
 }
 
-// transformTektonStatus converts a map[string]any to a devbuild.TektonStatus
-func transformTektonStatus(status map[string]any) *devbuild.TektonStatus {
-	if status == nil {
-		return nil
+// transformTektonStatus converts a schema.TektonStatus to a devbuild.TektonStatus
+func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
+	tektonStatus := &devbuild.TektonStatus{
+		TriggersEventIds: status.TriggersEventIds,
 	}
 
-	tektonStatus := &devbuild.TektonStatus{}
+	// Transform pipelines
+	if len(status.Pipelines) > 0 {
+		pipelines := make([]*devbuild.TektonPipeline, 0, len(status.Pipelines))
+		for _, p := range status.Pipelines {
+			pipeline := &devbuild.TektonPipeline{
+				Name:      p.Name,
+				Namespace: p.Namespace,
+				Status:    devbuild.BuildStatus(p.Status),
+				StartAt:   &p.StartAt,
+				EndAt:     &p.EndAt,
+				GitSha:    &p.GitSha,
+				Platform:  &p.Platform,
+				URL:       &p.URL,
+			}
 
-	// Add your transformation logic here.
+			// Transform images
+			if len(p.Images) > 0 {
+				images := make([]*devbuild.ImageArtifact, 0, len(p.Images))
+				for _, img := range p.Images {
+					images = append(images, &devbuild.ImageArtifact{
+						Platform: img.Platform,
+						URL:      img.URL,
+					})
+				}
+				pipeline.Images = images
+			}
+
+			// Transform OCI artifacts
+			if len(p.OciArtifacts) > 0 {
+				ociArtifacts := make([]*devbuild.OciArtifact, 0, len(p.OciArtifacts))
+				for _, oci := range p.OciArtifacts {
+					ociArtifacts = append(ociArtifacts, &devbuild.OciArtifact{
+						Files: oci.Files,
+						Repo:  oci.Repo,
+						Tag:   oci.Tag,
+					})
+				}
+				pipeline.OciArtifacts = ociArtifacts
+			}
+
+			pipelines = append(pipelines, pipeline)
+		}
+		tektonStatus.Pipelines = pipelines
+	}
 
 	return tektonStatus
 }

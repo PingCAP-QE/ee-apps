@@ -11,6 +11,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
 // terminalStatuses are the build statuses that indicate a build is finished.
@@ -49,7 +50,7 @@ func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) 
 	logger := s.logger.With().Int("build_id", build.ID).Logger()
 
 	// Extract event IDs from tekton_status
-	eventIDs := extractEventIDs(build.TektonStatus)
+	eventIDs := build.TektonStatus.TriggersEventIds
 	if len(eventIDs) == 0 {
 		logger.Debug().Msg("no event IDs found, skipping")
 		return nil
@@ -78,40 +79,6 @@ func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) 
 	return nil
 }
 
-// extractEventIDs extracts event IDs from the tekton_status JSON field.
-func extractEventIDs(tektonStatus map[string]any) []string {
-	if tektonStatus == nil {
-		return nil
-	}
-
-	// Check for triggers_event_ids field (added in PR1)
-	if eventIDsRaw, ok := tektonStatus["triggers_event_ids"]; ok {
-		// Try []any
-		if eventIDsAny, ok := eventIDsRaw.([]any); ok {
-			var result []string
-			for _, id := range eventIDsAny {
-				if idStr, ok := id.(string); ok {
-					result = append(result, idStr)
-				}
-			}
-			return result
-		}
-		// Try direct string slice
-		if eventIDs, ok := eventIDsRaw.([]string); ok {
-			return eventIDs
-		}
-		// Try json.RawMessage
-		if eventIDsJSON, ok := eventIDsRaw.(json.RawMessage); ok {
-			var eventIDs []string
-			if err := json.Unmarshal(eventIDsJSON, &eventIDs); err == nil {
-				return eventIDs
-			}
-		}
-	}
-
-	return nil
-}
-
 // PipelineRunListResponse represents the response from Tekton Dashboard API.
 type PipelineRunListResponse struct {
 	Items []PipelineRunItem `json:"items"`
@@ -127,10 +94,10 @@ type PipelineRunItem struct {
 		Params []Param `json:"params"`
 	} `json:"spec"`
 	Status struct {
-		Conditions     []Condition `json:"conditions"`
-		StartTime      string      `json:"startTime"`
-		CompletionTime string      `json:"completionTime"`
-		PipelineResults []Result   `json:"pipelineResults"`
+		Conditions      []Condition `json:"conditions"`
+		StartTime       string      `json:"startTime"`
+		CompletionTime  string      `json:"completionTime"`
+		PipelineResults []Result    `json:"pipelineResults"`
 	} `json:"status"`
 }
 
@@ -211,9 +178,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 
 	// Update tekton status with pipeline info
 	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus)
-	if tektonStatus != nil {
-		updater.SetTektonStatus(tektonStatus)
-	}
+	updater.SetTektonStatus(tektonStatus)
 
 	// Set pipeline times
 	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
@@ -276,78 +241,65 @@ func getSucceededCondition(pr PipelineRunItem) *Condition {
 	return nil
 }
 
-// buildTektonStatus builds the tekton_status JSON from PipelineRuns.
-func buildTektonStatus(pipelineRuns []PipelineRunItem, existing map[string]any) map[string]any {
-	if existing == nil {
-		existing = make(map[string]any)
-	}
-
-	var pipelines []map[string]any
+// buildTektonStatus builds the tekton_status from PipelineRuns.
+func buildTektonStatus(pipelineRuns []PipelineRunItem, existing schema.TektonStatus) schema.TektonStatus {
+	var pipelines []schema.TektonPipeline
 	for _, pr := range pipelineRuns {
-		pipeline := map[string]any{
-			"name": pr.Metadata.Name,
+		pipeline := schema.TektonPipeline{
+			Name: pr.Metadata.Name,
 		}
 
 		condition := getSucceededCondition(pr)
 		if condition != nil {
 			switch condition.Status {
 			case "True":
-				pipeline["status"] = "success"
+				pipeline.Status = "success"
 			case "False":
-				pipeline["status"] = "failure"
+				pipeline.Status = "failure"
 			default:
-				pipeline["status"] = "processing"
+				pipeline.Status = "processing"
 			}
 		}
 
 		if pr.Status.StartTime != "" {
-			pipeline["start_at"] = pr.Status.StartTime
+			pipeline.StartAt = pr.Status.StartTime
 		}
 		if pr.Status.CompletionTime != "" {
-			pipeline["end_at"] = pr.Status.CompletionTime
+			pipeline.EndAt = pr.Status.CompletionTime
 		}
 
 		// Extract platform from labels
 		if platform, ok := pr.Metadata.Labels["tekton.dev/platform"]; ok {
-			pipeline["platform"] = platform
-		}
-
-		// Extract params
-		params := make(map[string]string)
-		for _, p := range pr.Spec.Params {
-			params[p.Name] = p.Value
-		}
-		if len(params) > 0 {
-			pipeline["params"] = params
+			pipeline.Platform = platform
 		}
 
 		// Extract results (OCI artifacts + images)
 		ociArtifacts, images := extractArtifactsFromResults(pr.Status.PipelineResults)
 		if len(ociArtifacts) > 0 {
-			pipeline["oci_artifacts"] = ociArtifacts
+			pipeline.OciArtifacts = ociArtifacts
 		}
 		if len(images) > 0 {
-			pipeline["images"] = images
+			pipeline.Images = images
 		}
 
 		pipelines = append(pipelines, pipeline)
 	}
 
-	existing["pipelines"] = pipelines
+	existing.Pipelines = pipelines
 	return existing
 }
 
 // extractArtifactsFromResults extracts OCI artifacts and images from PipelineRun results.
-func extractArtifactsFromResults(results []Result) (ociArtifacts []map[string]any, images []map[string]any) {
+func extractArtifactsFromResults(results []Result) (ociArtifacts []schema.OciArtifact, images []schema.ImageArtifact) {
 	for _, result := range results {
 		switch result.Name {
 		case "pushed-binaries":
-			var artifacts []map[string]any
+			var artifacts []schema.OciArtifact
 			if err := json.Unmarshal([]byte(result.Value), &artifacts); err == nil {
 				ociArtifacts = append(ociArtifacts, artifacts...)
 			}
 		case "pushed-images":
-			var imgs []map[string]any
+			var imgs []schema.ImageArtifact
 			if err := json.Unmarshal([]byte(result.Value), &imgs); err == nil {
 				images = append(images, imgs...)
 			}

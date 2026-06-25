@@ -211,6 +211,7 @@ type RerunPayload struct {
 
 type TektonPipeline struct {
 	Name         string
+	Namespace    string
 	Status       BuildStatus
 	StartAt      *string
 	EndAt        *string

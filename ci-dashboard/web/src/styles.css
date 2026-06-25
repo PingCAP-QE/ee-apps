@@ -2004,24 +2004,30 @@ select {
   position: sticky;
   left: 0;
   z-index: 2;
-  background: rgba(252, 247, 239, 0.96);
+  background: var(--data-table-sticky-bg, rgba(252, 247, 239, 0.96));
   box-shadow: 12px 0 18px -18px rgba(26, 42, 51, 0.45);
+}
+
+.data-table tbody tr {
+  --data-table-cell-bg: transparent;
+  --data-table-sticky-bg: rgba(252, 247, 239, 0.96);
 }
 
 .data-table tbody td {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  background: var(--data-table-cell-bg);
 }
 
-.data-table tbody tr:nth-child(odd) th,
-.data-table tbody tr:nth-child(odd) td {
-  background: rgba(255, 255, 255, 0.28);
+.data-table tbody tr:nth-child(odd) {
+  --data-table-cell-bg: rgba(255, 255, 255, 0.28);
+  --data-table-sticky-bg: rgba(255, 255, 255, 0.96);
 }
 
-.data-table tbody tr:hover th,
-.data-table tbody tr:hover td {
-  background: rgba(15, 124, 130, 0.08);
+.data-table tbody tr:hover {
+  --data-table-cell-bg: rgba(15, 124, 130, 0.08);
+  --data-table-sticky-bg: rgba(232, 244, 244, 0.96);
 }
 
 .data-table--issue-weekly thead th:first-child,
@@ -2053,9 +2059,9 @@ select {
   cursor: pointer;
 }
 
-.data-row--selected th,
-.data-row--selected td {
-  background: rgba(42, 157, 143, 0.12) !important;
+.data-row--selected {
+  --data-table-cell-bg: rgba(42, 157, 143, 0.12) !important;
+  --data-table-sticky-bg: rgba(227, 243, 241, 0.96) !important;
 }
 
 .resource-table__name {

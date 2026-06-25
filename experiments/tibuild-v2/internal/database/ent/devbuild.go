@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
 // DevBuild is the model entity for the DevBuild schema.
@@ -71,7 +72,7 @@ type DevBuild struct {
 	// JSON report of the build
 	BuildReport map[string]interface{} `json:"build_report,omitempty"`
 	// Tekton status
-	TektonStatus map[string]interface{} `json:"tekton_status,omitempty"`
+	TektonStatus schema.TektonStatus `json:"tekton_status,omitempty"`
 	selectValues sql.SelectValues
 }
 

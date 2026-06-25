@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
 // DevBuildCreate is the builder for creating a DevBuild entity.
@@ -377,8 +378,16 @@ func (_c *DevBuildCreate) SetBuildReport(v map[string]interface{}) *DevBuildCrea
 }
 
 // SetTektonStatus sets the "tekton_status" field.
-func (_c *DevBuildCreate) SetTektonStatus(v map[string]interface{}) *DevBuildCreate {
+func (_c *DevBuildCreate) SetTektonStatus(v schema.TektonStatus) *DevBuildCreate {
 	_c.mutation.SetTektonStatus(v)
+	return _c
+}
+
+// SetNillableTektonStatus sets the "tekton_status" field if the given value is not nil.
+func (_c *DevBuildCreate) SetNillableTektonStatus(v *schema.TektonStatus) *DevBuildCreate {
+	if v != nil {
+		_c.SetTektonStatus(*v)
+	}
 	return _c
 }
 

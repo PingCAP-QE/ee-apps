@@ -37,6 +37,7 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 
 	// 2. Send the cloud events to tekton listener that serves for tibuild.
 	eventsCount := len(events)
+	var eventIDs []string
 	for i, event := range events {
 		respEvent, result := s.tektonCloudEventClient.Request(ctx, *event)
 		if !protocol.IsACK(result) {
@@ -44,9 +45,28 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 			return nil, fmt.Errorf("failed to send cloud event: %w", result)
 		}
 
-		// debug the resp event
+		// Capture the eventID from the response
 		if respEvent != nil {
-			s.logger.Debug().Stringer("response_event", respEvent).Msgf("event(index %d/%d) sent ok with response", i, eventsCount)
+			eventID := respEvent.Context.GetID()
+			if eventID != "" {
+				eventIDs = append(eventIDs, eventID)
+				s.logger.Debug().Str("eventID", eventID).Msgf("event(index %d/%d) sent ok with eventID", i, eventsCount)
+			} else {
+				s.logger.Debug().Stringer("response_event", respEvent).Msgf("event(index %d/%d) sent ok with response but no eventID", i, eventsCount)
+			}
+		}
+	}
+
+	// 3. Store the eventIDs in TektonStatus
+	if len(eventIDs) > 0 {
+		tektonStatus := record.TektonStatus
+		tektonStatus.TriggersEventIds = eventIDs
+		record, err = s.dbClient.DevBuild.UpdateOneID(record.ID).
+			SetTektonStatus(tektonStatus).
+			Save(ctx)
+		if err != nil {
+			s.logger.Err(err).Msg("failed to store eventIDs in tekton_status")
+			// Non-fatal: the build was triggered successfully, just the eventID storage failed
 		}
 	}
 

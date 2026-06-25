@@ -881,13 +881,14 @@ func unmarshalTektonStatusResponseToDevbuildTektonStatus(v *TektonStatusResponse
 // type *devbuild.TektonPipeline from a value of type *TektonPipelineResponse.
 func unmarshalTektonPipelineResponseToDevbuildTektonPipeline(v *TektonPipelineResponse) *devbuild.TektonPipeline {
 	res := &devbuild.TektonPipeline{
-		Name:     *v.Name,
-		Status:   devbuild.BuildStatus(*v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      *v.Name,
+		Namespace: *v.Namespace,
+		Status:    devbuild.BuildStatus(*v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
@@ -1163,13 +1164,14 @@ func unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v *TektonStatusResp
 // *TektonPipelineResponseBody.
 func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipelineResponseBody) *devbuild.TektonPipeline {
 	res := &devbuild.TektonPipeline{
-		Name:     *v.Name,
-		Status:   devbuild.BuildStatus(*v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      *v.Name,
+		Namespace: *v.Namespace,
+		Status:    devbuild.BuildStatus(*v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
@@ -1342,13 +1344,14 @@ func marshalDevbuildTektonStatusToTektonStatusRequestBody(v *devbuild.TektonStat
 // *devbuild.TektonPipeline.
 func marshalDevbuildTektonPipelineToTektonPipelineRequestBody(v *devbuild.TektonPipeline) *TektonPipelineRequestBody {
 	res := &TektonPipelineRequestBody{
-		Name:     v.Name,
-		Status:   string(v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      v.Name,
+		Namespace: v.Namespace,
+		Status:    string(v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*ImageArtifactRequestBody, len(v.Images))
@@ -1525,13 +1528,14 @@ func marshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusRequest
 // *TektonPipelineRequestBody.
 func marshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineRequestBody) *devbuild.TektonPipeline {
 	res := &devbuild.TektonPipeline{
-		Name:     v.Name,
-		Status:   devbuild.BuildStatus(v.Status),
-		StartAt:  v.StartAt,
-		EndAt:    v.EndAt,
-		GitSha:   v.GitSha,
-		Platform: v.Platform,
-		URL:      v.URL,
+		Name:      v.Name,
+		Namespace: v.Namespace,
+		Status:    devbuild.BuildStatus(v.Status),
+		StartAt:   v.StartAt,
+		EndAt:     v.EndAt,
+		GitSha:    v.GitSha,
+		Platform:  v.Platform,
+		URL:       v.URL,
 	}
 	if v.Images != nil {
 		res.Images = make([]*devbuild.ImageArtifact, len(v.Images))
