@@ -62,6 +62,7 @@ func TestGetGhRefSha_Tag(t *testing.T) {
 func TestGetGhRefSha_PullRequest(t *testing.T) {
 	fullRepo := "owner/repo"
 	expectedSHA := "pr123head456"
+	expectedBaseRef := "main"
 
 	httpClient := mock.NewMockedHTTPClient(
 		mock.WithRequestMatch(
@@ -70,14 +71,20 @@ func TestGetGhRefSha_PullRequest(t *testing.T) {
 				Head: &github.PullRequestBranch{
 					SHA: github.Ptr(expectedSHA),
 				},
+				Base: &github.PullRequestBranch{
+					Ref: github.Ptr(expectedBaseRef),
+				},
 			},
 		),
 	)
 	ghClient := github.NewClient(httpClient)
 
-	_, sha := getGhRefAndSha(context.Background(), ghClient, fullRepo, "pull/42")
+	baseRef, sha := getGhRefAndSha(context.Background(), ghClient, fullRepo, "pull/42")
 	if sha != expectedSHA {
 		t.Fatalf("expected sha %s, got %s", expectedSHA, sha)
+	}
+	if baseRef != expectedBaseRef {
+		t.Fatalf("expected base ref %s, got %s", expectedBaseRef, baseRef)
 	}
 }
 
