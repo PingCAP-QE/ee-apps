@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
+	"github.com/robfig/cron/v3"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
 
@@ -76,18 +77,28 @@ func main() {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}
 
-			// Start Tekton reconciler if namespace is configured
-			if cfg.Tekton.Namespace != "" {
+			// Start Tekton reconciler if enabled
+			if cfg.Tekton.ReconcilerEnabled && cfg.Tekton.ViewURL != "" {
 				reconcilerLogger := zerolog.New(os.Stderr).With().Timestamp().Str("service", "tekton-reconciler").Logger()
 				dbClient, err := impl.NewStoreClient(cfg.Store)
 				if err != nil {
 					log.Fatalf(ctx, err, "failed to create store client for reconciler")
 				}
-				reconciler, err := impl.NewTektonReconciler(&reconcilerLogger, dbClient, cfg.Tekton.Namespace)
-				if err != nil {
-					log.Fatalf(ctx, err, "failed to create tekton reconciler")
+				reconciler := impl.NewTektonReconciler(&reconcilerLogger, dbClient, cfg.Tekton.ViewURL)
+
+				schedule := cfg.Tekton.ReconcilerSchedule
+				if schedule == "" {
+					schedule = "0 * * * * *" // default: every minute
 				}
-				go reconciler.Start(ctx)
+
+				c := cron.New(cron.WithSeconds())
+				if _, err := c.AddFunc(schedule, func() { reconciler.Reconcile(context.Background()) }); err != nil {
+					log.Fatalf(ctx, err, "failed to add reconciler cron job")
+				}
+				c.Start()
+				defer c.Stop()
+
+				logger.Info().Str("schedule", schedule).Msg("started tekton reconciler")
 			}
 		}
 		{

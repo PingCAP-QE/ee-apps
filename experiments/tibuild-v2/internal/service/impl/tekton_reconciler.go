@@ -4,110 +4,65 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"io"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	tektonclient "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
-	"knative.dev/pkg/apis"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 )
 
-const (
-	// staleThreshold is the minimum duration a build must be in PROCESSING state
-	// before the reconciler attempts to sync its status.
-	staleThreshold = 5 * time.Minute
+// terminalStatuses are the build statuses that indicate a build is finished.
+var terminalStatuses = []string{"success", "failure", "error", "aborted"}
 
-	// reconcileInterval is the interval at which the reconciler runs.
-	reconcileInterval = 30 * time.Second
-)
-
-// TektonReconciler periodically checks for builds stuck in PROCESSING state
-// and syncs their status with the actual PipelineRun status from Kubernetes.
+// TektonReconciler periodically checks for non-terminal builds and syncs their status
+// with the actual PipelineRun status from Tekton Dashboard API.
 type TektonReconciler struct {
 	logger       *zerolog.Logger
 	dbClient     *ent.Client
-	tektonClient tektonclient.Interface
-	namespace    string
+	dashboardURL string
+	httpClient   *http.Client
 }
 
 // NewTektonReconciler creates a new TektonReconciler.
-func NewTektonReconciler(logger *zerolog.Logger, dbClient *ent.Client, namespace string) (*TektonReconciler, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
-	}
-
-	tektonClient, err := tektonclient.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tekton client: %w", err)
-	}
-
+func NewTektonReconciler(logger *zerolog.Logger, dbClient *ent.Client, dashboardURL string) *TektonReconciler {
 	return &TektonReconciler{
 		logger:       logger,
 		dbClient:     dbClient,
-		tektonClient: tektonClient,
-		namespace:    namespace,
-	}, nil
-}
-
-// Start begins the reconciliation loop. It runs until the context is cancelled.
-func (r *TektonReconciler) Start(ctx context.Context) {
-	r.logger.Info().Msg("starting tekton reconciler")
-
-	ticker := time.NewTicker(reconcileInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			r.logger.Info().Msg("stopping tekton reconciler")
-			return
-		case <-ticker.C:
-			if err := r.reconcile(ctx); err != nil {
-				r.logger.Err(err).Msg("failed to reconcile")
-			}
-		}
+		dashboardURL: dashboardURL,
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
-// reconcile checks for stale PROCESSING builds and syncs their status.
-func (r *TektonReconciler) reconcile(ctx context.Context) error {
+// Reconcile checks for non-terminal builds and syncs their status.
+func (r *TektonReconciler) Reconcile(ctx context.Context) {
 	r.logger.Debug().Msg("running reconciliation cycle")
 
-	// Query builds that are in PROCESSING state and have been there for >5 minutes
-	threshold := time.Now().Add(-staleThreshold)
+	// Query all non-terminal builds
 	builds, err := r.dbClient.DevBuild.Query().
-		Where(
-			entdevbuild.Status("processing"),
-			entdevbuild.UpdatedAtLT(threshold),
-		).
+		Where(entdevbuild.StatusNotIn(terminalStatuses...)).
 		All(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to query stale builds: %w", err)
+		r.logger.Err(err).Msg("failed to query non-terminal builds")
+		return
 	}
 
 	if len(builds) == 0 {
-		r.logger.Debug().Msg("no stale builds found")
-		return nil
+		r.logger.Debug().Msg("no non-terminal builds found")
+		return
 	}
 
-	r.logger.Info().Int("count", len(builds)).Msg("found stale builds to reconcile")
+	r.logger.Info().Int("count", len(builds)).Msg("found non-terminal builds to reconcile")
 
 	for _, build := range builds {
 		if err := r.reconcileBuild(ctx, build); err != nil {
 			r.logger.Err(err).Int("build_id", build.ID).Msg("failed to reconcile build")
-			// Continue with other builds even if one fails
 			continue
 		}
 	}
-
-	return nil
 }
 
 // reconcileBuild syncs a single build's status with its PipelineRun status.
@@ -115,7 +70,7 @@ func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBui
 	logger := r.logger.With().Int("build_id", build.ID).Logger()
 
 	// Extract event IDs from tekton_status
-	eventIDs := r.extractEventIDs(build.TektonStatus)
+	eventIDs := extractEventIDs(build.TektonStatus)
 	if len(eventIDs) == 0 {
 		logger.Debug().Msg("no event IDs found, skipping")
 		return nil
@@ -123,9 +78,9 @@ func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBui
 
 	// Query PipelineRuns for each event ID
 	for _, eventID := range eventIDs {
-		pipelineRuns, err := r.listPipelineRunsByEventID(ctx, eventID)
+		pipelineRuns, err := r.queryPipelineRuns(ctx, eventID)
 		if err != nil {
-			logger.Err(err).Str("event_id", eventID).Msg("failed to list pipeline runs")
+			logger.Err(err).Str("event_id", eventID).Msg("failed to query pipeline runs")
 			continue
 		}
 
@@ -145,23 +100,13 @@ func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBui
 }
 
 // extractEventIDs extracts event IDs from the tekton_status JSON field.
-func (r *TektonReconciler) extractEventIDs(tektonStatus map[string]any) []string {
+func extractEventIDs(tektonStatus map[string]any) []string {
 	if tektonStatus == nil {
 		return nil
 	}
 
 	// Check for triggers_event_ids field (added in PR1)
 	if eventIDsRaw, ok := tektonStatus["triggers_event_ids"]; ok {
-		if eventIDsJSON, ok := eventIDsRaw.(json.RawMessage); ok {
-			var eventIDs []string
-			if err := json.Unmarshal(eventIDsJSON, &eventIDs); err == nil {
-				return eventIDs
-			}
-		}
-		// Try direct string slice
-		if eventIDs, ok := eventIDsRaw.([]string); ok {
-			return eventIDs
-		}
 		// Try []any
 		if eventIDsAny, ok := eventIDsRaw.([]any); ok {
 			var result []string
@@ -172,33 +117,102 @@ func (r *TektonReconciler) extractEventIDs(tektonStatus map[string]any) []string
 			}
 			return result
 		}
+		// Try direct string slice
+		if eventIDs, ok := eventIDsRaw.([]string); ok {
+			return eventIDs
+		}
+		// Try json.RawMessage
+		if eventIDsJSON, ok := eventIDsRaw.(json.RawMessage); ok {
+			var eventIDs []string
+			if err := json.Unmarshal(eventIDsJSON, &eventIDs); err == nil {
+				return eventIDs
+			}
+		}
 	}
 
 	return nil
 }
 
-// listPipelineRunsByEventID lists PipelineRuns that match the given event ID label.
-func (r *TektonReconciler) listPipelineRunsByEventID(ctx context.Context, eventID string) ([]v1beta1.PipelineRun, error) {
-	// Query PipelineRuns with the event ID label
-	labelSelector := fmt.Sprintf("tekton.dev/eventID=%s", eventID)
-	pipelineRuns, err := r.tektonClient.TektonV1beta1().PipelineRuns(r.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
+// PipelineRunListResponse represents the response from Tekton Dashboard API.
+type PipelineRunListResponse struct {
+	Items []PipelineRunItem `json:"items"`
+}
+
+// PipelineRunItem represents a single PipelineRun from the Dashboard API.
+type PipelineRunItem struct {
+	Metadata struct {
+		Name   string            `json:"name"`
+		Labels map[string]string `json:"labels"`
+	} `json:"metadata"`
+	Spec struct {
+		Params []Param `json:"params"`
+	} `json:"spec"`
+	Status struct {
+		Conditions     []Condition `json:"conditions"`
+		StartTime      string      `json:"startTime"`
+		CompletionTime string      `json:"completionTime"`
+		PipelineResults []Result   `json:"pipelineResults"`
+	} `json:"status"`
+}
+
+// Param represents a PipelineRun parameter.
+type Param struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// Condition represents a status condition.
+type Condition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// Result represents a PipelineRun result.
+type Result struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
+func (r *TektonReconciler) queryPipelineRuns(ctx context.Context, eventID string) ([]PipelineRunItem, error) {
+	labelSelector := fmt.Sprintf("triggers.tekton.dev/triggers-eventid=%s", eventID)
+	apiURL := fmt.Sprintf("%s/apis/tekton.dev/v1/pipelineruns/?labelSelector=%s",
+		r.dashboardURL, url.QueryEscape(labelSelector))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pipeline runs: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return pipelineRuns.Items, nil
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var pipelineRunList PipelineRunListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&pipelineRunList); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return pipelineRunList.Items, nil
 }
 
 // updateBuildFromPipelineRuns updates a build's status based on PipelineRun status.
-func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []v1beta1.PipelineRun) error {
+func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []PipelineRunItem) error {
 	if len(pipelineRuns) == 0 {
 		return nil
 	}
 
 	// Determine overall status from PipelineRuns
-	newStatus := r.determineStatus(pipelineRuns)
+	newStatus := determineStatus(pipelineRuns)
 	if newStatus == "" || newStatus == build.Status {
 		return nil
 	}
@@ -217,16 +231,16 @@ func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, buil
 		SetUpdatedAt(time.Now())
 
 	// Update tekton status with pipeline info
-	tektonStatus := r.buildTektonStatus(pipelineRuns, build.TektonStatus)
+	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus)
 	if tektonStatus != nil {
 		updater.SetTektonStatus(tektonStatus)
 	}
 
 	// Set pipeline times
-	if startTime := r.getEarliestStartTime(pipelineRuns); startTime != nil {
+	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
 		updater.SetPipelineStartAt(*startTime)
 	}
-	if endTime := r.getLatestCompletionTime(pipelineRuns); endTime != nil {
+	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil {
 		updater.SetPipelineEndAt(*endTime)
 	}
 
@@ -238,22 +252,22 @@ func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, buil
 }
 
 // determineStatus determines the overall build status from PipelineRuns.
-func (r *TektonReconciler) determineStatus(pipelineRuns []v1beta1.PipelineRun) string {
+func determineStatus(pipelineRuns []PipelineRunItem) string {
 	hasFailure := false
 	hasRunning := false
 	hasSuccess := false
 
 	for _, pr := range pipelineRuns {
-		condition := pr.Status.GetCondition(apis.ConditionSucceeded)
+		condition := getSucceededCondition(pr)
 		if condition == nil {
 			hasRunning = true
 			continue
 		}
 
-		switch {
-		case condition.IsTrue():
+		switch condition.Status {
+		case "True":
 			hasSuccess = true
-		case condition.IsFalse():
+		case "False":
 			hasFailure = true
 		default:
 			hasRunning = true
@@ -273,8 +287,18 @@ func (r *TektonReconciler) determineStatus(pipelineRuns []v1beta1.PipelineRun) s
 	return ""
 }
 
+// getSucceededCondition gets the Succeeded condition from a PipelineRun.
+func getSucceededCondition(pr PipelineRunItem) *Condition {
+	for _, cond := range pr.Status.Conditions {
+		if cond.Type == "Succeeded" {
+			return &cond
+		}
+	}
+	return nil
+}
+
 // buildTektonStatus builds the tekton_status JSON from PipelineRuns.
-func (r *TektonReconciler) buildTektonStatus(pipelineRuns []v1beta1.PipelineRun, existing map[string]any) map[string]any {
+func buildTektonStatus(pipelineRuns []PipelineRunItem, existing map[string]any) map[string]any {
 	if existing == nil {
 		existing = make(map[string]any)
 	}
@@ -282,30 +306,49 @@ func (r *TektonReconciler) buildTektonStatus(pipelineRuns []v1beta1.PipelineRun,
 	var pipelines []map[string]any
 	for _, pr := range pipelineRuns {
 		pipeline := map[string]any{
-			"name": pr.Name,
+			"name": pr.Metadata.Name,
 		}
 
-		condition := pr.Status.GetCondition(apis.ConditionSucceeded)
+		condition := getSucceededCondition(pr)
 		if condition != nil {
-			if condition.IsTrue() {
+			switch condition.Status {
+			case "True":
 				pipeline["status"] = "success"
-			} else if condition.IsFalse() {
+			case "False":
 				pipeline["status"] = "failure"
-			} else {
+			default:
 				pipeline["status"] = "processing"
 			}
 		}
 
-		if pr.Status.StartTime != nil {
-			pipeline["start_at"] = pr.Status.StartTime.Time.Format(time.RFC3339)
+		if pr.Status.StartTime != "" {
+			pipeline["start_at"] = pr.Status.StartTime
 		}
-		if pr.Status.CompletionTime != nil {
-			pipeline["end_at"] = pr.Status.CompletionTime.Time.Format(time.RFC3339)
+		if pr.Status.CompletionTime != "" {
+			pipeline["end_at"] = pr.Status.CompletionTime
 		}
 
-		// Extract platform from labels or params
-		if platform, ok := pr.Labels["tekton.dev/platform"]; ok {
+		// Extract platform from labels
+		if platform, ok := pr.Metadata.Labels["tekton.dev/platform"]; ok {
 			pipeline["platform"] = platform
+		}
+
+		// Extract params
+		params := make(map[string]string)
+		for _, p := range pr.Spec.Params {
+			params[p.Name] = p.Value
+		}
+		if len(params) > 0 {
+			pipeline["params"] = params
+		}
+
+		// Extract results (OCI artifacts + images)
+		ociArtifacts, images := extractArtifactsFromResults(pr.Status.PipelineResults)
+		if len(ociArtifacts) > 0 {
+			pipeline["oci_artifacts"] = ociArtifacts
+		}
+		if len(images) > 0 {
+			pipeline["images"] = images
 		}
 
 		pipelines = append(pipelines, pipeline)
@@ -315,12 +358,34 @@ func (r *TektonReconciler) buildTektonStatus(pipelineRuns []v1beta1.PipelineRun,
 	return existing
 }
 
+// extractArtifactsFromResults extracts OCI artifacts and images from PipelineRun results.
+func extractArtifactsFromResults(results []Result) (ociArtifacts []map[string]any, images []map[string]any) {
+	for _, result := range results {
+		switch result.Name {
+		case "pushed-binaries":
+			var artifacts []map[string]any
+			if err := json.Unmarshal([]byte(result.Value), &artifacts); err == nil {
+				ociArtifacts = append(ociArtifacts, artifacts...)
+			}
+		case "pushed-images":
+			var imgs []map[string]any
+			if err := json.Unmarshal([]byte(result.Value), &imgs); err == nil {
+				images = append(images, imgs...)
+			}
+		}
+	}
+	return
+}
+
 // getEarliestStartTime gets the earliest start time from PipelineRuns.
-func (r *TektonReconciler) getEarliestStartTime(pipelineRuns []v1beta1.PipelineRun) *time.Time {
+func getEarliestStartTime(pipelineRuns []PipelineRunItem) *time.Time {
 	var earliest *time.Time
 	for _, pr := range pipelineRuns {
-		if pr.Status.StartTime != nil {
-			t := pr.Status.StartTime.Time
+		if pr.Status.StartTime != "" {
+			t, err := time.Parse(time.RFC3339, pr.Status.StartTime)
+			if err != nil {
+				continue
+			}
 			if earliest == nil || t.Before(*earliest) {
 				earliest = &t
 			}
@@ -330,25 +395,18 @@ func (r *TektonReconciler) getEarliestStartTime(pipelineRuns []v1beta1.PipelineR
 }
 
 // getLatestCompletionTime gets the latest completion time from PipelineRuns.
-func (r *TektonReconciler) getLatestCompletionTime(pipelineRuns []v1beta1.PipelineRun) *time.Time {
+func getLatestCompletionTime(pipelineRuns []PipelineRunItem) *time.Time {
 	var latest *time.Time
 	for _, pr := range pipelineRuns {
-		if pr.Status.CompletionTime != nil {
-			t := pr.Status.CompletionTime.Time
+		if pr.Status.CompletionTime != "" {
+			t, err := time.Parse(time.RFC3339, pr.Status.CompletionTime)
+			if err != nil {
+				continue
+			}
 			if latest == nil || t.After(*latest) {
 				latest = &t
 			}
 		}
 	}
 	return latest
-}
-
-// parsePipelineName extracts the pipeline name from the event source.
-func parsePipelineName(source string) string {
-	// Source format: /apis/namespaces/<namespace>/<run-name>
-	parts := strings.Split(source, "/")
-	if len(parts) >= 2 {
-		return parts[len(parts)-1]
-	}
-	return ""
 }
