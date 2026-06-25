@@ -28,6 +28,8 @@ type devbuildsrvc struct {
 	imageMirrorURLMap      map[string]string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
+	dashboardURL           string
+	httpClient             *http.Client
 	jenkins                struct {
 		client  *gojenkins.Jenkins
 		jobName string
@@ -55,6 +57,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
+		dashboardURL:           cfg.Tekton.ViewURL,
+		httpClient:             &http.Client{Timeout: 30 * time.Second},
 	}
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName

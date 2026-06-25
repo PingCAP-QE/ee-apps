@@ -33,6 +33,5 @@ type Tekton struct {
 	ViewURL            string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
 	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
 	Namespace          string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
-	ReconcilerEnabled  bool   `yaml:"reconciler_enabled,omitempty" json:"reconciler_enabled,omitempty"`
 	ReconcilerInterval string `yaml:"reconciler_interval,omitempty" json:"reconciler_interval,omitempty"`
 }

@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/rs/zerolog"
-
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 )
@@ -18,56 +16,37 @@ import (
 // terminalStatuses are the build statuses that indicate a build is finished.
 var terminalStatuses = []string{"success", "failure", "error", "aborted"}
 
-// TektonReconciler periodically checks for non-terminal builds and syncs their status
-// with the actual PipelineRun status from Tekton Dashboard API.
-type TektonReconciler struct {
-	logger       *zerolog.Logger
-	dbClient     *ent.Client
-	dashboardURL string
-	httpClient   *http.Client
-}
-
-// NewTektonReconciler creates a new TektonReconciler.
-func NewTektonReconciler(logger *zerolog.Logger, dbClient *ent.Client, dashboardURL string) *TektonReconciler {
-	return &TektonReconciler{
-		logger:       logger,
-		dbClient:     dbClient,
-		dashboardURL: dashboardURL,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
-	}
-}
-
-// Reconcile checks for non-terminal builds and syncs their status.
-func (r *TektonReconciler) Reconcile(ctx context.Context) {
-	r.logger.Debug().Msg("running reconciliation cycle")
+// Reconcile checks for non-terminal builds and syncs their status with Tekton Dashboard API.
+func (s *devbuildsrvc) Reconcile(ctx context.Context) {
+	s.logger.Debug().Msg("running reconciliation cycle")
 
 	// Query all non-terminal builds
-	builds, err := r.dbClient.DevBuild.Query().
+	builds, err := s.dbClient.DevBuild.Query().
 		Where(entdevbuild.StatusNotIn(terminalStatuses...)).
 		All(ctx)
 	if err != nil {
-		r.logger.Err(err).Msg("failed to query non-terminal builds")
+		s.logger.Err(err).Msg("failed to query non-terminal builds")
 		return
 	}
 
 	if len(builds) == 0 {
-		r.logger.Debug().Msg("no non-terminal builds found")
+		s.logger.Debug().Msg("no non-terminal builds found")
 		return
 	}
 
-	r.logger.Info().Int("count", len(builds)).Msg("found non-terminal builds to reconcile")
+	s.logger.Info().Int("count", len(builds)).Msg("found non-terminal builds to reconcile")
 
 	for _, build := range builds {
-		if err := r.reconcileBuild(ctx, build); err != nil {
-			r.logger.Err(err).Int("build_id", build.ID).Msg("failed to reconcile build")
+		if err := s.reconcileBuild(ctx, build); err != nil {
+			s.logger.Err(err).Int("build_id", build.ID).Msg("failed to reconcile build")
 			continue
 		}
 	}
 }
 
 // reconcileBuild syncs a single build's status with its PipelineRun status.
-func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBuild) error {
-	logger := r.logger.With().Int("build_id", build.ID).Logger()
+func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) error {
+	logger := s.logger.With().Int("build_id", build.ID).Logger()
 
 	// Extract event IDs from tekton_status
 	eventIDs := extractEventIDs(build.TektonStatus)
@@ -78,7 +57,7 @@ func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBui
 
 	// Query PipelineRuns for each event ID
 	for _, eventID := range eventIDs {
-		pipelineRuns, err := r.queryPipelineRuns(ctx, eventID)
+		pipelineRuns, err := s.queryPipelineRuns(ctx, eventID)
 		if err != nil {
 			logger.Err(err).Str("event_id", eventID).Msg("failed to query pipeline runs")
 			continue
@@ -90,7 +69,7 @@ func (r *TektonReconciler) reconcileBuild(ctx context.Context, build *ent.DevBui
 		}
 
 		// Update build status based on PipelineRun status
-		if err := r.updateBuildFromPipelineRuns(ctx, build, pipelineRuns); err != nil {
+		if err := s.updateBuildFromPipelineRuns(ctx, build, pipelineRuns); err != nil {
 			logger.Err(err).Str("event_id", eventID).Msg("failed to update build from pipeline runs")
 			continue
 		}
@@ -176,17 +155,17 @@ type Result struct {
 }
 
 // queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
-func (r *TektonReconciler) queryPipelineRuns(ctx context.Context, eventID string) ([]PipelineRunItem, error) {
+func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([]PipelineRunItem, error) {
 	labelSelector := fmt.Sprintf("triggers.tekton.dev/triggers-eventid=%s", eventID)
 	apiURL := fmt.Sprintf("%s/apis/tekton.dev/v1/pipelineruns/?labelSelector=%s",
-		r.dashboardURL, url.QueryEscape(labelSelector))
+		s.dashboardURL, url.QueryEscape(labelSelector))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := r.httpClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -206,7 +185,7 @@ func (r *TektonReconciler) queryPipelineRuns(ctx context.Context, eventID string
 }
 
 // updateBuildFromPipelineRuns updates a build's status based on PipelineRun status.
-func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []PipelineRunItem) error {
+func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []PipelineRunItem) error {
 	if len(pipelineRuns) == 0 {
 		return nil
 	}
@@ -217,7 +196,7 @@ func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, buil
 		return nil
 	}
 
-	logger := r.logger.With().
+	logger := s.logger.With().
 		Int("build_id", build.ID).
 		Str("old_status", build.Status).
 		Str("new_status", newStatus).
@@ -226,7 +205,7 @@ func (r *TektonReconciler) updateBuildFromPipelineRuns(ctx context.Context, buil
 	logger.Info().Msg("updating build status from pipeline run")
 
 	// Update the build status
-	updater := r.dbClient.DevBuild.UpdateOneID(build.ID).
+	updater := s.dbClient.DevBuild.UpdateOneID(build.ID).
 		SetStatus(newStatus).
 		SetUpdatedAt(time.Now())
 

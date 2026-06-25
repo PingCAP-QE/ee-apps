@@ -78,15 +78,8 @@ func main() {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}
 
-			// Start Tekton reconciler if enabled
-			if cfg.Tekton.ReconcilerEnabled && cfg.Tekton.ViewURL != "" {
-				reconcilerLogger := zerolog.New(os.Stderr).With().Timestamp().Str("service", "tekton-reconciler").Logger()
-				dbClient, err := impl.NewStoreClient(cfg.Store)
-				if err != nil {
-					log.Fatalf(ctx, err, "failed to create store client for reconciler")
-				}
-				reconciler := impl.NewTektonReconciler(&reconcilerLogger, dbClient, cfg.Tekton.ViewURL)
-
+			// Start Tekton reconciler
+			if cfg.Tekton.ViewURL != "" {
 				interval := 1 * time.Minute // default
 				if cfg.Tekton.ReconcilerInterval != "" {
 					if d, err := time.ParseDuration(cfg.Tekton.ReconcilerInterval); err == nil {
@@ -103,7 +96,11 @@ func main() {
 
 				_, err = s.NewJob(
 					gocron.DurationJob(interval),
-					gocron.NewTask(func() { reconciler.Reconcile(context.Background()) }),
+					gocron.NewTask(func() {
+						if reconciler, ok := devbuildSvc.(interface{ Reconcile(context.Context) }); ok {
+							reconciler.Reconcile(context.Background())
+						}
+					}),
 					gocron.WithSingletonMode(gocron.LimitModeReschedule),
 				)
 				if err != nil {
