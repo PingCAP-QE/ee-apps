@@ -1,5 +1,7 @@
 package schema
 
+import "time"
+
 // TektonStatus represents the status of Tekton pipelines for a devbuild.
 // This mirrors the Goa-generated devbuild.TektonStatus struct.
 type TektonStatus struct {
@@ -13,8 +15,8 @@ type TektonPipeline struct {
 	Name         string          `json:"name"`
 	Namespace    string          `json:"namespace"`
 	Status       string          `json:"status"`
-	StartAt      string          `json:"start_at,omitempty"`
-	EndAt        string          `json:"end_at,omitempty"`
+	StartAt      *time.Time      `json:"start_at,omitempty"`
+	EndAt        *time.Time      `json:"end_at,omitempty"`
 	GitSha       string          `json:"git_sha,omitempty"`
 	Images       []ImageArtifact `json:"images,omitempty"`
 	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitempty"`

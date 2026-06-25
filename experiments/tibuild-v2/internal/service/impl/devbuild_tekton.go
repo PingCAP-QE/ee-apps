@@ -29,7 +29,7 @@ const (
 
 func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
 	// 1. Compose a cloud event from the record.
-	events, err := newDevBuildCloudEvents(record)
+	events, err := s.newDevBuildCloudEvents(record)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to create cloud events")
 		return nil, err
@@ -73,10 +73,10 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 	return record, nil
 }
 
-func newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudevents.Event, error) {
+func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudevents.Event, error) {
 	events := []*cloudevents.Event{}
 	for _, platform := range parsePlatforms(record.Platform) {
-		event, err := newDevBuildCloudEvent(record, platform)
+		event, err := s.newDevBuildCloudEvent(record, platform)
 		if err != nil {
 			return nil, err
 		}
@@ -86,26 +86,26 @@ func newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudevents.Event, error) 
 	return events, nil
 }
 
-func newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.Event, error) {
+func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.Event, error) {
+	ref, sha := getGhRefAndSha(context.TODO(), s.ghClient, record.GithubRepo, record.GitRef)
 	event := cloudevents.NewEvent()
-
 	var eventData any
 	switch {
 	case strings.HasPrefix(record.GitRef, "branch/"):
-		ref := strings.Replace(record.GitRef, "branch/", "refs/heads/", 1)
 		if record.IsHotfix {
 			event.SetType(ceTypeFakeGHPushHotfixBuild)
 		} else {
 			event.SetType(ceTypeFakeGHPushDevBuild)
 		}
-		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, record.GitSha)
+
+		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, sha)
 	case strings.HasPrefix(record.GitRef, "tag/"):
-		ref := strings.Replace(record.GitRef, "tag/", "refs/tags/", 1)
 		if record.IsHotfix {
 			event.SetType(ceTypeFakeGHCreateHotfixBuild)
 		} else {
 			event.SetType(ceTypeFakeGHCreateDevBuild)
 		}
+
 		eventData = newFakeGitHubTagCreateEventPayload(record.GithubRepo, ref)
 	case strings.HasPrefix(record.GitRef, "pull/"):
 		if record.IsHotfix {
@@ -118,15 +118,15 @@ func newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.
 		if err != nil {
 			return nil, fmt.Errorf("invalid PR number: %s", prNumberStr)
 		}
-		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, record.GitRef,
-			record.GitSha, prNumber)
+
+		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, ref, sha, prNumber)
 	default:
 		return nil, fmt.Errorf("unknown git ref format")
 	}
 
 	event.SetData(cloudevents.ApplicationJSON, eventData)
 	event.SetSubject(fmt.Sprint(record.ID))
-	event.SetSource("tibuild.pingcap.net/api/devbuilds/" + fmt.Sprint(record.ID))
+	event.SetSource("tibuild.pingcap.net/api/v2/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
 	event.SetExtension("paramProfile", normalizeEdition(string(record.Edition)))
 	event.SetExtension("paramIsHotfix", record.IsHotfix)

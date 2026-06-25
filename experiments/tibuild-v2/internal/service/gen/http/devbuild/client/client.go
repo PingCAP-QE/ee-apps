@@ -33,10 +33,6 @@ type Client struct {
 	// Rerun Doer is the HTTP client used to make requests to the rerun endpoint.
 	RerunDoer goahttp.Doer
 
-	// IngestEvent Doer is the HTTP client used to make requests to the ingestEvent
-	// endpoint.
-	IngestEventDoer goahttp.Doer
-
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -62,7 +58,6 @@ func NewClient(
 		GetDoer:             doer,
 		UpdateDoer:          doer,
 		RerunDoer:           doer,
-		IngestEventDoer:     doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
 		host:                host,
@@ -186,30 +181,6 @@ func (c *Client) Rerun() goa.Endpoint {
 		resp, err := c.RerunDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("devbuild", "rerun", err)
-		}
-		return decodeResponse(resp)
-	}
-}
-
-// IngestEvent returns an endpoint that makes HTTP requests to the devbuild
-// service ingestEvent server.
-func (c *Client) IngestEvent() goa.Endpoint {
-	var (
-		encodeRequest  = EncodeIngestEventRequest(c.encoder)
-		decodeResponse = DecodeIngestEventResponse(c.decoder, c.RestoreResponseBody)
-	)
-	return func(ctx context.Context, v any) (any, error) {
-		req, err := c.BuildIngestEventRequest(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		err = encodeRequest(req, v)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := c.IngestEventDoer.Do(req)
-		if err != nil {
-			return nil, goahttp.ErrRequestError("devbuild", "ingestEvent", err)
 		}
 		return decodeResponse(resp)
 	}

@@ -179,8 +179,18 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 					Platform: derefString(p.Platform),
 					URL:      derefString(p.URL),
 					GitSha:   derefString(p.GitSha),
-					StartAt:  derefString(p.StartAt),
-					EndAt:    derefString(p.EndAt),
+				}
+				if p.StartAt != nil {
+					t, err := time.Parse(time.RFC3339, *p.StartAt)
+					if err == nil {
+						pipeline.StartAt = &t
+					}
+				}
+				if p.EndAt != nil {
+					t, err := time.Parse(time.RFC3339, *p.EndAt)
+					if err == nil {
+						pipeline.EndAt = &t
+					}
 				}
 				pipelines = append(pipelines, pipeline)
 			}
@@ -242,55 +252,6 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	return transformDevBuild(newBuild), nil
 }
 
-func (s *devbuildsrvc) IngestEvent(ctx context.Context, p *devbuild.CloudEventIngestEventPayload) (res *devbuild.CloudEventResponse, err error) {
-	s.logger.Info().Msgf("devbuild.ingestEvent")
-
-	// Extract DevBuild ID from PipelineRun annotations
-	buildID, err := s.extractDevBuildID(p.Data, p.Source)
-	if err != nil {
-		s.logger.Err(err).Msg("failed to extract devbuild id from event")
-		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: err.Error()}
-	}
-	if buildID == 0 {
-		return nil, &devbuild.HTTPError{Code: http.StatusBadRequest, Message: "not a devbuild event"}
-	}
-
-	// Get the existing build
-	build, err := s.dbClient.DevBuild.Get(ctx, buildID)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, &devbuild.HTTPError{Code: http.StatusNotFound, Message: "Devbuild not found"}
-		}
-		return nil, err
-	}
-
-	// Extract status from event type
-	status := s.extractBuildStatusFromEventType(p.Type)
-
-	// Update build status
-	updater := s.dbClient.DevBuild.UpdateOneID(build.ID)
-	if status != "" {
-		updater.SetStatus(status)
-	}
-	updater.SetUpdatedAt(time.Now())
-
-	// Update tekton status if available
-	if tektonStatus := s.extractTektonStatus(p.Data); tektonStatus != nil {
-		updater.SetTektonStatus(*tektonStatus)
-	}
-
-	if _, err := updater.Save(ctx); err != nil {
-		s.logger.Err(err).Msg("failed to update build status from event")
-		return nil, err
-	}
-
-	return &devbuild.CloudEventResponse{
-		ID:      p.ID,
-		Status:  "accepted",
-		Message: ptr("Event processed successfully"),
-	}, nil
-}
-
 func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
 	// First try to extract from PipelineRun annotations (Tekton callback)
 	if data != nil {
@@ -336,40 +297,6 @@ func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string 
 		return "failure"
 	default:
 		return ""
-	}
-}
-
-func (s *devbuildsrvc) extractTektonStatus(data any) *schema.TektonStatus {
-	if data == nil {
-		return nil
-	}
-
-	dataMap, ok := data.(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	// Extract pipeline run info from event data
-	pipelineName, ok := dataMap["pipelineName"].(string)
-	if !ok || pipelineName == "" {
-		return nil
-	}
-
-	pipeline := schema.TektonPipeline{
-		Name: pipelineName,
-	}
-	if status, ok := dataMap["status"].(string); ok {
-		pipeline.Status = status
-	}
-	if startTime, ok := dataMap["startTime"].(string); ok {
-		pipeline.StartAt = startTime
-	}
-	if endTime, ok := dataMap["endTime"].(string); ok {
-		pipeline.EndAt = endTime
-	}
-
-	return &schema.TektonStatus{
-		Pipelines: []schema.TektonPipeline{pipeline},
 	}
 }
 

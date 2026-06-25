@@ -9,6 +9,10 @@ import (
 	"net/url"
 	"time"
 
+	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	knative "knative.dev/pkg/apis"
+
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
@@ -79,28 +83,6 @@ func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) 
 	return nil
 }
 
-// PipelineRunListResponse represents the response from Tekton Dashboard API.
-type PipelineRunListResponse struct {
-	Items []PipelineRunItem `json:"items"`
-}
-
-// PipelineRunItem represents a single PipelineRun from the Dashboard API.
-type PipelineRunItem struct {
-	Metadata struct {
-		Name   string            `json:"name"`
-		Labels map[string]string `json:"labels"`
-	} `json:"metadata"`
-	Spec struct {
-		Params []Param `json:"params"`
-	} `json:"spec"`
-	Status struct {
-		Conditions      []Condition `json:"conditions"`
-		StartTime       string      `json:"startTime"`
-		CompletionTime  string      `json:"completionTime"`
-		PipelineResults []Result    `json:"pipelineResults"`
-	} `json:"status"`
-}
-
 // Param represents a PipelineRun parameter.
 type Param struct {
 	Name  string `json:"name"`
@@ -122,7 +104,7 @@ type Result struct {
 }
 
 // queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
-func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([]PipelineRunItem, error) {
+func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([]tknv1.PipelineRun, error) {
 	labelSelector := fmt.Sprintf("triggers.tekton.dev/triggers-eventid=%s", eventID)
 	apiURL := fmt.Sprintf("%s/apis/tekton.dev/v1/pipelineruns/?labelSelector=%s",
 		s.dashboardURL, url.QueryEscape(labelSelector))
@@ -143,7 +125,7 @@ func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	var pipelineRunList PipelineRunListResponse
+	var pipelineRunList tknv1.PipelineRunList
 	if err := json.NewDecoder(resp.Body).Decode(&pipelineRunList); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -152,7 +134,7 @@ func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([
 }
 
 // updateBuildFromPipelineRuns updates a build's status based on PipelineRun status.
-func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []PipelineRunItem) error {
+func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []tknv1.PipelineRun) error {
 	if len(pipelineRuns) == 0 {
 		return nil
 	}
@@ -182,10 +164,10 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 
 	// Set pipeline times
 	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
-		updater.SetPipelineStartAt(*startTime)
+		updater.SetPipelineStartAt(startTime.Time)
 	}
 	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil {
-		updater.SetPipelineEndAt(*endTime)
+		updater.SetPipelineEndAt(endTime.Time)
 	}
 
 	if _, err := updater.Save(ctx); err != nil {
@@ -196,7 +178,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 }
 
 // determineStatus determines the overall build status from PipelineRuns.
-func determineStatus(pipelineRuns []PipelineRunItem) string {
+func determineStatus(pipelineRuns []tknv1.PipelineRun) string {
 	hasFailure := false
 	hasRunning := false
 	hasSuccess := false
@@ -232,9 +214,9 @@ func determineStatus(pipelineRuns []PipelineRunItem) string {
 }
 
 // getSucceededCondition gets the Succeeded condition from a PipelineRun.
-func getSucceededCondition(pr PipelineRunItem) *Condition {
+func getSucceededCondition(pr tknv1.PipelineRun) *knative.Condition {
 	for _, cond := range pr.Status.Conditions {
-		if cond.Type == "Succeeded" {
+		if cond.Type == knative.ConditionSucceeded {
 			return &cond
 		}
 	}
@@ -242,11 +224,12 @@ func getSucceededCondition(pr PipelineRunItem) *Condition {
 }
 
 // buildTektonStatus builds the tekton_status from PipelineRuns.
-func buildTektonStatus(pipelineRuns []PipelineRunItem, existing schema.TektonStatus) schema.TektonStatus {
+func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonStatus) schema.TektonStatus {
 	var pipelines []schema.TektonPipeline
 	for _, pr := range pipelineRuns {
 		pipeline := schema.TektonPipeline{
-			Name: pr.Metadata.Name,
+			Name:      pr.GetName(),
+			Namespace: pr.GetNamespace(),
 		}
 
 		condition := getSucceededCondition(pr)
@@ -261,20 +244,20 @@ func buildTektonStatus(pipelineRuns []PipelineRunItem, existing schema.TektonSta
 			}
 		}
 
-		if pr.Status.StartTime != "" {
-			pipeline.StartAt = pr.Status.StartTime
+		if pr.Status.StartTime != nil {
+			pipeline.StartAt = &pr.Status.StartTime.Time
 		}
-		if pr.Status.CompletionTime != "" {
-			pipeline.EndAt = pr.Status.CompletionTime
+		if pr.Status.CompletionTime != nil {
+			pipeline.EndAt = &pr.Status.CompletionTime.Time
 		}
 
 		// Extract platform from labels
-		if platform, ok := pr.Metadata.Labels["tekton.dev/platform"]; ok {
+		if platform, ok := pr.GetLabels()["tekton.dev/platform"]; ok {
 			pipeline.Platform = platform
 		}
 
 		// Extract results (OCI artifacts + images)
-		ociArtifacts, images := extractArtifactsFromResults(pr.Status.PipelineResults)
+		ociArtifacts, images := extractArtifactsFromResults(pr.Status.Results)
 		if len(ociArtifacts) > 0 {
 			pipeline.OciArtifacts = ociArtifacts
 		}
@@ -290,17 +273,25 @@ func buildTektonStatus(pipelineRuns []PipelineRunItem, existing schema.TektonSta
 }
 
 // extractArtifactsFromResults extracts OCI artifacts and images from PipelineRun results.
-func extractArtifactsFromResults(results []Result) (ociArtifacts []schema.OciArtifact, images []schema.ImageArtifact) {
+func extractArtifactsFromResults(results []tknv1.PipelineRunResult) (ociArtifacts []schema.OciArtifact, images []schema.ImageArtifact) {
 	for _, result := range results {
 		switch result.Name {
 		case "pushed-binaries":
 			var artifacts []schema.OciArtifact
-			if err := json.Unmarshal([]byte(result.Value), &artifacts); err == nil {
+			vbs, err := result.Value.MarshalJSON()
+			if err != nil {
+				continue
+			}
+			if err := json.Unmarshal(vbs, &artifacts); err == nil {
 				ociArtifacts = append(ociArtifacts, artifacts...)
 			}
 		case "pushed-images":
 			var imgs []schema.ImageArtifact
-			if err := json.Unmarshal([]byte(result.Value), &imgs); err == nil {
+			vbs, err := result.Value.MarshalJSON()
+			if err != nil {
+				continue
+			}
+			if err := json.Unmarshal(vbs, &imgs); err == nil {
 				images = append(images, imgs...)
 			}
 		}
@@ -309,16 +300,13 @@ func extractArtifactsFromResults(results []Result) (ociArtifacts []schema.OciArt
 }
 
 // getEarliestStartTime gets the earliest start time from PipelineRuns.
-func getEarliestStartTime(pipelineRuns []PipelineRunItem) *time.Time {
-	var earliest *time.Time
+func getEarliestStartTime(pipelineRuns []tknv1.PipelineRun) *metav1.Time {
+	var earliest *metav1.Time
 	for _, pr := range pipelineRuns {
-		if pr.Status.StartTime != "" {
-			t, err := time.Parse(time.RFC3339, pr.Status.StartTime)
-			if err != nil {
-				continue
-			}
-			if earliest == nil || t.Before(*earliest) {
-				earliest = &t
+		if pr.Status.StartTime != nil {
+			t := pr.Status.StartTime
+			if earliest == nil || t.Before(earliest) {
+				earliest = t
 			}
 		}
 	}
@@ -326,16 +314,13 @@ func getEarliestStartTime(pipelineRuns []PipelineRunItem) *time.Time {
 }
 
 // getLatestCompletionTime gets the latest completion time from PipelineRuns.
-func getLatestCompletionTime(pipelineRuns []PipelineRunItem) *time.Time {
-	var latest *time.Time
+func getLatestCompletionTime(pipelineRuns []tknv1.PipelineRun) *metav1.Time {
+	var latest *metav1.Time
 	for _, pr := range pipelineRuns {
-		if pr.Status.CompletionTime != "" {
-			t, err := time.Parse(time.RFC3339, pr.Status.CompletionTime)
-			if err != nil {
-				continue
-			}
-			if latest == nil || t.After(*latest) {
-				latest = &t
+		if pr.Status.CompletionTime != nil {
+			t := pr.Status.CompletionTime
+			if latest == nil || t.After(latest.Time) {
+				latest = t
 			}
 		}
 	}

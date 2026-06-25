@@ -26,7 +26,7 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
 	return `artifact sync-image
-devbuild (list|create|get|update|rerun|ingest-event)
+devbuild (list|create|get|update|rerun)
 hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)
 `
 }
@@ -34,10 +34,10 @@ hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + ` artifact sync-image --body '{
-      "source": "Ut libero magnam sapiente dolores qui.",
-      "target": "Velit ducimus in deleniti at consequatur."
+      "source": "Perspiciatis perspiciatis atque inventore id.",
+      "target": "Ut libero magnam sapiente dolores qui."
    }'` + "\n" +
-		os.Args[0] + ` devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."` + "\n" +
+		os.Args[0] + ` devbuild list --page 4905823721013348436 --page-size 2343576389426136765 --hotfix false --sort "updated_at" --direction "asc" --created-by "Accusamus in consectetur."` + "\n" +
 		os.Args[0] + ` hotfix bump-tag-for-tidbx --body '{
       "author": "abc@test.com",
       "branch": "release-8.5",
@@ -96,15 +96,6 @@ func ParseEndpoint(
 		devbuildRerunIDFlag     = devbuildRerunFlags.String("id", "REQUIRED", "ID of build")
 		devbuildRerunDryrunFlag = devbuildRerunFlags.String("dryrun", "", "")
 
-		devbuildIngestEventFlags               = flag.NewFlagSet("ingest-event", flag.ExitOnError)
-		devbuildIngestEventBodyFlag            = devbuildIngestEventFlags.String("body", "REQUIRED", "")
-		devbuildIngestEventDatacontenttypeFlag = devbuildIngestEventFlags.String("datacontenttype", "", "")
-		devbuildIngestEventIDFlag              = devbuildIngestEventFlags.String("id", "REQUIRED", "")
-		devbuildIngestEventSourceFlag          = devbuildIngestEventFlags.String("source", "REQUIRED", "")
-		devbuildIngestEventTypeFlag            = devbuildIngestEventFlags.String("type", "REQUIRED", "")
-		devbuildIngestEventSpecversionFlag     = devbuildIngestEventFlags.String("specversion", "REQUIRED", "")
-		devbuildIngestEventTimeFlag            = devbuildIngestEventFlags.String("time", "REQUIRED", "")
-
 		hotfixFlags = flag.NewFlagSet("hotfix", flag.ContinueOnError)
 
 		hotfixBumpTagForTidbxFlags    = flag.NewFlagSet("bump-tag-for-tidbx", flag.ExitOnError)
@@ -123,7 +114,6 @@ func ParseEndpoint(
 	devbuildGetFlags.Usage = devbuildGetUsage
 	devbuildUpdateFlags.Usage = devbuildUpdateUsage
 	devbuildRerunFlags.Usage = devbuildRerunUsage
-	devbuildIngestEventFlags.Usage = devbuildIngestEventUsage
 
 	hotfixFlags.Usage = hotfixUsage
 	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
@@ -189,9 +179,6 @@ func ParseEndpoint(
 			case "rerun":
 				epf = devbuildRerunFlags
 
-			case "ingest-event":
-				epf = devbuildIngestEventFlags
-
 			}
 
 		case "hotfix":
@@ -249,9 +236,6 @@ func ParseEndpoint(
 			case "rerun":
 				endpoint = c.Rerun()
 				data, err = devbuildc.BuildRerunPayload(*devbuildRerunIDFlag, *devbuildRerunDryrunFlag)
-			case "ingest-event":
-				endpoint = c.IngestEvent()
-				data, err = devbuildc.BuildIngestEventPayload(*devbuildIngestEventBodyFlag, *devbuildIngestEventDatacontenttypeFlag, *devbuildIngestEventIDFlag, *devbuildIngestEventSourceFlag, *devbuildIngestEventTypeFlag, *devbuildIngestEventSpecversionFlag, *devbuildIngestEventTimeFlag)
 			}
 		case "hotfix":
 			c := hotfixc.NewClient(scheme, host, doer, enc, dec, restore)
@@ -293,8 +277,8 @@ Sync hotfix image to dockerhub
 
 Example:
     %[1]s artifact sync-image --body '{
-      "source": "Ut libero magnam sapiente dolores qui.",
-      "target": "Velit ducimus in deleniti at consequatur."
+      "source": "Perspiciatis perspiciatis atque inventore id.",
+      "target": "Ut libero magnam sapiente dolores qui."
    }'
 `, os.Args[0])
 }
@@ -311,7 +295,6 @@ COMMAND:
     get: Get devbuild
     update: Update devbuild status
     rerun: Rerun devbuild
-    ingest-event: Ingest a CloudEvent for build events
 
 Additional help:
     %[1]s devbuild COMMAND --help
@@ -329,7 +312,7 @@ List devbuild with pagination support
     -created-by STRING:
 
 Example:
-    %[1]s devbuild list --page 9007835987955863192 --page-size 8077772939511603877 --hotfix false --sort "updated_at" --direction "asc" --created-by "Necessitatibus sint fuga enim."
+    %[1]s devbuild list --page 4905823721013348436 --page-size 2343576389426136765 --hotfix false --sort "updated_at" --direction "asc" --created-by "Accusamus in consectetur."
 `, os.Args[0])
 }
 
@@ -342,27 +325,27 @@ Create and trigger devbuild
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "izaiah_kerluke@quigleyanderson.name",
+      "created_by": "timothy@schinner.biz",
       "request": {
-         "build_env": "Accusantium voluptatem.",
-         "builder_img": "Consectetur omnis at doloribus non eos unde.",
-         "edition": "failpoint",
-         "features": "Voluptatem eveniet impedit enim voluptatem qui.",
-         "git_ref": "Eligendi ex.",
-         "git_sha": "Aut voluptas.",
-         "github_repo": "Asperiores repellendus omnis itaque dicta.",
-         "is_hotfix": false,
+         "build_env": "Laborum hic.",
+         "builder_img": "Ullam quia.",
+         "edition": "community",
+         "features": "Consequuntur dolores quos optio possimus.",
+         "git_ref": "Distinctio nihil cum asperiores quos.",
+         "git_sha": "Culpa nisi.",
+         "github_repo": "Reprehenderit minima voluptates dolores asperiores distinctio.",
+         "is_hotfix": true,
          "is_push_gcr": false,
-         "pipeline_engine": "tekton",
+         "pipeline_engine": "jenkins",
          "platform": "linux/amd64",
-         "plugin_git_ref": "Pariatur optio ut.",
-         "product": "tiflash",
-         "product_base_img": "Labore omnis.",
-         "product_dockerfile": "Deserunt occaecati velit eaque quia et.",
-         "target_img": "Totam reiciendis doloribus velit.",
-         "version": "Omnis illum in maxime."
+         "plugin_git_ref": "Tempore sed odit.",
+         "product": "tiproxy",
+         "product_base_img": "Repellendus quisquam est.",
+         "product_dockerfile": "Odit asperiores sed qui autem voluptas.",
+         "target_img": "Voluptas pariatur nobis reiciendis dolorum sint.",
+         "version": "Laboriosam ea modi."
       }
-   }' --dryrun true
+   }' --dryrun false
 `, os.Args[0])
 }
 
@@ -374,7 +357,7 @@ Get devbuild
     -sync BOOL:
 
 Example:
-    %[1]s devbuild get --id 1 --sync false
+    %[1]s devbuild get --id 1 --sync true
 `, os.Args[0])
 }
 
@@ -392,398 +375,241 @@ Example:
          "build_report": {
             "binaries": [
                {
-                  "component": "Incidunt ut unde natus atque nesciunt fugit.",
+                  "component": "Aut dolore ducimus omnis deserunt praesentium commodi.",
                   "oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
+                     "file": "Qui explicabo.",
+                     "repo": "Vero iure voluptatibus et qui.",
+                     "tag": "Rem et quia qui."
                   },
-                  "platform": "Eius rerum aut dolorem est non.",
+                  "platform": "Ipsa delectus.",
                   "sha256_oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
+                     "file": "Qui explicabo.",
+                     "repo": "Vero iure voluptatibus et qui.",
+                     "tag": "Rem et quia qui."
                   },
-                  "sha256_url": "http://mosciski.name/chad_marvin",
-                  "url": "http://kerluke.name/brady"
+                  "sha256_url": "http://bins.com/kelton",
+                  "url": "http://thiel.net/zetta.bergnaum"
                },
                {
-                  "component": "Incidunt ut unde natus atque nesciunt fugit.",
+                  "component": "Aut dolore ducimus omnis deserunt praesentium commodi.",
                   "oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
+                     "file": "Qui explicabo.",
+                     "repo": "Vero iure voluptatibus et qui.",
+                     "tag": "Rem et quia qui."
                   },
-                  "platform": "Eius rerum aut dolorem est non.",
+                  "platform": "Ipsa delectus.",
                   "sha256_oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
+                     "file": "Qui explicabo.",
+                     "repo": "Vero iure voluptatibus et qui.",
+                     "tag": "Rem et quia qui."
                   },
-                  "sha256_url": "http://mosciski.name/chad_marvin",
-                  "url": "http://kerluke.name/brady"
-               },
-               {
-                  "component": "Incidunt ut unde natus atque nesciunt fugit.",
-                  "oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
-                  },
-                  "platform": "Eius rerum aut dolorem est non.",
-                  "sha256_oci_file": {
-                     "file": "Eos quae neque eligendi nisi dolor aliquid.",
-                     "repo": "Et aut.",
-                     "tag": "Nesciunt sapiente voluptatem illo quia itaque."
-                  },
-                  "sha256_url": "http://mosciski.name/chad_marvin",
-                  "url": "http://kerluke.name/brady"
+                  "sha256_url": "http://bins.com/kelton",
+                  "url": "http://thiel.net/zetta.bergnaum"
                }
             ],
-            "git_sha": "cr9",
+            "git_sha": "e4e",
             "images": [
                {
-                  "internal_url": "http://runolfsdottir.name/mack",
-                  "platform": "Quam laudantium vitae omnis est ipsa.",
-                  "url": "http://bailey.org/macy"
+                  "internal_url": "http://littel.com/mikel",
+                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                  "url": "http://padbergschowalter.name/maybell_douglas"
                },
                {
-                  "internal_url": "http://runolfsdottir.name/mack",
-                  "platform": "Quam laudantium vitae omnis est ipsa.",
-                  "url": "http://bailey.org/macy"
+                  "internal_url": "http://littel.com/mikel",
+                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                  "url": "http://padbergschowalter.name/maybell_douglas"
                },
                {
-                  "internal_url": "http://runolfsdottir.name/mack",
-                  "platform": "Quam laudantium vitae omnis est ipsa.",
-                  "url": "http://bailey.org/macy"
-               },
-               {
-                  "internal_url": "http://runolfsdottir.name/mack",
-                  "platform": "Quam laudantium vitae omnis est ipsa.",
-                  "url": "http://bailey.org/macy"
+                  "internal_url": "http://littel.com/mikel",
+                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                  "url": "http://padbergschowalter.name/maybell_douglas"
                }
             ],
-            "plugin_git_sha": "vf4",
-            "printed_version": "Et necessitatibus incidunt sint maxime rerum."
+            "plugin_git_sha": "o7k",
+            "printed_version": "Nesciunt sapiente voluptatem illo quia itaque."
          },
-         "err_msg": "Molestiae ratione.",
-         "pipeline_build_id": 5296324622588537949,
-         "pipeline_end_at": "2609-81-93 80:41:24",
-         "pipeline_start_at": "3896-66-73 16:91:38",
-         "pipeline_view_url": "http://buckridge.com/austen.lindgren",
+         "err_msg": "Eius rerum aut dolorem est non.",
+         "pipeline_build_id": 6966757540241412107,
+         "pipeline_end_at": "1913-91-56 80:31:98",
+         "pipeline_start_at": "5963-96-73 26:14:27",
+         "pipeline_view_url": "http://konopelski.com/brandi",
          "pipeline_view_urls": [
-            "http://botsford.com/ethan",
-            "http://bartoletti.net/jadyn_willms",
-            "http://steuber.info/modesto_beatty",
-            "http://kozeyritchie.biz/desmond"
+            "http://mullermueller.net/margaretta_larkin",
+            "http://frami.com/dashawn"
          ],
-         "status": "processing",
+         "status": "error",
          "tekton_status": {
             "pipelines": [
                {
-                  "end_at": "2005-02-24T06:03:05Z",
-                  "git_sha": "d39",
+                  "end_at": "2010-12-18T18:45:43Z",
+                  "git_sha": "omy",
                   "images": [
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
-                  "name": "Quo est laborum est.",
-                  "namespace": "Velit velit id omnis aut.",
+                  "name": "Sequi modi quis omnis possimus.",
+                  "namespace": "Inventore fugiat accusantium qui quis.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      },
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      }
                   ],
-                  "platform": "Ex ut quia.",
-                  "start_at": "1982-06-17T14:56:38Z",
+                  "platform": "Earum sunt nulla quis officiis.",
+                  "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.biz/isobel"
+                  "url": "http://roob.net/stephen"
                },
                {
-                  "end_at": "2005-02-24T06:03:05Z",
-                  "git_sha": "d39",
+                  "end_at": "2010-12-18T18:45:43Z",
+                  "git_sha": "omy",
                   "images": [
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
-                  "name": "Quo est laborum est.",
-                  "namespace": "Velit velit id omnis aut.",
+                  "name": "Sequi modi quis omnis possimus.",
+                  "namespace": "Inventore fugiat accusantium qui quis.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      },
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      }
                   ],
-                  "platform": "Ex ut quia.",
-                  "start_at": "1982-06-17T14:56:38Z",
+                  "platform": "Earum sunt nulla quis officiis.",
+                  "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.biz/isobel"
+                  "url": "http://roob.net/stephen"
                },
                {
-                  "end_at": "2005-02-24T06:03:05Z",
-                  "git_sha": "d39",
+                  "end_at": "2010-12-18T18:45:43Z",
+                  "git_sha": "omy",
                   "images": [
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
+                        "internal_url": "http://littel.com/mikel",
+                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
-                  "name": "Quo est laborum est.",
-                  "namespace": "Velit velit id omnis aut.",
+                  "name": "Sequi modi quis omnis possimus.",
+                  "namespace": "Inventore fugiat accusantium qui quis.",
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      },
                      {
                         "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
+                           "Quod vitae asperiores officiis quasi cumque iste.",
+                           "A consequatur consequuntur excepturi.",
+                           "Assumenda tempora maxime dolorum enim accusamus.",
+                           "Neque voluptates expedita aut voluptas sequi."
                         ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
+                        "repo": "Nisi quia dolor aspernatur.",
+                        "tag": "Et consequatur vel numquam tempore molestiae."
                      }
                   ],
-                  "platform": "Ex ut quia.",
-                  "start_at": "1982-06-17T14:56:38Z",
+                  "platform": "Earum sunt nulla quis officiis.",
+                  "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.biz/isobel"
-               },
-               {
-                  "end_at": "2005-02-24T06:03:05Z",
-                  "git_sha": "d39",
-                  "images": [
-                     {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
-                     },
-                     {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
-                     },
-                     {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
-                     },
-                     {
-                        "internal_url": "http://runolfsdottir.name/mack",
-                        "platform": "Quam laudantium vitae omnis est ipsa.",
-                        "url": "http://bailey.org/macy"
-                     }
-                  ],
-                  "name": "Quo est laborum est.",
-                  "namespace": "Velit velit id omnis aut.",
-                  "oci_artifacts": [
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     },
-                     {
-                        "files": [
-                           "Deserunt laboriosam.",
-                           "Ullam animi expedita non et.",
-                           "Totam libero beatae possimus aut est.",
-                           "Velit perferendis eligendi voluptatem eaque."
-                        ],
-                        "repo": "Corporis ut vel architecto in.",
-                        "tag": "Facilis laborum et id quis ea deserunt."
-                     }
-                  ],
-                  "platform": "Ex ut quia.",
-                  "start_at": "1982-06-17T14:56:38Z",
-                  "status": "processing",
-                  "url": "http://roob.biz/isobel"
+                  "url": "http://roob.net/stephen"
                }
             ],
             "triggers_event_ids": [
-               "127c5daa-4349-48f5-a744-f5c7572f0d8a",
-               "3fa52e8d-db8a-4e10-b988-b70dc1b455b2"
+               "d24c3614-1938-498e-8951-858363173b5d",
+               "6df11996-bcd2-41e2-8d8c-21f94e96d0ae"
             ]
          }
       }
-   }' --id 1 --dryrun true
+   }' --id 1 --dryrun false
 `, os.Args[0])
 }
 
@@ -795,33 +621,7 @@ Rerun devbuild
     -dryrun BOOL:
 
 Example:
-    %[1]s devbuild rerun --id 1 --dryrun true
-`, os.Args[0])
-}
-
-func devbuildIngestEventUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild ingest-event -body JSON -datacontenttype STRING -id STRING -source STRING -type STRING -specversion STRING -time STRING
-
-Ingest a CloudEvent for build events
-    -body JSON:
-    -datacontenttype STRING:
-    -id STRING:
-    -source STRING:
-    -type STRING:
-    -specversion STRING:
-    -time STRING:
-
-Example:
-    %[1]s devbuild ingest-event --body '{
-      "data": {
-         "buildId": "123",
-         "duration": 3600,
-         "status": "success",
-         "version": "v6.1.0"
-      },
-      "dataschema": "https://example.com/registry/schemas/build-event.json",
-      "subject": "tidb-build-123"
-   }' --datacontenttype "Ad aut iure autem dolores quibusdam et." --id "f81d4fae-7dec-11d0-a765-00a0c91e6bf6" --source "/jenkins/build" --type "com.pingcap.build.complete" --specversion "1.0" --time "2022-10-01T12:00:00Z"
+    %[1]s devbuild rerun --id 1 --dryrun false
 `, os.Args[0])
 }
 
