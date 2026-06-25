@@ -68,7 +68,6 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 	componentVersion := strings.SplitN(imageTag, "-", 2)[0]
 
 	// Normalize v26.3.* versions to v26.3.99 as a transition measure.
-	// See: https://github.com/pingcap-qe/ee-apps/issues/FLA-223
 	componentVersion = normalizeComponentVersion(componentVersion)
 
 	for _, component := range components {
