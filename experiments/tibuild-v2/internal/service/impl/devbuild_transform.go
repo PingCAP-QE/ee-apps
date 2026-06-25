@@ -98,13 +98,14 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 		pipelines := make([]*devbuild.TektonPipeline, 0, len(status.Pipelines))
 		for _, p := range status.Pipelines {
 			pipeline := &devbuild.TektonPipeline{
-				Name:     p.Name,
-				Status:   devbuild.BuildStatus(p.Status),
-				StartAt:  &p.StartAt,
-				EndAt:    &p.EndAt,
-				GitSha:   &p.GitSha,
-				Platform: &p.Platform,
-				URL:      &p.URL,
+				Name:      p.Name,
+				Namespace: p.Namespace,
+				Status:    devbuild.BuildStatus(p.Status),
+				StartAt:   &p.StartAt,
+				EndAt:     &p.EndAt,
+				GitSha:    &p.GitSha,
+				Platform:  &p.Platform,
+				URL:       &p.URL,
 			}
 
 			// Transform images
