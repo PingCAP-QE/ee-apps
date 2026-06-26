@@ -1,0 +1,53 @@
+msg_type: interactive
+card:
+  config:
+    wide_screen_mode: true
+  header:
+    template: {{ StatusColor .Status }}
+    title:
+      content: "{{ StatusEmoji .Status }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Version }}"
+      tag: plain_text
+  elements:
+    - tag: markdown
+      content: |-
+        **Status:** `{{ .Status }}`
+        **Product:** {{ .Product }}
+        **Version:** {{ .Version }}
+        **Platform:** {{ .Platform }}
+        **Git Ref:** {{ .GitRef }}
+        **Created By:** {{ .CreatedBy }}
+
+    {{- if .GithubRepo }}
+    - tag: markdown
+      content: |-
+        **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
+    {{- end }}
+
+    {{- if .PipelineName }}
+    - tag: hr
+    - tag: markdown
+      content: |-
+        **Pipeline:** {{ .PipelineName }}
+        **Pipeline Status:** {{ .PipelineStatus }}
+    {{- end }}
+
+    {{- if .PipelineURL }}
+    - tag: action
+      actions:
+        - tag: button
+          text:
+            content: View Pipeline
+            tag: plain_text
+          url: "{{ .PipelineURL }}"
+          type: primary
+    {{- end }}
+
+    {{- if .ErrMsg }}
+    - tag: hr
+    - tag: markdown
+      content: |-
+        **Error:**
+        ```text
+        {{ .ErrMsg }}
+        ```
+    {{- end }}

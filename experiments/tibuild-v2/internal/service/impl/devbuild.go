@@ -63,6 +63,14 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 	}
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
+
+	// Register Lark notification hook if enabled
+	if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
+		notifier := NewLarkNotifier(cfg.Lark.WebhookURL, logger)
+		registerNotificationHook(dbClient, notifier, logger)
+		logger.Info().Msg("lark notification hook registered")
+	}
+
 	return &srvc
 }
 
@@ -331,4 +339,52 @@ func newStoreClient(cfg config.Store) (*ent.Client, error) {
 	}
 
 	return db, nil
+}
+
+// registerNotificationHook registers an Ent hook that sends Lark notifications
+// when a DevBuild reaches a terminal status (success, failure, error, aborted).
+func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *zerolog.Logger) {
+	dbClient.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			v, err := next.Mutate(ctx, m)
+			if err != nil {
+				return v, err
+			}
+
+			// Check if this is a DevBuild update with status change
+			mut, ok := m.(*ent.DevBuildMutation)
+			if !ok {
+				return v, nil
+			}
+
+			// Only trigger on Update operations
+			if !m.Op().Is(ent.OpUpdate) {
+				return v, nil
+			}
+
+			// Check if status field was changed
+			newStatus, exists := mut.Status()
+			if !exists || !isTerminalStatus(newStatus) {
+				return v, nil
+			}
+
+			// Get the build ID and fetch the latest record
+			buildID, _ := mut.ID()
+			build, err := dbClient.DevBuild.Get(ctx, buildID)
+			if err != nil {
+				logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
+				return v, nil
+			}
+
+			// Send notification asynchronously (non-blocking)
+			go func() {
+				notifCtx := context.Background()
+				if notifyErr := notifier.Notify(notifCtx, build); notifyErr != nil {
+					logger.Err(notifyErr).Int("build_id", buildID).Msg("failed to send notification")
+				}
+			}()
+
+			return v, nil
+		})
+	})
 }

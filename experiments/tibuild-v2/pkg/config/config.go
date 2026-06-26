@@ -5,6 +5,7 @@ type Service struct {
 	Github  Github  `yaml:"github" json:"github"`
 	Jenkins Jenkins `yaml:"jenkins" json:"jenkins"`
 	Tekton  Tekton  `yaml:"tekton" json:"tekton"`
+	Lark    Lark    `yaml:"lark" json:"lark"`
 
 	// ProductRepoMap is a map of product names to their respective Github full repository names(<org>/<repo>).
 	ProductRepoMap map[string]string `yaml:"product_repo_map" json:"product_repo_map"`
@@ -34,4 +35,9 @@ type Tekton struct {
 	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
 	Namespace          string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
 	ReconcilerInterval string `yaml:"reconciler_interval,omitempty" json:"reconciler_interval,omitempty"`
+}
+
+type Lark struct {
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	WebhookURL string `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
 }
