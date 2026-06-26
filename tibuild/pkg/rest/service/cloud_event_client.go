@@ -108,6 +108,9 @@ func newDevBuildCloudEvents(dev DevBuild) ([]cloudevents.Event, error) {
 		if platform != "" {
 			event.SetExtension("paramPlatform", platform)
 		}
+		if dev.Spec.PluginGitRef != "" {
+			event.SetExtension("paramPluginGitRef", dev.Spec.PluginGitRef)
+		}
 		events = append(events, event)
 	}
 

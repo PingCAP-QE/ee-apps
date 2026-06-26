@@ -46,6 +46,30 @@ func TestNewEventNormalizesNextGenProfile(t *testing.T) {
 	require.Equal(t, "nextgen", evs[1].Extensions()["paramprofile"])
 }
 
+func TestNewEventPluginGitRef(t *testing.T) {
+	dev := sampleDevBuild()
+	dev.Spec.GitHash = "754095a9f460dcf31f053045cfedfb00b9ad8e81"
+	dev.Spec.PluginGitRef = "release-8.5.4"
+
+	evs, err := newDevBuildCloudEvents(dev)
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.Equal(t, "release-8.5.4", evs[0].Extensions()["paramplugingitref"])
+	require.Equal(t, "release-8.5.4", evs[1].Extensions()["paramplugingitref"])
+}
+
+func TestNewEventPluginGitRefEmpty(t *testing.T) {
+	dev := sampleDevBuild()
+	dev.Spec.GitHash = "754095a9f460dcf31f053045cfedfb00b9ad8e81"
+	dev.Spec.PluginGitRef = ""
+
+	evs, err := newDevBuildCloudEvents(dev)
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	_, ok := evs[0].Extensions()["paramplugingitref"]
+	require.False(t, ok)
+}
+
 func TestTrigger(t *testing.T) {
 	if os.Getenv("TEST_FANOUT") == "" {
 		t.Skip("Skipping send event")
