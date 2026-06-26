@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import UTC, datetime
 
@@ -167,7 +168,7 @@ def test_cleanup_gcs_cache_final_cas_delete_keeps_all_audit_events_without_exclu
 
 
 def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> None:
-    loaded_rows = []
+    loaded_files = []
 
     def fake_stream_rows(query, parameters):
         del query, parameters
@@ -199,8 +200,10 @@ def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> 
             ),
         )
 
-    def fake_load_json_rows(table_ref, rows, schema, write_disposition):
-        loaded_rows.append((table_ref, tuple(rows), tuple(schema), write_disposition))
+    def fake_load_jsonl_file(table_ref, jsonl_path, schema, write_disposition):
+        with jsonl_path.open(encoding="utf-8") as handle:
+            payload = tuple(json.loads(line) for line in handle if line.strip())
+        loaded_files.append((table_ref, payload, tuple(schema), write_disposition))
 
     result = _populate_ac_stage_tables(
         settings=GcsCacheSettings(project_id="pingcap-testing-account"),
@@ -211,7 +214,7 @@ def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> 
         live_table="`project.dataset.ac_live`",
         missing_table="`project.dataset.ac_missing`",
         references_table="`project.dataset.run_refs`",
-        load_json_rows=fake_load_json_rows,
+        load_jsonl_file=fake_load_jsonl_file,
         stream_batch_size=100,
         reference_batch_size=100,
     )
@@ -224,19 +227,19 @@ def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> 
         ({"object_name": "ac/ok", "generation": 101},),
         (("object_name", "STRING"), ("generation", "INT64")),
         "WRITE_APPEND",
-    ) in loaded_rows
+    ) in loaded_files
     assert (
         "`project.dataset.run_refs`",
         ({"ac_object_name": "ac/ok", "cas_object_name": "cas/one"},),
         (("ac_object_name", "STRING"), ("cas_object_name", "STRING")),
         "WRITE_APPEND",
-    ) in loaded_rows
+    ) in loaded_files
     assert (
         "`project.dataset.ac_missing`",
         ({"object_name": "ac/missing"},),
         (("object_name", "STRING"),),
         "WRITE_APPEND",
-    ) in loaded_rows
+    ) in loaded_files
 
 
 def test_run_cleanup_gcs_cache_returns_dry_run_summary_with_samples() -> None:
@@ -303,7 +306,7 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
     captured_queries = []
     created_jobs = []
     waited_jobs = []
-    loaded_rows = []
+    loaded_files = []
     table_schemas = {}
 
     def fake_execute(query, parameters):
@@ -378,9 +381,11 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         }
         return tuple(mapping[name] for name in names)
 
-    def fake_load_json_rows(table_ref, rows, schema, write_disposition):
+    def fake_load_jsonl_file(table_ref, jsonl_path, schema, write_disposition):
         _assert_load_schema_matches_created_table(table_schemas, table_ref, schema)
-        loaded_rows.append((table_ref, tuple(rows), tuple(schema), write_disposition))
+        with jsonl_path.open(encoding="utf-8") as handle:
+            payload = tuple(json.loads(line) for line in handle if line.strip())
+        loaded_files.append((table_ref, payload, tuple(schema), write_disposition))
 
     def fake_create_batch_job(**kwargs):
         created_jobs.append(kwargs)
@@ -415,7 +420,7 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         stream_rows=fake_stream_rows,
         resolve_object_metadata=fake_resolve_object_metadata,
         extract_references=fake_extract_references,
-        load_json_rows=fake_load_json_rows,
+        load_jsonl_file=fake_load_jsonl_file,
         create_batch_job=fake_create_batch_job,
         wait_for_batch_job=fake_wait_for_batch_job,
         now=lambda: run_started_at,
@@ -435,13 +440,22 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
     assert created_jobs[1]["manifest_uri"] == summary.cas_manifest_uri
     assert len(waited_jobs) == 2
     assert any("manifest-*.csv" in query for query, _ in captured_queries)
-    assert any("WRITE_APPEND" == disposition for _, _, _, disposition in loaded_rows)
+    assert all(disposition == "WRITE_APPEND" for _, _, _, disposition in loaded_files)
     assert any(
         "run_ac_cas_refs" in table_ref
         and ("ac_object_name", "STRING") in schema
         and ("cas_object_name", "STRING") in schema
-        for table_ref, _rows, schema, _disposition in loaded_rows
+        for table_ref, _rows, schema, _disposition in loaded_files
     )
+    assert {
+        table_ref.rsplit(".", 1)[-1].rstrip("`") for table_ref, _rows, _schema, _disposition in loaded_files
+    } == {
+        "_tmp_gcs_cache_ac_live_metadata_steadyrun001",
+        "_tmp_gcs_cache_ac_missing_metadata_steadyrun001",
+        "_tmp_gcs_cache_run_ac_cas_refs_steadyrun001",
+        "_tmp_gcs_cache_cas_live_metadata_steadyrun001",
+        "_tmp_gcs_cache_cas_missing_metadata_steadyrun001",
+    }
     assert any(
         "cas_from_deleted_ac" in query and params.get("limit") == 2
         for query, params in captured_queries

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+from contextlib import ExitStack
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import islice
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
@@ -25,7 +29,7 @@ QueryExecutor = Callable[[str, Sequence[BigQueryParameter]], BigQueryQueryResult
 RowStreamer = Callable[[str, Sequence[BigQueryParameter]], Iterator[dict[str, object]]]
 MetadataResolver = Callable[..., tuple[GcsObjectMetadata, ...]]
 ReferenceExtractor = Callable[..., tuple[AcReferenceExtraction, ...]]
-JsonLoader = Callable[[str, Sequence[dict[str, object]], Sequence[tuple[str, str]], str], None]
+JsonFileLoader = Callable[[str, Path, Sequence[tuple[str, str]], str], None]
 BatchJobCreator = Callable[..., StorageBatchOperationsJob]
 BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
 
@@ -104,7 +108,7 @@ def run_cleanup_gcs_cache(
     stream_rows: RowStreamer | None = None,
     resolve_object_metadata: MetadataResolver = fetch_object_metadata_batch,
     extract_references: ReferenceExtractor = extract_action_cache_references_batch,
-    load_json_rows: JsonLoader | None = None,
+    load_jsonl_file: JsonFileLoader | None = None,
     create_batch_job: BatchJobCreator = create_delete_job,
     wait_for_batch_job: BatchJobWaiter = wait_for_delete_job,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -113,7 +117,7 @@ def run_cleanup_gcs_cache(
     _validate_mode_and_execute_kind(mode=mode, execute_kind=execute_kind)
 
     stream_rows = _stream_query_rows if stream_rows is None else stream_rows
-    load_json_rows = _load_json_rows if load_json_rows is None else load_json_rows
+    load_jsonl_file = _load_jsonl_file if load_jsonl_file is None else load_jsonl_file
 
     run_started_at = now()
     resolved_execute_kind = "cas" if execute_kind == "all" else execute_kind
@@ -259,11 +263,11 @@ def run_cleanup_gcs_cache(
         stream_rows=stream_rows,
         resolve_object_metadata=resolve_object_metadata,
         extract_references=extract_references,
+        load_jsonl_file=load_jsonl_file,
         source_table=ac_candidate_table,
         live_table=ac_live_metadata_table,
         missing_table=ac_missing_metadata_table,
         references_table=run_references_table,
-        load_json_rows=load_json_rows,
         stream_batch_size=settings.cleanup_batch_size,
         reference_batch_size=settings.ac_reference_batch_size,
     )
@@ -372,7 +376,7 @@ def run_cleanup_gcs_cache(
         settings=settings,
         stream_rows=stream_rows,
         resolve_object_metadata=resolve_object_metadata,
-        load_json_rows=load_json_rows,
+        load_jsonl_file=load_jsonl_file,
         source_table=cas_candidate_table,
         live_table=cas_live_metadata_table,
         missing_table=cas_missing_metadata_table,
@@ -814,7 +818,7 @@ def _populate_metadata_stage_table(
     settings: GcsCacheSettings,
     stream_rows: RowStreamer,
     resolve_object_metadata: MetadataResolver,
-    load_json_rows: JsonLoader,
+    load_jsonl_file: JsonFileLoader,
     source_table: str,
     live_table: str,
     missing_table: str,
@@ -824,39 +828,55 @@ def _populate_metadata_stage_table(
         f"SELECT object_name FROM {source_table} ORDER BY object_name ASC",
         [],
     )
-    for batch in _batched(rows, batch_size):
-        object_names = tuple(str(row["object_name"]) for row in batch)
-        metadata_rows = resolve_object_metadata(
-            project_id=settings.project_id,
-            bucket_name=settings.bucket_name,
-            object_names=object_names,
-            max_workers=settings.ac_reference_download_workers,
-        )
-        live_rows = [
-            {
-                "object_name": item.object_name,
-                "generation": item.generation,
-            }
-            for item in metadata_rows
-            if item.exists and item.generation is not None
-        ]
-        missing_rows = [
-            {"object_name": item.object_name} for item in metadata_rows if not item.exists
-        ]
-        if live_rows:
-            load_json_rows(
-                live_table,
-                live_rows,
-                (("object_name", "STRING"), ("generation", "INT64")),
-                "WRITE_APPEND",
-            )
-        if missing_rows:
-            load_json_rows(
-                missing_table,
-                missing_rows,
-                (("object_name", "STRING"),),
-                "WRITE_APPEND",
-            )
+    live_schema = (("object_name", "STRING"), ("generation", "INT64"))
+    missing_schema = (("object_name", "STRING"),)
+
+    with TemporaryDirectory(prefix="cleanup-gcs-cache-stage-") as temp_dir:
+        with ExitStack() as stack:
+            live_path = Path(temp_dir) / "live.jsonl"
+            missing_path = Path(temp_dir) / "missing.jsonl"
+            live_handle = stack.enter_context(live_path.open("w", encoding="utf-8"))
+            missing_handle = stack.enter_context(missing_path.open("w", encoding="utf-8"))
+            live_count = 0
+            missing_count = 0
+
+            for batch in _batched(rows, batch_size):
+                object_names = tuple(str(row["object_name"]) for row in batch)
+                metadata_rows = resolve_object_metadata(
+                    project_id=settings.project_id,
+                    bucket_name=settings.bucket_name,
+                    object_names=object_names,
+                    max_workers=settings.ac_reference_download_workers,
+                )
+                live_rows = [
+                    {
+                        "object_name": item.object_name,
+                        "generation": item.generation,
+                    }
+                    for item in metadata_rows
+                    if item.exists and item.generation is not None
+                ]
+                missing_rows = [
+                    {"object_name": item.object_name} for item in metadata_rows if not item.exists
+                ]
+                if live_rows:
+                    for row in live_rows:
+                        live_handle.write(json.dumps(row, separators=(",", ":")))
+                        live_handle.write("\n")
+                    live_count += len(live_rows)
+                if missing_rows:
+                    for row in missing_rows:
+                        missing_handle.write(json.dumps(row, separators=(",", ":")))
+                        missing_handle.write("\n")
+                    missing_count += len(missing_rows)
+
+            live_handle.flush()
+            missing_handle.flush()
+
+        if live_count:
+            load_jsonl_file(live_table, live_path, live_schema, "WRITE_APPEND")
+        if missing_count:
+            load_jsonl_file(missing_table, missing_path, missing_schema, "WRITE_APPEND")
 
 
 def _populate_ac_stage_tables(
@@ -865,11 +885,11 @@ def _populate_ac_stage_tables(
     stream_rows: RowStreamer,
     resolve_object_metadata: MetadataResolver,
     extract_references: ReferenceExtractor,
+    load_jsonl_file: JsonFileLoader,
     source_table: str,
     live_table: str,
     missing_table: str,
     references_table: str,
-    load_json_rows: JsonLoader,
     stream_batch_size: int,
     reference_batch_size: int,
 ) -> AcStageResult:
@@ -879,82 +899,103 @@ def _populate_ac_stage_tables(
         f"SELECT object_name FROM {source_table} ORDER BY object_name ASC",
         [],
     )
-    for batch in _batched(rows, stream_batch_size):
-        object_names = tuple(str(row["object_name"]) for row in batch)
-        metadata_rows = resolve_object_metadata(
-            project_id=settings.project_id,
-            bucket_name=settings.bucket_name,
-            object_names=object_names,
-            max_workers=settings.ac_reference_download_workers,
-        )
-        live_rows = [
-            {
-                "object_name": item.object_name,
-                "generation": item.generation,
-            }
-            for item in metadata_rows
-            if item.exists and item.generation is not None
-        ]
-        live_object_names = tuple(row["object_name"] for row in live_rows)
-        extractions = tuple(
-            extraction
-            for reference_batch in _batched_values(live_object_names, reference_batch_size)
-            for extraction in extract_references(
-                project_id=settings.project_id,
-                bucket_name=settings.bucket_name,
-                ac_object_names=reference_batch,
-                max_workers=settings.ac_reference_download_workers,
-            )
-        )
-        parse_failed_names = {
-            extraction.ac_object_name for extraction in extractions if extraction.parse_error
-        }
-        parse_error_count += len(parse_failed_names)
-        for extraction in extractions:
-            if extraction.parse_error and len(sample_parse_errors) < 10:
-                sample_parse_errors.append(
-                    CleanupGcsCacheParseErrorSample(
-                        object_name=extraction.ac_object_name,
-                        parse_error=extraction.parse_error,
+    live_schema = (("object_name", "STRING"), ("generation", "INT64"))
+    references_schema = (("ac_object_name", "STRING"), ("cas_object_name", "STRING"))
+    missing_schema = (("object_name", "STRING"),)
+
+    with TemporaryDirectory(prefix="cleanup-gcs-cache-ac-stage-") as temp_dir:
+        with ExitStack() as stack:
+            live_path = Path(temp_dir) / "ac-live.jsonl"
+            references_path = Path(temp_dir) / "ac-references.jsonl"
+            missing_path = Path(temp_dir) / "ac-missing.jsonl"
+            live_handle = stack.enter_context(live_path.open("w", encoding="utf-8"))
+            references_handle = stack.enter_context(references_path.open("w", encoding="utf-8"))
+            missing_handle = stack.enter_context(missing_path.open("w", encoding="utf-8"))
+            live_count = 0
+            references_count = 0
+            missing_count = 0
+
+            for batch in _batched(rows, stream_batch_size):
+                object_names = tuple(str(row["object_name"]) for row in batch)
+                metadata_rows = resolve_object_metadata(
+                    project_id=settings.project_id,
+                    bucket_name=settings.bucket_name,
+                    object_names=object_names,
+                    max_workers=settings.ac_reference_download_workers,
+                )
+                live_rows = [
+                    {
+                        "object_name": item.object_name,
+                        "generation": item.generation,
+                    }
+                    for item in metadata_rows
+                    if item.exists and item.generation is not None
+                ]
+                live_object_names = tuple(row["object_name"] for row in live_rows)
+                extractions = tuple(
+                    extraction
+                    for reference_batch in _batched_values(live_object_names, reference_batch_size)
+                    for extraction in extract_references(
+                        project_id=settings.project_id,
+                        bucket_name=settings.bucket_name,
+                        ac_object_names=reference_batch,
+                        max_workers=settings.ac_reference_download_workers,
                     )
                 )
-        deletable_live_rows = [
-            row for row in live_rows if row["object_name"] not in parse_failed_names
-        ]
-        reference_rows = [
-            {
-                "ac_object_name": extraction.ac_object_name,
-                "cas_object_name": cas_object_name,
-            }
-            for extraction in extractions
-            if extraction.exists and extraction.parse_error is None
-            for cas_object_name in extraction.cas_object_names
-        ]
-        missing_names = {item.object_name for item in metadata_rows if not item.exists} | {
-            extraction.ac_object_name for extraction in extractions if not extraction.exists
-        }
-        missing_rows = [{"object_name": object_name} for object_name in sorted(missing_names)]
-        if deletable_live_rows:
-            load_json_rows(
-                live_table,
-                deletable_live_rows,
-                (("object_name", "STRING"), ("generation", "INT64")),
-                "WRITE_APPEND",
-            )
-        if reference_rows:
-            load_json_rows(
-                references_table,
-                reference_rows,
-                (("ac_object_name", "STRING"), ("cas_object_name", "STRING")),
-                "WRITE_APPEND",
-            )
-        if missing_rows:
-            load_json_rows(
-                missing_table,
-                missing_rows,
-                (("object_name", "STRING"),),
-                "WRITE_APPEND",
-            )
+                parse_failed_names = {
+                    extraction.ac_object_name for extraction in extractions if extraction.parse_error
+                }
+                parse_error_count += len(parse_failed_names)
+                for extraction in extractions:
+                    if extraction.parse_error and len(sample_parse_errors) < 10:
+                        sample_parse_errors.append(
+                            CleanupGcsCacheParseErrorSample(
+                                object_name=extraction.ac_object_name,
+                                parse_error=extraction.parse_error,
+                            )
+                        )
+                deletable_live_rows = [
+                    row for row in live_rows if row["object_name"] not in parse_failed_names
+                ]
+                reference_rows = [
+                    {
+                        "ac_object_name": extraction.ac_object_name,
+                        "cas_object_name": cas_object_name,
+                    }
+                    for extraction in extractions
+                    if extraction.exists and extraction.parse_error is None
+                    for cas_object_name in extraction.cas_object_names
+                ]
+                missing_names = {item.object_name for item in metadata_rows if not item.exists} | {
+                    extraction.ac_object_name for extraction in extractions if not extraction.exists
+                }
+                missing_rows = [{"object_name": object_name} for object_name in sorted(missing_names)]
+                if deletable_live_rows:
+                    for row in deletable_live_rows:
+                        live_handle.write(json.dumps(row, separators=(",", ":")))
+                        live_handle.write("\n")
+                    live_count += len(deletable_live_rows)
+                if reference_rows:
+                    for row in reference_rows:
+                        references_handle.write(json.dumps(row, separators=(",", ":")))
+                        references_handle.write("\n")
+                    references_count += len(reference_rows)
+                if missing_rows:
+                    for row in missing_rows:
+                        missing_handle.write(json.dumps(row, separators=(",", ":")))
+                        missing_handle.write("\n")
+                    missing_count += len(missing_rows)
+
+            live_handle.flush()
+            references_handle.flush()
+            missing_handle.flush()
+
+        if live_count:
+            load_jsonl_file(live_table, live_path, live_schema, "WRITE_APPEND")
+        if references_count:
+            load_jsonl_file(references_table, references_path, references_schema, "WRITE_APPEND")
+        if missing_count:
+            load_jsonl_file(missing_table, missing_path, missing_schema, "WRITE_APPEND")
     return AcStageResult(
         parse_error_count=parse_error_count,
         sample_parse_errors=tuple(sample_parse_errors),
@@ -1019,28 +1060,6 @@ def _stream_query_rows(
     job = client.query(query, job_config=job_config)
     for row in job.result():
         yield dict(row.items())
-
-
-def _load_json_rows(
-    table_ref: str,
-    rows: Sequence[dict[str, object]],
-    schema: Sequence[tuple[str, str]],
-    write_disposition: str,
-) -> None:
-    from google.cloud import bigquery
-
-    client = bigquery.Client()
-    if not rows:
-        return
-    job = client.load_table_from_json(
-        list(rows),
-        table_ref.strip("`"),
-        job_config=bigquery.LoadJobConfig(
-            schema=[bigquery.SchemaField(name, field_type) for name, field_type in schema],
-            write_disposition=write_disposition,
-        ),
-    )
-    job.result()
 
 
 def _candidate_table_name(settings: GcsCacheSettings, *, prefix: str, run_id: str) -> str:
@@ -1127,6 +1146,34 @@ def _add_bytes(total: int, value: int | None) -> int:
     if value is None:
         return total
     return total + int(value)
+
+
+def _load_jsonl_file(
+    table_ref: str,
+    jsonl_path: Path,
+    schema: Sequence[tuple[str, str]],
+    write_disposition: str,
+) -> None:
+    """Load a staged JSONL file into BigQuery and retain table/file context on failure."""
+    from google.cloud import bigquery
+
+    client = bigquery.Client()
+    try:
+        with jsonl_path.open("rb") as handle:
+            job = client.load_table_from_file(
+                handle,
+                table_ref.strip("`"),
+                job_config=bigquery.LoadJobConfig(
+                    schema=[bigquery.SchemaField(name, field_type) for name, field_type in schema],
+                    source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+                    write_disposition=write_disposition,
+                ),
+            )
+        job.result()
+    except Exception as exc:  # pragma: no cover - exercised via injected loader tests
+        raise RuntimeError(
+            f"Failed to load staged cleanup metadata file {jsonl_path} into {table_ref}"
+        ) from exc
 
 
 def _validate_mode_and_execute_kind(*, mode: str, execute_kind: str) -> None:
