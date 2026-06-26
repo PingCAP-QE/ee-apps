@@ -140,6 +140,9 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 	if platform != "" {
 		event.SetExtension("paramPlatform", platform)
 	}
+	if record.PluginGitRef != "" {
+		event.SetExtension("paramPluginGitRef", record.PluginGitRef)
+	}
 
 	return &event, nil
 }
