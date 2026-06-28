@@ -127,6 +127,3 @@ docs: add AGENTS.md and update README with project overview
 
 - **Goa framework** (publisher, dl, tibuild-v2): Design-first API generation. Edit `design/*.go`, run `go generate`, generated code lands in `gen/` or `service/gen/`.
 - **Ent ORM** (cloudevents-server, tibuild-v2): Schema files in `ent/schema/` or `database/schema/`. Run `go generate` after schema changes.
-- **CloudEvents**: tibuild sends Tekton events → cloudevents-server routes via Kafka → publisher-worker consumes.
-- **tibuild-v2 notification**: Ent hooks on DevBuild updates trigger Lark webhook notifications when status reaches terminal state (success/failure/error/aborted). `NotificationInfo.PipelineRuns` carries all pipeline run data.
-- **TektonStatus.Pipelines** (in schema `types.go`): Despite the name `Pipelines`, each entry represents a **PipelineRun**, not a pipeline definition.
