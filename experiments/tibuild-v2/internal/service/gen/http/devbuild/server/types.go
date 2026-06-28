@@ -230,7 +230,6 @@ type TektonPipelineResponse struct {
 	Status       string                   `form:"status" json:"status" xml:"status"`
 	StartAt      *string                  `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                  `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
-	GitSha       *string                  `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
 	Images       []*ImageArtifactResponse `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
 	OciArtifacts []*OciArtifactResponse   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
 	Platform     *string                  `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
@@ -332,7 +331,6 @@ type TektonPipelineResponseBody struct {
 	Status       string                       `form:"status" json:"status" xml:"status"`
 	StartAt      *string                      `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                      `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
-	GitSha       *string                      `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
 	Images       []*ImageArtifactResponseBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
 	OciArtifacts []*OciArtifactResponseBody   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
 	Platform     *string                      `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
@@ -427,7 +425,6 @@ type TektonPipelineRequestBody struct {
 	Status       *string                     `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
 	StartAt      *string                     `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
 	EndAt        *string                     `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
-	GitSha       *string                     `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
 	Images       []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
 	OciArtifacts []*OciArtifactRequestBody   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
 	Platform     *string                     `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
@@ -896,11 +893,6 @@ func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err err
 	}
 	if body.EndAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.end_at", *body.EndAt, goa.FormatDateTime))
-	}
-	if body.GitSha != nil {
-		if utf8.RuneCountInString(*body.GitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.git_sha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
-		}
 	}
 	for _, e := range body.Images {
 		if e != nil {

@@ -443,35 +443,35 @@ definitions:
         properties:
             component:
                 type: string
-                example: Quia et aperiam ad.
+                example: Aperiam vel est.
             oci_file:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Vero deleniti delectus libero.
+                example: Et sed doloremque eligendi impedit.
             sha256_oci_file:
                 $ref: '#/definitions/OciFile'
             sha256_url:
                 type: string
-                example: http://hansen.org/lincoln.wiza
+                example: http://weissnat.org/santa
                 format: uri
             url:
                 type: string
-                example: http://schroeder.net/ari
+                example: http://blockkeebler.name/alexandro.wehner
                 format: uri
         example:
-            component: Blanditiis qui sit facere aspernatur.
+            component: Omnis suscipit.
             oci_file:
                 file: Veniam et provident.
                 repo: Dolores quis quia vitae non.
                 tag: Reiciendis minus.
-            platform: Quod amet nesciunt.
+            platform: Ut nostrum.
             sha256_oci_file:
                 file: Veniam et provident.
                 repo: Dolores quis quia vitae non.
                 tag: Reiciendis minus.
-            sha256_url: http://ledner.name/vita.schinner
-            url: http://toy.net/aubree.larson
+            sha256_url: http://howecummings.biz/robbie_harber
+            url: http://boehmlangosh.net/hector
     BuildReport:
         title: BuildReport
         type: object
@@ -505,9 +505,21 @@ definitions:
                         tag: Reiciendis minus.
                       sha256_url: http://hessel.name/aric_reynolds
                       url: http://gusikowski.info/ellen_haag
+                    - component: Quia quam necessitatibus optio ipsam autem.
+                      oci_file:
+                        file: Veniam et provident.
+                        repo: Dolores quis quia vitae non.
+                        tag: Reiciendis minus.
+                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                      sha256_oci_file:
+                        file: Veniam et provident.
+                        repo: Dolores quis quia vitae non.
+                        tag: Reiciendis minus.
+                      sha256_url: http://hessel.name/aric_reynolds
+                      url: http://gusikowski.info/ellen_haag
             git_sha:
                 type: string
-                example: rvn
+                example: i4y
                 maxLength: 40
             images:
                 type: array
@@ -522,11 +534,11 @@ definitions:
                       url: http://luettgensenger.com/ibrahim_sauer
             plugin_git_sha:
                 type: string
-                example: k5s
+                example: znh
                 maxLength: 40
             printed_version:
                 type: string
-                example: Dolorem sapiente.
+                example: Dolore rerum non autem quidem vero.
         example:
             binaries:
                 - component: Quia quam necessitatibus optio ipsam autem.
@@ -565,19 +577,7 @@ definitions:
                     tag: Reiciendis minus.
                   sha256_url: http://hessel.name/aric_reynolds
                   url: http://gusikowski.info/ellen_haag
-                - component: Quia quam necessitatibus optio ipsam autem.
-                  oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
-                  sha256_oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  sha256_url: http://hessel.name/aric_reynolds
-                  url: http://gusikowski.info/ellen_haag
-            git_sha: lpj
+            git_sha: ftr
             images:
                 - internal_url: http://macejkovic.biz/maddison
                   platform: Accusantium neque.
@@ -588,15 +588,18 @@ definitions:
                 - internal_url: http://macejkovic.biz/maddison
                   platform: Accusantium neque.
                   url: http://luettgensenger.com/ibrahim_sauer
-            plugin_git_sha: mkp
-            printed_version: Totam suscipit pariatur.
+                - internal_url: http://macejkovic.biz/maddison
+                  platform: Accusantium neque.
+                  url: http://luettgensenger.com/ibrahim_sauer
+            plugin_git_sha: evz
+            printed_version: Odit molestias quisquam suscipit corporis.
     DevBuild:
         title: DevBuild
         type: object
         properties:
             id:
                 type: integer
-                example: 8755801900735869486
+                example: 1617986457262471165
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -605,7 +608,7 @@ definitions:
             status:
                 $ref: '#/definitions/DevBuildStatus'
         example:
-            id: 1883421602057619356
+            id: 3467924166902637199
             meta:
                 created_at: 1730-26-88 87:09:90
                 created_by: domenico.durgan@mueller.biz
@@ -677,7 +680,6 @@ definitions:
                 tekton_status:
                     pipelines:
                         - end_at: "1976-04-30T15:23:35Z"
-                          git_sha: gdd
                           images:
                             - internal_url: http://macejkovic.biz/maddison
                               platform: Accusantium neque.
@@ -689,26 +691,28 @@ definitions:
                           namespace: Error laboriosam qui tempore dolorum est nisi.
                           oci_artifacts:
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
-                          platform: Consequatur est incidunt labore.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
+                          platform: Quo dolor consequatur est incidunt labore non.
                           start_at: "1992-08-03T05:21:25Z"
                           status: aborted
-                          url: http://morissette.info/bridget
+                          url: http://schinnervon.info/carlotta
                         - end_at: "1976-04-30T15:23:35Z"
-                          git_sha: gdd
                           images:
                             - internal_url: http://macejkovic.biz/maddison
                               platform: Accusantium neque.
@@ -720,26 +724,28 @@ definitions:
                           namespace: Error laboriosam qui tempore dolorum est nisi.
                           oci_artifacts:
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
-                          platform: Consequatur est incidunt labore.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
+                          platform: Quo dolor consequatur est incidunt labore non.
                           start_at: "1992-08-03T05:21:25Z"
                           status: aborted
-                          url: http://morissette.info/bridget
+                          url: http://schinnervon.info/carlotta
                         - end_at: "1976-04-30T15:23:35Z"
-                          git_sha: gdd
                           images:
                             - internal_url: http://macejkovic.biz/maddison
                               platform: Accusantium neque.
@@ -751,26 +757,28 @@ definitions:
                           namespace: Error laboriosam qui tempore dolorum est nisi.
                           oci_artifacts:
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
-                          platform: Consequatur est incidunt labore.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
+                          platform: Quo dolor consequatur est incidunt labore non.
                           start_at: "1992-08-03T05:21:25Z"
                           status: aborted
-                          url: http://morissette.info/bridget
+                          url: http://schinnervon.info/carlotta
                         - end_at: "1976-04-30T15:23:35Z"
-                          git_sha: gdd
                           images:
                             - internal_url: http://macejkovic.biz/maddison
                               platform: Accusantium neque.
@@ -782,28 +790,32 @@ definitions:
                           namespace: Error laboriosam qui tempore dolorum est nisi.
                           oci_artifacts:
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
                             - files:
-                                - A perspiciatis ratione minus sunt voluptas.
-                                - Quae quisquam.
-                              repo: Tempora debitis dolore explicabo repellendus et error.
-                              tag: Numquam quo.
-                          platform: Consequatur est incidunt labore.
+                                - Dolorem occaecati omnis sunt.
+                                - Perspiciatis ratione minus.
+                                - Voluptas eius quae.
+                              repo: Itaque tempora debitis dolore.
+                              tag: Repellendus et error provident.
+                          platform: Quo dolor consequatur est incidunt labore non.
                           start_at: "1992-08-03T05:21:25Z"
                           status: aborted
-                          url: http://morissette.info/bridget
+                          url: http://schinnervon.info/carlotta
                     triggers_event_ids:
-                        - 4bfdeb9a-3615-4d2c-9328-57f7992c04ca
+                        - 2bd9eb9a-3615-4d2c-9328-57f7992c04ca
                         - 725f1511-e9d1-4380-8b28-4d7403a17b9c
                         - bbfe7f61-1eac-49f5-b263-48da3f2de504
+                        - 9f8bb507-3d9e-4640-b7fc-732ec21bab35
         required:
             - id
             - meta
@@ -815,20 +827,20 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: 1969-12-18 94:62:05
+                example: 8221-35-88 31:80:54
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             created_by:
                 type: string
-                example: jeremie@kertzmannrice.net
+                example: antonetta.ryan@pagac.net
                 format: email
             updated_at:
                 type: string
-                example: 6142-15-41 98:55:87
+                example: 7795-48-05 79:35:75
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 9531-60-13 41:14:53
-            created_by: daphney.heidenreich@denesik.biz
-            updated_at: 3932-66-39 19:83:37
+            created_at: 8679-41-34 80:98:20
+            created_by: charlene@brekke.org
+            updated_at: 2898-88-01 28:20:21
         required:
             - created_at
             - created_by
@@ -839,13 +851,13 @@ definitions:
         properties:
             build_env:
                 type: string
-                example: Quisquam aspernatur.
+                example: Aut sit voluptas ut iste.
             builder_img:
                 type: string
-                example: Eos laborum.
+                example: Minus ullam eum.
             edition:
                 type: string
-                example: community
+                example: nextgen
                 enum:
                     - enterprise
                     - community
@@ -857,22 +869,22 @@ definitions:
             features:
                 type: string
                 description: '[Deprecated] use build_env for custom features'
-                example: Aut beatae cumque alias totam velit.
+                example: Corporis eligendi rerum ab nam necessitatibus.
             git_ref:
                 type: string
-                example: Eius et.
+                example: Distinctio beatae ex possimus cupiditate rem quidem.
             git_sha:
                 type: string
-                example: Quisquam consequuntur nesciunt maxime nostrum nulla quis.
+                example: Quam omnis ut nihil ducimus.
             github_repo:
                 type: string
-                example: Aut incidunt non cumque quis.
+                example: Aspernatur occaecati eos laborum quo et soluta.
             is_hotfix:
                 type: boolean
                 example: true
             is_push_gcr:
                 type: boolean
-                example: false
+                example: true
             pipeline_engine:
                 type: string
                 example: jenkins
@@ -882,7 +894,7 @@ definitions:
             platform:
                 type: string
                 default: linux
-                example: linux/amd64
+                example: darwin/amd64
                 enum:
                     - all
                     - linux
@@ -893,10 +905,10 @@ definitions:
                     - darwin/arm64
             plugin_git_ref:
                 type: string
-                example: Atque autem.
+                example: Totam velit sint eius et.
             product:
                 type: string
-                example: ticdc-newarch
+                example: tiproxy
                 enum:
                     - dm
                     - enterprise-plugin
@@ -920,34 +932,34 @@ definitions:
                     - tiproxy
             product_base_img:
                 type: string
-                example: Est ducimus.
+                example: Consequuntur nesciunt maxime nostrum.
             product_dockerfile:
                 type: string
-                example: Dolorem illo deleniti.
+                example: Quis cum.
             target_img:
                 type: string
-                example: Quas voluptas itaque veniam.
+                example: Incidunt non cumque quis in doloremque qui.
             version:
                 type: string
-                example: Quis eligendi fuga quod voluptas.
+                example: Atque autem.
         example:
-            build_env: Voluptatibus consequatur eius quo.
-            builder_img: Excepturi non minima rem sint.
-            edition: experiment
-            features: Sequi quia fugit non.
-            git_ref: Impedit veniam qui quis aut tempora.
-            git_sha: Delectus adipisci quos quam.
-            github_repo: Laudantium ut qui est nobis.
-            is_hotfix: false
-            is_push_gcr: false
+            build_env: Voluptas est ducimus.
+            builder_img: Dolorem illo deleniti.
+            edition: nextgen
+            features: Itaque veniam similique quis eligendi.
+            git_ref: Quod voluptas dolor voluptatibus consequatur eius quo.
+            git_sha: Excepturi non minima rem sint.
+            github_repo: Et quidem sequi quia fugit.
+            is_hotfix: true
+            is_push_gcr: true
             pipeline_engine: jenkins
-            platform: all
-            plugin_git_ref: Veniam error qui repudiandae earum.
-            product: tici
-            product_base_img: Vel est voluptas qui.
-            product_dockerfile: Eius labore quia aut.
-            target_img: Quae animi saepe qui rerum quia.
-            version: Sit facilis voluptatum soluta nulla et.
+            platform: linux/amd64
+            plugin_git_ref: Qui quis aut.
+            product: br
+            product_base_img: Delectus adipisci quos quam.
+            product_dockerfile: Laudantium ut qui est nobis.
+            target_img: Tempore itaque.
+            version: Veniam error qui repudiandae earum.
         required:
             - product
             - version
@@ -961,35 +973,37 @@ definitions:
                 $ref: '#/definitions/BuildReport'
             err_msg:
                 type: string
-                example: Consequatur provident quis eum et non tenetur.
+                example: Enim rerum id quisquam vitae.
             pipeline_build_id:
                 type: integer
-                example: 9056323511825054365
+                example: 6952783721080694919
                 format: int64
             pipeline_end_at:
                 type: string
-                example: 4514-35-19 38:27:11
+                example: 8795-05-86 73:70:41
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_start_at:
                 type: string
-                example: 9320-74-69 57:37:22
+                example: 6016-29-06 18:26:74
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_view_url:
                 type: string
-                example: http://kerluke.biz/tracey
+                example: http://leuschkemarquardt.net/crawford.torphy
                 format: uri
             pipeline_view_urls:
                 type: array
                 items:
                     type: string
-                    example: http://kundemarquardt.info/kitty_koss
+                    example: http://dare.info/jo_deckow
                     format: uri
                 example:
-                    - http://gleason.com/marlen_kessler
-                    - http://bernier.biz/neal_kunze
+                    - http://davis.org/veronica_boyle
+                    - http://robertsdurgan.com/howard
+                    - http://dietrich.org/kian_breitenberg
+                    - http://parkerjacobson.info/myrtie
             status:
                 type: string
-                example: error
+                example: pending
                 enum:
                     - pending
                     - processing
@@ -1036,21 +1050,18 @@ definitions:
                       url: http://luettgensenger.com/ibrahim_sauer
                 plugin_git_sha: 8uk
                 printed_version: Ab facere quo sint adipisci voluptatum aut.
-            err_msg: Rerum qui libero.
-            pipeline_build_id: 1888385413500896868
-            pipeline_end_at: 5629-72-56 12:62:77
-            pipeline_start_at: 9113-18-06 59:61:63
-            pipeline_view_url: http://strosinwilkinson.name/miguel.brekke
+            err_msg: Consequatur dolorum eos fuga eius quod.
+            pipeline_build_id: 1479753069456166066
+            pipeline_end_at: 2768-37-92 77:66:66
+            pipeline_start_at: 3374-89-37 93:29:87
+            pipeline_view_url: http://emmerich.info/isabel
             pipeline_view_urls:
-                - http://oharagrady.com/bell_collins
-                - http://witting.name/alysson_hand
-                - http://hand.name/kevin
-                - http://swaniawski.biz/mohammed.welch
-            status: failure
+                - http://wiegandjones.com/soledad
+                - http://kuhnpowlowski.org/jett.watsica
+            status: processing
             tekton_status:
                 pipelines:
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1062,26 +1073,28 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1093,26 +1106,28 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1124,26 +1139,28 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1155,28 +1172,32 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
                 triggers_event_ids:
-                    - 4bfdeb9a-3615-4d2c-9328-57f7992c04ca
+                    - 2bd9eb9a-3615-4d2c-9328-57f7992c04ca
                     - 725f1511-e9d1-4380-8b28-4d7403a17b9c
                     - bbfe7f61-1eac-49f5-b263-48da3f2de504
+                    - 9f8bb507-3d9e-4640-b7fc-732ec21bab35
         required:
             - status
     DevbuildCreateRequestBody:
@@ -1186,30 +1207,30 @@ definitions:
             created_by:
                 type: string
                 description: Creator of build
-                example: israel@gerlach.net
+                example: brittany@brekke.net
                 format: email
             request:
                 $ref: '#/definitions/DevBuildSpec'
         example:
-            created_by: cletus_feest@goodwinmuller.org
+            created_by: florencio_gleason@kshlerin.biz
             request:
-                build_env: Laborum hic.
-                builder_img: Ullam quia.
-                edition: community
-                features: Consequuntur dolores quos optio possimus.
-                git_ref: Distinctio nihil cum asperiores quos.
-                git_sha: Culpa nisi.
-                github_repo: Reprehenderit minima voluptates dolores asperiores distinctio.
+                build_env: Reprehenderit repellat vitae voluptas non dignissimos.
+                builder_img: Atque voluptate dolorum consequuntur.
+                edition: enterprise
+                features: Veniam quia minus odio neque incidunt.
+                git_ref: Quae fugit.
+                git_sha: Ullam beatae porro omnis voluptas cumque.
+                github_repo: Laboriosam velit sint autem natus molestiae.
                 is_hotfix: true
-                is_push_gcr: false
-                pipeline_engine: jenkins
-                platform: linux/amd64
-                plugin_git_ref: Tempore sed odit.
-                product: tiproxy
-                product_base_img: Repellendus quisquam est.
-                product_dockerfile: Odit asperiores sed qui autem voluptas.
-                target_img: Voluptas pariatur nobis reiciendis dolorum sint.
-                version: Laboriosam ea modi.
+                is_push_gcr: true
+                pipeline_engine: tekton
+                platform: all
+                plugin_git_ref: Accusantium laborum ipsum nihil.
+                product: pd
+                product_base_img: Beatae minima.
+                product_dockerfile: Minus odit qui facere inventore nemo.
+                target_img: Sunt molestiae.
+                version: Repellat quis necessitatibus et quos.
         required:
             - created_by
             - request
@@ -1223,40 +1244,37 @@ definitions:
             status:
                 build_report:
                     binaries:
-                        - component: Aut dolore ducimus omnis deserunt praesentium commodi.
+                        - component: Omnis deserunt.
                           oci_file:
-                            file: Qui explicabo.
-                            repo: Vero iure voluptatibus et qui.
-                            tag: Rem et quia qui.
-                          platform: Ipsa delectus.
+                            file: Commodi dicta qui explicabo occaecati.
+                            repo: Iure voluptatibus et qui dignissimos.
+                            tag: Et quia qui ducimus ipsa.
+                          platform: Sed laboriosam.
                           sha256_oci_file:
-                            file: Qui explicabo.
-                            repo: Vero iure voluptatibus et qui.
-                            tag: Rem et quia qui.
-                          sha256_url: http://bins.com/kelton
-                          url: http://thiel.net/zetta.bergnaum
-                        - component: Aut dolore ducimus omnis deserunt praesentium commodi.
+                            file: Commodi dicta qui explicabo occaecati.
+                            repo: Iure voluptatibus et qui dignissimos.
+                            tag: Et quia qui ducimus ipsa.
+                          sha256_url: http://bruenlarson.org/garfield
+                          url: http://dicki.com/zetta
+                        - component: Omnis deserunt.
                           oci_file:
-                            file: Qui explicabo.
-                            repo: Vero iure voluptatibus et qui.
-                            tag: Rem et quia qui.
-                          platform: Ipsa delectus.
+                            file: Commodi dicta qui explicabo occaecati.
+                            repo: Iure voluptatibus et qui dignissimos.
+                            tag: Et quia qui ducimus ipsa.
+                          platform: Sed laboriosam.
                           sha256_oci_file:
-                            file: Qui explicabo.
-                            repo: Vero iure voluptatibus et qui.
-                            tag: Rem et quia qui.
-                          sha256_url: http://bins.com/kelton
-                          url: http://thiel.net/zetta.bergnaum
-                    git_sha: e4e
+                            file: Commodi dicta qui explicabo occaecati.
+                            repo: Iure voluptatibus et qui dignissimos.
+                            tag: Et quia qui ducimus ipsa.
+                          sha256_url: http://bruenlarson.org/garfield
+                          url: http://dicki.com/zetta
+                    git_sha: 4ed
                     images:
                         - internal_url: http://littel.com/mikel
-                          platform: Accusamus libero praesentium dolore consequatur incidunt.
+                          platform: Libero praesentium dolore consequatur incidunt.
                           url: http://padbergschowalter.name/maybell_douglas
                         - internal_url: http://littel.com/mikel
-                          platform: Accusamus libero praesentium dolore consequatur incidunt.
-                          url: http://padbergschowalter.name/maybell_douglas
-                        - internal_url: http://littel.com/mikel
-                          platform: Accusamus libero praesentium dolore consequatur incidunt.
+                          platform: Libero praesentium dolore consequatur incidunt.
                           url: http://padbergschowalter.name/maybell_douglas
                     plugin_git_sha: o7k
                     printed_version: Nesciunt sapiente voluptatem illo quia itaque.
@@ -1272,116 +1290,107 @@ definitions:
                 tekton_status:
                     pipelines:
                         - end_at: "2010-12-18T18:45:43Z"
-                          git_sha: omy
                           images:
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                           name: Sequi modi quis omnis possimus.
                           namespace: Inventore fugiat accusantium qui quis.
                           oci_artifacts:
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
-                          platform: Earum sunt nulla quis officiis.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
+                          platform: Quia dolor aspernatur facere et consequatur.
                           start_at: "1998-03-10T18:02:56Z"
                           status: processing
-                          url: http://roob.net/stephen
+                          url: http://tremblayharris.org/easton
                         - end_at: "2010-12-18T18:45:43Z"
-                          git_sha: omy
                           images:
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                           name: Sequi modi quis omnis possimus.
                           namespace: Inventore fugiat accusantium qui quis.
                           oci_artifacts:
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
-                          platform: Earum sunt nulla quis officiis.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
+                          platform: Quia dolor aspernatur facere et consequatur.
                           start_at: "1998-03-10T18:02:56Z"
                           status: processing
-                          url: http://roob.net/stephen
+                          url: http://tremblayharris.org/easton
                         - end_at: "2010-12-18T18:45:43Z"
-                          git_sha: omy
                           images:
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                             - internal_url: http://littel.com/mikel
-                              platform: Accusamus libero praesentium dolore consequatur incidunt.
+                              platform: Libero praesentium dolore consequatur incidunt.
                               url: http://padbergschowalter.name/maybell_douglas
                           name: Sequi modi quis omnis possimus.
                           namespace: Inventore fugiat accusantium qui quis.
                           oci_artifacts:
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
                             - files:
-                                - Quod vitae asperiores officiis quasi cumque iste.
-                                - A consequatur consequuntur excepturi.
-                                - Assumenda tempora maxime dolorum enim accusamus.
-                                - Neque voluptates expedita aut voluptas sequi.
-                              repo: Nisi quia dolor aspernatur.
-                              tag: Et consequatur vel numquam tempore molestiae.
-                          platform: Earum sunt nulla quis officiis.
+                                - Iste quos ratione maiores quod.
+                                - Asperiores officiis quasi cumque iste illum a.
+                                - Consequuntur excepturi qui assumenda tempora maxime.
+                              repo: Enim accusamus corrupti.
+                              tag: Voluptates expedita aut voluptas sequi magni.
+                          platform: Quia dolor aspernatur facere et consequatur.
                           start_at: "1998-03-10T18:02:56Z"
                           status: processing
-                          url: http://roob.net/stephen
+                          url: http://tremblayharris.org/easton
                     triggers_event_ids:
-                        - d24c3614-1938-498e-8951-858363173b5d
-                        - 6df11996-bcd2-41e2-8d8c-21f94e96d0ae
+                        - 46fe8495-578a-4fee-85a8-730ba11e4f2e
+                        - dd3b4fa2-29e6-4940-8f0f-4007c34220bd
         required:
             - status
     HTTPError:
@@ -1390,15 +1399,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 4582585015358050668
+                example: 64301477659785485
                 format: int64
             message:
                 type: string
-                example: Molestiae qui.
+                example: Deleniti sit doloribus provident.
         description: Bad Request
         example:
-            code: 2808733369891831910
-            message: Sed rem.
+            code: 7878583959198435061
+            message: Reprehenderit nostrum.
         required:
             - code
             - message
@@ -1479,19 +1488,19 @@ definitions:
         properties:
             internal_url:
                 type: string
-                example: http://rohan.biz/adaline.kutch
+                example: http://mraz.name/adriana_bashirian
                 format: uri
             platform:
                 type: string
-                example: Quam aut laborum.
+                example: Aperiam ut nihil.
             url:
                 type: string
-                example: http://ullrichrutherford.biz/gretchen.olson
+                example: http://reingerrunolfsdottir.org/russel
                 format: uri
         example:
-            internal_url: http://sipes.net/alfonso_waters
-            platform: Quod itaque qui animi fugit vel.
-            url: http://carrollwillms.org/eric.gulgowski
+            internal_url: http://king.net/zelma
+            platform: Et earum id magnam ab.
+            url: http://parisian.net/ron.kovacek
         required:
             - platform
             - url
@@ -1501,13 +1510,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Voluptatibus corporis reprehenderit nostrum doloribus.
+                example: Hic sit ut necessitatibus quis sed esse.
             target:
                 type: string
-                example: Ex corporis enim debitis provident sint molestiae.
+                example: Velit dicta doloremque.
         example:
-            source: Nemo enim ut rerum ut qui.
-            target: Laboriosam repellat numquam nam ipsum delectus.
+            source: Tempore debitis vero ratione.
+            target: Consequatur quia.
         required:
             - source
             - target
@@ -1519,25 +1528,24 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Porro expedita fugiat.
+                    example: Tempora eos est voluptatum quo.
                 example:
-                    - Aut tempora nisi ullam enim id ut.
-                    - Accusantium harum natus.
-                    - Magni dolorem qui aut itaque.
-                    - Necessitatibus qui.
+                    - Ratione atque molestiae.
+                    - Esse molestias qui ut asperiores cupiditate nam.
             repo:
                 type: string
-                example: Sunt enim rem ipsum et sit.
+                example: A nihil iste.
             tag:
                 type: string
-                example: Perspiciatis aliquid doloribus delectus deserunt et velit.
+                example: Debitis corrupti eius et qui reiciendis.
         example:
             files:
-                - Cumque explicabo error possimus ea cupiditate.
-                - Voluptate consequatur voluptate.
-                - Expedita reprehenderit ipsam placeat enim voluptatum.
-            repo: Impedit voluptatem dolor molestiae ipsa.
-            tag: Harum pariatur voluptatem est.
+                - Repellat beatae.
+                - Excepturi doloribus.
+                - Saepe nemo ea et molestiae.
+                - Quis dolorem at et.
+            repo: Est quo magnam dolorem sunt at qui.
+            tag: Eum aut veniam velit ea.
         required:
             - files
             - repo
@@ -1548,17 +1556,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Iure autem dolores quibusdam.
+                example: Qui aut eius.
             repo:
                 type: string
-                example: Sed doloremque eligendi impedit totam.
+                example: Quia aut voluptatum quae animi saepe qui.
             tag:
                 type: string
-                example: Et ad ipsam ut doloremque eum sit.
+                example: Quia consequuntur sit.
         example:
-            file: Cupiditate laboriosam aut expedita.
-            repo: In totam dignissimos odio enim ab.
-            tag: Quas eum possimus.
+            file: Voluptatum soluta nulla.
+            repo: Quam quia.
+            tag: Aperiam ad aut iure autem dolores.
         required:
             - file
             - repo
@@ -1569,12 +1577,8 @@ definitions:
         properties:
             end_at:
                 type: string
-                example: "2015-01-19T09:08:38Z"
+                example: "2008-10-21T18:23:45Z"
                 format: date-time
-            git_sha:
-                type: string
-                example: z26
-                maxLength: 40
             images:
                 type: array
                 items:
@@ -1586,43 +1590,45 @@ definitions:
                     - internal_url: http://macejkovic.biz/maddison
                       platform: Accusantium neque.
                       url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
             name:
                 type: string
-                example: Eos iste magnam sit rerum laborum.
+                example: Voluptas iure.
             namespace:
                 type: string
-                example: Quod molestias animi.
+                example: Vitae nesciunt.
             oci_artifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
+                    - files:
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
             platform:
                 type: string
-                example: Aut ex sit.
+                example: Et a qui quia molestiae.
             start_at:
                 type: string
-                example: "1970-03-01T05:41:15Z"
+                example: "1987-08-27T19:53:36Z"
                 format: date-time
             status:
                 type: string
-                example: pending
+                example: aborted
                 enum:
                     - pending
                     - processing
@@ -1632,11 +1638,10 @@ definitions:
                     - error
             url:
                 type: string
-                example: http://blanda.com/sydney_rutherford
+                example: http://hoppe.org/clara.ziemann
                 format: uri
         example:
-            end_at: "1970-01-15T08:46:17Z"
-            git_sha: 6pb
+            end_at: "1996-09-26T23:43:33Z"
             images:
                 - internal_url: http://macejkovic.biz/maddison
                   platform: Accusantium neque.
@@ -1647,23 +1652,40 @@ definitions:
                 - internal_url: http://macejkovic.biz/maddison
                   platform: Accusantium neque.
                   url: http://luettgensenger.com/ibrahim_sauer
-            name: Veniam velit ea sit cum et a.
-            namespace: Quia molestiae omnis molestiae accusamus corporis.
+                - internal_url: http://macejkovic.biz/maddison
+                  platform: Accusantium neque.
+                  url: http://luettgensenger.com/ibrahim_sauer
+            name: Voluptatem magnam dolor quisquam adipisci maxime impedit.
+            namespace: Suscipit fugiat est omnis.
             oci_artifacts:
                 - files:
-                    - A perspiciatis ratione minus sunt voluptas.
-                    - Quae quisquam.
-                  repo: Tempora debitis dolore explicabo repellendus et error.
-                  tag: Numquam quo.
+                    - Dolorem occaecati omnis sunt.
+                    - Perspiciatis ratione minus.
+                    - Voluptas eius quae.
+                  repo: Itaque tempora debitis dolore.
+                  tag: Repellendus et error provident.
                 - files:
-                    - A perspiciatis ratione minus sunt voluptas.
-                    - Quae quisquam.
-                  repo: Tempora debitis dolore explicabo repellendus et error.
-                  tag: Numquam quo.
-            platform: Qui velit ut.
-            start_at: "1998-01-31T12:56:13Z"
-            status: pending
-            url: http://baumbachokeefe.net/michale
+                    - Dolorem occaecati omnis sunt.
+                    - Perspiciatis ratione minus.
+                    - Voluptas eius quae.
+                  repo: Itaque tempora debitis dolore.
+                  tag: Repellendus et error provident.
+                - files:
+                    - Dolorem occaecati omnis sunt.
+                    - Perspiciatis ratione minus.
+                    - Voluptas eius quae.
+                  repo: Itaque tempora debitis dolore.
+                  tag: Repellendus et error provident.
+                - files:
+                    - Dolorem occaecati omnis sunt.
+                    - Perspiciatis ratione minus.
+                    - Voluptas eius quae.
+                  repo: Itaque tempora debitis dolore.
+                  tag: Repellendus et error provident.
+            platform: Molestiae fugiat nostrum laudantium ea et quia.
+            start_at: "1978-03-30T17:32:33Z"
+            status: error
+            url: http://blanda.com/verlie
         required:
             - name
             - namespace
@@ -1678,7 +1700,6 @@ definitions:
                     $ref: '#/definitions/TektonPipeline'
                 example:
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1690,26 +1711,28 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
                     - end_at: "1976-04-30T15:23:35Z"
-                      git_sha: gdd
                       images:
                         - internal_url: http://macejkovic.biz/maddison
                           platform: Accusantium neque.
@@ -1721,38 +1744,106 @@ definitions:
                       namespace: Error laboriosam qui tempore dolorum est nisi.
                       oci_artifacts:
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
                         - files:
-                            - A perspiciatis ratione minus sunt voluptas.
-                            - Quae quisquam.
-                          repo: Tempora debitis dolore explicabo repellendus et error.
-                          tag: Numquam quo.
-                      platform: Consequatur est incidunt labore.
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
                       start_at: "1992-08-03T05:21:25Z"
                       status: aborted
-                      url: http://morissette.info/bridget
+                      url: http://schinnervon.info/carlotta
+                    - end_at: "1976-04-30T15:23:35Z"
+                      images:
+                        - internal_url: http://macejkovic.biz/maddison
+                          platform: Accusantium neque.
+                          url: http://luettgensenger.com/ibrahim_sauer
+                        - internal_url: http://macejkovic.biz/maddison
+                          platform: Accusantium neque.
+                          url: http://luettgensenger.com/ibrahim_sauer
+                      name: Iste quasi.
+                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                      oci_artifacts:
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
+                      start_at: "1992-08-03T05:21:25Z"
+                      status: aborted
+                      url: http://schinnervon.info/carlotta
+                    - end_at: "1976-04-30T15:23:35Z"
+                      images:
+                        - internal_url: http://macejkovic.biz/maddison
+                          platform: Accusantium neque.
+                          url: http://luettgensenger.com/ibrahim_sauer
+                        - internal_url: http://macejkovic.biz/maddison
+                          platform: Accusantium neque.
+                          url: http://luettgensenger.com/ibrahim_sauer
+                      name: Iste quasi.
+                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                      oci_artifacts:
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                        - files:
+                            - Dolorem occaecati omnis sunt.
+                            - Perspiciatis ratione minus.
+                            - Voluptas eius quae.
+                          repo: Itaque tempora debitis dolore.
+                          tag: Repellendus et error provident.
+                      platform: Quo dolor consequatur est incidunt labore non.
+                      start_at: "1992-08-03T05:21:25Z"
+                      status: aborted
+                      url: http://schinnervon.info/carlotta
             triggers_event_ids:
                 type: array
                 items:
                     type: string
-                    example: a101adfb-8016-4f83-a596-d3e9e5cfcd3c
+                    example: f6018a8e-4b17-4f2b-ad8c-80aa377ac7c0
                     format: uuid
                 example:
-                    - 8788fd5d-15c5-4cf0-8dc6-0645bc2be4a9
-                    - 9b2cdc76-23fc-49b3-9fa4-a86e4a2fcdc5
-                    - 8ead70c4-a7d9-4883-8f71-65ae95dc244f
+                    - 59410446-9841-4929-b973-d55bea79261d
+                    - 3f9494d4-52ad-4660-8207-9e6d559c603d
+                    - 59f6c988-863a-49af-b476-e3c1ce02874d
         example:
             pipelines:
                 - end_at: "1976-04-30T15:23:35Z"
-                  git_sha: gdd
                   images:
                     - internal_url: http://macejkovic.biz/maddison
                       platform: Accusantium neque.
@@ -1764,26 +1855,28 @@ definitions:
                   namespace: Error laboriosam qui tempore dolorum est nisi.
                   oci_artifacts:
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
-                  platform: Consequatur est incidunt labore.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
+                  platform: Quo dolor consequatur est incidunt labore non.
                   start_at: "1992-08-03T05:21:25Z"
                   status: aborted
-                  url: http://morissette.info/bridget
+                  url: http://schinnervon.info/carlotta
                 - end_at: "1976-04-30T15:23:35Z"
-                  git_sha: gdd
                   images:
                     - internal_url: http://macejkovic.biz/maddison
                       platform: Accusantium neque.
@@ -1795,29 +1888,30 @@ definitions:
                   namespace: Error laboriosam qui tempore dolorum est nisi.
                   oci_artifacts:
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
                     - files:
-                        - A perspiciatis ratione minus sunt voluptas.
-                        - Quae quisquam.
-                      repo: Tempora debitis dolore explicabo repellendus et error.
-                      tag: Numquam quo.
-                  platform: Consequatur est incidunt labore.
+                        - Dolorem occaecati omnis sunt.
+                        - Perspiciatis ratione minus.
+                        - Voluptas eius quae.
+                      repo: Itaque tempora debitis dolore.
+                      tag: Repellendus et error provident.
+                  platform: Quo dolor consequatur est incidunt labore non.
                   start_at: "1992-08-03T05:21:25Z"
                   status: aborted
-                  url: http://morissette.info/bridget
+                  url: http://schinnervon.info/carlotta
             triggers_event_ids:
-                - d5af113e-9fa1-49c5-9a33-73cc199c4519
-                - 3770d823-9c9d-4c94-b9d2-98c1f0f41032
-                - 5422b075-af43-469c-b84a-9d498499d9cb
-                - ed9e18b1-0822-4397-acd1-c84e02d8298f
+                - ae2f2535-66da-4156-bb3f-cc32d940346b
+                - ae2cf06f-a206-46e6-90c8-dad5c54e4ea7
         required:
             - pipelines
     TiDBxBumpTagMeta:

@@ -759,7 +759,6 @@ func unmarshalTektonPipelineResponseToDevbuildTektonPipeline(v *TektonPipelineRe
 		Status:    devbuild.BuildStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
-		GitSha:    v.GitSha,
 		Platform:  v.Platform,
 		URL:       v.URL,
 	}
@@ -1042,7 +1041,6 @@ func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipeli
 		Status:    devbuild.BuildStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
-		GitSha:    v.GitSha,
 		Platform:  v.Platform,
 		URL:       v.URL,
 	}
@@ -1222,7 +1220,6 @@ func marshalDevbuildTektonPipelineToTektonPipelineRequestBody(v *devbuild.Tekton
 		Status:    string(v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
-		GitSha:    v.GitSha,
 		Platform:  v.Platform,
 		URL:       v.URL,
 	}
@@ -1406,7 +1403,6 @@ func marshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineR
 		Status:    devbuild.BuildStatus(v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
-		GitSha:    v.GitSha,
 		Platform:  v.Platform,
 		URL:       v.URL,
 	}

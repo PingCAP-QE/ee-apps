@@ -179,7 +179,6 @@ type TektonPipeline struct {
 	Status       BuildStatus
 	StartAt      *string
 	EndAt        *string
-	GitSha       *string
 	Images       []*ImageArtifact
 	OciArtifacts []*OciArtifact
 	Platform     *string

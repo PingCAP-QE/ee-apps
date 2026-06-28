@@ -273,7 +273,7 @@ func artifactSyncImageUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] artifact sync-image -body JSON
 
 Sync hotfix image to dockerhub
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s artifact sync-image --body '{
@@ -304,12 +304,12 @@ func devbuildListUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild list -page INT -page-size INT -hotfix BOOL -sort STRING -direction STRING -created-by STRING
 
 List devbuild with pagination support
-    -page INT:
-    -page-size INT:
-    -hotfix BOOL:
-    -sort STRING:
-    -direction STRING:
-    -created-by STRING:
+    -page INT: 
+    -page-size INT: 
+    -hotfix BOOL: 
+    -sort STRING: 
+    -direction STRING: 
+    -created-by STRING: 
 
 Example:
     %[1]s devbuild list --page 4905823721013348436 --page-size 2343576389426136765 --hotfix false --sort "updated_at" --direction "asc" --created-by "Accusamus in consectetur."
@@ -320,30 +320,30 @@ func devbuildCreateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild create -body JSON -dryrun BOOL
 
 Create and trigger devbuild
-    -body JSON:
-    -dryrun BOOL:
+    -body JSON: 
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild create --body '{
-      "created_by": "timothy@schinner.biz",
+      "created_by": "kenyatta.cummings@pfannerstill.org",
       "request": {
-         "build_env": "Laborum hic.",
-         "builder_img": "Ullam quia.",
-         "edition": "community",
-         "features": "Consequuntur dolores quos optio possimus.",
-         "git_ref": "Distinctio nihil cum asperiores quos.",
-         "git_sha": "Culpa nisi.",
-         "github_repo": "Reprehenderit minima voluptates dolores asperiores distinctio.",
+         "build_env": "Reprehenderit repellat vitae voluptas non dignissimos.",
+         "builder_img": "Atque voluptate dolorum consequuntur.",
+         "edition": "enterprise",
+         "features": "Veniam quia minus odio neque incidunt.",
+         "git_ref": "Quae fugit.",
+         "git_sha": "Ullam beatae porro omnis voluptas cumque.",
+         "github_repo": "Laboriosam velit sint autem natus molestiae.",
          "is_hotfix": true,
-         "is_push_gcr": false,
-         "pipeline_engine": "jenkins",
-         "platform": "linux/amd64",
-         "plugin_git_ref": "Tempore sed odit.",
-         "product": "tiproxy",
-         "product_base_img": "Repellendus quisquam est.",
-         "product_dockerfile": "Odit asperiores sed qui autem voluptas.",
-         "target_img": "Voluptas pariatur nobis reiciendis dolorum sint.",
-         "version": "Laboriosam ea modi."
+         "is_push_gcr": true,
+         "pipeline_engine": "tekton",
+         "platform": "all",
+         "plugin_git_ref": "Accusantium laborum ipsum nihil.",
+         "product": "pd",
+         "product_base_img": "Beatae minima.",
+         "product_dockerfile": "Minus odit qui facere inventore nemo.",
+         "target_img": "Sunt molestiae.",
+         "version": "Repellat quis necessitatibus et quos."
       }
    }' --dryrun false
 `, os.Args[0])
@@ -354,7 +354,7 @@ func devbuildGetUsage() {
 
 Get devbuild
     -id INT: ID of build
-    -sync BOOL:
+    -sync BOOL: 
 
 Example:
     %[1]s devbuild get --id 1 --sync true
@@ -365,9 +365,9 @@ func devbuildUpdateUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] devbuild update -body JSON -id INT -dryrun BOOL
 
 Update devbuild status
-    -body JSON:
+    -body JSON: 
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild update --body '{
@@ -375,53 +375,48 @@ Example:
          "build_report": {
             "binaries": [
                {
-                  "component": "Aut dolore ducimus omnis deserunt praesentium commodi.",
+                  "component": "Omnis deserunt.",
                   "oci_file": {
-                     "file": "Qui explicabo.",
-                     "repo": "Vero iure voluptatibus et qui.",
-                     "tag": "Rem et quia qui."
+                     "file": "Commodi dicta qui explicabo occaecati.",
+                     "repo": "Iure voluptatibus et qui dignissimos.",
+                     "tag": "Et quia qui ducimus ipsa."
                   },
-                  "platform": "Ipsa delectus.",
+                  "platform": "Sed laboriosam.",
                   "sha256_oci_file": {
-                     "file": "Qui explicabo.",
-                     "repo": "Vero iure voluptatibus et qui.",
-                     "tag": "Rem et quia qui."
+                     "file": "Commodi dicta qui explicabo occaecati.",
+                     "repo": "Iure voluptatibus et qui dignissimos.",
+                     "tag": "Et quia qui ducimus ipsa."
                   },
-                  "sha256_url": "http://bins.com/kelton",
-                  "url": "http://thiel.net/zetta.bergnaum"
+                  "sha256_url": "http://bruenlarson.org/garfield",
+                  "url": "http://dicki.com/zetta"
                },
                {
-                  "component": "Aut dolore ducimus omnis deserunt praesentium commodi.",
+                  "component": "Omnis deserunt.",
                   "oci_file": {
-                     "file": "Qui explicabo.",
-                     "repo": "Vero iure voluptatibus et qui.",
-                     "tag": "Rem et quia qui."
+                     "file": "Commodi dicta qui explicabo occaecati.",
+                     "repo": "Iure voluptatibus et qui dignissimos.",
+                     "tag": "Et quia qui ducimus ipsa."
                   },
-                  "platform": "Ipsa delectus.",
+                  "platform": "Sed laboriosam.",
                   "sha256_oci_file": {
-                     "file": "Qui explicabo.",
-                     "repo": "Vero iure voluptatibus et qui.",
-                     "tag": "Rem et quia qui."
+                     "file": "Commodi dicta qui explicabo occaecati.",
+                     "repo": "Iure voluptatibus et qui dignissimos.",
+                     "tag": "Et quia qui ducimus ipsa."
                   },
-                  "sha256_url": "http://bins.com/kelton",
-                  "url": "http://thiel.net/zetta.bergnaum"
+                  "sha256_url": "http://bruenlarson.org/garfield",
+                  "url": "http://dicki.com/zetta"
                }
             ],
-            "git_sha": "e4e",
+            "git_sha": "4ed",
             "images": [
                {
                   "internal_url": "http://littel.com/mikel",
-                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                  "platform": "Libero praesentium dolore consequatur incidunt.",
                   "url": "http://padbergschowalter.name/maybell_douglas"
                },
                {
                   "internal_url": "http://littel.com/mikel",
-                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
-                  "url": "http://padbergschowalter.name/maybell_douglas"
-               },
-               {
-                  "internal_url": "http://littel.com/mikel",
-                  "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                  "platform": "Libero praesentium dolore consequatur incidunt.",
                   "url": "http://padbergschowalter.name/maybell_douglas"
                }
             ],
@@ -442,26 +437,25 @@ Example:
             "pipelines": [
                {
                   "end_at": "2010-12-18T18:45:43Z",
-                  "git_sha": "omy",
                   "images": [
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
@@ -470,52 +464,49 @@ Example:
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      },
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      }
                   ],
-                  "platform": "Earum sunt nulla quis officiis.",
+                  "platform": "Quia dolor aspernatur facere et consequatur.",
                   "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.net/stephen"
+                  "url": "http://tremblayharris.org/easton"
                },
                {
                   "end_at": "2010-12-18T18:45:43Z",
-                  "git_sha": "omy",
                   "images": [
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
@@ -524,52 +515,49 @@ Example:
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      },
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      }
                   ],
-                  "platform": "Earum sunt nulla quis officiis.",
+                  "platform": "Quia dolor aspernatur facere et consequatur.",
                   "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.net/stephen"
+                  "url": "http://tremblayharris.org/easton"
                },
                {
                   "end_at": "2010-12-18T18:45:43Z",
-                  "git_sha": "omy",
                   "images": [
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      },
                      {
                         "internal_url": "http://littel.com/mikel",
-                        "platform": "Accusamus libero praesentium dolore consequatur incidunt.",
+                        "platform": "Libero praesentium dolore consequatur incidunt.",
                         "url": "http://padbergschowalter.name/maybell_douglas"
                      }
                   ],
@@ -578,38 +566,36 @@ Example:
                   "oci_artifacts": [
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      },
                      {
                         "files": [
-                           "Quod vitae asperiores officiis quasi cumque iste.",
-                           "A consequatur consequuntur excepturi.",
-                           "Assumenda tempora maxime dolorum enim accusamus.",
-                           "Neque voluptates expedita aut voluptas sequi."
+                           "Iste quos ratione maiores quod.",
+                           "Asperiores officiis quasi cumque iste illum a.",
+                           "Consequuntur excepturi qui assumenda tempora maxime."
                         ],
-                        "repo": "Nisi quia dolor aspernatur.",
-                        "tag": "Et consequatur vel numquam tempore molestiae."
+                        "repo": "Enim accusamus corrupti.",
+                        "tag": "Voluptates expedita aut voluptas sequi magni."
                      }
                   ],
-                  "platform": "Earum sunt nulla quis officiis.",
+                  "platform": "Quia dolor aspernatur facere et consequatur.",
                   "start_at": "1998-03-10T18:02:56Z",
                   "status": "processing",
-                  "url": "http://roob.net/stephen"
+                  "url": "http://tremblayharris.org/easton"
                }
             ],
             "triggers_event_ids": [
-               "d24c3614-1938-498e-8951-858363173b5d",
-               "6df11996-bcd2-41e2-8d8c-21f94e96d0ae"
+               "46fe8495-578a-4fee-85a8-730ba11e4f2e",
+               "dd3b4fa2-29e6-4940-8f0f-4007c34220bd"
             ]
          }
       }
-   }' --id 1 --dryrun false
+   }' --id 1 --dryrun true
 `, os.Args[0])
 }
 
@@ -618,7 +604,7 @@ func devbuildRerunUsage() {
 
 Rerun devbuild
     -id INT: ID of build
-    -dryrun BOOL:
+    -dryrun BOOL: 
 
 Example:
     %[1]s devbuild rerun --id 1 --dryrun false
@@ -643,7 +629,7 @@ func hotfixBumpTagForTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix bump-tag-for-tidbx -body JSON
 
 Create a hot fix git tag for a GitHub repository
-    -body JSON:
+    -body JSON: 
 
 Example:
     %[1]s hotfix bump-tag-for-tidbx --body '{
@@ -666,8 +652,8 @@ func hotfixQueryTagOfTidbxUsage() {
 	fmt.Fprintf(os.Stderr, `%[1]s [flags] hotfix query-tag-of-tidbx -repo STRING -tag STRING
 
 Query tag info of tidbx repo
-    -repo STRING:
-    -tag STRING:
+    -repo STRING: 
+    -tag STRING: 
 
 Example:
     %[1]s hotfix query-tag-of-tidbx --repo "pingcap/tidb" --tag "v26.3.1-nextgen"

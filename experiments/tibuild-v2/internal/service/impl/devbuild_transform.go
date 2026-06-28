@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"strings"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -10,6 +11,29 @@ import (
 
 // transformDevBuild converts an ent.DevBuild to a devbuild.DevBuild
 func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
+	status := &devbuild.DevBuildStatus{
+		BuildReport:     transformBuildReport(build.BuildReport),
+		ErrMsg:          &build.ErrMsg,
+		PipelineBuildID: &build.PipelineBuildID,
+		PipelineStartAt: new(build.PipelineStartAt.UTC().Format(time.DateTime)),
+		PipelineEndAt:   new(build.PipelineEndAt.UTC().Format(time.DateTime)),
+		Status:          devbuild.BuildStatus(build.Status),
+		TektonStatus:    transformTektonStatus(build.TektonStatus),
+	}
+
+	// Populate PipelineViewURLs from tekton pipeline URLs
+	if build.TektonStatus.Pipelines != nil {
+		var urls []string
+		for _, p := range build.TektonStatus.Pipelines {
+			if p.URL != "" {
+				urls = append(urls, p.URL)
+			}
+		}
+		if len(urls) > 0 {
+			status.PipelineViewUrls = urls
+		}
+	}
+
 	return &devbuild.DevBuild{
 		ID: build.ID,
 		Meta: &devbuild.DevBuildMeta{
@@ -36,15 +60,7 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			TargetImg:         &build.TargetImg,
 			Version:           build.Version,
 		},
-		Status: &devbuild.DevBuildStatus{
-			BuildReport:     transformBuildReport(build.BuildReport),
-			ErrMsg:          &build.ErrMsg,
-			PipelineBuildID: &build.PipelineBuildID,
-			PipelineStartAt: ptr(build.PipelineStartAt.UTC().Format(time.DateTime)),
-			PipelineEndAt:   ptr(build.PipelineEndAt.UTC().Format(time.DateTime)),
-			Status:          devbuild.BuildStatus(build.Status),
-			TektonStatus:    transformTektonStatus(build.TektonStatus),
-		},
+		Status: status,
 	}
 }
 
@@ -67,7 +83,23 @@ func transformBuildReport(report map[string]any) *devbuild.BuildReport {
 	}
 
 	// Transform binaries
-	// Add your transformation logic here.
+	if binariesRaw, ok := report["binaries"].([]any); ok {
+		for _, binRaw := range binariesRaw {
+			if oci, ok := binRaw.(map[string]any); ok {
+				repo := getString(oci, "repo")
+				tag := getString(oci, "tag")
+				filesRaw, _ := oci["files"].([]any)
+				var files []string
+				for _, f := range filesRaw {
+					if s, ok := f.(string); ok {
+						files = append(files, s)
+					}
+				}
+				binArtifacts := ociArtifactToBinArtifacts(repo, tag, files)
+				buildReport.Binaries = append(buildReport.Binaries, binArtifacts...)
+			}
+		}
+	}
 
 	// Transform images
 	if imagesRaw, ok := report["images"].([]any); ok {
@@ -101,11 +133,10 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 				Name:      p.Name,
 				Namespace: p.Namespace,
 				Status:    devbuild.BuildStatus(p.Status),
-				StartAt:   ptr(p.StartAt.UTC().Format(time.RFC3339)),
-				EndAt:     ptr(p.EndAt.UTC().Format(time.RFC3339)),
-				GitSha:    &p.GitSha,
+				StartAt:   new(p.StartAt.UTC().Format(time.RFC3339)),
+				EndAt:     new(p.EndAt.UTC().Format(time.RFC3339)),
 				Platform:  &p.Platform,
-				URL:       &p.URL,
+				URL:       nonEmptyPtr(p.URL),
 			}
 
 			// Transform images
@@ -141,6 +172,31 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 	return tektonStatus
 }
 
+// ociArtifactToBinArtifacts converts OCI artifact files to BinArtifact entries,
+// pairing each binary with its .sha256 checksum file.
+func ociArtifactToBinArtifacts(repo, tag string, files []string) []*devbuild.BinArtifact {
+	var result []*devbuild.BinArtifact
+	sha256Map := make(map[string]*devbuild.OciFile)
+
+	for _, file := range files {
+		if origin, ok := strings.CutSuffix(file, ".sha256"); ok {
+			sha256Map[origin] = &devbuild.OciFile{Repo: repo, Tag: tag, File: file}
+		} else {
+			result = append(result, &devbuild.BinArtifact{
+				OciFile: &devbuild.OciFile{Repo: repo, Tag: tag, File: file},
+			})
+		}
+	}
+
+	for _, bin := range result {
+		if bin.OciFile != nil {
+			bin.Sha256OciFile = sha256Map[bin.OciFile.File]
+		}
+	}
+
+	return result
+}
+
 // Helper function to safely get string value from a map
 func getString(m map[string]any, key string) string {
 	if val, ok := m[key].(string); ok {
@@ -149,8 +205,10 @@ func getString(m map[string]any, key string) string {
 	return ""
 }
 
-// ptr is a helper routine that allocates a new T value
-// to store v and returns a pointer to it.
-func ptr[T any](v T) *T {
+// nonEmptyPtr returns a pointer to v if v is non-empty, otherwise nil.
+func nonEmptyPtr(v string) *string {
+	if v == "" {
+		return nil
+	}
 	return &v
 }
