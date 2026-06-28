@@ -94,6 +94,27 @@ Charts: `chatops-lark`, `ci-dashboard`, `cloudevents-server`, `dl`, `publisher`,
 | `charts-release.yaml` | Push to main (chart changes) | Helm package + push to OCI |
 | `weekly-release.yaml` | Weekly cron (Sunday UTC) | Creates `vYYYY.M.D` tag + release |
 
+## Git Commit Convention
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+type(scope): description
+```
+
+- **Types**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`
+- **Scope**: subproject name — `tibuild`, `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `change-insight`, `roster`, `charts`
+- **No scope** for cross-cutting changes (e.g. `fix: auto fixes from pre-commit.com hooks`)
+- **Lowercase** description, no trailing period
+- English preferred; Chinese acceptable for clarity
+
+Examples:
+```
+feat(notifier): show all PipelineRuns instead of only the first one
+fix(ci-dashboard): keep sticky flaky table cells opaque
+docs: add AGENTS.md and update README with project overview
+```
+
 ## Pre-commit Hooks
 
 ```yaml
