@@ -186,7 +186,6 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 					Status:   string(p.Status),
 					Platform: derefString(p.Platform),
 					URL:      derefString(p.URL),
-					GitSha:   derefString(p.GitSha),
 				}
 				if p.StartAt != nil {
 					t, err := time.Parse(time.RFC3339, *p.StartAt)

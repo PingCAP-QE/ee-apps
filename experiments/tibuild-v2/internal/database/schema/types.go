@@ -17,7 +17,6 @@ type TektonPipeline struct {
 	Status       string          `json:"status"`
 	StartAt      *time.Time      `json:"start_at,omitempty"`
 	EndAt        *time.Time      `json:"end_at,omitempty"`
-	GitSha       string          `json:"git_sha,omitempty"`
 	Images       []ImageArtifact `json:"images,omitempty"`
 	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitempty"`
 	Platform     string          `json:"platform,omitempty"`
