@@ -16,7 +16,10 @@ var larkTemplateBytes string
 
 // NewLarkCardWithGoTemplate builds a Lark interactive card JSON from the template.
 func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) {
-	tmpl, err := template.New("lark").Funcs(sprig.FuncMap()).Parse(larkTemplateBytes)
+	funcMap := sprig.FuncMap()
+	funcMap["StatusColor"] = StatusColor
+	funcMap["StatusEmoji"] = StatusEmoji
+	tmpl, err := template.New("lark").Funcs(funcMap).Parse(larkTemplateBytes)
 	if err != nil {
 		return nil, err
 	}
