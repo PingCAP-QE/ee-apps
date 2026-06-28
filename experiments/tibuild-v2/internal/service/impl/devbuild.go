@@ -30,6 +30,7 @@ type devbuildsrvc struct {
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardURL           string
+	reconcilerSince        time.Duration
 	httpClient             *http.Client
 	jenkins                struct {
 		client  *gojenkins.Jenkins
@@ -43,7 +44,6 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		logger.Err(err).Msg("failed to create store client")
 		return nil
 	}
-	dbClient = dbClient.Debug()
 
 	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
 	if err != nil {
@@ -51,14 +51,24 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		return nil
 	}
 
+	reconcilerSince := 24 * time.Hour
+	if cfg.Tekton.ReconcilerSince != "" {
+		if d, err := time.ParseDuration(cfg.Tekton.ReconcilerSince); err == nil {
+			reconcilerSince = d
+		} else {
+			logger.Warn().Str("reconciler_since", cfg.Tekton.ReconcilerSince).Msg("invalid reconciler_since, using default 24h")
+		}
+	}
+
 	srvc := devbuildsrvc{
 		logger:                 logger,
-		dbClient:               dbClient.Debug(),
+		dbClient:               dbClient,
 		productRepoMap:         cfg.ProductRepoMap,
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
 		dashboardURL:           cfg.Tekton.ViewURL,
+		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
 	}
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
@@ -367,18 +377,15 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 				return v, nil
 			}
 
-			// Get the build ID and fetch the latest record
+			// Get the build ID and send notification asynchronously
 			buildID, _ := mut.ID()
-			build, err := dbClient.DevBuild.Get(ctx, buildID)
-			if err != nil {
-				logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
-				return v, nil
-			}
-
-			// Send notification asynchronously (non-blocking)
 			go func() {
-				notifCtx := context.Background()
-				if notifyErr := notifier.Notify(notifCtx, build); notifyErr != nil {
+				build, err := dbClient.DevBuild.Get(context.Background(), buildID)
+				if err != nil {
+					logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
+					return
+				}
+				if notifyErr := notifier.Notify(context.Background(), build); notifyErr != nil {
 					logger.Err(notifyErr).Int("build_id", buildID).Msg("failed to send notification")
 				}
 			}()

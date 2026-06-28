@@ -21,13 +21,23 @@ import (
 // terminalStatuses are the build statuses that indicate a build is finished.
 var terminalStatuses = []string{"success", "failure", "error", "aborted"}
 
+// buildReconcileData holds the data needed to reconcile a single build.
+type buildReconcileData struct {
+	Build        *ent.DevBuild
+	PipelineRuns []tknv1.PipelineRun
+}
+
 // Reconcile checks for non-terminal builds and syncs their status with Tekton Dashboard API.
+// It separates Tekton HTTP calls (slow) from DB updates (fast) to minimize lock contention.
 func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 	s.logger.Debug().Msg("running reconciliation cycle")
 
-	// Query all non-terminal builds
+	// Query non-terminal builds created within the configured lookback period.
 	builds, err := s.dbClient.DevBuild.Query().
-		Where(entdevbuild.StatusNotIn(terminalStatuses...)).
+		Where(
+			entdevbuild.StatusNotIn(terminalStatuses...),
+			entdevbuild.CreatedAtGTE(time.Now().Add(-s.reconcilerSince)),
+		).
 		All(ctx)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to query non-terminal builds")
@@ -41,10 +51,33 @@ func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 
 	s.logger.Info().Int("count", len(builds)).Msg("found non-terminal builds to reconcile")
 
+	// Phase 1: Fetch Tekton PipelineRuns for all builds (slow HTTP calls, no DB locks).
+	var pending []buildReconcileData
 	for _, build := range builds {
-		if err := s.reconcileBuild(ctx, build); err != nil {
-			s.logger.Err(err).Int("build_id", build.ID).Msg("failed to reconcile build")
+		eventIDs := build.TektonStatus.TriggersEventIds
+		if len(eventIDs) == 0 {
 			continue
+		}
+
+		var allRuns []tknv1.PipelineRun
+		for _, eventID := range eventIDs {
+			runs, err := s.queryPipelineRuns(ctx, eventID)
+			if err != nil {
+				s.logger.Err(err).Int("build_id", build.ID).Str("event_id", eventID).Msg("failed to query pipeline runs")
+				continue
+			}
+			allRuns = append(allRuns, runs...)
+		}
+
+		if len(allRuns) > 0 {
+			pending = append(pending, buildReconcileData{Build: build, PipelineRuns: allRuns})
+		}
+	}
+
+	// Phase 2: Update DB for builds that have PipelineRun data (fast, minimal lock time).
+	for _, data := range pending {
+		if err := s.updateBuildFromPipelineRuns(ctx, data.Build, data.PipelineRuns); err != nil {
+			s.logger.Err(err).Int("build_id", data.Build.ID).Msg("failed to reconcile build")
 		}
 	}
 }
@@ -156,7 +189,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 		updater.SetPipelineEndAt(endTime.Time)
 	}
 
-	if _, err := updater.Save(ctx); err != nil {
+	if err := updater.Exec(ctx); err != nil {
 		return fmt.Errorf("failed to update build: %w", err)
 	}
 

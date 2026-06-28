@@ -34,6 +34,7 @@ type Tekton struct {
 	ViewURL            string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
 	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
 	ReconcilerInterval string `yaml:"reconciler_interval,omitempty" json:"reconciler_interval,omitempty"`
+	ReconcilerSince    string `yaml:"reconciler_since,omitempty" json:"reconciler_since,omitempty"`
 }
 
 type Lark struct {
