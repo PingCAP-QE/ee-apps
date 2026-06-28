@@ -15,23 +15,23 @@ type TektonPipeline struct {
 	Name         string          `json:"name"`
 	Namespace    string          `json:"namespace"`
 	Status       string          `json:"status"`
-	StartAt      *time.Time      `json:"start_at,omitempty"`
-	EndAt        *time.Time      `json:"end_at,omitempty"`
-	Images       []ImageArtifact `json:"images,omitempty"`
-	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitempty"`
-	Platform     string          `json:"platform,omitempty"`
-	URL          string          `json:"url,omitempty"`
+	StartAt      *time.Time      `json:"start_at,omitzero"`
+	EndAt        *time.Time      `json:"end_at,omitzero"`
+	Images       []ImageArtifact `json:"images,omitzero"`
+	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitzero"`
+	Platform     string          `json:"platform,omitzero"`
+	URL          string          `json:"url,omitzero"`
 }
 
 // ImageArtifact represents a container image artifact.
 type ImageArtifact struct {
-	Platform string `json:"platform,omitempty"`
-	URL      string `json:"url,omitempty"`
+	Platform string `json:"platform,omitzero"`
+	URL      string `json:"url,omitzero"`
 }
 
 // OciArtifact represents an OCI artifact.
 type OciArtifact struct {
-	Files []string `json:"files"`
-	Repo  string   `json:"repo"`
-	Tag   string   `json:"tag"`
+	Files []string `json:"files,omitzero"`
+	Repo  string   `json:"repo,omitzero"`
+	Tag   string   `json:"tag,omitzero"`
 }
