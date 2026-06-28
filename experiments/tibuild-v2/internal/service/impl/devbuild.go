@@ -366,8 +366,8 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 				return v, nil
 			}
 
-			// Only trigger on Update operations
-			if !m.Op().Is(ent.OpUpdate) {
+			// Only trigger on Update or UpdateOne operations
+			if !m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
 				return v, nil
 			}
 
