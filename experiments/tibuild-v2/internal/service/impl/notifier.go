@@ -41,15 +41,10 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
 		return nil
 	}
 
-	card, err := buildNotificationCard(build)
+	payload, err := buildNotificationCard(build)
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to build notification card")
 		return err
-	}
-
-	payload := map[string]any{
-		"msg_type": "interactive",
-		"card":     card,
 	}
 
 	body, err := json.Marshal(payload)
@@ -57,6 +52,8 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to marshal notification payload")
 		return err
 	}
+
+	n.logger.Debug().Str("webhook", n.webhookURL).Str("body", string(body)).Msg("debug lark message")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.webhookURL, bytes.NewReader(body))
 	if err != nil {
