@@ -71,12 +71,14 @@ paths:
                   description: The page number of items
                   required: false
                   type: integer
+                  format: int64
                   default: 1
                 - name: page_size
                   in: query
                   description: Page size
                   required: false
                   type: integer
+                  format: int64
                   default: 30
                 - name: hotfix
                   in: query
@@ -189,6 +191,7 @@ paths:
                   description: ID of build
                   required: true
                   type: integer
+                  format: int64
             responses:
                 "200":
                     description: OK response.
@@ -233,6 +236,7 @@ paths:
                   description: ID of build
                   required: true
                   type: integer
+                  format: int64
                 - name: UpdateRequestBody
                   in: body
                   required: true
@@ -285,6 +289,7 @@ paths:
                   description: ID of build
                   required: true
                   type: integer
+                  format: int64
             responses:
                 "200":
                     description: OK response.
@@ -443,35 +448,35 @@ definitions:
         properties:
             component:
                 type: string
-                example: Aperiam vel est.
+                example: Id ea inventore nihil culpa quis doloribus.
             oci_file:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Et sed doloremque eligendi impedit.
+                example: Omnis suscipit.
             sha256_oci_file:
                 $ref: '#/definitions/OciFile'
             sha256_url:
                 type: string
-                example: http://weissnat.org/santa
+                example: http://murazik.name/julius_rogahn
                 format: uri
             url:
                 type: string
-                example: http://blockkeebler.name/alexandro.wehner
+                example: http://millsschoen.name/trevion.rath
                 format: uri
         example:
-            component: Omnis suscipit.
+            component: Doloribus vero.
             oci_file:
-                file: Veniam et provident.
-                repo: Dolores quis quia vitae non.
-                tag: Reiciendis minus.
-            platform: Ut nostrum.
+                file: Impedit incidunt ea aut quas pariatur qui.
+                repo: Harum repellat qui eos est velit.
+                tag: Iusto ut rerum dolorum.
+            platform: Aspernatur maiores enim omnis voluptatum aperiam.
             sha256_oci_file:
-                file: Veniam et provident.
-                repo: Dolores quis quia vitae non.
-                tag: Reiciendis minus.
-            sha256_url: http://howecummings.biz/robbie_harber
-            url: http://boehmlangosh.net/hector
+                file: Impedit incidunt ea aut quas pariatur qui.
+                repo: Harum repellat qui eos est velit.
+                tag: Iusto ut rerum dolorum.
+            sha256_url: http://grantdaniel.info/meagan
+            url: http://mante.info/derrick.jenkins
     BuildReport:
         title: BuildReport
         type: object
@@ -481,125 +486,122 @@ definitions:
                 items:
                     $ref: '#/definitions/BinArtifact'
                 example:
-                    - component: Quia quam necessitatibus optio ipsam autem.
+                    - component: Facilis corrupti.
                       oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
                       sha256_oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      sha256_url: http://hessel.name/aric_reynolds
-                      url: http://gusikowski.info/ellen_haag
-                    - component: Quia quam necessitatibus optio ipsam autem.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
                       oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
                       sha256_oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      sha256_url: http://hessel.name/aric_reynolds
-                      url: http://gusikowski.info/ellen_haag
-                    - component: Quia quam necessitatibus optio ipsam autem.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
                       oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
                       sha256_oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      sha256_url: http://hessel.name/aric_reynolds
-                      url: http://gusikowski.info/ellen_haag
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
+                      oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
+                      sha256_oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
             git_sha:
                 type: string
-                example: i4y
+                example: 2hl
                 maxLength: 40
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
             plugin_git_sha:
                 type: string
-                example: znh
+                example: q0x
                 maxLength: 40
             printed_version:
                 type: string
-                example: Dolore rerum non autem quidem vero.
+                example: Sed sit atque.
         example:
             binaries:
-                - component: Quia quam necessitatibus optio ipsam autem.
+                - component: Facilis corrupti.
                   oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                    file: Impedit incidunt ea aut quas pariatur qui.
+                    repo: Harum repellat qui eos est velit.
+                    tag: Iusto ut rerum dolorum.
+                  platform: Necessitatibus molestias laborum iste nobis.
                   sha256_oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  sha256_url: http://hessel.name/aric_reynolds
-                  url: http://gusikowski.info/ellen_haag
-                - component: Quia quam necessitatibus optio ipsam autem.
+                    file: Impedit incidunt ea aut quas pariatur qui.
+                    repo: Harum repellat qui eos est velit.
+                    tag: Iusto ut rerum dolorum.
+                  sha256_url: http://welch.name/paul
+                  url: http://kreiger.biz/maegan_bradtke
+                - component: Facilis corrupti.
                   oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                    file: Impedit incidunt ea aut quas pariatur qui.
+                    repo: Harum repellat qui eos est velit.
+                    tag: Iusto ut rerum dolorum.
+                  platform: Necessitatibus molestias laborum iste nobis.
                   sha256_oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  sha256_url: http://hessel.name/aric_reynolds
-                  url: http://gusikowski.info/ellen_haag
-                - component: Quia quam necessitatibus optio ipsam autem.
-                  oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
-                  sha256_oci_file:
-                    file: Veniam et provident.
-                    repo: Dolores quis quia vitae non.
-                    tag: Reiciendis minus.
-                  sha256_url: http://hessel.name/aric_reynolds
-                  url: http://gusikowski.info/ellen_haag
-            git_sha: ftr
+                    file: Impedit incidunt ea aut quas pariatur qui.
+                    repo: Harum repellat qui eos est velit.
+                    tag: Iusto ut rerum dolorum.
+                  sha256_url: http://welch.name/paul
+                  url: http://kreiger.biz/maegan_bradtke
+            git_sha: 99b
             images:
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-            plugin_git_sha: evz
-            printed_version: Odit molestias quisquam suscipit corporis.
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+            plugin_git_sha: zme
+            printed_version: Dolore voluptatem corporis magni aspernatur.
     DevBuild:
         title: DevBuild
         type: object
         properties:
             id:
                 type: integer
-                example: 1617986457262471165
+                example: 4993057373760091989
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -608,214 +610,184 @@ definitions:
             status:
                 $ref: '#/definitions/DevBuildStatus'
         example:
-            id: 3467924166902637199
+            id: 5045632264529358030
             meta:
-                created_at: 1730-26-88 87:09:90
-                created_by: domenico.durgan@mueller.biz
-                updated_at: 7869-93-06 46:20:08
+                created_at: 6446-33-86 66:32:44
+                created_by: berneice@prohaska.name
+                updated_at: 5334-23-63 30:61:32
             spec:
-                build_env: Velit ipsam voluptatum enim harum.
-                builder_img: Natus quia illo blanditiis totam in.
-                edition: nextgen
-                features: Aut placeat rerum dicta.
-                git_ref: Ipsa veniam aspernatur.
-                git_sha: Harum voluptatem enim aliquam.
-                github_repo: Neque dolores.
-                is_hotfix: false
+                build_env: Dolores qui voluptates velit ducimus in deleniti.
+                builder_img: Consequatur doloribus culpa velit et id deserunt.
+                edition: fips
+                features: Ut eum iusto id officiis.
+                git_ref: Laboriosam ut perspiciatis porro.
+                git_sha: Distinctio aliquid eum.
+                github_repo: Reprehenderit neque velit maiores culpa rerum accusamus.
+                is_hotfix: true
                 is_push_gcr: false
-                pipeline_engine: jenkins
-                platform: darwin
-                plugin_git_ref: Veritatis ut quisquam.
-                product: tici
-                product_base_img: Totam quae debitis.
-                product_dockerfile: Hic ullam atque.
-                target_img: Consequatur laudantium aut vitae iste ut.
-                version: Blanditiis magni eaque quas.
+                pipeline_engine: tekton
+                platform: linux/arm64
+                plugin_git_ref: Necessitatibus et necessitatibus sint.
+                product: drainer
+                product_base_img: Minima et vel.
+                product_dockerfile: Nulla qui quod maiores.
+                target_img: Rerum quod similique nesciunt.
+                version: Quisquam qui odio.
             status:
                 build_report:
                     binaries:
-                        - component: Quia quam necessitatibus optio ipsam autem.
+                        - component: Facilis corrupti.
                           oci_file:
-                            file: Veniam et provident.
-                            repo: Dolores quis quia vitae non.
-                            tag: Reiciendis minus.
-                          platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          platform: Necessitatibus molestias laborum iste nobis.
                           sha256_oci_file:
-                            file: Veniam et provident.
-                            repo: Dolores quis quia vitae non.
-                            tag: Reiciendis minus.
-                          sha256_url: http://hessel.name/aric_reynolds
-                          url: http://gusikowski.info/ellen_haag
-                        - component: Quia quam necessitatibus optio ipsam autem.
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          sha256_url: http://welch.name/paul
+                          url: http://kreiger.biz/maegan_bradtke
+                        - component: Facilis corrupti.
                           oci_file:
-                            file: Veniam et provident.
-                            repo: Dolores quis quia vitae non.
-                            tag: Reiciendis minus.
-                          platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          platform: Necessitatibus molestias laborum iste nobis.
                           sha256_oci_file:
-                            file: Veniam et provident.
-                            repo: Dolores quis quia vitae non.
-                            tag: Reiciendis minus.
-                          sha256_url: http://hessel.name/aric_reynolds
-                          url: http://gusikowski.info/ellen_haag
-                    git_sha: as5
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          sha256_url: http://welch.name/paul
+                          url: http://kreiger.biz/maegan_bradtke
+                        - component: Facilis corrupti.
+                          oci_file:
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          platform: Necessitatibus molestias laborum iste nobis.
+                          sha256_oci_file:
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          sha256_url: http://welch.name/paul
+                          url: http://kreiger.biz/maegan_bradtke
+                        - component: Facilis corrupti.
+                          oci_file:
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          platform: Necessitatibus molestias laborum iste nobis.
+                          sha256_oci_file:
+                            file: Impedit incidunt ea aut quas pariatur qui.
+                            repo: Harum repellat qui eos est velit.
+                            tag: Iusto ut rerum dolorum.
+                          sha256_url: http://welch.name/paul
+                          url: http://kreiger.biz/maegan_bradtke
+                    git_sha: 7zd
                     images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                    plugin_git_sha: 8uk
-                    printed_version: Ab facere quo sint adipisci voluptatum aut.
-                err_msg: Sunt id libero labore sunt.
-                pipeline_build_id: 6140071046588247323
-                pipeline_end_at: 5024-94-28 62:27:87
-                pipeline_start_at: 3186-28-36 09:80:30
-                pipeline_view_url: http://tremblay.biz/fausto
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                    plugin_git_sha: "530"
+                    printed_version: Neque rerum qui temporibus autem.
+                err_msg: Libero dolorum est id.
+                pipeline_build_id: 8794399371087480447
+                pipeline_end_at: 5780-97-48 15:11:33
+                pipeline_start_at: 5369-86-05 14:76:82
+                pipeline_view_url: http://waters.name/thora_rolfson
                 pipeline_view_urls:
-                    - http://champlin.name/junius.harber
-                    - http://zemlak.net/jasper
-                status: error
+                    - http://brakusroberts.org/damaris
+                    - http://beatty.info/deion
+                status: processing
                 tekton_status:
                     pipelines:
-                        - end_at: "1976-04-30T15:23:35Z"
+                        - end_at: "1971-02-10T20:28:19Z"
                           images:
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                          name: Iste quasi.
-                          namespace: Error laboriosam qui tempore dolorum est nisi.
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                          name: Recusandae est dolorem magni.
+                          namespace: Aut delectus in corporis reiciendis consectetur.
                           oci_artifacts:
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                          platform: Quo dolor consequatur est incidunt labore non.
-                          start_at: "1992-08-03T05:21:25Z"
-                          status: aborted
-                          url: http://schinnervon.info/carlotta
-                        - end_at: "1976-04-30T15:23:35Z"
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
+                            - files:
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
+                          platform: Non dolor deserunt atque exercitationem non.
+                          start_at: "1975-05-04T08:41:39Z"
+                          status: error
+                          url: http://mayert.info/jules_little
+                        - end_at: "1971-02-10T20:28:19Z"
                           images:
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                          name: Iste quasi.
-                          namespace: Error laboriosam qui tempore dolorum est nisi.
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                            - internal_url: http://shields.biz/charity
+                              platform: Vero eveniet.
+                              url: http://hand.name/keely
+                          name: Recusandae est dolorem magni.
+                          namespace: Aut delectus in corporis reiciendis consectetur.
                           oci_artifacts:
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                          platform: Quo dolor consequatur est incidunt labore non.
-                          start_at: "1992-08-03T05:21:25Z"
-                          status: aborted
-                          url: http://schinnervon.info/carlotta
-                        - end_at: "1976-04-30T15:23:35Z"
-                          images:
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                          name: Iste quasi.
-                          namespace: Error laboriosam qui tempore dolorum est nisi.
-                          oci_artifacts:
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
                             - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                            - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                            - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                          platform: Quo dolor consequatur est incidunt labore non.
-                          start_at: "1992-08-03T05:21:25Z"
-                          status: aborted
-                          url: http://schinnervon.info/carlotta
-                        - end_at: "1976-04-30T15:23:35Z"
-                          images:
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                            - internal_url: http://macejkovic.biz/maddison
-                              platform: Accusantium neque.
-                              url: http://luettgensenger.com/ibrahim_sauer
-                          name: Iste quasi.
-                          namespace: Error laboriosam qui tempore dolorum est nisi.
-                          oci_artifacts:
-                            - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                            - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                            - files:
-                                - Dolorem occaecati omnis sunt.
-                                - Perspiciatis ratione minus.
-                                - Voluptas eius quae.
-                              repo: Itaque tempora debitis dolore.
-                              tag: Repellendus et error provident.
-                          platform: Quo dolor consequatur est incidunt labore non.
-                          start_at: "1992-08-03T05:21:25Z"
-                          status: aborted
-                          url: http://schinnervon.info/carlotta
+                                - Dolorum est nisi voluptatem et harum quae.
+                                - Eum qui tempora quos quae velit sint.
+                              repo: Nihil commodi.
+                              tag: Et ad.
+                          platform: Non dolor deserunt atque exercitationem non.
+                          start_at: "1975-05-04T08:41:39Z"
+                          status: error
+                          url: http://mayert.info/jules_little
                     triggers_event_ids:
-                        - 2bd9eb9a-3615-4d2c-9328-57f7992c04ca
-                        - 725f1511-e9d1-4380-8b28-4d7403a17b9c
-                        - bbfe7f61-1eac-49f5-b263-48da3f2de504
-                        - 9f8bb507-3d9e-4640-b7fc-732ec21bab35
+                        - 1b6af61d-a70a-4cfe-a194-f6383b2a59f0
+                        - 54c700ab-eb53-4377-be51-bd64b74232ae
+                        - a2aec554-9f75-4fb6-aeac-fa08f3c3f443
         required:
             - id
             - meta
@@ -827,20 +799,20 @@ definitions:
         properties:
             created_at:
                 type: string
-                example: 8221-35-88 31:80:54
+                example: 3480-98-20 28:98:88
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             created_by:
                 type: string
-                example: antonetta.ryan@pagac.net
+                example: brooklyn@schuppe.biz
                 format: email
             updated_at:
                 type: string
-                example: 7795-48-05 79:35:75
+                example: 0128-20-21 13:56:95
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 8679-41-34 80:98:20
-            created_by: charlene@brekke.org
-            updated_at: 2898-88-01 28:20:21
+            created_at: 2292-85-95 90:67:69
+            created_by: javonte_yost@kuhlmankozey.net
+            updated_at: 3079-56-53 68:54:67
         required:
             - created_at
             - created_by
@@ -851,13 +823,13 @@ definitions:
         properties:
             build_env:
                 type: string
-                example: Aut sit voluptas ut iste.
+                example: Eius quo consequatur excepturi non.
             builder_img:
                 type: string
-                example: Minus ullam eum.
+                example: Rem sint nostrum et quidem.
             edition:
                 type: string
-                example: nextgen
+                example: experiment
                 enum:
                     - enterprise
                     - community
@@ -869,22 +841,22 @@ definitions:
             features:
                 type: string
                 description: '[Deprecated] use build_env for custom features'
-                example: Corporis eligendi rerum ab nam necessitatibus.
+                example: Non ut impedit veniam qui quis.
             git_ref:
                 type: string
-                example: Distinctio beatae ex possimus cupiditate rem quidem.
+                example: Tempora aut delectus adipisci quos.
             git_sha:
                 type: string
-                example: Quam omnis ut nihil ducimus.
+                example: Id laudantium ut qui est nobis aliquid.
             github_repo:
                 type: string
-                example: Aspernatur occaecati eos laborum quo et soluta.
+                example: Itaque repellendus veniam error qui repudiandae earum.
             is_hotfix:
                 type: boolean
                 example: true
             is_push_gcr:
                 type: boolean
-                example: true
+                example: false
             pipeline_engine:
                 type: string
                 example: jenkins
@@ -894,7 +866,7 @@ definitions:
             platform:
                 type: string
                 default: linux
-                example: darwin/amd64
+                example: darwin/arm64
                 enum:
                     - all
                     - linux
@@ -905,10 +877,10 @@ definitions:
                     - darwin/arm64
             plugin_git_ref:
                 type: string
-                example: Totam velit sint eius et.
+                example: Voluptas qui aut eius labore.
             product:
                 type: string
-                example: tiproxy
+                example: drainer
                 enum:
                     - dm
                     - enterprise-plugin
@@ -932,34 +904,34 @@ definitions:
                     - tiproxy
             product_base_img:
                 type: string
-                example: Consequuntur nesciunt maxime nostrum.
+                example: Voluptatum quae animi saepe qui rerum quia.
             product_dockerfile:
                 type: string
-                example: Quis cum.
+                example: Sit facilis voluptatum soluta nulla et.
             target_img:
                 type: string
-                example: Incidunt non cumque quis in doloremque qui.
+                example: Quia et aperiam ad.
             version:
                 type: string
-                example: Atque autem.
+                example: Iure autem dolores quibusdam.
         example:
-            build_env: Voluptas est ducimus.
-            builder_img: Dolorem illo deleniti.
-            edition: nextgen
-            features: Itaque veniam similique quis eligendi.
-            git_ref: Quod voluptas dolor voluptatibus consequatur eius quo.
-            git_sha: Excepturi non minima rem sint.
-            github_repo: Et quidem sequi quia fugit.
+            build_env: Sed doloremque eligendi impedit totam.
+            builder_img: Et ad ipsam ut doloremque eum sit.
+            edition: next-gen
+            features: Aut expedita qui in totam.
+            git_ref: Odio enim ab sit.
+            git_sha: Eum possimus sed vero.
+            github_repo: Delectus libero repudiandae autem error non eum.
             is_hotfix: true
-            is_push_gcr: true
+            is_push_gcr: false
             pipeline_engine: jenkins
-            platform: linux/amd64
-            plugin_git_ref: Qui quis aut.
-            product: br
-            product_base_img: Delectus adipisci quos quam.
-            product_dockerfile: Laudantium ut qui est nobis.
-            target_img: Tempore itaque.
-            version: Veniam error qui repudiandae earum.
+            platform: darwin/arm64
+            plugin_git_ref: Commodi blanditiis et natus dolore vitae molestias.
+            product: tikv
+            product_base_img: Illum voluptates ut voluptatem facilis ut.
+            product_dockerfile: Eligendi veniam.
+            target_img: Et et fuga.
+            version: Id magni ut ea consequatur sint et.
         required:
             - product
             - version
@@ -973,37 +945,36 @@ definitions:
                 $ref: '#/definitions/BuildReport'
             err_msg:
                 type: string
-                example: Enim rerum id quisquam vitae.
+                example: Qui dolores.
             pipeline_build_id:
                 type: integer
-                example: 6952783721080694919
+                example: 8195791089546682664
                 format: int64
             pipeline_end_at:
                 type: string
-                example: 8795-05-86 73:70:41
+                example: 3294-92-82 32:94:56
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_start_at:
                 type: string
-                example: 6016-29-06 18:26:74
+                example: 9782-72-97 30:78:55
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
             pipeline_view_url:
                 type: string
-                example: http://leuschkemarquardt.net/crawford.torphy
+                example: http://bosco.org/ben
                 format: uri
             pipeline_view_urls:
                 type: array
                 items:
                     type: string
-                    example: http://dare.info/jo_deckow
+                    example: http://stracke.com/kaci_blanda
                     format: uri
                 example:
-                    - http://davis.org/veronica_boyle
-                    - http://robertsdurgan.com/howard
-                    - http://dietrich.org/kian_breitenberg
-                    - http://parkerjacobson.info/myrtie
+                    - http://runolfssonbreitenberg.biz/kaylah
+                    - http://padberg.org/ray_considine
+                    - http://powlowski.org/esperanza.leuschke
             status:
                 type: string
-                example: pending
+                example: success
                 enum:
                     - pending
                     - processing
@@ -1016,188 +987,159 @@ definitions:
         example:
             build_report:
                 binaries:
-                    - component: Quia quam necessitatibus optio ipsam autem.
+                    - component: Facilis corrupti.
                       oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
                       sha256_oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      sha256_url: http://hessel.name/aric_reynolds
-                      url: http://gusikowski.info/ellen_haag
-                    - component: Quia quam necessitatibus optio ipsam autem.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
                       oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      platform: Doloremque rerum quasi consequatur repellendus saepe rerum.
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
                       sha256_oci_file:
-                        file: Veniam et provident.
-                        repo: Dolores quis quia vitae non.
-                        tag: Reiciendis minus.
-                      sha256_url: http://hessel.name/aric_reynolds
-                      url: http://gusikowski.info/ellen_haag
-                git_sha: as5
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
+                      oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
+                      sha256_oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                    - component: Facilis corrupti.
+                      oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      platform: Necessitatibus molestias laborum iste nobis.
+                      sha256_oci_file:
+                        file: Impedit incidunt ea aut quas pariatur qui.
+                        repo: Harum repellat qui eos est velit.
+                        tag: Iusto ut rerum dolorum.
+                      sha256_url: http://welch.name/paul
+                      url: http://kreiger.biz/maegan_bradtke
+                git_sha: 7zd
                 images:
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                plugin_git_sha: 8uk
-                printed_version: Ab facere quo sint adipisci voluptatum aut.
-            err_msg: Consequatur dolorum eos fuga eius quod.
-            pipeline_build_id: 1479753069456166066
-            pipeline_end_at: 2768-37-92 77:66:66
-            pipeline_start_at: 3374-89-37 93:29:87
-            pipeline_view_url: http://emmerich.info/isabel
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                plugin_git_sha: "530"
+                printed_version: Neque rerum qui temporibus autem.
+            err_msg: Fuga eius quod dicta vel sapiente.
+            pipeline_build_id: 1392637542243941817
+            pipeline_end_at: 8379-27-76 66:68:80
+            pipeline_start_at: 4893-79-32 98:72:76
+            pipeline_view_url: http://kunze.biz/marty
             pipeline_view_urls:
-                - http://wiegandjones.com/soledad
-                - http://kuhnpowlowski.org/jett.watsica
-            status: processing
+                - http://jakubowski.biz/stephanie
+                - http://kohler.info/leonel
+                - http://weimann.info/consuelo
+            status: aborted
             tekton_status:
                 pipelines:
-                    - end_at: "1976-04-30T15:23:35Z"
+                    - end_at: "1971-02-10T20:28:19Z"
                       images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                      name: Recusandae est dolorem magni.
+                      namespace: Aut delectus in corporis reiciendis consectetur.
                       oci_artifacts:
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                        - files:
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                      platform: Non dolor deserunt atque exercitationem non.
+                      start_at: "1975-05-04T08:41:39Z"
+                      status: error
+                      url: http://mayert.info/jules_little
+                    - end_at: "1971-02-10T20:28:19Z"
                       images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                      name: Recusandae est dolorem magni.
+                      namespace: Aut delectus in corporis reiciendis consectetur.
                       oci_artifacts:
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
-                      images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
-                      oci_artifacts:
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
-                      images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
-                      oci_artifacts:
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                      platform: Non dolor deserunt atque exercitationem non.
+                      start_at: "1975-05-04T08:41:39Z"
+                      status: error
+                      url: http://mayert.info/jules_little
                 triggers_event_ids:
-                    - 2bd9eb9a-3615-4d2c-9328-57f7992c04ca
-                    - 725f1511-e9d1-4380-8b28-4d7403a17b9c
-                    - bbfe7f61-1eac-49f5-b263-48da3f2de504
-                    - 9f8bb507-3d9e-4640-b7fc-732ec21bab35
+                    - 1b6af61d-a70a-4cfe-a194-f6383b2a59f0
+                    - 54c700ab-eb53-4377-be51-bd64b74232ae
+                    - a2aec554-9f75-4fb6-aeac-fa08f3c3f443
         required:
             - status
     DevbuildCreateRequestBody:
@@ -1207,30 +1149,30 @@ definitions:
             created_by:
                 type: string
                 description: Creator of build
-                example: brittany@brekke.net
+                example: geovany.larson@boyer.name
                 format: email
             request:
                 $ref: '#/definitions/DevBuildSpec'
         example:
-            created_by: florencio_gleason@kshlerin.biz
+            created_by: meta@white.name
             request:
-                build_env: Reprehenderit repellat vitae voluptas non dignissimos.
-                builder_img: Atque voluptate dolorum consequuntur.
-                edition: enterprise
-                features: Veniam quia minus odio neque incidunt.
-                git_ref: Quae fugit.
-                git_sha: Ullam beatae porro omnis voluptas cumque.
-                github_repo: Laboriosam velit sint autem natus molestiae.
+                build_env: Ea ullam sint nulla quos beatae.
+                builder_img: Aut quia nesciunt quis quis voluptate fugit.
+                edition: failpoint
+                features: Architecto quae maiores sapiente.
+                git_ref: Architecto molestias consequatur officiis facere.
+                git_sha: Cum aperiam aut quisquam et temporibus.
+                github_repo: Esse consequuntur omnis quo provident.
                 is_hotfix: true
                 is_push_gcr: true
                 pipeline_engine: tekton
-                platform: all
-                plugin_git_ref: Accusantium laborum ipsum nihil.
-                product: pd
-                product_base_img: Beatae minima.
-                product_dockerfile: Minus odit qui facere inventore nemo.
-                target_img: Sunt molestiae.
-                version: Repellat quis necessitatibus et quos.
+                platform: darwin/amd64
+                plugin_git_ref: Non quia quia beatae totam.
+                product: ng-monitoring
+                product_base_img: Neque odio.
+                product_dockerfile: Nam ut aliquam quia tempora.
+                target_img: Et id neque sed error et ad.
+                version: Quibusdam omnis.
         required:
             - created_by
             - request
@@ -1244,153 +1186,135 @@ definitions:
             status:
                 build_report:
                     binaries:
-                        - component: Omnis deserunt.
+                        - component: Magni ducimus.
                           oci_file:
-                            file: Commodi dicta qui explicabo occaecati.
-                            repo: Iure voluptatibus et qui dignissimos.
-                            tag: Et quia qui ducimus ipsa.
-                          platform: Sed laboriosam.
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          platform: Ut non suscipit veniam laboriosam voluptas.
                           sha256_oci_file:
-                            file: Commodi dicta qui explicabo occaecati.
-                            repo: Iure voluptatibus et qui dignissimos.
-                            tag: Et quia qui ducimus ipsa.
-                          sha256_url: http://bruenlarson.org/garfield
-                          url: http://dicki.com/zetta
-                        - component: Omnis deserunt.
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          sha256_url: http://block.net/mohammed
+                          url: http://jonescrona.name/foster.hoeger
+                        - component: Magni ducimus.
                           oci_file:
-                            file: Commodi dicta qui explicabo occaecati.
-                            repo: Iure voluptatibus et qui dignissimos.
-                            tag: Et quia qui ducimus ipsa.
-                          platform: Sed laboriosam.
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          platform: Ut non suscipit veniam laboriosam voluptas.
                           sha256_oci_file:
-                            file: Commodi dicta qui explicabo occaecati.
-                            repo: Iure voluptatibus et qui dignissimos.
-                            tag: Et quia qui ducimus ipsa.
-                          sha256_url: http://bruenlarson.org/garfield
-                          url: http://dicki.com/zetta
-                    git_sha: 4ed
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          sha256_url: http://block.net/mohammed
+                          url: http://jonescrona.name/foster.hoeger
+                        - component: Magni ducimus.
+                          oci_file:
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          platform: Ut non suscipit veniam laboriosam voluptas.
+                          sha256_oci_file:
+                            file: Dolorum fugit.
+                            repo: Totam maxime doloremque sit enim itaque.
+                            tag: Perspiciatis dolorem.
+                          sha256_url: http://block.net/mohammed
+                          url: http://jonescrona.name/foster.hoeger
+                    git_sha: mgu
                     images:
-                        - internal_url: http://littel.com/mikel
-                          platform: Libero praesentium dolore consequatur incidunt.
-                          url: http://padbergschowalter.name/maybell_douglas
-                        - internal_url: http://littel.com/mikel
-                          platform: Libero praesentium dolore consequatur incidunt.
-                          url: http://padbergschowalter.name/maybell_douglas
-                    plugin_git_sha: o7k
-                    printed_version: Nesciunt sapiente voluptatem illo quia itaque.
-                err_msg: Eius rerum aut dolorem est non.
-                pipeline_build_id: 6966757540241412107
-                pipeline_end_at: 1913-91-56 80:31:98
-                pipeline_start_at: 5963-96-73 26:14:27
-                pipeline_view_url: http://konopelski.com/brandi
+                        - internal_url: http://oberbrunnerromaguera.name/calista
+                          platform: Animi minus.
+                          url: http://cartwright.biz/leonel
+                        - internal_url: http://oberbrunnerromaguera.name/calista
+                          platform: Animi minus.
+                          url: http://cartwright.biz/leonel
+                    plugin_git_sha: 6ap
+                    printed_version: Quia eius est reiciendis cumque sapiente vero.
+                err_msg: Quo aspernatur molestiae quia tempora dolor.
+                pipeline_build_id: 2427727820950224950
+                pipeline_end_at: 2835-03-69 36:89:12
+                pipeline_start_at: 0976-16-05 66:39:74
+                pipeline_view_url: http://jewess.com/jolie
                 pipeline_view_urls:
-                    - http://mullermueller.net/margaretta_larkin
-                    - http://frami.com/dashawn
-                status: error
+                    - http://konopelski.net/eve.crona
+                    - http://smitham.net/conrad_blick
+                    - http://barrowsreichert.com/lewis_emard
+                status: failure
                 tekton_status:
                     pipelines:
-                        - end_at: "2010-12-18T18:45:43Z"
+                        - end_at: "2012-11-30T04:01:04Z"
                           images:
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                          name: Sequi modi quis omnis possimus.
-                          namespace: Inventore fugiat accusantium qui quis.
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                          name: Ipsa numquam aut ratione eveniet distinctio quod.
+                          namespace: Tempore blanditiis.
                           oci_artifacts:
                             - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
+                                - Exercitationem in et corporis sunt.
+                                - Quia tempora natus cum quidem animi enim.
+                                - Aut dicta qui et ratione nihil.
+                              repo: Maxime impedit sed quam at quo praesentium.
+                              tag: Dicta omnis necessitatibus quasi explicabo nulla quasi.
                             - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
-                          platform: Quia dolor aspernatur facere et consequatur.
-                          start_at: "1998-03-10T18:02:56Z"
-                          status: processing
-                          url: http://tremblayharris.org/easton
-                        - end_at: "2010-12-18T18:45:43Z"
+                                - Exercitationem in et corporis sunt.
+                                - Quia tempora natus cum quidem animi enim.
+                                - Aut dicta qui et ratione nihil.
+                              repo: Maxime impedit sed quam at quo praesentium.
+                              tag: Dicta omnis necessitatibus quasi explicabo nulla quasi.
+                          platform: Earum commodi et velit id molestias perspiciatis.
+                          start_at: "1984-08-09T04:11:06Z"
+                          status: error
+                          url: http://okeefe.com/savanah
+                        - end_at: "2012-11-30T04:01:04Z"
                           images:
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                          name: Sequi modi quis omnis possimus.
-                          namespace: Inventore fugiat accusantium qui quis.
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                            - internal_url: http://oberbrunnerromaguera.name/calista
+                              platform: Animi minus.
+                              url: http://cartwright.biz/leonel
+                          name: Ipsa numquam aut ratione eveniet distinctio quod.
+                          namespace: Tempore blanditiis.
                           oci_artifacts:
                             - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
+                                - Exercitationem in et corporis sunt.
+                                - Quia tempora natus cum quidem animi enim.
+                                - Aut dicta qui et ratione nihil.
+                              repo: Maxime impedit sed quam at quo praesentium.
+                              tag: Dicta omnis necessitatibus quasi explicabo nulla quasi.
                             - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
-                          platform: Quia dolor aspernatur facere et consequatur.
-                          start_at: "1998-03-10T18:02:56Z"
-                          status: processing
-                          url: http://tremblayharris.org/easton
-                        - end_at: "2010-12-18T18:45:43Z"
-                          images:
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                            - internal_url: http://littel.com/mikel
-                              platform: Libero praesentium dolore consequatur incidunt.
-                              url: http://padbergschowalter.name/maybell_douglas
-                          name: Sequi modi quis omnis possimus.
-                          namespace: Inventore fugiat accusantium qui quis.
-                          oci_artifacts:
-                            - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
-                            - files:
-                                - Iste quos ratione maiores quod.
-                                - Asperiores officiis quasi cumque iste illum a.
-                                - Consequuntur excepturi qui assumenda tempora maxime.
-                              repo: Enim accusamus corrupti.
-                              tag: Voluptates expedita aut voluptas sequi magni.
-                          platform: Quia dolor aspernatur facere et consequatur.
-                          start_at: "1998-03-10T18:02:56Z"
-                          status: processing
-                          url: http://tremblayharris.org/easton
+                                - Exercitationem in et corporis sunt.
+                                - Quia tempora natus cum quidem animi enim.
+                                - Aut dicta qui et ratione nihil.
+                              repo: Maxime impedit sed quam at quo praesentium.
+                              tag: Dicta omnis necessitatibus quasi explicabo nulla quasi.
+                          platform: Earum commodi et velit id molestias perspiciatis.
+                          start_at: "1984-08-09T04:11:06Z"
+                          status: error
+                          url: http://okeefe.com/savanah
                     triggers_event_ids:
-                        - 46fe8495-578a-4fee-85a8-730ba11e4f2e
-                        - dd3b4fa2-29e6-4940-8f0f-4007c34220bd
+                        - 4c705ce5-1b6a-4016-a6e4-f50f7851c68b
+                        - b9c03de3-3ae1-4e1d-8564-8233a722feee
+                        - ebadc5f7-80e6-4200-93f4-840f7641d0b4
+                        - 34404d56-e6de-4158-b30d-7cffdfa16d73
         required:
             - status
     HTTPError:
@@ -1399,15 +1323,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 64301477659785485
+                example: 4225339162856955167
                 format: int64
             message:
                 type: string
-                example: Deleniti sit doloribus provident.
+                example: Atque id dolores rerum nam maiores assumenda.
         description: Bad Request
         example:
-            code: 7878583959198435061
-            message: Reprehenderit nostrum.
+            code: 5738853747328691593
+            message: Quam consequuntur quasi similique veritatis quia deserunt.
         required:
             - code
             - message
@@ -1488,19 +1412,19 @@ definitions:
         properties:
             internal_url:
                 type: string
-                example: http://mraz.name/adriana_bashirian
+                example: http://orn.com/verna
                 format: uri
             platform:
                 type: string
-                example: Aperiam ut nihil.
+                example: Ab magni delectus sunt.
             url:
                 type: string
-                example: http://reingerrunolfsdottir.org/russel
+                example: http://raynorhackett.com/sydni
                 format: uri
         example:
-            internal_url: http://king.net/zelma
-            platform: Et earum id magnam ab.
-            url: http://parisian.net/ron.kovacek
+            internal_url: http://prosacco.net/jaycee
+            platform: Harum dolore rerum non autem quidem vero.
+            url: http://legros.info/tristin
         required:
             - platform
             - url
@@ -1510,13 +1434,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Hic sit ut necessitatibus quis sed esse.
+                example: Dolores placeat.
             target:
                 type: string
-                example: Velit dicta doloremque.
+                example: Voluptatem occaecati quidem ipsa quo perferendis.
         example:
-            source: Tempore debitis vero ratione.
-            target: Consequatur quia.
+            source: Perferendis laborum reiciendis accusantium sint et.
+            target: Non voluptatem cupiditate voluptatem eos.
         required:
             - source
             - target
@@ -1528,24 +1452,24 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Tempora eos est voluptatum quo.
+                    example: Sit cum et a qui quia molestiae.
                 example:
-                    - Ratione atque molestiae.
-                    - Esse molestias qui ut asperiores cupiditate nam.
+                    - Accusamus corporis eaque et dolorum vitae perspiciatis.
+                    - Nostrum error cum velit ut.
             repo:
                 type: string
-                example: A nihil iste.
+                example: Atque voluptas consequatur animi quas ipsum tempora.
             tag:
                 type: string
-                example: Debitis corrupti eius et qui reiciendis.
+                example: Consequatur aut accusantium quaerat temporibus neque.
         example:
             files:
-                - Repellat beatae.
-                - Excepturi doloribus.
-                - Saepe nemo ea et molestiae.
-                - Quis dolorem at et.
-            repo: Est quo magnam dolorem sunt at qui.
-            tag: Eum aut veniam velit ea.
+                - Consectetur harum eum rerum.
+                - Et sint et eveniet deserunt vero.
+                - Dolorem modi.
+                - Consequatur qui maxime.
+            repo: Occaecati sunt occaecati officiis beatae.
+            tag: At labore.
         required:
             - files
             - repo
@@ -1556,17 +1480,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Qui aut eius.
+                example: Cumque commodi est dolores vero eos.
             repo:
                 type: string
-                example: Quia aut voluptatum quae animi saepe qui.
+                example: Vitae eius minus iure qui officiis eius.
             tag:
                 type: string
-                example: Quia consequuntur sit.
+                example: Voluptas aperiam odio delectus vero.
         example:
-            file: Voluptatum soluta nulla.
-            repo: Quam quia.
-            tag: Aperiam ad aut iure autem dolores.
+            file: Similique exercitationem perspiciatis sed itaque beatae.
+            repo: Numquam sit minima tenetur ut pariatur.
+            tag: Perferendis quos et.
         required:
             - file
             - repo
@@ -1577,58 +1501,63 @@ definitions:
         properties:
             end_at:
                 type: string
-                example: "2008-10-21T18:23:45Z"
+                example: "1987-01-04T01:50:29Z"
                 format: date-time
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
             name:
                 type: string
-                example: Voluptas iure.
+                example: Ut asperiores.
             namespace:
                 type: string
-                example: Vitae nesciunt.
+                example: Harum natus veritatis magni dolorem.
             oci_artifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
             platform:
                 type: string
-                example: Et a qui quia molestiae.
+                example: Dolor quisquam adipisci maxime.
             start_at:
                 type: string
-                example: "1987-08-27T19:53:36Z"
+                example: "1972-10-01T04:20:08Z"
                 format: date-time
             status:
                 type: string
-                example: aborted
+                example: success
                 enum:
                     - pending
                     - processing
@@ -1638,54 +1567,40 @@ definitions:
                     - error
             url:
                 type: string
-                example: http://hoppe.org/clara.ziemann
+                example: http://hermaneffertz.com/ahmed
                 format: uri
         example:
-            end_at: "1996-09-26T23:43:33Z"
+            end_at: "1980-10-03T19:15:00Z"
             images:
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-                - internal_url: http://macejkovic.biz/maddison
-                  platform: Accusantium neque.
-                  url: http://luettgensenger.com/ibrahim_sauer
-            name: Voluptatem magnam dolor quisquam adipisci maxime impedit.
-            namespace: Suscipit fugiat est omnis.
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+                - internal_url: http://shields.biz/charity
+                  platform: Vero eveniet.
+                  url: http://hand.name/keely
+            name: Quibusdam illum nihil qui velit ut.
+            namespace: Voluptas asperiores aut suscipit velit et totam.
             oci_artifacts:
                 - files:
-                    - Dolorem occaecati omnis sunt.
-                    - Perspiciatis ratione minus.
-                    - Voluptas eius quae.
-                  repo: Itaque tempora debitis dolore.
-                  tag: Repellendus et error provident.
+                    - Dolorum est nisi voluptatem et harum quae.
+                    - Eum qui tempora quos quae velit sint.
+                  repo: Nihil commodi.
+                  tag: Et ad.
                 - files:
-                    - Dolorem occaecati omnis sunt.
-                    - Perspiciatis ratione minus.
-                    - Voluptas eius quae.
-                  repo: Itaque tempora debitis dolore.
-                  tag: Repellendus et error provident.
-                - files:
-                    - Dolorem occaecati omnis sunt.
-                    - Perspiciatis ratione minus.
-                    - Voluptas eius quae.
-                  repo: Itaque tempora debitis dolore.
-                  tag: Repellendus et error provident.
-                - files:
-                    - Dolorem occaecati omnis sunt.
-                    - Perspiciatis ratione minus.
-                    - Voluptas eius quae.
-                  repo: Itaque tempora debitis dolore.
-                  tag: Repellendus et error provident.
-            platform: Molestiae fugiat nostrum laudantium ea et quia.
-            start_at: "1978-03-30T17:32:33Z"
-            status: error
-            url: http://blanda.com/verlie
+                    - Dolorum est nisi voluptatem et harum quae.
+                    - Eum qui tempora quos quae velit sint.
+                  repo: Nihil commodi.
+                  tag: Et ad.
+            platform: Aliquam facere temporibus.
+            start_at: "2011-01-09T10:56:31Z"
+            status: pending
+            url: http://dach.biz/jimmie.wolff
         required:
             - name
             - namespace
@@ -1699,219 +1614,286 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - end_at: "1976-04-30T15:23:35Z"
+                    - end_at: "1971-02-10T20:28:19Z"
                       images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                      name: Recusandae est dolorem magni.
+                      namespace: Aut delectus in corporis reiciendis consectetur.
                       oci_artifacts:
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                        - files:
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                      platform: Non dolor deserunt atque exercitationem non.
+                      start_at: "1975-05-04T08:41:39Z"
+                      status: error
+                      url: http://mayert.info/jules_little
+                    - end_at: "1971-02-10T20:28:19Z"
                       images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                      name: Recusandae est dolorem magni.
+                      namespace: Aut delectus in corporis reiciendis consectetur.
                       oci_artifacts:
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                        - files:
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                      platform: Non dolor deserunt atque exercitationem non.
+                      start_at: "1975-05-04T08:41:39Z"
+                      status: error
+                      url: http://mayert.info/jules_little
+                    - end_at: "1971-02-10T20:28:19Z"
                       images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                        - internal_url: http://shields.biz/charity
+                          platform: Vero eveniet.
+                          url: http://hand.name/keely
+                      name: Recusandae est dolorem magni.
+                      namespace: Aut delectus in corporis reiciendis consectetur.
                       oci_artifacts:
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
-                    - end_at: "1976-04-30T15:23:35Z"
-                      images:
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                        - internal_url: http://macejkovic.biz/maddison
-                          platform: Accusantium neque.
-                          url: http://luettgensenger.com/ibrahim_sauer
-                      name: Iste quasi.
-                      namespace: Error laboriosam qui tempore dolorum est nisi.
-                      oci_artifacts:
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
                         - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                        - files:
-                            - Dolorem occaecati omnis sunt.
-                            - Perspiciatis ratione minus.
-                            - Voluptas eius quae.
-                          repo: Itaque tempora debitis dolore.
-                          tag: Repellendus et error provident.
-                      platform: Quo dolor consequatur est incidunt labore non.
-                      start_at: "1992-08-03T05:21:25Z"
-                      status: aborted
-                      url: http://schinnervon.info/carlotta
+                            - Dolorum est nisi voluptatem et harum quae.
+                            - Eum qui tempora quos quae velit sint.
+                          repo: Nihil commodi.
+                          tag: Et ad.
+                      platform: Non dolor deserunt atque exercitationem non.
+                      start_at: "1975-05-04T08:41:39Z"
+                      status: error
+                      url: http://mayert.info/jules_little
             triggers_event_ids:
                 type: array
                 items:
                     type: string
-                    example: f6018a8e-4b17-4f2b-ad8c-80aa377ac7c0
+                    example: 41a92939-73d5-4bea-b926-1d3f9494d40c
                     format: uuid
                 example:
-                    - 59410446-9841-4929-b973-d55bea79261d
-                    - 3f9494d4-52ad-4660-8207-9e6d559c603d
-                    - 59f6c988-863a-49af-b476-e3c1ce02874d
+                    - 33f4181c-a1d0-466f-96ea-446025dc7535
+                    - 6c225e59-be48-4f66-a6c3-c5c70487ef0d
         example:
             pipelines:
-                - end_at: "1976-04-30T15:23:35Z"
+                - end_at: "1971-02-10T20:28:19Z"
                   images:
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                  name: Iste quasi.
-                  namespace: Error laboriosam qui tempore dolorum est nisi.
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                  name: Recusandae est dolorem magni.
+                  namespace: Aut delectus in corporis reiciendis consectetur.
                   oci_artifacts:
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
-                  platform: Quo dolor consequatur est incidunt labore non.
-                  start_at: "1992-08-03T05:21:25Z"
-                  status: aborted
-                  url: http://schinnervon.info/carlotta
-                - end_at: "1976-04-30T15:23:35Z"
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                  platform: Non dolor deserunt atque exercitationem non.
+                  start_at: "1975-05-04T08:41:39Z"
+                  status: error
+                  url: http://mayert.info/jules_little
+                - end_at: "1971-02-10T20:28:19Z"
                   images:
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                    - internal_url: http://macejkovic.biz/maddison
-                      platform: Accusantium neque.
-                      url: http://luettgensenger.com/ibrahim_sauer
-                  name: Iste quasi.
-                  namespace: Error laboriosam qui tempore dolorum est nisi.
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                  name: Recusandae est dolorem magni.
+                  namespace: Aut delectus in corporis reiciendis consectetur.
                   oci_artifacts:
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
                     - files:
-                        - Dolorem occaecati omnis sunt.
-                        - Perspiciatis ratione minus.
-                        - Voluptas eius quae.
-                      repo: Itaque tempora debitis dolore.
-                      tag: Repellendus et error provident.
-                  platform: Quo dolor consequatur est incidunt labore non.
-                  start_at: "1992-08-03T05:21:25Z"
-                  status: aborted
-                  url: http://schinnervon.info/carlotta
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                  platform: Non dolor deserunt atque exercitationem non.
+                  start_at: "1975-05-04T08:41:39Z"
+                  status: error
+                  url: http://mayert.info/jules_little
+                - end_at: "1971-02-10T20:28:19Z"
+                  images:
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                  name: Recusandae est dolorem magni.
+                  namespace: Aut delectus in corporis reiciendis consectetur.
+                  oci_artifacts:
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                  platform: Non dolor deserunt atque exercitationem non.
+                  start_at: "1975-05-04T08:41:39Z"
+                  status: error
+                  url: http://mayert.info/jules_little
+                - end_at: "1971-02-10T20:28:19Z"
+                  images:
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                    - internal_url: http://shields.biz/charity
+                      platform: Vero eveniet.
+                      url: http://hand.name/keely
+                  name: Recusandae est dolorem magni.
+                  namespace: Aut delectus in corporis reiciendis consectetur.
+                  oci_artifacts:
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                    - files:
+                        - Dolorum est nisi voluptatem et harum quae.
+                        - Eum qui tempora quos quae velit sint.
+                      repo: Nihil commodi.
+                      tag: Et ad.
+                  platform: Non dolor deserunt atque exercitationem non.
+                  start_at: "1975-05-04T08:41:39Z"
+                  status: error
+                  url: http://mayert.info/jules_little
             triggers_event_ids:
-                - ae2f2535-66da-4156-bb3f-cc32d940346b
-                - ae2cf06f-a206-46e6-90c8-dad5c54e4ea7
+                - e0f9e7ca-707a-446a-95c2-42040915e436
+                - fbedfbb6-f0da-40c5-8ffd-4624df0e840a
         required:
             - pipelines
     TiDBxBumpTagMeta:
