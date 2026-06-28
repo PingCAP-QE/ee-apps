@@ -133,10 +133,14 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 				Name:      p.Name,
 				Namespace: p.Namespace,
 				Status:    devbuild.BuildStatus(p.Status),
-				StartAt:   new(p.StartAt.UTC().Format(time.RFC3339)),
-				EndAt:     new(p.EndAt.UTC().Format(time.RFC3339)),
 				Platform:  &p.Platform,
 				URL:       nonEmptyPtr(p.URL),
+			}
+			if p.StartAt != nil {
+				pipeline.StartAt = new(p.StartAt.UTC().Format(time.RFC3339))
+			}
+			if p.EndAt != nil {
+				pipeline.EndAt = new(p.EndAt.UTC().Format(time.RFC3339))
 			}
 
 			// Transform images
