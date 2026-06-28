@@ -20,9 +20,9 @@ func TestGetGhRefSha_Branch(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposBranchesByOwnerByRepoByBranch,
 			&github.Branch{
-				Name: github.Ptr(branchName),
+				Name: new(branchName),
 				Commit: &github.RepositoryCommit{
-					SHA: github.Ptr(expectedSHA),
+					SHA: new(expectedSHA),
 				},
 			},
 		),
@@ -44,9 +44,9 @@ func TestGetGhRefSha_Tag(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposGitRefByOwnerByRepoByRef,
 			&github.Reference{
-				Ref: github.Ptr("refs/tags/" + tagName),
+				Ref: new("refs/tags/" + tagName),
 				Object: &github.GitObject{
-					SHA: github.Ptr(expectedSHA),
+					SHA: new(expectedSHA),
 				},
 			},
 		),
@@ -69,10 +69,10 @@ func TestGetGhRefSha_PullRequest(t *testing.T) {
 			mock.GetReposPullsByOwnerByRepoByPullNumber,
 			&github.PullRequest{
 				Head: &github.PullRequestBranch{
-					SHA: github.Ptr(expectedSHA),
+					SHA: new(expectedSHA),
 				},
 				Base: &github.PullRequestBranch{
-					Ref: github.Ptr(expectedBaseRef),
+					Ref: new(expectedBaseRef),
 				},
 			},
 		),
