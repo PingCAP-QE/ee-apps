@@ -23,23 +23,29 @@ card:
         **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
     {{- end }}
 
-    {{- if .PipelineName }}
+    {{- if .PipelineRuns }}
     - tag: hr
     - tag: markdown
       content: |-
-        **Pipeline:** {{ .PipelineName }}
-        **Pipeline Status:** {{ .PipelineStatus }}
+        **Pipeline Runs:**
+        {{- range .PipelineRuns }}
+        - **{{ .Name }}:** {{ .Status }}
+        {{- end }}
     {{- end }}
 
-    {{- if .PipelineURL }}
+    {{- if .PipelineRuns }}
     - tag: action
       actions:
+        {{- range .PipelineRuns }}
+        {{- if .URL }}
         - tag: button
           text:
-            content: View Pipeline
+            content: "View {{ .Name }}"
             tag: plain_text
-          url: "{{ .PipelineURL }}"
+          url: "{{ .URL }}"
           type: primary
+        {{- end }}
+        {{- end }}
     {{- end }}
 
     {{- if .ErrMsg }}

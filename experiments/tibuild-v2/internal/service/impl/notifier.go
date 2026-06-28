@@ -95,12 +95,16 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 		ErrMsg:     build.ErrMsg,
 	}
 
-	// Extract pipeline info from TektonStatus
+	// Extract pipeline run info from TektonStatus
 	if len(build.TektonStatus.Pipelines) > 0 {
-		p := build.TektonStatus.Pipelines[0]
-		info.PipelineName = p.Name
-		info.PipelineStatus = p.Status
-		info.PipelineURL = p.URL
+		info.PipelineRuns = make([]PipelineRunInfo, len(build.TektonStatus.Pipelines))
+		for i, p := range build.TektonStatus.Pipelines {
+			info.PipelineRuns[i] = PipelineRunInfo{
+				Name:   p.Name,
+				Status: p.Status,
+				URL:    p.URL,
+			}
+		}
 	}
 
 	return NewLarkCardWithGoTemplate(info)
@@ -108,18 +112,23 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 
 // NotificationInfo contains information for building a notification card.
 type NotificationInfo struct {
-	BuildID        int
-	Product        string
-	Version        string
-	Status         string
-	CreatedBy      string
-	GitRef         string
-	GithubRepo     string
-	Platform       string
-	ErrMsg         string
-	PipelineName   string
-	PipelineStatus string
-	PipelineURL    string
+	BuildID      int
+	Product      string
+	Version      string
+	Status       string
+	CreatedBy    string
+	GitRef       string
+	GithubRepo   string
+	Platform     string
+	ErrMsg       string
+	PipelineRuns []PipelineRunInfo
+}
+
+// PipelineRunInfo contains information about a single pipeline run.
+type PipelineRunInfo struct {
+	Name   string
+	Status string
+	URL    string
 }
 
 // isTerminalStatus checks if the build status is terminal.
