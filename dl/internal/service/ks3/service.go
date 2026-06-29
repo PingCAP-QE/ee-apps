@@ -1,4 +1,4 @@
-package dl
+package ks3
 
 import (
 	"context"
@@ -12,26 +12,26 @@ import (
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
 	"gopkg.in/yaml.v3"
 
+	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	pkgks3 "github.com/PingCAP-QE/ee-apps/dl/pkg/ks3"
 )
 
-// ks3 service example implementation.
-// The example methods log the requests and return zero values.
+// ks3srvc implements the KS3 service.
 type ks3srvc struct {
 	logger *log.Logger
 	client *s3.S3
 }
 
-func newKS3Client(cfg *pkgks3.Config) *s3.S3 {
+func newClient(cfg *pkgks3.Config) *s3.S3 {
 	var cre *credentials.Credentials
 	if cfg != nil && cfg.AccessKey != "" && cfg.SecretKey != "" {
 		cre = credentials.NewStaticCredentials(cfg.AccessKey, cfg.SecretKey, "")
 	}
 	awsConfig := aws.Config{
-		Region:           cfg.Region, // Ref: https://docs.ksyun.com/documents/6761
+		Region:           cfg.Region,
 		Credentials:      cre,
-		Endpoint:         cfg.Endpoint, // Ref: https://docs.ksyun.com/documents/6761
+		Endpoint:         cfg.Endpoint,
 		DisableSSL:       true,
 		LogLevel:         0,
 		LogHTTPBody:      false,
@@ -42,8 +42,8 @@ func newKS3Client(cfg *pkgks3.Config) *s3.S3 {
 	return s3.New(&awsConfig)
 }
 
-// NewKs3 returns the ks3 service implementation.
-func NewKs3(logger *log.Logger, cfgFile string) ks3.Service {
+// New returns the ks3 service implementation.
+func New(logger *log.Logger, cfgFile string) ks3.Service {
 	var cfg pkgks3.Config
 
 	cfgBytes, err := os.ReadFile(cfgFile)
@@ -54,7 +54,7 @@ func NewKs3(logger *log.Logger, cfgFile string) ks3.Service {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	return &ks3srvc{logger: logger, client: newKS3Client(&cfg)}
+	return &ks3srvc{logger: logger, client: newClient(&cfg)}
 }
 
 // DownloadObject implements download-object.
@@ -77,7 +77,7 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 		if getObjectOutput.ContentDisposition != nil {
 			res.ContentDisposition = *getObjectOutput.ContentDisposition
 		} else {
-			res.ContentDisposition = ContentDisposition(filepath.Base(p.Key))
+			res.ContentDisposition = attachment.ContentDisposition(filepath.Base(p.Key))
 		}
 	}
 

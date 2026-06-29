@@ -12,9 +12,10 @@ import (
 	"sync"
 	"syscall"
 
-	dl "github.com/PingCAP-QE/ee-apps/dl"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	ks3svc "github.com/PingCAP-QE/ee-apps/dl/internal/service/ks3"
+	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
 )
 
 func main() {
@@ -45,8 +46,8 @@ func main() {
 		ks3Svc ks3.Service
 	)
 	{
-		ociSvc = dl.NewOci(logger, ociCfgPathF)
-		ks3Svc = dl.NewKs3(logger, *ks3CfgPathF)
+		ociSvc = ocisvc.New(logger, ociCfgPathF)
+		ks3Svc = ks3svc.New(logger, *ks3CfgPathF)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services

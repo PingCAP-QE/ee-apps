@@ -1,4 +1,4 @@
-package dl
+package oci
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
 	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
 	"gopkg.in/yaml.v3"
 	"oras.land/oras-go/v2/registry/remote"
@@ -18,15 +19,14 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// oci service example implementation.
-// The example methods log the requests and return zero values.
+// ocisrvc implements the OCI service.
 type ocisrvc struct {
 	logger     *log.Logger
 	credential *auth.Credential
 }
 
-// NewOci returns the oci service implementation.
-func NewOci(logger *log.Logger, cfgFile *string) oci.Service {
+// New returns the oci service implementation.
+func New(logger *log.Logger, cfgFile *string) oci.Service {
 	var cfg pkgoci.Config
 	if cfgFile == nil {
 		return &ocisrvc{logger: logger, credential: &auth.EmptyCredential}
@@ -105,7 +105,7 @@ func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag
 
 	res = &oci.DownloadFileResult{
 		Length:             length,
-		ContentDisposition: ContentDisposition(file),
+		ContentDisposition: attachment.ContentDisposition(file),
 	}
 	return res, rc, nil
 }
@@ -131,7 +131,7 @@ func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.He
 
 	return &oci.HeadFileResult{
 		Length:             descriptor.Size,
-		ContentDisposition: ContentDisposition(targetFile),
+		ContentDisposition: attachment.ContentDisposition(targetFile),
 	}, nil
 }
 
@@ -178,7 +178,7 @@ func (s *ocisrvc) DownloadFileSha256(ctx context.Context, p *oci.DownloadFileSha
 
 	res = &oci.DownloadFileSha256Result{
 		Length:             int64(len(value)),
-		ContentDisposition: ContentDisposition(p.File + ".sha256"),
+		ContentDisposition: attachment.ContentDisposition(p.File + ".sha256"),
 	}
 	return res, io.NopCloser(strings.NewReader(value)), nil
 }
