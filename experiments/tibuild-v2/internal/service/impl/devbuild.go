@@ -30,6 +30,7 @@ type devbuildsrvc struct {
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardURL           string
+	reconcilerSince        time.Duration
 	httpClient             *http.Client
 	jenkins                struct {
 		client  *gojenkins.Jenkins
@@ -43,7 +44,6 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		logger.Err(err).Msg("failed to create store client")
 		return nil
 	}
-	dbClient = dbClient.Debug()
 
 	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
 	if err != nil {
@@ -51,18 +51,36 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		return nil
 	}
 
+	reconcilerSince := 24 * time.Hour
+	if cfg.Tekton.ReconcilerSince != "" {
+		if d, err := time.ParseDuration(cfg.Tekton.ReconcilerSince); err == nil {
+			reconcilerSince = d
+		} else {
+			logger.Warn().Str("reconciler_since", cfg.Tekton.ReconcilerSince).Msg("invalid reconciler_since, using default 24h")
+		}
+	}
+
 	srvc := devbuildsrvc{
 		logger:                 logger,
-		dbClient:               dbClient.Debug(),
+		dbClient:               dbClient,
 		productRepoMap:         cfg.ProductRepoMap,
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
 		dashboardURL:           cfg.Tekton.ViewURL,
+		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
 	}
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
+
+	// Register Lark notification hook if enabled
+	if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
+		notifier := NewLarkNotifier(cfg.Lark.WebhookURL, logger)
+		registerNotificationHook(dbClient, notifier, logger)
+		logger.Info().Msg("lark notification hook registered")
+	}
+
 	return &srvc
 }
 
@@ -178,7 +196,6 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 					Status:   string(p.Status),
 					Platform: derefString(p.Platform),
 					URL:      derefString(p.URL),
-					GitSha:   derefString(p.GitSha),
 				}
 				if p.StartAt != nil {
 					t, err := time.Parse(time.RFC3339, *p.StartAt)
@@ -331,4 +348,49 @@ func newStoreClient(cfg config.Store) (*ent.Client, error) {
 	}
 
 	return db, nil
+}
+
+// registerNotificationHook registers an Ent hook that sends Lark notifications
+// when a DevBuild reaches a terminal status (success, failure, error, aborted).
+func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *zerolog.Logger) {
+	dbClient.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			v, err := next.Mutate(ctx, m)
+			if err != nil {
+				return v, err
+			}
+
+			// Check if this is a DevBuild update with status change
+			mut, ok := m.(*ent.DevBuildMutation)
+			if !ok {
+				return v, nil
+			}
+
+			// Only trigger on Update or UpdateOne operations
+			if !m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
+				return v, nil
+			}
+
+			// Check if status field was changed
+			newStatus, exists := mut.Status()
+			if !exists || !isTerminalStatus(newStatus) {
+				return v, nil
+			}
+
+			// Get the build ID and send notification asynchronously
+			buildID, _ := mut.ID()
+			go func() {
+				build, err := dbClient.DevBuild.Get(context.Background(), buildID)
+				if err != nil {
+					logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
+					return
+				}
+				if notifyErr := notifier.Notify(context.Background(), build); notifyErr != nil {
+					logger.Err(notifyErr).Int("build_id", buildID).Msg("failed to send notification")
+				}
+			}()
+
+			return v, nil
+		})
+	})
 }

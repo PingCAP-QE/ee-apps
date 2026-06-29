@@ -22,6 +22,8 @@ tekton:
   cloudevent_endpoint: "http://localhost:8000"
   view_url: "https://<tekton-dashboard-url>/#/namespaces/ee-cd/pipelineruns"
   oci_file_download_url: "https://<download-service-url>/oci-file"
+  reconciler_interval: "15s"
+  reconciler_since: "24h"
 
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:

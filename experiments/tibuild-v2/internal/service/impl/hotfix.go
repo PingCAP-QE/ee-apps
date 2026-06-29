@@ -103,11 +103,11 @@ func (s *hotfixsrvc) verifyAndGetCommit(ctx context.Context, owner, repo string,
 func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commitSHA, message string) error {
 	// Create a tag object (annotated tag)
 	tagObject := &github.Tag{
-		Tag:     github.Ptr(tagName),
-		Message: github.Ptr(message),
+		Tag:     new(tagName),
+		Message: new(message),
 		Object: &github.GitObject{
-			Type: github.Ptr("commit"),
-			SHA:  github.Ptr(commitSHA),
+			Type: new("commit"),
+			SHA:  new(commitSHA),
 		},
 	}
 
@@ -121,7 +121,7 @@ func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commit
 
 	// Create a reference to the tag
 	ref := &github.Reference{
-		Ref: github.Ptr(fmt.Sprintf("refs/tags/%s", tagName)),
+		Ref: new(fmt.Sprintf("refs/tags/%s", tagName)),
 		Object: &github.GitObject{
 			SHA: createdTag.SHA,
 		},

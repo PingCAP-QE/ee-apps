@@ -375,7 +375,6 @@ var TektonPipeline = Type("TektonPipeline", func() {
 	Attribute("status", BuildStatus)
 	Attribute("start_at", String, func() { Format(FormatDateTime) })
 	Attribute("end_at", String, func() { Format(FormatDateTime) })
-	Attribute("git_sha", String, func() { MaxLength(40) })
 	Attribute("images", ArrayOf(ImageArtifact))
 	Attribute("oci_artifacts", ArrayOf(OciArtifact))
 	Attribute("platform", String)

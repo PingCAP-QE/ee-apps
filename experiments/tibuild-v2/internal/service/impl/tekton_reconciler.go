@@ -21,13 +21,23 @@ import (
 // terminalStatuses are the build statuses that indicate a build is finished.
 var terminalStatuses = []string{"success", "failure", "error", "aborted"}
 
+// buildReconcileData holds the data needed to reconcile a single build.
+type buildReconcileData struct {
+	Build        *ent.DevBuild
+	PipelineRuns []tknv1.PipelineRun
+}
+
 // Reconcile checks for non-terminal builds and syncs their status with Tekton Dashboard API.
+// It separates Tekton HTTP calls (slow) from DB updates (fast) to minimize lock contention.
 func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 	s.logger.Debug().Msg("running reconciliation cycle")
 
-	// Query all non-terminal builds
+	// Query non-terminal builds created within the configured lookback period.
 	builds, err := s.dbClient.DevBuild.Query().
-		Where(entdevbuild.StatusNotIn(terminalStatuses...)).
+		Where(
+			entdevbuild.StatusNotIn(terminalStatuses...),
+			entdevbuild.CreatedAtGTE(time.Now().Add(-s.reconcilerSince)),
+		).
 		All(ctx)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to query non-terminal builds")
@@ -41,10 +51,33 @@ func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 
 	s.logger.Info().Int("count", len(builds)).Msg("found non-terminal builds to reconcile")
 
+	// Phase 1: Fetch Tekton PipelineRuns for all builds (slow HTTP calls, no DB locks).
+	var pending []buildReconcileData
 	for _, build := range builds {
-		if err := s.reconcileBuild(ctx, build); err != nil {
-			s.logger.Err(err).Int("build_id", build.ID).Msg("failed to reconcile build")
+		eventIDs := build.TektonStatus.TriggersEventIds
+		if len(eventIDs) == 0 {
 			continue
+		}
+
+		var allRuns []tknv1.PipelineRun
+		for _, eventID := range eventIDs {
+			runs, err := s.queryPipelineRuns(ctx, eventID)
+			if err != nil {
+				s.logger.Err(err).Int("build_id", build.ID).Str("event_id", eventID).Msg("failed to query pipeline runs")
+				continue
+			}
+			allRuns = append(allRuns, runs...)
+		}
+
+		if len(allRuns) > 0 {
+			pending = append(pending, buildReconcileData{Build: build, PipelineRuns: allRuns})
+		}
+	}
+
+	// Phase 2: Update DB for builds that have PipelineRun data (fast, minimal lock time).
+	for _, data := range pending {
+		if err := s.updateBuildFromPipelineRuns(ctx, data.Build, data.PipelineRuns); err != nil {
+			s.logger.Err(err).Int("build_id", data.Build.ID).Msg("failed to reconcile build")
 		}
 	}
 }
@@ -81,26 +114,6 @@ func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) 
 	}
 
 	return nil
-}
-
-// Param represents a PipelineRun parameter.
-type Param struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// Condition represents a status condition.
-type Condition struct {
-	Type    string `json:"type"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason"`
-	Message string `json:"message"`
-}
-
-// Result represents a PipelineRun result.
-type Result struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
 }
 
 // queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
@@ -159,8 +172,14 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 		SetUpdatedAt(time.Now())
 
 	// Update tekton status with pipeline info
-	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus)
+	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
 	updater.SetTektonStatus(tektonStatus)
+
+	// Build report from pipeline runs
+	buildReport := buildBuildReport(pipelineRuns)
+	if buildReport != nil {
+		updater.SetBuildReport(buildReport)
+	}
 
 	// Set pipeline times
 	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
@@ -170,7 +189,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 		updater.SetPipelineEndAt(endTime.Time)
 	}
 
-	if _, err := updater.Save(ctx); err != nil {
+	if err := updater.Exec(ctx); err != nil {
 		return fmt.Errorf("failed to update build: %w", err)
 	}
 
@@ -224,7 +243,7 @@ func getSucceededCondition(pr tknv1.PipelineRun) *knative.Condition {
 }
 
 // buildTektonStatus builds the tekton_status from PipelineRuns.
-func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonStatus) schema.TektonStatus {
+func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonStatus, dashboardURL string) schema.TektonStatus {
 	var pipelines []schema.TektonPipeline
 	for _, pr := range pipelineRuns {
 		pipeline := schema.TektonPipeline{
@@ -251,9 +270,13 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 			pipeline.EndAt = &pr.Status.CompletionTime.Time
 		}
 
-		// Extract platform from labels
-		if platform, ok := pr.GetLabels()["tekton.dev/platform"]; ok {
-			pipeline.Platform = platform
+		// Extract platform from params (os + arch)
+		pipeline.Platform = parsePlatformFromParams(pr.Spec.Params)
+
+		// Build dashboard view URL
+		if dashboardURL != "" {
+			pipeline.URL = fmt.Sprintf("%s/#/namespaces/%s/pipelineruns/%s",
+				dashboardURL, pr.GetNamespace(), pr.GetName())
 		}
 
 		// Extract results (OCI artifacts + images)
@@ -270,6 +293,23 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 
 	existing.Pipelines = pipelines
 	return existing
+}
+
+// parsePlatformFromParams extracts the platform string (os/arch) from PipelineRun params.
+func parsePlatformFromParams(params tknv1.Params) string {
+	osVal, archVal := "", ""
+	for _, p := range params {
+		switch p.Name {
+		case "os":
+			osVal = p.Value.StringVal
+		case "arch":
+			archVal = p.Value.StringVal
+		}
+	}
+	if osVal != "" && archVal != "" {
+		return osVal + "/" + archVal
+	}
+	return ""
 }
 
 // extractArtifactsFromResults extracts OCI artifacts and images from PipelineRun results.
@@ -297,6 +337,67 @@ func extractArtifactsFromResults(results []tknv1.PipelineRunResult) (ociArtifact
 		}
 	}
 	return
+}
+
+// buildBuildReport builds a build_report map from PipelineRun params and results.
+func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
+	report := map[string]any{}
+	hasData := false
+
+	for _, pr := range pipelineRuns {
+		// Extract git-revision param
+		for _, p := range pr.Spec.Params {
+			if p.Name == "git-revision" && len(p.Value.StringVal) == 40 {
+				if _, exists := report["gitSha"]; !exists {
+					report["gitSha"] = p.Value.StringVal
+					hasData = true
+				}
+			}
+		}
+
+		// Extract results
+		for _, r := range pr.Status.Results {
+			switch r.Name {
+			case "pushed-images":
+				vbs, err := r.Value.MarshalJSON()
+				if err != nil {
+					continue
+				}
+				var imgs []schema.ImageArtifact
+				if err := json.Unmarshal(vbs, &imgs); err == nil && len(imgs) > 0 {
+					existing, _ := report["images"].([]schema.ImageArtifact)
+					report["images"] = append(existing, imgs...)
+					hasData = true
+				}
+			case "pushed-binaries":
+				vbs, err := r.Value.MarshalJSON()
+				if err != nil {
+					continue
+				}
+				var artifacts []schema.OciArtifact
+				if err := json.Unmarshal(vbs, &artifacts); err == nil && len(artifacts) > 0 {
+					existing, _ := report["binaries"].([]schema.OciArtifact)
+					report["binaries"] = append(existing, artifacts...)
+					hasData = true
+				}
+			case "printed-version":
+				if _, exists := report["printedVersion"]; !exists {
+					report["printedVersion"] = r.Value.StringVal
+					hasData = true
+				}
+			case "plugin-git-sha":
+				if _, exists := report["pluginGitSha"]; !exists {
+					report["pluginGitSha"] = r.Value.StringVal
+					hasData = true
+				}
+			}
+		}
+	}
+
+	if !hasData {
+		return nil
+	}
+	return report
 }
 
 // getEarliestStartTime gets the earliest start time from PipelineRuns.

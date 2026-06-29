@@ -64,25 +64,25 @@ func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqG
 
 func newFakeGitHubPushEventPayload(fullRepo, ref, sha string) *github.PushEvent {
 	return &github.PushEvent{
-		Ref:    github.Ptr(ref),
-		After:  github.Ptr(sha),
-		Before: github.Ptr("00000000000000000000000000000000000000000"),
+		Ref:    new(ref),
+		After:  new(sha),
+		Before: new("00000000000000000000000000000000000000000"),
 		Repo:   newFakeGithubPushRepo(fullRepo),
 	}
 }
 
 func newFakeGitHubTagCreateEventPayload(fullRepo, ref string) *github.CreateEvent {
 	return &github.CreateEvent{
-		Ref:     github.Ptr(strings.Replace(ref, "refs/tags/", "", 1)),
-		RefType: github.Ptr("tag"),
+		Ref:     new(strings.Replace(ref, "refs/tags/", "", 1)),
+		RefType: new("tag"),
 		Repo:    newFakeGithubRepo(fullRepo),
 	}
 }
 
 func newFakeGitHubPullRequestPayload(fullRepo, baseRef, headSHA string, number int) *github.PullRequestEvent {
 	return &github.PullRequestEvent{
-		Action:      github.Ptr("opened"),
-		Number:      github.Ptr(number),
+		Action:      new("opened"),
+		Number:      new(number),
 		PullRequest: newFakeGithubPullRequest(baseRef, headSHA, number),
 		Repo:        newFakeGithubRepo(fullRepo),
 	}
@@ -90,35 +90,35 @@ func newFakeGitHubPullRequestPayload(fullRepo, baseRef, headSHA string, number i
 
 func newFakeGithubRepo(fullRepo string) *github.Repository {
 	return &github.Repository{
-		FullName: github.Ptr(fullRepo),
-		Name:     github.Ptr(strings.Split(fullRepo, "/")[1]),
-		CloneURL: github.Ptr(fmt.Sprintf("https://github.com/%s.git", fullRepo)),
+		FullName: new(fullRepo),
+		Name:     new(strings.Split(fullRepo, "/")[1]),
+		CloneURL: new(fmt.Sprintf("https://github.com/%s.git", fullRepo)),
 		Owner: &github.User{
-			Login: github.Ptr(strings.Split(fullRepo, "/")[0]),
+			Login: new(strings.Split(fullRepo, "/")[0]),
 		},
 	}
 }
 
 func newFakeGithubPushRepo(fullRepo string) *github.PushEventRepository {
 	return &github.PushEventRepository{
-		FullName: github.Ptr(fullRepo),
-		Name:     github.Ptr(strings.Split(fullRepo, "/")[1]),
-		CloneURL: github.Ptr(fmt.Sprintf("https://github.com/%s.git", fullRepo)),
+		FullName: new(fullRepo),
+		Name:     new(strings.Split(fullRepo, "/")[1]),
+		CloneURL: new(fmt.Sprintf("https://github.com/%s.git", fullRepo)),
 		Owner: &github.User{
-			Login: github.Ptr(strings.Split(fullRepo, "/")[0]),
+			Login: new(strings.Split(fullRepo, "/")[0]),
 		},
 	}
 }
 
 func newFakeGithubPullRequest(baseRef, headSHA string, number int) *github.PullRequest {
 	return &github.PullRequest{
-		Number: github.Ptr(number),
-		State:  github.Ptr("open"),
+		Number: new(number),
+		State:  new("open"),
 		Head: &github.PullRequestBranch{
-			SHA: github.Ptr(headSHA),
+			SHA: new(headSHA),
 		},
 		Base: &github.PullRequestBranch{
-			Ref: github.Ptr(baseRef),
+			Ref: new(baseRef),
 		},
 	}
 }

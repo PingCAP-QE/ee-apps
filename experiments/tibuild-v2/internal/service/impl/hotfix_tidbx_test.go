@@ -193,10 +193,10 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			for _, names := range tc.pages {
 				tags := make([]*github.RepositoryTag, len(names))
 				for j, name := range names {
-					tags[j] = &github.RepositoryTag{Name: github.Ptr(name)}
+					tags[j] = &github.RepositoryTag{Name: new(name)}
 					// For CommitAlreadyTagged, attach commit SHA to specific tag.
 					if tc.taggedCommitTag == name {
-						tags[j].Commit = &github.Commit{SHA: github.Ptr(testCommitSHA)}
+						tags[j].Commit = &github.Commit{SHA: new(testCommitSHA)}
 					}
 				}
 				tagPages = append(tagPages, tags)
@@ -210,7 +210,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 			compareMock := mock.WithRequestMatch(
 				mock.GetReposCompareByOwnerByRepoByBasehead,
 				&github.CommitsComparison{
-					Status: github.Ptr(compareStatus),
+					Status: new(compareStatus),
 				},
 			)
 
@@ -249,14 +249,14 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 	respTags := mock.WithRequestMatchPages(
 		mock.GetReposTagsByOwnerByRepo,
 		[]*github.RepositoryTag{
-			{Name: github.Ptr("v9.0.0-nextgen.202401.2")},
-			{Name: github.Ptr("v9.0.0-nextgen.202401.1")},
-			{Name: github.Ptr("v9.0.0-nextgen.202312.7")},
+			{Name: new("v9.0.0-nextgen.202401.2")},
+			{Name: new("v9.0.0-nextgen.202401.1")},
+			{Name: new("v9.0.0-nextgen.202312.7")},
 		},
 		[]*github.RepositoryTag{
-			{Name: github.Ptr("v9.0.0-nextgen.202511.3")},
-			{Name: github.Ptr("v9.0.0-nextgen.202511.5")},
-			{Name: github.Ptr("v9.0.0-nextgen.202601.0")},
+			{Name: new("v9.0.0-nextgen.202511.3")},
+			{Name: new("v9.0.0-nextgen.202511.5")},
+			{Name: new("v9.0.0-nextgen.202601.0")},
 		},
 	)
 
@@ -329,8 +329,8 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				mockOpts = append(mockOpts,
 					mock.WithRequestMatch(
 						mock.GetReposCompareByOwnerByRepoByBasehead,
-						&github.CommitsComparison{Status: github.Ptr("identical")},
-						&github.CommitsComparison{Status: github.Ptr("ahead")},
+						&github.CommitsComparison{Status: new("identical")},
+						&github.CommitsComparison{Status: new("ahead")},
 					),
 				)
 			} else {
@@ -338,7 +338,7 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				mockOpts = append(mockOpts,
 					mock.WithRequestMatch(
 						mock.GetReposCompareByOwnerByRepoByBasehead,
-						&github.CommitsComparison{Status: github.Ptr("ahead")},
+						&github.CommitsComparison{Status: new("ahead")},
 					),
 				)
 			}
@@ -354,23 +354,23 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				mock.WithRequestMatch(
 					mock.GetReposCommitsByOwnerByRepoByRef,
 					&github.RepositoryCommit{
-						SHA: github.Ptr(commit),
+						SHA: new(commit),
 					},
 				),
 				mock.WithRequestMatch(
 					mock.GetReposBranchesByOwnerByRepoByBranch,
 					&github.Branch{
-						Name: github.Ptr(branch),
+						Name: new(branch),
 						Commit: &github.RepositoryCommit{
-							SHA: github.Ptr(commit),
+							SHA: new(commit),
 						},
 					},
 				),
 				mock.WithRequestMatch(
 					mock.PostReposGitTagsByOwnerByRepo,
 					&github.Tag{
-						Tag: github.Ptr("v9.0.0-nextgen.202601.1"),
-						Message: github.Ptr(func() string {
+						Tag: new("v9.0.0-nextgen.202601.1"),
+						Message: new(func() string {
 							b, _ := json.Marshal(map[string]any{
 								"author": "tester",
 								"meta": map[string]any{
@@ -384,18 +384,18 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 							return string(b)
 						}()),
 						Object: &github.GitObject{
-							Type: github.Ptr("commit"),
-							SHA:  github.Ptr(commit),
+							Type: new("commit"),
+							SHA:  new(commit),
 						},
-						SHA: github.Ptr(commit),
+						SHA: new(commit),
 					},
 				),
 				mock.WithRequestMatch(
 					mock.PostReposGitRefsByOwnerByRepo,
 					&github.Reference{
-						Ref: github.Ptr("refs/tags/v9.0.0-nextgen.202601.1"),
+						Ref: new("refs/tags/v9.0.0-nextgen.202601.1"),
 						Object: &github.GitObject{
-							SHA: github.Ptr(commit),
+							SHA: new(commit),
 						},
 					},
 				),
@@ -449,29 +449,29 @@ func TestBumpTagForTidbx_BootstrapFromReleaseBranch(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposBranchesByOwnerByRepoByBranch,
 			&github.Branch{
-				Name: github.Ptr(branch),
+				Name: new(branch),
 				Commit: &github.RepositoryCommit{
-					SHA: github.Ptr(commit),
+					SHA: new(commit),
 				},
 			},
 		),
 		mock.WithRequestMatch(
 			mock.PostReposGitTagsByOwnerByRepo,
 			&github.Tag{
-				Tag: github.Ptr(expectedTag),
+				Tag: new(expectedTag),
 				Object: &github.GitObject{
-					Type: github.Ptr("commit"),
-					SHA:  github.Ptr(commit),
+					Type: new("commit"),
+					SHA:  new(commit),
 				},
-				SHA: github.Ptr(commit),
+				SHA: new(commit),
 			},
 		),
 		mock.WithRequestMatch(
 			mock.PostReposGitRefsByOwnerByRepo,
 			&github.Reference{
-				Ref: github.Ptr("refs/tags/" + expectedTag),
+				Ref: new("refs/tags/" + expectedTag),
 				Object: &github.GitObject{
-					SHA: github.Ptr(commit),
+					SHA: new(commit),
 				},
 			},
 		),
@@ -507,8 +507,8 @@ func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
 	respTags := mock.WithRequestMatchPages(
 		mock.GetReposTagsByOwnerByRepo,
 		[]*github.RepositoryTag{
-			{Name: github.Ptr("v8.5.4-nextgen.202510.1"), Commit: &github.Commit{SHA: github.Ptr(commit)}},
-			{Name: github.Ptr("v8.5.4-nextgen.202510.2")},
+			{Name: new("v8.5.4-nextgen.202510.1"), Commit: &github.Commit{SHA: new(commit)}},
+			{Name: new("v8.5.4-nextgen.202510.2")},
 		},
 	)
 
@@ -517,15 +517,15 @@ func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposCommitsByOwnerByRepoByRef,
 			&github.RepositoryCommit{
-				SHA: github.Ptr(commit),
+				SHA: new(commit),
 			},
 		),
 		mock.WithRequestMatch(
 			mock.GetReposBranchesByOwnerByRepoByBranch,
 			&github.Branch{
-				Name: github.Ptr(branch),
+				Name: new(branch),
 				Commit: &github.RepositoryCommit{
-					SHA: github.Ptr(commit),
+					SHA: new(commit),
 				},
 			},
 		),
@@ -581,21 +581,21 @@ func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposGitRefByOwnerByRepoByRef,
 			&github.Reference{
-				Ref: github.Ptr("refs/tags/" + tag),
+				Ref: new("refs/tags/" + tag),
 				Object: &github.GitObject{
-					SHA: github.Ptr("deadbeef"),
+					SHA: new("deadbeef"),
 				},
 			},
 		),
 		mock.WithRequestMatch(
 			mock.GetReposGitTagsByOwnerByRepoByTagSha,
 			&github.Tag{
-				Tag:     github.Ptr(tag),
-				Message: github.Ptr(string(metaBytes)),
-				SHA:     github.Ptr("deadbeef"),
+				Tag:     new(tag),
+				Message: new(string(metaBytes)),
+				SHA:     new("deadbeef"),
 				Object: &github.GitObject{
-					Type: github.Ptr("commit"),
-					SHA:  github.Ptr("abc123"),
+					Type: new("commit"),
+					SHA:  new("abc123"),
 				},
 			},
 		),
@@ -644,21 +644,21 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposGitRefByOwnerByRepoByRef,
 			&github.Reference{
-				Ref: github.Ptr("refs/tags/" + tag),
+				Ref: new("refs/tags/" + tag),
 				Object: &github.GitObject{
-					SHA: github.Ptr("deadbeef"),
+					SHA: new("deadbeef"),
 				},
 			},
 		),
 		mock.WithRequestMatch(
 			mock.GetReposGitTagsByOwnerByRepoByTagSha,
 			&github.Tag{
-				Tag:     github.Ptr(tag),
-				Message: github.Ptr("{not-json"),
-				SHA:     github.Ptr("deadbeef"),
+				Tag:     new(tag),
+				Message: new("{not-json"),
+				SHA:     new("deadbeef"),
 				Object: &github.GitObject{
-					Type: github.Ptr("commit"),
-					SHA:  github.Ptr("abc123"),
+					Type: new("commit"),
+					SHA:  new("abc123"),
 				},
 			},
 		),
@@ -687,20 +687,20 @@ func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
 		mock.WithRequestMatch(
 			mock.GetReposGitRefByOwnerByRepoByRef,
 			&github.Reference{
-				Ref: github.Ptr("refs/tags/" + gitTag),
+				Ref: new("refs/tags/" + gitTag),
 				Object: &github.GitObject{
-					SHA: github.Ptr("deadbeef"),
+					SHA: new("deadbeef"),
 				},
 			},
 		),
 		mock.WithRequestMatch(
 			mock.GetReposGitTagsByOwnerByRepoByTagSha,
 			&github.Tag{
-				Tag: github.Ptr(gitTag),
-				SHA: github.Ptr("deadbeef"),
+				Tag: new(gitTag),
+				SHA: new("deadbeef"),
 				Object: &github.GitObject{
-					Type: github.Ptr("commit"),
-					SHA:  github.Ptr("abc123"),
+					Type: new("commit"),
+					SHA:  new("abc123"),
 				},
 			},
 		),
