@@ -220,7 +220,7 @@ def test_populate_ac_stage_tables_skips_parse_failed_ac_from_delete_inputs() -> 
     )
 
     assert result.parse_error_count == 1
-    assert result.source_object_count == 3
+    assert result.seeded_object_count == 3
     assert result.last_seed_cursor is not None
     assert result.last_seed_cursor.object_name == "ac/missing"
     assert result.last_seed_cursor.last_seen_at == datetime(2026, 5, 3, tzinfo=UTC)
@@ -661,6 +661,79 @@ def test_run_cleanup_gcs_cache_delete_refills_live_ac_target_after_stale_rows() 
         and "_tmp_gcs_cache_ac_missing_metadata_steadyrunrefill" in query
     ]
     assert len(reconcile_queries) == 2
+
+
+def test_run_cleanup_gcs_cache_delete_exits_when_seed_batch_is_empty() -> None:
+    captured_queries = []
+
+    def fake_execute(query, parameters):
+        rendered = {param.name: param.value for param in parameters}
+        captured_queries.append((query, rendered))
+        if "candidate_cas_object_count" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_cas_object_count": 0,
+                        "candidate_ac_object_count": 0,
+                        "candidate_cas_delete_object_count": 0,
+                        "oldest_last_seen_at": None,
+                        "newest_last_seen_at": None,
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=2,
+            )
+        if "SELECT COUNT(DISTINCT cas_object_name) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        if "SELECT COUNT(*) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        del parameters
+        if (
+            "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_ac_"
+            in query
+        ):
+            return
+        if (
+            "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_cas_"
+            in query
+        ):
+            return
+        raise AssertionError(f"Unexpected stream query: {query}")
+        yield
+
+    summary = run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="delete",
+        execute_kind="cas",
+        ac_retention_days=10,
+        cas_retention_days=15,
+        safety_buffer_days=1,
+        max_delete_objects=3,
+        max_delete_cas_objects=5,
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        create_batch_job=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"should not create batch job: {kwargs}")
+        ),
+        wait_for_batch_job=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"should not wait for batch job: {kwargs}")
+        ),
+        now=lambda: datetime(2026, 6, 15, 10, 30, tzinfo=UTC),
+        run_id_factory=lambda: "steady-run-empty",
+    )
+
+    assert summary.selected_ac_object_count == 0
+    assert summary.selected_cas_object_count == 0
+    assert summary.ac_manifest_uri is None
+    assert summary.cas_manifest_uri is None
+    assert not any(
+        "_tmp_gcs_cache_ac_missing_metadata_steadyrunempty" in query
+        and "object_kind = 'ac'" in query
+        for query, _params in captured_queries
+    )
 
 
 def test_run_cleanup_gcs_cache_delete_requires_execute_kind_cas() -> None:

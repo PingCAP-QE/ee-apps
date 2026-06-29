@@ -97,7 +97,7 @@ class AcSeedCursor:
 class AcStageResult:
     parse_error_count: int
     sample_parse_errors: tuple[CleanupGcsCacheParseErrorSample, ...]
-    source_object_count: int
+    seeded_object_count: int
     last_seed_cursor: AcSeedCursor | None
 
 
@@ -298,11 +298,9 @@ def run_cleanup_gcs_cache(
             reference_batch_size=settings.ac_reference_batch_size,
         )
         ac_parse_error_count += ac_stage_result.parse_error_count
-        for sample in ac_stage_result.sample_parse_errors:
-            if len(sample_ac_parse_errors) >= 10:
-                break
-            sample_ac_parse_errors.append(sample)
-        if ac_stage_result.source_object_count == 0:
+        sample_ac_parse_errors.extend(ac_stage_result.sample_parse_errors)
+        del sample_ac_parse_errors[10:]
+        if ac_stage_result.seeded_object_count == 0:
             break
         ac_seed_cursor = ac_stage_result.last_seed_cursor
 
@@ -335,7 +333,7 @@ def run_cleanup_gcs_cache(
         bytes_processed_total = _add_bytes(bytes_processed_total, selected_ac_count.bytes_processed)
         if selected_ac_object_count >= resolved_max_delete_objects:
             break
-        if ac_stage_result.source_object_count < remaining_ac_target:
+        if ac_stage_result.seeded_object_count < remaining_ac_target:
             break
 
     cas_from_ac_count = _count_distinct_run_cas_rows(
@@ -944,7 +942,7 @@ def _populate_ac_stage_tables(
 ) -> AcStageResult:
     parse_error_count = 0
     sample_parse_errors: list[CleanupGcsCacheParseErrorSample] = []
-    source_object_count = 0
+    seeded_object_count = 0
     last_seed_cursor: AcSeedCursor | None = None
     rows = stream_rows(
         f"SELECT object_name, last_seen_at FROM {source_table} ORDER BY last_seen_at ASC, object_name ASC",
@@ -968,7 +966,7 @@ def _populate_ac_stage_tables(
 
             for batch in _batched(rows, stream_batch_size):
                 object_names = tuple(str(row["object_name"]) for row in batch)
-                source_object_count += len(object_names)
+                seeded_object_count += len(object_names)
                 last_row = batch[-1]
                 last_seed_cursor = AcSeedCursor(
                     last_seen_at=coerce_datetime(last_row["last_seen_at"]),
@@ -1056,7 +1054,7 @@ def _populate_ac_stage_tables(
     return AcStageResult(
         parse_error_count=parse_error_count,
         sample_parse_errors=tuple(sample_parse_errors),
-        source_object_count=source_object_count,
+        seeded_object_count=seeded_object_count,
         last_seed_cursor=last_seed_cursor,
     )
 
