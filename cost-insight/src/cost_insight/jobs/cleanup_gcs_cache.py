@@ -88,9 +88,17 @@ class TableCountResult:
 
 
 @dataclass(frozen=True)
+class AcSeedCursor:
+    last_seen_at: datetime
+    object_name: str
+
+
+@dataclass(frozen=True)
 class AcStageResult:
     parse_error_count: int
     sample_parse_errors: tuple[CleanupGcsCacheParseErrorSample, ...]
+    seeded_object_count: int
+    last_seed_cursor: AcSeedCursor | None
 
 
 def run_cleanup_gcs_cache(
@@ -224,20 +232,6 @@ def run_cleanup_gcs_cache(
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         execute(
-            build_cleanup_gcs_cache_ac_seed_table_query(
-                settings,
-                candidate_table=ac_candidate_table,
-                ttl_days=ttl_days,
-            ),
-            parameters=[
-                BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
-                BigQueryParameter("limit", "INT64", resolved_max_delete_objects),
-            ],
-        ).total_bytes_processed,
-    )
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
             build_cleanup_gcs_cache_run_references_table_query(
                 run_references_table=run_references_table,
                 ttl_days=ttl_days,
@@ -258,19 +252,90 @@ def run_cleanup_gcs_cache(
             parameters=[],
         ).total_bytes_processed,
     )
-    ac_stage_result = _populate_ac_stage_tables(
-        settings=settings,
-        stream_rows=stream_rows,
-        resolve_object_metadata=resolve_object_metadata,
-        extract_references=extract_references,
-        load_jsonl_file=load_jsonl_file,
-        source_table=ac_candidate_table,
-        live_table=ac_live_metadata_table,
-        missing_table=ac_missing_metadata_table,
-        references_table=run_references_table,
-        stream_batch_size=settings.cleanup_batch_size,
-        reference_batch_size=settings.ac_reference_batch_size,
-    )
+    ac_parse_error_count = 0
+    sample_ac_parse_errors: list[CleanupGcsCacheParseErrorSample] = []
+    selected_ac_object_count = 0
+    ac_seed_cursor: AcSeedCursor | None = None
+
+    while selected_ac_object_count < resolved_max_delete_objects:
+        remaining_ac_target = resolved_max_delete_objects - selected_ac_object_count
+        ac_seed_parameters = [
+            BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
+            BigQueryParameter("limit", "INT64", remaining_ac_target),
+        ]
+        if ac_seed_cursor is not None:
+            ac_seed_parameters.extend(
+                [
+                    BigQueryParameter(
+                        "cursor_last_seen_at", "TIMESTAMP", ac_seed_cursor.last_seen_at
+                    ),
+                    BigQueryParameter("cursor_object_name", "STRING", ac_seed_cursor.object_name),
+                ]
+            )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_ac_seed_table_query(
+                    settings,
+                    candidate_table=ac_candidate_table,
+                    ttl_days=ttl_days,
+                    has_cursor=ac_seed_cursor is not None,
+                ),
+                parameters=ac_seed_parameters,
+            ).total_bytes_processed,
+        )
+        ac_stage_result = _populate_ac_stage_tables(
+            settings=settings,
+            stream_rows=stream_rows,
+            resolve_object_metadata=resolve_object_metadata,
+            extract_references=extract_references,
+            load_jsonl_file=load_jsonl_file,
+            source_table=ac_candidate_table,
+            live_table=ac_live_metadata_table,
+            missing_table=ac_missing_metadata_table,
+            references_table=run_references_table,
+            stream_batch_size=settings.cleanup_batch_size,
+            reference_batch_size=settings.ac_reference_batch_size,
+        )
+        ac_parse_error_count += ac_stage_result.parse_error_count
+        sample_ac_parse_errors.extend(ac_stage_result.sample_parse_errors)
+        del sample_ac_parse_errors[10:]
+        if ac_stage_result.seeded_object_count == 0:
+            break
+        ac_seed_cursor = ac_stage_result.last_seed_cursor
+
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_reconcile_missing_ac_query(
+                    settings,
+                    missing_metadata_table=ac_missing_metadata_table,
+                ),
+                parameters=[BigQueryParameter("run_started_at", "TIMESTAMP", run_started_at)],
+            ).total_bytes_processed,
+        )
+
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_final_ac_delete_table_query(
+                    ac_live_metadata_table=ac_live_metadata_table,
+                    ac_missing_metadata_table=ac_missing_metadata_table,
+                    candidate_table=ac_delete_table,
+                    ttl_days=ttl_days,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+
+        selected_ac_count = _count_table_rows(execute=execute, table_ref=ac_delete_table)
+        selected_ac_object_count = selected_ac_count.object_count
+        bytes_processed_total = _add_bytes(bytes_processed_total, selected_ac_count.bytes_processed)
+        if selected_ac_object_count >= resolved_max_delete_objects:
+            break
+        if ac_stage_result.seeded_object_count < remaining_ac_target:
+            break
+
     cas_from_ac_count = _count_distinct_run_cas_rows(
         execute=execute,
         table_ref=run_references_table,
@@ -278,33 +343,6 @@ def run_cleanup_gcs_cache(
     candidate_cas_object_count = cas_from_ac_count.object_count
     bytes_processed_total = _add_bytes(bytes_processed_total, cas_from_ac_count.bytes_processed)
 
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_reconcile_missing_ac_query(
-                settings,
-                missing_metadata_table=ac_missing_metadata_table,
-            ),
-            parameters=[BigQueryParameter("run_started_at", "TIMESTAMP", run_started_at)],
-        ).total_bytes_processed,
-    )
-
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_final_ac_delete_table_query(
-                ac_live_metadata_table=ac_live_metadata_table,
-                ac_missing_metadata_table=ac_missing_metadata_table,
-                candidate_table=ac_delete_table,
-                ttl_days=ttl_days,
-            ),
-            parameters=[],
-        ).total_bytes_processed,
-    )
-
-    selected_ac_count = _count_table_rows(execute=execute, table_ref=ac_delete_table)
-    selected_ac_object_count = selected_ac_count.object_count
-    bytes_processed_total = _add_bytes(bytes_processed_total, selected_ac_count.bytes_processed)
     selected_cas_object_count = 0
 
     ac_manifest_uri = None
@@ -470,13 +508,13 @@ def run_cleanup_gcs_cache(
         candidate_cas_object_count=candidate_cas_object_count,
         candidate_ac_object_count=candidate_ac_object_count,
         candidate_cas_delete_object_count=candidate_cas_delete_object_count,
-        ac_parse_error_count=ac_stage_result.parse_error_count,
+        ac_parse_error_count=ac_parse_error_count,
         selected_ac_object_count=selected_ac_object_count,
         selected_cas_object_count=selected_cas_object_count,
         oldest_last_seen_at=oldest_last_seen_at,
         newest_last_seen_at=newest_last_seen_at,
         sample_candidates=(),
-        sample_ac_parse_errors=ac_stage_result.sample_parse_errors,
+        sample_ac_parse_errors=tuple(sample_ac_parse_errors),
         bytes_processed=bytes_processed_total,
         run_started_at=run_started_at,
         run_finished_at=run_finished_at,
@@ -531,10 +569,18 @@ def build_cleanup_gcs_cache_ac_seed_table_query(
     *,
     candidate_table: str,
     ttl_days: int,
+    has_cursor: bool = False,
 ) -> str:
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
+    cursor_filter = ""
+    if has_cursor:
+        cursor_filter = """
+  AND (
+    last_seen_at > @cursor_last_seen_at
+    OR (last_seen_at = @cursor_last_seen_at AND object_name > @cursor_object_name)
+  )"""
     return f"""
 CREATE OR REPLACE TABLE {candidate_table}
 OPTIONS (
@@ -547,6 +593,7 @@ SELECT
 FROM {current_table}
 WHERE object_kind = 'ac'
   AND last_seen_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @ac_cutoff_days DAY)
+{cursor_filter}
 ORDER BY last_seen_at ASC, object_name ASC
 LIMIT @limit
 """.strip()
@@ -895,8 +942,10 @@ def _populate_ac_stage_tables(
 ) -> AcStageResult:
     parse_error_count = 0
     sample_parse_errors: list[CleanupGcsCacheParseErrorSample] = []
+    seeded_object_count = 0
+    last_seed_cursor: AcSeedCursor | None = None
     rows = stream_rows(
-        f"SELECT object_name FROM {source_table} ORDER BY object_name ASC",
+        f"SELECT object_name, last_seen_at FROM {source_table} ORDER BY last_seen_at ASC, object_name ASC",
         [],
     )
     live_schema = (("object_name", "STRING"), ("generation", "INT64"))
@@ -917,6 +966,12 @@ def _populate_ac_stage_tables(
 
             for batch in _batched(rows, stream_batch_size):
                 object_names = tuple(str(row["object_name"]) for row in batch)
+                seeded_object_count += len(object_names)
+                last_row = batch[-1]
+                last_seed_cursor = AcSeedCursor(
+                    last_seen_at=coerce_datetime(last_row["last_seen_at"]),
+                    object_name=str(last_row["object_name"]),
+                )
                 metadata_rows = resolve_object_metadata(
                     project_id=settings.project_id,
                     bucket_name=settings.bucket_name,
@@ -999,6 +1054,8 @@ def _populate_ac_stage_tables(
     return AcStageResult(
         parse_error_count=parse_error_count,
         sample_parse_errors=tuple(sample_parse_errors),
+        seeded_object_count=seeded_object_count,
+        last_seed_cursor=last_seed_cursor,
     )
 
 
