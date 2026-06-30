@@ -193,7 +193,10 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_gcs_cache.add_argument("--safety-buffer-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--max-delete-objects", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument(
-        "--max-delete-cas-objects", type=_parse_positive_int, default=None
+        "--max-delete-cas-objects",
+        type=_parse_positive_int,
+        default=None,
+        help="Deprecated compatibility option; ignored by v3 AC-driven cascade cleanup",
     )
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
@@ -241,7 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         limit=args.limit,
                         replace_existing_partitions=args.replace_existing_partitions,
                     )
-                    )
+                )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
@@ -80,10 +81,20 @@ class GcsCacheSettings:
     cleanup_sample_limit: int = 10
     cleanup_max_delete_objects: int = 10000000
     cleanup_max_delete_cas_objects: int = 500
+    cleanup_ac_delete_batch_size: int = 500000
     cleanup_batch_size: int = 1000
     cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
     cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
     cleanup_candidate_ttl_days: int = 7
+
+    def __post_init__(self) -> None:
+        if self.cleanup_ac_delete_batch_size > self.cleanup_max_delete_objects:
+            warnings.warn(
+                "cleanup_ac_delete_batch_size is greater than cleanup_max_delete_objects; "
+                "cleanup will clamp each run to cleanup_max_delete_objects",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
 
 @dataclass(frozen=True)
@@ -336,6 +347,14 @@ def load_settings(
                     "COST_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS",
                 ),
                 500,
+            ),
+            cleanup_ac_delete_batch_size=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
+                    "COST_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
+                ),
+                500000,
             ),
             cleanup_batch_size=_read_positive_int_any(
                 env,

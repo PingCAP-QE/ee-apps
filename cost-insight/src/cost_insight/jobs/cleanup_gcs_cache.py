@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from contextlib import ExitStack
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
 # "all" is kept as a compatibility alias for older dry-run CronJob arguments.
 # v3 cleanup has only one real execution path: AC-driven CAS cascade.
 VALID_EXECUTE_KINDS = ("all", "cas")
+MAX_ZERO_PROGRESS_AC_REFILL_ROUNDS = 3
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,14 @@ class CleanupGcsCacheParseErrorSample:
 
 @dataclass(frozen=True)
 class CleanupGcsCacheSummary:
+    """Runtime summary for one cleanup run.
+
+    The singular manifest/job fields are deprecated compatibility fields that
+    contain only the last submitted batch. New consumers should use the plural
+    fields, which retain every batch manifest URI and Storage Batch Operations
+    job name created by the run.
+    """
+
     account_id: str
     bucket_name: str
     run_id: str
@@ -75,10 +85,16 @@ class CleanupGcsCacheSummary:
     bytes_processed: int | None
     run_started_at: datetime
     run_finished_at: datetime
+    # Deprecated: last batch only. Prefer ac_manifest_uris / ac_batch_job_names.
     ac_manifest_uri: str | None = None
     ac_batch_job_name: str | None = None
+    # Deprecated: last batch only. Prefer cas_manifest_uris / cas_batch_job_names.
     cas_manifest_uri: str | None = None
     cas_batch_job_name: str | None = None
+    ac_manifest_uris: tuple[str, ...] | None = None
+    ac_batch_job_names: tuple[str, ...] | None = None
+    cas_manifest_uris: tuple[str, ...] | None = None
+    cas_batch_job_names: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -148,11 +164,13 @@ def run_cleanup_gcs_cache(
         if max_delete_objects is not None
         else settings.cleanup_max_delete_objects
     )
-    resolved_max_delete_cas_objects = (
-        max_delete_cas_objects
-        if max_delete_cas_objects is not None
-        else settings.cleanup_max_delete_cas_objects
-    )
+    if max_delete_cas_objects is not None:
+        warnings.warn(
+            "max_delete_cas_objects is deprecated and ignored by v3 AC-driven cascade cleanup; "
+            "CAS deletion is bounded only by selected AC batches",
+            FutureWarning,
+            stacklevel=2,
+        )
     ac_cutoff_days = resolved_ac_days + resolved_safety_buffer_days
     cas_cutoff_days = resolved_cas_days + resolved_safety_buffer_days
 
@@ -211,152 +229,197 @@ def run_cleanup_gcs_cache(
 
     run_id = run_id_factory()
     ttl_days = settings.cleanup_candidate_ttl_days
-    ac_candidate_table = _candidate_table_name(settings, prefix="candidate_ac", run_id=run_id)
-    run_references_table = _candidate_table_name(settings, prefix="run_ac_cas_refs", run_id=run_id)
-    cas_candidate_table = _candidate_table_name(settings, prefix="candidate_cas", run_id=run_id)
-    ac_live_metadata_table = _candidate_table_name(
-        settings, prefix="ac_live_metadata", run_id=run_id
-    )
-    ac_missing_metadata_table = _candidate_table_name(
-        settings, prefix="ac_missing_metadata", run_id=run_id
-    )
-    cas_live_metadata_table = _candidate_table_name(
-        settings, prefix="cas_live_metadata", run_id=run_id
-    )
-    cas_missing_metadata_table = _candidate_table_name(
-        settings, prefix="cas_missing_metadata", run_id=run_id
-    )
-    ac_delete_table = _candidate_table_name(settings, prefix="delete_ac", run_id=run_id)
-    cas_delete_table = _candidate_table_name(settings, prefix="delete_cas", run_id=run_id)
-
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_run_references_table_query(
-                run_references_table=run_references_table,
-                ttl_days=ttl_days,
-            ),
-            parameters=[],
-        ).total_bytes_processed,
-    )
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_metadata_stage_tables_query(
-                ttl_days=ttl_days,
-                ac_live_metadata_table=ac_live_metadata_table,
-                ac_missing_metadata_table=ac_missing_metadata_table,
-                cas_live_metadata_table=cas_live_metadata_table,
-                cas_missing_metadata_table=cas_missing_metadata_table,
-            ),
-            parameters=[],
-        ).total_bytes_processed,
-    )
     ac_parse_error_count = 0
     sample_ac_parse_errors: list[CleanupGcsCacheParseErrorSample] = []
     selected_ac_object_count = 0
-    ac_seed_cursor: AcSeedCursor | None = None
-
-    while selected_ac_object_count < resolved_max_delete_objects:
-        remaining_ac_target = resolved_max_delete_objects - selected_ac_object_count
-        ac_seed_parameters = [
-            BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
-            BigQueryParameter("limit", "INT64", remaining_ac_target),
-        ]
-        if ac_seed_cursor is not None:
-            ac_seed_parameters.extend(
-                [
-                    BigQueryParameter(
-                        "cursor_last_seen_at", "TIMESTAMP", ac_seed_cursor.last_seen_at
-                    ),
-                    BigQueryParameter("cursor_object_name", "STRING", ac_seed_cursor.object_name),
-                ]
-            )
-        bytes_processed_total = _add_bytes(
-            bytes_processed_total,
-            execute(
-                build_cleanup_gcs_cache_ac_seed_table_query(
-                    settings,
-                    candidate_table=ac_candidate_table,
-                    ttl_days=ttl_days,
-                    has_cursor=ac_seed_cursor is not None,
-                ),
-                parameters=ac_seed_parameters,
-            ).total_bytes_processed,
-        )
-        ac_stage_result = _populate_ac_stage_tables(
-            settings=settings,
-            stream_rows=stream_rows,
-            resolve_object_metadata=resolve_object_metadata,
-            extract_references=extract_references,
-            load_jsonl_file=load_jsonl_file,
-            source_table=ac_candidate_table,
-            live_table=ac_live_metadata_table,
-            missing_table=ac_missing_metadata_table,
-            references_table=run_references_table,
-            stream_batch_size=settings.cleanup_batch_size,
-            reference_batch_size=settings.ac_reference_batch_size,
-        )
-        ac_parse_error_count += ac_stage_result.parse_error_count
-        sample_ac_parse_errors.extend(ac_stage_result.sample_parse_errors)
-        del sample_ac_parse_errors[10:]
-        if ac_stage_result.seeded_object_count == 0:
-            break
-        ac_seed_cursor = ac_stage_result.last_seed_cursor
-
-        bytes_processed_total = _add_bytes(
-            bytes_processed_total,
-            execute(
-                build_cleanup_gcs_cache_reconcile_missing_ac_query(
-                    settings,
-                    missing_metadata_table=ac_missing_metadata_table,
-                ),
-                parameters=[BigQueryParameter("run_started_at", "TIMESTAMP", run_started_at)],
-            ).total_bytes_processed,
-        )
-
-        bytes_processed_total = _add_bytes(
-            bytes_processed_total,
-            execute(
-                build_cleanup_gcs_cache_final_ac_delete_table_query(
-                    ac_live_metadata_table=ac_live_metadata_table,
-                    ac_missing_metadata_table=ac_missing_metadata_table,
-                    candidate_table=ac_delete_table,
-                    ttl_days=ttl_days,
-                ),
-                parameters=[],
-            ).total_bytes_processed,
-        )
-
-        selected_ac_count = _count_table_rows(execute=execute, table_ref=ac_delete_table)
-        selected_ac_object_count = selected_ac_count.object_count
-        bytes_processed_total = _add_bytes(bytes_processed_total, selected_ac_count.bytes_processed)
-        if selected_ac_object_count >= resolved_max_delete_objects:
-            break
-        if ac_stage_result.seeded_object_count < remaining_ac_target:
-            break
-
-    cas_from_ac_count = _count_distinct_run_cas_rows(
-        execute=execute,
-        table_ref=run_references_table,
-    )
-    candidate_cas_object_count = cas_from_ac_count.object_count
-    bytes_processed_total = _add_bytes(bytes_processed_total, cas_from_ac_count.bytes_processed)
-
     selected_cas_object_count = 0
+    candidate_cas_object_count = 0
+    candidate_cas_delete_object_count = 0
 
     ac_manifest_uri = None
     ac_batch_job_name = None
     cas_manifest_uri = None
     cas_batch_job_name = None
+    ac_manifest_uris: list[str] = []
+    ac_batch_job_names: list[str] = []
+    cas_manifest_uris: list[str] = []
+    cas_batch_job_names: list[str] = []
+    ac_seed_cursor: AcSeedCursor | None = None
+    ac_candidates_exhausted = False
+    batch_index = 0
 
-    if selected_ac_object_count > 0:
+    while selected_ac_object_count < resolved_max_delete_objects and not ac_candidates_exhausted:
+        batch_index += 1
+        batch_target = min(
+            settings.cleanup_ac_delete_batch_size,
+            resolved_max_delete_objects - selected_ac_object_count,
+        )
+
+        ac_candidate_table = _batch_candidate_table_name(
+            settings, prefix="candidate_ac", run_id=run_id, batch_index=batch_index
+        )
+        run_references_table = _batch_candidate_table_name(
+            settings, prefix="run_ac_cas_refs", run_id=run_id, batch_index=batch_index
+        )
+        cas_candidate_table = _batch_candidate_table_name(
+            settings, prefix="candidate_cas", run_id=run_id, batch_index=batch_index
+        )
+        ac_live_metadata_table = _batch_candidate_table_name(
+            settings, prefix="ac_live_metadata", run_id=run_id, batch_index=batch_index
+        )
+        ac_missing_metadata_table = _batch_candidate_table_name(
+            settings, prefix="ac_missing_metadata", run_id=run_id, batch_index=batch_index
+        )
+        cas_live_metadata_table = _batch_candidate_table_name(
+            settings, prefix="cas_live_metadata", run_id=run_id, batch_index=batch_index
+        )
+        cas_missing_metadata_table = _batch_candidate_table_name(
+            settings, prefix="cas_missing_metadata", run_id=run_id, batch_index=batch_index
+        )
+        ac_delete_table = _batch_candidate_table_name(
+            settings, prefix="delete_ac", run_id=run_id, batch_index=batch_index
+        )
+        cas_delete_table = _batch_candidate_table_name(
+            settings, prefix="delete_cas", run_id=run_id, batch_index=batch_index
+        )
+
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_run_references_table_query(
+                    run_references_table=run_references_table,
+                    ttl_days=ttl_days,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_metadata_stage_tables_query(
+                    ttl_days=ttl_days,
+                    ac_live_metadata_table=ac_live_metadata_table,
+                    ac_missing_metadata_table=ac_missing_metadata_table,
+                    cas_live_metadata_table=cas_live_metadata_table,
+                    cas_missing_metadata_table=cas_missing_metadata_table,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+
+        selected_ac_in_batch = 0
+        zero_progress_refill_rounds = 0
+        while selected_ac_in_batch < batch_target:
+            remaining_ac_target = batch_target - selected_ac_in_batch
+            ac_seed_parameters = [
+                BigQueryParameter("ac_cutoff_days", "INT64", ac_cutoff_days),
+                BigQueryParameter("limit", "INT64", remaining_ac_target),
+            ]
+            if ac_seed_cursor is not None:
+                ac_seed_parameters.extend(
+                    [
+                        BigQueryParameter(
+                            "cursor_last_seen_at", "TIMESTAMP", ac_seed_cursor.last_seen_at
+                        ),
+                        BigQueryParameter(
+                            "cursor_object_name", "STRING", ac_seed_cursor.object_name
+                        ),
+                    ]
+                )
+            bytes_processed_total = _add_bytes(
+                bytes_processed_total,
+                execute(
+                    build_cleanup_gcs_cache_ac_seed_table_query(
+                        settings,
+                        candidate_table=ac_candidate_table,
+                        ttl_days=ttl_days,
+                        has_cursor=ac_seed_cursor is not None,
+                    ),
+                    parameters=ac_seed_parameters,
+                ).total_bytes_processed,
+            )
+            ac_stage_result = _populate_ac_stage_tables(
+                settings=settings,
+                stream_rows=stream_rows,
+                resolve_object_metadata=resolve_object_metadata,
+                extract_references=extract_references,
+                load_jsonl_file=load_jsonl_file,
+                source_table=ac_candidate_table,
+                live_table=ac_live_metadata_table,
+                missing_table=ac_missing_metadata_table,
+                references_table=run_references_table,
+                stream_batch_size=settings.cleanup_batch_size,
+                reference_batch_size=settings.ac_reference_batch_size,
+            )
+            ac_parse_error_count += ac_stage_result.parse_error_count
+            sample_ac_parse_errors.extend(ac_stage_result.sample_parse_errors)
+            del sample_ac_parse_errors[10:]
+            if ac_stage_result.seeded_object_count == 0:
+                ac_candidates_exhausted = True
+                break
+            ac_seed_cursor = ac_stage_result.last_seed_cursor
+
+            bytes_processed_total = _add_bytes(
+                bytes_processed_total,
+                execute(
+                    build_cleanup_gcs_cache_reconcile_missing_ac_query(
+                        settings,
+                        missing_metadata_table=ac_missing_metadata_table,
+                    ),
+                    parameters=[BigQueryParameter("run_started_at", "TIMESTAMP", run_started_at)],
+                ).total_bytes_processed,
+            )
+
+            bytes_processed_total = _add_bytes(
+                bytes_processed_total,
+                execute(
+                    build_cleanup_gcs_cache_final_ac_delete_table_query(
+                        ac_live_metadata_table=ac_live_metadata_table,
+                        ac_missing_metadata_table=ac_missing_metadata_table,
+                        candidate_table=ac_delete_table,
+                        ttl_days=ttl_days,
+                    ),
+                    parameters=[],
+                ).total_bytes_processed,
+            )
+
+            previous_selected_ac_in_batch = selected_ac_in_batch
+            selected_ac_count = _count_table_rows(execute=execute, table_ref=ac_delete_table)
+            selected_ac_in_batch = selected_ac_count.object_count
+            bytes_processed_total = _add_bytes(
+                bytes_processed_total, selected_ac_count.bytes_processed
+            )
+            if selected_ac_in_batch == previous_selected_ac_in_batch:
+                zero_progress_refill_rounds += 1
+            else:
+                zero_progress_refill_rounds = 0
+            if selected_ac_in_batch >= batch_target:
+                break
+            if zero_progress_refill_rounds >= MAX_ZERO_PROGRESS_AC_REFILL_ROUNDS:
+                ac_candidates_exhausted = True
+                break
+            if ac_stage_result.seeded_object_count < remaining_ac_target:
+                ac_candidates_exhausted = True
+                break
+
+        if selected_ac_in_batch <= 0:
+            continue
+
+        cas_from_ac_count = _count_distinct_run_cas_rows(
+            execute=execute,
+            table_ref=run_references_table,
+        )
+        candidate_cas_object_count += cas_from_ac_count.object_count
+        bytes_processed_total = _add_bytes(bytes_processed_total, cas_from_ac_count.bytes_processed)
+
         ac_manifest_uri = _manifest_uri(
             settings,
             object_kind="ac",
             run_started_at=run_started_at,
             run_id=run_id,
+            batch_index=batch_index,
         )
+        ac_manifest_uris.append(ac_manifest_uri)
         bytes_processed_total = _add_bytes(
             bytes_processed_total,
             execute(
@@ -370,7 +433,12 @@ def run_cleanup_gcs_cache(
         )
         ac_batch_job = create_batch_job(
             project_id=settings.project_id,
-            job_id=_batch_job_id(object_kind="ac", run_started_at=run_started_at, run_id=run_id),
+            job_id=_batch_job_id(
+                object_kind="ac",
+                run_started_at=run_started_at,
+                run_id=run_id,
+                batch_index=batch_index,
+            ),
             bucket_name=settings.bucket_name,
             manifest_uri=ac_manifest_uri,
             dry_run=False,
@@ -381,6 +449,7 @@ def run_cleanup_gcs_cache(
             ),
         )
         ac_batch_job_name = ac_batch_job.job_name
+        ac_batch_job_names.append(ac_batch_job_name)
         _wait_for_successful_batch_job(
             wait_for_batch_job=wait_for_batch_job, job_name=ac_batch_job.job_name
         )
@@ -394,68 +463,75 @@ def run_cleanup_gcs_cache(
                 parameters=[BigQueryParameter("run_started_at", "TIMESTAMP", run_started_at)],
             ).total_bytes_processed,
         )
+        selected_ac_object_count += selected_ac_in_batch
 
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_cas_candidate_table_query(
-                settings,
-                run_references_table=run_references_table,
-                candidate_table=cas_candidate_table,
-                ttl_days=ttl_days,
-            ),
-            parameters=[
-                BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days),
-                BigQueryParameter("limit", "INT64", resolved_max_delete_cas_objects),
-            ],
-        ).total_bytes_processed,
-    )
-    _populate_metadata_stage_table(
-        settings=settings,
-        stream_rows=stream_rows,
-        resolve_object_metadata=resolve_object_metadata,
-        load_jsonl_file=load_jsonl_file,
-        source_table=cas_candidate_table,
-        live_table=cas_live_metadata_table,
-        missing_table=cas_missing_metadata_table,
-        batch_size=settings.cleanup_batch_size,
-    )
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_reconcile_missing_cas_query(
-                settings,
-                candidate_table=cas_candidate_table,
-                missing_metadata_table=cas_missing_metadata_table,
-            ),
-            parameters=[],
-        ).total_bytes_processed,
-    )
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_cleanup_gcs_cache_final_cas_delete_table_query(
-                settings,
-                source_table=cas_candidate_table,
-                live_metadata_table=cas_live_metadata_table,
-                candidate_table=cas_delete_table,
-                ttl_days=ttl_days,
-            ),
-            parameters=[],
-        ).total_bytes_processed,
-    )
-    selected_cas_count = _count_table_rows(execute=execute, table_ref=cas_delete_table)
-    selected_cas_object_count = selected_cas_count.object_count
-    bytes_processed_total = _add_bytes(bytes_processed_total, selected_cas_count.bytes_processed)
-    candidate_cas_delete_object_count = selected_cas_object_count
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_cas_candidate_table_query(
+                    settings,
+                    run_references_table=run_references_table,
+                    candidate_table=cas_candidate_table,
+                    ttl_days=ttl_days,
+                ),
+                parameters=[
+                    BigQueryParameter("cas_cutoff_days", "INT64", cas_cutoff_days),
+                ],
+            ).total_bytes_processed,
+        )
+        _populate_metadata_stage_table(
+            settings=settings,
+            stream_rows=stream_rows,
+            resolve_object_metadata=resolve_object_metadata,
+            load_jsonl_file=load_jsonl_file,
+            source_table=cas_candidate_table,
+            live_table=cas_live_metadata_table,
+            missing_table=cas_missing_metadata_table,
+            batch_size=settings.cleanup_batch_size,
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_reconcile_missing_cas_query(
+                    settings,
+                    candidate_table=cas_candidate_table,
+                    missing_metadata_table=cas_missing_metadata_table,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_cleanup_gcs_cache_final_cas_delete_table_query(
+                    settings,
+                    source_table=cas_candidate_table,
+                    live_metadata_table=cas_live_metadata_table,
+                    candidate_table=cas_delete_table,
+                    ttl_days=ttl_days,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+        selected_cas_count = _count_table_rows(execute=execute, table_ref=cas_delete_table)
+        selected_cas_in_batch = selected_cas_count.object_count
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total, selected_cas_count.bytes_processed
+        )
+        candidate_cas_delete_object_count += selected_cas_in_batch
+        selected_cas_object_count += selected_cas_in_batch
 
-    if selected_cas_object_count > 0:
+        if selected_cas_in_batch <= 0:
+            continue
+
         cas_manifest_uri = _manifest_uri(
             settings,
             object_kind="cas",
             run_started_at=run_started_at,
             run_id=run_id,
+            batch_index=batch_index,
         )
+        cas_manifest_uris.append(cas_manifest_uri)
         bytes_processed_total = _add_bytes(
             bytes_processed_total,
             execute(
@@ -469,7 +545,12 @@ def run_cleanup_gcs_cache(
         )
         cas_batch_job = create_batch_job(
             project_id=settings.project_id,
-            job_id=_batch_job_id(object_kind="cas", run_started_at=run_started_at, run_id=run_id),
+            job_id=_batch_job_id(
+                object_kind="cas",
+                run_started_at=run_started_at,
+                run_id=run_id,
+                batch_index=batch_index,
+            ),
             bucket_name=settings.bucket_name,
             manifest_uri=cas_manifest_uri,
             dry_run=False,
@@ -480,6 +561,7 @@ def run_cleanup_gcs_cache(
             ),
         )
         cas_batch_job_name = cas_batch_job.job_name
+        cas_batch_job_names.append(cas_batch_job_name)
         _wait_for_successful_batch_job(
             wait_for_batch_job=wait_for_batch_job, job_name=cas_batch_job.job_name
         )
@@ -522,6 +604,10 @@ def run_cleanup_gcs_cache(
         ac_batch_job_name=ac_batch_job_name,
         cas_manifest_uri=cas_manifest_uri,
         cas_batch_job_name=cas_batch_job_name,
+        ac_manifest_uris=tuple(ac_manifest_uris) or None,
+        ac_batch_job_names=tuple(ac_batch_job_names) or None,
+        cas_manifest_uris=tuple(cas_manifest_uris) or None,
+        cas_batch_job_names=tuple(cas_batch_job_names) or None,
     )
 
 
@@ -651,7 +737,6 @@ SELECT
   cas.idle_days
 FROM cas_after_extra_idle AS cas
 ORDER BY cas.last_seen_at ASC, cas.object_name ASC
-LIMIT @limit
 """.strip()
 
 
@@ -742,6 +827,8 @@ JOIN {live_metadata_table} AS live
   USING (object_name)
 JOIN {current_table} AS current_obj
   ON current_obj.object_name = source.object_name
+ -- Defensive re-check: source_table is expected to contain only CAS rows, but
+ -- this keeps accidental table reuse from deleting non-CAS objects.
  AND current_obj.object_kind = 'cas'
  AND current_obj.last_seen_at = source.last_seen_at
 WHERE NOT EXISTS (
@@ -998,7 +1085,9 @@ def _populate_ac_stage_tables(
                     )
                 )
                 parse_failed_names = {
-                    extraction.ac_object_name for extraction in extractions if extraction.parse_error
+                    extraction.ac_object_name
+                    for extraction in extractions
+                    if extraction.parse_error
                 }
                 parse_error_count += len(parse_failed_names)
                 for extraction in extractions:
@@ -1024,7 +1113,9 @@ def _populate_ac_stage_tables(
                 missing_names = {item.object_name for item in metadata_rows if not item.exists} | {
                     extraction.ac_object_name for extraction in extractions if not extraction.exists
                 }
-                missing_rows = [{"object_name": object_name} for object_name in sorted(missing_names)]
+                missing_rows = [
+                    {"object_name": object_name} for object_name in sorted(missing_names)
+                ]
                 if deletable_live_rows:
                     for row in deletable_live_rows:
                         live_handle.write(json.dumps(row, separators=(",", ":")))
@@ -1124,24 +1215,48 @@ def _candidate_table_name(settings: GcsCacheSettings, *, prefix: str, run_id: st
     return _table_ref(settings.project_id, settings.dataset, f"_tmp_gcs_cache_{prefix}_{suffix}")
 
 
+def _batch_candidate_table_name(
+    settings: GcsCacheSettings,
+    *,
+    prefix: str,
+    run_id: str,
+    batch_index: int,
+) -> str:
+    return _candidate_table_name(
+        settings,
+        prefix=f"{prefix}_b{batch_index:04d}",
+        run_id=run_id,
+    )
+
+
 def _manifest_uri(
     settings: GcsCacheSettings,
     *,
     object_kind: str,
     run_started_at: datetime,
     run_id: str,
+    batch_index: int | None = None,
 ) -> str:
     date_prefix = run_started_at.strftime("%Y-%m-%d")
+    batch_path = "" if batch_index is None else f"/batch-{batch_index:04d}"
     return (
         f"gs://{settings.cleanup_manifest_bucket}/"
-        f"{settings.cleanup_manifest_prefix}/{date_prefix}/{object_kind}/{run_id}/manifest-*.csv"
+        f"{settings.cleanup_manifest_prefix}/{date_prefix}/{object_kind}/{run_id}"
+        f"{batch_path}/manifest-*.csv"
     )
 
 
-def _batch_job_id(*, object_kind: str, run_started_at: datetime, run_id: str) -> str:
+def _batch_job_id(
+    *,
+    object_kind: str,
+    run_started_at: datetime,
+    run_id: str,
+    batch_index: int | None = None,
+) -> str:
     timestamp = run_started_at.strftime("%Y%m%dt%H%M%S")
     suffix = run_id.replace("-", "")[:12]
-    return f"gcs-cache-cleanup-{object_kind}-{timestamp}-{suffix}".lower()
+    batch_suffix = "" if batch_index is None else f"-b{batch_index:04d}"
+    return f"gcs-cache-cleanup-{object_kind}-{timestamp}-{suffix}{batch_suffix}".lower()
 
 
 def _create_table_query(
