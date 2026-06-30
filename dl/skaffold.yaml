@@ -6,9 +6,18 @@ build:
   platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
     - image: dl
-      docker:
-        dockerfile: Dockerfile
-  local:
-    useDockerCLI: true
-    useBuildkit: true
-    concurrency: 0
+      ko:
+        fromImage: ghcr.io/pingcap-qe/bases/pingcap-base:v1.11.3
+        main: ./cmd/server
+        dependencies:
+          paths:
+            - "**/*.go"
+            - "go.mod"
+            - "go.sum"
+        flags:
+          - -trimpath
+          - -v
+        labels:
+          org.opencontainers.image.description: Download service for OCI/KS3/GCS artifacts
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
