@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
@@ -85,6 +86,15 @@ class GcsCacheSettings:
     cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
     cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
     cleanup_candidate_ttl_days: int = 7
+
+    def __post_init__(self) -> None:
+        if self.cleanup_ac_delete_batch_size > self.cleanup_max_delete_objects:
+            warnings.warn(
+                "cleanup_ac_delete_batch_size is greater than cleanup_max_delete_objects; "
+                "cleanup will clamp each run to cleanup_max_delete_objects",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
 
 @dataclass(frozen=True)

@@ -143,6 +143,20 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.cleanup_candidate_ttl_days == 9
 
 
+def test_load_settings_warns_when_cleanup_ac_batch_exceeds_max_delete_objects() -> None:
+    with pytest.warns(RuntimeWarning, match="cleanup_ac_delete_batch_size is greater"):
+        settings = load_settings(
+            {
+                "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "10",
+                "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE": "20",
+            },
+            require_database=False,
+        )
+
+    assert settings.gcs_cache.cleanup_max_delete_objects == 10
+    assert settings.gcs_cache.cleanup_ac_delete_batch_size == 20
+
+
 def test_load_settings_requires_database_when_not_skipped() -> None:
     with pytest.raises(ValueError, match="Missing required environment variable"):
         load_settings({})

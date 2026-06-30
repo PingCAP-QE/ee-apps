@@ -55,6 +55,14 @@ class CleanupGcsCacheParseErrorSample:
 
 @dataclass(frozen=True)
 class CleanupGcsCacheSummary:
+    """Runtime summary for one cleanup run.
+
+    The singular manifest/job fields are deprecated compatibility fields that
+    contain only the last submitted batch. New consumers should use the plural
+    fields, which retain every batch manifest URI and Storage Batch Operations
+    job name created by the run.
+    """
+
     account_id: str
     bucket_name: str
     run_id: str
@@ -77,8 +85,10 @@ class CleanupGcsCacheSummary:
     bytes_processed: int | None
     run_started_at: datetime
     run_finished_at: datetime
+    # Deprecated: last batch only. Prefer ac_manifest_uris / ac_batch_job_names.
     ac_manifest_uri: str | None = None
     ac_batch_job_name: str | None = None
+    # Deprecated: last batch only. Prefer cas_manifest_uris / cas_batch_job_names.
     cas_manifest_uri: str | None = None
     cas_batch_job_name: str | None = None
     ac_manifest_uris: tuple[str, ...] | None = None
@@ -244,8 +254,6 @@ def run_cleanup_gcs_cache(
             settings.cleanup_ac_delete_batch_size,
             resolved_max_delete_objects - selected_ac_object_count,
         )
-        if batch_target <= 0:
-            break
 
         ac_candidate_table = _batch_candidate_table_name(
             settings, prefix="candidate_ac", run_id=run_id, batch_index=batch_index
@@ -819,6 +827,8 @@ JOIN {live_metadata_table} AS live
   USING (object_name)
 JOIN {current_table} AS current_obj
   ON current_obj.object_name = source.object_name
+ -- Defensive re-check: source_table is expected to contain only CAS rows, but
+ -- this keeps accidental table reuse from deleting non-CAS objects.
  AND current_obj.object_kind = 'cas'
  AND current_obj.last_seen_at = source.last_seen_at
 WHERE NOT EXISTS (
