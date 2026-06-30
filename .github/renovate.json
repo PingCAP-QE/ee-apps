@@ -19,6 +19,14 @@
         "datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s.*(version|VERSION|ver|VER)(: |=)(?<currentValue>.*)\\s"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["skaffold\\.yaml$"],
+      "matchStrings": [
+        "fromImage:\\s+(?<depName>\\S+):(?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

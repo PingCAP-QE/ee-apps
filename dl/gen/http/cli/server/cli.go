@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 
+	gcsc "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/client"
 	ks3c "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/client"
 	ocic "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/client"
 	goahttp "goa.design/goa/v3/http"
@@ -26,13 +27,15 @@ func UsageCommands() []string {
 	return []string{
 		"oci (list-files|download-file|head-file|download-file-sha256)",
 		"ks3 download-object",
+		"gcs download-object",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Veniam et maiores qui." --tag "Voluptatem incidunt qui."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "At non dignissimos error et repellendus." --tag "Nam quibusdam recusandae dolor voluptas."` + "\n" +
 		os.Args[0] + ` ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."` + "\n" +
+		os.Args[0] + ` gcs download-object --bucket "Aspernatur quasi officia suscipit." --key "Rem accusantium repudiandae velit doloribus."` + "\n" +
 		""
 }
 
@@ -74,6 +77,12 @@ func ParseEndpoint(
 		ks3DownloadObjectFlags      = flag.NewFlagSet("download-object", flag.ExitOnError)
 		ks3DownloadObjectBucketFlag = ks3DownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		ks3DownloadObjectKeyFlag    = ks3DownloadObjectFlags.String("key", "REQUIRED", "object key")
+
+		gcsFlags = flag.NewFlagSet("gcs", flag.ContinueOnError)
+
+		gcsDownloadObjectFlags      = flag.NewFlagSet("download-object", flag.ExitOnError)
+		gcsDownloadObjectBucketFlag = gcsDownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
+		gcsDownloadObjectKeyFlag    = gcsDownloadObjectFlags.String("key", "REQUIRED", "object key")
 	)
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
@@ -83,6 +92,9 @@ func ParseEndpoint(
 
 	ks3Flags.Usage = ks3Usage
 	ks3DownloadObjectFlags.Usage = ks3DownloadObjectUsage
+
+	gcsFlags.Usage = gcsUsage
+	gcsDownloadObjectFlags.Usage = gcsDownloadObjectUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -103,6 +115,8 @@ func ParseEndpoint(
 			svcf = ociFlags
 		case "ks3":
 			svcf = ks3Flags
+		case "gcs":
+			svcf = gcsFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -138,6 +152,13 @@ func ParseEndpoint(
 			switch epn {
 			case "download-object":
 				epf = ks3DownloadObjectFlags
+
+			}
+
+		case "gcs":
+			switch epn {
+			case "download-object":
+				epf = gcsDownloadObjectFlags
 
 			}
 
@@ -184,6 +205,13 @@ func ParseEndpoint(
 				endpoint = c.DownloadObject()
 				data, err = ks3c.BuildDownloadObjectPayload(*ks3DownloadObjectBucketFlag, *ks3DownloadObjectKeyFlag)
 			}
+		case "gcs":
+			c := gcsc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "download-object":
+				endpoint = c.DownloadObject()
+				data, err = gcsc.BuildDownloadObjectPayload(*gcsDownloadObjectBucketFlag, *gcsDownloadObjectKeyFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -224,7 +252,7 @@ func ociListFilesUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Veniam et maiores qui." --tag "Voluptatem incidunt qui."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "At non dignissimos error et repellendus." --tag "Nam quibusdam recusandae dolor voluptas."`)
 }
 
 func ociDownloadFileUsage() {
@@ -302,7 +330,7 @@ func ociDownloadFileSha256Usage() {
 
 // ks3Usage displays the usage of the ks3 command and its subcommands.
 func ks3Usage() {
-	fmt.Fprintln(os.Stderr, `OCI artifacts download service`)
+	fmt.Fprintln(os.Stderr, `KS3 object download service`)
 	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] ks3 COMMAND [flags]\n\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    download-object: DownloadObject implements download-object.`)
@@ -329,4 +357,35 @@ func ks3DownloadObjectUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."`)
+}
+
+// gcsUsage displays the usage of the gcs command and its subcommands.
+func gcsUsage() {
+	fmt.Fprintln(os.Stderr, `GCS object download service`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] gcs COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    download-object: DownloadObject implements download-object.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s gcs COMMAND --help\n", os.Args[0])
+}
+func gcsDownloadObjectUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] gcs download-object", os.Args[0])
+	fmt.Fprint(os.Stderr, " -bucket STRING")
+	fmt.Fprint(os.Stderr, " -key STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `DownloadObject implements download-object.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -bucket STRING: bucket name`)
+	fmt.Fprintln(os.Stderr, `    -key STRING: object key`)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Aspernatur quasi officia suscipit." --key "Rem accusantium repudiandae velit doloribus."`)
 }

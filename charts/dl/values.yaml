@@ -15,7 +15,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 server:
-  args: []
+  args:
+    - "--domain=0.0.0.0:80"
   volumeMounts: []
   # - name: config
   #   mountPath: /config
