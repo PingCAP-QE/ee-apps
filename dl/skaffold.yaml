@@ -7,11 +7,16 @@ build:
   artifacts:
     - image: dl
       ko:
+        fromImage: ghcr.io/pingcap-qe/bases/pingcap-base:v1.11.3
+        main: ./cmd/server
         dependencies:
           paths:
             - "**/*.go"
             - "go.mod"
             - "go.sum"
+        flags:
+          - -trimpath
+          - -v
         labels:
           org.opencontainers.image.description: Download service for OCI/KS3/GCS artifacts
           org.opencontainers.image.licenses: MIT

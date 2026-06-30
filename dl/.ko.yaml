@@ -1,8 +1,0 @@
-defaultBaseImage: ghcr.io/pingcap-qe/bases/pingcap-base:v1.11.3
-
-builds:
-  - id: dl
-    main: ./cmd/server
-    flags:
-      - -trimpath
-      - -v
