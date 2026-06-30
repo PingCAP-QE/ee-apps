@@ -18,8 +18,10 @@ import (
 	"goa.design/goa/v3/middleware"
 
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
+	gcssvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/server"
 	ks3svr "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/server"
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
+	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
@@ -33,7 +35,7 @@ type ociRepoProvider interface {
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
+func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, gcsEndpoints *gcs.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
 
 	// Setup goa log adapter.
 	var (
@@ -66,15 +68,18 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	var (
 		ociServer *ocisvr.Server
 		ks3Server *ks3svr.Server
+		gcsServer *gcssvr.Server
 	)
 	{
 		eh := errorHandler(logger)
 		ociServer = ocisvr.New(ociEndpoints, mux, dec, enc, eh, nil)
 		ks3Server = ks3svr.New(ks3Endpoints, mux, dec, enc, eh, nil)
+		gcsServer = gcssvr.New(gcsEndpoints, mux, dec, enc, eh, nil)
 		if debug {
 			servers := goahttp.Servers{
 				ociServer,
 				ks3Server,
+				gcsServer,
 			}
 			servers.Use(httpmdlwr.Debug(mux, os.Stdout))
 		}
@@ -82,6 +87,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	// Configure the mux.
 	ocisvr.Mount(mux, ociServer)
 	ks3svr.Mount(mux, ks3Server)
+	gcssvr.Mount(mux, gcsServer)
 
 	// ** Mount health check handler **
 	check := health.Handler(health.NewChecker())
@@ -106,6 +112,9 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range ks3Server.Mounts {
+		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
+	}
+	for _, m := range gcsServer.Mounts {
 		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 

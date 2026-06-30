@@ -12,8 +12,10 @@ import (
 	"sync"
 	"syscall"
 
+	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	gcssvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/gcs"
 	ks3svc "github.com/PingCAP-QE/ee-apps/dl/internal/service/ks3"
 	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
 )
@@ -29,6 +31,7 @@ func main() {
 		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
 		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
 		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
+		gcsCfgPathF = flag.String("gcs-config", "gcs.yaml", "gcs config yaml file path")
 	)
 	flag.Parse()
 
@@ -44,10 +47,12 @@ func main() {
 	var (
 		ociSvc oci.Service
 		ks3Svc ks3.Service
+		gcsSvc gcs.Service
 	)
 	{
 		ociSvc = ocisvc.New(logger, ociCfgPathF)
 		ks3Svc = ks3svc.New(logger, *ks3CfgPathF)
+		gcsSvc = gcssvc.New(logger, *gcsCfgPathF)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -55,10 +60,12 @@ func main() {
 	var (
 		ociEndpoints *oci.Endpoints
 		ks3Endpoints *ks3.Endpoints
+		gcsEndpoints *gcs.Endpoints
 	)
 	{
 		ociEndpoints = oci.NewEndpoints(ociSvc)
 		ks3Endpoints = ks3.NewEndpoints(ks3Svc)
+		gcsEndpoints = gcs.NewEndpoints(gcsSvc)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -100,7 +107,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, &wg, errc, logger, *dbgF, ociSvc)
+			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, gcsEndpoints, &wg, errc, logger, *dbgF, ociSvc)
 		}
 
 	default:
