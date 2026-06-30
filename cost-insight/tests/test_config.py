@@ -112,6 +112,7 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT": "25",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "500",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS": "100",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE": "200",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE": "50",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET": "manifest-bucket",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX": "manifest-prefix",
@@ -135,6 +136,7 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.cleanup_sample_limit == 25
     assert settings.gcs_cache.cleanup_max_delete_objects == 500
     assert settings.gcs_cache.cleanup_max_delete_cas_objects == 100
+    assert settings.gcs_cache.cleanup_ac_delete_batch_size == 200
     assert settings.gcs_cache.cleanup_batch_size == 50
     assert settings.gcs_cache.cleanup_manifest_bucket == "manifest-bucket"
     assert settings.gcs_cache.cleanup_manifest_prefix == "manifest-prefix"

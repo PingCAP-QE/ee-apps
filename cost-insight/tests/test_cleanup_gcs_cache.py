@@ -144,7 +144,10 @@ def test_cleanup_gcs_cache_final_cas_delete_ignores_cleanup_metadata_gets() -> N
         ttl_days=7,
     )
 
-    assert "FROM `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access` AS audit" in query
+    assert (
+        "FROM `pingcap-testing-account.ci_bazel_cache_logs.cloudaudit_googleapis_com_data_access` AS audit"
+        in query
+    )
     assert "audit.protopayload_auditlog.methodName IN" in query
     assert "audit.timestamp > source.last_seen_at" in query
     assert "AND NOT (" in query
@@ -422,7 +425,6 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         cas_retention_days=15,
         safety_buffer_days=1,
         max_delete_objects=10000000,
-        max_delete_cas_objects=2,
         execute=fake_execute,
         stream_rows=fake_stream_rows,
         resolve_object_metadata=fake_resolve_object_metadata,
@@ -455,16 +457,17 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         for table_ref, _rows, schema, _disposition in loaded_files
     )
     assert {
-        table_ref.rsplit(".", 1)[-1].rstrip("`") for table_ref, _rows, _schema, _disposition in loaded_files
+        table_ref.rsplit(".", 1)[-1].rstrip("`")
+        for table_ref, _rows, _schema, _disposition in loaded_files
     } == {
-        "_tmp_gcs_cache_ac_live_metadata_steadyrun001",
-        "_tmp_gcs_cache_ac_missing_metadata_steadyrun001",
-        "_tmp_gcs_cache_run_ac_cas_refs_steadyrun001",
-        "_tmp_gcs_cache_cas_live_metadata_steadyrun001",
-        "_tmp_gcs_cache_cas_missing_metadata_steadyrun001",
+        "_tmp_gcs_cache_ac_live_metadata_b0001_steadyrun001",
+        "_tmp_gcs_cache_ac_missing_metadata_b0001_steadyrun001",
+        "_tmp_gcs_cache_run_ac_cas_refs_b0001_steadyrun001",
+        "_tmp_gcs_cache_cas_live_metadata_b0001_steadyrun001",
+        "_tmp_gcs_cache_cas_missing_metadata_b0001_steadyrun001",
     }
     assert any(
-        "cas_from_deleted_ac" in query and params.get("limit") == 2
+        "cas_from_deleted_ac" in query and "LIMIT @limit" not in query and "limit" not in params
         for query, params in captured_queries
     )
     deleted_ac_reconcile_index = next(
@@ -480,6 +483,174 @@ def test_run_cleanup_gcs_cache_delete_cascades_ac_then_cas() -> None:
         if "cas_from_deleted_ac" in query
     )
     assert deleted_ac_reconcile_index < cas_candidate_index
+
+
+def test_run_cleanup_gcs_cache_delete_cascades_cas_after_each_ac_batch() -> None:
+    captured_queries = []
+    created_jobs = []
+    waited_jobs = []
+
+    def fake_execute(query, parameters):
+        rendered = {param.name: param.value for param in parameters}
+        captured_queries.append((query, rendered))
+        if "candidate_cas_object_count" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_cas_object_count": 0,
+                        "candidate_ac_object_count": 2,
+                        "candidate_cas_delete_object_count": 0,
+                        "oldest_last_seen_at": datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
+                        "newest_last_seen_at": datetime(2026, 5, 2, 0, 0, tzinfo=UTC),
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=2,
+            )
+        if "SELECT COUNT(DISTINCT cas_object_name) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 1},), total_bytes_processed=1)
+        if "SELECT COUNT(*) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 1},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        del parameters
+        if "_tmp_gcs_cache_candidate_ac_b0001_" in query:
+            yield {"object_name": "ac/one", "last_seen_at": datetime(2026, 5, 1, tzinfo=UTC)}
+            return
+        if "_tmp_gcs_cache_candidate_ac_b0002_" in query:
+            yield {"object_name": "ac/two", "last_seen_at": datetime(2026, 5, 2, tzinfo=UTC)}
+            return
+        if "_tmp_gcs_cache_candidate_cas_b0001_" in query:
+            yield {"object_name": "cas/one"}
+            return
+        if "_tmp_gcs_cache_candidate_cas_b0002_" in query:
+            yield {"object_name": "cas/two"}
+            return
+        raise AssertionError(f"Unexpected stream query: {query}")
+
+    def fake_resolve_object_metadata(**kwargs):
+        names = tuple(kwargs["object_names"])
+        generations = {
+            "ac/one": 101,
+            "ac/two": 102,
+            "cas/one": 201,
+            "cas/two": 202,
+        }
+        return tuple(GcsObjectMetadata(name, True, generations[name]) for name in names)
+
+    def fake_extract_references(**kwargs):
+        names = tuple(kwargs["ac_object_names"])
+        refs = {
+            "ac/one": ("cas/one",),
+            "ac/two": ("cas/two",),
+        }
+        return tuple(
+            AcReferenceExtraction(
+                ac_object_name=name,
+                exists=True,
+                cas_object_names=refs[name],
+            )
+            for name in names
+        )
+
+    def fake_load_jsonl_file(table_ref, jsonl_path, schema, write_disposition):
+        del table_ref, schema, write_disposition
+        assert jsonl_path.exists()
+
+    def fake_create_batch_job(**kwargs):
+        created_jobs.append(kwargs)
+        return StorageBatchOperationsJob(
+            job_name=f"projects/pingcap-testing-account/locations/global/jobs/{kwargs['job_id']}",
+            operation_name="operations/op-1",
+        )
+
+    def fake_wait_for_batch_job(**kwargs):
+        waited_jobs.append(kwargs)
+        return StorageBatchOperationsJobStatus(
+            job_name=kwargs["job_name"],
+            state="SUCCEEDED",
+            total_object_count=1,
+            succeeded_object_count=1,
+            failed_object_count=0,
+            total_bytes_transformed=123,
+            complete_time=datetime(2026, 6, 15, 10, 31, tzinfo=UTC),
+        )
+
+    with pytest.warns(FutureWarning, match="max_delete_cas_objects is deprecated and ignored"):
+        summary = run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                cleanup_ac_delete_batch_size=1,
+            ),
+            mode="delete",
+            execute_kind="cas",
+            ac_retention_days=10,
+            cas_retention_days=15,
+            safety_buffer_days=1,
+            max_delete_objects=2,
+            max_delete_cas_objects=1,
+            execute=fake_execute,
+            stream_rows=fake_stream_rows,
+            resolve_object_metadata=fake_resolve_object_metadata,
+            extract_references=fake_extract_references,
+            load_jsonl_file=fake_load_jsonl_file,
+            create_batch_job=fake_create_batch_job,
+            wait_for_batch_job=fake_wait_for_batch_job,
+            now=lambda: datetime(2026, 6, 15, 10, 30, tzinfo=UTC),
+            run_id_factory=lambda: "steady-run-batched",
+        )
+
+    assert summary.selected_ac_object_count == 2
+    assert summary.selected_cas_object_count == 2
+    assert summary.candidate_cas_object_count == 2
+    assert summary.candidate_cas_delete_object_count == 2
+    assert [job["job_id"] for job in created_jobs] == [
+        "gcs-cache-cleanup-ac-20260615t103000-steadyrunbat-b0001",
+        "gcs-cache-cleanup-cas-20260615t103000-steadyrunbat-b0001",
+        "gcs-cache-cleanup-ac-20260615t103000-steadyrunbat-b0002",
+        "gcs-cache-cleanup-cas-20260615t103000-steadyrunbat-b0002",
+    ]
+    assert all("/batch-000" in job["manifest_uri"] for job in created_jobs)
+    assert summary.ac_manifest_uris == (
+        created_jobs[0]["manifest_uri"],
+        created_jobs[2]["manifest_uri"],
+    )
+    assert summary.cas_manifest_uris == (
+        created_jobs[1]["manifest_uri"],
+        created_jobs[3]["manifest_uri"],
+    )
+    assert summary.ac_batch_job_names == (
+        "projects/pingcap-testing-account/locations/global/jobs/"
+        "gcs-cache-cleanup-ac-20260615t103000-steadyrunbat-b0001",
+        "projects/pingcap-testing-account/locations/global/jobs/"
+        "gcs-cache-cleanup-ac-20260615t103000-steadyrunbat-b0002",
+    )
+    assert summary.cas_batch_job_names == (
+        "projects/pingcap-testing-account/locations/global/jobs/"
+        "gcs-cache-cleanup-cas-20260615t103000-steadyrunbat-b0001",
+        "projects/pingcap-testing-account/locations/global/jobs/"
+        "gcs-cache-cleanup-cas-20260615t103000-steadyrunbat-b0002",
+    )
+    assert summary.ac_manifest_uri == created_jobs[2]["manifest_uri"]
+    assert summary.cas_manifest_uri == created_jobs[3]["manifest_uri"]
+    assert len(waited_jobs) == 4
+    first_cas_candidate_index = next(
+        index
+        for index, (query, _params) in enumerate(captured_queries)
+        if "_tmp_gcs_cache_candidate_cas_b0001_" in query
+    )
+    second_ac_seed_index = next(
+        index
+        for index, (query, _params) in enumerate(captured_queries)
+        if "_tmp_gcs_cache_candidate_ac_b0002_" in query
+    )
+    assert first_cas_candidate_index < second_ac_seed_index
+    assert all(
+        "LIMIT @limit" not in query and "limit" not in params
+        for query, params in captured_queries
+        if "cas_from_deleted_ac" in query
+    )
 
 
 def test_run_cleanup_gcs_cache_delete_refills_live_ac_target_after_stale_rows() -> None:
@@ -624,7 +795,6 @@ def test_run_cleanup_gcs_cache_delete_refills_live_ac_target_after_stale_rows() 
         cas_retention_days=15,
         safety_buffer_days=1,
         max_delete_objects=3,
-        max_delete_cas_objects=5,
         execute=fake_execute,
         stream_rows=fake_stream_rows,
         resolve_object_metadata=fake_resolve_object_metadata,
@@ -644,8 +814,7 @@ def test_run_cleanup_gcs_cache_delete_refills_live_ac_target_after_stale_rows() 
     ac_seed_queries = [
         params
         for query, params in captured_queries
-        if "_tmp_gcs_cache_candidate_ac_steadyrunrefill" in query
-        and "LIMIT @limit" in query
+        if "_tmp_gcs_cache_candidate_ac_b0001_steadyrunrefill" in query and "LIMIT @limit" in query
     ]
     assert len(ac_seed_queries) == 2
     assert ac_seed_queries[0]["limit"] == 3
@@ -658,9 +827,108 @@ def test_run_cleanup_gcs_cache_delete_refills_live_ac_target_after_stale_rows() 
         if "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_object_last_seen_current`"
         in query
         and "object_kind = 'ac'" in query
-        and "_tmp_gcs_cache_ac_missing_metadata_steadyrunrefill" in query
+        and "_tmp_gcs_cache_ac_missing_metadata_b0001_steadyrunrefill" in query
     ]
     assert len(reconcile_queries) == 2
+
+
+def test_run_cleanup_gcs_cache_delete_stops_after_repeated_zero_progress_refills() -> None:
+    captured_queries = []
+    loaded_files = []
+    ac_stream_call_count = 0
+
+    def fake_execute(query, parameters):
+        rendered = {param.name: param.value for param in parameters}
+        captured_queries.append((query, rendered))
+        if "candidate_cas_object_count" in query:
+            return BigQueryQueryResult(
+                rows=(
+                    {
+                        "candidate_cas_object_count": 0,
+                        "candidate_ac_object_count": 50,
+                        "candidate_cas_delete_object_count": 0,
+                        "oldest_last_seen_at": datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
+                        "newest_last_seen_at": datetime(2026, 5, 20, 0, 0, tzinfo=UTC),
+                        "sample_candidates": [],
+                    },
+                ),
+                total_bytes_processed=2,
+            )
+        if "SELECT COUNT(*) AS object_count FROM" in query and "delete_ac" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        if "SELECT COUNT(DISTINCT cas_object_name) AS object_count FROM" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        nonlocal ac_stream_call_count
+        del parameters
+        if (
+            "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_ac_"
+            in query
+        ):
+            ac_stream_call_count += 1
+            if ac_stream_call_count > 3:
+                raise AssertionError("zero-progress guard should stop after three refill rounds")
+            for index in range(5):
+                yield {
+                    "object_name": f"ac/stale-{ac_stream_call_count}-{index}",
+                    "last_seen_at": datetime(2026, 5, ac_stream_call_count, index, tzinfo=UTC),
+                }
+            return
+        if (
+            "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_cas_"
+            in query
+        ):
+            raise AssertionError("CAS stage should not run without live AC")
+        raise AssertionError(f"Unexpected stream query: {query}")
+
+    def fake_resolve_object_metadata(**kwargs):
+        return tuple(GcsObjectMetadata(str(name), False, None) for name in kwargs["object_names"])
+
+    def fake_load_jsonl_file(table_ref, jsonl_path, schema, write_disposition):
+        with jsonl_path.open(encoding="utf-8") as handle:
+            payload = tuple(json.loads(line) for line in handle if line.strip())
+        loaded_files.append((table_ref, payload, tuple(schema), write_disposition))
+
+    summary = run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="delete",
+        execute_kind="cas",
+        ac_retention_days=10,
+        cas_retention_days=15,
+        safety_buffer_days=1,
+        max_delete_objects=5,
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        resolve_object_metadata=fake_resolve_object_metadata,
+        extract_references=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"should not extract references: {kwargs}")
+        ),
+        load_jsonl_file=fake_load_jsonl_file,
+        create_batch_job=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"should not create batch job: {kwargs}")
+        ),
+        wait_for_batch_job=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"should not wait for batch job: {kwargs}")
+        ),
+        now=lambda: datetime(2026, 6, 15, 10, 30, tzinfo=UTC),
+        run_id_factory=lambda: "steady-run-zero-progress",
+    )
+
+    assert summary.selected_ac_object_count == 0
+    assert summary.selected_cas_object_count == 0
+    assert summary.ac_manifest_uri is None
+    assert summary.ac_manifest_uris is None
+    assert ac_stream_call_count == 3
+    assert len(loaded_files) == 3
+    ac_seed_queries = [
+        params
+        for query, params in captured_queries
+        if "_tmp_gcs_cache_candidate_ac_b0001_steadyrunzeroprogress" in query
+        and "LIMIT @limit" in query
+    ]
+    assert len(ac_seed_queries) == 3
 
 
 def test_run_cleanup_gcs_cache_delete_exits_when_seed_batch_is_empty() -> None:
@@ -695,14 +963,13 @@ def test_run_cleanup_gcs_cache_delete_exits_when_seed_batch_is_empty() -> None:
             "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_ac_"
             in query
         ):
-            return
+            return iter(())
         if (
             "FROM `pingcap-testing-account.ci_bazel_cache_logs._tmp_gcs_cache_candidate_cas_"
             in query
         ):
-            return
+            return iter(())
         raise AssertionError(f"Unexpected stream query: {query}")
-        yield
 
     summary = run_cleanup_gcs_cache(
         settings=GcsCacheSettings(project_id="pingcap-testing-account"),
@@ -712,7 +979,6 @@ def test_run_cleanup_gcs_cache_delete_exits_when_seed_batch_is_empty() -> None:
         cas_retention_days=15,
         safety_buffer_days=1,
         max_delete_objects=3,
-        max_delete_cas_objects=5,
         execute=fake_execute,
         stream_rows=fake_stream_rows,
         create_batch_job=lambda **kwargs: (_ for _ in ()).throw(
