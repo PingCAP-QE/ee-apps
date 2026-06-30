@@ -40,18 +40,20 @@ func isJSONFile(filename string) bool {
 }
 
 func New(logger *log.Logger, cfgFile string) gcs.Service {
-	cfgBytes, err := os.ReadFile(cfgFile)
-	if err != nil {
-		logger.Fatalf("Failed to load configuration: %v", err)
-	}
-
 	var cfg pkggcs.Config
 
-	if isJSONFile(cfgFile) {
-		cfg.CredentialsJSON = string(cfgBytes)
-	} else {
-		if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
-			logger.Fatalf("Failed to load configuration: %v", err)
+	if cfgFile != "" {
+		cfgBytes, err := os.ReadFile(cfgFile)
+		if err != nil {
+			logger.Printf("Config file %q not found, using Application Default Credentials", cfgFile)
+		} else {
+			if isJSONFile(cfgFile) {
+				cfg.CredentialsJSON = string(cfgBytes)
+			} else {
+				if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
+					logger.Fatalf("Failed to load configuration: %v", err)
+				}
+			}
 		}
 	}
 

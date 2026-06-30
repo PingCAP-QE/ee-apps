@@ -31,7 +31,7 @@ func main() {
 		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
 		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
 		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
-		gcsCfgPathF = flag.String("gcs-config", "gcs.yaml", "gcs config yaml file path")
+		gcsCfgPathF = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
 	)
 	flag.Parse()
 
