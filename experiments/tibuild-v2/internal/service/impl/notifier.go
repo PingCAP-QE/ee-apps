@@ -113,7 +113,57 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 		}
 	}
 
+	// Extract build report data on success
+	if build.Status == "success" && build.BuildReport != nil {
+		if gitSha, ok := build.BuildReport["gitSha"].(string); ok {
+			info.GitSha = gitSha
+		}
+
+		// Extract images (platform + URL)
+		if imagesRaw, ok := build.BuildReport["images"].([]any); ok {
+			images := make([]ImageInfo, 0, len(imagesRaw))
+			for _, imgRaw := range imagesRaw {
+				if img, ok := imgRaw.(map[string]any); ok {
+					images = append(images, ImageInfo{
+						Platform: getString(img, "platform"),
+						URL:      getString(img, "url"),
+					})
+				}
+			}
+			info.Images = images
+		}
+
+		// Extract binaries (OCI references: repo:tag/file)
+		if binariesRaw, ok := build.BuildReport["binaries"].([]any); ok {
+			for _, binRaw := range binariesRaw {
+				if oci, ok := binRaw.(map[string]any); ok {
+					repo := getString(oci, "repo")
+					tag := getString(oci, "tag")
+					filesRaw, _ := oci["files"].([]any)
+					for _, f := range filesRaw {
+						if s, ok := f.(string); ok {
+							info.Binaries = append(info.Binaries, BinaryInfo{
+								OciReference: repo + ":" + tag + "/" + s,
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return NewLarkCardWithGoTemplate(info)
+}
+
+// ImageInfo contains information about a Docker image artifact for notification.
+type ImageInfo struct {
+	Platform string
+	URL      string
+}
+
+// BinaryInfo contains information about a binary artifact for notification.
+type BinaryInfo struct {
+	OciReference string
 }
 
 // NotificationInfo contains information for building a notification card.
@@ -128,6 +178,10 @@ type NotificationInfo struct {
 	Platform     string
 	ErrMsg       string
 	PipelineRuns []PipelineRunInfo
+	// Build report fields (populated on success)
+	GitSha   string
+	Images   []ImageInfo
+	Binaries []BinaryInfo
 }
 
 // PipelineRunInfo contains information about a single pipeline run.

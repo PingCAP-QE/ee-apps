@@ -2,6 +2,7 @@ package impl
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -122,6 +123,28 @@ func TestNewLarkCardJSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "success with build report",
+			info: &NotificationInfo{
+				BuildID:    1010,
+				Product:    "tidb",
+				Version:    "v8.5.0",
+				Status:     "success",
+				Platform:   "linux/amd64",
+				GitRef:     "abc123",
+				CreatedBy:  "ci-bot",
+				GithubRepo: "pingcap/tidb",
+				GitSha:     "a1b2c3d4e5f6g7h8i9j0",
+				Images: []ImageInfo{
+					{Platform: "linux/amd64", URL: "hub.pingcap.net/tidb/v8.5.0:amd64"},
+					{Platform: "linux/arm64", URL: "hub.pingcap.net/tidb/v8.5.0:arm64"},
+				},
+				Binaries: []BinaryInfo{
+					{OciReference: "hub.pingcap.net/devbuild/tidb:v8.5.0-a1b2c3d4/tidb-server-linux-amd64.tar.gz"},
+					{OciReference: "hub.pingcap.net/devbuild/tidb:v8.5.0-a1b2c3d4/tidb-server-linux-arm64.tar.gz"},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -152,6 +175,30 @@ func TestNewLarkCardJSON(t *testing.T) {
 			wantColor := StatusColor(tt.info.Status)
 			if got := header["template"]; got != wantColor {
 				t.Errorf("header.template = %v, want %v", got, wantColor)
+			}
+
+			// Verify elements exist
+			elements, ok := card["elements"].([]any)
+			if !ok {
+				t.Fatal("missing 'elements' key in card")
+			}
+
+			// For success with build report, verify build report content appears
+			if tt.info.GitSha != "" {
+				foundGitSha := false
+				for _, el := range elements {
+					if elMap, ok := el.(map[string]any); ok {
+						if content, ok := elMap["content"].(string); ok {
+							if strings.Contains(content, tt.info.GitSha) {
+								foundGitSha = true
+								break
+							}
+						}
+					}
+				}
+				if !foundGitSha {
+					t.Errorf("build report content with GitSha %q not found in elements", tt.info.GitSha)
+				}
 			}
 		})
 	}
