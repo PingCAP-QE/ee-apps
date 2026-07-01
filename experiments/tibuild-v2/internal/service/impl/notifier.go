@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,24 +20,32 @@ type Notifier interface {
 }
 
 // LarkNotifier sends Lark webhook notifications when builds reach terminal state.
+// The webhookURL is stored atomically to support safe runtime updates via config reload.
 type LarkNotifier struct {
-	webhookURL string
+	webhookURL atomic.Value // stores string
 	httpClient *http.Client
 	logger     *zerolog.Logger
 }
 
 // NewLarkNotifier creates a new LarkNotifier.
 func NewLarkNotifier(webhookURL string, logger *zerolog.Logger) *LarkNotifier {
-	return &LarkNotifier{
-		webhookURL: webhookURL,
+	n := &LarkNotifier{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		logger:     logger,
 	}
+	n.webhookURL.Store(webhookURL)
+	return n
+}
+
+// SetWebhookURL updates the webhook URL atomically. Safe to call concurrently with Notify.
+func (n *LarkNotifier) SetWebhookURL(url string) {
+	n.webhookURL.Store(url)
 }
 
 // Notify sends a Lark notification for the given build.
 func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
-	if n.webhookURL == "" {
+	webhookURL := n.webhookURL.Load().(string)
+	if webhookURL == "" {
 		n.logger.Debug().Msg("lark webhook URL not configured, skipping notification")
 		return nil
 	}
@@ -53,9 +62,9 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
 		return err
 	}
 
-	n.logger.Debug().Str("webhook", n.webhookURL).Str("body", string(body)).Msg("debug lark message")
+	n.logger.Debug().Str("webhook", webhookURL).Str("body", string(body)).Msg("debug lark message")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.webhookURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to create notification request")
 		return err

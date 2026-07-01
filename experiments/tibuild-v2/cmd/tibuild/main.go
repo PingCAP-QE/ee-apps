@@ -22,7 +22,13 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
+
+// reloader is an interface for services that support config hot-reload.
+type reloader interface {
+	Reload(cfg *config.Service)
+}
 
 func main() {
 	// Define command line flags, add any other flag required to configure the
@@ -49,7 +55,7 @@ func main() {
 	}
 	log.Print(ctx, log.KV{K: "http-port", V: *httpPortF})
 
-	// Load and parse configuration
+	// Load configuration with hot-reload support.
 	cfg, err := loadConfig(*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
@@ -73,19 +79,25 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = impl.NewDevbuild(&logger, cfg)
+			devbuildSvc = impl.NewDevbuild(&logger, cfg.Get())
 			if devbuildSvc == nil {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}
 
+			// Register devbuild config hot-reload handler.
+			if r, ok := devbuildSvc.(reloader); ok {
+				cfg.OnReload(func(newCfg *config.Service) { r.Reload(newCfg) })
+			}
+
 			// Start Tekton reconciler
-			if cfg.Tekton.ViewURL != "" {
+			initialCfg := cfg.Get()
+			if initialCfg.Tekton.ViewURL != "" {
 				interval := 1 * time.Minute // default
-				if cfg.Tekton.ReconcilerInterval != "" {
-					if d, err := time.ParseDuration(cfg.Tekton.ReconcilerInterval); err == nil {
+				if initialCfg.Tekton.ReconcilerInterval != "" {
+					if d, err := time.ParseDuration(initialCfg.Tekton.ReconcilerInterval); err == nil {
 						interval = d
 					} else {
-						log.Fatalf(ctx, err, "invalid reconciler_interval: %s", cfg.Tekton.ReconcilerInterval)
+						log.Fatalf(ctx, err, "invalid reconciler_interval: %s", initialCfg.Tekton.ReconcilerInterval)
 					}
 				}
 
@@ -115,8 +127,13 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", hotfix.ServiceName).Logger()
-			ghClient := impl.NewGitHubClient(cfg.Github.Token)
+			ghClient := impl.NewGitHubClient(cfg.Get().Github.Token)
 			hotfixSvc = impl.NewHotfix(&logger, ghClient)
+
+			// Register hotfix config hot-reload handler.
+			if r, ok := hotfixSvc.(reloader); ok {
+				cfg.OnReload(func(newCfg *config.Service) { r.Reload(newCfg) })
+			}
 		}
 	}
 
@@ -147,12 +164,27 @@ func main() {
 	// that SIGINT and SIGTERM signals cause the services to stop gracefully.
 	go func() {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		errc <- fmt.Errorf("%s", <-c)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+		sig := <-c
+		if sig == syscall.SIGHUP {
+			log.Printf(ctx, "received SIGHUP, reloading configuration")
+			if err := cfg.Reload(); err != nil {
+				log.Printf(ctx, "config reload on SIGHUP failed: %v", err)
+			} else {
+				log.Printf(ctx, "configuration reloaded successfully")
+			}
+			// Continue listening for SIGINT/SIGTERM.
+			errc <- fmt.Errorf("%s", <-c)
+		} else {
+			errc <- fmt.Errorf("%s", sig)
+		}
 	}()
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
+
+	// Start background config file watcher (polls every 30 seconds).
+	go cfg.AutoReload(ctx, 30*time.Second)
 
 	// Start the servers and send errors (if any) to the error channel.
 	switch *hostF {
