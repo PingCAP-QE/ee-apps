@@ -847,12 +847,6 @@ func ValidateImageArtifactRequestBody(body *ImageArtifactRequestBody) (err error
 	if body.URL == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
 	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	if body.InternalURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.internal_url", *body.InternalURL, goa.FormatURI))
-	}
 	return
 }
 

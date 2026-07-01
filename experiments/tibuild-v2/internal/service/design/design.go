@@ -358,8 +358,8 @@ var OciFile = Type("OciFile", func() {
 
 var ImageArtifact = Type("ImageArtifact", func() {
 	Attribute("platform", String)
-	Attribute("url", String, func() { Format(FormatURI) })
-	Attribute("internal_url", String, func() { Format(FormatURI) })
+	Attribute("url", String)
+	Attribute("internal_url", String)
 	Required("platform", "url")
 })
 

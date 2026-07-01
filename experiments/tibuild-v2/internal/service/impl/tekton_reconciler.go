@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	yaml "gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	knative "knative.dev/pkg/apis"
 
@@ -21,11 +22,30 @@ import (
 // terminalStatuses are the build statuses that indicate a build is finished.
 var terminalStatuses = []string{"success", "failure", "error", "aborted"}
 
-// buildReconcileData holds the data needed to reconcile a single build.
-type buildReconcileData struct {
-	Build        *ent.DevBuild
-	PipelineRuns []tknv1.PipelineRun
-}
+type (
+	// buildReconcileData holds the data needed to reconcile a single build.
+	buildReconcileData struct {
+		Build        *ent.DevBuild
+		PipelineRuns []tknv1.PipelineRun
+	}
+
+	// YAML format types for parsing PipelineRun result values.
+	binariesResultYAML struct {
+		Oci   *ociRefYAML `yaml:"oci"`
+		Files []string    `yaml:"files"`
+	}
+	ociRefYAML struct {
+		Repo string `yaml:"repo"`
+		Tag  string `yaml:"tag"`
+	}
+	imagesResultYAML struct {
+		Images []imageEntryYAML `yaml:"images"`
+	}
+	imageEntryYAML struct {
+		Repo string `yaml:"repo"`
+		Tag  string `yaml:"tag"`
+	}
+)
 
 // Reconcile checks for non-terminal builds and syncs their status with Tekton Dashboard API.
 // It separates Tekton HTTP calls (slow) from DB updates (fast) to minimize lock contention.
@@ -280,7 +300,7 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 		}
 
 		// Extract results (OCI artifacts + images)
-		ociArtifacts, images := extractArtifactsFromResults(pr.Status.Results)
+		ociArtifacts, images := extractArtifactsFromResults(pr.Status.Results, pr.Spec.Params)
 		if len(ociArtifacts) > 0 {
 			pipeline.OciArtifacts = ociArtifacts
 		}
@@ -313,26 +333,29 @@ func parsePlatformFromParams(params tknv1.Params) string {
 }
 
 // extractArtifactsFromResults extracts OCI artifacts and images from PipelineRun results.
-func extractArtifactsFromResults(results []tknv1.PipelineRunResult) (ociArtifacts []schema.OciArtifact, images []schema.ImageArtifact) {
+// The result values are YAML-formatted strings, not JSON.
+func extractArtifactsFromResults(results []tknv1.PipelineRunResult, params tknv1.Params) (ociArtifacts []schema.OciArtifact, images []schema.ImageArtifact) {
 	for _, result := range results {
 		switch result.Name {
 		case "pushed-binaries":
-			var artifacts []schema.OciArtifact
-			vbs, err := result.Value.MarshalJSON()
-			if err != nil {
-				continue
-			}
-			if err := json.Unmarshal(vbs, &artifacts); err == nil {
-				ociArtifacts = append(ociArtifacts, artifacts...)
+			var bin binariesResultYAML
+			if err := yaml.Unmarshal([]byte(result.Value.StringVal), &bin); err == nil && bin.Oci != nil {
+				ociArtifacts = append(ociArtifacts, schema.OciArtifact{
+					Repo:  bin.Oci.Repo,
+					Tag:   bin.Oci.Tag,
+					Files: bin.Files,
+				})
 			}
 		case "pushed-images":
-			var imgs []schema.ImageArtifact
-			vbs, err := result.Value.MarshalJSON()
-			if err != nil {
-				continue
-			}
-			if err := json.Unmarshal(vbs, &imgs); err == nil {
-				images = append(images, imgs...)
+			var imgs imagesResultYAML
+			if err := yaml.Unmarshal([]byte(result.Value.StringVal), &imgs); err == nil {
+				platform := parsePlatformFromParams(params)
+				for _, img := range imgs.Images {
+					images = append(images, schema.ImageArtifact{
+						Platform: platform,
+						URL:      img.Repo + ":" + img.Tag,
+					})
+				}
 			}
 		}
 	}
@@ -355,29 +378,31 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
 			}
 		}
 
-		// Extract results
+		// Extract results (YAML-formatted strings)
 		for _, r := range pr.Status.Results {
 			switch r.Name {
 			case "pushed-images":
-				vbs, err := r.Value.MarshalJSON()
-				if err != nil {
-					continue
-				}
-				var imgs []schema.ImageArtifact
-				if err := json.Unmarshal(vbs, &imgs); err == nil && len(imgs) > 0 {
-					existing, _ := report["images"].([]schema.ImageArtifact)
-					report["images"] = append(existing, imgs...)
-					hasData = true
+				var imgs imagesResultYAML
+				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &imgs); err == nil {
+					platform := parsePlatformFromParams(pr.Spec.Params)
+					for _, img := range imgs.Images {
+						existing, _ := report["images"].([]schema.ImageArtifact)
+						report["images"] = append(existing, schema.ImageArtifact{
+							Platform: platform,
+							URL:      img.Repo + ":" + img.Tag,
+						})
+						hasData = true
+					}
 				}
 			case "pushed-binaries":
-				vbs, err := r.Value.MarshalJSON()
-				if err != nil {
-					continue
-				}
-				var artifacts []schema.OciArtifact
-				if err := json.Unmarshal(vbs, &artifacts); err == nil && len(artifacts) > 0 {
+				var bin binariesResultYAML
+				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &bin); err == nil && bin.Oci != nil {
 					existing, _ := report["binaries"].([]schema.OciArtifact)
-					report["binaries"] = append(existing, artifacts...)
+					report["binaries"] = append(existing, schema.OciArtifact{
+						Repo:  bin.Oci.Repo,
+						Tag:   bin.Oci.Tag,
+						Files: bin.Files,
+					})
 					hasData = true
 				}
 			case "printed-version":

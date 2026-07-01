@@ -23,6 +23,28 @@ card:
         **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
     {{- end }}
 
+    {{- if or .GitSha .Images .Binaries }}
+    - tag: hr
+    - tag: markdown
+      content: |-
+        **Build Report**
+        {{- if .GitSha }}
+        **Git SHA:** `{{ .GitSha }}`
+        {{- end }}
+        {{- if .Images }}
+        **Docker Images:**
+        {{- range .Images }}
+        - `{{ .URL }}` ({{ .Platform }})
+        {{- end }}
+        {{- end }}
+        {{- if .Binaries }}
+        **Binaries:**
+        {{- range .Binaries }}
+        - `{{ .OciReference }}`
+        {{- end }}
+        {{- end }}
+    {{- end }}
+
     {{- if .PipelineRuns }}
     - tag: hr
     - tag: markdown

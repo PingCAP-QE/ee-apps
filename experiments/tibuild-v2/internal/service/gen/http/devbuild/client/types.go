@@ -1060,12 +1060,6 @@ func ValidateImageArtifactResponse(body *ImageArtifactResponse) (err error) {
 	if body.URL == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
 	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	if body.InternalURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.internal_url", *body.InternalURL, goa.FormatURI))
-	}
 	return
 }
 
@@ -1340,12 +1334,6 @@ func ValidateImageArtifactResponseBody(body *ImageArtifactResponseBody) (err err
 	if body.URL == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
 	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	if body.InternalURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.internal_url", *body.InternalURL, goa.FormatURI))
-	}
 	return
 }
 
@@ -1472,13 +1460,6 @@ func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
 			err = goa.MergeErrors(err, goa.InvalidLengthError("body.git_sha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
 		}
 	}
-	for _, e := range body.Images {
-		if e != nil {
-			if err2 := ValidateImageArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
 	if body.PluginGitSha != nil {
 		if utf8.RuneCountInString(*body.PluginGitSha) > 40 {
 			err = goa.MergeErrors(err, goa.InvalidLengthError("body.plugin_git_sha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
@@ -1495,16 +1476,6 @@ func ValidateBinArtifactRequestBody(body *BinArtifactRequestBody) (err error) {
 	}
 	if body.URL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	return
-}
-
-// ValidateImageArtifactRequestBody runs the validations defined on
-// ImageArtifactRequestBody
-func ValidateImageArtifactRequestBody(body *ImageArtifactRequestBody) (err error) {
-	err = goa.MergeErrors(err, goa.ValidateFormat("body.url", body.URL, goa.FormatURI))
-	if body.InternalURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.internal_url", *body.InternalURL, goa.FormatURI))
 	}
 	return
 }
@@ -1539,13 +1510,6 @@ func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err err
 	}
 	if body.EndAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.end_at", *body.EndAt, goa.FormatDateTime))
-	}
-	for _, e := range body.Images {
-		if e != nil {
-			if err2 := ValidateImageArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
 	}
 	for _, e := range body.OciArtifacts {
 		if e != nil {
