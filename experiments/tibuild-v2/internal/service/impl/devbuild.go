@@ -32,6 +32,7 @@ type devbuildsrvc struct {
 	dashboardURL           string
 	reconcilerSince        time.Duration
 	httpClient             *http.Client
+	larkNotifier           *LarkNotifier
 	jenkins                struct {
 		client  *gojenkins.Jenkins
 		jobName string
@@ -76,8 +77,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 
 	// Register Lark notification hook if enabled
 	if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
-		notifier := NewLarkNotifier(cfg.Lark.WebhookURL, logger)
-		registerNotificationHook(dbClient, notifier, logger)
+		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.WebhookURL, logger)
+		registerNotificationHook(dbClient, srvc.larkNotifier, logger)
 		logger.Info().Msg("lark notification hook registered")
 	}
 

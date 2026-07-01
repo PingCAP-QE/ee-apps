@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // hotfixsrvc service implementation.
@@ -31,6 +32,13 @@ func NewHotfix(logger *zerolog.Logger, ghClient *github.Client) hotfix.Service {
 		logger:   logger,
 		ghClient: ghClient,
 	}
+}
+
+// Reload updates the hotfix service configuration at runtime.
+func (s *hotfixsrvc) Reload(cfg *config.Service) {
+	s.logger.Info().Msg("hot-reloading hotfix configuration")
+	s.ghClient = github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token)
+	s.logger.Info().Msg("hotfix configuration reloaded successfully")
 }
 
 // verifyAndGetCommit verifies that the branch or commit exists and returns the commit SHA.
