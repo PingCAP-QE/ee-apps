@@ -15,8 +15,8 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 		BuildReport:     transformBuildReport(build.BuildReport),
 		ErrMsg:          &build.ErrMsg,
 		PipelineBuildID: &build.PipelineBuildID,
-		PipelineStartAt: new(build.PipelineStartAt.UTC().Format(time.DateTime)),
-		PipelineEndAt:   new(build.PipelineEndAt.UTC().Format(time.DateTime)),
+		PipelineStartAt: formatTime(build.PipelineStartAt),
+		PipelineEndAt:   formatTime(build.PipelineEndAt),
 		Status:          devbuild.BuildStatus(build.Status),
 		TektonStatus:    transformTektonStatus(build.TektonStatus),
 	}
@@ -199,6 +199,15 @@ func ociArtifactToBinArtifacts(repo, tag string, files []string) []*devbuild.Bin
 	}
 
 	return result
+}
+
+// formatTime formats a time.Time to a string pointer, returning nil for zero values.
+func formatTime(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	formatted := t.UTC().Format(time.DateTime)
+	return &formatted
 }
 
 // Helper function to safely get string value from a map
