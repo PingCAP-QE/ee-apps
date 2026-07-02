@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import warnings
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
@@ -20,6 +19,8 @@ DEFAULT_GCS_CACHE_LAST_SEEN_DAILY_TABLE = "gcs_cache_object_last_seen_daily"
 DEFAULT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE = "gcs_cache_object_last_seen_current"
 DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT = "TransferService"
 DEFAULT_GCS_CACHE_AC_CAS_REFERENCES_TABLE = "gcs_cache_ac_cas_references"
+DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_AC_TABLE = "gcs_cache_ac_cas_refs_by_ac"
+DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE = "gcs_cache_ac_cas_refs_by_cas"
 DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE = "gcs_cache_ac_reference_index_state"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
@@ -70,31 +71,27 @@ class GcsCacheSettings:
     last_seen_excluded_get_user_agent: str = DEFAULT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT
     last_seen_excluded_get_principal_email: str | None = None
     ac_cas_references_table: str = DEFAULT_GCS_CACHE_AC_CAS_REFERENCES_TABLE
+    ac_cas_refs_by_ac_table: str = DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_AC_TABLE
+    ac_cas_refs_by_cas_table: str = DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE
     ac_reference_index_state_table: str = DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE
     ac_reference_shard_count: int = 256
     ac_reference_batch_size: int = 500
     ac_reference_download_workers: int = 64
-    ac_reference_max_index_staleness_hours: int = 12
+    ac_reference_max_index_staleness_hours: int = 1
     ac_retention_days: int = 10
     cas_retention_days: int = 15
     cleanup_safety_buffer_days: int = 1
     cleanup_sample_limit: int = 10
     cleanup_max_delete_objects: int = 10000000
-    cleanup_max_delete_cas_objects: int = 500
-    cleanup_ac_delete_batch_size: int = 500000
+    cleanup_max_delete_ac_objects: int = 100000
+    cleanup_max_delete_cas_objects: int = 10000
+    cleanup_max_delete_cas_bytes: int = 1099511627776
+    cleanup_cas_preselect_limit: int = 20000
     cleanup_batch_size: int = 1000
     cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
     cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
     cleanup_candidate_ttl_days: int = 7
-
-    def __post_init__(self) -> None:
-        if self.cleanup_ac_delete_batch_size > self.cleanup_max_delete_objects:
-            warnings.warn(
-                "cleanup_ac_delete_batch_size is greater than cleanup_max_delete_objects; "
-                "cleanup will clamp each run to cleanup_max_delete_objects",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+    cleanup_require_fresh_index: bool = True
 
 
 @dataclass(frozen=True)
@@ -262,6 +259,18 @@ def load_settings(
                 "COST_INSIGHT_GCS_CACHE_AC_CAS_REFERENCES_TABLE",
                 "COST_GCS_CACHE_AC_CAS_REFERENCES_TABLE",
             ),
+            ac_cas_refs_by_ac_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_AC_TABLE,
+                "COST_INSIGHT_GCS_CACHE_AC_CAS_REFS_BY_AC_TABLE",
+                "COST_GCS_CACHE_AC_CAS_REFS_BY_AC_TABLE",
+            ),
+            ac_cas_refs_by_cas_table=_read_any(
+                env,
+                DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE,
+                "COST_INSIGHT_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE",
+                "COST_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE",
+            ),
             ac_reference_index_state_table=_read_any(
                 env,
                 DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE,
@@ -298,7 +307,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS",
                     "COST_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS",
                 ),
-                12,
+                1,
             ),
             ac_retention_days=_read_positive_int_any(
                 env,
@@ -340,21 +349,37 @@ def load_settings(
                 ),
                 10000000,
             ),
+            cleanup_max_delete_ac_objects=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_AC_OBJECTS",
+                    "COST_GCS_CACHE_CLEANUP_MAX_DELETE_AC_OBJECTS",
+                ),
+                100000,
+            ),
             cleanup_max_delete_cas_objects=_read_positive_int_any(
                 env,
                 (
                     "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS",
                     "COST_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS",
                 ),
-                500,
+                10000,
             ),
-            cleanup_ac_delete_batch_size=_read_positive_int_any(
+            cleanup_max_delete_cas_bytes=_read_positive_int_any(
                 env,
                 (
-                    "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
-                    "COST_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES",
+                    "COST_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES",
                 ),
-                500000,
+                1099511627776,
+            ),
+            cleanup_cas_preselect_limit=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_CAS_PRESELECT_LIMIT",
+                    "COST_GCS_CACHE_CLEANUP_CAS_PRESELECT_LIMIT",
+                ),
+                20000,
             ),
             cleanup_batch_size=_read_positive_int_any(
                 env,
@@ -383,6 +408,14 @@ def load_settings(
                     "COST_GCS_CACHE_CLEANUP_CANDIDATE_TTL_DAYS",
                 ),
                 7,
+            ),
+            cleanup_require_fresh_index=_read_bool_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_REQUIRE_FRESH_INDEX",
+                    "COST_GCS_CACHE_CLEANUP_REQUIRE_FRESH_INDEX",
+                ),
+                True,
             ),
         ),
         log_level=_read_any(env, "INFO", "COST_INSIGHT_LOG_LEVEL", "COST_LOG_LEVEL").upper(),
@@ -529,6 +562,26 @@ def _read_optional_positive_int_any(
             continue
         return _read_int(environ, key, 1)
     return None
+
+
+def _read_bool_any(
+    environ: Mapping[str, str],
+    keys: tuple[str, ...],
+    default: bool,
+) -> bool:
+    for key in keys:
+        raw = environ.get(key)
+        if raw is None or raw.strip() == "":
+            continue
+        value = raw.strip().lower()
+        if value in {"true", "1", "yes", "on"}:
+            return True
+        if value in {"false", "0", "no", "off"}:
+            return False
+        raise ValueError(
+            f"{key} must be a boolean (true/false/1/0/yes/no/on/off), got {raw!r}"
+        )
+    return default
 
 
 def _read_date_any(

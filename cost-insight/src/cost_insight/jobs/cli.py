@@ -185,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cleanup_gcs_cache.add_argument(
         "--execute-kind",
-        choices=("all", "cas"),
+        choices=("all", "cas", "cas-from-index"),
         default="all",
     )
     cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
