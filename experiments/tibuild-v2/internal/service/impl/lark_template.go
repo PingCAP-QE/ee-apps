@@ -19,6 +19,7 @@ func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) 
 	funcMap := sprig.FuncMap()
 	funcMap["StatusColor"] = StatusColor
 	funcMap["StatusEmoji"] = StatusEmoji
+	funcMap["PipelineStatusEmoji"] = PipelineStatusEmoji
 	tmpl, err := template.New("lark").Funcs(funcMap).Parse(larkTemplateBytes)
 	if err != nil {
 		return nil, err

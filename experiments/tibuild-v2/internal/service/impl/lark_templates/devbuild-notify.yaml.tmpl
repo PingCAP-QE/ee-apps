@@ -47,10 +47,10 @@ elements:
   - tag: hr
   - tag: markdown
     content: |-
-      **Pipeline Runs:**
-      {{- range .PipelineRuns }}
-      - **{{ .Name }}:** {{ .Status }}
-      {{- end }}
+        **Pipeline Runs:**
+        {{- range .PipelineRuns }}
+        - {{ PipelineStatusEmoji .Status }} **{{ .Name }}:** {{ .Status }}
+        {{- end }}
   {{- end }}
 
   {{- if .PipelineRuns }}

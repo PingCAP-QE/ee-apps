@@ -310,19 +310,6 @@ func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
 	return 0, nil
 }
 
-func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string {
-	switch eventType {
-	case "dev.tekton.event.pipelinerun.started.v1":
-		return "PROCESSING"
-	case "dev.tekton.event.pipelinerun.successful.v1":
-		return "SUCCESS"
-	case "dev.tekton.event.pipelinerun.failed.v1":
-		return "FAILURE"
-	default:
-		return ""
-	}
-}
-
 func (s *devbuildsrvc) getInternalImageURL(img string) *string {
 	for srcPrefix, dstPrefix := range s.imageMirrorURLMap {
 		if strings.HasPrefix(img, srcPrefix) {
