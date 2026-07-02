@@ -109,13 +109,6 @@ def run_sync_gcs_cache_ac_references(
         shard_parse_error_start = parse_error_count
         shard_replaced_start = replaced_ac_object_count
         shard_reference_start = reference_row_count
-        logger.info(
-            "AC reference sync shard started: mode=%s shard=%s shard_end=%s",
-            mode,
-            shard,
-            resolved_shard_end,
-        )
-
         def log_shard_finished(status: str) -> None:
             logger.info(
                 "AC reference sync shard finished: mode=%s shard=%s status=%s "
@@ -146,6 +139,12 @@ def run_sync_gcs_cache_ac_references(
                 "AC reference index bootstrap is incomplete: "
                 f"shard {shard} has no indexed_through watermark"
             )
+        logger.info(
+            "AC reference sync shard started: mode=%s shard=%s run_shard_end=%s",
+            mode,
+            shard,
+            resolved_shard_end,
+        )
 
         query = (
             build_bootstrap_gcs_cache_ac_reference_source_query(settings)
