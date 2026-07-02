@@ -162,10 +162,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				t.Fatalf("NewLarkCardJSON() returned invalid JSON: %v", err)
 			}
 
-			card, ok := result["card"].(map[string]any)
-			if !ok {
-				t.Fatal("missing 'card' key in result")
-			}
+			card := result
 
 			header, ok := card["header"].(map[string]any)
 			if !ok {
@@ -219,12 +216,7 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 		t.Fatalf("NewLarkCardWithGoTemplate() unexpected error: %v", err)
 	}
 
-	cardMap, ok := card["card"].(map[string]any)
-	if !ok {
-		t.Fatal("missing 'card' key")
-	}
-
-	header, ok := cardMap["header"].(map[string]any)
+	header, ok := card["header"].(map[string]any)
 	if !ok {
 		t.Fatal("missing 'header' key in card")
 	}

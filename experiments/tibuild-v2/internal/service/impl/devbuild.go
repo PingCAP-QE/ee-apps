@@ -76,8 +76,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
 
 	// Register Lark notification hook if enabled
-	if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
-		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.WebhookURL, logger)
+	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
+		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, logger)
 		registerNotificationHook(dbClient, srvc.larkNotifier, logger)
 		logger.Info().Msg("lark notification hook registered")
 	}

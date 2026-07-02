@@ -1,14 +1,13 @@
 package impl
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/sha1"
 	"fmt"
-	"net/http"
 	"sync/atomic"
-	"time"
 
+	larksdk "github.com/larksuite/oapi-sdk-go/v3"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -19,76 +18,92 @@ type Notifier interface {
 	Notify(ctx context.Context, build *ent.DevBuild) error
 }
 
-// LarkNotifier sends Lark webhook notifications when builds reach terminal state.
-// The webhookURL is stored atomically to support safe runtime updates via config reload.
+// LarkNotifier sends Lark IM messages when builds reach terminal state.
+// The client is stored atomically to support safe runtime updates via config reload.
 type LarkNotifier struct {
-	webhookURL atomic.Value // stores string
-	httpClient *http.Client
-	logger     *zerolog.Logger
+	client atomic.Value // stores *larksdk.Client
+	logger *zerolog.Logger
 }
 
-// NewLarkNotifier creates a new LarkNotifier.
-func NewLarkNotifier(webhookURL string, logger *zerolog.Logger) *LarkNotifier {
-	n := &LarkNotifier{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		logger:     logger,
-	}
-	n.webhookURL.Store(webhookURL)
+// NewLarkNotifier creates a new LarkNotifier with the given Lark app credentials.
+func NewLarkNotifier(appID, appSecret string, logger *zerolog.Logger) *LarkNotifier {
+	n := &LarkNotifier{logger: logger}
+	n.client.Store(newLarkClient(appID, appSecret))
 	return n
 }
 
-// SetWebhookURL updates the webhook URL atomically. Safe to call concurrently with Notify.
-func (n *LarkNotifier) SetWebhookURL(url string) {
-	n.webhookURL.Store(url)
+// Reload updates the Lark client with new credentials. Safe to call concurrently with Notify.
+func (n *LarkNotifier) Reload(appID, appSecret string) {
+	n.client.Store(newLarkClient(appID, appSecret))
 }
 
-// Notify sends a Lark notification for the given build.
+// Disable clears the Lark client, effectively disabling notifications.
+func (n *LarkNotifier) Disable() {
+	n.client.Store((*larksdk.Client)(nil))
+}
+
+// Notify sends a Lark notification for the given build to the createdBy user.
 func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
-	webhookURL := n.webhookURL.Load().(string)
-	if webhookURL == "" {
-		n.logger.Debug().Msg("lark webhook URL not configured, skipping notification")
+	client := n.client.Load().(*larksdk.Client)
+	if client == nil {
+		n.logger.Debug().Msg("lark client not configured, skipping notification")
 		return nil
 	}
 
-	payload, err := buildNotificationCard(build)
+	receiver := build.CreatedBy
+	if receiver == "" {
+		n.logger.Debug().Int("build_id", build.ID).Msg("createdBy is empty, skipping notification")
+		return nil
+	}
+
+	cardStr, err := NewLarkCardJSON(buildNotificationInfo(build))
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to build notification card")
 		return err
 	}
 
-	body, err := json.Marshal(payload)
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(getLarkReceiverIDType(receiver)).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			MsgType(larkim.MsgTypeInteractive).
+			ReceiveId(receiver).
+			Content(cardStr).
+			Uuid(newLarkMsgUUID(build.ID, receiver)).
+			Build()).
+		Build()
+
+	resp, err := client.Im.Message.Create(ctx, req)
 	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to marshal notification payload")
+		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to send lark message")
 		return err
 	}
-
-	n.logger.Debug().Str("webhook", webhookURL).Str("body", string(body)).Msg("debug lark message")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
-	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to create notification request")
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := n.httpClient.Do(req)
-	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to send notification")
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		n.logger.Error().Int("build_id", build.ID).Int("status_code", resp.StatusCode).Msg("notification request failed")
-		return fmt.Errorf("notification request failed with status %d", resp.StatusCode)
+	if !resp.Success() {
+		n.logger.Error().
+			Int("build_id", build.ID).
+			Str("request_id", resp.RequestId()).
+			Int("code", resp.Code).
+			Str("msg", resp.Msg).
+			Msg("lark message API returned error")
+		return fmt.Errorf("lark message API error: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 
-	n.logger.Info().Int("build_id", build.ID).Str("status", build.Status).Msg("notification sent successfully")
+	n.logger.Info().
+		Int("build_id", build.ID).
+		Str("receiver", receiver).
+		Str("message_id", *resp.Data.MessageId).
+		Msg("lark notification sent successfully")
 	return nil
 }
 
-// buildNotificationCard builds a Lark interactive card for the build notification.
-func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
+// newLarkMsgUUID generates a deterministic UUID for idempotency.
+func newLarkMsgUUID(buildID int, receiver string) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "devbuild-%d-%s", buildID, receiver)
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// buildNotificationInfo builds a NotificationInfo from a build record.
+func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
 	info := &NotificationInfo{
 		BuildID:    build.ID,
 		Product:    build.Product,
@@ -119,7 +134,6 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 			info.GitSha = build.BuildReport.GitHash
 		}
 
-		// Extract images (platform + URL)
 		if len(build.BuildReport.Images) > 0 {
 			images := make([]ImageInfo, 0, len(build.BuildReport.Images))
 			for _, img := range build.BuildReport.Images {
@@ -131,7 +145,6 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 			info.Images = images
 		}
 
-		// Extract binaries (OCI references: repo:tag/file)
 		for _, oci := range build.BuildReport.Binaries {
 			for _, f := range oci.Files {
 				info.Binaries = append(info.Binaries, BinaryInfo{
@@ -141,7 +154,7 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 		}
 	}
 
-	return NewLarkCardWithGoTemplate(info)
+	return info
 }
 
 // ImageInfo contains information about a Docker image artifact for notification.

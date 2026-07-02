@@ -1,81 +1,79 @@
-msg_type: interactive
-card:
-  config:
-    wide_screen_mode: true
-  header:
-    template: {{ StatusColor .Status }}
-    title:
-      content: "{{ StatusEmoji .Status }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Version }}"
-      tag: plain_text
-  elements:
-    - tag: markdown
-      content: |-
-        **Status:** `{{ .Status }}`
-        **Product:** {{ .Product }}
-        **Version:** {{ .Version }}
-        **Platform:** {{ .Platform }}
-        **Git Ref:** {{ .GitRef }}
-        **Created By:** {{ .CreatedBy }}
+config:
+  wide_screen_mode: true
+header:
+  template: {{ StatusColor .Status }}
+  title:
+    content: "{{ StatusEmoji .Status }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Version }}"
+    tag: plain_text
+elements:
+  - tag: markdown
+    content: |-
+      **Status:** `{{ .Status }}`
+      **Product:** {{ .Product }}
+      **Version:** {{ .Version }}
+      **Platform:** {{ .Platform }}
+      **Git Ref:** {{ .GitRef }}
+      **Created By:** {{ .CreatedBy }}
 
-    {{- if .GithubRepo }}
-    - tag: markdown
-      content: |-
-        **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
-    {{- end }}
+  {{- if .GithubRepo }}
+  - tag: markdown
+    content: |-
+      **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
+  {{- end }}
 
-    {{- if or .GitSha .Images .Binaries }}
-    - tag: hr
-    - tag: markdown
-      content: |-
-        **Build Report**
-        {{- if .GitSha }}
-        **Git SHA:** `{{ .GitSha }}`
-        {{- end }}
-        {{- if .Images }}
-        **Docker Images:**
-        {{- range .Images }}
-        - `{{ .URL }}` ({{ .Platform }})
-        {{- end }}
-        {{- end }}
-        {{- if .Binaries }}
-        **Binaries:**
-        {{- range .Binaries }}
-        - `{{ .OciReference }}`
-        {{- end }}
-        {{- end }}
-    {{- end }}
+  {{- if or .GitSha .Images .Binaries }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Build Report**
+      {{- if .GitSha }}
+      **Git SHA:** `{{ .GitSha }}`
+      {{- end }}
+      {{- if .Images }}
+      **Docker Images:**
+      {{- range .Images }}
+      - `{{ .URL }}` ({{ .Platform }})
+      {{- end }}
+      {{- end }}
+      {{- if .Binaries }}
+      **Binaries:**
+      {{- range .Binaries }}
+      - `{{ .OciReference }}`
+      {{- end }}
+      {{- end }}
+  {{- end }}
 
-    {{- if .PipelineRuns }}
-    - tag: hr
-    - tag: markdown
-      content: |-
-        **Pipeline Runs:**
-        {{- range .PipelineRuns }}
-        - **{{ .Name }}:** {{ .Status }}
-        {{- end }}
-    {{- end }}
+  {{- if .PipelineRuns }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Pipeline Runs:**
+      {{- range .PipelineRuns }}
+      - **{{ .Name }}:** {{ .Status }}
+      {{- end }}
+  {{- end }}
 
-    {{- if .PipelineRuns }}
-    - tag: action
-      actions:
-        {{- range .PipelineRuns }}
-        {{- if .URL }}
-        - tag: button
-          text:
-            content: "View {{ .Name }}"
-            tag: plain_text
-          url: "{{ .URL }}"
-          type: primary
-        {{- end }}
-        {{- end }}
-    {{- end }}
+  {{- if .PipelineRuns }}
+  - tag: action
+    actions:
+      {{- range .PipelineRuns }}
+      {{- if .URL }}
+      - tag: button
+        text:
+          content: "View {{ .Name }}"
+          tag: plain_text
+        url: "{{ .URL }}"
+        type: primary
+      {{- end }}
+      {{- end }}
+  {{- end }}
 
-    {{- if .ErrMsg }}
-    - tag: hr
-    - tag: markdown
-      content: |-
-        **Error:**
-        ```text
-        {{ .ErrMsg }}
-        ```
-    {{- end }}
+  {{- if .ErrMsg }}
+  - tag: hr
+  - tag: markdown
+    content: |-
+      **Error:**
+      ```text
+      {{ .ErrMsg }}
+      ```
+  {{- end }}

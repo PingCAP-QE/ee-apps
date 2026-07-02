@@ -49,13 +49,13 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	s.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	s.jenkins.jobName = cfg.Jenkins.JobName
 
-	// Update Lark notifier webhook URL if a notifier is registered.
+	// Update Lark notifier client if a notifier is registered.
 	if s.larkNotifier != nil {
-		if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
-			s.larkNotifier.SetWebhookURL(cfg.Lark.WebhookURL)
-			s.logger.Debug().Msg("lark notifier webhook URL updated on reload")
+		if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
+			s.larkNotifier.Reload(cfg.Lark.AppID, cfg.Lark.AppSecret)
+			s.logger.Debug().Msg("lark notifier credentials updated on reload")
 		} else if !cfg.Lark.Enabled {
-			s.larkNotifier.SetWebhookURL("")
+			s.larkNotifier.Disable()
 			s.logger.Debug().Msg("lark notifier disabled on reload")
 		}
 	}

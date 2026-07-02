@@ -38,6 +38,7 @@ type Tekton struct {
 }
 
 type Lark struct {
-	Enabled    bool   `yaml:"enabled" json:"enabled"`
-	WebhookURL string `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
+	Enabled   bool   `yaml:"enabled" json:"enabled"`
+	AppID     string `yaml:"app_id,omitempty" json:"app_id,omitempty"`
+	AppSecret string `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
 }
