@@ -3,6 +3,9 @@
   "extends": [
     "config:base"
   ],
+  "ignorePaths": [
+    "tibuild/**"
+  ],
   "postUpdateOptions": [
     "gomodTidy",
     "gomodUpdateImportPaths"
