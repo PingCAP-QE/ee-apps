@@ -577,29 +577,28 @@ def test_run_cleanup_gcs_cache_delete_cascades_cas_after_each_ac_batch() -> None
             complete_time=datetime(2026, 6, 15, 10, 31, tzinfo=UTC),
         )
 
-    with pytest.warns(FutureWarning, match="max_delete_cas_objects is deprecated and ignored"):
-        summary = run_cleanup_gcs_cache(
-            settings=GcsCacheSettings(
-                project_id="pingcap-testing-account",
-                cleanup_ac_delete_batch_size=1,
-            ),
-            mode="delete",
-            execute_kind="cas",
-            ac_retention_days=10,
-            cas_retention_days=15,
-            safety_buffer_days=1,
-            max_delete_objects=2,
-            max_delete_cas_objects=1,
-            execute=fake_execute,
-            stream_rows=fake_stream_rows,
-            resolve_object_metadata=fake_resolve_object_metadata,
-            extract_references=fake_extract_references,
-            load_jsonl_file=fake_load_jsonl_file,
-            create_batch_job=fake_create_batch_job,
-            wait_for_batch_job=fake_wait_for_batch_job,
-            now=lambda: datetime(2026, 6, 15, 10, 30, tzinfo=UTC),
-            run_id_factory=lambda: "steady-run-batched",
-        )
+    summary = run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            cleanup_ac_delete_batch_size=1,
+        ),
+        mode="delete",
+        execute_kind="cas",
+        ac_retention_days=10,
+        cas_retention_days=15,
+        safety_buffer_days=1,
+        max_delete_objects=2,
+        max_delete_cas_objects=1,
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        resolve_object_metadata=fake_resolve_object_metadata,
+        extract_references=fake_extract_references,
+        load_jsonl_file=fake_load_jsonl_file,
+        create_batch_job=fake_create_batch_job,
+        wait_for_batch_job=fake_wait_for_batch_job,
+        now=lambda: datetime(2026, 6, 15, 10, 30, tzinfo=UTC),
+        run_id_factory=lambda: "steady-run-batched",
+    )
 
     assert summary.selected_ac_object_count == 2
     assert summary.selected_cas_object_count == 2

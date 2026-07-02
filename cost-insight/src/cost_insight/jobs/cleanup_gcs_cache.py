@@ -168,13 +168,11 @@ def run_cleanup_gcs_cache(
         if max_delete_objects is not None
         else settings.cleanup_max_delete_objects
     )
-    if max_delete_cas_objects is not None:
-        warnings.warn(
-            "max_delete_cas_objects is deprecated and ignored by v3 AC-driven cascade cleanup; "
-            "CAS deletion is bounded only by selected AC batches",
-            FutureWarning,
-            stacklevel=2,
-        )
+    resolved_max_delete_cas_objects = (
+        max_delete_cas_objects
+        if max_delete_cas_objects is not None
+        else settings.cleanup_max_delete_cas_objects
+    )
     ac_cutoff_days = resolved_ac_days + resolved_safety_buffer_days
     cas_cutoff_days = resolved_cas_days + resolved_safety_buffer_days
 
@@ -206,6 +204,7 @@ def run_cleanup_gcs_cache(
             cleanup_max_delete_cas_objects=resolved_max_delete_cas_objects,
             cleanup_max_delete_cas_bytes=settings.cleanup_max_delete_cas_bytes,
             cleanup_cas_preselect_limit=settings.cleanup_cas_preselect_limit,
+            cleanup_ac_delete_batch_size=settings.cleanup_ac_delete_batch_size,
             cleanup_batch_size=settings.cleanup_batch_size,
             cleanup_manifest_bucket=settings.cleanup_manifest_bucket,
             cleanup_manifest_prefix=settings.cleanup_manifest_prefix,
@@ -1341,6 +1340,22 @@ AS
         batch_size=settings.cleanup_batch_size,
     )
 
+    # Reconcile missing CAS from last_seen_current so stale entries don't
+    # occupy the preselect window on every run and block progress.
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total,
+        execute(
+            build_cleanup_gcs_cache_reconcile_missing_cas_query(
+                settings,
+                candidate_table=cas_preselect_table,
+                missing_metadata_table=_tmp_table_ref(
+                    settings, "cas_missing_metadata", run_id=run_id
+                ),
+            ),
+            parameters=[],
+        ).total_bytes_processed,
+    )
+
     # Phase C: rank by size_bytes DESC, apply object + bytes cap
     cas_live_table = _tmp_table_ref(settings, "cas_live_metadata", run_id=run_id)
     cold_cas_table = _tmp_table_ref(settings, "cold_cas", run_id=run_id)
@@ -1726,6 +1741,27 @@ AS
         missing_table=_tmp_table_ref(settings, "ac_missing_metadata", run_id=run_id),
         batch_size=settings.cleanup_batch_size,
     )
+
+    # Reconcile missing ACs from last_seen_current and by_ac so ghost refs
+    # don't survive into the second by_cas rebuild.
+    missing_ac_table = _tmp_table_ref(settings, "ac_missing_metadata", run_id=run_id)
+    current_table = _table_ref(
+        settings.project_id, settings.dataset, settings.last_seen_current_table
+    )
+    by_ac_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
+    )
+    execute(
+        f"""DELETE FROM {current_table}
+WHERE object_kind = 'ac'
+  AND object_name IN (SELECT object_name FROM {missing_ac_table})""",
+        parameters=[],
+    ).total_bytes_processed
+    execute(
+        f"""DELETE FROM {by_ac_table}
+WHERE ac_object_name IN (SELECT object_name FROM {missing_ac_table})""",
+        parameters=[],
+    ).total_bytes_processed
 
     # Build final AC delete table (live metadata only)
     ac_delete_table = _tmp_table_ref(settings, "delete_ac", run_id=run_id)

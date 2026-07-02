@@ -87,6 +87,7 @@ class GcsCacheSettings:
     cleanup_max_delete_cas_objects: int = 10000
     cleanup_max_delete_cas_bytes: int = 1099511627776
     cleanup_cas_preselect_limit: int = 20000
+    cleanup_ac_delete_batch_size: int = 500000
     cleanup_batch_size: int = 1000
     cleanup_manifest_bucket: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET
     cleanup_manifest_prefix: str = DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX
