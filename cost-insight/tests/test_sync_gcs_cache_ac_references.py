@@ -44,7 +44,7 @@ def test_incremental_gcs_cache_ac_reference_source_query_targets_create_events()
 
 
 def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_refs() -> None:
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         return BigQueryQueryResult(rows=(), total_bytes_processed=5)
 
     def fake_stream_rows(query, parameters):
@@ -100,7 +100,7 @@ def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_r
 def test_run_sync_gcs_cache_ac_references_incremental_updates_watermark_and_replaces_refs() -> None:
     captured_queries = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         captured_queries.append((query, {param.name: param.value for param in parameters}))
         if "SELECT indexed_through" in query:
             return BigQueryQueryResult(
@@ -160,7 +160,7 @@ def test_run_sync_gcs_cache_ac_references_replaces_once_per_shard() -> None:
     load_calls = []
     extract_calls = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         captured_queries.append((query, {param.name: param.value for param in parameters}))
         return BigQueryQueryResult(rows=(), total_bytes_processed=1)
 
@@ -216,7 +216,7 @@ def test_run_sync_gcs_cache_ac_references_replaces_once_per_shard() -> None:
 def test_run_sync_gcs_cache_ac_references_can_skip_ensure_tables() -> None:
     captured_queries = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         captured_queries.append(query)
         return BigQueryQueryResult(rows=(), total_bytes_processed=1)
 
@@ -242,7 +242,7 @@ def test_execute_with_bigquery_dml_retry_retries_concurrent_update() -> None:
     calls = 0
     sleeps = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -273,7 +273,7 @@ def test_execute_with_bigquery_dml_retry_uses_cause_reason() -> None:
         reason = "rateLimitExceeded"
         errors = [{"reason": "rateLimitExceeded", "message": "quota"}]
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -302,7 +302,7 @@ def test_execute_with_bigquery_dml_retry_reraises_non_retryable_error() -> None:
     calls = 0
     sleeps = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         nonlocal calls
         calls += 1
         raise BigQueryExecutionError("Syntax error")
@@ -329,7 +329,7 @@ def test_execute_with_bigquery_dml_retry_reraises_after_max_attempts() -> None:
     calls = 0
     sleeps = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         nonlocal calls
         calls += 1
         raise BigQueryExecutionError("Could not serialize access to table")
@@ -357,7 +357,7 @@ def test_run_sync_incremental_zero_ref_ac_writes_sentinel_and_filters_insert() -
     captured_queries = []
     loaded_stage_rows: list[dict] = []
 
-    def fake_execute(query, parameters):
+    def fake_execute(query, *, parameters):
         captured_queries.append((query, {p.name: p.value for p in parameters}))
         if "SELECT indexed_through" in query:
             return BigQueryQueryResult(

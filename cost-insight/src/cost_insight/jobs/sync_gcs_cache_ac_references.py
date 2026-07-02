@@ -670,7 +670,7 @@ def _execute_with_bigquery_dml_retry(
         raise ValueError("max_attempts must be positive")
     for attempt in range(1, max_attempts + 1):
         try:
-            return execute(query, parameters)
+            return execute(query, parameters=parameters)
         except BigQueryExecutionError as exc:
             if attempt >= max_attempts or not _is_retryable_bigquery_dml_error(exc):
                 raise
