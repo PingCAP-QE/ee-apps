@@ -2,11 +2,21 @@ package schema
 
 import "time"
 
+// BuildReport represents the build report stored in the buildReport JSON column.
+// This mirrors the Goa-generated devbuild.BuildReport struct.
+type BuildReport struct {
+	GitHash        string          `json:"gitHash,omitempty"`
+	PluginGitHash  string          `json:"pluginGitHash,omitempty"`
+	PrintedVersion string          `json:"printedVersion,omitempty"`
+	Images         []ImageArtifact `json:"images,omitempty"`
+	Binaries       []OciArtifact   `json:"binaries,omitempty"`
+}
+
 // TektonStatus represents the status of Tekton pipelines for a devbuild.
 // This mirrors the Goa-generated devbuild.TektonStatus struct.
 type TektonStatus struct {
 	Pipelines        []TektonPipeline `json:"pipelines,omitempty"`
-	TriggersEventIds []string         `json:"triggers_event_ids,omitempty"`
+	TriggersEventIds []string         `json:"triggersEventIDs,omitempty"`
 }
 
 // TektonPipeline represents a single Tekton pipeline run.
@@ -15,10 +25,10 @@ type TektonPipeline struct {
 	Name         string          `json:"name"`
 	Namespace    string          `json:"namespace"`
 	Status       string          `json:"status"`
-	StartAt      *time.Time      `json:"start_at,omitzero"`
-	EndAt        *time.Time      `json:"end_at,omitzero"`
+	StartAt      *time.Time      `json:"startAt,omitzero"`
+	EndAt        *time.Time      `json:"endAt,omitzero"`
 	Images       []ImageArtifact `json:"images,omitzero"`
-	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitzero"`
+	OciArtifacts []OciArtifact   `json:"ociArtifacts,omitzero"`
 	Platform     string          `json:"platform,omitzero"`
 	URL          string          `json:"url,omitzero"`
 }
@@ -34,4 +44,18 @@ type OciArtifact struct {
 	Files []string `json:"files,omitzero"`
 	Repo  string   `json:"repo,omitzero"`
 	Tag   string   `json:"tag,omitzero"`
+}
+
+// NotificationState holds the delivery state for all notification channels.
+// Each entry's ChatID distinguishes the target:
+//   - "" empty     → DM to build creator (implicit receiver = createdBy)
+//   - "oc_xxxxxx"  → Lark group chat
+type NotificationState struct {
+	Lark []LarkMessageState `json:"lark,omitempty"`
+}
+
+// LarkMessageState tracks a single notification card delivery for update purposes.
+type LarkMessageState struct {
+	ChatID    string `json:"chat_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
 }

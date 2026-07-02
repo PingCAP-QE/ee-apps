@@ -38,6 +38,27 @@ type Tekton struct {
 }
 
 type Lark struct {
-	Enabled    bool   `yaml:"enabled" json:"enabled"`
-	WebhookURL string `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	AppID     string        `yaml:"app_id,omitempty" json:"app_id,omitempty"`
+	AppSecret string        `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
+	Channels  []LarkChannel `yaml:"channels,omitempty" json:"channels,omitempty"`
+}
+
+// LarkChannel represents a Lark group chat to send notifications to.
+//
+// ChatID is the Lark chat ID (starts with "oc_"). To get it:
+//   - Desktop: 右键群聊 → "复制 Chat ID" → 得到 "oc_xxxxxxxxxxxxx"
+//   - API: curl -H "Authorization: Bearer <tenant_token>" \
+//     "https://open.feishu.cn/open-apis/im/v1/chats?page_size=50"
+//
+// Example:
+//
+//	channels:
+//	  - name: "devbuild-team"
+//	    chat_id: "oc_2b1c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+//	  - name: "ci-alerts"
+//	    chat_id: "oc_9a8b7c6d5e4f3g2h1i0j9k8l7m6n5o4"
+type LarkChannel struct {
+	Name   string `yaml:"name,omitempty" json:"name,omitempty"`
+	ChatID string `yaml:"chat_id,omitempty" json:"chat_id,omitempty"`
 }

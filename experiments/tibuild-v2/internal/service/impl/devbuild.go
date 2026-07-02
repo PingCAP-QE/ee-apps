@@ -76,8 +76,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
 
 	// Register Lark notification hook if enabled
-	if cfg.Lark.Enabled && cfg.Lark.WebhookURL != "" {
-		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.WebhookURL, logger)
+	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
+		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
 		registerNotificationHook(dbClient, srvc.larkNotifier, logger)
 		logger.Info().Msg("lark notification hook registered")
 	}
@@ -95,11 +95,16 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*de
 	if p.CreatedBy != nil {
 		query.Where(entdevbuild.CreatedBy(*p.CreatedBy))
 	}
-	if p.Sort != "" {
+	// Map camelCase sort values to Ent column names
+	sortColumnMap := map[string]string{
+		"createdAt": "created_at",
+		"updatedAt": "updated_at",
+	}
+	if col, ok := sortColumnMap[p.Sort]; ok {
 		if p.Direction == "desc" {
-			query.Order(ent.Desc(p.Sort))
+			query.Order(ent.Desc(col))
 		} else {
-			query.Order(ent.Asc(p.Sort))
+			query.Order(ent.Asc(col))
 		}
 	}
 
@@ -186,7 +191,7 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 	if p.Status.TektonStatus != nil {
 		// Convert Goa TektonStatus to schema TektonStatus
 		tektonStatus := schema.TektonStatus{
-			TriggersEventIds: p.Status.TektonStatus.TriggersEventIds,
+			TriggersEventIds: p.Status.TektonStatus.TriggersEventIDs,
 		}
 		// Convert pipelines if present
 		if len(p.Status.TektonStatus.Pipelines) > 0 {
@@ -251,12 +256,12 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetVersion(existingBuild.Version).
 		SetGithubRepo(existingBuild.GithubRepo).
 		SetGitRef(existingBuild.GitRef).
-		SetGitSha(existingBuild.GitSha).
+		SetGitHash(existingBuild.GitHash).
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
-		SetIsPushGcr(existingBuild.IsPushGcr).
+		SetIsPushGCR(existingBuild.IsPushGCR).
 		SetPlatform(existingBuild.Platform).
-		SetStatus("pending").
+		SetStatus("PENDING").
 		SetCreatedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
@@ -305,19 +310,6 @@ func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
 	return 0, nil
 }
 
-func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string {
-	switch eventType {
-	case "dev.tekton.event.pipelinerun.started.v1":
-		return "running"
-	case "dev.tekton.event.pipelinerun.successful.v1":
-		return "success"
-	case "dev.tekton.event.pipelinerun.failed.v1":
-		return "failure"
-	default:
-		return ""
-	}
-}
-
 func (s *devbuildsrvc) getInternalImageURL(img string) *string {
 	for srcPrefix, dstPrefix := range s.imageMirrorURLMap {
 		if strings.HasPrefix(img, srcPrefix) {
@@ -352,7 +344,8 @@ func newStoreClient(cfg config.Store) (*ent.Client, error) {
 }
 
 // registerNotificationHook registers an Ent hook that sends Lark notifications
-// when a DevBuild reaches a terminal status (success, failure, error, aborted).
+// on every DevBuild status change. The first notification creates a new card;
+// subsequent updates refresh the same card in place.
 func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *zerolog.Logger) {
 	dbClient.Use(func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -367,15 +360,19 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 				return v, nil
 			}
 
-			// Only trigger on Update or UpdateOne operations
-			if !m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
+			// Trigger on Create (initial PENDING) and Update (status changes)
+			if !m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
 				return v, nil
 			}
 
-			// Check if status field was changed
-			newStatus, exists := mut.Status()
-			if !exists || !isTerminalStatus(newStatus) {
-				return v, nil
+			// For updates, skip unless Status or TektonStatus was changed.
+			// This catches: overall status change, and individual pipeline run progress.
+			if m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
+				_, hasStatus := mut.Status()
+				_, hasTektonStatus := mut.TektonStatus()
+				if !hasStatus && !hasTektonStatus {
+					return v, nil
+				}
 			}
 
 			// Get the build ID and send notification asynchronously
@@ -386,8 +383,20 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 					logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
 					return
 				}
-				if notifyErr := notifier.Notify(context.Background(), build); notifyErr != nil {
+
+				newState, notifyErr := notifier.Notify(context.Background(), build)
+				if notifyErr != nil {
 					logger.Err(notifyErr).Int("build_id", buildID).Msg("failed to send notification")
+					return
+				}
+
+				// Persist the updated notification state (message IDs for each channel).
+				if newState != nil {
+					if _, err := dbClient.DevBuild.UpdateOneID(build.ID).
+						SetNotificationState(*newState).
+						Save(context.Background()); err != nil {
+						logger.Err(err).Int("build_id", buildID).Msg("failed to store notification state")
+					}
 				}
 			}()
 

@@ -20,11 +20,11 @@ type DevBuild struct {
 	// ID of the ent.
 	ID int `json:"id,omitempty"`
 	// User who created the build
-	CreatedBy string `json:"created_by,omitempty"`
+	CreatedBy string `json:"createdBy,omitempty"`
 	// Time when the build was created
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 	// Time when the build was last updated
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 	// Product being built
 	Product string `json:"product,omitempty"`
 	// Edition of the product
@@ -32,47 +32,49 @@ type DevBuild struct {
 	// Version of the build
 	Version string `json:"version,omitempty"`
 	// GitHub repository
-	GithubRepo string `json:"github_repo,omitempty"`
+	GithubRepo string `json:"githubRepo,omitempty"`
 	// Git reference of the build
-	GitRef string `json:"git_ref,omitempty"`
-	// Git commit SHA
-	GitSha string `json:"git_sha,omitempty"`
+	GitRef string `json:"gitRef,omitempty"`
+	// Git commit hash
+	GitHash string `json:"gitHash,omitempty"`
 	// Git reference of the plugin
-	PluginGitRef string `json:"plugin_git_ref,omitempty"`
+	PluginGitRef string `json:"pluginGitRef,omitempty"`
 	// Whether the build is a hotfix
-	IsHotfix bool `json:"is_hotfix,omitempty"`
+	IsHotfix bool `json:"isHotfix,omitempty"`
 	// Whether to push to GCR
-	IsPushGcr bool `json:"is_push_gcr,omitempty"`
+	IsPushGCR bool `json:"isPushGCR,omitempty"`
 	// Target image name
-	TargetImg string `json:"target_img,omitempty"`
+	TargetImg string `json:"targetImg,omitempty"`
 	// Pipeline engine used
-	PipelineEngine string `json:"pipeline_engine,omitempty"`
+	PipelineEngine string `json:"pipelineEngine,omitempty"`
 	// Build for target platforms
 	Platform string `json:"platform,omitempty"`
 	// Builder image used
-	BuilderImg string `json:"builder_img,omitempty"`
+	BuilderImg string `json:"builderImg,omitempty"`
 	// Build environment
-	BuildEnv string `json:"build_env,omitempty"`
+	BuildEnv string `json:"buildEnv,omitempty"`
 	// Features included in the build
 	Features string `json:"features,omitempty"`
 	// Base image for the product
-	ProductBaseImg string `json:"product_base_img,omitempty"`
+	ProductBaseImg string `json:"productBaseImg,omitempty"`
 	// Path to artifact image building dockerfile
-	ProductDockerfile string `json:"product_dockerfile,omitempty"`
+	ProductDockerfile string `json:"productDockerfile,omitempty"`
 	// Build status
 	Status string `json:"status,omitempty"`
 	// Build status message
-	ErrMsg string `json:"err_msg,omitempty"`
+	ErrMsg string `json:"errMsg,omitempty"`
+	// Notification delivery state for each channel (Lark DM, group chat, etc.)
+	NotificationState schema.NotificationState `json:"notificationState,omitempty"`
 	// ID of the pipeline build
-	PipelineBuildID int `json:"pipeline_build_id,omitempty"`
+	PipelineBuildID int `json:"pipelineBuildID,omitempty"`
 	// Build pipeline started time
-	PipelineStartAt time.Time `json:"pipeline_start_at,omitempty"`
+	PipelineStartAt time.Time `json:"pipelineStartAt,omitempty"`
 	// Build pipeline completed time
-	PipelineEndAt time.Time `json:"pipeline_end_at,omitempty"`
+	PipelineEndAt time.Time `json:"pipelineEndAt,omitempty"`
 	// JSON report of the build
-	BuildReport map[string]interface{} `json:"build_report,omitempty"`
+	BuildReport schema.BuildReport `json:"buildReport,omitempty"`
 	// Tekton status
-	TektonStatus schema.TektonStatus `json:"tekton_status,omitempty"`
+	TektonStatus schema.TektonStatus `json:"tektonStatus,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -81,13 +83,13 @@ func (*DevBuild) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case devbuild.FieldBuildReport, devbuild.FieldTektonStatus:
+		case devbuild.FieldNotificationState, devbuild.FieldBuildReport, devbuild.FieldTektonStatus:
 			values[i] = new([]byte)
-		case devbuild.FieldIsHotfix, devbuild.FieldIsPushGcr:
+		case devbuild.FieldIsHotfix, devbuild.FieldIsPushGCR:
 			values[i] = new(sql.NullBool)
 		case devbuild.FieldID, devbuild.FieldPipelineBuildID:
 			values[i] = new(sql.NullInt64)
-		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitSha, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldPlatform, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
+		case devbuild.FieldCreatedBy, devbuild.FieldProduct, devbuild.FieldEdition, devbuild.FieldVersion, devbuild.FieldGithubRepo, devbuild.FieldGitRef, devbuild.FieldGitHash, devbuild.FieldPluginGitRef, devbuild.FieldTargetImg, devbuild.FieldPipelineEngine, devbuild.FieldPlatform, devbuild.FieldBuilderImg, devbuild.FieldBuildEnv, devbuild.FieldFeatures, devbuild.FieldProductBaseImg, devbuild.FieldProductDockerfile, devbuild.FieldStatus, devbuild.FieldErrMsg:
 			values[i] = new(sql.NullString)
 		case devbuild.FieldCreatedAt, devbuild.FieldUpdatedAt, devbuild.FieldPipelineStartAt, devbuild.FieldPipelineEndAt:
 			values[i] = new(sql.NullTime)
@@ -114,19 +116,19 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			_m.ID = int(value.Int64)
 		case devbuild.FieldCreatedBy:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field created_by", values[i])
+				return fmt.Errorf("unexpected type %T for field createdBy", values[i])
 			} else if value.Valid {
 				_m.CreatedBy = value.String
 			}
 		case devbuild.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field created_at", values[i])
+				return fmt.Errorf("unexpected type %T for field createdAt", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
 		case devbuild.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
+				return fmt.Errorf("unexpected type %T for field updatedAt", values[i])
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
@@ -150,49 +152,49 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			}
 		case devbuild.FieldGithubRepo:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field github_repo", values[i])
+				return fmt.Errorf("unexpected type %T for field githubRepo", values[i])
 			} else if value.Valid {
 				_m.GithubRepo = value.String
 			}
 		case devbuild.FieldGitRef:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field git_ref", values[i])
+				return fmt.Errorf("unexpected type %T for field gitRef", values[i])
 			} else if value.Valid {
 				_m.GitRef = value.String
 			}
-		case devbuild.FieldGitSha:
+		case devbuild.FieldGitHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field git_sha", values[i])
+				return fmt.Errorf("unexpected type %T for field gitHash", values[i])
 			} else if value.Valid {
-				_m.GitSha = value.String
+				_m.GitHash = value.String
 			}
 		case devbuild.FieldPluginGitRef:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field plugin_git_ref", values[i])
+				return fmt.Errorf("unexpected type %T for field pluginGitRef", values[i])
 			} else if value.Valid {
 				_m.PluginGitRef = value.String
 			}
 		case devbuild.FieldIsHotfix:
 			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field is_hotfix", values[i])
+				return fmt.Errorf("unexpected type %T for field isHotfix", values[i])
 			} else if value.Valid {
 				_m.IsHotfix = value.Bool
 			}
-		case devbuild.FieldIsPushGcr:
+		case devbuild.FieldIsPushGCR:
 			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field is_push_gcr", values[i])
+				return fmt.Errorf("unexpected type %T for field isPushGCR", values[i])
 			} else if value.Valid {
-				_m.IsPushGcr = value.Bool
+				_m.IsPushGCR = value.Bool
 			}
 		case devbuild.FieldTargetImg:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field target_img", values[i])
+				return fmt.Errorf("unexpected type %T for field targetImg", values[i])
 			} else if value.Valid {
 				_m.TargetImg = value.String
 			}
 		case devbuild.FieldPipelineEngine:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field pipeline_engine", values[i])
+				return fmt.Errorf("unexpected type %T for field pipelineEngine", values[i])
 			} else if value.Valid {
 				_m.PipelineEngine = value.String
 			}
@@ -204,13 +206,13 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			}
 		case devbuild.FieldBuilderImg:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field builder_img", values[i])
+				return fmt.Errorf("unexpected type %T for field builderImg", values[i])
 			} else if value.Valid {
 				_m.BuilderImg = value.String
 			}
 		case devbuild.FieldBuildEnv:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field build_env", values[i])
+				return fmt.Errorf("unexpected type %T for field buildEnv", values[i])
 			} else if value.Valid {
 				_m.BuildEnv = value.String
 			}
@@ -222,13 +224,13 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			}
 		case devbuild.FieldProductBaseImg:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field product_base_img", values[i])
+				return fmt.Errorf("unexpected type %T for field productBaseImg", values[i])
 			} else if value.Valid {
 				_m.ProductBaseImg = value.String
 			}
 		case devbuild.FieldProductDockerfile:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field product_dockerfile", values[i])
+				return fmt.Errorf("unexpected type %T for field productDockerfile", values[i])
 			} else if value.Valid {
 				_m.ProductDockerfile = value.String
 			}
@@ -240,42 +242,50 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			}
 		case devbuild.FieldErrMsg:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field err_msg", values[i])
+				return fmt.Errorf("unexpected type %T for field errMsg", values[i])
 			} else if value.Valid {
 				_m.ErrMsg = value.String
 			}
+		case devbuild.FieldNotificationState:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field notificationState", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.NotificationState); err != nil {
+					return fmt.Errorf("unmarshal field notificationState: %w", err)
+				}
+			}
 		case devbuild.FieldPipelineBuildID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field pipeline_build_id", values[i])
+				return fmt.Errorf("unexpected type %T for field pipelineBuildID", values[i])
 			} else if value.Valid {
 				_m.PipelineBuildID = int(value.Int64)
 			}
 		case devbuild.FieldPipelineStartAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field pipeline_start_at", values[i])
+				return fmt.Errorf("unexpected type %T for field pipelineStartAt", values[i])
 			} else if value.Valid {
 				_m.PipelineStartAt = value.Time
 			}
 		case devbuild.FieldPipelineEndAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field pipeline_end_at", values[i])
+				return fmt.Errorf("unexpected type %T for field pipelineEndAt", values[i])
 			} else if value.Valid {
 				_m.PipelineEndAt = value.Time
 			}
 		case devbuild.FieldBuildReport:
 			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field build_report", values[i])
+				return fmt.Errorf("unexpected type %T for field buildReport", values[i])
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.BuildReport); err != nil {
-					return fmt.Errorf("unmarshal field build_report: %w", err)
+					return fmt.Errorf("unmarshal field buildReport: %w", err)
 				}
 			}
 		case devbuild.FieldTektonStatus:
 			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field tekton_status", values[i])
+				return fmt.Errorf("unexpected type %T for field tektonStatus", values[i])
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.TektonStatus); err != nil {
-					return fmt.Errorf("unmarshal field tekton_status: %w", err)
+					return fmt.Errorf("unmarshal field tektonStatus: %w", err)
 				}
 			}
 		default:
@@ -314,13 +324,13 @@ func (_m *DevBuild) String() string {
 	var builder strings.Builder
 	builder.WriteString("DevBuild(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
-	builder.WriteString("created_by=")
+	builder.WriteString("createdBy=")
 	builder.WriteString(_m.CreatedBy)
 	builder.WriteString(", ")
-	builder.WriteString("created_at=")
+	builder.WriteString("createdAt=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	builder.WriteString("updated_at=")
+	builder.WriteString("updatedAt=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("product=")
@@ -332,67 +342,70 @@ func (_m *DevBuild) String() string {
 	builder.WriteString("version=")
 	builder.WriteString(_m.Version)
 	builder.WriteString(", ")
-	builder.WriteString("github_repo=")
+	builder.WriteString("githubRepo=")
 	builder.WriteString(_m.GithubRepo)
 	builder.WriteString(", ")
-	builder.WriteString("git_ref=")
+	builder.WriteString("gitRef=")
 	builder.WriteString(_m.GitRef)
 	builder.WriteString(", ")
-	builder.WriteString("git_sha=")
-	builder.WriteString(_m.GitSha)
+	builder.WriteString("gitHash=")
+	builder.WriteString(_m.GitHash)
 	builder.WriteString(", ")
-	builder.WriteString("plugin_git_ref=")
+	builder.WriteString("pluginGitRef=")
 	builder.WriteString(_m.PluginGitRef)
 	builder.WriteString(", ")
-	builder.WriteString("is_hotfix=")
+	builder.WriteString("isHotfix=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsHotfix))
 	builder.WriteString(", ")
-	builder.WriteString("is_push_gcr=")
-	builder.WriteString(fmt.Sprintf("%v", _m.IsPushGcr))
+	builder.WriteString("isPushGCR=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IsPushGCR))
 	builder.WriteString(", ")
-	builder.WriteString("target_img=")
+	builder.WriteString("targetImg=")
 	builder.WriteString(_m.TargetImg)
 	builder.WriteString(", ")
-	builder.WriteString("pipeline_engine=")
+	builder.WriteString("pipelineEngine=")
 	builder.WriteString(_m.PipelineEngine)
 	builder.WriteString(", ")
 	builder.WriteString("platform=")
 	builder.WriteString(_m.Platform)
 	builder.WriteString(", ")
-	builder.WriteString("builder_img=")
+	builder.WriteString("builderImg=")
 	builder.WriteString(_m.BuilderImg)
 	builder.WriteString(", ")
-	builder.WriteString("build_env=")
+	builder.WriteString("buildEnv=")
 	builder.WriteString(_m.BuildEnv)
 	builder.WriteString(", ")
 	builder.WriteString("features=")
 	builder.WriteString(_m.Features)
 	builder.WriteString(", ")
-	builder.WriteString("product_base_img=")
+	builder.WriteString("productBaseImg=")
 	builder.WriteString(_m.ProductBaseImg)
 	builder.WriteString(", ")
-	builder.WriteString("product_dockerfile=")
+	builder.WriteString("productDockerfile=")
 	builder.WriteString(_m.ProductDockerfile)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
 	builder.WriteString(", ")
-	builder.WriteString("err_msg=")
+	builder.WriteString("errMsg=")
 	builder.WriteString(_m.ErrMsg)
 	builder.WriteString(", ")
-	builder.WriteString("pipeline_build_id=")
+	builder.WriteString("notificationState=")
+	builder.WriteString(fmt.Sprintf("%v", _m.NotificationState))
+	builder.WriteString(", ")
+	builder.WriteString("pipelineBuildID=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PipelineBuildID))
 	builder.WriteString(", ")
-	builder.WriteString("pipeline_start_at=")
+	builder.WriteString("pipelineStartAt=")
 	builder.WriteString(_m.PipelineStartAt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	builder.WriteString("pipeline_end_at=")
+	builder.WriteString("pipelineEndAt=")
 	builder.WriteString(_m.PipelineEndAt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	builder.WriteString("build_report=")
+	builder.WriteString("buildReport=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BuildReport))
 	builder.WriteString(", ")
-	builder.WriteString("tekton_status=")
+	builder.WriteString("tektonStatus=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TektonStatus))
 	builder.WriteByte(')')
 	return builder.String()

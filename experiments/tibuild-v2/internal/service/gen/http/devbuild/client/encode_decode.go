@@ -46,12 +46,12 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 		}
 		values := req.URL.Query()
 		values.Add("page", fmt.Sprintf("%v", p.Page))
-		values.Add("page_size", fmt.Sprintf("%v", p.PageSize))
+		values.Add("pageSize", fmt.Sprintf("%v", p.PageSize))
 		values.Add("hotfix", fmt.Sprintf("%v", p.Hotfix))
 		values.Add("sort", p.Sort)
 		values.Add("direction", p.Direction)
 		if p.CreatedBy != nil {
-			values.Add("created_by", *p.CreatedBy)
+			values.Add("createdBy", *p.CreatedBy)
 		}
 		req.URL.RawQuery = values.Encode()
 		return nil
@@ -601,10 +601,10 @@ func unmarshalDevBuildSpecResponseToDevbuildDevBuildSpec(v *DevBuildSpecResponse
 		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
-		IsPushGcr:         v.IsPushGcr,
+		IsPushGCR:         v.IsPushGCR,
 		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
 		Product:           *v.Product,
@@ -637,10 +637,10 @@ func unmarshalDevBuildStatusResponseToDevbuildDevBuildStatus(v *DevBuildStatusRe
 	if v.BuildReport != nil {
 		res.BuildReport = unmarshalBuildReportResponseToDevbuildBuildReport(v.BuildReport)
 	}
-	if v.PipelineViewUrls != nil {
-		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
-		for i, val := range v.PipelineViewUrls {
-			res.PipelineViewUrls[i] = val
+	if v.PipelineViewURLs != nil {
+		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
+		for i, val := range v.PipelineViewURLs {
+			res.PipelineViewURLs[i] = val
 		}
 	}
 	if v.TektonStatus != nil {
@@ -657,8 +657,8 @@ func unmarshalBuildReportResponseToDevbuildBuildReport(v *BuildReportResponse) *
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -700,8 +700,8 @@ func unmarshalBinArtifactResponseToDevbuildBinArtifact(v *BinArtifactResponse) *
 	if v.OciFile != nil {
 		res.OciFile = unmarshalOciFileResponseToDevbuildOciFile(v.OciFile)
 	}
-	if v.Sha256OciFile != nil {
-		res.Sha256OciFile = unmarshalOciFileResponseToDevbuildOciFile(v.Sha256OciFile)
+	if v.Sha256OCIFile != nil {
+		res.Sha256OCIFile = unmarshalOciFileResponseToDevbuildOciFile(v.Sha256OCIFile)
 	}
 
 	return res
@@ -752,10 +752,10 @@ func unmarshalTektonStatusResponseToDevbuildTektonStatus(v *TektonStatusResponse
 		}
 		res.Pipelines[i] = unmarshalTektonPipelineResponseToDevbuildTektonPipeline(val)
 	}
-	if v.TriggersEventIds != nil {
-		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
-		for i, val := range v.TriggersEventIds {
-			res.TriggersEventIds[i] = val
+	if v.TriggersEventIDs != nil {
+		res.TriggersEventIDs = make([]string, len(v.TriggersEventIDs))
+		for i, val := range v.TriggersEventIDs {
+			res.TriggersEventIDs[i] = val
 		}
 	}
 
@@ -768,7 +768,7 @@ func unmarshalTektonPipelineResponseToDevbuildTektonPipeline(v *TektonPipelineRe
 	res := &devbuild.TektonPipeline{
 		Name:      *v.Name,
 		Namespace: *v.Namespace,
-		Status:    devbuild.BuildStatus(*v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,
@@ -826,10 +826,10 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecRequestBody(v *devbuild.DevBuildSp
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
-		IsPushGcr:         v.IsPushGcr,
+		IsPushGCR:         v.IsPushGCR,
 		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
 		Product:           v.Product,
@@ -858,10 +858,10 @@ func marshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecRequest
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
-		IsPushGcr:         v.IsPushGcr,
+		IsPushGCR:         v.IsPushGCR,
 		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
 		Product:           v.Product,
@@ -901,10 +901,10 @@ func unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(v *DevBuildSpecResp
 		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
-		IsPushGcr:         v.IsPushGcr,
+		IsPushGCR:         v.IsPushGCR,
 		PipelineEngine:    v.PipelineEngine,
 		PluginGitRef:      v.PluginGitRef,
 		Product:           *v.Product,
@@ -938,10 +938,10 @@ func unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus(v *DevBuildStat
 	if v.BuildReport != nil {
 		res.BuildReport = unmarshalBuildReportResponseBodyToDevbuildBuildReport(v.BuildReport)
 	}
-	if v.PipelineViewUrls != nil {
-		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
-		for i, val := range v.PipelineViewUrls {
-			res.PipelineViewUrls[i] = val
+	if v.PipelineViewURLs != nil {
+		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
+		for i, val := range v.PipelineViewURLs {
+			res.PipelineViewURLs[i] = val
 		}
 	}
 	if v.TektonStatus != nil {
@@ -958,8 +958,8 @@ func unmarshalBuildReportResponseBodyToDevbuildBuildReport(v *BuildReportRespons
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1001,8 +1001,8 @@ func unmarshalBinArtifactResponseBodyToDevbuildBinArtifact(v *BinArtifactRespons
 	if v.OciFile != nil {
 		res.OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.OciFile)
 	}
-	if v.Sha256OciFile != nil {
-		res.Sha256OciFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.Sha256OciFile)
+	if v.Sha256OCIFile != nil {
+		res.Sha256OCIFile = unmarshalOciFileResponseBodyToDevbuildOciFile(v.Sha256OCIFile)
 	}
 
 	return res
@@ -1053,10 +1053,10 @@ func unmarshalTektonStatusResponseBodyToDevbuildTektonStatus(v *TektonStatusResp
 		}
 		res.Pipelines[i] = unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(val)
 	}
-	if v.TriggersEventIds != nil {
-		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
-		for i, val := range v.TriggersEventIds {
-			res.TriggersEventIds[i] = val
+	if v.TriggersEventIDs != nil {
+		res.TriggersEventIDs = make([]string, len(v.TriggersEventIDs))
+		for i, val := range v.TriggersEventIDs {
+			res.TriggersEventIDs[i] = val
 		}
 	}
 
@@ -1070,7 +1070,7 @@ func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipeli
 	res := &devbuild.TektonPipeline{
 		Name:      *v.Name,
 		Namespace: *v.Namespace,
-		Status:    devbuild.BuildStatus(*v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,
@@ -1133,10 +1133,10 @@ func marshalDevbuildDevBuildStatusToDevBuildStatusRequestBody(v *devbuild.DevBui
 	if v.BuildReport != nil {
 		res.BuildReport = marshalDevbuildBuildReportToBuildReportRequestBody(v.BuildReport)
 	}
-	if v.PipelineViewUrls != nil {
-		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
-		for i, val := range v.PipelineViewUrls {
-			res.PipelineViewUrls[i] = val
+	if v.PipelineViewURLs != nil {
+		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
+		for i, val := range v.PipelineViewURLs {
+			res.PipelineViewURLs[i] = val
 		}
 	}
 	if v.TektonStatus != nil {
@@ -1153,8 +1153,8 @@ func marshalDevbuildBuildReportToBuildReportRequestBody(v *devbuild.BuildReport)
 		return nil
 	}
 	res := &BuildReportRequestBody{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1196,8 +1196,8 @@ func marshalDevbuildBinArtifactToBinArtifactRequestBody(v *devbuild.BinArtifact)
 	if v.OciFile != nil {
 		res.OciFile = marshalDevbuildOciFileToOciFileRequestBody(v.OciFile)
 	}
-	if v.Sha256OciFile != nil {
-		res.Sha256OciFile = marshalDevbuildOciFileToOciFileRequestBody(v.Sha256OciFile)
+	if v.Sha256OCIFile != nil {
+		res.Sha256OCIFile = marshalDevbuildOciFileToOciFileRequestBody(v.Sha256OCIFile)
 	}
 
 	return res
@@ -1252,10 +1252,10 @@ func marshalDevbuildTektonStatusToTektonStatusRequestBody(v *devbuild.TektonStat
 	} else {
 		res.Pipelines = []*TektonPipelineRequestBody{}
 	}
-	if v.TriggersEventIds != nil {
-		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
-		for i, val := range v.TriggersEventIds {
-			res.TriggersEventIds[i] = val
+	if v.TriggersEventIDs != nil {
+		res.TriggersEventIDs = make([]string, len(v.TriggersEventIDs))
+		for i, val := range v.TriggersEventIDs {
+			res.TriggersEventIDs[i] = val
 		}
 	}
 
@@ -1336,10 +1336,10 @@ func marshalDevBuildStatusRequestBodyToDevbuildDevBuildStatus(v *DevBuildStatusR
 	if v.BuildReport != nil {
 		res.BuildReport = marshalBuildReportRequestBodyToDevbuildBuildReport(v.BuildReport)
 	}
-	if v.PipelineViewUrls != nil {
-		res.PipelineViewUrls = make([]string, len(v.PipelineViewUrls))
-		for i, val := range v.PipelineViewUrls {
-			res.PipelineViewUrls[i] = val
+	if v.PipelineViewURLs != nil {
+		res.PipelineViewURLs = make([]string, len(v.PipelineViewURLs))
+		for i, val := range v.PipelineViewURLs {
+			res.PipelineViewURLs[i] = val
 		}
 	}
 	if v.TektonStatus != nil {
@@ -1356,8 +1356,8 @@ func marshalBuildReportRequestBodyToDevbuildBuildReport(v *BuildReportRequestBod
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1399,8 +1399,8 @@ func marshalBinArtifactRequestBodyToDevbuildBinArtifact(v *BinArtifactRequestBod
 	if v.OciFile != nil {
 		res.OciFile = marshalOciFileRequestBodyToDevbuildOciFile(v.OciFile)
 	}
-	if v.Sha256OciFile != nil {
-		res.Sha256OciFile = marshalOciFileRequestBodyToDevbuildOciFile(v.Sha256OciFile)
+	if v.Sha256OCIFile != nil {
+		res.Sha256OCIFile = marshalOciFileRequestBodyToDevbuildOciFile(v.Sha256OCIFile)
 	}
 
 	return res
@@ -1455,10 +1455,10 @@ func marshalTektonStatusRequestBodyToDevbuildTektonStatus(v *TektonStatusRequest
 	} else {
 		res.Pipelines = []*devbuild.TektonPipeline{}
 	}
-	if v.TriggersEventIds != nil {
-		res.TriggersEventIds = make([]string, len(v.TriggersEventIds))
-		for i, val := range v.TriggersEventIds {
-			res.TriggersEventIds[i] = val
+	if v.TriggersEventIDs != nil {
+		res.TriggersEventIDs = make([]string, len(v.TriggersEventIDs))
+		for i, val := range v.TriggersEventIDs {
+			res.TriggersEventIDs[i] = val
 		}
 	}
 
@@ -1472,7 +1472,7 @@ func marshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineR
 	res := &devbuild.TektonPipeline{
 		Name:      v.Name,
 		Namespace: v.Namespace,
-		Status:    devbuild.BuildStatus(v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,

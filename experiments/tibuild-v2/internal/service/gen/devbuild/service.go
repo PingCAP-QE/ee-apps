@@ -46,16 +46,16 @@ type BinArtifact struct {
 	Component     *string
 	OciFile       *OciFile
 	Platform      *string
-	Sha256OciFile *OciFile
+	Sha256OCIFile *OciFile
 	Sha256URL     *string
 	URL           *string
 }
 
 type BuildReport struct {
 	Binaries       []*BinArtifact
-	GitSha         *string
+	GitHash        *string
 	Images         []*ImageArtifact
-	PluginGitSha   *string
+	PluginGitHash  *string
 	PrintedVersion *string
 }
 
@@ -90,13 +90,13 @@ type DevBuildSpec struct {
 	BuilderImg *string
 	Edition    string
 	Platform   string
-	// [Deprecated] use build_env for custom features
+	// [Deprecated] use buildEnv for custom features
 	Features          *string
 	GitRef            string
-	GitSha            *string
+	GitHash           *string
 	GithubRepo        *string
 	IsHotfix          *bool
-	IsPushGcr         *bool
+	IsPushGCR         *bool
 	PipelineEngine    *string
 	PluginGitRef      *string
 	Product           string
@@ -113,7 +113,7 @@ type DevBuildStatus struct {
 	PipelineStartAt  *string
 	PipelineEndAt    *string
 	PipelineViewURL  *string
-	PipelineViewUrls []string
+	PipelineViewURLs []string
 	Status           BuildStatus
 	TektonStatus     *TektonStatus
 }
@@ -176,7 +176,7 @@ type RerunPayload struct {
 type TektonPipeline struct {
 	Name         string
 	Namespace    string
-	Status       BuildStatus
+	Status       TektonPipelineRunStatus
 	StartAt      *string
 	EndAt        *string
 	Images       []*ImageArtifact
@@ -185,9 +185,11 @@ type TektonPipeline struct {
 	URL          *string
 }
 
+type TektonPipelineRunStatus string
+
 type TektonStatus struct {
 	Pipelines        []*TektonPipeline
-	TriggersEventIds []string
+	TriggersEventIDs []string
 }
 
 // UpdatePayload is the payload type of the devbuild service update method.

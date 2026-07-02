@@ -22,19 +22,19 @@ func init() {
 	_ = devbuildMixinFields2
 	devbuildFields := schema.DevBuild{}.Fields()
 	_ = devbuildFields
-	// devbuildDescCreatedBy is the schema descriptor for created_by field.
+	// devbuildDescCreatedBy is the schema descriptor for createdBy field.
 	devbuildDescCreatedBy := devbuildMixinFields0[0].Descriptor()
-	// devbuild.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	// devbuild.CreatedByValidator is a validator for the "createdBy" field. It is called by the builders before save.
 	devbuild.CreatedByValidator = devbuildDescCreatedBy.Validators[0].(func(string) error)
-	// devbuildDescCreatedAt is the schema descriptor for created_at field.
+	// devbuildDescCreatedAt is the schema descriptor for createdAt field.
 	devbuildDescCreatedAt := devbuildMixinFields0[1].Descriptor()
-	// devbuild.DefaultCreatedAt holds the default value on creation for the created_at field.
+	// devbuild.DefaultCreatedAt holds the default value on creation for the createdAt field.
 	devbuild.DefaultCreatedAt = devbuildDescCreatedAt.Default.(func() time.Time)
-	// devbuildDescUpdatedAt is the schema descriptor for updated_at field.
+	// devbuildDescUpdatedAt is the schema descriptor for updatedAt field.
 	devbuildDescUpdatedAt := devbuildMixinFields0[2].Descriptor()
-	// devbuild.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	// devbuild.DefaultUpdatedAt holds the default value on creation for the updatedAt field.
 	devbuild.DefaultUpdatedAt = devbuildDescUpdatedAt.Default.(func() time.Time)
-	// devbuild.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	// devbuild.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
 	devbuild.UpdateDefaultUpdatedAt = devbuildDescUpdatedAt.UpdateDefault.(func() time.Time)
 	// devbuildDescProduct is the schema descriptor for product field.
 	devbuildDescProduct := devbuildMixinFields1[0].Descriptor()
@@ -48,59 +48,59 @@ func init() {
 	devbuildDescVersion := devbuildMixinFields1[2].Descriptor()
 	// devbuild.VersionValidator is a validator for the "version" field. It is called by the builders before save.
 	devbuild.VersionValidator = devbuildDescVersion.Validators[0].(func(string) error)
-	// devbuildDescGithubRepo is the schema descriptor for github_repo field.
+	// devbuildDescGithubRepo is the schema descriptor for githubRepo field.
 	devbuildDescGithubRepo := devbuildMixinFields1[3].Descriptor()
-	// devbuild.GithubRepoValidator is a validator for the "github_repo" field. It is called by the builders before save.
+	// devbuild.GithubRepoValidator is a validator for the "githubRepo" field. It is called by the builders before save.
 	devbuild.GithubRepoValidator = devbuildDescGithubRepo.Validators[0].(func(string) error)
-	// devbuildDescGitRef is the schema descriptor for git_ref field.
+	// devbuildDescGitRef is the schema descriptor for gitRef field.
 	devbuildDescGitRef := devbuildMixinFields1[4].Descriptor()
-	// devbuild.GitRefValidator is a validator for the "git_ref" field. It is called by the builders before save.
+	// devbuild.GitRefValidator is a validator for the "gitRef" field. It is called by the builders before save.
 	devbuild.GitRefValidator = devbuildDescGitRef.Validators[0].(func(string) error)
-	// devbuildDescGitSha is the schema descriptor for git_sha field.
-	devbuildDescGitSha := devbuildMixinFields1[5].Descriptor()
-	// devbuild.GitShaValidator is a validator for the "git_sha" field. It is called by the builders before save.
-	devbuild.GitShaValidator = devbuildDescGitSha.Validators[0].(func(string) error)
-	// devbuildDescPluginGitRef is the schema descriptor for plugin_git_ref field.
+	// devbuildDescGitHash is the schema descriptor for gitHash field.
+	devbuildDescGitHash := devbuildMixinFields1[5].Descriptor()
+	// devbuild.GitHashValidator is a validator for the "gitHash" field. It is called by the builders before save.
+	devbuild.GitHashValidator = devbuildDescGitHash.Validators[0].(func(string) error)
+	// devbuildDescPluginGitRef is the schema descriptor for pluginGitRef field.
 	devbuildDescPluginGitRef := devbuildMixinFields1[6].Descriptor()
-	// devbuild.PluginGitRefValidator is a validator for the "plugin_git_ref" field. It is called by the builders before save.
+	// devbuild.PluginGitRefValidator is a validator for the "pluginGitRef" field. It is called by the builders before save.
 	devbuild.PluginGitRefValidator = devbuildDescPluginGitRef.Validators[0].(func(string) error)
-	// devbuildDescIsHotfix is the schema descriptor for is_hotfix field.
+	// devbuildDescIsHotfix is the schema descriptor for isHotfix field.
 	devbuildDescIsHotfix := devbuildMixinFields1[7].Descriptor()
-	// devbuild.DefaultIsHotfix holds the default value on creation for the is_hotfix field.
+	// devbuild.DefaultIsHotfix holds the default value on creation for the isHotfix field.
 	devbuild.DefaultIsHotfix = devbuildDescIsHotfix.Default.(bool)
-	// devbuildDescTargetImg is the schema descriptor for target_img field.
+	// devbuildDescTargetImg is the schema descriptor for targetImg field.
 	devbuildDescTargetImg := devbuildMixinFields1[9].Descriptor()
-	// devbuild.TargetImgValidator is a validator for the "target_img" field. It is called by the builders before save.
+	// devbuild.TargetImgValidator is a validator for the "targetImg" field. It is called by the builders before save.
 	devbuild.TargetImgValidator = devbuildDescTargetImg.Validators[0].(func(string) error)
-	// devbuildDescPipelineEngine is the schema descriptor for pipeline_engine field.
+	// devbuildDescPipelineEngine is the schema descriptor for pipelineEngine field.
 	devbuildDescPipelineEngine := devbuildMixinFields1[10].Descriptor()
-	// devbuild.DefaultPipelineEngine holds the default value on creation for the pipeline_engine field.
+	// devbuild.DefaultPipelineEngine holds the default value on creation for the pipelineEngine field.
 	devbuild.DefaultPipelineEngine = devbuildDescPipelineEngine.Default.(string)
-	// devbuild.PipelineEngineValidator is a validator for the "pipeline_engine" field. It is called by the builders before save.
+	// devbuild.PipelineEngineValidator is a validator for the "pipelineEngine" field. It is called by the builders before save.
 	devbuild.PipelineEngineValidator = devbuildDescPipelineEngine.Validators[0].(func(string) error)
 	// devbuildDescPlatform is the schema descriptor for platform field.
 	devbuildDescPlatform := devbuildMixinFields1[11].Descriptor()
 	// devbuild.DefaultPlatform holds the default value on creation for the platform field.
 	devbuild.DefaultPlatform = devbuildDescPlatform.Default.(string)
-	// devbuildDescBuilderImg is the schema descriptor for builder_img field.
+	// devbuildDescBuilderImg is the schema descriptor for builderImg field.
 	devbuildDescBuilderImg := devbuildMixinFields1[12].Descriptor()
-	// devbuild.BuilderImgValidator is a validator for the "builder_img" field. It is called by the builders before save.
+	// devbuild.BuilderImgValidator is a validator for the "builderImg" field. It is called by the builders before save.
 	devbuild.BuilderImgValidator = devbuildDescBuilderImg.Validators[0].(func(string) error)
-	// devbuildDescBuildEnv is the schema descriptor for build_env field.
+	// devbuildDescBuildEnv is the schema descriptor for buildEnv field.
 	devbuildDescBuildEnv := devbuildMixinFields1[13].Descriptor()
-	// devbuild.BuildEnvValidator is a validator for the "build_env" field. It is called by the builders before save.
+	// devbuild.BuildEnvValidator is a validator for the "buildEnv" field. It is called by the builders before save.
 	devbuild.BuildEnvValidator = devbuildDescBuildEnv.Validators[0].(func(string) error)
 	// devbuildDescFeatures is the schema descriptor for features field.
 	devbuildDescFeatures := devbuildMixinFields1[14].Descriptor()
 	// devbuild.FeaturesValidator is a validator for the "features" field. It is called by the builders before save.
 	devbuild.FeaturesValidator = devbuildDescFeatures.Validators[0].(func(string) error)
-	// devbuildDescProductBaseImg is the schema descriptor for product_base_img field.
+	// devbuildDescProductBaseImg is the schema descriptor for productBaseImg field.
 	devbuildDescProductBaseImg := devbuildMixinFields1[15].Descriptor()
-	// devbuild.ProductBaseImgValidator is a validator for the "product_base_img" field. It is called by the builders before save.
+	// devbuild.ProductBaseImgValidator is a validator for the "productBaseImg" field. It is called by the builders before save.
 	devbuild.ProductBaseImgValidator = devbuildDescProductBaseImg.Validators[0].(func(string) error)
-	// devbuildDescProductDockerfile is the schema descriptor for product_dockerfile field.
+	// devbuildDescProductDockerfile is the schema descriptor for productDockerfile field.
 	devbuildDescProductDockerfile := devbuildMixinFields1[16].Descriptor()
-	// devbuild.ProductDockerfileValidator is a validator for the "product_dockerfile" field. It is called by the builders before save.
+	// devbuild.ProductDockerfileValidator is a validator for the "productDockerfile" field. It is called by the builders before save.
 	devbuild.ProductDockerfileValidator = devbuildDescProductDockerfile.Validators[0].(func(string) error)
 	// devbuildDescStatus is the schema descriptor for status field.
 	devbuildDescStatus := devbuildMixinFields2[0].Descriptor()
@@ -108,8 +108,8 @@ func init() {
 	devbuild.DefaultStatus = devbuildDescStatus.Default.(string)
 	// devbuild.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	devbuild.StatusValidator = devbuildDescStatus.Validators[0].(func(string) error)
-	// devbuildDescErrMsg is the schema descriptor for err_msg field.
+	// devbuildDescErrMsg is the schema descriptor for errMsg field.
 	devbuildDescErrMsg := devbuildMixinFields2[1].Descriptor()
-	// devbuild.ErrMsgValidator is a validator for the "err_msg" field. It is called by the builders before save.
+	// devbuild.ErrMsgValidator is a validator for the "errMsg" field. It is called by the builders before save.
 	devbuild.ErrMsgValidator = devbuildDescErrMsg.Validators[0].(func(string) error)
 }

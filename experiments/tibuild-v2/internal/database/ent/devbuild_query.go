@@ -262,7 +262,7 @@ func (_q *DevBuildQuery) Clone() *DevBuildQuery {
 // Example:
 //
 //	var v []struct {
-//		CreatedBy string `json:"created_by,omitempty"`
+//		CreatedBy string `json:"createdBy,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
@@ -285,7 +285,7 @@ func (_q *DevBuildQuery) GroupBy(field string, fields ...string) *DevBuildGroupB
 // Example:
 //
 //	var v []struct {
-//		CreatedBy string `json:"created_by,omitempty"`
+//		CreatedBy string `json:"createdBy,omitempty"`
 //	}
 //
 //	client.DevBuild.Query().

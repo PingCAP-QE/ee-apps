@@ -18,7 +18,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1001,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "success",
+				Status:   "SUCCESS",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 			},
@@ -29,7 +29,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1002,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "failure",
+				Status:   "FAILURE",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 			},
@@ -40,7 +40,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1003,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "error",
+				Status:   "ERROR",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 			},
@@ -51,7 +51,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1004,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "aborted",
+				Status:   "ABORTED",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 			},
@@ -62,7 +62,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1005,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "processing",
+				Status:   "PROCESSING",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 			},
@@ -73,7 +73,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1006,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "success",
+				Status:   "SUCCESS",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 				PipelineRuns: []PipelineRunInfo{
@@ -88,7 +88,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				BuildID:  1007,
 				Product:  "tidb",
 				Version:  "v8.5.0",
-				Status:   "error",
+				Status:   "ERROR",
 				Platform: "linux/amd64",
 				GitRef:   "abc123",
 				ErrMsg:   "compilation failed: missing dependency",
@@ -162,10 +162,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 				t.Fatalf("NewLarkCardJSON() returned invalid JSON: %v", err)
 			}
 
-			card, ok := result["card"].(map[string]any)
-			if !ok {
-				t.Fatal("missing 'card' key in result")
-			}
+			card := result
 
 			header, ok := card["header"].(map[string]any)
 			if !ok {
@@ -209,7 +206,7 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 		BuildID:  2001,
 		Product:  "tidb",
 		Version:  "v8.5.0",
-		Status:   "success",
+		Status:   "SUCCESS",
 		Platform: "linux/amd64",
 		GitRef:   "abc123",
 	}
@@ -219,12 +216,7 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 		t.Fatalf("NewLarkCardWithGoTemplate() unexpected error: %v", err)
 	}
 
-	cardMap, ok := card["card"].(map[string]any)
-	if !ok {
-		t.Fatal("missing 'card' key")
-	}
-
-	header, ok := cardMap["header"].(map[string]any)
+	header, ok := card["header"].(map[string]any)
 	if !ok {
 		t.Fatal("missing 'header' key in card")
 	}
@@ -249,12 +241,12 @@ func TestStatusColor(t *testing.T) {
 		status string
 		want   string
 	}{
-		{"success", "green"},
-		{"failure", "red"},
-		{"error", "red"},
-		{"aborted", "orange"},
-		{"processing", "blue"},
-		{"running", "blue"},
+		{"SUCCESS", "green"},
+		{"FAILURE", "red"},
+		{"ERROR", "red"},
+		{"ABORTED", "orange"},
+		{"PROCESSING", "blue"},
+		{"RUNNING", "blue"},
 		{"unknown", "grey"},
 		{"", "grey"},
 	}
@@ -271,12 +263,12 @@ func TestStatusEmoji(t *testing.T) {
 		status string
 		want   string
 	}{
-		{"success", "✅"},
-		{"failure", "❌"},
-		{"error", "❌"},
-		{"aborted", "🚫"},
-		{"processing", "🔄"},
-		{"running", "🔄"},
+		{"SUCCESS", "✅"},
+		{"FAILURE", "❌"},
+		{"ERROR", "❌"},
+		{"ABORTED", "🚫"},
+		{"PROCESSING", "🔄"},
+		{"RUNNING", "🔄"},
 		{"unknown", "⏳"},
 		{"", "⏳"},
 	}

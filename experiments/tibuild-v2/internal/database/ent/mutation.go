@@ -31,41 +31,42 @@ const (
 // DevBuildMutation represents an operation that mutates the DevBuild nodes in the graph.
 type DevBuildMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int
-	created_by           *string
-	created_at           *time.Time
-	updated_at           *time.Time
-	product              *string
-	edition              *string
-	version              *string
-	github_repo          *string
-	git_ref              *string
-	git_sha              *string
-	plugin_git_ref       *string
-	is_hotfix            *bool
-	is_push_gcr          *bool
-	target_img           *string
-	pipeline_engine      *string
-	platform             *string
-	builder_img          *string
-	build_env            *string
-	features             *string
-	product_base_img     *string
-	product_dockerfile   *string
-	status               *string
-	err_msg              *string
-	pipeline_build_id    *int
-	addpipeline_build_id *int
-	pipeline_start_at    *time.Time
-	pipeline_end_at      *time.Time
-	build_report         *map[string]interface{}
-	tekton_status        *schema.TektonStatus
-	clearedFields        map[string]struct{}
-	done                 bool
-	oldValue             func(context.Context) (*DevBuild, error)
-	predicates           []predicate.DevBuild
+	op                 Op
+	typ                string
+	id                 *int
+	createdBy          *string
+	createdAt          *time.Time
+	updatedAt          *time.Time
+	product            *string
+	edition            *string
+	version            *string
+	githubRepo         *string
+	gitRef             *string
+	gitHash            *string
+	pluginGitRef       *string
+	isHotfix           *bool
+	isPushGCR          *bool
+	targetImg          *string
+	pipelineEngine     *string
+	platform           *string
+	builderImg         *string
+	buildEnv           *string
+	features           *string
+	productBaseImg     *string
+	productDockerfile  *string
+	status             *string
+	errMsg             *string
+	notificationState  *schema.NotificationState
+	pipelineBuildID    *int
+	addpipelineBuildID *int
+	pipelineStartAt    *time.Time
+	pipelineEndAt      *time.Time
+	buildReport        *schema.BuildReport
+	tektonStatus       *schema.TektonStatus
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*DevBuild, error)
+	predicates         []predicate.DevBuild
 }
 
 var _ ent.Mutation = (*DevBuildMutation)(nil)
@@ -166,21 +167,21 @@ func (m *DevBuildMutation) IDs(ctx context.Context) ([]int, error) {
 	}
 }
 
-// SetCreatedBy sets the "created_by" field.
+// SetCreatedBy sets the "createdBy" field.
 func (m *DevBuildMutation) SetCreatedBy(s string) {
-	m.created_by = &s
+	m.createdBy = &s
 }
 
-// CreatedBy returns the value of the "created_by" field in the mutation.
+// CreatedBy returns the value of the "createdBy" field in the mutation.
 func (m *DevBuildMutation) CreatedBy() (r string, exists bool) {
-	v := m.created_by
+	v := m.createdBy
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldCreatedBy returns the old "created_by" field's value of the DevBuild entity.
+// OldCreatedBy returns the old "createdBy" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
@@ -197,39 +198,39 @@ func (m *DevBuildMutation) OldCreatedBy(ctx context.Context) (v string, err erro
 	return oldValue.CreatedBy, nil
 }
 
-// ClearCreatedBy clears the value of the "created_by" field.
+// ClearCreatedBy clears the value of the "createdBy" field.
 func (m *DevBuildMutation) ClearCreatedBy() {
-	m.created_by = nil
+	m.createdBy = nil
 	m.clearedFields[devbuild.FieldCreatedBy] = struct{}{}
 }
 
-// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+// CreatedByCleared returns if the "createdBy" field was cleared in this mutation.
 func (m *DevBuildMutation) CreatedByCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldCreatedBy]
 	return ok
 }
 
-// ResetCreatedBy resets all changes to the "created_by" field.
+// ResetCreatedBy resets all changes to the "createdBy" field.
 func (m *DevBuildMutation) ResetCreatedBy() {
-	m.created_by = nil
+	m.createdBy = nil
 	delete(m.clearedFields, devbuild.FieldCreatedBy)
 }
 
-// SetCreatedAt sets the "created_at" field.
+// SetCreatedAt sets the "createdAt" field.
 func (m *DevBuildMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
+	m.createdAt = &t
 }
 
-// CreatedAt returns the value of the "created_at" field in the mutation.
+// CreatedAt returns the value of the "createdAt" field in the mutation.
 func (m *DevBuildMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
+	v := m.createdAt
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldCreatedAt returns the old "created_at" field's value of the DevBuild entity.
+// OldCreatedAt returns the old "createdAt" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
@@ -246,26 +247,26 @@ func (m *DevBuildMutation) OldCreatedAt(ctx context.Context) (v time.Time, err e
 	return oldValue.CreatedAt, nil
 }
 
-// ResetCreatedAt resets all changes to the "created_at" field.
+// ResetCreatedAt resets all changes to the "createdAt" field.
 func (m *DevBuildMutation) ResetCreatedAt() {
-	m.created_at = nil
+	m.createdAt = nil
 }
 
-// SetUpdatedAt sets the "updated_at" field.
+// SetUpdatedAt sets the "updatedAt" field.
 func (m *DevBuildMutation) SetUpdatedAt(t time.Time) {
-	m.updated_at = &t
+	m.updatedAt = &t
 }
 
-// UpdatedAt returns the value of the "updated_at" field in the mutation.
+// UpdatedAt returns the value of the "updatedAt" field in the mutation.
 func (m *DevBuildMutation) UpdatedAt() (r time.Time, exists bool) {
-	v := m.updated_at
+	v := m.updatedAt
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldUpdatedAt returns the old "updated_at" field's value of the DevBuild entity.
+// OldUpdatedAt returns the old "updatedAt" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
@@ -282,9 +283,9 @@ func (m *DevBuildMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err e
 	return oldValue.UpdatedAt, nil
 }
 
-// ResetUpdatedAt resets all changes to the "updated_at" field.
+// ResetUpdatedAt resets all changes to the "updatedAt" field.
 func (m *DevBuildMutation) ResetUpdatedAt() {
-	m.updated_at = nil
+	m.updatedAt = nil
 }
 
 // SetProduct sets the "product" field.
@@ -434,21 +435,21 @@ func (m *DevBuildMutation) ResetVersion() {
 	delete(m.clearedFields, devbuild.FieldVersion)
 }
 
-// SetGithubRepo sets the "github_repo" field.
+// SetGithubRepo sets the "githubRepo" field.
 func (m *DevBuildMutation) SetGithubRepo(s string) {
-	m.github_repo = &s
+	m.githubRepo = &s
 }
 
-// GithubRepo returns the value of the "github_repo" field in the mutation.
+// GithubRepo returns the value of the "githubRepo" field in the mutation.
 func (m *DevBuildMutation) GithubRepo() (r string, exists bool) {
-	v := m.github_repo
+	v := m.githubRepo
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGithubRepo returns the old "github_repo" field's value of the DevBuild entity.
+// OldGithubRepo returns the old "githubRepo" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldGithubRepo(ctx context.Context) (v string, err error) {
@@ -465,39 +466,39 @@ func (m *DevBuildMutation) OldGithubRepo(ctx context.Context) (v string, err err
 	return oldValue.GithubRepo, nil
 }
 
-// ClearGithubRepo clears the value of the "github_repo" field.
+// ClearGithubRepo clears the value of the "githubRepo" field.
 func (m *DevBuildMutation) ClearGithubRepo() {
-	m.github_repo = nil
+	m.githubRepo = nil
 	m.clearedFields[devbuild.FieldGithubRepo] = struct{}{}
 }
 
-// GithubRepoCleared returns if the "github_repo" field was cleared in this mutation.
+// GithubRepoCleared returns if the "githubRepo" field was cleared in this mutation.
 func (m *DevBuildMutation) GithubRepoCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldGithubRepo]
 	return ok
 }
 
-// ResetGithubRepo resets all changes to the "github_repo" field.
+// ResetGithubRepo resets all changes to the "githubRepo" field.
 func (m *DevBuildMutation) ResetGithubRepo() {
-	m.github_repo = nil
+	m.githubRepo = nil
 	delete(m.clearedFields, devbuild.FieldGithubRepo)
 }
 
-// SetGitRef sets the "git_ref" field.
+// SetGitRef sets the "gitRef" field.
 func (m *DevBuildMutation) SetGitRef(s string) {
-	m.git_ref = &s
+	m.gitRef = &s
 }
 
-// GitRef returns the value of the "git_ref" field in the mutation.
+// GitRef returns the value of the "gitRef" field in the mutation.
 func (m *DevBuildMutation) GitRef() (r string, exists bool) {
-	v := m.git_ref
+	v := m.gitRef
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGitRef returns the old "git_ref" field's value of the DevBuild entity.
+// OldGitRef returns the old "gitRef" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldGitRef(ctx context.Context) (v string, err error) {
@@ -514,88 +515,88 @@ func (m *DevBuildMutation) OldGitRef(ctx context.Context) (v string, err error) 
 	return oldValue.GitRef, nil
 }
 
-// ClearGitRef clears the value of the "git_ref" field.
+// ClearGitRef clears the value of the "gitRef" field.
 func (m *DevBuildMutation) ClearGitRef() {
-	m.git_ref = nil
+	m.gitRef = nil
 	m.clearedFields[devbuild.FieldGitRef] = struct{}{}
 }
 
-// GitRefCleared returns if the "git_ref" field was cleared in this mutation.
+// GitRefCleared returns if the "gitRef" field was cleared in this mutation.
 func (m *DevBuildMutation) GitRefCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldGitRef]
 	return ok
 }
 
-// ResetGitRef resets all changes to the "git_ref" field.
+// ResetGitRef resets all changes to the "gitRef" field.
 func (m *DevBuildMutation) ResetGitRef() {
-	m.git_ref = nil
+	m.gitRef = nil
 	delete(m.clearedFields, devbuild.FieldGitRef)
 }
 
-// SetGitSha sets the "git_sha" field.
-func (m *DevBuildMutation) SetGitSha(s string) {
-	m.git_sha = &s
+// SetGitHash sets the "gitHash" field.
+func (m *DevBuildMutation) SetGitHash(s string) {
+	m.gitHash = &s
 }
 
-// GitSha returns the value of the "git_sha" field in the mutation.
-func (m *DevBuildMutation) GitSha() (r string, exists bool) {
-	v := m.git_sha
+// GitHash returns the value of the "gitHash" field in the mutation.
+func (m *DevBuildMutation) GitHash() (r string, exists bool) {
+	v := m.gitHash
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGitSha returns the old "git_sha" field's value of the DevBuild entity.
+// OldGitHash returns the old "gitHash" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldGitSha(ctx context.Context) (v string, err error) {
+func (m *DevBuildMutation) OldGitHash(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGitSha is only allowed on UpdateOne operations")
+		return v, errors.New("OldGitHash is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGitSha requires an ID field in the mutation")
+		return v, errors.New("OldGitHash requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGitSha: %w", err)
+		return v, fmt.Errorf("querying old value for OldGitHash: %w", err)
 	}
-	return oldValue.GitSha, nil
+	return oldValue.GitHash, nil
 }
 
-// ClearGitSha clears the value of the "git_sha" field.
-func (m *DevBuildMutation) ClearGitSha() {
-	m.git_sha = nil
-	m.clearedFields[devbuild.FieldGitSha] = struct{}{}
+// ClearGitHash clears the value of the "gitHash" field.
+func (m *DevBuildMutation) ClearGitHash() {
+	m.gitHash = nil
+	m.clearedFields[devbuild.FieldGitHash] = struct{}{}
 }
 
-// GitShaCleared returns if the "git_sha" field was cleared in this mutation.
-func (m *DevBuildMutation) GitShaCleared() bool {
-	_, ok := m.clearedFields[devbuild.FieldGitSha]
+// GitHashCleared returns if the "gitHash" field was cleared in this mutation.
+func (m *DevBuildMutation) GitHashCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldGitHash]
 	return ok
 }
 
-// ResetGitSha resets all changes to the "git_sha" field.
-func (m *DevBuildMutation) ResetGitSha() {
-	m.git_sha = nil
-	delete(m.clearedFields, devbuild.FieldGitSha)
+// ResetGitHash resets all changes to the "gitHash" field.
+func (m *DevBuildMutation) ResetGitHash() {
+	m.gitHash = nil
+	delete(m.clearedFields, devbuild.FieldGitHash)
 }
 
-// SetPluginGitRef sets the "plugin_git_ref" field.
+// SetPluginGitRef sets the "pluginGitRef" field.
 func (m *DevBuildMutation) SetPluginGitRef(s string) {
-	m.plugin_git_ref = &s
+	m.pluginGitRef = &s
 }
 
-// PluginGitRef returns the value of the "plugin_git_ref" field in the mutation.
+// PluginGitRef returns the value of the "pluginGitRef" field in the mutation.
 func (m *DevBuildMutation) PluginGitRef() (r string, exists bool) {
-	v := m.plugin_git_ref
+	v := m.pluginGitRef
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldPluginGitRef returns the old "plugin_git_ref" field's value of the DevBuild entity.
+// OldPluginGitRef returns the old "pluginGitRef" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldPluginGitRef(ctx context.Context) (v string, err error) {
@@ -612,39 +613,39 @@ func (m *DevBuildMutation) OldPluginGitRef(ctx context.Context) (v string, err e
 	return oldValue.PluginGitRef, nil
 }
 
-// ClearPluginGitRef clears the value of the "plugin_git_ref" field.
+// ClearPluginGitRef clears the value of the "pluginGitRef" field.
 func (m *DevBuildMutation) ClearPluginGitRef() {
-	m.plugin_git_ref = nil
+	m.pluginGitRef = nil
 	m.clearedFields[devbuild.FieldPluginGitRef] = struct{}{}
 }
 
-// PluginGitRefCleared returns if the "plugin_git_ref" field was cleared in this mutation.
+// PluginGitRefCleared returns if the "pluginGitRef" field was cleared in this mutation.
 func (m *DevBuildMutation) PluginGitRefCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldPluginGitRef]
 	return ok
 }
 
-// ResetPluginGitRef resets all changes to the "plugin_git_ref" field.
+// ResetPluginGitRef resets all changes to the "pluginGitRef" field.
 func (m *DevBuildMutation) ResetPluginGitRef() {
-	m.plugin_git_ref = nil
+	m.pluginGitRef = nil
 	delete(m.clearedFields, devbuild.FieldPluginGitRef)
 }
 
-// SetIsHotfix sets the "is_hotfix" field.
+// SetIsHotfix sets the "isHotfix" field.
 func (m *DevBuildMutation) SetIsHotfix(b bool) {
-	m.is_hotfix = &b
+	m.isHotfix = &b
 }
 
-// IsHotfix returns the value of the "is_hotfix" field in the mutation.
+// IsHotfix returns the value of the "isHotfix" field in the mutation.
 func (m *DevBuildMutation) IsHotfix() (r bool, exists bool) {
-	v := m.is_hotfix
+	v := m.isHotfix
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldIsHotfix returns the old "is_hotfix" field's value of the DevBuild entity.
+// OldIsHotfix returns the old "isHotfix" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldIsHotfix(ctx context.Context) (v bool, err error) {
@@ -661,75 +662,75 @@ func (m *DevBuildMutation) OldIsHotfix(ctx context.Context) (v bool, err error) 
 	return oldValue.IsHotfix, nil
 }
 
-// ResetIsHotfix resets all changes to the "is_hotfix" field.
+// ResetIsHotfix resets all changes to the "isHotfix" field.
 func (m *DevBuildMutation) ResetIsHotfix() {
-	m.is_hotfix = nil
+	m.isHotfix = nil
 }
 
-// SetIsPushGcr sets the "is_push_gcr" field.
-func (m *DevBuildMutation) SetIsPushGcr(b bool) {
-	m.is_push_gcr = &b
+// SetIsPushGCR sets the "isPushGCR" field.
+func (m *DevBuildMutation) SetIsPushGCR(b bool) {
+	m.isPushGCR = &b
 }
 
-// IsPushGcr returns the value of the "is_push_gcr" field in the mutation.
-func (m *DevBuildMutation) IsPushGcr() (r bool, exists bool) {
-	v := m.is_push_gcr
+// IsPushGCR returns the value of the "isPushGCR" field in the mutation.
+func (m *DevBuildMutation) IsPushGCR() (r bool, exists bool) {
+	v := m.isPushGCR
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldIsPushGcr returns the old "is_push_gcr" field's value of the DevBuild entity.
+// OldIsPushGCR returns the old "isPushGCR" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldIsPushGcr(ctx context.Context) (v bool, err error) {
+func (m *DevBuildMutation) OldIsPushGCR(ctx context.Context) (v bool, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldIsPushGcr is only allowed on UpdateOne operations")
+		return v, errors.New("OldIsPushGCR is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldIsPushGcr requires an ID field in the mutation")
+		return v, errors.New("OldIsPushGCR requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldIsPushGcr: %w", err)
+		return v, fmt.Errorf("querying old value for OldIsPushGCR: %w", err)
 	}
-	return oldValue.IsPushGcr, nil
+	return oldValue.IsPushGCR, nil
 }
 
-// ClearIsPushGcr clears the value of the "is_push_gcr" field.
-func (m *DevBuildMutation) ClearIsPushGcr() {
-	m.is_push_gcr = nil
-	m.clearedFields[devbuild.FieldIsPushGcr] = struct{}{}
+// ClearIsPushGCR clears the value of the "isPushGCR" field.
+func (m *DevBuildMutation) ClearIsPushGCR() {
+	m.isPushGCR = nil
+	m.clearedFields[devbuild.FieldIsPushGCR] = struct{}{}
 }
 
-// IsPushGcrCleared returns if the "is_push_gcr" field was cleared in this mutation.
-func (m *DevBuildMutation) IsPushGcrCleared() bool {
-	_, ok := m.clearedFields[devbuild.FieldIsPushGcr]
+// IsPushGCRCleared returns if the "isPushGCR" field was cleared in this mutation.
+func (m *DevBuildMutation) IsPushGCRCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldIsPushGCR]
 	return ok
 }
 
-// ResetIsPushGcr resets all changes to the "is_push_gcr" field.
-func (m *DevBuildMutation) ResetIsPushGcr() {
-	m.is_push_gcr = nil
-	delete(m.clearedFields, devbuild.FieldIsPushGcr)
+// ResetIsPushGCR resets all changes to the "isPushGCR" field.
+func (m *DevBuildMutation) ResetIsPushGCR() {
+	m.isPushGCR = nil
+	delete(m.clearedFields, devbuild.FieldIsPushGCR)
 }
 
-// SetTargetImg sets the "target_img" field.
+// SetTargetImg sets the "targetImg" field.
 func (m *DevBuildMutation) SetTargetImg(s string) {
-	m.target_img = &s
+	m.targetImg = &s
 }
 
-// TargetImg returns the value of the "target_img" field in the mutation.
+// TargetImg returns the value of the "targetImg" field in the mutation.
 func (m *DevBuildMutation) TargetImg() (r string, exists bool) {
-	v := m.target_img
+	v := m.targetImg
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldTargetImg returns the old "target_img" field's value of the DevBuild entity.
+// OldTargetImg returns the old "targetImg" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldTargetImg(ctx context.Context) (v string, err error) {
@@ -746,39 +747,39 @@ func (m *DevBuildMutation) OldTargetImg(ctx context.Context) (v string, err erro
 	return oldValue.TargetImg, nil
 }
 
-// ClearTargetImg clears the value of the "target_img" field.
+// ClearTargetImg clears the value of the "targetImg" field.
 func (m *DevBuildMutation) ClearTargetImg() {
-	m.target_img = nil
+	m.targetImg = nil
 	m.clearedFields[devbuild.FieldTargetImg] = struct{}{}
 }
 
-// TargetImgCleared returns if the "target_img" field was cleared in this mutation.
+// TargetImgCleared returns if the "targetImg" field was cleared in this mutation.
 func (m *DevBuildMutation) TargetImgCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldTargetImg]
 	return ok
 }
 
-// ResetTargetImg resets all changes to the "target_img" field.
+// ResetTargetImg resets all changes to the "targetImg" field.
 func (m *DevBuildMutation) ResetTargetImg() {
-	m.target_img = nil
+	m.targetImg = nil
 	delete(m.clearedFields, devbuild.FieldTargetImg)
 }
 
-// SetPipelineEngine sets the "pipeline_engine" field.
+// SetPipelineEngine sets the "pipelineEngine" field.
 func (m *DevBuildMutation) SetPipelineEngine(s string) {
-	m.pipeline_engine = &s
+	m.pipelineEngine = &s
 }
 
-// PipelineEngine returns the value of the "pipeline_engine" field in the mutation.
+// PipelineEngine returns the value of the "pipelineEngine" field in the mutation.
 func (m *DevBuildMutation) PipelineEngine() (r string, exists bool) {
-	v := m.pipeline_engine
+	v := m.pipelineEngine
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldPipelineEngine returns the old "pipeline_engine" field's value of the DevBuild entity.
+// OldPipelineEngine returns the old "pipelineEngine" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldPipelineEngine(ctx context.Context) (v string, err error) {
@@ -795,21 +796,21 @@ func (m *DevBuildMutation) OldPipelineEngine(ctx context.Context) (v string, err
 	return oldValue.PipelineEngine, nil
 }
 
-// ClearPipelineEngine clears the value of the "pipeline_engine" field.
+// ClearPipelineEngine clears the value of the "pipelineEngine" field.
 func (m *DevBuildMutation) ClearPipelineEngine() {
-	m.pipeline_engine = nil
+	m.pipelineEngine = nil
 	m.clearedFields[devbuild.FieldPipelineEngine] = struct{}{}
 }
 
-// PipelineEngineCleared returns if the "pipeline_engine" field was cleared in this mutation.
+// PipelineEngineCleared returns if the "pipelineEngine" field was cleared in this mutation.
 func (m *DevBuildMutation) PipelineEngineCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldPipelineEngine]
 	return ok
 }
 
-// ResetPipelineEngine resets all changes to the "pipeline_engine" field.
+// ResetPipelineEngine resets all changes to the "pipelineEngine" field.
 func (m *DevBuildMutation) ResetPipelineEngine() {
-	m.pipeline_engine = nil
+	m.pipelineEngine = nil
 	delete(m.clearedFields, devbuild.FieldPipelineEngine)
 }
 
@@ -862,21 +863,21 @@ func (m *DevBuildMutation) ResetPlatform() {
 	delete(m.clearedFields, devbuild.FieldPlatform)
 }
 
-// SetBuilderImg sets the "builder_img" field.
+// SetBuilderImg sets the "builderImg" field.
 func (m *DevBuildMutation) SetBuilderImg(s string) {
-	m.builder_img = &s
+	m.builderImg = &s
 }
 
-// BuilderImg returns the value of the "builder_img" field in the mutation.
+// BuilderImg returns the value of the "builderImg" field in the mutation.
 func (m *DevBuildMutation) BuilderImg() (r string, exists bool) {
-	v := m.builder_img
+	v := m.builderImg
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldBuilderImg returns the old "builder_img" field's value of the DevBuild entity.
+// OldBuilderImg returns the old "builderImg" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldBuilderImg(ctx context.Context) (v string, err error) {
@@ -893,39 +894,39 @@ func (m *DevBuildMutation) OldBuilderImg(ctx context.Context) (v string, err err
 	return oldValue.BuilderImg, nil
 }
 
-// ClearBuilderImg clears the value of the "builder_img" field.
+// ClearBuilderImg clears the value of the "builderImg" field.
 func (m *DevBuildMutation) ClearBuilderImg() {
-	m.builder_img = nil
+	m.builderImg = nil
 	m.clearedFields[devbuild.FieldBuilderImg] = struct{}{}
 }
 
-// BuilderImgCleared returns if the "builder_img" field was cleared in this mutation.
+// BuilderImgCleared returns if the "builderImg" field was cleared in this mutation.
 func (m *DevBuildMutation) BuilderImgCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldBuilderImg]
 	return ok
 }
 
-// ResetBuilderImg resets all changes to the "builder_img" field.
+// ResetBuilderImg resets all changes to the "builderImg" field.
 func (m *DevBuildMutation) ResetBuilderImg() {
-	m.builder_img = nil
+	m.builderImg = nil
 	delete(m.clearedFields, devbuild.FieldBuilderImg)
 }
 
-// SetBuildEnv sets the "build_env" field.
+// SetBuildEnv sets the "buildEnv" field.
 func (m *DevBuildMutation) SetBuildEnv(s string) {
-	m.build_env = &s
+	m.buildEnv = &s
 }
 
-// BuildEnv returns the value of the "build_env" field in the mutation.
+// BuildEnv returns the value of the "buildEnv" field in the mutation.
 func (m *DevBuildMutation) BuildEnv() (r string, exists bool) {
-	v := m.build_env
+	v := m.buildEnv
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldBuildEnv returns the old "build_env" field's value of the DevBuild entity.
+// OldBuildEnv returns the old "buildEnv" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldBuildEnv(ctx context.Context) (v string, err error) {
@@ -942,21 +943,21 @@ func (m *DevBuildMutation) OldBuildEnv(ctx context.Context) (v string, err error
 	return oldValue.BuildEnv, nil
 }
 
-// ClearBuildEnv clears the value of the "build_env" field.
+// ClearBuildEnv clears the value of the "buildEnv" field.
 func (m *DevBuildMutation) ClearBuildEnv() {
-	m.build_env = nil
+	m.buildEnv = nil
 	m.clearedFields[devbuild.FieldBuildEnv] = struct{}{}
 }
 
-// BuildEnvCleared returns if the "build_env" field was cleared in this mutation.
+// BuildEnvCleared returns if the "buildEnv" field was cleared in this mutation.
 func (m *DevBuildMutation) BuildEnvCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldBuildEnv]
 	return ok
 }
 
-// ResetBuildEnv resets all changes to the "build_env" field.
+// ResetBuildEnv resets all changes to the "buildEnv" field.
 func (m *DevBuildMutation) ResetBuildEnv() {
-	m.build_env = nil
+	m.buildEnv = nil
 	delete(m.clearedFields, devbuild.FieldBuildEnv)
 }
 
@@ -1009,21 +1010,21 @@ func (m *DevBuildMutation) ResetFeatures() {
 	delete(m.clearedFields, devbuild.FieldFeatures)
 }
 
-// SetProductBaseImg sets the "product_base_img" field.
+// SetProductBaseImg sets the "productBaseImg" field.
 func (m *DevBuildMutation) SetProductBaseImg(s string) {
-	m.product_base_img = &s
+	m.productBaseImg = &s
 }
 
-// ProductBaseImg returns the value of the "product_base_img" field in the mutation.
+// ProductBaseImg returns the value of the "productBaseImg" field in the mutation.
 func (m *DevBuildMutation) ProductBaseImg() (r string, exists bool) {
-	v := m.product_base_img
+	v := m.productBaseImg
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldProductBaseImg returns the old "product_base_img" field's value of the DevBuild entity.
+// OldProductBaseImg returns the old "productBaseImg" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldProductBaseImg(ctx context.Context) (v string, err error) {
@@ -1040,39 +1041,39 @@ func (m *DevBuildMutation) OldProductBaseImg(ctx context.Context) (v string, err
 	return oldValue.ProductBaseImg, nil
 }
 
-// ClearProductBaseImg clears the value of the "product_base_img" field.
+// ClearProductBaseImg clears the value of the "productBaseImg" field.
 func (m *DevBuildMutation) ClearProductBaseImg() {
-	m.product_base_img = nil
+	m.productBaseImg = nil
 	m.clearedFields[devbuild.FieldProductBaseImg] = struct{}{}
 }
 
-// ProductBaseImgCleared returns if the "product_base_img" field was cleared in this mutation.
+// ProductBaseImgCleared returns if the "productBaseImg" field was cleared in this mutation.
 func (m *DevBuildMutation) ProductBaseImgCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldProductBaseImg]
 	return ok
 }
 
-// ResetProductBaseImg resets all changes to the "product_base_img" field.
+// ResetProductBaseImg resets all changes to the "productBaseImg" field.
 func (m *DevBuildMutation) ResetProductBaseImg() {
-	m.product_base_img = nil
+	m.productBaseImg = nil
 	delete(m.clearedFields, devbuild.FieldProductBaseImg)
 }
 
-// SetProductDockerfile sets the "product_dockerfile" field.
+// SetProductDockerfile sets the "productDockerfile" field.
 func (m *DevBuildMutation) SetProductDockerfile(s string) {
-	m.product_dockerfile = &s
+	m.productDockerfile = &s
 }
 
-// ProductDockerfile returns the value of the "product_dockerfile" field in the mutation.
+// ProductDockerfile returns the value of the "productDockerfile" field in the mutation.
 func (m *DevBuildMutation) ProductDockerfile() (r string, exists bool) {
-	v := m.product_dockerfile
+	v := m.productDockerfile
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldProductDockerfile returns the old "product_dockerfile" field's value of the DevBuild entity.
+// OldProductDockerfile returns the old "productDockerfile" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldProductDockerfile(ctx context.Context) (v string, err error) {
@@ -1089,21 +1090,21 @@ func (m *DevBuildMutation) OldProductDockerfile(ctx context.Context) (v string, 
 	return oldValue.ProductDockerfile, nil
 }
 
-// ClearProductDockerfile clears the value of the "product_dockerfile" field.
+// ClearProductDockerfile clears the value of the "productDockerfile" field.
 func (m *DevBuildMutation) ClearProductDockerfile() {
-	m.product_dockerfile = nil
+	m.productDockerfile = nil
 	m.clearedFields[devbuild.FieldProductDockerfile] = struct{}{}
 }
 
-// ProductDockerfileCleared returns if the "product_dockerfile" field was cleared in this mutation.
+// ProductDockerfileCleared returns if the "productDockerfile" field was cleared in this mutation.
 func (m *DevBuildMutation) ProductDockerfileCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldProductDockerfile]
 	return ok
 }
 
-// ResetProductDockerfile resets all changes to the "product_dockerfile" field.
+// ResetProductDockerfile resets all changes to the "productDockerfile" field.
 func (m *DevBuildMutation) ResetProductDockerfile() {
-	m.product_dockerfile = nil
+	m.productDockerfile = nil
 	delete(m.clearedFields, devbuild.FieldProductDockerfile)
 }
 
@@ -1156,21 +1157,21 @@ func (m *DevBuildMutation) ResetStatus() {
 	delete(m.clearedFields, devbuild.FieldStatus)
 }
 
-// SetErrMsg sets the "err_msg" field.
+// SetErrMsg sets the "errMsg" field.
 func (m *DevBuildMutation) SetErrMsg(s string) {
-	m.err_msg = &s
+	m.errMsg = &s
 }
 
-// ErrMsg returns the value of the "err_msg" field in the mutation.
+// ErrMsg returns the value of the "errMsg" field in the mutation.
 func (m *DevBuildMutation) ErrMsg() (r string, exists bool) {
-	v := m.err_msg
+	v := m.errMsg
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldErrMsg returns the old "err_msg" field's value of the DevBuild entity.
+// OldErrMsg returns the old "errMsg" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldErrMsg(ctx context.Context) (v string, err error) {
@@ -1187,40 +1188,89 @@ func (m *DevBuildMutation) OldErrMsg(ctx context.Context) (v string, err error) 
 	return oldValue.ErrMsg, nil
 }
 
-// ClearErrMsg clears the value of the "err_msg" field.
+// ClearErrMsg clears the value of the "errMsg" field.
 func (m *DevBuildMutation) ClearErrMsg() {
-	m.err_msg = nil
+	m.errMsg = nil
 	m.clearedFields[devbuild.FieldErrMsg] = struct{}{}
 }
 
-// ErrMsgCleared returns if the "err_msg" field was cleared in this mutation.
+// ErrMsgCleared returns if the "errMsg" field was cleared in this mutation.
 func (m *DevBuildMutation) ErrMsgCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldErrMsg]
 	return ok
 }
 
-// ResetErrMsg resets all changes to the "err_msg" field.
+// ResetErrMsg resets all changes to the "errMsg" field.
 func (m *DevBuildMutation) ResetErrMsg() {
-	m.err_msg = nil
+	m.errMsg = nil
 	delete(m.clearedFields, devbuild.FieldErrMsg)
 }
 
-// SetPipelineBuildID sets the "pipeline_build_id" field.
-func (m *DevBuildMutation) SetPipelineBuildID(i int) {
-	m.pipeline_build_id = &i
-	m.addpipeline_build_id = nil
+// SetNotificationState sets the "notificationState" field.
+func (m *DevBuildMutation) SetNotificationState(ss schema.NotificationState) {
+	m.notificationState = &ss
 }
 
-// PipelineBuildID returns the value of the "pipeline_build_id" field in the mutation.
-func (m *DevBuildMutation) PipelineBuildID() (r int, exists bool) {
-	v := m.pipeline_build_id
+// NotificationState returns the value of the "notificationState" field in the mutation.
+func (m *DevBuildMutation) NotificationState() (r schema.NotificationState, exists bool) {
+	v := m.notificationState
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldPipelineBuildID returns the old "pipeline_build_id" field's value of the DevBuild entity.
+// OldNotificationState returns the old "notificationState" field's value of the DevBuild entity.
+// If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DevBuildMutation) OldNotificationState(ctx context.Context) (v schema.NotificationState, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotificationState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotificationState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotificationState: %w", err)
+	}
+	return oldValue.NotificationState, nil
+}
+
+// ClearNotificationState clears the value of the "notificationState" field.
+func (m *DevBuildMutation) ClearNotificationState() {
+	m.notificationState = nil
+	m.clearedFields[devbuild.FieldNotificationState] = struct{}{}
+}
+
+// NotificationStateCleared returns if the "notificationState" field was cleared in this mutation.
+func (m *DevBuildMutation) NotificationStateCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldNotificationState]
+	return ok
+}
+
+// ResetNotificationState resets all changes to the "notificationState" field.
+func (m *DevBuildMutation) ResetNotificationState() {
+	m.notificationState = nil
+	delete(m.clearedFields, devbuild.FieldNotificationState)
+}
+
+// SetPipelineBuildID sets the "pipelineBuildID" field.
+func (m *DevBuildMutation) SetPipelineBuildID(i int) {
+	m.pipelineBuildID = &i
+	m.addpipelineBuildID = nil
+}
+
+// PipelineBuildID returns the value of the "pipelineBuildID" field in the mutation.
+func (m *DevBuildMutation) PipelineBuildID() (r int, exists bool) {
+	v := m.pipelineBuildID
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPipelineBuildID returns the old "pipelineBuildID" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldPipelineBuildID(ctx context.Context) (v int, err error) {
@@ -1237,59 +1287,59 @@ func (m *DevBuildMutation) OldPipelineBuildID(ctx context.Context) (v int, err e
 	return oldValue.PipelineBuildID, nil
 }
 
-// AddPipelineBuildID adds i to the "pipeline_build_id" field.
+// AddPipelineBuildID adds i to the "pipelineBuildID" field.
 func (m *DevBuildMutation) AddPipelineBuildID(i int) {
-	if m.addpipeline_build_id != nil {
-		*m.addpipeline_build_id += i
+	if m.addpipelineBuildID != nil {
+		*m.addpipelineBuildID += i
 	} else {
-		m.addpipeline_build_id = &i
+		m.addpipelineBuildID = &i
 	}
 }
 
-// AddedPipelineBuildID returns the value that was added to the "pipeline_build_id" field in this mutation.
+// AddedPipelineBuildID returns the value that was added to the "pipelineBuildID" field in this mutation.
 func (m *DevBuildMutation) AddedPipelineBuildID() (r int, exists bool) {
-	v := m.addpipeline_build_id
+	v := m.addpipelineBuildID
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// ClearPipelineBuildID clears the value of the "pipeline_build_id" field.
+// ClearPipelineBuildID clears the value of the "pipelineBuildID" field.
 func (m *DevBuildMutation) ClearPipelineBuildID() {
-	m.pipeline_build_id = nil
-	m.addpipeline_build_id = nil
+	m.pipelineBuildID = nil
+	m.addpipelineBuildID = nil
 	m.clearedFields[devbuild.FieldPipelineBuildID] = struct{}{}
 }
 
-// PipelineBuildIDCleared returns if the "pipeline_build_id" field was cleared in this mutation.
+// PipelineBuildIDCleared returns if the "pipelineBuildID" field was cleared in this mutation.
 func (m *DevBuildMutation) PipelineBuildIDCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldPipelineBuildID]
 	return ok
 }
 
-// ResetPipelineBuildID resets all changes to the "pipeline_build_id" field.
+// ResetPipelineBuildID resets all changes to the "pipelineBuildID" field.
 func (m *DevBuildMutation) ResetPipelineBuildID() {
-	m.pipeline_build_id = nil
-	m.addpipeline_build_id = nil
+	m.pipelineBuildID = nil
+	m.addpipelineBuildID = nil
 	delete(m.clearedFields, devbuild.FieldPipelineBuildID)
 }
 
-// SetPipelineStartAt sets the "pipeline_start_at" field.
+// SetPipelineStartAt sets the "pipelineStartAt" field.
 func (m *DevBuildMutation) SetPipelineStartAt(t time.Time) {
-	m.pipeline_start_at = &t
+	m.pipelineStartAt = &t
 }
 
-// PipelineStartAt returns the value of the "pipeline_start_at" field in the mutation.
+// PipelineStartAt returns the value of the "pipelineStartAt" field in the mutation.
 func (m *DevBuildMutation) PipelineStartAt() (r time.Time, exists bool) {
-	v := m.pipeline_start_at
+	v := m.pipelineStartAt
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldPipelineStartAt returns the old "pipeline_start_at" field's value of the DevBuild entity.
+// OldPipelineStartAt returns the old "pipelineStartAt" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldPipelineStartAt(ctx context.Context) (v time.Time, err error) {
@@ -1306,39 +1356,39 @@ func (m *DevBuildMutation) OldPipelineStartAt(ctx context.Context) (v time.Time,
 	return oldValue.PipelineStartAt, nil
 }
 
-// ClearPipelineStartAt clears the value of the "pipeline_start_at" field.
+// ClearPipelineStartAt clears the value of the "pipelineStartAt" field.
 func (m *DevBuildMutation) ClearPipelineStartAt() {
-	m.pipeline_start_at = nil
+	m.pipelineStartAt = nil
 	m.clearedFields[devbuild.FieldPipelineStartAt] = struct{}{}
 }
 
-// PipelineStartAtCleared returns if the "pipeline_start_at" field was cleared in this mutation.
+// PipelineStartAtCleared returns if the "pipelineStartAt" field was cleared in this mutation.
 func (m *DevBuildMutation) PipelineStartAtCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldPipelineStartAt]
 	return ok
 }
 
-// ResetPipelineStartAt resets all changes to the "pipeline_start_at" field.
+// ResetPipelineStartAt resets all changes to the "pipelineStartAt" field.
 func (m *DevBuildMutation) ResetPipelineStartAt() {
-	m.pipeline_start_at = nil
+	m.pipelineStartAt = nil
 	delete(m.clearedFields, devbuild.FieldPipelineStartAt)
 }
 
-// SetPipelineEndAt sets the "pipeline_end_at" field.
+// SetPipelineEndAt sets the "pipelineEndAt" field.
 func (m *DevBuildMutation) SetPipelineEndAt(t time.Time) {
-	m.pipeline_end_at = &t
+	m.pipelineEndAt = &t
 }
 
-// PipelineEndAt returns the value of the "pipeline_end_at" field in the mutation.
+// PipelineEndAt returns the value of the "pipelineEndAt" field in the mutation.
 func (m *DevBuildMutation) PipelineEndAt() (r time.Time, exists bool) {
-	v := m.pipeline_end_at
+	v := m.pipelineEndAt
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldPipelineEndAt returns the old "pipeline_end_at" field's value of the DevBuild entity.
+// OldPipelineEndAt returns the old "pipelineEndAt" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldPipelineEndAt(ctx context.Context) (v time.Time, err error) {
@@ -1355,42 +1405,42 @@ func (m *DevBuildMutation) OldPipelineEndAt(ctx context.Context) (v time.Time, e
 	return oldValue.PipelineEndAt, nil
 }
 
-// ClearPipelineEndAt clears the value of the "pipeline_end_at" field.
+// ClearPipelineEndAt clears the value of the "pipelineEndAt" field.
 func (m *DevBuildMutation) ClearPipelineEndAt() {
-	m.pipeline_end_at = nil
+	m.pipelineEndAt = nil
 	m.clearedFields[devbuild.FieldPipelineEndAt] = struct{}{}
 }
 
-// PipelineEndAtCleared returns if the "pipeline_end_at" field was cleared in this mutation.
+// PipelineEndAtCleared returns if the "pipelineEndAt" field was cleared in this mutation.
 func (m *DevBuildMutation) PipelineEndAtCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldPipelineEndAt]
 	return ok
 }
 
-// ResetPipelineEndAt resets all changes to the "pipeline_end_at" field.
+// ResetPipelineEndAt resets all changes to the "pipelineEndAt" field.
 func (m *DevBuildMutation) ResetPipelineEndAt() {
-	m.pipeline_end_at = nil
+	m.pipelineEndAt = nil
 	delete(m.clearedFields, devbuild.FieldPipelineEndAt)
 }
 
-// SetBuildReport sets the "build_report" field.
-func (m *DevBuildMutation) SetBuildReport(value map[string]interface{}) {
-	m.build_report = &value
+// SetBuildReport sets the "buildReport" field.
+func (m *DevBuildMutation) SetBuildReport(sr schema.BuildReport) {
+	m.buildReport = &sr
 }
 
-// BuildReport returns the value of the "build_report" field in the mutation.
-func (m *DevBuildMutation) BuildReport() (r map[string]interface{}, exists bool) {
-	v := m.build_report
+// BuildReport returns the value of the "buildReport" field in the mutation.
+func (m *DevBuildMutation) BuildReport() (r schema.BuildReport, exists bool) {
+	v := m.buildReport
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldBuildReport returns the old "build_report" field's value of the DevBuild entity.
+// OldBuildReport returns the old "buildReport" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DevBuildMutation) OldBuildReport(ctx context.Context) (v map[string]interface{}, err error) {
+func (m *DevBuildMutation) OldBuildReport(ctx context.Context) (v schema.BuildReport, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldBuildReport is only allowed on UpdateOne operations")
 	}
@@ -1404,39 +1454,39 @@ func (m *DevBuildMutation) OldBuildReport(ctx context.Context) (v map[string]int
 	return oldValue.BuildReport, nil
 }
 
-// ClearBuildReport clears the value of the "build_report" field.
+// ClearBuildReport clears the value of the "buildReport" field.
 func (m *DevBuildMutation) ClearBuildReport() {
-	m.build_report = nil
+	m.buildReport = nil
 	m.clearedFields[devbuild.FieldBuildReport] = struct{}{}
 }
 
-// BuildReportCleared returns if the "build_report" field was cleared in this mutation.
+// BuildReportCleared returns if the "buildReport" field was cleared in this mutation.
 func (m *DevBuildMutation) BuildReportCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldBuildReport]
 	return ok
 }
 
-// ResetBuildReport resets all changes to the "build_report" field.
+// ResetBuildReport resets all changes to the "buildReport" field.
 func (m *DevBuildMutation) ResetBuildReport() {
-	m.build_report = nil
+	m.buildReport = nil
 	delete(m.clearedFields, devbuild.FieldBuildReport)
 }
 
-// SetTektonStatus sets the "tekton_status" field.
+// SetTektonStatus sets the "tektonStatus" field.
 func (m *DevBuildMutation) SetTektonStatus(ss schema.TektonStatus) {
-	m.tekton_status = &ss
+	m.tektonStatus = &ss
 }
 
-// TektonStatus returns the value of the "tekton_status" field in the mutation.
+// TektonStatus returns the value of the "tektonStatus" field in the mutation.
 func (m *DevBuildMutation) TektonStatus() (r schema.TektonStatus, exists bool) {
-	v := m.tekton_status
+	v := m.tektonStatus
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldTektonStatus returns the old "tekton_status" field's value of the DevBuild entity.
+// OldTektonStatus returns the old "tektonStatus" field's value of the DevBuild entity.
 // If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
 func (m *DevBuildMutation) OldTektonStatus(ctx context.Context) (v schema.TektonStatus, err error) {
@@ -1453,21 +1503,21 @@ func (m *DevBuildMutation) OldTektonStatus(ctx context.Context) (v schema.Tekton
 	return oldValue.TektonStatus, nil
 }
 
-// ClearTektonStatus clears the value of the "tekton_status" field.
+// ClearTektonStatus clears the value of the "tektonStatus" field.
 func (m *DevBuildMutation) ClearTektonStatus() {
-	m.tekton_status = nil
+	m.tektonStatus = nil
 	m.clearedFields[devbuild.FieldTektonStatus] = struct{}{}
 }
 
-// TektonStatusCleared returns if the "tekton_status" field was cleared in this mutation.
+// TektonStatusCleared returns if the "tektonStatus" field was cleared in this mutation.
 func (m *DevBuildMutation) TektonStatusCleared() bool {
 	_, ok := m.clearedFields[devbuild.FieldTektonStatus]
 	return ok
 }
 
-// ResetTektonStatus resets all changes to the "tekton_status" field.
+// ResetTektonStatus resets all changes to the "tektonStatus" field.
 func (m *DevBuildMutation) ResetTektonStatus() {
-	m.tekton_status = nil
+	m.tektonStatus = nil
 	delete(m.clearedFields, devbuild.FieldTektonStatus)
 }
 
@@ -1505,14 +1555,14 @@ func (m *DevBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DevBuildMutation) Fields() []string {
-	fields := make([]string, 0, 27)
-	if m.created_by != nil {
+	fields := make([]string, 0, 28)
+	if m.createdBy != nil {
 		fields = append(fields, devbuild.FieldCreatedBy)
 	}
-	if m.created_at != nil {
+	if m.createdAt != nil {
 		fields = append(fields, devbuild.FieldCreatedAt)
 	}
-	if m.updated_at != nil {
+	if m.updatedAt != nil {
 		fields = append(fields, devbuild.FieldUpdatedAt)
 	}
 	if m.product != nil {
@@ -1524,67 +1574,70 @@ func (m *DevBuildMutation) Fields() []string {
 	if m.version != nil {
 		fields = append(fields, devbuild.FieldVersion)
 	}
-	if m.github_repo != nil {
+	if m.githubRepo != nil {
 		fields = append(fields, devbuild.FieldGithubRepo)
 	}
-	if m.git_ref != nil {
+	if m.gitRef != nil {
 		fields = append(fields, devbuild.FieldGitRef)
 	}
-	if m.git_sha != nil {
-		fields = append(fields, devbuild.FieldGitSha)
+	if m.gitHash != nil {
+		fields = append(fields, devbuild.FieldGitHash)
 	}
-	if m.plugin_git_ref != nil {
+	if m.pluginGitRef != nil {
 		fields = append(fields, devbuild.FieldPluginGitRef)
 	}
-	if m.is_hotfix != nil {
+	if m.isHotfix != nil {
 		fields = append(fields, devbuild.FieldIsHotfix)
 	}
-	if m.is_push_gcr != nil {
-		fields = append(fields, devbuild.FieldIsPushGcr)
+	if m.isPushGCR != nil {
+		fields = append(fields, devbuild.FieldIsPushGCR)
 	}
-	if m.target_img != nil {
+	if m.targetImg != nil {
 		fields = append(fields, devbuild.FieldTargetImg)
 	}
-	if m.pipeline_engine != nil {
+	if m.pipelineEngine != nil {
 		fields = append(fields, devbuild.FieldPipelineEngine)
 	}
 	if m.platform != nil {
 		fields = append(fields, devbuild.FieldPlatform)
 	}
-	if m.builder_img != nil {
+	if m.builderImg != nil {
 		fields = append(fields, devbuild.FieldBuilderImg)
 	}
-	if m.build_env != nil {
+	if m.buildEnv != nil {
 		fields = append(fields, devbuild.FieldBuildEnv)
 	}
 	if m.features != nil {
 		fields = append(fields, devbuild.FieldFeatures)
 	}
-	if m.product_base_img != nil {
+	if m.productBaseImg != nil {
 		fields = append(fields, devbuild.FieldProductBaseImg)
 	}
-	if m.product_dockerfile != nil {
+	if m.productDockerfile != nil {
 		fields = append(fields, devbuild.FieldProductDockerfile)
 	}
 	if m.status != nil {
 		fields = append(fields, devbuild.FieldStatus)
 	}
-	if m.err_msg != nil {
+	if m.errMsg != nil {
 		fields = append(fields, devbuild.FieldErrMsg)
 	}
-	if m.pipeline_build_id != nil {
+	if m.notificationState != nil {
+		fields = append(fields, devbuild.FieldNotificationState)
+	}
+	if m.pipelineBuildID != nil {
 		fields = append(fields, devbuild.FieldPipelineBuildID)
 	}
-	if m.pipeline_start_at != nil {
+	if m.pipelineStartAt != nil {
 		fields = append(fields, devbuild.FieldPipelineStartAt)
 	}
-	if m.pipeline_end_at != nil {
+	if m.pipelineEndAt != nil {
 		fields = append(fields, devbuild.FieldPipelineEndAt)
 	}
-	if m.build_report != nil {
+	if m.buildReport != nil {
 		fields = append(fields, devbuild.FieldBuildReport)
 	}
-	if m.tekton_status != nil {
+	if m.tektonStatus != nil {
 		fields = append(fields, devbuild.FieldTektonStatus)
 	}
 	return fields
@@ -1611,14 +1664,14 @@ func (m *DevBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.GithubRepo()
 	case devbuild.FieldGitRef:
 		return m.GitRef()
-	case devbuild.FieldGitSha:
-		return m.GitSha()
+	case devbuild.FieldGitHash:
+		return m.GitHash()
 	case devbuild.FieldPluginGitRef:
 		return m.PluginGitRef()
 	case devbuild.FieldIsHotfix:
 		return m.IsHotfix()
-	case devbuild.FieldIsPushGcr:
-		return m.IsPushGcr()
+	case devbuild.FieldIsPushGCR:
+		return m.IsPushGCR()
 	case devbuild.FieldTargetImg:
 		return m.TargetImg()
 	case devbuild.FieldPipelineEngine:
@@ -1639,6 +1692,8 @@ func (m *DevBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case devbuild.FieldErrMsg:
 		return m.ErrMsg()
+	case devbuild.FieldNotificationState:
+		return m.NotificationState()
 	case devbuild.FieldPipelineBuildID:
 		return m.PipelineBuildID()
 	case devbuild.FieldPipelineStartAt:
@@ -1674,14 +1729,14 @@ func (m *DevBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldGithubRepo(ctx)
 	case devbuild.FieldGitRef:
 		return m.OldGitRef(ctx)
-	case devbuild.FieldGitSha:
-		return m.OldGitSha(ctx)
+	case devbuild.FieldGitHash:
+		return m.OldGitHash(ctx)
 	case devbuild.FieldPluginGitRef:
 		return m.OldPluginGitRef(ctx)
 	case devbuild.FieldIsHotfix:
 		return m.OldIsHotfix(ctx)
-	case devbuild.FieldIsPushGcr:
-		return m.OldIsPushGcr(ctx)
+	case devbuild.FieldIsPushGCR:
+		return m.OldIsPushGCR(ctx)
 	case devbuild.FieldTargetImg:
 		return m.OldTargetImg(ctx)
 	case devbuild.FieldPipelineEngine:
@@ -1702,6 +1757,8 @@ func (m *DevBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldStatus(ctx)
 	case devbuild.FieldErrMsg:
 		return m.OldErrMsg(ctx)
+	case devbuild.FieldNotificationState:
+		return m.OldNotificationState(ctx)
 	case devbuild.FieldPipelineBuildID:
 		return m.OldPipelineBuildID(ctx)
 	case devbuild.FieldPipelineStartAt:
@@ -1777,12 +1834,12 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetGitRef(v)
 		return nil
-	case devbuild.FieldGitSha:
+	case devbuild.FieldGitHash:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetGitSha(v)
+		m.SetGitHash(v)
 		return nil
 	case devbuild.FieldPluginGitRef:
 		v, ok := value.(string)
@@ -1798,12 +1855,12 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetIsHotfix(v)
 		return nil
-	case devbuild.FieldIsPushGcr:
+	case devbuild.FieldIsPushGCR:
 		v, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetIsPushGcr(v)
+		m.SetIsPushGCR(v)
 		return nil
 	case devbuild.FieldTargetImg:
 		v, ok := value.(string)
@@ -1875,6 +1932,13 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetErrMsg(v)
 		return nil
+	case devbuild.FieldNotificationState:
+		v, ok := value.(schema.NotificationState)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotificationState(v)
+		return nil
 	case devbuild.FieldPipelineBuildID:
 		v, ok := value.(int)
 		if !ok {
@@ -1897,7 +1961,7 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetPipelineEndAt(v)
 		return nil
 	case devbuild.FieldBuildReport:
-		v, ok := value.(map[string]interface{})
+		v, ok := value.(schema.BuildReport)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -1918,7 +1982,7 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *DevBuildMutation) AddedFields() []string {
 	var fields []string
-	if m.addpipeline_build_id != nil {
+	if m.addpipelineBuildID != nil {
 		fields = append(fields, devbuild.FieldPipelineBuildID)
 	}
 	return fields
@@ -1973,14 +2037,14 @@ func (m *DevBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(devbuild.FieldGitRef) {
 		fields = append(fields, devbuild.FieldGitRef)
 	}
-	if m.FieldCleared(devbuild.FieldGitSha) {
-		fields = append(fields, devbuild.FieldGitSha)
+	if m.FieldCleared(devbuild.FieldGitHash) {
+		fields = append(fields, devbuild.FieldGitHash)
 	}
 	if m.FieldCleared(devbuild.FieldPluginGitRef) {
 		fields = append(fields, devbuild.FieldPluginGitRef)
 	}
-	if m.FieldCleared(devbuild.FieldIsPushGcr) {
-		fields = append(fields, devbuild.FieldIsPushGcr)
+	if m.FieldCleared(devbuild.FieldIsPushGCR) {
+		fields = append(fields, devbuild.FieldIsPushGCR)
 	}
 	if m.FieldCleared(devbuild.FieldTargetImg) {
 		fields = append(fields, devbuild.FieldTargetImg)
@@ -2011,6 +2075,9 @@ func (m *DevBuildMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(devbuild.FieldErrMsg) {
 		fields = append(fields, devbuild.FieldErrMsg)
+	}
+	if m.FieldCleared(devbuild.FieldNotificationState) {
+		fields = append(fields, devbuild.FieldNotificationState)
 	}
 	if m.FieldCleared(devbuild.FieldPipelineBuildID) {
 		fields = append(fields, devbuild.FieldPipelineBuildID)
@@ -2059,14 +2126,14 @@ func (m *DevBuildMutation) ClearField(name string) error {
 	case devbuild.FieldGitRef:
 		m.ClearGitRef()
 		return nil
-	case devbuild.FieldGitSha:
-		m.ClearGitSha()
+	case devbuild.FieldGitHash:
+		m.ClearGitHash()
 		return nil
 	case devbuild.FieldPluginGitRef:
 		m.ClearPluginGitRef()
 		return nil
-	case devbuild.FieldIsPushGcr:
-		m.ClearIsPushGcr()
+	case devbuild.FieldIsPushGCR:
+		m.ClearIsPushGCR()
 		return nil
 	case devbuild.FieldTargetImg:
 		m.ClearTargetImg()
@@ -2097,6 +2164,9 @@ func (m *DevBuildMutation) ClearField(name string) error {
 		return nil
 	case devbuild.FieldErrMsg:
 		m.ClearErrMsg()
+		return nil
+	case devbuild.FieldNotificationState:
+		m.ClearNotificationState()
 		return nil
 	case devbuild.FieldPipelineBuildID:
 		m.ClearPipelineBuildID()
@@ -2145,8 +2215,8 @@ func (m *DevBuildMutation) ResetField(name string) error {
 	case devbuild.FieldGitRef:
 		m.ResetGitRef()
 		return nil
-	case devbuild.FieldGitSha:
-		m.ResetGitSha()
+	case devbuild.FieldGitHash:
+		m.ResetGitHash()
 		return nil
 	case devbuild.FieldPluginGitRef:
 		m.ResetPluginGitRef()
@@ -2154,8 +2224,8 @@ func (m *DevBuildMutation) ResetField(name string) error {
 	case devbuild.FieldIsHotfix:
 		m.ResetIsHotfix()
 		return nil
-	case devbuild.FieldIsPushGcr:
-		m.ResetIsPushGcr()
+	case devbuild.FieldIsPushGCR:
+		m.ResetIsPushGCR()
 		return nil
 	case devbuild.FieldTargetImg:
 		m.ResetTargetImg()
@@ -2186,6 +2256,9 @@ func (m *DevBuildMutation) ResetField(name string) error {
 		return nil
 	case devbuild.FieldErrMsg:
 		m.ResetErrMsg()
+		return nil
+	case devbuild.FieldNotificationState:
+		m.ResetNotificationState()
 		return nil
 	case devbuild.FieldPipelineBuildID:
 		m.ResetPipelineBuildID()

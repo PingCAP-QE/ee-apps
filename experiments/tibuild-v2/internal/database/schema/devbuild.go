@@ -48,22 +48,22 @@ type DevBuildMeta struct {
 // Fields of the DevBuildMeta.
 func (DevBuildMeta) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("created_by").
+		field.String("createdBy").
 			Optional().
 			MaxLen(64).
 			Comment("User who created the build").
-			StructTag(`json:"created_by,omitempty"`),
+			StructTag(`json:"createdBy,omitempty"`),
 
-		field.Time("created_at").
+		field.Time("createdAt").
 			Default(time.Now).
 			Comment("Time when the build was created").
-			StructTag(`json:"created_at,omitempty"`),
+			StructTag(`json:"createdAt,omitempty"`),
 
-		field.Time("updated_at").
+		field.Time("updatedAt").
 			Default(time.Now).
 			UpdateDefault(time.Now).
 			Comment("Time when the build was last updated").
-			StructTag(`json:"updated_at,omitempty"`),
+			StructTag(`json:"updatedAt,omitempty"`),
 	}
 }
 
@@ -91,42 +91,42 @@ func (DevBuildSpec) Fields() []ent.Field {
 			Comment("Version of the build"),
 
 		// Git related fields
-		field.String("github_repo").
+		field.String("githubRepo").
 			Optional().
 			MaxLen(64).
 			Comment("GitHub repository"),
 
-		field.String("git_ref").
+		field.String("gitRef").
 			Optional().
 			MaxLen(64).
 			Comment("Git reference of the build"),
 
-		field.String("git_sha").
+		field.String("gitHash").
 			Optional().
 			MaxLen(40).
-			Comment("Git commit SHA"),
+			Comment("Git commit hash"),
 
-		field.String("plugin_git_ref").
+		field.String("pluginGitRef").
 			Optional().
 			MaxLen(64).
 			Comment("Git reference of the plugin"),
 
 		// Publish configuration fields
-		field.Bool("is_hotfix").
+		field.Bool("isHotfix").
 			Default(false).
 			Comment("Whether the build is a hotfix"),
 
-		field.Bool("is_push_gcr").
+		field.Bool("isPushGCR").
 			Optional().
 			Comment("Whether to push to GCR"),
 
-		field.String("target_img").
+		field.String("targetImg").
 			Optional().
 			MaxLen(128).
 			Comment("Target image name"),
 
 		// Build configuration fields
-		field.String("pipeline_engine").
+		field.String("pipelineEngine").
 			Optional().
 			MaxLen(16).
 			Default("tekton").
@@ -137,12 +137,12 @@ func (DevBuildSpec) Fields() []ent.Field {
 			Default("").
 			Comment("Build for target platforms"),
 
-		field.String("builder_img").
+		field.String("builderImg").
 			Optional().
 			MaxLen(128).
 			Comment("Builder image used"),
 
-		field.String("build_env").
+		field.String("buildEnv").
 			Optional().
 			MaxLen(128).
 			Comment("Build environment"),
@@ -152,12 +152,12 @@ func (DevBuildSpec) Fields() []ent.Field {
 			MaxLen(128).
 			Comment("Features included in the build"),
 
-		field.String("product_base_img").
+		field.String("productBaseImg").
 			Optional().
 			MaxLen(128).
 			Comment("Base image for the product"),
 
-		field.String("product_dockerfile").
+		field.String("productDockerfile").
 			Optional().
 			MaxLen(128).
 			Comment("Path to artifact image building dockerfile"),
@@ -175,31 +175,35 @@ func (DevBuildStatus) Fields() []ent.Field {
 		field.String("status").
 			Optional().
 			MaxLen(16).
-			Default("pending").
+			Default("PENDING").
 			Comment("Build status"),
 
-		field.String("err_msg").
+		field.String("errMsg").
 			Optional().
 			MaxLen(256).
 			Comment("Build status message"),
 
-		field.Int("pipeline_build_id").
+		field.JSON("notificationState", NotificationState{}).
+			Optional().
+			Comment("Notification delivery state for each channel (Lark DM, group chat, etc.)"),
+
+		field.Int("pipelineBuildID").
 			Optional().
 			Comment("ID of the pipeline build"),
 
-		field.Time("pipeline_start_at").
+		field.Time("pipelineStartAt").
 			Optional().
 			Comment("Build pipeline started time"),
 
-		field.Time("pipeline_end_at").
+		field.Time("pipelineEndAt").
 			Optional().
 			Comment("Build pipeline completed time"),
 
-		field.JSON("build_report", map[string]any{}).
+		field.JSON("buildReport", BuildReport{}).
 			Optional().
 			Comment("JSON report of the build"),
 
-		field.JSON("tekton_status", TektonStatus{}).
+		field.JSON("tektonStatus", TektonStatus{}).
 			Optional().
 			Comment("Tekton status"),
 	}

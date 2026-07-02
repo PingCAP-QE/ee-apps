@@ -1,234 +1,163 @@
 package impl
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/sha1"
 	"fmt"
-	"net/http"
 	"sync/atomic"
-	"time"
 
+	larksdk "github.com/larksuite/oapi-sdk-go/v3"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // Notifier defines the interface for sending build notifications.
+// Returns the updated notification state for persistence.
 type Notifier interface {
-	Notify(ctx context.Context, build *ent.DevBuild) error
+	Notify(ctx context.Context, build *ent.DevBuild) (*schema.NotificationState, error)
 }
 
-// LarkNotifier sends Lark webhook notifications when builds reach terminal state.
-// The webhookURL is stored atomically to support safe runtime updates via config reload.
+// LarkNotifier sends Lark IM messages for each configured channel.
+// Each channel's first send creates a card; subsequent updates refresh it in place.
 type LarkNotifier struct {
-	webhookURL atomic.Value // stores string
-	httpClient *http.Client
-	logger     *zerolog.Logger
+	client   atomic.Value // stores *larksdk.Client
+	channels []config.LarkChannel
+	logger   *zerolog.Logger
 }
 
-// NewLarkNotifier creates a new LarkNotifier.
-func NewLarkNotifier(webhookURL string, logger *zerolog.Logger) *LarkNotifier {
+// NewLarkNotifier creates a new LarkNotifier with Lark app credentials and optional channels.
+func NewLarkNotifier(appID, appSecret string, channels []config.LarkChannel, logger *zerolog.Logger) *LarkNotifier {
 	n := &LarkNotifier{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		logger:     logger,
+		channels: channels,
+		logger:   logger,
 	}
-	n.webhookURL.Store(webhookURL)
+	n.client.Store(newLarkClient(appID, appSecret))
 	return n
 }
 
-// SetWebhookURL updates the webhook URL atomically. Safe to call concurrently with Notify.
-func (n *LarkNotifier) SetWebhookURL(url string) {
-	n.webhookURL.Store(url)
+// Reload updates credentials and channels at runtime.
+func (n *LarkNotifier) Reload(appID, appSecret string, channels []config.LarkChannel) {
+	n.client.Store(newLarkClient(appID, appSecret))
+	n.channels = channels
 }
 
-// Notify sends a Lark notification for the given build.
-func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
-	webhookURL := n.webhookURL.Load().(string)
-	if webhookURL == "" {
-		n.logger.Debug().Msg("lark webhook URL not configured, skipping notification")
-		return nil
+// Disable clears the Lark client, effectively disabling notifications.
+func (n *LarkNotifier) Disable() {
+	n.client.Store((*larksdk.Client)(nil))
+}
+
+// Notify delivers or updates cards for all channels and returns the updated state.
+func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema.NotificationState, error) {
+	client := n.client.Load().(*larksdk.Client)
+	if client == nil {
+		n.logger.Debug().Msg("lark client not configured, skipping notification")
+		return nil, nil
 	}
 
-	payload, err := buildNotificationCard(build)
+	cardStr, err := NewLarkCardJSON(buildNotificationInfo(build))
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to build notification card")
-		return err
+		return nil, err
 	}
 
-	body, err := json.Marshal(payload)
+	state := build.NotificationState
+	changed := false
+
+	// --- DM to build creator (identified by empty ChatID) ---
+	if build.CreatedBy != "" {
+		dm := findLarkState(&state, "")
+		newID, err := n.sendOrUpdate(ctx, client, build.ID, build.CreatedBy, dm.MessageID, cardStr)
+		if err != nil {
+			n.logger.Err(err).Int("build_id", build.ID).Msg("lark DM notification failed")
+		} else if newID != dm.MessageID {
+			dm.MessageID = newID
+			changed = true
+		}
+	}
+
+	// --- Group chat channels ---
+	for _, ch := range n.channels {
+		cur := findLarkState(&state, ch.ChatID)
+		newID, err := n.sendOrUpdate(ctx, client, build.ID, ch.ChatID, cur.MessageID, cardStr)
+		if err != nil {
+			n.logger.Err(err).Int("build_id", build.ID).Str("channel", ch.Name).Msg("lark channel notification failed")
+		} else if newID != cur.MessageID {
+			cur.MessageID = newID
+			cur.ChatID = ch.ChatID
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil, nil
+	}
+	return &state, nil
+}
+
+// sendOrUpdate creates a new card or updates an existing one.
+// Returns the current (or new) message ID.
+func (n *LarkNotifier) sendOrUpdate(ctx context.Context, client *larksdk.Client, buildID int, receiver, existingMsgID, cardStr string) (string, error) {
+	if existingMsgID != "" {
+		// Update interactive card via PATCH (PUT does not support interactive cards)
+		req := larkim.NewPatchMessageReqBuilder().
+			MessageId(existingMsgID).
+			Body(&larkim.PatchMessageReqBody{Content: &cardStr}).
+			Build()
+
+		resp, err := client.Im.Message.Patch(ctx, req)
+		if err == nil && resp.Success() {
+			n.logger.Debug().Int("build_id", buildID).Str("message_id", existingMsgID).Msg("card updated")
+			return existingMsgID, nil
+		}
+		if err == nil {
+			n.logger.Warn().Int("build_id", buildID).Int("code", resp.Code).Str("msg", resp.Msg).Msg("update failed, will try create")
+		} else {
+			n.logger.Err(err).Int("build_id", buildID).Msg("update request failed, will try create")
+		}
+	}
+
+	// Create new card
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(getLarkReceiverIDType(receiver)).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			MsgType(larkim.MsgTypeInteractive).
+			ReceiveId(receiver).
+			Content(cardStr).
+			Uuid(newLarkMsgUUID(buildID, receiver)).
+			Build()).
+		Build()
+
+	resp, err := client.Im.Message.Create(ctx, req)
 	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to marshal notification payload")
-		return err
+		return "", err
+	}
+	if !resp.Success() {
+		return "", fmt.Errorf("lark create message error: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 
-	n.logger.Debug().Str("webhook", webhookURL).Str("body", string(body)).Msg("debug lark message")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
-	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to create notification request")
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := n.httpClient.Do(req)
-	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to send notification")
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		n.logger.Error().Int("build_id", build.ID).Int("status_code", resp.StatusCode).Msg("notification request failed")
-		return fmt.Errorf("notification request failed with status %d", resp.StatusCode)
-	}
-
-	n.logger.Info().Int("build_id", build.ID).Str("status", build.Status).Msg("notification sent successfully")
-	return nil
+	n.logger.Info().Int("build_id", buildID).Str("receiver", receiver).Str("msg_id", *resp.Data.MessageId).Msg("card created")
+	return *resp.Data.MessageId, nil
 }
 
-// buildNotificationCard builds a Lark interactive card for the build notification.
-func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
-	info := &NotificationInfo{
-		BuildID:    build.ID,
-		Product:    build.Product,
-		Version:    build.Version,
-		Status:     build.Status,
-		CreatedBy:  build.CreatedBy,
-		GitRef:     build.GitRef,
-		GithubRepo: build.GithubRepo,
-		Platform:   build.Platform,
-		ErrMsg:     build.ErrMsg,
-	}
-
-	// Extract pipeline run info from TektonStatus
-	if len(build.TektonStatus.Pipelines) > 0 {
-		info.PipelineRuns = make([]PipelineRunInfo, len(build.TektonStatus.Pipelines))
-		for i, p := range build.TektonStatus.Pipelines {
-			info.PipelineRuns[i] = PipelineRunInfo{
-				Name:   p.Name,
-				Status: p.Status,
-				URL:    p.URL,
-			}
+// findLarkState returns the LarkMessageState for a given ChatID, creating one if missing.
+// Use ChatID="" to get/create the DM state (receiver = build creator).
+func findLarkState(state *schema.NotificationState, chatID string) *schema.LarkMessageState {
+	for i := range state.Lark {
+		if state.Lark[i].ChatID == chatID {
+			return &state.Lark[i]
 		}
 	}
-
-	// Extract build report data on success
-	if build.Status == "success" && build.BuildReport != nil {
-		if gitSha, ok := build.BuildReport["gitSha"].(string); ok {
-			info.GitSha = gitSha
-		}
-
-		// Extract images (platform + URL)
-		if imagesRaw, ok := build.BuildReport["images"].([]any); ok {
-			images := make([]ImageInfo, 0, len(imagesRaw))
-			for _, imgRaw := range imagesRaw {
-				if img, ok := imgRaw.(map[string]any); ok {
-					images = append(images, ImageInfo{
-						Platform: getString(img, "platform"),
-						URL:      getString(img, "url"),
-					})
-				}
-			}
-			info.Images = images
-		}
-
-		// Extract binaries (OCI references: repo:tag/file)
-		if binariesRaw, ok := build.BuildReport["binaries"].([]any); ok {
-			for _, binRaw := range binariesRaw {
-				if oci, ok := binRaw.(map[string]any); ok {
-					repo := getString(oci, "repo")
-					tag := getString(oci, "tag")
-					filesRaw, _ := oci["files"].([]any)
-					for _, f := range filesRaw {
-						if s, ok := f.(string); ok {
-							info.Binaries = append(info.Binaries, BinaryInfo{
-								OciReference: repo + ":" + tag + "/" + s,
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return NewLarkCardWithGoTemplate(info)
+	state.Lark = append(state.Lark, schema.LarkMessageState{ChatID: chatID})
+	return &state.Lark[len(state.Lark)-1]
 }
 
-// ImageInfo contains information about a Docker image artifact for notification.
-type ImageInfo struct {
-	Platform string
-	URL      string
-}
-
-// BinaryInfo contains information about a binary artifact for notification.
-type BinaryInfo struct {
-	OciReference string
-}
-
-// NotificationInfo contains information for building a notification card.
-type NotificationInfo struct {
-	BuildID      int
-	Product      string
-	Version      string
-	Status       string
-	CreatedBy    string
-	GitRef       string
-	GithubRepo   string
-	Platform     string
-	ErrMsg       string
-	PipelineRuns []PipelineRunInfo
-	// Build report fields (populated on success)
-	GitSha   string
-	Images   []ImageInfo
-	Binaries []BinaryInfo
-}
-
-// PipelineRunInfo contains information about a single pipeline run.
-type PipelineRunInfo struct {
-	Name   string
-	Status string
-	URL    string
-}
-
-// isTerminalStatus checks if the build status is terminal.
-func isTerminalStatus(status string) bool {
-	switch status {
-	case "success", "failure", "error", "aborted":
-		return true
-	default:
-		return false
-	}
-}
-
-// StatusColor returns the Lark card header template color for a status.
-func StatusColor(status string) string {
-	switch status {
-	case "success":
-		return "green"
-	case "failure", "error":
-		return "red"
-	case "aborted":
-		return "orange"
-	case "running", "processing":
-		return "blue"
-	default:
-		return "grey"
-	}
-}
-
-// StatusEmoji returns an emoji for the build status.
-func StatusEmoji(status string) string {
-	switch status {
-	case "success":
-		return "✅"
-	case "failure", "error":
-		return "❌"
-	case "aborted":
-		return "🚫"
-	case "running", "processing":
-		return "🔄"
-	default:
-		return "⏳"
-	}
+// newLarkMsgUUID generates a deterministic idempotency key.
+func newLarkMsgUUID(buildID int, receiver string) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "devbuild-%d-%s", buildID, receiver)
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

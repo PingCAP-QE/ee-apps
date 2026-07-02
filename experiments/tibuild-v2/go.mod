@@ -13,6 +13,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/go-containerregistry v0.21.6
 	github.com/google/go-github/v69 v69.2.0
+	github.com/larksuite/oapi-sdk-go/v3 v3.9.7
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/migueleliasweb/go-github-mock v1.5.0
 	github.com/rs/zerolog v1.33.0
