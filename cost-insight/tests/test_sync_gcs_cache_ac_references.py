@@ -257,9 +257,97 @@ def test_execute_with_bigquery_dml_retry_retries_concurrent_update() -> None:
         parameters=[],
         max_attempts=2,
         sleep_seconds=sleeps.append,
+        jitter_seconds=lambda _delay: 0.0,
     )
 
     assert result.total_bytes_processed == 7
+    assert calls == 2
+    assert sleeps == [5.0]
+
+
+def test_execute_with_bigquery_dml_retry_uses_cause_reason() -> None:
+    calls = 0
+    sleeps = []
+
+    class FakeRateLimitError(Exception):
+        reason = "rateLimitExceeded"
+        errors = [{"reason": "rateLimitExceeded", "message": "quota"}]
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            cause = FakeRateLimitError("wrapped google error")
+            try:
+                raise BigQueryExecutionError("BigQuery query failed") from cause
+            except BigQueryExecutionError as exc:
+                raise exc
+        return BigQueryQueryResult(rows=(), total_bytes_processed=8)
+
+    result = _execute_with_bigquery_dml_retry(
+        fake_execute,
+        "DELETE FROM table",
+        parameters=[],
+        max_attempts=2,
+        sleep_seconds=sleeps.append,
+        jitter_seconds=lambda _delay: 1.5,
+    )
+
+    assert result.total_bytes_processed == 8
+    assert calls == 2
+    assert sleeps == [6.5]
+
+
+def test_execute_with_bigquery_dml_retry_reraises_non_retryable_error() -> None:
+    calls = 0
+    sleeps = []
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        raise BigQueryExecutionError("Syntax error")
+
+    try:
+        _execute_with_bigquery_dml_retry(
+            fake_execute,
+            "bad query",
+            parameters=[],
+            max_attempts=3,
+            sleep_seconds=sleeps.append,
+            jitter_seconds=lambda _delay: 0.0,
+        )
+    except BigQueryExecutionError as exc:
+        assert "Syntax error" in str(exc)
+    else:
+        raise AssertionError("expected BigQueryExecutionError")
+
+    assert calls == 1
+    assert sleeps == []
+
+
+def test_execute_with_bigquery_dml_retry_reraises_after_max_attempts() -> None:
+    calls = 0
+    sleeps = []
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        raise BigQueryExecutionError("Could not serialize access to table")
+
+    try:
+        _execute_with_bigquery_dml_retry(
+            fake_execute,
+            "DELETE FROM table",
+            parameters=[],
+            max_attempts=2,
+            sleep_seconds=sleeps.append,
+            jitter_seconds=lambda _delay: 0.0,
+        )
+    except BigQueryExecutionError as exc:
+        assert "Could not serialize access" in str(exc)
+    else:
+        raise AssertionError("expected BigQueryExecutionError")
+
     assert calls == 2
     assert sleeps == [5.0]
 

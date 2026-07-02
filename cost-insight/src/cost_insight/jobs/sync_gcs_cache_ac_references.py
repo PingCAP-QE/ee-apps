@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import islice
+from random import uniform
 from time import perf_counter, sleep
 
 from cost_insight.common.bigquery import (
@@ -663,14 +664,18 @@ def _execute_with_bigquery_dml_retry(
     parameters: Sequence[BigQueryParameter],
     max_attempts: int = 5,
     sleep_seconds: Callable[[float], None] = sleep,
+    jitter_seconds: Callable[[float], float] = lambda delay: uniform(0.0, delay * 0.5),
 ) -> BigQueryQueryResult:
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be positive")
     for attempt in range(1, max_attempts + 1):
         try:
             return execute(query, parameters)
         except BigQueryExecutionError as exc:
             if attempt >= max_attempts or not _is_retryable_bigquery_dml_error(exc):
                 raise
-            delay_seconds = min(60.0, 5.0 * (2 ** (attempt - 1)))
+            base_delay_seconds = min(60.0, 5.0 * (2 ** (attempt - 1)))
+            delay_seconds = base_delay_seconds + jitter_seconds(base_delay_seconds)
             logger.warning(
                 "Retry BigQuery DML after transient error: attempt=%s max_attempts=%s "
                 "delay_seconds=%.1f error=%s",
@@ -680,15 +685,34 @@ def _execute_with_bigquery_dml_retry(
                 exc,
             )
             sleep_seconds(delay_seconds)
-    raise RuntimeError("unreachable BigQuery DML retry state")
 
 
 def _is_retryable_bigquery_dml_error(exc: BigQueryExecutionError) -> bool:
-    message = str(exc).lower()
+    message = _exception_search_text(exc)
     return (
         "could not serialize access" in message
         or "too many table update operations" in message
+        or "exceeded rate limits" in message
+        or "ratelimitexceeded" in message
+        or "rate limit exceeded" in message
+        or "concurrent update" in message
     )
+
+
+def _exception_search_text(exc: BaseException) -> str:
+    parts = [type(exc).__name__, str(exc)]
+    cause = exc.__cause__
+    if cause is not None:
+        parts.extend([type(cause).__name__, str(cause)])
+        reason = getattr(cause, "reason", None)
+        if reason:
+            parts.append(str(reason))
+        for error in getattr(cause, "errors", ()) or ():
+            if isinstance(error, dict):
+                parts.extend(str(error.get(key, "")) for key in ("reason", "message"))
+            else:
+                parts.append(str(error))
+    return " ".join(parts).lower()
 
 
 def _add_bytes(total: int, value: int | None) -> int:
