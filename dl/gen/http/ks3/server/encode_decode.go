@@ -50,3 +50,37 @@ func DecodeDownloadObjectRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		return payload, nil
 	}
 }
+
+// EncodeHeadObjectResponse returns an encoder for responses returned by the
+// ks3 head-object endpoint.
+func EncodeHeadObjectResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*ks3.HeadObjectResult)
+		{
+			val := res.Length
+			lengths := strconv.FormatInt(val, 10)
+			w.Header().Set("Content-Length", lengths)
+		}
+		w.Header().Set("Content-Disposition", res.ContentDisposition)
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+}
+
+// DecodeHeadObjectRequest returns a decoder for requests sent to the ks3
+// head-object endpoint.
+func DecodeHeadObjectRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*ks3.HeadObjectPayload, error) {
+	return func(r *http.Request) (*ks3.HeadObjectPayload, error) {
+		var (
+			bucket string
+			key    string
+
+			params = mux.Vars(r)
+		)
+		bucket = params["bucket"]
+		key = params["key"]
+		payload := NewHeadObjectPayload(bucket, key)
+
+		return payload, nil
+	}
+}

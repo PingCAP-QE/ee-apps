@@ -15,3 +15,8 @@ import (
 func DownloadObjectKs3Path(bucket string, key string) string {
 	return fmt.Sprintf("/s3-obj/%v/%v", bucket, key)
 }
+
+// HeadObjectKs3Path returns the URL path to the ks3 service head-object HTTP endpoint.
+func HeadObjectKs3Path(bucket string, key string) string {
+	return fmt.Sprintf("/s3-obj/%v/%v", bucket, key)
+}

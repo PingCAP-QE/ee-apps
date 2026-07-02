@@ -22,6 +22,8 @@ type Service interface {
 	// Consider [goa.design/goa/v3/pkg.SkipResponseWriter] to adapt existing
 	// implementations.
 	DownloadObject(context.Context, *DownloadObjectPayload) (res *DownloadObjectResult, body io.ReadCloser, err error)
+	// HeadObject implements head-object.
+	HeadObject(context.Context, *HeadObjectPayload) (res *HeadObjectResult, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -38,7 +40,7 @@ const ServiceName = "ks3"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [1]string{"download-object"}
+var MethodNames = [2]string{"download-object", "head-object"}
 
 // DownloadObjectPayload is the payload type of the ks3 service download-object
 // method.
@@ -55,6 +57,22 @@ type DownloadObjectResult struct {
 	// Length is the downloaded content length in bytes.
 	Length int64
 	// Content-Disposition header for downloading
+	ContentDisposition string
+}
+
+// HeadObjectPayload is the payload type of the ks3 service head-object method.
+type HeadObjectPayload struct {
+	// bucket name
+	Bucket string
+	// object key
+	Key string
+}
+
+// HeadObjectResult is the result type of the ks3 service head-object method.
+type HeadObjectResult struct {
+	// Content length in bytes.
+	Length int64
+	// Content-Disposition header value
 	ContentDisposition string
 }
 

@@ -88,3 +88,22 @@ func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPaylo
 
 	return res, reader, nil
 }
+
+// HeadObject implements head-object.
+func (s *gcssrvc) HeadObject(ctx context.Context, p *gcs.HeadObjectPayload) (*gcs.HeadObjectResult, error) {
+	obj := s.client.Bucket(p.Bucket).Object(p.Key)
+	attrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &gcs.HeadObjectResult{
+		Length: attrs.Size,
+	}
+	if attrs.ContentDisposition != "" {
+		res.ContentDisposition = attrs.ContentDisposition
+	} else {
+		res.ContentDisposition = attachment.ContentDisposition(filepath.Base(p.Key))
+	}
+	return res, nil
+}

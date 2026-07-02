@@ -20,3 +20,13 @@ func NewDownloadObjectResultOK(length int64, contentDisposition string) *gcs.Dow
 
 	return v
 }
+
+// NewHeadObjectResultOK builds a "gcs" service "head-object" endpoint result
+// from a HTTP "OK" response.
+func NewHeadObjectResultOK(length int64, contentDisposition string) *gcs.HeadObjectResult {
+	v := &gcs.HeadObjectResult{}
+	v.Length = length
+	v.ContentDisposition = contentDisposition
+
+	return v
+}

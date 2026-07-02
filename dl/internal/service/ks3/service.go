@@ -83,3 +83,24 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 
 	return res, getObjectOutput.Body, nil
 }
+
+// HeadObject implements head-object.
+func (s *ks3srvc) HeadObject(ctx context.Context, p *ks3.HeadObjectPayload) (*ks3.HeadObjectResult, error) {
+	output, err := s.client.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(p.Bucket),
+		Key:    aws.String(p.Key),
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := &ks3.HeadObjectResult{}
+	if output.ContentLength != nil {
+		res.Length = *output.ContentLength
+	}
+	if output.ContentDisposition != nil {
+		res.ContentDisposition = *output.ContentDisposition
+	} else {
+		res.ContentDisposition = attachment.ContentDisposition(filepath.Base(p.Key))
+	}
+	return res, nil
+}

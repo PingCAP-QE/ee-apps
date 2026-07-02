@@ -96,3 +96,82 @@ func DecodeDownloadObjectResponse(decoder func(*http.Response) goahttp.Decoder, 
 		}
 	}
 }
+
+// BuildHeadObjectRequest instantiates a HTTP request object with method and
+// path set to call the "ks3" service "head-object" endpoint
+func (c *Client) BuildHeadObjectRequest(ctx context.Context, v any) (*http.Request, error) {
+	var (
+		bucket string
+		key    string
+	)
+	{
+		p, ok := v.(*ks3.HeadObjectPayload)
+		if !ok {
+			return nil, goahttp.ErrInvalidType("ks3", "head-object", "*ks3.HeadObjectPayload", v)
+		}
+		bucket = p.Bucket
+		key = p.Key
+	}
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: HeadObjectKs3Path(bucket, key)}
+	req, err := http.NewRequest("HEAD", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("ks3", "head-object", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeHeadObjectResponse returns a decoder for responses returned by the ks3
+// head-object endpoint. restoreBody controls whether the response body should
+// be restored after having been read.
+func DecodeHeadObjectResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				length             int64
+				contentDisposition string
+				err                error
+			)
+			{
+				lengthRaw := resp.Header.Get("Content-Length")
+				if lengthRaw == "" {
+					return nil, goahttp.ErrValidationError("ks3", "head-object", goa.MissingFieldError("length", "header"))
+				}
+				v, err2 := strconv.ParseInt(lengthRaw, 10, 64)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("length", lengthRaw, "integer"))
+				}
+				length = v
+			}
+			contentDispositionRaw := resp.Header.Get("Content-Disposition")
+			if contentDispositionRaw == "" {
+				err = goa.MergeErrors(err, goa.MissingFieldError("contentDisposition", "header"))
+			}
+			contentDisposition = contentDispositionRaw
+			if err != nil {
+				return nil, goahttp.ErrValidationError("ks3", "head-object", err)
+			}
+			res := NewHeadObjectResultOK(length, contentDisposition)
+			return res, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("ks3", "head-object", resp.StatusCode, string(body))
+		}
+	}
+}

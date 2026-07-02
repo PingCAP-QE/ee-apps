@@ -26,16 +26,16 @@ import (
 func UsageCommands() []string {
 	return []string{
 		"oci (list-files|download-file|head-file|download-file-sha256)",
-		"ks3 download-object",
-		"gcs download-object",
+		"ks3 (download-object|head-object)",
+		"gcs (download-object|head-object)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "At non dignissimos error et repellendus." --tag "Nam quibusdam recusandae dolor voluptas."` + "\n" +
-		os.Args[0] + ` ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."` + "\n" +
-		os.Args[0] + ` gcs download-object --bucket "Aspernatur quasi officia suscipit." --key "Rem accusantium repudiandae velit doloribus."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "Quam et asperiores." --tag "Deserunt esse et."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Assumenda et eveniet magni quasi consequatur esse." --key "Qui quas."` + "\n" +
+		os.Args[0] + ` gcs download-object --bucket "Et sit recusandae qui totam dolor." --key "Ut doloremque laborum quis voluptas voluptatum voluptate."` + "\n" +
 		""
 }
 
@@ -78,11 +78,19 @@ func ParseEndpoint(
 		ks3DownloadObjectBucketFlag = ks3DownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		ks3DownloadObjectKeyFlag    = ks3DownloadObjectFlags.String("key", "REQUIRED", "object key")
 
+		ks3HeadObjectFlags      = flag.NewFlagSet("head-object", flag.ExitOnError)
+		ks3HeadObjectBucketFlag = ks3HeadObjectFlags.String("bucket", "REQUIRED", "bucket name")
+		ks3HeadObjectKeyFlag    = ks3HeadObjectFlags.String("key", "REQUIRED", "object key")
+
 		gcsFlags = flag.NewFlagSet("gcs", flag.ContinueOnError)
 
 		gcsDownloadObjectFlags      = flag.NewFlagSet("download-object", flag.ExitOnError)
 		gcsDownloadObjectBucketFlag = gcsDownloadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		gcsDownloadObjectKeyFlag    = gcsDownloadObjectFlags.String("key", "REQUIRED", "object key")
+
+		gcsHeadObjectFlags      = flag.NewFlagSet("head-object", flag.ExitOnError)
+		gcsHeadObjectBucketFlag = gcsHeadObjectFlags.String("bucket", "REQUIRED", "bucket name")
+		gcsHeadObjectKeyFlag    = gcsHeadObjectFlags.String("key", "REQUIRED", "object key")
 	)
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
@@ -92,9 +100,11 @@ func ParseEndpoint(
 
 	ks3Flags.Usage = ks3Usage
 	ks3DownloadObjectFlags.Usage = ks3DownloadObjectUsage
+	ks3HeadObjectFlags.Usage = ks3HeadObjectUsage
 
 	gcsFlags.Usage = gcsUsage
 	gcsDownloadObjectFlags.Usage = gcsDownloadObjectUsage
+	gcsHeadObjectFlags.Usage = gcsHeadObjectUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -153,12 +163,18 @@ func ParseEndpoint(
 			case "download-object":
 				epf = ks3DownloadObjectFlags
 
+			case "head-object":
+				epf = ks3HeadObjectFlags
+
 			}
 
 		case "gcs":
 			switch epn {
 			case "download-object":
 				epf = gcsDownloadObjectFlags
+
+			case "head-object":
+				epf = gcsHeadObjectFlags
 
 			}
 
@@ -204,6 +220,9 @@ func ParseEndpoint(
 			case "download-object":
 				endpoint = c.DownloadObject()
 				data, err = ks3c.BuildDownloadObjectPayload(*ks3DownloadObjectBucketFlag, *ks3DownloadObjectKeyFlag)
+			case "head-object":
+				endpoint = c.HeadObject()
+				data, err = ks3c.BuildHeadObjectPayload(*ks3HeadObjectBucketFlag, *ks3HeadObjectKeyFlag)
 			}
 		case "gcs":
 			c := gcsc.NewClient(scheme, host, doer, enc, dec, restore)
@@ -211,6 +230,9 @@ func ParseEndpoint(
 			case "download-object":
 				endpoint = c.DownloadObject()
 				data, err = gcsc.BuildDownloadObjectPayload(*gcsDownloadObjectBucketFlag, *gcsDownloadObjectKeyFlag)
+			case "head-object":
+				endpoint = c.HeadObject()
+				data, err = gcsc.BuildHeadObjectPayload(*gcsHeadObjectBucketFlag, *gcsHeadObjectKeyFlag)
 			}
 		}
 	}
@@ -252,7 +274,7 @@ func ociListFilesUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "At non dignissimos error et repellendus." --tag "Nam quibusdam recusandae dolor voluptas."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Quam et asperiores." --tag "Deserunt esse et."`)
 }
 
 func ociDownloadFileUsage() {
@@ -302,7 +324,7 @@ func ociHeadFileUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Quo quidem fugiat tempore sapiente." --tag "Et laborum impedit." --file "Vero dolores amet possimus quasi libero nesciunt." --file-regex "9ut.*"`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Sed nihil autem dolor blanditiis accusamus sit." --tag "Neque sunt ut repellendus." --file "Quaerat architecto." --file-regex "m9i.*"`)
 }
 
 func ociDownloadFileSha256Usage() {
@@ -325,7 +347,7 @@ func ociDownloadFileSha256Usage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Eum quia." --file "Nobis possimus eaque dolor sunt similique." --tag "Quod nulla nostrum voluptatem soluta reprehenderit reiciendis."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Officia suscipit saepe rem." --file "Repudiandae velit." --tag "Aspernatur tenetur minima voluptas nemo."`)
 }
 
 // ks3Usage displays the usage of the ks3 command and its subcommands.
@@ -334,6 +356,7 @@ func ks3Usage() {
 	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] ks3 COMMAND [flags]\n\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    download-object: DownloadObject implements download-object.`)
+	fmt.Fprintln(os.Stderr, `    head-object: HeadObject implements head-object.`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s ks3 COMMAND --help\n", os.Args[0])
@@ -356,7 +379,28 @@ func ks3DownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Cupiditate recusandae qui." --key "Iste dolorem quasi eos."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Assumenda et eveniet magni quasi consequatur esse." --key "Qui quas."`)
+}
+
+func ks3HeadObjectUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] ks3 head-object", os.Args[0])
+	fmt.Fprint(os.Stderr, " -bucket STRING")
+	fmt.Fprint(os.Stderr, " -key STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `HeadObject implements head-object.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -bucket STRING: bucket name`)
+	fmt.Fprintln(os.Stderr, `    -key STRING: object key`)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 head-object --bucket "Dolore esse sunt." --key "Ea fugiat corrupti rerum."`)
 }
 
 // gcsUsage displays the usage of the gcs command and its subcommands.
@@ -365,6 +409,7 @@ func gcsUsage() {
 	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] gcs COMMAND [flags]\n\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    download-object: DownloadObject implements download-object.`)
+	fmt.Fprintln(os.Stderr, `    head-object: HeadObject implements head-object.`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s gcs COMMAND --help\n", os.Args[0])
@@ -387,5 +432,26 @@ func gcsDownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Aspernatur quasi officia suscipit." --key "Rem accusantium repudiandae velit doloribus."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Et sit recusandae qui totam dolor." --key "Ut doloremque laborum quis voluptas voluptatum voluptate."`)
+}
+
+func gcsHeadObjectUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] gcs head-object", os.Args[0])
+	fmt.Fprint(os.Stderr, " -bucket STRING")
+	fmt.Fprint(os.Stderr, " -key STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `HeadObject implements head-object.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -bucket STRING: bucket name`)
+	fmt.Fprintln(os.Stderr, `    -key STRING: object key`)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs head-object --bucket "Amet natus quia eos autem eos laudantium." --key "Quam et ut soluta sed minima dolores."`)
 }

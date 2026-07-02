@@ -17,6 +17,7 @@ import (
 // Endpoints wraps the "ks3" service endpoints.
 type Endpoints struct {
 	DownloadObject goa.Endpoint
+	HeadObject     goa.Endpoint
 }
 
 // DownloadObjectResponseData holds both the result and the HTTP response body
@@ -32,12 +33,14 @@ type DownloadObjectResponseData struct {
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		DownloadObject: NewDownloadObjectEndpoint(s),
+		HeadObject:     NewHeadObjectEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "ks3" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.DownloadObject = m(e.DownloadObject)
+	e.HeadObject = m(e.HeadObject)
 }
 
 // NewDownloadObjectEndpoint returns an endpoint function that calls the method
@@ -50,5 +53,14 @@ func NewDownloadObjectEndpoint(s Service) goa.Endpoint {
 			return nil, err
 		}
 		return &DownloadObjectResponseData{Result: res, Body: body}, nil
+	}
+}
+
+// NewHeadObjectEndpoint returns an endpoint function that calls the method
+// "head-object" of service "ks3".
+func NewHeadObjectEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*HeadObjectPayload)
+		return s.HeadObject(ctx, p)
 	}
 }

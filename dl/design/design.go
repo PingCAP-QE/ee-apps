@@ -204,6 +204,33 @@ var _ = Service("ks3", func() {
 			})
 		})
 	})
+
+	Method("head-object", func() {
+		Payload(func() {
+			Field(1, "bucket", String, "bucket name")
+			Field(2, "key", String, "object key")
+
+			Required("bucket", "key")
+		})
+
+		Result(func() {
+			Attribute("length", Int64, "Content length in bytes.")
+			Attribute("contentDisposition", String, "Content-Disposition header value")
+			Required("length", "contentDisposition")
+		})
+
+		Error("invalid_file_path", ErrorResult, "Could not locate file")
+		Error("internal_error", ErrorResult, "Processing error")
+
+		HTTP(func() {
+			HEAD("/s3-obj/{bucket}/{*key}")
+
+			Response(func() {
+				Header("length:Content-Length")
+				Header("contentDisposition:Content-Disposition")
+			})
+		})
+	})
 })
 
 var _ = Service("gcs", func() {
@@ -240,6 +267,33 @@ var _ = Service("gcs", func() {
 			Response(func() {
 				// Set the content type for binary data
 				ContentType("application/octet-stream")
+				Header("length:Content-Length")
+				Header("contentDisposition:Content-Disposition")
+			})
+		})
+	})
+
+	Method("head-object", func() {
+		Payload(func() {
+			Field(1, "bucket", String, "bucket name")
+			Field(2, "key", String, "object key")
+
+			Required("bucket", "key")
+		})
+
+		Result(func() {
+			Attribute("length", Int64, "Content length in bytes.")
+			Attribute("contentDisposition", String, "Content-Disposition header value")
+			Required("length", "contentDisposition")
+		})
+
+		Error("invalid_file_path", ErrorResult, "Could not locate file")
+		Error("internal_error", ErrorResult, "Processing error")
+
+		HTTP(func() {
+			HEAD("/gcs-obj/{bucket}/{*key}")
+
+			Response(func() {
 				Header("length:Content-Length")
 				Header("contentDisposition:Content-Disposition")
 			})

@@ -17,12 +17,14 @@ import (
 // Client is the "gcs" service client.
 type Client struct {
 	DownloadObjectEndpoint goa.Endpoint
+	HeadObjectEndpoint     goa.Endpoint
 }
 
 // NewClient initializes a "gcs" service client given the endpoints.
-func NewClient(downloadObject goa.Endpoint) *Client {
+func NewClient(downloadObject, headObject goa.Endpoint) *Client {
 	return &Client{
 		DownloadObjectEndpoint: downloadObject,
+		HeadObjectEndpoint:     headObject,
 	}
 }
 
@@ -39,4 +41,18 @@ func (c *Client) DownloadObject(ctx context.Context, p *DownloadObjectPayload) (
 	}
 	o := ires.(*DownloadObjectResponseData)
 	return o.Result, o.Body, nil
+}
+
+// HeadObject calls the "head-object" endpoint of the "gcs" service.
+// HeadObject may return the following errors:
+//   - "invalid_file_path" (type *goa.ServiceError): Could not locate file
+//   - "internal_error" (type *goa.ServiceError): Processing error
+//   - error: internal error
+func (c *Client) HeadObject(ctx context.Context, p *HeadObjectPayload) (res *HeadObjectResult, err error) {
+	var ires any
+	ires, err = c.HeadObjectEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*HeadObjectResult), nil
 }

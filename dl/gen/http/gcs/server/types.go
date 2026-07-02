@@ -20,3 +20,12 @@ func NewDownloadObjectPayload(bucket string, key string) *gcs.DownloadObjectPayl
 
 	return v
 }
+
+// NewHeadObjectPayload builds a gcs service head-object endpoint payload.
+func NewHeadObjectPayload(bucket string, key string) *gcs.HeadObjectPayload {
+	v := &gcs.HeadObjectPayload{}
+	v.Bucket = bucket
+	v.Key = key
+
+	return v
+}

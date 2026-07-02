@@ -15,3 +15,8 @@ import (
 func DownloadObjectGcsPath(bucket string, key string) string {
 	return fmt.Sprintf("/gcs-obj/%v/%v", bucket, key)
 }
+
+// HeadObjectGcsPath returns the URL path to the gcs service head-object HTTP endpoint.
+func HeadObjectGcsPath(bucket string, key string) string {
+	return fmt.Sprintf("/gcs-obj/%v/%v", bucket, key)
+}

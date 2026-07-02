@@ -44,6 +44,34 @@ paths:
                             type: int64
             schemes:
                 - http
+        head:
+            tags:
+                - gcs
+            summary: head-object gcs
+            operationId: gcs#head-object
+            parameters:
+                - name: bucket
+                  in: path
+                  description: bucket name
+                  required: true
+                  type: string
+                - name: key
+                  in: path
+                  description: object key
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    headers:
+                        Content-Disposition:
+                            description: Content-Disposition header value
+                            type: string
+                        Content-Length:
+                            description: Content length in bytes.
+                            type: int64
+            schemes:
+                - http
     /oci-file-sha256/{repository}:
         get:
             tags:
@@ -185,7 +213,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Tenetur minima.
+                            example: Et fuga rerum labore vitae.
             schemes:
                 - http
     /s3-obj/{bucket}/{key}:
@@ -216,6 +244,34 @@ paths:
                             type: string
                         Content-Length:
                             description: Length is the downloaded content length in bytes.
+                            type: int64
+            schemes:
+                - http
+        head:
+            tags:
+                - ks3
+            summary: head-object ks3
+            operationId: ks3#head-object
+            parameters:
+                - name: bucket
+                  in: path
+                  description: bucket name
+                  required: true
+                  type: string
+                - name: key
+                  in: path
+                  description: object key
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    headers:
+                        Content-Disposition:
+                            description: Content-Disposition header value
+                            type: string
+                        Content-Length:
+                            description: Content length in bytes.
                             type: int64
             schemes:
                 - http
