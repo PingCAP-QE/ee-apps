@@ -28,3 +28,21 @@ func BuildDownloadObjectPayload(ks3DownloadObjectBucket string, ks3DownloadObjec
 
 	return v, nil
 }
+
+// BuildHeadObjectPayload builds the payload for the ks3 head-object endpoint
+// from CLI flags.
+func BuildHeadObjectPayload(ks3HeadObjectBucket string, ks3HeadObjectKey string) (*ks3.HeadObjectPayload, error) {
+	var bucket string
+	{
+		bucket = ks3HeadObjectBucket
+	}
+	var key string
+	{
+		key = ks3HeadObjectKey
+	}
+	v := &ks3.HeadObjectPayload{}
+	v.Bucket = bucket
+	v.Key = key
+
+	return v, nil
+}

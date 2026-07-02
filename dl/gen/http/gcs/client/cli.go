@@ -28,3 +28,21 @@ func BuildDownloadObjectPayload(gcsDownloadObjectBucket string, gcsDownloadObjec
 
 	return v, nil
 }
+
+// BuildHeadObjectPayload builds the payload for the gcs head-object endpoint
+// from CLI flags.
+func BuildHeadObjectPayload(gcsHeadObjectBucket string, gcsHeadObjectKey string) (*gcs.HeadObjectPayload, error) {
+	var bucket string
+	{
+		bucket = gcsHeadObjectBucket
+	}
+	var key string
+	{
+		key = gcsHeadObjectKey
+	}
+	v := &gcs.HeadObjectPayload{}
+	v.Bucket = bucket
+	v.Key = key
+
+	return v, nil
+}

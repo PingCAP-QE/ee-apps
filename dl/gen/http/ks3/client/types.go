@@ -20,3 +20,13 @@ func NewDownloadObjectResultOK(length int64, contentDisposition string) *ks3.Dow
 
 	return v
 }
+
+// NewHeadObjectResultOK builds a "ks3" service "head-object" endpoint result
+// from a HTTP "OK" response.
+func NewHeadObjectResultOK(length int64, contentDisposition string) *ks3.HeadObjectResult {
+	v := &ks3.HeadObjectResult{}
+	v.Length = length
+	v.ContentDisposition = contentDisposition
+
+	return v
+}

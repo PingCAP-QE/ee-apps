@@ -22,6 +22,10 @@ type Client struct {
 	// download-object endpoint.
 	DownloadObjectDoer goahttp.Doer
 
+	// HeadObject Doer is the HTTP client used to make requests to the head-object
+	// endpoint.
+	HeadObjectDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -43,6 +47,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		DownloadObjectDoer:  doer,
+		HeadObjectDoer:      doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
 		host:                host,
@@ -72,5 +77,24 @@ func (c *Client) DownloadObject() goa.Endpoint {
 			return nil, err
 		}
 		return &gcs.DownloadObjectResponseData{Result: res.(*gcs.DownloadObjectResult), Body: resp.Body}, nil
+	}
+}
+
+// HeadObject returns an endpoint that makes HTTP requests to the gcs service
+// head-object server.
+func (c *Client) HeadObject() goa.Endpoint {
+	var (
+		decodeResponse = DecodeHeadObjectResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildHeadObjectRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.HeadObjectDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("gcs", "head-object", err)
+		}
+		return decodeResponse(resp)
 	}
 }

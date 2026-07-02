@@ -20,3 +20,12 @@ func NewDownloadObjectPayload(bucket string, key string) *ks3.DownloadObjectPayl
 
 	return v
 }
+
+// NewHeadObjectPayload builds a ks3 service head-object endpoint payload.
+func NewHeadObjectPayload(bucket string, key string) *ks3.HeadObjectPayload {
+	v := &ks3.HeadObjectPayload{}
+	v.Bucket = bucket
+	v.Key = key
+
+	return v
+}
