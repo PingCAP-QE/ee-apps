@@ -365,9 +365,12 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 				return v, nil
 			}
 
-			// For updates, skip if status wasn't changed
+			// For updates, skip unless Status or TektonStatus was changed.
+			// This catches: overall status change, and individual pipeline run progress.
 			if m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
-				if _, exists := mut.Status(); !exists {
+				_, hasStatus := mut.Status()
+				_, hasTektonStatus := mut.TektonStatus()
+				if !hasStatus && !hasTektonStatus {
 					return v, nil
 				}
 			}
