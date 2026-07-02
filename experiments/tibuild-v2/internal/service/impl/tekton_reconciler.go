@@ -20,7 +20,7 @@ import (
 )
 
 // terminalStatuses are the build statuses that indicate a build is finished.
-var terminalStatuses = []string{"success", "failure", "error", "aborted"}
+var terminalStatuses = []string{"SUCCESS", "FAILURE", "ERROR", "ABORTED"}
 
 type (
 	// buildReconcileData holds the data needed to reconcile a single build.
@@ -198,7 +198,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 	// Build report from pipeline runs
 	buildReport := buildBuildReport(pipelineRuns)
 	if buildReport != nil {
-		updater.SetBuildReport(buildReport)
+		updater.SetBuildReport(*buildReport)
 	}
 
 	// Set pipeline times
@@ -240,13 +240,13 @@ func determineStatus(pipelineRuns []tknv1.PipelineRun) string {
 	}
 
 	if hasFailure {
-		return "failure"
+		return "FAILURE"
 	}
 	if hasRunning {
-		return "processing"
+		return "PROCESSING"
 	}
 	if hasSuccess {
-		return "success"
+		return "SUCCESS"
 	}
 
 	return ""
@@ -275,11 +275,11 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 		if condition != nil {
 			switch condition.Status {
 			case "True":
-				pipeline.Status = "success"
+				pipeline.Status = "SUCCESS"
 			case "False":
-				pipeline.Status = "failure"
+				pipeline.Status = "FAILURE"
 			default:
-				pipeline.Status = "processing"
+				pipeline.Status = "PROCESSING"
 			}
 		}
 
@@ -362,17 +362,17 @@ func extractArtifactsFromResults(results []tknv1.PipelineRunResult, params tknv1
 	return
 }
 
-// buildBuildReport builds a build_report map from PipelineRun params and results.
-func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
-	report := map[string]any{}
+// buildBuildReport builds a BuildReport from PipelineRun params and results.
+func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
+	report := &schema.BuildReport{}
 	hasData := false
 
 	for _, pr := range pipelineRuns {
 		// Extract git-revision param
 		for _, p := range pr.Spec.Params {
 			if p.Name == "git-revision" && len(p.Value.StringVal) == 40 {
-				if _, exists := report["gitSha"]; !exists {
-					report["gitSha"] = p.Value.StringVal
+				if report.GitHash == "" {
+					report.GitHash = p.Value.StringVal
 					hasData = true
 				}
 			}
@@ -386,8 +386,7 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
 				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &imgs); err == nil {
 					platform := parsePlatformFromParams(pr.Spec.Params)
 					for _, img := range imgs.Images {
-						existing, _ := report["images"].([]schema.ImageArtifact)
-						report["images"] = append(existing, schema.ImageArtifact{
+						report.Images = append(report.Images, schema.ImageArtifact{
 							Platform: platform,
 							URL:      img.Repo + ":" + img.Tag,
 						})
@@ -397,8 +396,7 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
 			case "pushed-binaries":
 				var bin binariesResultYAML
 				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &bin); err == nil && bin.Oci != nil {
-					existing, _ := report["binaries"].([]schema.OciArtifact)
-					report["binaries"] = append(existing, schema.OciArtifact{
+					report.Binaries = append(report.Binaries, schema.OciArtifact{
 						Repo:  bin.Oci.Repo,
 						Tag:   bin.Oci.Tag,
 						Files: bin.Files,
@@ -406,13 +404,13 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) map[string]any {
 					hasData = true
 				}
 			case "printed-version":
-				if _, exists := report["printedVersion"]; !exists {
-					report["printedVersion"] = r.Value.StringVal
+				if report.PrintedVersion == "" {
+					report.PrintedVersion = r.Value.StringVal
 					hasData = true
 				}
 			case "plugin-git-sha":
-				if _, exists := report["pluginGitSha"]; !exists {
-					report["pluginGitSha"] = r.Value.StringVal
+				if report.PluginGitHash == "" {
+					report.PluginGitHash = r.Value.StringVal
 					hasData = true
 				}
 			}

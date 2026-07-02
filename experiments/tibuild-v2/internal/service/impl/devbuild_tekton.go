@@ -130,7 +130,7 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 	event.SetExtension("user", record.CreatedBy)
 	event.SetExtension("paramProfile", normalizeEdition(string(record.Edition)))
 	event.SetExtension("paramIsHotfix", record.IsHotfix)
-	event.SetExtension("paramIsPushGcr", record.IsPushGcr)
+	event.SetExtension("paramIsPushGcr", record.IsPushGCR)
 	if record.GithubRepo != "" {
 		event.SetExtension("paramGithubRepo", record.GithubRepo)
 	}

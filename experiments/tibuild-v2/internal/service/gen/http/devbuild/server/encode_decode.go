@@ -581,7 +581,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponse(v *devbuild.DevBuildSpec)
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -637,8 +637,8 @@ func marshalDevbuildBuildReportToBuildReportResponse(v *devbuild.BuildReport) *B
 		return nil
 	}
 	res := &BuildReportResponse{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -813,7 +813,7 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -857,7 +857,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(v *devbuild.DevBuildS
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -914,8 +914,8 @@ func marshalDevbuildBuildReportToBuildReportResponseBody(v *devbuild.BuildReport
 		return nil
 	}
 	res := &BuildReportResponseBody{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1117,8 +1117,8 @@ func unmarshalBuildReportRequestBodyToDevbuildBuildReport(v *BuildReportRequestB
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {

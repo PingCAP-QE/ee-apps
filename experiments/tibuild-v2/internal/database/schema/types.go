@@ -2,6 +2,16 @@ package schema
 
 import "time"
 
+// BuildReport represents the build report stored in the buildReport JSON column.
+// This mirrors the Goa-generated devbuild.BuildReport struct.
+type BuildReport struct {
+	GitHash        string          `json:"gitHash,omitempty"`
+	PluginGitHash  string          `json:"pluginGitHash,omitempty"`
+	PrintedVersion string          `json:"printedVersion,omitempty"`
+	Images         []ImageArtifact `json:"images,omitempty"`
+	Binaries       []OciArtifact   `json:"binaries,omitempty"`
+}
+
 // TektonStatus represents the status of Tekton pipelines for a devbuild.
 // This mirrors the Goa-generated devbuild.TektonStatus struct.
 type TektonStatus struct {

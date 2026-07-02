@@ -15,17 +15,17 @@ func TestExtractBuildStatusFromEventType(t *testing.T) {
 		{
 			name:      "started event",
 			eventType: "dev.tekton.event.pipelinerun.started.v1",
-			expected:  "running",
+			expected:  "PROCESSING",
 		},
 		{
 			name:      "successful event",
 			eventType: "dev.tekton.event.pipelinerun.successful.v1",
-			expected:  "success",
+			expected:  "SUCCESS",
 		},
 		{
 			name:      "failed event",
 			eventType: "dev.tekton.event.pipelinerun.failed.v1",
-			expected:  "failure",
+			expected:  "FAILURE",
 		},
 		{
 			name:      "unknown event type",

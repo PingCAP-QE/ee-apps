@@ -53,9 +53,9 @@ type BinArtifact struct {
 
 type BuildReport struct {
 	Binaries       []*BinArtifact
-	GitSha         *string
+	GitHash        *string
 	Images         []*ImageArtifact
-	PluginGitSha   *string
+	PluginGitHash  *string
 	PrintedVersion *string
 }
 
@@ -93,7 +93,7 @@ type DevBuildSpec struct {
 	// [Deprecated] use buildEnv for custom features
 	Features          *string
 	GitRef            string
-	GitSha            *string
+	GitHash           *string
 	GithubRepo        *string
 	IsHotfix          *bool
 	IsPushGCR         *bool

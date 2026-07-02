@@ -37,14 +37,14 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetVersion(p.Request.Version).
 		SetGithubRepo(githubFullRepo).
 		SetGitRef(p.Request.GitRef).
-		SetGitSha(commitSha).
+		SetGitHash(commitSha).
 		SetNillableIsHotfix(p.Request.IsHotfix).
 		SetCreatedAt(time.Now()).
 		SetCreatedBy(p.CreatedBy).
 		SetNillablePluginGitRef(p.Request.PluginGitRef).
 		SetNillablePipelineEngine(p.Request.PipelineEngine).
 		SetPlatform(p.Request.Platform).
-		SetStatus("pending")
+		SetStatus("PENDING")
 
 	return create.Save(ctx)
 }

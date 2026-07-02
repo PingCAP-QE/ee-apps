@@ -12,7 +12,7 @@ import (
 // transformDevBuild converts an ent.DevBuild to a devbuild.DevBuild
 func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 	status := &devbuild.DevBuildStatus{
-		BuildReport:     transformBuildReport(build.BuildReport),
+		BuildReport:     transformBuildReport(&build.BuildReport),
 		ErrMsg:          &build.ErrMsg,
 		PipelineBuildID: &build.PipelineBuildID,
 		PipelineStartAt: formatTime(build.PipelineStartAt),
@@ -38,19 +38,19 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 		ID: build.ID,
 		Meta: &devbuild.DevBuildMeta{
 			CreatedBy: build.CreatedBy,
-			CreatedAt: build.CreatedAt.UTC().Format(time.DateTime),
-			UpdatedAt: build.UpdatedAt.UTC().Format(time.DateTime),
+			CreatedAt: build.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt: build.UpdatedAt.UTC().Format(time.RFC3339),
 		},
 		Spec: &devbuild.DevBuildSpec{
 			BuildEnv:          &build.BuildEnv,
 			BuilderImg:        &build.BuilderImg,
 			Edition:           build.Edition,
 			Features:          &build.Features,
-			GitSha:            &build.GitSha,
+			GitHash:           &build.GitHash,
 			GitRef:            build.GitRef,
 			GithubRepo:        &build.GithubRepo,
 			IsHotfix:          &build.IsHotfix,
-			IsPushGCR:         &build.IsPushGcr,
+			IsPushGCR:         &build.IsPushGCR,
 			PipelineEngine:    &build.PipelineEngine,
 			Platform:          build.Platform,
 			PluginGitRef:      &build.PluginGitRef,
@@ -64,56 +64,36 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 	}
 }
 
-// transformBuildReport converts a map[string]any to a devbuild.BuildReport
-func transformBuildReport(report map[string]any) *devbuild.BuildReport {
+// transformBuildReport converts a schema.BuildReport to a devbuild.BuildReport
+func transformBuildReport(report *schema.BuildReport) *devbuild.BuildReport {
 	if report == nil {
 		return nil
 	}
 
 	buildReport := &devbuild.BuildReport{}
 
-	if gitSha, ok := report["gitSha"].(string); ok {
-		buildReport.GitSha = &gitSha
+	if report.GitHash != "" {
+		buildReport.GitHash = &report.GitHash
 	}
-	if pluginGitSha, ok := report["pluginGitSha"].(string); ok {
-		buildReport.PluginGitSha = &pluginGitSha
+	if report.PluginGitHash != "" {
+		buildReport.PluginGitHash = &report.PluginGitHash
 	}
-	if printedVersion, ok := report["printedVersion"].(string); ok {
-		buildReport.PrintedVersion = &printedVersion
+	if report.PrintedVersion != "" {
+		buildReport.PrintedVersion = &report.PrintedVersion
 	}
 
-	// Transform binaries
-	if binariesRaw, ok := report["binaries"].([]any); ok {
-		for _, binRaw := range binariesRaw {
-			if oci, ok := binRaw.(map[string]any); ok {
-				repo := getString(oci, "repo")
-				tag := getString(oci, "tag")
-				filesRaw, _ := oci["files"].([]any)
-				var files []string
-				for _, f := range filesRaw {
-					if s, ok := f.(string); ok {
-						files = append(files, s)
-					}
-				}
-				binArtifacts := ociArtifactToBinArtifacts(repo, tag, files)
-				buildReport.Binaries = append(buildReport.Binaries, binArtifacts...)
-			}
-		}
+	// Transform binaries (OciArtifact → BinArtifact)
+	for _, oci := range report.Binaries {
+		binArtifacts := ociArtifactToBinArtifacts(oci.Repo, oci.Tag, oci.Files)
+		buildReport.Binaries = append(buildReport.Binaries, binArtifacts...)
 	}
 
 	// Transform images
-	if imagesRaw, ok := report["images"].([]any); ok {
-		images := make([]*devbuild.ImageArtifact, 0, len(imagesRaw))
-		for _, imgRaw := range imagesRaw {
-			if img, ok := imgRaw.(map[string]any); ok {
-				image := &devbuild.ImageArtifact{
-					Platform: getString(img, "platform"),
-					URL:      getString(img, "url"),
-				}
-				images = append(images, image)
-			}
-		}
-		buildReport.Images = images
+	for _, img := range report.Images {
+		buildReport.Images = append(buildReport.Images, &devbuild.ImageArtifact{
+			Platform: img.Platform,
+			URL:      img.URL,
+		})
 	}
 
 	return buildReport
@@ -206,7 +186,7 @@ func formatTime(t time.Time) *string {
 	if t.IsZero() {
 		return nil
 	}
-	formatted := t.UTC().Format(time.DateTime)
+	formatted := t.UTC().Format(time.RFC3339)
 	return &formatted
 }
 

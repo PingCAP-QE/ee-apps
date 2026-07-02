@@ -23,7 +23,7 @@ func BuildSyncImagePayload(artifactSyncImageBody string) (*artifact.ImageSyncReq
 	{
 		err = json.Unmarshal([]byte(artifactSyncImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"source\": \"Voluptatum maiores a aut.\",\n      \"target\": \"Corrupti et voluptatem voluptas provident.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"source\": \"Odio recusandae praesentium.\",\n      \"target\": \"Corrupti ullam impedit.\"\n   }'")
 		}
 	}
 	v := &artifact.ImageSyncRequest{

@@ -259,10 +259,10 @@ var DevBuildMeta = Type("DevBuildMeta", func() {
 		Format(FormatEmail)
 	})
 	Attribute("createdAt", String, func() {
-		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+		Format(FormatDateTime)
 	})
 	Attribute("updatedAt", String, func() {
-		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+		Format(FormatDateTime)
 	})
 	Required("createdAt", "createdBy", "updatedAt")
 })
@@ -281,7 +281,7 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 		Description("[Deprecated] use buildEnv for custom features")
 	})
 	Attribute("gitRef", String)
-	Attribute("gitSha", String)
+	Attribute("gitHash", String)
 	Attribute("githubRepo", String)
 	Attribute("isHotfix", Boolean)
 	Attribute("isPushGCR", Boolean)
@@ -319,10 +319,10 @@ var DevBuildStatus = Type("DevBuildStatus", func() {
 	Attribute("errMsg", String)
 	Attribute("pipelineBuildID", Int)
 	Attribute("pipelineStartAt", String, func() {
-		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+		Format(FormatDateTime)
 	})
 	Attribute("pipelineEndAt", String, func() {
-		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+		Format(FormatDateTime)
 	})
 	Attribute("pipelineViewURL", String, func() { Format(FormatURI) })
 	Attribute("pipelineViewURLs", ArrayOf(String, func() { Format(FormatURI) }))
@@ -334,9 +334,9 @@ var DevBuildStatus = Type("DevBuildStatus", func() {
 
 var BuildReport = Type("BuildReport", func() {
 	Attribute("binaries", ArrayOf(BinArtifact))
-	Attribute("gitSha", String, func() { MaxLength(40) })
+	Attribute("gitHash", String, func() { MaxLength(40) })
 	Attribute("images", ArrayOf(ImageArtifact))
-	Attribute("pluginGitSha", String, func() { MaxLength(40) })
+	Attribute("pluginGitHash", String, func() { MaxLength(40) })
 	Attribute("printedVersion", String)
 })
 
@@ -391,7 +391,7 @@ var OciArtifact = Type("OciArtifact", func() {
 })
 
 var BuildStatus = Type("BuildStatus", String, func() {
-	Enum("pending", "processing", "aborted", "success", "failure", "error")
+	Enum("PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR")
 })
 
 var HTTPError = Type("HTTPError", func() {

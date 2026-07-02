@@ -13,11 +13,11 @@ const (
 	Label = "dev_build"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
-	// FieldCreatedBy holds the string denoting the created_by field in the database.
+	// FieldCreatedBy holds the string denoting the createdby field in the database.
 	FieldCreatedBy = "created_by"
-	// FieldCreatedAt holds the string denoting the created_at field in the database.
+	// FieldCreatedAt holds the string denoting the createdat field in the database.
 	FieldCreatedAt = "created_at"
-	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
+	// FieldUpdatedAt holds the string denoting the updatedat field in the database.
 	FieldUpdatedAt = "updated_at"
 	// FieldProduct holds the string denoting the product field in the database.
 	FieldProduct = "product"
@@ -25,47 +25,47 @@ const (
 	FieldEdition = "edition"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
-	// FieldGithubRepo holds the string denoting the github_repo field in the database.
+	// FieldGithubRepo holds the string denoting the githubrepo field in the database.
 	FieldGithubRepo = "github_repo"
-	// FieldGitRef holds the string denoting the git_ref field in the database.
+	// FieldGitRef holds the string denoting the gitref field in the database.
 	FieldGitRef = "git_ref"
-	// FieldGitSha holds the string denoting the git_sha field in the database.
-	FieldGitSha = "git_sha"
-	// FieldPluginGitRef holds the string denoting the plugin_git_ref field in the database.
+	// FieldGitHash holds the string denoting the githash field in the database.
+	FieldGitHash = "git_hash"
+	// FieldPluginGitRef holds the string denoting the plugingitref field in the database.
 	FieldPluginGitRef = "plugin_git_ref"
-	// FieldIsHotfix holds the string denoting the is_hotfix field in the database.
+	// FieldIsHotfix holds the string denoting the ishotfix field in the database.
 	FieldIsHotfix = "is_hotfix"
-	// FieldIsPushGcr holds the string denoting the is_push_gcr field in the database.
-	FieldIsPushGcr = "is_push_gcr"
-	// FieldTargetImg holds the string denoting the target_img field in the database.
+	// FieldIsPushGCR holds the string denoting the ispushgcr field in the database.
+	FieldIsPushGCR = "is_push_gcr"
+	// FieldTargetImg holds the string denoting the targetimg field in the database.
 	FieldTargetImg = "target_img"
-	// FieldPipelineEngine holds the string denoting the pipeline_engine field in the database.
+	// FieldPipelineEngine holds the string denoting the pipelineengine field in the database.
 	FieldPipelineEngine = "pipeline_engine"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
-	// FieldBuilderImg holds the string denoting the builder_img field in the database.
+	// FieldBuilderImg holds the string denoting the builderimg field in the database.
 	FieldBuilderImg = "builder_img"
-	// FieldBuildEnv holds the string denoting the build_env field in the database.
+	// FieldBuildEnv holds the string denoting the buildenv field in the database.
 	FieldBuildEnv = "build_env"
 	// FieldFeatures holds the string denoting the features field in the database.
 	FieldFeatures = "features"
-	// FieldProductBaseImg holds the string denoting the product_base_img field in the database.
+	// FieldProductBaseImg holds the string denoting the productbaseimg field in the database.
 	FieldProductBaseImg = "product_base_img"
-	// FieldProductDockerfile holds the string denoting the product_dockerfile field in the database.
+	// FieldProductDockerfile holds the string denoting the productdockerfile field in the database.
 	FieldProductDockerfile = "product_dockerfile"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldErrMsg holds the string denoting the err_msg field in the database.
+	// FieldErrMsg holds the string denoting the errmsg field in the database.
 	FieldErrMsg = "err_msg"
-	// FieldPipelineBuildID holds the string denoting the pipeline_build_id field in the database.
+	// FieldPipelineBuildID holds the string denoting the pipelinebuildid field in the database.
 	FieldPipelineBuildID = "pipeline_build_id"
-	// FieldPipelineStartAt holds the string denoting the pipeline_start_at field in the database.
+	// FieldPipelineStartAt holds the string denoting the pipelinestartat field in the database.
 	FieldPipelineStartAt = "pipeline_start_at"
-	// FieldPipelineEndAt holds the string denoting the pipeline_end_at field in the database.
+	// FieldPipelineEndAt holds the string denoting the pipelineendat field in the database.
 	FieldPipelineEndAt = "pipeline_end_at"
-	// FieldBuildReport holds the string denoting the build_report field in the database.
+	// FieldBuildReport holds the string denoting the buildreport field in the database.
 	FieldBuildReport = "build_report"
-	// FieldTektonStatus holds the string denoting the tekton_status field in the database.
+	// FieldTektonStatus holds the string denoting the tektonstatus field in the database.
 	FieldTektonStatus = "tekton_status"
 	// Table holds the table name of the devbuild in the database.
 	Table = "dev_builds_v2"
@@ -82,10 +82,10 @@ var Columns = []string{
 	FieldVersion,
 	FieldGithubRepo,
 	FieldGitRef,
-	FieldGitSha,
+	FieldGitHash,
 	FieldPluginGitRef,
 	FieldIsHotfix,
-	FieldIsPushGcr,
+	FieldIsPushGCR,
 	FieldTargetImg,
 	FieldPipelineEngine,
 	FieldPlatform,
@@ -114,13 +114,13 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	// CreatedByValidator is a validator for the "createdBy" field. It is called by the builders before save.
 	CreatedByValidator func(string) error
-	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
+	// DefaultCreatedAt holds the default value on creation for the "createdAt" field.
 	DefaultCreatedAt func() time.Time
-	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
+	// DefaultUpdatedAt holds the default value on creation for the "updatedAt" field.
 	DefaultUpdatedAt func() time.Time
-	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
+	// UpdateDefaultUpdatedAt holds the default value on update for the "updatedAt" field.
 	UpdateDefaultUpdatedAt func() time.Time
 	// ProductValidator is a validator for the "product" field. It is called by the builders before save.
 	ProductValidator func(string) error
@@ -128,39 +128,39 @@ var (
 	EditionValidator func(string) error
 	// VersionValidator is a validator for the "version" field. It is called by the builders before save.
 	VersionValidator func(string) error
-	// GithubRepoValidator is a validator for the "github_repo" field. It is called by the builders before save.
+	// GithubRepoValidator is a validator for the "githubRepo" field. It is called by the builders before save.
 	GithubRepoValidator func(string) error
-	// GitRefValidator is a validator for the "git_ref" field. It is called by the builders before save.
+	// GitRefValidator is a validator for the "gitRef" field. It is called by the builders before save.
 	GitRefValidator func(string) error
-	// GitShaValidator is a validator for the "git_sha" field. It is called by the builders before save.
-	GitShaValidator func(string) error
-	// PluginGitRefValidator is a validator for the "plugin_git_ref" field. It is called by the builders before save.
+	// GitHashValidator is a validator for the "gitHash" field. It is called by the builders before save.
+	GitHashValidator func(string) error
+	// PluginGitRefValidator is a validator for the "pluginGitRef" field. It is called by the builders before save.
 	PluginGitRefValidator func(string) error
-	// DefaultIsHotfix holds the default value on creation for the "is_hotfix" field.
+	// DefaultIsHotfix holds the default value on creation for the "isHotfix" field.
 	DefaultIsHotfix bool
-	// TargetImgValidator is a validator for the "target_img" field. It is called by the builders before save.
+	// TargetImgValidator is a validator for the "targetImg" field. It is called by the builders before save.
 	TargetImgValidator func(string) error
-	// DefaultPipelineEngine holds the default value on creation for the "pipeline_engine" field.
+	// DefaultPipelineEngine holds the default value on creation for the "pipelineEngine" field.
 	DefaultPipelineEngine string
-	// PipelineEngineValidator is a validator for the "pipeline_engine" field. It is called by the builders before save.
+	// PipelineEngineValidator is a validator for the "pipelineEngine" field. It is called by the builders before save.
 	PipelineEngineValidator func(string) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
-	// BuilderImgValidator is a validator for the "builder_img" field. It is called by the builders before save.
+	// BuilderImgValidator is a validator for the "builderImg" field. It is called by the builders before save.
 	BuilderImgValidator func(string) error
-	// BuildEnvValidator is a validator for the "build_env" field. It is called by the builders before save.
+	// BuildEnvValidator is a validator for the "buildEnv" field. It is called by the builders before save.
 	BuildEnvValidator func(string) error
 	// FeaturesValidator is a validator for the "features" field. It is called by the builders before save.
 	FeaturesValidator func(string) error
-	// ProductBaseImgValidator is a validator for the "product_base_img" field. It is called by the builders before save.
+	// ProductBaseImgValidator is a validator for the "productBaseImg" field. It is called by the builders before save.
 	ProductBaseImgValidator func(string) error
-	// ProductDockerfileValidator is a validator for the "product_dockerfile" field. It is called by the builders before save.
+	// ProductDockerfileValidator is a validator for the "productDockerfile" field. It is called by the builders before save.
 	ProductDockerfileValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// ErrMsgValidator is a validator for the "err_msg" field. It is called by the builders before save.
+	// ErrMsgValidator is a validator for the "errMsg" field. It is called by the builders before save.
 	ErrMsgValidator func(string) error
 )
 
@@ -172,17 +172,17 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
 }
 
-// ByCreatedBy orders the results by the created_by field.
+// ByCreatedBy orders the results by the createdBy field.
 func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
 }
 
-// ByCreatedAt orders the results by the created_at field.
+// ByCreatedAt orders the results by the createdAt field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
 }
 
-// ByUpdatedAt orders the results by the updated_at field.
+// ByUpdatedAt orders the results by the updatedAt field.
 func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
@@ -202,42 +202,42 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVersion, opts...).ToFunc()
 }
 
-// ByGithubRepo orders the results by the github_repo field.
+// ByGithubRepo orders the results by the githubRepo field.
 func ByGithubRepo(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGithubRepo, opts...).ToFunc()
 }
 
-// ByGitRef orders the results by the git_ref field.
+// ByGitRef orders the results by the gitRef field.
 func ByGitRef(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGitRef, opts...).ToFunc()
 }
 
-// ByGitSha orders the results by the git_sha field.
-func ByGitSha(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGitSha, opts...).ToFunc()
+// ByGitHash orders the results by the gitHash field.
+func ByGitHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGitHash, opts...).ToFunc()
 }
 
-// ByPluginGitRef orders the results by the plugin_git_ref field.
+// ByPluginGitRef orders the results by the pluginGitRef field.
 func ByPluginGitRef(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPluginGitRef, opts...).ToFunc()
 }
 
-// ByIsHotfix orders the results by the is_hotfix field.
+// ByIsHotfix orders the results by the isHotfix field.
 func ByIsHotfix(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsHotfix, opts...).ToFunc()
 }
 
-// ByIsPushGcr orders the results by the is_push_gcr field.
-func ByIsPushGcr(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldIsPushGcr, opts...).ToFunc()
+// ByIsPushGCR orders the results by the isPushGCR field.
+func ByIsPushGCR(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsPushGCR, opts...).ToFunc()
 }
 
-// ByTargetImg orders the results by the target_img field.
+// ByTargetImg orders the results by the targetImg field.
 func ByTargetImg(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTargetImg, opts...).ToFunc()
 }
 
-// ByPipelineEngine orders the results by the pipeline_engine field.
+// ByPipelineEngine orders the results by the pipelineEngine field.
 func ByPipelineEngine(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPipelineEngine, opts...).ToFunc()
 }
@@ -247,12 +247,12 @@ func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
 }
 
-// ByBuilderImg orders the results by the builder_img field.
+// ByBuilderImg orders the results by the builderImg field.
 func ByBuilderImg(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBuilderImg, opts...).ToFunc()
 }
 
-// ByBuildEnv orders the results by the build_env field.
+// ByBuildEnv orders the results by the buildEnv field.
 func ByBuildEnv(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBuildEnv, opts...).ToFunc()
 }
@@ -262,12 +262,12 @@ func ByFeatures(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFeatures, opts...).ToFunc()
 }
 
-// ByProductBaseImg orders the results by the product_base_img field.
+// ByProductBaseImg orders the results by the productBaseImg field.
 func ByProductBaseImg(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProductBaseImg, opts...).ToFunc()
 }
 
-// ByProductDockerfile orders the results by the product_dockerfile field.
+// ByProductDockerfile orders the results by the productDockerfile field.
 func ByProductDockerfile(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProductDockerfile, opts...).ToFunc()
 }
@@ -277,22 +277,22 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
-// ByErrMsg orders the results by the err_msg field.
+// ByErrMsg orders the results by the errMsg field.
 func ByErrMsg(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldErrMsg, opts...).ToFunc()
 }
 
-// ByPipelineBuildID orders the results by the pipeline_build_id field.
+// ByPipelineBuildID orders the results by the pipelineBuildID field.
 func ByPipelineBuildID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPipelineBuildID, opts...).ToFunc()
 }
 
-// ByPipelineStartAt orders the results by the pipeline_start_at field.
+// ByPipelineStartAt orders the results by the pipelineStartAt field.
 func ByPipelineStartAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPipelineStartAt, opts...).ToFunc()
 }
 
-// ByPipelineEndAt orders the results by the pipeline_end_at field.
+// ByPipelineEndAt orders the results by the pipelineEndAt field.
 func ByPipelineEndAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPipelineEndAt, opts...).ToFunc()
 }

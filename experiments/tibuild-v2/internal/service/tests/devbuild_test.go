@@ -178,7 +178,7 @@ func TestDevBuildCRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Then update it
-		status := devbuild.BuildStatus("success")
+		status := devbuild.BuildStatus("SUCCESS")
 		updatePayload := &devbuild.UpdatePayload{
 			ID: created.ID,
 			Status: &devbuild.DevBuildStatus{
@@ -224,7 +224,7 @@ func TestTriggerBuild(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, build)
 		assert.True(t, receivedRequest, "Cloud event request should have been sent")
-		assert.Equal(t, devbuild.BuildStatus("pending"), build.Status.Status)
+		assert.Equal(t, devbuild.BuildStatus("PENDING"), build.Status.Status)
 		assert.Equal(t, engine, *build.Spec.PipelineEngine)
 	})
 
@@ -260,7 +260,7 @@ func TestTriggerBuild(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, build)
 		assert.True(t, receivedRequest, "Jenkins API request should have been sent")
-		assert.Equal(t, devbuild.BuildStatus("processing"), build.Status.Status)
+		assert.Equal(t, devbuild.BuildStatus("PROCESSING"), build.Status.Status)
 		assert.Equal(t, engine, *build.Spec.PipelineEngine)
 	})
 
@@ -302,7 +302,7 @@ func TestTriggerBuild(t *testing.T) {
 
 		// Assert the engine and status are as expected (tekton/pending)
 		assert.Equal(t, "tekton", *build.Spec.PipelineEngine)
-		assert.Equal(t, devbuild.BuildStatus("pending"), build.Status.Status)
+		assert.Equal(t, devbuild.BuildStatus("PENDING"), build.Status.Status)
 
 		// Based on the symbol list, it appears tekton is the default engine
 		// Only one of these should be true based on the default engine implementation

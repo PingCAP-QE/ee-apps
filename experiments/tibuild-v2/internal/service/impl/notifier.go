@@ -114,40 +114,29 @@ func buildNotificationCard(build *ent.DevBuild) (map[string]any, error) {
 	}
 
 	// Extract build report data on success
-	if build.Status == "success" && build.BuildReport != nil {
-		if gitSha, ok := build.BuildReport["gitSha"].(string); ok {
-			info.GitSha = gitSha
+	if build.Status == "SUCCESS" {
+		if build.BuildReport.GitHash != "" {
+			info.GitSha = build.BuildReport.GitHash
 		}
 
 		// Extract images (platform + URL)
-		if imagesRaw, ok := build.BuildReport["images"].([]any); ok {
-			images := make([]ImageInfo, 0, len(imagesRaw))
-			for _, imgRaw := range imagesRaw {
-				if img, ok := imgRaw.(map[string]any); ok {
-					images = append(images, ImageInfo{
-						Platform: getString(img, "platform"),
-						URL:      getString(img, "url"),
-					})
-				}
+		if len(build.BuildReport.Images) > 0 {
+			images := make([]ImageInfo, 0, len(build.BuildReport.Images))
+			for _, img := range build.BuildReport.Images {
+				images = append(images, ImageInfo{
+					Platform: img.Platform,
+					URL:      img.URL,
+				})
 			}
 			info.Images = images
 		}
 
 		// Extract binaries (OCI references: repo:tag/file)
-		if binariesRaw, ok := build.BuildReport["binaries"].([]any); ok {
-			for _, binRaw := range binariesRaw {
-				if oci, ok := binRaw.(map[string]any); ok {
-					repo := getString(oci, "repo")
-					tag := getString(oci, "tag")
-					filesRaw, _ := oci["files"].([]any)
-					for _, f := range filesRaw {
-						if s, ok := f.(string); ok {
-							info.Binaries = append(info.Binaries, BinaryInfo{
-								OciReference: repo + ":" + tag + "/" + s,
-							})
-						}
-					}
-				}
+		for _, oci := range build.BuildReport.Binaries {
+			for _, f := range oci.Files {
+				info.Binaries = append(info.Binaries, BinaryInfo{
+					OciReference: oci.Repo + ":" + oci.Tag + "/" + f,
+				})
 			}
 		}
 	}
@@ -194,7 +183,7 @@ type PipelineRunInfo struct {
 // isTerminalStatus checks if the build status is terminal.
 func isTerminalStatus(status string) bool {
 	switch status {
-	case "success", "failure", "error", "aborted":
+	case "SUCCESS", "FAILURE", "ERROR", "ABORTED":
 		return true
 	default:
 		return false
@@ -204,13 +193,13 @@ func isTerminalStatus(status string) bool {
 // StatusColor returns the Lark card header template color for a status.
 func StatusColor(status string) string {
 	switch status {
-	case "success":
+	case "SUCCESS":
 		return "green"
-	case "failure", "error":
+	case "FAILURE", "ERROR":
 		return "red"
-	case "aborted":
+	case "ABORTED":
 		return "orange"
-	case "running", "processing":
+	case "PROCESSING", "RUNNING":
 		return "blue"
 	default:
 		return "grey"
@@ -220,13 +209,13 @@ func StatusColor(status string) string {
 // StatusEmoji returns an emoji for the build status.
 func StatusEmoji(status string) string {
 	switch status {
-	case "success":
+	case "SUCCESS":
 		return "✅"
-	case "failure", "error":
+	case "FAILURE", "ERROR":
 		return "❌"
-	case "aborted":
+	case "ABORTED":
 		return "🚫"
-	case "running", "processing":
+	case "PROCESSING", "RUNNING":
 		return "🔄"
 	default:
 		return "⏳"

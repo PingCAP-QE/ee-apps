@@ -54,17 +54,17 @@ func IDLTE(id int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldID, id))
 }
 
-// CreatedBy applies equality check predicate on the "created_by" field. It's identical to CreatedByEQ.
+// CreatedBy applies equality check predicate on the "createdBy" field. It's identical to CreatedByEQ.
 func CreatedBy(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldCreatedBy, v))
 }
 
-// CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
+// CreatedAt applies equality check predicate on the "createdAt" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldCreatedAt, v))
 }
 
-// UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
+// UpdatedAt applies equality check predicate on the "updatedAt" field. It's identical to UpdatedAtEQ.
 func UpdatedAt(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldUpdatedAt, v))
 }
@@ -84,42 +84,42 @@ func Version(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldVersion, v))
 }
 
-// GithubRepo applies equality check predicate on the "github_repo" field. It's identical to GithubRepoEQ.
+// GithubRepo applies equality check predicate on the "githubRepo" field. It's identical to GithubRepoEQ.
 func GithubRepo(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldGithubRepo, v))
 }
 
-// GitRef applies equality check predicate on the "git_ref" field. It's identical to GitRefEQ.
+// GitRef applies equality check predicate on the "gitRef" field. It's identical to GitRefEQ.
 func GitRef(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldGitRef, v))
 }
 
-// GitSha applies equality check predicate on the "git_sha" field. It's identical to GitShaEQ.
-func GitSha(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldGitSha, v))
+// GitHash applies equality check predicate on the "gitHash" field. It's identical to GitHashEQ.
+func GitHash(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldGitHash, v))
 }
 
-// PluginGitRef applies equality check predicate on the "plugin_git_ref" field. It's identical to PluginGitRefEQ.
+// PluginGitRef applies equality check predicate on the "pluginGitRef" field. It's identical to PluginGitRefEQ.
 func PluginGitRef(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPluginGitRef, v))
 }
 
-// IsHotfix applies equality check predicate on the "is_hotfix" field. It's identical to IsHotfixEQ.
+// IsHotfix applies equality check predicate on the "isHotfix" field. It's identical to IsHotfixEQ.
 func IsHotfix(v bool) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldIsHotfix, v))
 }
 
-// IsPushGcr applies equality check predicate on the "is_push_gcr" field. It's identical to IsPushGcrEQ.
-func IsPushGcr(v bool) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldIsPushGcr, v))
+// IsPushGCR applies equality check predicate on the "isPushGCR" field. It's identical to IsPushGCREQ.
+func IsPushGCR(v bool) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldIsPushGCR, v))
 }
 
-// TargetImg applies equality check predicate on the "target_img" field. It's identical to TargetImgEQ.
+// TargetImg applies equality check predicate on the "targetImg" field. It's identical to TargetImgEQ.
 func TargetImg(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldTargetImg, v))
 }
 
-// PipelineEngine applies equality check predicate on the "pipeline_engine" field. It's identical to PipelineEngineEQ.
+// PipelineEngine applies equality check predicate on the "pipelineEngine" field. It's identical to PipelineEngineEQ.
 func PipelineEngine(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineEngine, v))
 }
@@ -129,12 +129,12 @@ func Platform(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPlatform, v))
 }
 
-// BuilderImg applies equality check predicate on the "builder_img" field. It's identical to BuilderImgEQ.
+// BuilderImg applies equality check predicate on the "builderImg" field. It's identical to BuilderImgEQ.
 func BuilderImg(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldBuilderImg, v))
 }
 
-// BuildEnv applies equality check predicate on the "build_env" field. It's identical to BuildEnvEQ.
+// BuildEnv applies equality check predicate on the "buildEnv" field. It's identical to BuildEnvEQ.
 func BuildEnv(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldBuildEnv, v))
 }
@@ -144,12 +144,12 @@ func Features(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldFeatures, v))
 }
 
-// ProductBaseImg applies equality check predicate on the "product_base_img" field. It's identical to ProductBaseImgEQ.
+// ProductBaseImg applies equality check predicate on the "productBaseImg" field. It's identical to ProductBaseImgEQ.
 func ProductBaseImg(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldProductBaseImg, v))
 }
 
-// ProductDockerfile applies equality check predicate on the "product_dockerfile" field. It's identical to ProductDockerfileEQ.
+// ProductDockerfile applies equality check predicate on the "productDockerfile" field. It's identical to ProductDockerfileEQ.
 func ProductDockerfile(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldProductDockerfile, v))
 }
@@ -159,177 +159,177 @@ func Status(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldStatus, v))
 }
 
-// ErrMsg applies equality check predicate on the "err_msg" field. It's identical to ErrMsgEQ.
+// ErrMsg applies equality check predicate on the "errMsg" field. It's identical to ErrMsgEQ.
 func ErrMsg(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldErrMsg, v))
 }
 
-// PipelineBuildID applies equality check predicate on the "pipeline_build_id" field. It's identical to PipelineBuildIDEQ.
+// PipelineBuildID applies equality check predicate on the "pipelineBuildID" field. It's identical to PipelineBuildIDEQ.
 func PipelineBuildID(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineBuildID, v))
 }
 
-// PipelineStartAt applies equality check predicate on the "pipeline_start_at" field. It's identical to PipelineStartAtEQ.
+// PipelineStartAt applies equality check predicate on the "pipelineStartAt" field. It's identical to PipelineStartAtEQ.
 func PipelineStartAt(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineStartAt, v))
 }
 
-// PipelineEndAt applies equality check predicate on the "pipeline_end_at" field. It's identical to PipelineEndAtEQ.
+// PipelineEndAt applies equality check predicate on the "pipelineEndAt" field. It's identical to PipelineEndAtEQ.
 func PipelineEndAt(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineEndAt, v))
 }
 
-// CreatedByEQ applies the EQ predicate on the "created_by" field.
+// CreatedByEQ applies the EQ predicate on the "createdBy" field.
 func CreatedByEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldCreatedBy, v))
 }
 
-// CreatedByNEQ applies the NEQ predicate on the "created_by" field.
+// CreatedByNEQ applies the NEQ predicate on the "createdBy" field.
 func CreatedByNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldCreatedBy, v))
 }
 
-// CreatedByIn applies the In predicate on the "created_by" field.
+// CreatedByIn applies the In predicate on the "createdBy" field.
 func CreatedByIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldCreatedBy, vs...))
 }
 
-// CreatedByNotIn applies the NotIn predicate on the "created_by" field.
+// CreatedByNotIn applies the NotIn predicate on the "createdBy" field.
 func CreatedByNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldCreatedBy, vs...))
 }
 
-// CreatedByGT applies the GT predicate on the "created_by" field.
+// CreatedByGT applies the GT predicate on the "createdBy" field.
 func CreatedByGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldCreatedBy, v))
 }
 
-// CreatedByGTE applies the GTE predicate on the "created_by" field.
+// CreatedByGTE applies the GTE predicate on the "createdBy" field.
 func CreatedByGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldCreatedBy, v))
 }
 
-// CreatedByLT applies the LT predicate on the "created_by" field.
+// CreatedByLT applies the LT predicate on the "createdBy" field.
 func CreatedByLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldCreatedBy, v))
 }
 
-// CreatedByLTE applies the LTE predicate on the "created_by" field.
+// CreatedByLTE applies the LTE predicate on the "createdBy" field.
 func CreatedByLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldCreatedBy, v))
 }
 
-// CreatedByContains applies the Contains predicate on the "created_by" field.
+// CreatedByContains applies the Contains predicate on the "createdBy" field.
 func CreatedByContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldCreatedBy, v))
 }
 
-// CreatedByHasPrefix applies the HasPrefix predicate on the "created_by" field.
+// CreatedByHasPrefix applies the HasPrefix predicate on the "createdBy" field.
 func CreatedByHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldCreatedBy, v))
 }
 
-// CreatedByHasSuffix applies the HasSuffix predicate on the "created_by" field.
+// CreatedByHasSuffix applies the HasSuffix predicate on the "createdBy" field.
 func CreatedByHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldCreatedBy, v))
 }
 
-// CreatedByIsNil applies the IsNil predicate on the "created_by" field.
+// CreatedByIsNil applies the IsNil predicate on the "createdBy" field.
 func CreatedByIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldCreatedBy))
 }
 
-// CreatedByNotNil applies the NotNil predicate on the "created_by" field.
+// CreatedByNotNil applies the NotNil predicate on the "createdBy" field.
 func CreatedByNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldCreatedBy))
 }
 
-// CreatedByEqualFold applies the EqualFold predicate on the "created_by" field.
+// CreatedByEqualFold applies the EqualFold predicate on the "createdBy" field.
 func CreatedByEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldCreatedBy, v))
 }
 
-// CreatedByContainsFold applies the ContainsFold predicate on the "created_by" field.
+// CreatedByContainsFold applies the ContainsFold predicate on the "createdBy" field.
 func CreatedByContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldCreatedBy, v))
 }
 
-// CreatedAtEQ applies the EQ predicate on the "created_at" field.
+// CreatedAtEQ applies the EQ predicate on the "createdAt" field.
 func CreatedAtEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldCreatedAt, v))
 }
 
-// CreatedAtNEQ applies the NEQ predicate on the "created_at" field.
+// CreatedAtNEQ applies the NEQ predicate on the "createdAt" field.
 func CreatedAtNEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldCreatedAt, v))
 }
 
-// CreatedAtIn applies the In predicate on the "created_at" field.
+// CreatedAtIn applies the In predicate on the "createdAt" field.
 func CreatedAtIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldCreatedAt, vs...))
 }
 
-// CreatedAtNotIn applies the NotIn predicate on the "created_at" field.
+// CreatedAtNotIn applies the NotIn predicate on the "createdAt" field.
 func CreatedAtNotIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldCreatedAt, vs...))
 }
 
-// CreatedAtGT applies the GT predicate on the "created_at" field.
+// CreatedAtGT applies the GT predicate on the "createdAt" field.
 func CreatedAtGT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldCreatedAt, v))
 }
 
-// CreatedAtGTE applies the GTE predicate on the "created_at" field.
+// CreatedAtGTE applies the GTE predicate on the "createdAt" field.
 func CreatedAtGTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldCreatedAt, v))
 }
 
-// CreatedAtLT applies the LT predicate on the "created_at" field.
+// CreatedAtLT applies the LT predicate on the "createdAt" field.
 func CreatedAtLT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldCreatedAt, v))
 }
 
-// CreatedAtLTE applies the LTE predicate on the "created_at" field.
+// CreatedAtLTE applies the LTE predicate on the "createdAt" field.
 func CreatedAtLTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldCreatedAt, v))
 }
 
-// UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
+// UpdatedAtEQ applies the EQ predicate on the "updatedAt" field.
 func UpdatedAtEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldUpdatedAt, v))
 }
 
-// UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
+// UpdatedAtNEQ applies the NEQ predicate on the "updatedAt" field.
 func UpdatedAtNEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldUpdatedAt, v))
 }
 
-// UpdatedAtIn applies the In predicate on the "updated_at" field.
+// UpdatedAtIn applies the In predicate on the "updatedAt" field.
 func UpdatedAtIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldUpdatedAt, vs...))
 }
 
-// UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
+// UpdatedAtNotIn applies the NotIn predicate on the "updatedAt" field.
 func UpdatedAtNotIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldUpdatedAt, vs...))
 }
 
-// UpdatedAtGT applies the GT predicate on the "updated_at" field.
+// UpdatedAtGT applies the GT predicate on the "updatedAt" field.
 func UpdatedAtGT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldUpdatedAt, v))
 }
 
-// UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
+// UpdatedAtGTE applies the GTE predicate on the "updatedAt" field.
 func UpdatedAtGTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldUpdatedAt, v))
 }
 
-// UpdatedAtLT applies the LT predicate on the "updated_at" field.
+// UpdatedAtLT applies the LT predicate on the "updatedAt" field.
 func UpdatedAtLT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldUpdatedAt, v))
 }
 
-// UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
+// UpdatedAtLTE applies the LTE predicate on the "updatedAt" field.
 func UpdatedAtLTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldUpdatedAt, v))
 }
@@ -559,482 +559,482 @@ func VersionContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldVersion, v))
 }
 
-// GithubRepoEQ applies the EQ predicate on the "github_repo" field.
+// GithubRepoEQ applies the EQ predicate on the "githubRepo" field.
 func GithubRepoEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldGithubRepo, v))
 }
 
-// GithubRepoNEQ applies the NEQ predicate on the "github_repo" field.
+// GithubRepoNEQ applies the NEQ predicate on the "githubRepo" field.
 func GithubRepoNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldGithubRepo, v))
 }
 
-// GithubRepoIn applies the In predicate on the "github_repo" field.
+// GithubRepoIn applies the In predicate on the "githubRepo" field.
 func GithubRepoIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldGithubRepo, vs...))
 }
 
-// GithubRepoNotIn applies the NotIn predicate on the "github_repo" field.
+// GithubRepoNotIn applies the NotIn predicate on the "githubRepo" field.
 func GithubRepoNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldGithubRepo, vs...))
 }
 
-// GithubRepoGT applies the GT predicate on the "github_repo" field.
+// GithubRepoGT applies the GT predicate on the "githubRepo" field.
 func GithubRepoGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldGithubRepo, v))
 }
 
-// GithubRepoGTE applies the GTE predicate on the "github_repo" field.
+// GithubRepoGTE applies the GTE predicate on the "githubRepo" field.
 func GithubRepoGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldGithubRepo, v))
 }
 
-// GithubRepoLT applies the LT predicate on the "github_repo" field.
+// GithubRepoLT applies the LT predicate on the "githubRepo" field.
 func GithubRepoLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldGithubRepo, v))
 }
 
-// GithubRepoLTE applies the LTE predicate on the "github_repo" field.
+// GithubRepoLTE applies the LTE predicate on the "githubRepo" field.
 func GithubRepoLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldGithubRepo, v))
 }
 
-// GithubRepoContains applies the Contains predicate on the "github_repo" field.
+// GithubRepoContains applies the Contains predicate on the "githubRepo" field.
 func GithubRepoContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldGithubRepo, v))
 }
 
-// GithubRepoHasPrefix applies the HasPrefix predicate on the "github_repo" field.
+// GithubRepoHasPrefix applies the HasPrefix predicate on the "githubRepo" field.
 func GithubRepoHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldGithubRepo, v))
 }
 
-// GithubRepoHasSuffix applies the HasSuffix predicate on the "github_repo" field.
+// GithubRepoHasSuffix applies the HasSuffix predicate on the "githubRepo" field.
 func GithubRepoHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldGithubRepo, v))
 }
 
-// GithubRepoIsNil applies the IsNil predicate on the "github_repo" field.
+// GithubRepoIsNil applies the IsNil predicate on the "githubRepo" field.
 func GithubRepoIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldGithubRepo))
 }
 
-// GithubRepoNotNil applies the NotNil predicate on the "github_repo" field.
+// GithubRepoNotNil applies the NotNil predicate on the "githubRepo" field.
 func GithubRepoNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldGithubRepo))
 }
 
-// GithubRepoEqualFold applies the EqualFold predicate on the "github_repo" field.
+// GithubRepoEqualFold applies the EqualFold predicate on the "githubRepo" field.
 func GithubRepoEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldGithubRepo, v))
 }
 
-// GithubRepoContainsFold applies the ContainsFold predicate on the "github_repo" field.
+// GithubRepoContainsFold applies the ContainsFold predicate on the "githubRepo" field.
 func GithubRepoContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldGithubRepo, v))
 }
 
-// GitRefEQ applies the EQ predicate on the "git_ref" field.
+// GitRefEQ applies the EQ predicate on the "gitRef" field.
 func GitRefEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldGitRef, v))
 }
 
-// GitRefNEQ applies the NEQ predicate on the "git_ref" field.
+// GitRefNEQ applies the NEQ predicate on the "gitRef" field.
 func GitRefNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldGitRef, v))
 }
 
-// GitRefIn applies the In predicate on the "git_ref" field.
+// GitRefIn applies the In predicate on the "gitRef" field.
 func GitRefIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldGitRef, vs...))
 }
 
-// GitRefNotIn applies the NotIn predicate on the "git_ref" field.
+// GitRefNotIn applies the NotIn predicate on the "gitRef" field.
 func GitRefNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldGitRef, vs...))
 }
 
-// GitRefGT applies the GT predicate on the "git_ref" field.
+// GitRefGT applies the GT predicate on the "gitRef" field.
 func GitRefGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldGitRef, v))
 }
 
-// GitRefGTE applies the GTE predicate on the "git_ref" field.
+// GitRefGTE applies the GTE predicate on the "gitRef" field.
 func GitRefGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldGitRef, v))
 }
 
-// GitRefLT applies the LT predicate on the "git_ref" field.
+// GitRefLT applies the LT predicate on the "gitRef" field.
 func GitRefLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldGitRef, v))
 }
 
-// GitRefLTE applies the LTE predicate on the "git_ref" field.
+// GitRefLTE applies the LTE predicate on the "gitRef" field.
 func GitRefLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldGitRef, v))
 }
 
-// GitRefContains applies the Contains predicate on the "git_ref" field.
+// GitRefContains applies the Contains predicate on the "gitRef" field.
 func GitRefContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldGitRef, v))
 }
 
-// GitRefHasPrefix applies the HasPrefix predicate on the "git_ref" field.
+// GitRefHasPrefix applies the HasPrefix predicate on the "gitRef" field.
 func GitRefHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldGitRef, v))
 }
 
-// GitRefHasSuffix applies the HasSuffix predicate on the "git_ref" field.
+// GitRefHasSuffix applies the HasSuffix predicate on the "gitRef" field.
 func GitRefHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldGitRef, v))
 }
 
-// GitRefIsNil applies the IsNil predicate on the "git_ref" field.
+// GitRefIsNil applies the IsNil predicate on the "gitRef" field.
 func GitRefIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldGitRef))
 }
 
-// GitRefNotNil applies the NotNil predicate on the "git_ref" field.
+// GitRefNotNil applies the NotNil predicate on the "gitRef" field.
 func GitRefNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldGitRef))
 }
 
-// GitRefEqualFold applies the EqualFold predicate on the "git_ref" field.
+// GitRefEqualFold applies the EqualFold predicate on the "gitRef" field.
 func GitRefEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldGitRef, v))
 }
 
-// GitRefContainsFold applies the ContainsFold predicate on the "git_ref" field.
+// GitRefContainsFold applies the ContainsFold predicate on the "gitRef" field.
 func GitRefContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldGitRef, v))
 }
 
-// GitShaEQ applies the EQ predicate on the "git_sha" field.
-func GitShaEQ(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldGitSha, v))
+// GitHashEQ applies the EQ predicate on the "gitHash" field.
+func GitHashEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldGitHash, v))
 }
 
-// GitShaNEQ applies the NEQ predicate on the "git_sha" field.
-func GitShaNEQ(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNEQ(FieldGitSha, v))
+// GitHashNEQ applies the NEQ predicate on the "gitHash" field.
+func GitHashNEQ(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNEQ(FieldGitHash, v))
 }
 
-// GitShaIn applies the In predicate on the "git_sha" field.
-func GitShaIn(vs ...string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldIn(FieldGitSha, vs...))
+// GitHashIn applies the In predicate on the "gitHash" field.
+func GitHashIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIn(FieldGitHash, vs...))
 }
 
-// GitShaNotIn applies the NotIn predicate on the "git_sha" field.
-func GitShaNotIn(vs ...string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNotIn(FieldGitSha, vs...))
+// GitHashNotIn applies the NotIn predicate on the "gitHash" field.
+func GitHashNotIn(vs ...string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotIn(FieldGitHash, vs...))
 }
 
-// GitShaGT applies the GT predicate on the "git_sha" field.
-func GitShaGT(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldGT(FieldGitSha, v))
+// GitHashGT applies the GT predicate on the "gitHash" field.
+func GitHashGT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGT(FieldGitHash, v))
 }
 
-// GitShaGTE applies the GTE predicate on the "git_sha" field.
-func GitShaGTE(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldGTE(FieldGitSha, v))
+// GitHashGTE applies the GTE predicate on the "gitHash" field.
+func GitHashGTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldGTE(FieldGitHash, v))
 }
 
-// GitShaLT applies the LT predicate on the "git_sha" field.
-func GitShaLT(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldLT(FieldGitSha, v))
+// GitHashLT applies the LT predicate on the "gitHash" field.
+func GitHashLT(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLT(FieldGitHash, v))
 }
 
-// GitShaLTE applies the LTE predicate on the "git_sha" field.
-func GitShaLTE(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldLTE(FieldGitSha, v))
+// GitHashLTE applies the LTE predicate on the "gitHash" field.
+func GitHashLTE(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldLTE(FieldGitHash, v))
 }
 
-// GitShaContains applies the Contains predicate on the "git_sha" field.
-func GitShaContains(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldContains(FieldGitSha, v))
+// GitHashContains applies the Contains predicate on the "gitHash" field.
+func GitHashContains(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContains(FieldGitHash, v))
 }
 
-// GitShaHasPrefix applies the HasPrefix predicate on the "git_sha" field.
-func GitShaHasPrefix(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldHasPrefix(FieldGitSha, v))
+// GitHashHasPrefix applies the HasPrefix predicate on the "gitHash" field.
+func GitHashHasPrefix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasPrefix(FieldGitHash, v))
 }
 
-// GitShaHasSuffix applies the HasSuffix predicate on the "git_sha" field.
-func GitShaHasSuffix(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldHasSuffix(FieldGitSha, v))
+// GitHashHasSuffix applies the HasSuffix predicate on the "gitHash" field.
+func GitHashHasSuffix(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldHasSuffix(FieldGitHash, v))
 }
 
-// GitShaIsNil applies the IsNil predicate on the "git_sha" field.
-func GitShaIsNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldIsNull(FieldGitSha))
+// GitHashIsNil applies the IsNil predicate on the "gitHash" field.
+func GitHashIsNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIsNull(FieldGitHash))
 }
 
-// GitShaNotNil applies the NotNil predicate on the "git_sha" field.
-func GitShaNotNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNotNull(FieldGitSha))
+// GitHashNotNil applies the NotNil predicate on the "gitHash" field.
+func GitHashNotNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotNull(FieldGitHash))
 }
 
-// GitShaEqualFold applies the EqualFold predicate on the "git_sha" field.
-func GitShaEqualFold(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEqualFold(FieldGitSha, v))
+// GitHashEqualFold applies the EqualFold predicate on the "gitHash" field.
+func GitHashEqualFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEqualFold(FieldGitHash, v))
 }
 
-// GitShaContainsFold applies the ContainsFold predicate on the "git_sha" field.
-func GitShaContainsFold(v string) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldContainsFold(FieldGitSha, v))
+// GitHashContainsFold applies the ContainsFold predicate on the "gitHash" field.
+func GitHashContainsFold(v string) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldContainsFold(FieldGitHash, v))
 }
 
-// PluginGitRefEQ applies the EQ predicate on the "plugin_git_ref" field.
+// PluginGitRefEQ applies the EQ predicate on the "pluginGitRef" field.
 func PluginGitRefEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPluginGitRef, v))
 }
 
-// PluginGitRefNEQ applies the NEQ predicate on the "plugin_git_ref" field.
+// PluginGitRefNEQ applies the NEQ predicate on the "pluginGitRef" field.
 func PluginGitRefNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPluginGitRef, v))
 }
 
-// PluginGitRefIn applies the In predicate on the "plugin_git_ref" field.
+// PluginGitRefIn applies the In predicate on the "pluginGitRef" field.
 func PluginGitRefIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPluginGitRef, vs...))
 }
 
-// PluginGitRefNotIn applies the NotIn predicate on the "plugin_git_ref" field.
+// PluginGitRefNotIn applies the NotIn predicate on the "pluginGitRef" field.
 func PluginGitRefNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPluginGitRef, vs...))
 }
 
-// PluginGitRefGT applies the GT predicate on the "plugin_git_ref" field.
+// PluginGitRefGT applies the GT predicate on the "pluginGitRef" field.
 func PluginGitRefGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPluginGitRef, v))
 }
 
-// PluginGitRefGTE applies the GTE predicate on the "plugin_git_ref" field.
+// PluginGitRefGTE applies the GTE predicate on the "pluginGitRef" field.
 func PluginGitRefGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPluginGitRef, v))
 }
 
-// PluginGitRefLT applies the LT predicate on the "plugin_git_ref" field.
+// PluginGitRefLT applies the LT predicate on the "pluginGitRef" field.
 func PluginGitRefLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPluginGitRef, v))
 }
 
-// PluginGitRefLTE applies the LTE predicate on the "plugin_git_ref" field.
+// PluginGitRefLTE applies the LTE predicate on the "pluginGitRef" field.
 func PluginGitRefLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPluginGitRef, v))
 }
 
-// PluginGitRefContains applies the Contains predicate on the "plugin_git_ref" field.
+// PluginGitRefContains applies the Contains predicate on the "pluginGitRef" field.
 func PluginGitRefContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldPluginGitRef, v))
 }
 
-// PluginGitRefHasPrefix applies the HasPrefix predicate on the "plugin_git_ref" field.
+// PluginGitRefHasPrefix applies the HasPrefix predicate on the "pluginGitRef" field.
 func PluginGitRefHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldPluginGitRef, v))
 }
 
-// PluginGitRefHasSuffix applies the HasSuffix predicate on the "plugin_git_ref" field.
+// PluginGitRefHasSuffix applies the HasSuffix predicate on the "pluginGitRef" field.
 func PluginGitRefHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldPluginGitRef, v))
 }
 
-// PluginGitRefIsNil applies the IsNil predicate on the "plugin_git_ref" field.
+// PluginGitRefIsNil applies the IsNil predicate on the "pluginGitRef" field.
 func PluginGitRefIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldPluginGitRef))
 }
 
-// PluginGitRefNotNil applies the NotNil predicate on the "plugin_git_ref" field.
+// PluginGitRefNotNil applies the NotNil predicate on the "pluginGitRef" field.
 func PluginGitRefNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldPluginGitRef))
 }
 
-// PluginGitRefEqualFold applies the EqualFold predicate on the "plugin_git_ref" field.
+// PluginGitRefEqualFold applies the EqualFold predicate on the "pluginGitRef" field.
 func PluginGitRefEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldPluginGitRef, v))
 }
 
-// PluginGitRefContainsFold applies the ContainsFold predicate on the "plugin_git_ref" field.
+// PluginGitRefContainsFold applies the ContainsFold predicate on the "pluginGitRef" field.
 func PluginGitRefContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldPluginGitRef, v))
 }
 
-// IsHotfixEQ applies the EQ predicate on the "is_hotfix" field.
+// IsHotfixEQ applies the EQ predicate on the "isHotfix" field.
 func IsHotfixEQ(v bool) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldIsHotfix, v))
 }
 
-// IsHotfixNEQ applies the NEQ predicate on the "is_hotfix" field.
+// IsHotfixNEQ applies the NEQ predicate on the "isHotfix" field.
 func IsHotfixNEQ(v bool) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldIsHotfix, v))
 }
 
-// IsPushGcrEQ applies the EQ predicate on the "is_push_gcr" field.
-func IsPushGcrEQ(v bool) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldEQ(FieldIsPushGcr, v))
+// IsPushGCREQ applies the EQ predicate on the "isPushGCR" field.
+func IsPushGCREQ(v bool) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldEQ(FieldIsPushGCR, v))
 }
 
-// IsPushGcrNEQ applies the NEQ predicate on the "is_push_gcr" field.
-func IsPushGcrNEQ(v bool) predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNEQ(FieldIsPushGcr, v))
+// IsPushGCRNEQ applies the NEQ predicate on the "isPushGCR" field.
+func IsPushGCRNEQ(v bool) predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNEQ(FieldIsPushGCR, v))
 }
 
-// IsPushGcrIsNil applies the IsNil predicate on the "is_push_gcr" field.
-func IsPushGcrIsNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldIsNull(FieldIsPushGcr))
+// IsPushGCRIsNil applies the IsNil predicate on the "isPushGCR" field.
+func IsPushGCRIsNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIsNull(FieldIsPushGCR))
 }
 
-// IsPushGcrNotNil applies the NotNil predicate on the "is_push_gcr" field.
-func IsPushGcrNotNil() predicate.DevBuild {
-	return predicate.DevBuild(sql.FieldNotNull(FieldIsPushGcr))
+// IsPushGCRNotNil applies the NotNil predicate on the "isPushGCR" field.
+func IsPushGCRNotNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotNull(FieldIsPushGCR))
 }
 
-// TargetImgEQ applies the EQ predicate on the "target_img" field.
+// TargetImgEQ applies the EQ predicate on the "targetImg" field.
 func TargetImgEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldTargetImg, v))
 }
 
-// TargetImgNEQ applies the NEQ predicate on the "target_img" field.
+// TargetImgNEQ applies the NEQ predicate on the "targetImg" field.
 func TargetImgNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldTargetImg, v))
 }
 
-// TargetImgIn applies the In predicate on the "target_img" field.
+// TargetImgIn applies the In predicate on the "targetImg" field.
 func TargetImgIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldTargetImg, vs...))
 }
 
-// TargetImgNotIn applies the NotIn predicate on the "target_img" field.
+// TargetImgNotIn applies the NotIn predicate on the "targetImg" field.
 func TargetImgNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldTargetImg, vs...))
 }
 
-// TargetImgGT applies the GT predicate on the "target_img" field.
+// TargetImgGT applies the GT predicate on the "targetImg" field.
 func TargetImgGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldTargetImg, v))
 }
 
-// TargetImgGTE applies the GTE predicate on the "target_img" field.
+// TargetImgGTE applies the GTE predicate on the "targetImg" field.
 func TargetImgGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldTargetImg, v))
 }
 
-// TargetImgLT applies the LT predicate on the "target_img" field.
+// TargetImgLT applies the LT predicate on the "targetImg" field.
 func TargetImgLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldTargetImg, v))
 }
 
-// TargetImgLTE applies the LTE predicate on the "target_img" field.
+// TargetImgLTE applies the LTE predicate on the "targetImg" field.
 func TargetImgLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldTargetImg, v))
 }
 
-// TargetImgContains applies the Contains predicate on the "target_img" field.
+// TargetImgContains applies the Contains predicate on the "targetImg" field.
 func TargetImgContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldTargetImg, v))
 }
 
-// TargetImgHasPrefix applies the HasPrefix predicate on the "target_img" field.
+// TargetImgHasPrefix applies the HasPrefix predicate on the "targetImg" field.
 func TargetImgHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldTargetImg, v))
 }
 
-// TargetImgHasSuffix applies the HasSuffix predicate on the "target_img" field.
+// TargetImgHasSuffix applies the HasSuffix predicate on the "targetImg" field.
 func TargetImgHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldTargetImg, v))
 }
 
-// TargetImgIsNil applies the IsNil predicate on the "target_img" field.
+// TargetImgIsNil applies the IsNil predicate on the "targetImg" field.
 func TargetImgIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldTargetImg))
 }
 
-// TargetImgNotNil applies the NotNil predicate on the "target_img" field.
+// TargetImgNotNil applies the NotNil predicate on the "targetImg" field.
 func TargetImgNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldTargetImg))
 }
 
-// TargetImgEqualFold applies the EqualFold predicate on the "target_img" field.
+// TargetImgEqualFold applies the EqualFold predicate on the "targetImg" field.
 func TargetImgEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldTargetImg, v))
 }
 
-// TargetImgContainsFold applies the ContainsFold predicate on the "target_img" field.
+// TargetImgContainsFold applies the ContainsFold predicate on the "targetImg" field.
 func TargetImgContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldTargetImg, v))
 }
 
-// PipelineEngineEQ applies the EQ predicate on the "pipeline_engine" field.
+// PipelineEngineEQ applies the EQ predicate on the "pipelineEngine" field.
 func PipelineEngineEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineEngine, v))
 }
 
-// PipelineEngineNEQ applies the NEQ predicate on the "pipeline_engine" field.
+// PipelineEngineNEQ applies the NEQ predicate on the "pipelineEngine" field.
 func PipelineEngineNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPipelineEngine, v))
 }
 
-// PipelineEngineIn applies the In predicate on the "pipeline_engine" field.
+// PipelineEngineIn applies the In predicate on the "pipelineEngine" field.
 func PipelineEngineIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPipelineEngine, vs...))
 }
 
-// PipelineEngineNotIn applies the NotIn predicate on the "pipeline_engine" field.
+// PipelineEngineNotIn applies the NotIn predicate on the "pipelineEngine" field.
 func PipelineEngineNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPipelineEngine, vs...))
 }
 
-// PipelineEngineGT applies the GT predicate on the "pipeline_engine" field.
+// PipelineEngineGT applies the GT predicate on the "pipelineEngine" field.
 func PipelineEngineGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPipelineEngine, v))
 }
 
-// PipelineEngineGTE applies the GTE predicate on the "pipeline_engine" field.
+// PipelineEngineGTE applies the GTE predicate on the "pipelineEngine" field.
 func PipelineEngineGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPipelineEngine, v))
 }
 
-// PipelineEngineLT applies the LT predicate on the "pipeline_engine" field.
+// PipelineEngineLT applies the LT predicate on the "pipelineEngine" field.
 func PipelineEngineLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPipelineEngine, v))
 }
 
-// PipelineEngineLTE applies the LTE predicate on the "pipeline_engine" field.
+// PipelineEngineLTE applies the LTE predicate on the "pipelineEngine" field.
 func PipelineEngineLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPipelineEngine, v))
 }
 
-// PipelineEngineContains applies the Contains predicate on the "pipeline_engine" field.
+// PipelineEngineContains applies the Contains predicate on the "pipelineEngine" field.
 func PipelineEngineContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldPipelineEngine, v))
 }
 
-// PipelineEngineHasPrefix applies the HasPrefix predicate on the "pipeline_engine" field.
+// PipelineEngineHasPrefix applies the HasPrefix predicate on the "pipelineEngine" field.
 func PipelineEngineHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldPipelineEngine, v))
 }
 
-// PipelineEngineHasSuffix applies the HasSuffix predicate on the "pipeline_engine" field.
+// PipelineEngineHasSuffix applies the HasSuffix predicate on the "pipelineEngine" field.
 func PipelineEngineHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldPipelineEngine, v))
 }
 
-// PipelineEngineIsNil applies the IsNil predicate on the "pipeline_engine" field.
+// PipelineEngineIsNil applies the IsNil predicate on the "pipelineEngine" field.
 func PipelineEngineIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldPipelineEngine))
 }
 
-// PipelineEngineNotNil applies the NotNil predicate on the "pipeline_engine" field.
+// PipelineEngineNotNil applies the NotNil predicate on the "pipelineEngine" field.
 func PipelineEngineNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldPipelineEngine))
 }
 
-// PipelineEngineEqualFold applies the EqualFold predicate on the "pipeline_engine" field.
+// PipelineEngineEqualFold applies the EqualFold predicate on the "pipelineEngine" field.
 func PipelineEngineEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldPipelineEngine, v))
 }
 
-// PipelineEngineContainsFold applies the ContainsFold predicate on the "pipeline_engine" field.
+// PipelineEngineContainsFold applies the ContainsFold predicate on the "pipelineEngine" field.
 func PipelineEngineContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldPipelineEngine, v))
 }
@@ -1114,152 +1114,152 @@ func PlatformContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldPlatform, v))
 }
 
-// BuilderImgEQ applies the EQ predicate on the "builder_img" field.
+// BuilderImgEQ applies the EQ predicate on the "builderImg" field.
 func BuilderImgEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldBuilderImg, v))
 }
 
-// BuilderImgNEQ applies the NEQ predicate on the "builder_img" field.
+// BuilderImgNEQ applies the NEQ predicate on the "builderImg" field.
 func BuilderImgNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldBuilderImg, v))
 }
 
-// BuilderImgIn applies the In predicate on the "builder_img" field.
+// BuilderImgIn applies the In predicate on the "builderImg" field.
 func BuilderImgIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldBuilderImg, vs...))
 }
 
-// BuilderImgNotIn applies the NotIn predicate on the "builder_img" field.
+// BuilderImgNotIn applies the NotIn predicate on the "builderImg" field.
 func BuilderImgNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldBuilderImg, vs...))
 }
 
-// BuilderImgGT applies the GT predicate on the "builder_img" field.
+// BuilderImgGT applies the GT predicate on the "builderImg" field.
 func BuilderImgGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldBuilderImg, v))
 }
 
-// BuilderImgGTE applies the GTE predicate on the "builder_img" field.
+// BuilderImgGTE applies the GTE predicate on the "builderImg" field.
 func BuilderImgGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldBuilderImg, v))
 }
 
-// BuilderImgLT applies the LT predicate on the "builder_img" field.
+// BuilderImgLT applies the LT predicate on the "builderImg" field.
 func BuilderImgLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldBuilderImg, v))
 }
 
-// BuilderImgLTE applies the LTE predicate on the "builder_img" field.
+// BuilderImgLTE applies the LTE predicate on the "builderImg" field.
 func BuilderImgLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldBuilderImg, v))
 }
 
-// BuilderImgContains applies the Contains predicate on the "builder_img" field.
+// BuilderImgContains applies the Contains predicate on the "builderImg" field.
 func BuilderImgContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldBuilderImg, v))
 }
 
-// BuilderImgHasPrefix applies the HasPrefix predicate on the "builder_img" field.
+// BuilderImgHasPrefix applies the HasPrefix predicate on the "builderImg" field.
 func BuilderImgHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldBuilderImg, v))
 }
 
-// BuilderImgHasSuffix applies the HasSuffix predicate on the "builder_img" field.
+// BuilderImgHasSuffix applies the HasSuffix predicate on the "builderImg" field.
 func BuilderImgHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldBuilderImg, v))
 }
 
-// BuilderImgIsNil applies the IsNil predicate on the "builder_img" field.
+// BuilderImgIsNil applies the IsNil predicate on the "builderImg" field.
 func BuilderImgIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldBuilderImg))
 }
 
-// BuilderImgNotNil applies the NotNil predicate on the "builder_img" field.
+// BuilderImgNotNil applies the NotNil predicate on the "builderImg" field.
 func BuilderImgNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldBuilderImg))
 }
 
-// BuilderImgEqualFold applies the EqualFold predicate on the "builder_img" field.
+// BuilderImgEqualFold applies the EqualFold predicate on the "builderImg" field.
 func BuilderImgEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldBuilderImg, v))
 }
 
-// BuilderImgContainsFold applies the ContainsFold predicate on the "builder_img" field.
+// BuilderImgContainsFold applies the ContainsFold predicate on the "builderImg" field.
 func BuilderImgContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldBuilderImg, v))
 }
 
-// BuildEnvEQ applies the EQ predicate on the "build_env" field.
+// BuildEnvEQ applies the EQ predicate on the "buildEnv" field.
 func BuildEnvEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldBuildEnv, v))
 }
 
-// BuildEnvNEQ applies the NEQ predicate on the "build_env" field.
+// BuildEnvNEQ applies the NEQ predicate on the "buildEnv" field.
 func BuildEnvNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldBuildEnv, v))
 }
 
-// BuildEnvIn applies the In predicate on the "build_env" field.
+// BuildEnvIn applies the In predicate on the "buildEnv" field.
 func BuildEnvIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldBuildEnv, vs...))
 }
 
-// BuildEnvNotIn applies the NotIn predicate on the "build_env" field.
+// BuildEnvNotIn applies the NotIn predicate on the "buildEnv" field.
 func BuildEnvNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldBuildEnv, vs...))
 }
 
-// BuildEnvGT applies the GT predicate on the "build_env" field.
+// BuildEnvGT applies the GT predicate on the "buildEnv" field.
 func BuildEnvGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldBuildEnv, v))
 }
 
-// BuildEnvGTE applies the GTE predicate on the "build_env" field.
+// BuildEnvGTE applies the GTE predicate on the "buildEnv" field.
 func BuildEnvGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldBuildEnv, v))
 }
 
-// BuildEnvLT applies the LT predicate on the "build_env" field.
+// BuildEnvLT applies the LT predicate on the "buildEnv" field.
 func BuildEnvLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldBuildEnv, v))
 }
 
-// BuildEnvLTE applies the LTE predicate on the "build_env" field.
+// BuildEnvLTE applies the LTE predicate on the "buildEnv" field.
 func BuildEnvLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldBuildEnv, v))
 }
 
-// BuildEnvContains applies the Contains predicate on the "build_env" field.
+// BuildEnvContains applies the Contains predicate on the "buildEnv" field.
 func BuildEnvContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldBuildEnv, v))
 }
 
-// BuildEnvHasPrefix applies the HasPrefix predicate on the "build_env" field.
+// BuildEnvHasPrefix applies the HasPrefix predicate on the "buildEnv" field.
 func BuildEnvHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldBuildEnv, v))
 }
 
-// BuildEnvHasSuffix applies the HasSuffix predicate on the "build_env" field.
+// BuildEnvHasSuffix applies the HasSuffix predicate on the "buildEnv" field.
 func BuildEnvHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldBuildEnv, v))
 }
 
-// BuildEnvIsNil applies the IsNil predicate on the "build_env" field.
+// BuildEnvIsNil applies the IsNil predicate on the "buildEnv" field.
 func BuildEnvIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldBuildEnv))
 }
 
-// BuildEnvNotNil applies the NotNil predicate on the "build_env" field.
+// BuildEnvNotNil applies the NotNil predicate on the "buildEnv" field.
 func BuildEnvNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldBuildEnv))
 }
 
-// BuildEnvEqualFold applies the EqualFold predicate on the "build_env" field.
+// BuildEnvEqualFold applies the EqualFold predicate on the "buildEnv" field.
 func BuildEnvEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldBuildEnv, v))
 }
 
-// BuildEnvContainsFold applies the ContainsFold predicate on the "build_env" field.
+// BuildEnvContainsFold applies the ContainsFold predicate on the "buildEnv" field.
 func BuildEnvContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldBuildEnv, v))
 }
@@ -1339,152 +1339,152 @@ func FeaturesContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldFeatures, v))
 }
 
-// ProductBaseImgEQ applies the EQ predicate on the "product_base_img" field.
+// ProductBaseImgEQ applies the EQ predicate on the "productBaseImg" field.
 func ProductBaseImgEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgNEQ applies the NEQ predicate on the "product_base_img" field.
+// ProductBaseImgNEQ applies the NEQ predicate on the "productBaseImg" field.
 func ProductBaseImgNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgIn applies the In predicate on the "product_base_img" field.
+// ProductBaseImgIn applies the In predicate on the "productBaseImg" field.
 func ProductBaseImgIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldProductBaseImg, vs...))
 }
 
-// ProductBaseImgNotIn applies the NotIn predicate on the "product_base_img" field.
+// ProductBaseImgNotIn applies the NotIn predicate on the "productBaseImg" field.
 func ProductBaseImgNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldProductBaseImg, vs...))
 }
 
-// ProductBaseImgGT applies the GT predicate on the "product_base_img" field.
+// ProductBaseImgGT applies the GT predicate on the "productBaseImg" field.
 func ProductBaseImgGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgGTE applies the GTE predicate on the "product_base_img" field.
+// ProductBaseImgGTE applies the GTE predicate on the "productBaseImg" field.
 func ProductBaseImgGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgLT applies the LT predicate on the "product_base_img" field.
+// ProductBaseImgLT applies the LT predicate on the "productBaseImg" field.
 func ProductBaseImgLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgLTE applies the LTE predicate on the "product_base_img" field.
+// ProductBaseImgLTE applies the LTE predicate on the "productBaseImg" field.
 func ProductBaseImgLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgContains applies the Contains predicate on the "product_base_img" field.
+// ProductBaseImgContains applies the Contains predicate on the "productBaseImg" field.
 func ProductBaseImgContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgHasPrefix applies the HasPrefix predicate on the "product_base_img" field.
+// ProductBaseImgHasPrefix applies the HasPrefix predicate on the "productBaseImg" field.
 func ProductBaseImgHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgHasSuffix applies the HasSuffix predicate on the "product_base_img" field.
+// ProductBaseImgHasSuffix applies the HasSuffix predicate on the "productBaseImg" field.
 func ProductBaseImgHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgIsNil applies the IsNil predicate on the "product_base_img" field.
+// ProductBaseImgIsNil applies the IsNil predicate on the "productBaseImg" field.
 func ProductBaseImgIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldProductBaseImg))
 }
 
-// ProductBaseImgNotNil applies the NotNil predicate on the "product_base_img" field.
+// ProductBaseImgNotNil applies the NotNil predicate on the "productBaseImg" field.
 func ProductBaseImgNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldProductBaseImg))
 }
 
-// ProductBaseImgEqualFold applies the EqualFold predicate on the "product_base_img" field.
+// ProductBaseImgEqualFold applies the EqualFold predicate on the "productBaseImg" field.
 func ProductBaseImgEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldProductBaseImg, v))
 }
 
-// ProductBaseImgContainsFold applies the ContainsFold predicate on the "product_base_img" field.
+// ProductBaseImgContainsFold applies the ContainsFold predicate on the "productBaseImg" field.
 func ProductBaseImgContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldProductBaseImg, v))
 }
 
-// ProductDockerfileEQ applies the EQ predicate on the "product_dockerfile" field.
+// ProductDockerfileEQ applies the EQ predicate on the "productDockerfile" field.
 func ProductDockerfileEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileNEQ applies the NEQ predicate on the "product_dockerfile" field.
+// ProductDockerfileNEQ applies the NEQ predicate on the "productDockerfile" field.
 func ProductDockerfileNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileIn applies the In predicate on the "product_dockerfile" field.
+// ProductDockerfileIn applies the In predicate on the "productDockerfile" field.
 func ProductDockerfileIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldProductDockerfile, vs...))
 }
 
-// ProductDockerfileNotIn applies the NotIn predicate on the "product_dockerfile" field.
+// ProductDockerfileNotIn applies the NotIn predicate on the "productDockerfile" field.
 func ProductDockerfileNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldProductDockerfile, vs...))
 }
 
-// ProductDockerfileGT applies the GT predicate on the "product_dockerfile" field.
+// ProductDockerfileGT applies the GT predicate on the "productDockerfile" field.
 func ProductDockerfileGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileGTE applies the GTE predicate on the "product_dockerfile" field.
+// ProductDockerfileGTE applies the GTE predicate on the "productDockerfile" field.
 func ProductDockerfileGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileLT applies the LT predicate on the "product_dockerfile" field.
+// ProductDockerfileLT applies the LT predicate on the "productDockerfile" field.
 func ProductDockerfileLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileLTE applies the LTE predicate on the "product_dockerfile" field.
+// ProductDockerfileLTE applies the LTE predicate on the "productDockerfile" field.
 func ProductDockerfileLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileContains applies the Contains predicate on the "product_dockerfile" field.
+// ProductDockerfileContains applies the Contains predicate on the "productDockerfile" field.
 func ProductDockerfileContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileHasPrefix applies the HasPrefix predicate on the "product_dockerfile" field.
+// ProductDockerfileHasPrefix applies the HasPrefix predicate on the "productDockerfile" field.
 func ProductDockerfileHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileHasSuffix applies the HasSuffix predicate on the "product_dockerfile" field.
+// ProductDockerfileHasSuffix applies the HasSuffix predicate on the "productDockerfile" field.
 func ProductDockerfileHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileIsNil applies the IsNil predicate on the "product_dockerfile" field.
+// ProductDockerfileIsNil applies the IsNil predicate on the "productDockerfile" field.
 func ProductDockerfileIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldProductDockerfile))
 }
 
-// ProductDockerfileNotNil applies the NotNil predicate on the "product_dockerfile" field.
+// ProductDockerfileNotNil applies the NotNil predicate on the "productDockerfile" field.
 func ProductDockerfileNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldProductDockerfile))
 }
 
-// ProductDockerfileEqualFold applies the EqualFold predicate on the "product_dockerfile" field.
+// ProductDockerfileEqualFold applies the EqualFold predicate on the "productDockerfile" field.
 func ProductDockerfileEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldProductDockerfile, v))
 }
 
-// ProductDockerfileContainsFold applies the ContainsFold predicate on the "product_dockerfile" field.
+// ProductDockerfileContainsFold applies the ContainsFold predicate on the "productDockerfile" field.
 func ProductDockerfileContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldProductDockerfile, v))
 }
@@ -1564,247 +1564,247 @@ func StatusContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldStatus, v))
 }
 
-// ErrMsgEQ applies the EQ predicate on the "err_msg" field.
+// ErrMsgEQ applies the EQ predicate on the "errMsg" field.
 func ErrMsgEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldErrMsg, v))
 }
 
-// ErrMsgNEQ applies the NEQ predicate on the "err_msg" field.
+// ErrMsgNEQ applies the NEQ predicate on the "errMsg" field.
 func ErrMsgNEQ(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldErrMsg, v))
 }
 
-// ErrMsgIn applies the In predicate on the "err_msg" field.
+// ErrMsgIn applies the In predicate on the "errMsg" field.
 func ErrMsgIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldErrMsg, vs...))
 }
 
-// ErrMsgNotIn applies the NotIn predicate on the "err_msg" field.
+// ErrMsgNotIn applies the NotIn predicate on the "errMsg" field.
 func ErrMsgNotIn(vs ...string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldErrMsg, vs...))
 }
 
-// ErrMsgGT applies the GT predicate on the "err_msg" field.
+// ErrMsgGT applies the GT predicate on the "errMsg" field.
 func ErrMsgGT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldErrMsg, v))
 }
 
-// ErrMsgGTE applies the GTE predicate on the "err_msg" field.
+// ErrMsgGTE applies the GTE predicate on the "errMsg" field.
 func ErrMsgGTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldErrMsg, v))
 }
 
-// ErrMsgLT applies the LT predicate on the "err_msg" field.
+// ErrMsgLT applies the LT predicate on the "errMsg" field.
 func ErrMsgLT(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldErrMsg, v))
 }
 
-// ErrMsgLTE applies the LTE predicate on the "err_msg" field.
+// ErrMsgLTE applies the LTE predicate on the "errMsg" field.
 func ErrMsgLTE(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldErrMsg, v))
 }
 
-// ErrMsgContains applies the Contains predicate on the "err_msg" field.
+// ErrMsgContains applies the Contains predicate on the "errMsg" field.
 func ErrMsgContains(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContains(FieldErrMsg, v))
 }
 
-// ErrMsgHasPrefix applies the HasPrefix predicate on the "err_msg" field.
+// ErrMsgHasPrefix applies the HasPrefix predicate on the "errMsg" field.
 func ErrMsgHasPrefix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasPrefix(FieldErrMsg, v))
 }
 
-// ErrMsgHasSuffix applies the HasSuffix predicate on the "err_msg" field.
+// ErrMsgHasSuffix applies the HasSuffix predicate on the "errMsg" field.
 func ErrMsgHasSuffix(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldHasSuffix(FieldErrMsg, v))
 }
 
-// ErrMsgIsNil applies the IsNil predicate on the "err_msg" field.
+// ErrMsgIsNil applies the IsNil predicate on the "errMsg" field.
 func ErrMsgIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldErrMsg))
 }
 
-// ErrMsgNotNil applies the NotNil predicate on the "err_msg" field.
+// ErrMsgNotNil applies the NotNil predicate on the "errMsg" field.
 func ErrMsgNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldErrMsg))
 }
 
-// ErrMsgEqualFold applies the EqualFold predicate on the "err_msg" field.
+// ErrMsgEqualFold applies the EqualFold predicate on the "errMsg" field.
 func ErrMsgEqualFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEqualFold(FieldErrMsg, v))
 }
 
-// ErrMsgContainsFold applies the ContainsFold predicate on the "err_msg" field.
+// ErrMsgContainsFold applies the ContainsFold predicate on the "errMsg" field.
 func ErrMsgContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldErrMsg, v))
 }
 
-// PipelineBuildIDEQ applies the EQ predicate on the "pipeline_build_id" field.
+// PipelineBuildIDEQ applies the EQ predicate on the "pipelineBuildID" field.
 func PipelineBuildIDEQ(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDNEQ applies the NEQ predicate on the "pipeline_build_id" field.
+// PipelineBuildIDNEQ applies the NEQ predicate on the "pipelineBuildID" field.
 func PipelineBuildIDNEQ(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDIn applies the In predicate on the "pipeline_build_id" field.
+// PipelineBuildIDIn applies the In predicate on the "pipelineBuildID" field.
 func PipelineBuildIDIn(vs ...int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPipelineBuildID, vs...))
 }
 
-// PipelineBuildIDNotIn applies the NotIn predicate on the "pipeline_build_id" field.
+// PipelineBuildIDNotIn applies the NotIn predicate on the "pipelineBuildID" field.
 func PipelineBuildIDNotIn(vs ...int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPipelineBuildID, vs...))
 }
 
-// PipelineBuildIDGT applies the GT predicate on the "pipeline_build_id" field.
+// PipelineBuildIDGT applies the GT predicate on the "pipelineBuildID" field.
 func PipelineBuildIDGT(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDGTE applies the GTE predicate on the "pipeline_build_id" field.
+// PipelineBuildIDGTE applies the GTE predicate on the "pipelineBuildID" field.
 func PipelineBuildIDGTE(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDLT applies the LT predicate on the "pipeline_build_id" field.
+// PipelineBuildIDLT applies the LT predicate on the "pipelineBuildID" field.
 func PipelineBuildIDLT(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDLTE applies the LTE predicate on the "pipeline_build_id" field.
+// PipelineBuildIDLTE applies the LTE predicate on the "pipelineBuildID" field.
 func PipelineBuildIDLTE(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPipelineBuildID, v))
 }
 
-// PipelineBuildIDIsNil applies the IsNil predicate on the "pipeline_build_id" field.
+// PipelineBuildIDIsNil applies the IsNil predicate on the "pipelineBuildID" field.
 func PipelineBuildIDIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldPipelineBuildID))
 }
 
-// PipelineBuildIDNotNil applies the NotNil predicate on the "pipeline_build_id" field.
+// PipelineBuildIDNotNil applies the NotNil predicate on the "pipelineBuildID" field.
 func PipelineBuildIDNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldPipelineBuildID))
 }
 
-// PipelineStartAtEQ applies the EQ predicate on the "pipeline_start_at" field.
+// PipelineStartAtEQ applies the EQ predicate on the "pipelineStartAt" field.
 func PipelineStartAtEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtNEQ applies the NEQ predicate on the "pipeline_start_at" field.
+// PipelineStartAtNEQ applies the NEQ predicate on the "pipelineStartAt" field.
 func PipelineStartAtNEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtIn applies the In predicate on the "pipeline_start_at" field.
+// PipelineStartAtIn applies the In predicate on the "pipelineStartAt" field.
 func PipelineStartAtIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPipelineStartAt, vs...))
 }
 
-// PipelineStartAtNotIn applies the NotIn predicate on the "pipeline_start_at" field.
+// PipelineStartAtNotIn applies the NotIn predicate on the "pipelineStartAt" field.
 func PipelineStartAtNotIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPipelineStartAt, vs...))
 }
 
-// PipelineStartAtGT applies the GT predicate on the "pipeline_start_at" field.
+// PipelineStartAtGT applies the GT predicate on the "pipelineStartAt" field.
 func PipelineStartAtGT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtGTE applies the GTE predicate on the "pipeline_start_at" field.
+// PipelineStartAtGTE applies the GTE predicate on the "pipelineStartAt" field.
 func PipelineStartAtGTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtLT applies the LT predicate on the "pipeline_start_at" field.
+// PipelineStartAtLT applies the LT predicate on the "pipelineStartAt" field.
 func PipelineStartAtLT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtLTE applies the LTE predicate on the "pipeline_start_at" field.
+// PipelineStartAtLTE applies the LTE predicate on the "pipelineStartAt" field.
 func PipelineStartAtLTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPipelineStartAt, v))
 }
 
-// PipelineStartAtIsNil applies the IsNil predicate on the "pipeline_start_at" field.
+// PipelineStartAtIsNil applies the IsNil predicate on the "pipelineStartAt" field.
 func PipelineStartAtIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldPipelineStartAt))
 }
 
-// PipelineStartAtNotNil applies the NotNil predicate on the "pipeline_start_at" field.
+// PipelineStartAtNotNil applies the NotNil predicate on the "pipelineStartAt" field.
 func PipelineStartAtNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldPipelineStartAt))
 }
 
-// PipelineEndAtEQ applies the EQ predicate on the "pipeline_end_at" field.
+// PipelineEndAtEQ applies the EQ predicate on the "pipelineEndAt" field.
 func PipelineEndAtEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtNEQ applies the NEQ predicate on the "pipeline_end_at" field.
+// PipelineEndAtNEQ applies the NEQ predicate on the "pipelineEndAt" field.
 func PipelineEndAtNEQ(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNEQ(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtIn applies the In predicate on the "pipeline_end_at" field.
+// PipelineEndAtIn applies the In predicate on the "pipelineEndAt" field.
 func PipelineEndAtIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIn(FieldPipelineEndAt, vs...))
 }
 
-// PipelineEndAtNotIn applies the NotIn predicate on the "pipeline_end_at" field.
+// PipelineEndAtNotIn applies the NotIn predicate on the "pipelineEndAt" field.
 func PipelineEndAtNotIn(vs ...time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotIn(FieldPipelineEndAt, vs...))
 }
 
-// PipelineEndAtGT applies the GT predicate on the "pipeline_end_at" field.
+// PipelineEndAtGT applies the GT predicate on the "pipelineEndAt" field.
 func PipelineEndAtGT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGT(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtGTE applies the GTE predicate on the "pipeline_end_at" field.
+// PipelineEndAtGTE applies the GTE predicate on the "pipelineEndAt" field.
 func PipelineEndAtGTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldGTE(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtLT applies the LT predicate on the "pipeline_end_at" field.
+// PipelineEndAtLT applies the LT predicate on the "pipelineEndAt" field.
 func PipelineEndAtLT(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLT(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtLTE applies the LTE predicate on the "pipeline_end_at" field.
+// PipelineEndAtLTE applies the LTE predicate on the "pipelineEndAt" field.
 func PipelineEndAtLTE(v time.Time) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldLTE(FieldPipelineEndAt, v))
 }
 
-// PipelineEndAtIsNil applies the IsNil predicate on the "pipeline_end_at" field.
+// PipelineEndAtIsNil applies the IsNil predicate on the "pipelineEndAt" field.
 func PipelineEndAtIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldPipelineEndAt))
 }
 
-// PipelineEndAtNotNil applies the NotNil predicate on the "pipeline_end_at" field.
+// PipelineEndAtNotNil applies the NotNil predicate on the "pipelineEndAt" field.
 func PipelineEndAtNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldPipelineEndAt))
 }
 
-// BuildReportIsNil applies the IsNil predicate on the "build_report" field.
+// BuildReportIsNil applies the IsNil predicate on the "buildReport" field.
 func BuildReportIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldBuildReport))
 }
 
-// BuildReportNotNil applies the NotNil predicate on the "build_report" field.
+// BuildReportNotNil applies the NotNil predicate on the "buildReport" field.
 func BuildReportNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldBuildReport))
 }
 
-// TektonStatusIsNil applies the IsNil predicate on the "tekton_status" field.
+// TektonStatusIsNil applies the IsNil predicate on the "tektonStatus" field.
 func TektonStatusIsNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldIsNull(FieldTektonStatus))
 }
 
-// TektonStatusNotNil applies the NotNil predicate on the "tekton_status" field.
+// TektonStatusNotNil applies the NotNil predicate on the "tektonStatus" field.
 func TektonStatusNotNil() predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldNotNull(FieldTektonStatus))
 }

@@ -601,7 +601,7 @@ func unmarshalDevBuildSpecResponseToDevbuildDevBuildSpec(v *DevBuildSpecResponse
 		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -657,8 +657,8 @@ func unmarshalBuildReportResponseToDevbuildBuildReport(v *BuildReportResponse) *
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -826,7 +826,7 @@ func marshalDevbuildDevBuildSpecToDevBuildSpecRequestBody(v *devbuild.DevBuildSp
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -858,7 +858,7 @@ func marshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecRequest
 		Platform:          v.Platform,
 		Features:          v.Features,
 		GitRef:            v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -901,7 +901,7 @@ func unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(v *DevBuildSpecResp
 		Edition:           *v.Edition,
 		Features:          v.Features,
 		GitRef:            *v.GitRef,
-		GitSha:            v.GitSha,
+		GitHash:           v.GitHash,
 		GithubRepo:        v.GithubRepo,
 		IsHotfix:          v.IsHotfix,
 		IsPushGCR:         v.IsPushGCR,
@@ -958,8 +958,8 @@ func unmarshalBuildReportResponseBodyToDevbuildBuildReport(v *BuildReportRespons
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1153,8 +1153,8 @@ func marshalDevbuildBuildReportToBuildReportRequestBody(v *devbuild.BuildReport)
 		return nil
 	}
 	res := &BuildReportRequestBody{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {
@@ -1356,8 +1356,8 @@ func marshalBuildReportRequestBodyToDevbuildBuildReport(v *BuildReportRequestBod
 		return nil
 	}
 	res := &devbuild.BuildReport{
-		GitSha:         v.GitSha,
-		PluginGitSha:   v.PluginGitSha,
+		GitHash:        v.GitHash,
+		PluginGitHash:  v.PluginGitHash,
 		PrintedVersion: v.PrintedVersion,
 	}
 	if v.Binaries != nil {

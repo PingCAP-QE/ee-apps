@@ -20,7 +20,7 @@ func (s *devbuildsrvc) triggerJenkinsBuild(ctx context.Context, record *ent.DevB
 
 	// 2. Update record to processing status
 	record, err = record.Update().
-		SetStatus("processing").
+		SetStatus("PROCESSING").
 		SetUpdatedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
@@ -51,15 +51,15 @@ func (s *devbuildsrvc) monitorBuildStatus(ctx context.Context, queueID int64, re
 
 	// Map Jenkins result to our status
 	statusMap := map[string]string{
-		jenkins.STATUS_SUCCESS: "success",
-		jenkins.STATUS_FAIL:    "failure",
-		jenkins.STATUS_ABORTED: "aborted",
-		jenkins.STATUS_ERROR:   "error",
+		jenkins.STATUS_SUCCESS: "SUCCESS",
+		jenkins.STATUS_FAIL:    "FAILURE",
+		jenkins.STATUS_ABORTED: "ABORTED",
+		jenkins.STATUS_ERROR:   "ERROR",
 	}
 
 	status, ok := statusMap[build.Raw.Result]
 	if !ok {
-		status = "error"
+		status = "ERROR"
 		s.logger.Warn().Str("jenkins_status", build.Raw.Result).Msg("unknown jenkins build status")
 	}
 

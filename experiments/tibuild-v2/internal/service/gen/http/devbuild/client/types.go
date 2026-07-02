@@ -154,7 +154,7 @@ type DevBuildSpecResponse struct {
 	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"gitRef,omitempty" json:"gitRef,omitempty" xml:"gitRef,omitempty"`
-	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash           *string `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
 	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
 	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
@@ -183,9 +183,9 @@ type DevBuildStatusResponse struct {
 // BuildReportResponse is used to define fields on response body types.
 type BuildReportResponse struct {
 	Binaries       []*BinArtifactResponse   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                  `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash        *string                  `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	Images         []*ImageArtifactResponse `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                  `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PluginGitHash  *string                  `form:"pluginGitHash,omitempty" json:"pluginGitHash,omitempty" xml:"pluginGitHash,omitempty"`
 	PrintedVersion *string                  `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
@@ -248,7 +248,7 @@ type DevBuildSpecRequestBody struct {
 	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            string  `form:"gitRef" json:"gitRef" xml:"gitRef"`
-	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash           *string `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
 	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
 	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
@@ -277,7 +277,7 @@ type DevBuildSpecResponseBody struct {
 	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
 	GitRef            *string `form:"gitRef,omitempty" json:"gitRef,omitempty" xml:"gitRef,omitempty"`
-	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash           *string `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
 	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
 	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
@@ -306,9 +306,9 @@ type DevBuildStatusResponseBody struct {
 // BuildReportResponseBody is used to define fields on response body types.
 type BuildReportResponseBody struct {
 	Binaries       []*BinArtifactResponseBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                      `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash        *string                      `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	Images         []*ImageArtifactResponseBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                      `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PluginGitHash  *string                      `form:"pluginGitHash,omitempty" json:"pluginGitHash,omitempty" xml:"pluginGitHash,omitempty"`
 	PrintedVersion *string                      `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
@@ -378,9 +378,9 @@ type DevBuildStatusRequestBody struct {
 // BuildReportRequestBody is used to define fields on request body types.
 type BuildReportRequestBody struct {
 	Binaries       []*BinArtifactRequestBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                     `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GitHash        *string                     `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
 	Images         []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                     `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PluginGitHash  *string                     `form:"pluginGitHash,omitempty" json:"pluginGitHash,omitempty" xml:"pluginGitHash,omitempty"`
 	PrintedVersion *string                     `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
@@ -903,10 +903,10 @@ func ValidateDevBuildMetaResponse(body *DevBuildMetaResponse) (err error) {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdBy", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.CreatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.createdAt", *body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
 	}
 	if body.UpdatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.updatedAt", *body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updatedAt", *body.UpdatedAt, goa.FormatDateTime))
 	}
 	return
 }
@@ -961,10 +961,10 @@ func ValidateDevBuildStatusResponse(body *DevBuildStatusResponse) (err error) {
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineStartAt", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineStartAt", *body.PipelineStartAt, goa.FormatDateTime))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineEndAt", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineEndAt", *body.PipelineEndAt, goa.FormatDateTime))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
@@ -973,8 +973,8 @@ func ValidateDevBuildStatusResponse(body *DevBuildStatusResponse) (err error) {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 		}
 	}
 	if body.TektonStatus != nil {
@@ -995,9 +995,9 @@ func ValidateBuildReportResponse(body *BuildReportResponse) (err error) {
 			}
 		}
 	}
-	if body.GitSha != nil {
-		if utf8.RuneCountInString(*body.GitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitSha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
+	if body.GitHash != nil {
+		if utf8.RuneCountInString(*body.GitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitHash", *body.GitHash, utf8.RuneCountInString(*body.GitHash), 40, false))
 		}
 	}
 	for _, e := range body.Images {
@@ -1007,9 +1007,9 @@ func ValidateBuildReportResponse(body *BuildReportResponse) (err error) {
 			}
 		}
 	}
-	if body.PluginGitSha != nil {
-		if utf8.RuneCountInString(*body.PluginGitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitSha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
+	if body.PluginGitHash != nil {
+		if utf8.RuneCountInString(*body.PluginGitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitHash", *body.PluginGitHash, utf8.RuneCountInString(*body.PluginGitHash), 40, false))
 		}
 	}
 	return
@@ -1095,8 +1095,8 @@ func ValidateTektonPipelineResponse(body *TektonPipelineResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1176,10 +1176,10 @@ func ValidateDevBuildMetaResponseBody(body *DevBuildMetaResponseBody) (err error
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdBy", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.CreatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.createdAt", *body.CreatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
 	}
 	if body.UpdatedAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.updatedAt", *body.UpdatedAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updatedAt", *body.UpdatedAt, goa.FormatDateTime))
 	}
 	return
 }
@@ -1234,10 +1234,10 @@ func ValidateDevBuildStatusResponseBody(body *DevBuildStatusResponseBody) (err e
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineStartAt", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineStartAt", *body.PipelineStartAt, goa.FormatDateTime))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineEndAt", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineEndAt", *body.PipelineEndAt, goa.FormatDateTime))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
@@ -1246,8 +1246,8 @@ func ValidateDevBuildStatusResponseBody(body *DevBuildStatusResponseBody) (err e
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 		}
 	}
 	if body.TektonStatus != nil {
@@ -1268,9 +1268,9 @@ func ValidateBuildReportResponseBody(body *BuildReportResponseBody) (err error) 
 			}
 		}
 	}
-	if body.GitSha != nil {
-		if utf8.RuneCountInString(*body.GitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitSha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
+	if body.GitHash != nil {
+		if utf8.RuneCountInString(*body.GitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitHash", *body.GitHash, utf8.RuneCountInString(*body.GitHash), 40, false))
 		}
 	}
 	for _, e := range body.Images {
@@ -1280,9 +1280,9 @@ func ValidateBuildReportResponseBody(body *BuildReportResponseBody) (err error) 
 			}
 		}
 	}
-	if body.PluginGitSha != nil {
-		if utf8.RuneCountInString(*body.PluginGitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitSha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
+	if body.PluginGitHash != nil {
+		if utf8.RuneCountInString(*body.PluginGitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitHash", *body.PluginGitHash, utf8.RuneCountInString(*body.PluginGitHash), 40, false))
 		}
 	}
 	return
@@ -1369,8 +1369,8 @@ func ValidateTektonPipelineResponseBody(body *TektonPipelineResponseBody) (err e
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1423,10 +1423,10 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineStartAt", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineStartAt", *body.PipelineStartAt, goa.FormatDateTime))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineEndAt", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineEndAt", *body.PipelineEndAt, goa.FormatDateTime))
 	}
 	if body.PipelineViewURL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
@@ -1434,8 +1434,8 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 	for _, e := range body.PipelineViewURLs {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
 	}
-	if !(body.Status == "pending" || body.Status == "processing" || body.Status == "aborted" || body.Status == "success" || body.Status == "failure" || body.Status == "error") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 	}
 	if body.TektonStatus != nil {
 		if err2 := ValidateTektonStatusRequestBody(body.TektonStatus); err2 != nil {
@@ -1455,14 +1455,14 @@ func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
 			}
 		}
 	}
-	if body.GitSha != nil {
-		if utf8.RuneCountInString(*body.GitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitSha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
+	if body.GitHash != nil {
+		if utf8.RuneCountInString(*body.GitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitHash", *body.GitHash, utf8.RuneCountInString(*body.GitHash), 40, false))
 		}
 	}
-	if body.PluginGitSha != nil {
-		if utf8.RuneCountInString(*body.PluginGitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitSha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
+	if body.PluginGitHash != nil {
+		if utf8.RuneCountInString(*body.PluginGitHash) > 40 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitHash", *body.PluginGitHash, utf8.RuneCountInString(*body.PluginGitHash), 40, false))
 		}
 	}
 	return
@@ -1502,8 +1502,8 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 // ValidateTektonPipelineRequestBody runs the validations defined on
 // TektonPipelineRequestBody
 func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err error) {
-	if !(body.Status == "pending" || body.Status == "processing" || body.Status == "aborted" || body.Status == "success" || body.Status == "failure" || body.Status == "error") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"pending", "processing", "aborted", "success", "failure", "error"}))
+	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
 	}
 	if body.StartAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.startAt", *body.StartAt, goa.FormatDateTime))

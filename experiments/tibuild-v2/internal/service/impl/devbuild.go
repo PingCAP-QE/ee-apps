@@ -256,12 +256,12 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetVersion(existingBuild.Version).
 		SetGithubRepo(existingBuild.GithubRepo).
 		SetGitRef(existingBuild.GitRef).
-		SetGitSha(existingBuild.GitSha).
+		SetGitHash(existingBuild.GitHash).
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
-		SetIsPushGcr(existingBuild.IsPushGcr).
+		SetIsPushGCR(existingBuild.IsPushGCR).
 		SetPlatform(existingBuild.Platform).
-		SetStatus("pending").
+		SetStatus("PENDING").
 		SetCreatedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
@@ -313,11 +313,11 @@ func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
 func (s *devbuildsrvc) extractBuildStatusFromEventType(eventType string) string {
 	switch eventType {
 	case "dev.tekton.event.pipelinerun.started.v1":
-		return "running"
+		return "PROCESSING"
 	case "dev.tekton.event.pipelinerun.successful.v1":
-		return "success"
+		return "SUCCESS"
 	case "dev.tekton.event.pipelinerun.failed.v1":
-		return "failure"
+		return "FAILURE"
 	default:
 		return ""
 	}

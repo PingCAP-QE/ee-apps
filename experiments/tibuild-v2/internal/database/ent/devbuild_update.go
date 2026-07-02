@@ -29,13 +29,13 @@ func (_u *DevBuildUpdate) Where(ps ...predicate.DevBuild) *DevBuildUpdate {
 	return _u
 }
 
-// SetCreatedBy sets the "created_by" field.
+// SetCreatedBy sets the "createdBy" field.
 func (_u *DevBuildUpdate) SetCreatedBy(v string) *DevBuildUpdate {
 	_u.mutation.SetCreatedBy(v)
 	return _u
 }
 
-// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+// SetNillableCreatedBy sets the "createdBy" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableCreatedBy(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetCreatedBy(*v)
@@ -43,19 +43,19 @@ func (_u *DevBuildUpdate) SetNillableCreatedBy(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearCreatedBy clears the value of the "created_by" field.
+// ClearCreatedBy clears the value of the "createdBy" field.
 func (_u *DevBuildUpdate) ClearCreatedBy() *DevBuildUpdate {
 	_u.mutation.ClearCreatedBy()
 	return _u
 }
 
-// SetCreatedAt sets the "created_at" field.
+// SetCreatedAt sets the "createdAt" field.
 func (_u *DevBuildUpdate) SetCreatedAt(v time.Time) *DevBuildUpdate {
 	_u.mutation.SetCreatedAt(v)
 	return _u
 }
 
-// SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
+// SetNillableCreatedAt sets the "createdAt" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableCreatedAt(v *time.Time) *DevBuildUpdate {
 	if v != nil {
 		_u.SetCreatedAt(*v)
@@ -63,7 +63,7 @@ func (_u *DevBuildUpdate) SetNillableCreatedAt(v *time.Time) *DevBuildUpdate {
 	return _u
 }
 
-// SetUpdatedAt sets the "updated_at" field.
+// SetUpdatedAt sets the "updatedAt" field.
 func (_u *DevBuildUpdate) SetUpdatedAt(v time.Time) *DevBuildUpdate {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
@@ -129,13 +129,13 @@ func (_u *DevBuildUpdate) ClearVersion() *DevBuildUpdate {
 	return _u
 }
 
-// SetGithubRepo sets the "github_repo" field.
+// SetGithubRepo sets the "githubRepo" field.
 func (_u *DevBuildUpdate) SetGithubRepo(v string) *DevBuildUpdate {
 	_u.mutation.SetGithubRepo(v)
 	return _u
 }
 
-// SetNillableGithubRepo sets the "github_repo" field if the given value is not nil.
+// SetNillableGithubRepo sets the "githubRepo" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableGithubRepo(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetGithubRepo(*v)
@@ -143,19 +143,19 @@ func (_u *DevBuildUpdate) SetNillableGithubRepo(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearGithubRepo clears the value of the "github_repo" field.
+// ClearGithubRepo clears the value of the "githubRepo" field.
 func (_u *DevBuildUpdate) ClearGithubRepo() *DevBuildUpdate {
 	_u.mutation.ClearGithubRepo()
 	return _u
 }
 
-// SetGitRef sets the "git_ref" field.
+// SetGitRef sets the "gitRef" field.
 func (_u *DevBuildUpdate) SetGitRef(v string) *DevBuildUpdate {
 	_u.mutation.SetGitRef(v)
 	return _u
 }
 
-// SetNillableGitRef sets the "git_ref" field if the given value is not nil.
+// SetNillableGitRef sets the "gitRef" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableGitRef(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetGitRef(*v)
@@ -163,39 +163,39 @@ func (_u *DevBuildUpdate) SetNillableGitRef(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearGitRef clears the value of the "git_ref" field.
+// ClearGitRef clears the value of the "gitRef" field.
 func (_u *DevBuildUpdate) ClearGitRef() *DevBuildUpdate {
 	_u.mutation.ClearGitRef()
 	return _u
 }
 
-// SetGitSha sets the "git_sha" field.
-func (_u *DevBuildUpdate) SetGitSha(v string) *DevBuildUpdate {
-	_u.mutation.SetGitSha(v)
+// SetGitHash sets the "gitHash" field.
+func (_u *DevBuildUpdate) SetGitHash(v string) *DevBuildUpdate {
+	_u.mutation.SetGitHash(v)
 	return _u
 }
 
-// SetNillableGitSha sets the "git_sha" field if the given value is not nil.
-func (_u *DevBuildUpdate) SetNillableGitSha(v *string) *DevBuildUpdate {
+// SetNillableGitHash sets the "gitHash" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillableGitHash(v *string) *DevBuildUpdate {
 	if v != nil {
-		_u.SetGitSha(*v)
+		_u.SetGitHash(*v)
 	}
 	return _u
 }
 
-// ClearGitSha clears the value of the "git_sha" field.
-func (_u *DevBuildUpdate) ClearGitSha() *DevBuildUpdate {
-	_u.mutation.ClearGitSha()
+// ClearGitHash clears the value of the "gitHash" field.
+func (_u *DevBuildUpdate) ClearGitHash() *DevBuildUpdate {
+	_u.mutation.ClearGitHash()
 	return _u
 }
 
-// SetPluginGitRef sets the "plugin_git_ref" field.
+// SetPluginGitRef sets the "pluginGitRef" field.
 func (_u *DevBuildUpdate) SetPluginGitRef(v string) *DevBuildUpdate {
 	_u.mutation.SetPluginGitRef(v)
 	return _u
 }
 
-// SetNillablePluginGitRef sets the "plugin_git_ref" field if the given value is not nil.
+// SetNillablePluginGitRef sets the "pluginGitRef" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillablePluginGitRef(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetPluginGitRef(*v)
@@ -203,19 +203,19 @@ func (_u *DevBuildUpdate) SetNillablePluginGitRef(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearPluginGitRef clears the value of the "plugin_git_ref" field.
+// ClearPluginGitRef clears the value of the "pluginGitRef" field.
 func (_u *DevBuildUpdate) ClearPluginGitRef() *DevBuildUpdate {
 	_u.mutation.ClearPluginGitRef()
 	return _u
 }
 
-// SetIsHotfix sets the "is_hotfix" field.
+// SetIsHotfix sets the "isHotfix" field.
 func (_u *DevBuildUpdate) SetIsHotfix(v bool) *DevBuildUpdate {
 	_u.mutation.SetIsHotfix(v)
 	return _u
 }
 
-// SetNillableIsHotfix sets the "is_hotfix" field if the given value is not nil.
+// SetNillableIsHotfix sets the "isHotfix" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableIsHotfix(v *bool) *DevBuildUpdate {
 	if v != nil {
 		_u.SetIsHotfix(*v)
@@ -223,33 +223,33 @@ func (_u *DevBuildUpdate) SetNillableIsHotfix(v *bool) *DevBuildUpdate {
 	return _u
 }
 
-// SetIsPushGcr sets the "is_push_gcr" field.
-func (_u *DevBuildUpdate) SetIsPushGcr(v bool) *DevBuildUpdate {
-	_u.mutation.SetIsPushGcr(v)
+// SetIsPushGCR sets the "isPushGCR" field.
+func (_u *DevBuildUpdate) SetIsPushGCR(v bool) *DevBuildUpdate {
+	_u.mutation.SetIsPushGCR(v)
 	return _u
 }
 
-// SetNillableIsPushGcr sets the "is_push_gcr" field if the given value is not nil.
-func (_u *DevBuildUpdate) SetNillableIsPushGcr(v *bool) *DevBuildUpdate {
+// SetNillableIsPushGCR sets the "isPushGCR" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillableIsPushGCR(v *bool) *DevBuildUpdate {
 	if v != nil {
-		_u.SetIsPushGcr(*v)
+		_u.SetIsPushGCR(*v)
 	}
 	return _u
 }
 
-// ClearIsPushGcr clears the value of the "is_push_gcr" field.
-func (_u *DevBuildUpdate) ClearIsPushGcr() *DevBuildUpdate {
-	_u.mutation.ClearIsPushGcr()
+// ClearIsPushGCR clears the value of the "isPushGCR" field.
+func (_u *DevBuildUpdate) ClearIsPushGCR() *DevBuildUpdate {
+	_u.mutation.ClearIsPushGCR()
 	return _u
 }
 
-// SetTargetImg sets the "target_img" field.
+// SetTargetImg sets the "targetImg" field.
 func (_u *DevBuildUpdate) SetTargetImg(v string) *DevBuildUpdate {
 	_u.mutation.SetTargetImg(v)
 	return _u
 }
 
-// SetNillableTargetImg sets the "target_img" field if the given value is not nil.
+// SetNillableTargetImg sets the "targetImg" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableTargetImg(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetTargetImg(*v)
@@ -257,19 +257,19 @@ func (_u *DevBuildUpdate) SetNillableTargetImg(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearTargetImg clears the value of the "target_img" field.
+// ClearTargetImg clears the value of the "targetImg" field.
 func (_u *DevBuildUpdate) ClearTargetImg() *DevBuildUpdate {
 	_u.mutation.ClearTargetImg()
 	return _u
 }
 
-// SetPipelineEngine sets the "pipeline_engine" field.
+// SetPipelineEngine sets the "pipelineEngine" field.
 func (_u *DevBuildUpdate) SetPipelineEngine(v string) *DevBuildUpdate {
 	_u.mutation.SetPipelineEngine(v)
 	return _u
 }
 
-// SetNillablePipelineEngine sets the "pipeline_engine" field if the given value is not nil.
+// SetNillablePipelineEngine sets the "pipelineEngine" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillablePipelineEngine(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetPipelineEngine(*v)
@@ -277,7 +277,7 @@ func (_u *DevBuildUpdate) SetNillablePipelineEngine(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearPipelineEngine clears the value of the "pipeline_engine" field.
+// ClearPipelineEngine clears the value of the "pipelineEngine" field.
 func (_u *DevBuildUpdate) ClearPipelineEngine() *DevBuildUpdate {
 	_u.mutation.ClearPipelineEngine()
 	return _u
@@ -303,13 +303,13 @@ func (_u *DevBuildUpdate) ClearPlatform() *DevBuildUpdate {
 	return _u
 }
 
-// SetBuilderImg sets the "builder_img" field.
+// SetBuilderImg sets the "builderImg" field.
 func (_u *DevBuildUpdate) SetBuilderImg(v string) *DevBuildUpdate {
 	_u.mutation.SetBuilderImg(v)
 	return _u
 }
 
-// SetNillableBuilderImg sets the "builder_img" field if the given value is not nil.
+// SetNillableBuilderImg sets the "builderImg" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableBuilderImg(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetBuilderImg(*v)
@@ -317,19 +317,19 @@ func (_u *DevBuildUpdate) SetNillableBuilderImg(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearBuilderImg clears the value of the "builder_img" field.
+// ClearBuilderImg clears the value of the "builderImg" field.
 func (_u *DevBuildUpdate) ClearBuilderImg() *DevBuildUpdate {
 	_u.mutation.ClearBuilderImg()
 	return _u
 }
 
-// SetBuildEnv sets the "build_env" field.
+// SetBuildEnv sets the "buildEnv" field.
 func (_u *DevBuildUpdate) SetBuildEnv(v string) *DevBuildUpdate {
 	_u.mutation.SetBuildEnv(v)
 	return _u
 }
 
-// SetNillableBuildEnv sets the "build_env" field if the given value is not nil.
+// SetNillableBuildEnv sets the "buildEnv" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableBuildEnv(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetBuildEnv(*v)
@@ -337,7 +337,7 @@ func (_u *DevBuildUpdate) SetNillableBuildEnv(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearBuildEnv clears the value of the "build_env" field.
+// ClearBuildEnv clears the value of the "buildEnv" field.
 func (_u *DevBuildUpdate) ClearBuildEnv() *DevBuildUpdate {
 	_u.mutation.ClearBuildEnv()
 	return _u
@@ -363,13 +363,13 @@ func (_u *DevBuildUpdate) ClearFeatures() *DevBuildUpdate {
 	return _u
 }
 
-// SetProductBaseImg sets the "product_base_img" field.
+// SetProductBaseImg sets the "productBaseImg" field.
 func (_u *DevBuildUpdate) SetProductBaseImg(v string) *DevBuildUpdate {
 	_u.mutation.SetProductBaseImg(v)
 	return _u
 }
 
-// SetNillableProductBaseImg sets the "product_base_img" field if the given value is not nil.
+// SetNillableProductBaseImg sets the "productBaseImg" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableProductBaseImg(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetProductBaseImg(*v)
@@ -377,19 +377,19 @@ func (_u *DevBuildUpdate) SetNillableProductBaseImg(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearProductBaseImg clears the value of the "product_base_img" field.
+// ClearProductBaseImg clears the value of the "productBaseImg" field.
 func (_u *DevBuildUpdate) ClearProductBaseImg() *DevBuildUpdate {
 	_u.mutation.ClearProductBaseImg()
 	return _u
 }
 
-// SetProductDockerfile sets the "product_dockerfile" field.
+// SetProductDockerfile sets the "productDockerfile" field.
 func (_u *DevBuildUpdate) SetProductDockerfile(v string) *DevBuildUpdate {
 	_u.mutation.SetProductDockerfile(v)
 	return _u
 }
 
-// SetNillableProductDockerfile sets the "product_dockerfile" field if the given value is not nil.
+// SetNillableProductDockerfile sets the "productDockerfile" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableProductDockerfile(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetProductDockerfile(*v)
@@ -397,7 +397,7 @@ func (_u *DevBuildUpdate) SetNillableProductDockerfile(v *string) *DevBuildUpdat
 	return _u
 }
 
-// ClearProductDockerfile clears the value of the "product_dockerfile" field.
+// ClearProductDockerfile clears the value of the "productDockerfile" field.
 func (_u *DevBuildUpdate) ClearProductDockerfile() *DevBuildUpdate {
 	_u.mutation.ClearProductDockerfile()
 	return _u
@@ -423,13 +423,13 @@ func (_u *DevBuildUpdate) ClearStatus() *DevBuildUpdate {
 	return _u
 }
 
-// SetErrMsg sets the "err_msg" field.
+// SetErrMsg sets the "errMsg" field.
 func (_u *DevBuildUpdate) SetErrMsg(v string) *DevBuildUpdate {
 	_u.mutation.SetErrMsg(v)
 	return _u
 }
 
-// SetNillableErrMsg sets the "err_msg" field if the given value is not nil.
+// SetNillableErrMsg sets the "errMsg" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableErrMsg(v *string) *DevBuildUpdate {
 	if v != nil {
 		_u.SetErrMsg(*v)
@@ -437,20 +437,20 @@ func (_u *DevBuildUpdate) SetNillableErrMsg(v *string) *DevBuildUpdate {
 	return _u
 }
 
-// ClearErrMsg clears the value of the "err_msg" field.
+// ClearErrMsg clears the value of the "errMsg" field.
 func (_u *DevBuildUpdate) ClearErrMsg() *DevBuildUpdate {
 	_u.mutation.ClearErrMsg()
 	return _u
 }
 
-// SetPipelineBuildID sets the "pipeline_build_id" field.
+// SetPipelineBuildID sets the "pipelineBuildID" field.
 func (_u *DevBuildUpdate) SetPipelineBuildID(v int) *DevBuildUpdate {
 	_u.mutation.ResetPipelineBuildID()
 	_u.mutation.SetPipelineBuildID(v)
 	return _u
 }
 
-// SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
+// SetNillablePipelineBuildID sets the "pipelineBuildID" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillablePipelineBuildID(v *int) *DevBuildUpdate {
 	if v != nil {
 		_u.SetPipelineBuildID(*v)
@@ -458,25 +458,25 @@ func (_u *DevBuildUpdate) SetNillablePipelineBuildID(v *int) *DevBuildUpdate {
 	return _u
 }
 
-// AddPipelineBuildID adds value to the "pipeline_build_id" field.
+// AddPipelineBuildID adds value to the "pipelineBuildID" field.
 func (_u *DevBuildUpdate) AddPipelineBuildID(v int) *DevBuildUpdate {
 	_u.mutation.AddPipelineBuildID(v)
 	return _u
 }
 
-// ClearPipelineBuildID clears the value of the "pipeline_build_id" field.
+// ClearPipelineBuildID clears the value of the "pipelineBuildID" field.
 func (_u *DevBuildUpdate) ClearPipelineBuildID() *DevBuildUpdate {
 	_u.mutation.ClearPipelineBuildID()
 	return _u
 }
 
-// SetPipelineStartAt sets the "pipeline_start_at" field.
+// SetPipelineStartAt sets the "pipelineStartAt" field.
 func (_u *DevBuildUpdate) SetPipelineStartAt(v time.Time) *DevBuildUpdate {
 	_u.mutation.SetPipelineStartAt(v)
 	return _u
 }
 
-// SetNillablePipelineStartAt sets the "pipeline_start_at" field if the given value is not nil.
+// SetNillablePipelineStartAt sets the "pipelineStartAt" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillablePipelineStartAt(v *time.Time) *DevBuildUpdate {
 	if v != nil {
 		_u.SetPipelineStartAt(*v)
@@ -484,19 +484,19 @@ func (_u *DevBuildUpdate) SetNillablePipelineStartAt(v *time.Time) *DevBuildUpda
 	return _u
 }
 
-// ClearPipelineStartAt clears the value of the "pipeline_start_at" field.
+// ClearPipelineStartAt clears the value of the "pipelineStartAt" field.
 func (_u *DevBuildUpdate) ClearPipelineStartAt() *DevBuildUpdate {
 	_u.mutation.ClearPipelineStartAt()
 	return _u
 }
 
-// SetPipelineEndAt sets the "pipeline_end_at" field.
+// SetPipelineEndAt sets the "pipelineEndAt" field.
 func (_u *DevBuildUpdate) SetPipelineEndAt(v time.Time) *DevBuildUpdate {
 	_u.mutation.SetPipelineEndAt(v)
 	return _u
 }
 
-// SetNillablePipelineEndAt sets the "pipeline_end_at" field if the given value is not nil.
+// SetNillablePipelineEndAt sets the "pipelineEndAt" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillablePipelineEndAt(v *time.Time) *DevBuildUpdate {
 	if v != nil {
 		_u.SetPipelineEndAt(*v)
@@ -504,31 +504,39 @@ func (_u *DevBuildUpdate) SetNillablePipelineEndAt(v *time.Time) *DevBuildUpdate
 	return _u
 }
 
-// ClearPipelineEndAt clears the value of the "pipeline_end_at" field.
+// ClearPipelineEndAt clears the value of the "pipelineEndAt" field.
 func (_u *DevBuildUpdate) ClearPipelineEndAt() *DevBuildUpdate {
 	_u.mutation.ClearPipelineEndAt()
 	return _u
 }
 
-// SetBuildReport sets the "build_report" field.
-func (_u *DevBuildUpdate) SetBuildReport(v map[string]interface{}) *DevBuildUpdate {
+// SetBuildReport sets the "buildReport" field.
+func (_u *DevBuildUpdate) SetBuildReport(v schema.BuildReport) *DevBuildUpdate {
 	_u.mutation.SetBuildReport(v)
 	return _u
 }
 
-// ClearBuildReport clears the value of the "build_report" field.
+// SetNillableBuildReport sets the "buildReport" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillableBuildReport(v *schema.BuildReport) *DevBuildUpdate {
+	if v != nil {
+		_u.SetBuildReport(*v)
+	}
+	return _u
+}
+
+// ClearBuildReport clears the value of the "buildReport" field.
 func (_u *DevBuildUpdate) ClearBuildReport() *DevBuildUpdate {
 	_u.mutation.ClearBuildReport()
 	return _u
 }
 
-// SetTektonStatus sets the "tekton_status" field.
+// SetTektonStatus sets the "tektonStatus" field.
 func (_u *DevBuildUpdate) SetTektonStatus(v schema.TektonStatus) *DevBuildUpdate {
 	_u.mutation.SetTektonStatus(v)
 	return _u
 }
 
-// SetNillableTektonStatus sets the "tekton_status" field if the given value is not nil.
+// SetNillableTektonStatus sets the "tektonStatus" field if the given value is not nil.
 func (_u *DevBuildUpdate) SetNillableTektonStatus(v *schema.TektonStatus) *DevBuildUpdate {
 	if v != nil {
 		_u.SetTektonStatus(*v)
@@ -536,7 +544,7 @@ func (_u *DevBuildUpdate) SetNillableTektonStatus(v *schema.TektonStatus) *DevBu
 	return _u
 }
 
-// ClearTektonStatus clears the value of the "tekton_status" field.
+// ClearTektonStatus clears the value of the "tektonStatus" field.
 func (_u *DevBuildUpdate) ClearTektonStatus() *DevBuildUpdate {
 	_u.mutation.ClearTektonStatus()
 	return _u
@@ -587,7 +595,7 @@ func (_u *DevBuildUpdate) defaults() {
 func (_u *DevBuildUpdate) check() error {
 	if v, ok := _u.mutation.CreatedBy(); ok {
 		if err := devbuild.CreatedByValidator(v); err != nil {
-			return &ValidationError{Name: "created_by", err: fmt.Errorf(`ent: validator failed for field "DevBuild.created_by": %w`, err)}
+			return &ValidationError{Name: "createdBy", err: fmt.Errorf(`ent: validator failed for field "DevBuild.createdBy": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Product(); ok {
@@ -607,42 +615,42 @@ func (_u *DevBuildUpdate) check() error {
 	}
 	if v, ok := _u.mutation.GithubRepo(); ok {
 		if err := devbuild.GithubRepoValidator(v); err != nil {
-			return &ValidationError{Name: "github_repo", err: fmt.Errorf(`ent: validator failed for field "DevBuild.github_repo": %w`, err)}
+			return &ValidationError{Name: "githubRepo", err: fmt.Errorf(`ent: validator failed for field "DevBuild.githubRepo": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.GitRef(); ok {
 		if err := devbuild.GitRefValidator(v); err != nil {
-			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
+			return &ValidationError{Name: "gitRef", err: fmt.Errorf(`ent: validator failed for field "DevBuild.gitRef": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.GitSha(); ok {
-		if err := devbuild.GitShaValidator(v); err != nil {
-			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
+	if v, ok := _u.mutation.GitHash(); ok {
+		if err := devbuild.GitHashValidator(v); err != nil {
+			return &ValidationError{Name: "gitHash", err: fmt.Errorf(`ent: validator failed for field "DevBuild.gitHash": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.PluginGitRef(); ok {
 		if err := devbuild.PluginGitRefValidator(v); err != nil {
-			return &ValidationError{Name: "plugin_git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.plugin_git_ref": %w`, err)}
+			return &ValidationError{Name: "pluginGitRef", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pluginGitRef": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.TargetImg(); ok {
 		if err := devbuild.TargetImgValidator(v); err != nil {
-			return &ValidationError{Name: "target_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.target_img": %w`, err)}
+			return &ValidationError{Name: "targetImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.targetImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.PipelineEngine(); ok {
 		if err := devbuild.PipelineEngineValidator(v); err != nil {
-			return &ValidationError{Name: "pipeline_engine", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pipeline_engine": %w`, err)}
+			return &ValidationError{Name: "pipelineEngine", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pipelineEngine": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BuilderImg(); ok {
 		if err := devbuild.BuilderImgValidator(v); err != nil {
-			return &ValidationError{Name: "builder_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.builder_img": %w`, err)}
+			return &ValidationError{Name: "builderImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.builderImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BuildEnv(); ok {
 		if err := devbuild.BuildEnvValidator(v); err != nil {
-			return &ValidationError{Name: "build_env", err: fmt.Errorf(`ent: validator failed for field "DevBuild.build_env": %w`, err)}
+			return &ValidationError{Name: "buildEnv", err: fmt.Errorf(`ent: validator failed for field "DevBuild.buildEnv": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Features(); ok {
@@ -652,12 +660,12 @@ func (_u *DevBuildUpdate) check() error {
 	}
 	if v, ok := _u.mutation.ProductBaseImg(); ok {
 		if err := devbuild.ProductBaseImgValidator(v); err != nil {
-			return &ValidationError{Name: "product_base_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_base_img": %w`, err)}
+			return &ValidationError{Name: "productBaseImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.productBaseImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.ProductDockerfile(); ok {
 		if err := devbuild.ProductDockerfileValidator(v); err != nil {
-			return &ValidationError{Name: "product_dockerfile", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_dockerfile": %w`, err)}
+			return &ValidationError{Name: "productDockerfile", err: fmt.Errorf(`ent: validator failed for field "DevBuild.productDockerfile": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Status(); ok {
@@ -667,7 +675,7 @@ func (_u *DevBuildUpdate) check() error {
 	}
 	if v, ok := _u.mutation.ErrMsg(); ok {
 		if err := devbuild.ErrMsgValidator(v); err != nil {
-			return &ValidationError{Name: "err_msg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.err_msg": %w`, err)}
+			return &ValidationError{Name: "errMsg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.errMsg": %w`, err)}
 		}
 	}
 	return nil
@@ -727,11 +735,11 @@ func (_u *DevBuildUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.GitRefCleared() {
 		_spec.ClearField(devbuild.FieldGitRef, field.TypeString)
 	}
-	if value, ok := _u.mutation.GitSha(); ok {
-		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
+	if value, ok := _u.mutation.GitHash(); ok {
+		_spec.SetField(devbuild.FieldGitHash, field.TypeString, value)
 	}
-	if _u.mutation.GitShaCleared() {
-		_spec.ClearField(devbuild.FieldGitSha, field.TypeString)
+	if _u.mutation.GitHashCleared() {
+		_spec.ClearField(devbuild.FieldGitHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
@@ -742,11 +750,11 @@ func (_u *DevBuildUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.IsHotfix(); ok {
 		_spec.SetField(devbuild.FieldIsHotfix, field.TypeBool, value)
 	}
-	if value, ok := _u.mutation.IsPushGcr(); ok {
-		_spec.SetField(devbuild.FieldIsPushGcr, field.TypeBool, value)
+	if value, ok := _u.mutation.IsPushGCR(); ok {
+		_spec.SetField(devbuild.FieldIsPushGCR, field.TypeBool, value)
 	}
-	if _u.mutation.IsPushGcrCleared() {
-		_spec.ClearField(devbuild.FieldIsPushGcr, field.TypeBool)
+	if _u.mutation.IsPushGCRCleared() {
+		_spec.ClearField(devbuild.FieldIsPushGCR, field.TypeBool)
 	}
 	if value, ok := _u.mutation.TargetImg(); ok {
 		_spec.SetField(devbuild.FieldTargetImg, field.TypeString, value)
@@ -861,13 +869,13 @@ type DevBuildUpdateOne struct {
 	mutation *DevBuildMutation
 }
 
-// SetCreatedBy sets the "created_by" field.
+// SetCreatedBy sets the "createdBy" field.
 func (_u *DevBuildUpdateOne) SetCreatedBy(v string) *DevBuildUpdateOne {
 	_u.mutation.SetCreatedBy(v)
 	return _u
 }
 
-// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+// SetNillableCreatedBy sets the "createdBy" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableCreatedBy(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetCreatedBy(*v)
@@ -875,19 +883,19 @@ func (_u *DevBuildUpdateOne) SetNillableCreatedBy(v *string) *DevBuildUpdateOne 
 	return _u
 }
 
-// ClearCreatedBy clears the value of the "created_by" field.
+// ClearCreatedBy clears the value of the "createdBy" field.
 func (_u *DevBuildUpdateOne) ClearCreatedBy() *DevBuildUpdateOne {
 	_u.mutation.ClearCreatedBy()
 	return _u
 }
 
-// SetCreatedAt sets the "created_at" field.
+// SetCreatedAt sets the "createdAt" field.
 func (_u *DevBuildUpdateOne) SetCreatedAt(v time.Time) *DevBuildUpdateOne {
 	_u.mutation.SetCreatedAt(v)
 	return _u
 }
 
-// SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
+// SetNillableCreatedAt sets the "createdAt" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableCreatedAt(v *time.Time) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetCreatedAt(*v)
@@ -895,7 +903,7 @@ func (_u *DevBuildUpdateOne) SetNillableCreatedAt(v *time.Time) *DevBuildUpdateO
 	return _u
 }
 
-// SetUpdatedAt sets the "updated_at" field.
+// SetUpdatedAt sets the "updatedAt" field.
 func (_u *DevBuildUpdateOne) SetUpdatedAt(v time.Time) *DevBuildUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
@@ -961,13 +969,13 @@ func (_u *DevBuildUpdateOne) ClearVersion() *DevBuildUpdateOne {
 	return _u
 }
 
-// SetGithubRepo sets the "github_repo" field.
+// SetGithubRepo sets the "githubRepo" field.
 func (_u *DevBuildUpdateOne) SetGithubRepo(v string) *DevBuildUpdateOne {
 	_u.mutation.SetGithubRepo(v)
 	return _u
 }
 
-// SetNillableGithubRepo sets the "github_repo" field if the given value is not nil.
+// SetNillableGithubRepo sets the "githubRepo" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableGithubRepo(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetGithubRepo(*v)
@@ -975,19 +983,19 @@ func (_u *DevBuildUpdateOne) SetNillableGithubRepo(v *string) *DevBuildUpdateOne
 	return _u
 }
 
-// ClearGithubRepo clears the value of the "github_repo" field.
+// ClearGithubRepo clears the value of the "githubRepo" field.
 func (_u *DevBuildUpdateOne) ClearGithubRepo() *DevBuildUpdateOne {
 	_u.mutation.ClearGithubRepo()
 	return _u
 }
 
-// SetGitRef sets the "git_ref" field.
+// SetGitRef sets the "gitRef" field.
 func (_u *DevBuildUpdateOne) SetGitRef(v string) *DevBuildUpdateOne {
 	_u.mutation.SetGitRef(v)
 	return _u
 }
 
-// SetNillableGitRef sets the "git_ref" field if the given value is not nil.
+// SetNillableGitRef sets the "gitRef" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableGitRef(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetGitRef(*v)
@@ -995,39 +1003,39 @@ func (_u *DevBuildUpdateOne) SetNillableGitRef(v *string) *DevBuildUpdateOne {
 	return _u
 }
 
-// ClearGitRef clears the value of the "git_ref" field.
+// ClearGitRef clears the value of the "gitRef" field.
 func (_u *DevBuildUpdateOne) ClearGitRef() *DevBuildUpdateOne {
 	_u.mutation.ClearGitRef()
 	return _u
 }
 
-// SetGitSha sets the "git_sha" field.
-func (_u *DevBuildUpdateOne) SetGitSha(v string) *DevBuildUpdateOne {
-	_u.mutation.SetGitSha(v)
+// SetGitHash sets the "gitHash" field.
+func (_u *DevBuildUpdateOne) SetGitHash(v string) *DevBuildUpdateOne {
+	_u.mutation.SetGitHash(v)
 	return _u
 }
 
-// SetNillableGitSha sets the "git_sha" field if the given value is not nil.
-func (_u *DevBuildUpdateOne) SetNillableGitSha(v *string) *DevBuildUpdateOne {
+// SetNillableGitHash sets the "gitHash" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillableGitHash(v *string) *DevBuildUpdateOne {
 	if v != nil {
-		_u.SetGitSha(*v)
+		_u.SetGitHash(*v)
 	}
 	return _u
 }
 
-// ClearGitSha clears the value of the "git_sha" field.
-func (_u *DevBuildUpdateOne) ClearGitSha() *DevBuildUpdateOne {
-	_u.mutation.ClearGitSha()
+// ClearGitHash clears the value of the "gitHash" field.
+func (_u *DevBuildUpdateOne) ClearGitHash() *DevBuildUpdateOne {
+	_u.mutation.ClearGitHash()
 	return _u
 }
 
-// SetPluginGitRef sets the "plugin_git_ref" field.
+// SetPluginGitRef sets the "pluginGitRef" field.
 func (_u *DevBuildUpdateOne) SetPluginGitRef(v string) *DevBuildUpdateOne {
 	_u.mutation.SetPluginGitRef(v)
 	return _u
 }
 
-// SetNillablePluginGitRef sets the "plugin_git_ref" field if the given value is not nil.
+// SetNillablePluginGitRef sets the "pluginGitRef" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillablePluginGitRef(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetPluginGitRef(*v)
@@ -1035,19 +1043,19 @@ func (_u *DevBuildUpdateOne) SetNillablePluginGitRef(v *string) *DevBuildUpdateO
 	return _u
 }
 
-// ClearPluginGitRef clears the value of the "plugin_git_ref" field.
+// ClearPluginGitRef clears the value of the "pluginGitRef" field.
 func (_u *DevBuildUpdateOne) ClearPluginGitRef() *DevBuildUpdateOne {
 	_u.mutation.ClearPluginGitRef()
 	return _u
 }
 
-// SetIsHotfix sets the "is_hotfix" field.
+// SetIsHotfix sets the "isHotfix" field.
 func (_u *DevBuildUpdateOne) SetIsHotfix(v bool) *DevBuildUpdateOne {
 	_u.mutation.SetIsHotfix(v)
 	return _u
 }
 
-// SetNillableIsHotfix sets the "is_hotfix" field if the given value is not nil.
+// SetNillableIsHotfix sets the "isHotfix" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableIsHotfix(v *bool) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetIsHotfix(*v)
@@ -1055,33 +1063,33 @@ func (_u *DevBuildUpdateOne) SetNillableIsHotfix(v *bool) *DevBuildUpdateOne {
 	return _u
 }
 
-// SetIsPushGcr sets the "is_push_gcr" field.
-func (_u *DevBuildUpdateOne) SetIsPushGcr(v bool) *DevBuildUpdateOne {
-	_u.mutation.SetIsPushGcr(v)
+// SetIsPushGCR sets the "isPushGCR" field.
+func (_u *DevBuildUpdateOne) SetIsPushGCR(v bool) *DevBuildUpdateOne {
+	_u.mutation.SetIsPushGCR(v)
 	return _u
 }
 
-// SetNillableIsPushGcr sets the "is_push_gcr" field if the given value is not nil.
-func (_u *DevBuildUpdateOne) SetNillableIsPushGcr(v *bool) *DevBuildUpdateOne {
+// SetNillableIsPushGCR sets the "isPushGCR" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillableIsPushGCR(v *bool) *DevBuildUpdateOne {
 	if v != nil {
-		_u.SetIsPushGcr(*v)
+		_u.SetIsPushGCR(*v)
 	}
 	return _u
 }
 
-// ClearIsPushGcr clears the value of the "is_push_gcr" field.
-func (_u *DevBuildUpdateOne) ClearIsPushGcr() *DevBuildUpdateOne {
-	_u.mutation.ClearIsPushGcr()
+// ClearIsPushGCR clears the value of the "isPushGCR" field.
+func (_u *DevBuildUpdateOne) ClearIsPushGCR() *DevBuildUpdateOne {
+	_u.mutation.ClearIsPushGCR()
 	return _u
 }
 
-// SetTargetImg sets the "target_img" field.
+// SetTargetImg sets the "targetImg" field.
 func (_u *DevBuildUpdateOne) SetTargetImg(v string) *DevBuildUpdateOne {
 	_u.mutation.SetTargetImg(v)
 	return _u
 }
 
-// SetNillableTargetImg sets the "target_img" field if the given value is not nil.
+// SetNillableTargetImg sets the "targetImg" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableTargetImg(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetTargetImg(*v)
@@ -1089,19 +1097,19 @@ func (_u *DevBuildUpdateOne) SetNillableTargetImg(v *string) *DevBuildUpdateOne 
 	return _u
 }
 
-// ClearTargetImg clears the value of the "target_img" field.
+// ClearTargetImg clears the value of the "targetImg" field.
 func (_u *DevBuildUpdateOne) ClearTargetImg() *DevBuildUpdateOne {
 	_u.mutation.ClearTargetImg()
 	return _u
 }
 
-// SetPipelineEngine sets the "pipeline_engine" field.
+// SetPipelineEngine sets the "pipelineEngine" field.
 func (_u *DevBuildUpdateOne) SetPipelineEngine(v string) *DevBuildUpdateOne {
 	_u.mutation.SetPipelineEngine(v)
 	return _u
 }
 
-// SetNillablePipelineEngine sets the "pipeline_engine" field if the given value is not nil.
+// SetNillablePipelineEngine sets the "pipelineEngine" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillablePipelineEngine(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetPipelineEngine(*v)
@@ -1109,7 +1117,7 @@ func (_u *DevBuildUpdateOne) SetNillablePipelineEngine(v *string) *DevBuildUpdat
 	return _u
 }
 
-// ClearPipelineEngine clears the value of the "pipeline_engine" field.
+// ClearPipelineEngine clears the value of the "pipelineEngine" field.
 func (_u *DevBuildUpdateOne) ClearPipelineEngine() *DevBuildUpdateOne {
 	_u.mutation.ClearPipelineEngine()
 	return _u
@@ -1135,13 +1143,13 @@ func (_u *DevBuildUpdateOne) ClearPlatform() *DevBuildUpdateOne {
 	return _u
 }
 
-// SetBuilderImg sets the "builder_img" field.
+// SetBuilderImg sets the "builderImg" field.
 func (_u *DevBuildUpdateOne) SetBuilderImg(v string) *DevBuildUpdateOne {
 	_u.mutation.SetBuilderImg(v)
 	return _u
 }
 
-// SetNillableBuilderImg sets the "builder_img" field if the given value is not nil.
+// SetNillableBuilderImg sets the "builderImg" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableBuilderImg(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetBuilderImg(*v)
@@ -1149,19 +1157,19 @@ func (_u *DevBuildUpdateOne) SetNillableBuilderImg(v *string) *DevBuildUpdateOne
 	return _u
 }
 
-// ClearBuilderImg clears the value of the "builder_img" field.
+// ClearBuilderImg clears the value of the "builderImg" field.
 func (_u *DevBuildUpdateOne) ClearBuilderImg() *DevBuildUpdateOne {
 	_u.mutation.ClearBuilderImg()
 	return _u
 }
 
-// SetBuildEnv sets the "build_env" field.
+// SetBuildEnv sets the "buildEnv" field.
 func (_u *DevBuildUpdateOne) SetBuildEnv(v string) *DevBuildUpdateOne {
 	_u.mutation.SetBuildEnv(v)
 	return _u
 }
 
-// SetNillableBuildEnv sets the "build_env" field if the given value is not nil.
+// SetNillableBuildEnv sets the "buildEnv" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableBuildEnv(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetBuildEnv(*v)
@@ -1169,7 +1177,7 @@ func (_u *DevBuildUpdateOne) SetNillableBuildEnv(v *string) *DevBuildUpdateOne {
 	return _u
 }
 
-// ClearBuildEnv clears the value of the "build_env" field.
+// ClearBuildEnv clears the value of the "buildEnv" field.
 func (_u *DevBuildUpdateOne) ClearBuildEnv() *DevBuildUpdateOne {
 	_u.mutation.ClearBuildEnv()
 	return _u
@@ -1195,13 +1203,13 @@ func (_u *DevBuildUpdateOne) ClearFeatures() *DevBuildUpdateOne {
 	return _u
 }
 
-// SetProductBaseImg sets the "product_base_img" field.
+// SetProductBaseImg sets the "productBaseImg" field.
 func (_u *DevBuildUpdateOne) SetProductBaseImg(v string) *DevBuildUpdateOne {
 	_u.mutation.SetProductBaseImg(v)
 	return _u
 }
 
-// SetNillableProductBaseImg sets the "product_base_img" field if the given value is not nil.
+// SetNillableProductBaseImg sets the "productBaseImg" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableProductBaseImg(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetProductBaseImg(*v)
@@ -1209,19 +1217,19 @@ func (_u *DevBuildUpdateOne) SetNillableProductBaseImg(v *string) *DevBuildUpdat
 	return _u
 }
 
-// ClearProductBaseImg clears the value of the "product_base_img" field.
+// ClearProductBaseImg clears the value of the "productBaseImg" field.
 func (_u *DevBuildUpdateOne) ClearProductBaseImg() *DevBuildUpdateOne {
 	_u.mutation.ClearProductBaseImg()
 	return _u
 }
 
-// SetProductDockerfile sets the "product_dockerfile" field.
+// SetProductDockerfile sets the "productDockerfile" field.
 func (_u *DevBuildUpdateOne) SetProductDockerfile(v string) *DevBuildUpdateOne {
 	_u.mutation.SetProductDockerfile(v)
 	return _u
 }
 
-// SetNillableProductDockerfile sets the "product_dockerfile" field if the given value is not nil.
+// SetNillableProductDockerfile sets the "productDockerfile" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableProductDockerfile(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetProductDockerfile(*v)
@@ -1229,7 +1237,7 @@ func (_u *DevBuildUpdateOne) SetNillableProductDockerfile(v *string) *DevBuildUp
 	return _u
 }
 
-// ClearProductDockerfile clears the value of the "product_dockerfile" field.
+// ClearProductDockerfile clears the value of the "productDockerfile" field.
 func (_u *DevBuildUpdateOne) ClearProductDockerfile() *DevBuildUpdateOne {
 	_u.mutation.ClearProductDockerfile()
 	return _u
@@ -1255,13 +1263,13 @@ func (_u *DevBuildUpdateOne) ClearStatus() *DevBuildUpdateOne {
 	return _u
 }
 
-// SetErrMsg sets the "err_msg" field.
+// SetErrMsg sets the "errMsg" field.
 func (_u *DevBuildUpdateOne) SetErrMsg(v string) *DevBuildUpdateOne {
 	_u.mutation.SetErrMsg(v)
 	return _u
 }
 
-// SetNillableErrMsg sets the "err_msg" field if the given value is not nil.
+// SetNillableErrMsg sets the "errMsg" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableErrMsg(v *string) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetErrMsg(*v)
@@ -1269,20 +1277,20 @@ func (_u *DevBuildUpdateOne) SetNillableErrMsg(v *string) *DevBuildUpdateOne {
 	return _u
 }
 
-// ClearErrMsg clears the value of the "err_msg" field.
+// ClearErrMsg clears the value of the "errMsg" field.
 func (_u *DevBuildUpdateOne) ClearErrMsg() *DevBuildUpdateOne {
 	_u.mutation.ClearErrMsg()
 	return _u
 }
 
-// SetPipelineBuildID sets the "pipeline_build_id" field.
+// SetPipelineBuildID sets the "pipelineBuildID" field.
 func (_u *DevBuildUpdateOne) SetPipelineBuildID(v int) *DevBuildUpdateOne {
 	_u.mutation.ResetPipelineBuildID()
 	_u.mutation.SetPipelineBuildID(v)
 	return _u
 }
 
-// SetNillablePipelineBuildID sets the "pipeline_build_id" field if the given value is not nil.
+// SetNillablePipelineBuildID sets the "pipelineBuildID" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillablePipelineBuildID(v *int) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetPipelineBuildID(*v)
@@ -1290,25 +1298,25 @@ func (_u *DevBuildUpdateOne) SetNillablePipelineBuildID(v *int) *DevBuildUpdateO
 	return _u
 }
 
-// AddPipelineBuildID adds value to the "pipeline_build_id" field.
+// AddPipelineBuildID adds value to the "pipelineBuildID" field.
 func (_u *DevBuildUpdateOne) AddPipelineBuildID(v int) *DevBuildUpdateOne {
 	_u.mutation.AddPipelineBuildID(v)
 	return _u
 }
 
-// ClearPipelineBuildID clears the value of the "pipeline_build_id" field.
+// ClearPipelineBuildID clears the value of the "pipelineBuildID" field.
 func (_u *DevBuildUpdateOne) ClearPipelineBuildID() *DevBuildUpdateOne {
 	_u.mutation.ClearPipelineBuildID()
 	return _u
 }
 
-// SetPipelineStartAt sets the "pipeline_start_at" field.
+// SetPipelineStartAt sets the "pipelineStartAt" field.
 func (_u *DevBuildUpdateOne) SetPipelineStartAt(v time.Time) *DevBuildUpdateOne {
 	_u.mutation.SetPipelineStartAt(v)
 	return _u
 }
 
-// SetNillablePipelineStartAt sets the "pipeline_start_at" field if the given value is not nil.
+// SetNillablePipelineStartAt sets the "pipelineStartAt" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillablePipelineStartAt(v *time.Time) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetPipelineStartAt(*v)
@@ -1316,19 +1324,19 @@ func (_u *DevBuildUpdateOne) SetNillablePipelineStartAt(v *time.Time) *DevBuildU
 	return _u
 }
 
-// ClearPipelineStartAt clears the value of the "pipeline_start_at" field.
+// ClearPipelineStartAt clears the value of the "pipelineStartAt" field.
 func (_u *DevBuildUpdateOne) ClearPipelineStartAt() *DevBuildUpdateOne {
 	_u.mutation.ClearPipelineStartAt()
 	return _u
 }
 
-// SetPipelineEndAt sets the "pipeline_end_at" field.
+// SetPipelineEndAt sets the "pipelineEndAt" field.
 func (_u *DevBuildUpdateOne) SetPipelineEndAt(v time.Time) *DevBuildUpdateOne {
 	_u.mutation.SetPipelineEndAt(v)
 	return _u
 }
 
-// SetNillablePipelineEndAt sets the "pipeline_end_at" field if the given value is not nil.
+// SetNillablePipelineEndAt sets the "pipelineEndAt" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillablePipelineEndAt(v *time.Time) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetPipelineEndAt(*v)
@@ -1336,31 +1344,39 @@ func (_u *DevBuildUpdateOne) SetNillablePipelineEndAt(v *time.Time) *DevBuildUpd
 	return _u
 }
 
-// ClearPipelineEndAt clears the value of the "pipeline_end_at" field.
+// ClearPipelineEndAt clears the value of the "pipelineEndAt" field.
 func (_u *DevBuildUpdateOne) ClearPipelineEndAt() *DevBuildUpdateOne {
 	_u.mutation.ClearPipelineEndAt()
 	return _u
 }
 
-// SetBuildReport sets the "build_report" field.
-func (_u *DevBuildUpdateOne) SetBuildReport(v map[string]interface{}) *DevBuildUpdateOne {
+// SetBuildReport sets the "buildReport" field.
+func (_u *DevBuildUpdateOne) SetBuildReport(v schema.BuildReport) *DevBuildUpdateOne {
 	_u.mutation.SetBuildReport(v)
 	return _u
 }
 
-// ClearBuildReport clears the value of the "build_report" field.
+// SetNillableBuildReport sets the "buildReport" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillableBuildReport(v *schema.BuildReport) *DevBuildUpdateOne {
+	if v != nil {
+		_u.SetBuildReport(*v)
+	}
+	return _u
+}
+
+// ClearBuildReport clears the value of the "buildReport" field.
 func (_u *DevBuildUpdateOne) ClearBuildReport() *DevBuildUpdateOne {
 	_u.mutation.ClearBuildReport()
 	return _u
 }
 
-// SetTektonStatus sets the "tekton_status" field.
+// SetTektonStatus sets the "tektonStatus" field.
 func (_u *DevBuildUpdateOne) SetTektonStatus(v schema.TektonStatus) *DevBuildUpdateOne {
 	_u.mutation.SetTektonStatus(v)
 	return _u
 }
 
-// SetNillableTektonStatus sets the "tekton_status" field if the given value is not nil.
+// SetNillableTektonStatus sets the "tektonStatus" field if the given value is not nil.
 func (_u *DevBuildUpdateOne) SetNillableTektonStatus(v *schema.TektonStatus) *DevBuildUpdateOne {
 	if v != nil {
 		_u.SetTektonStatus(*v)
@@ -1368,7 +1384,7 @@ func (_u *DevBuildUpdateOne) SetNillableTektonStatus(v *schema.TektonStatus) *De
 	return _u
 }
 
-// ClearTektonStatus clears the value of the "tekton_status" field.
+// ClearTektonStatus clears the value of the "tektonStatus" field.
 func (_u *DevBuildUpdateOne) ClearTektonStatus() *DevBuildUpdateOne {
 	_u.mutation.ClearTektonStatus()
 	return _u
@@ -1432,7 +1448,7 @@ func (_u *DevBuildUpdateOne) defaults() {
 func (_u *DevBuildUpdateOne) check() error {
 	if v, ok := _u.mutation.CreatedBy(); ok {
 		if err := devbuild.CreatedByValidator(v); err != nil {
-			return &ValidationError{Name: "created_by", err: fmt.Errorf(`ent: validator failed for field "DevBuild.created_by": %w`, err)}
+			return &ValidationError{Name: "createdBy", err: fmt.Errorf(`ent: validator failed for field "DevBuild.createdBy": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Product(); ok {
@@ -1452,42 +1468,42 @@ func (_u *DevBuildUpdateOne) check() error {
 	}
 	if v, ok := _u.mutation.GithubRepo(); ok {
 		if err := devbuild.GithubRepoValidator(v); err != nil {
-			return &ValidationError{Name: "github_repo", err: fmt.Errorf(`ent: validator failed for field "DevBuild.github_repo": %w`, err)}
+			return &ValidationError{Name: "githubRepo", err: fmt.Errorf(`ent: validator failed for field "DevBuild.githubRepo": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.GitRef(); ok {
 		if err := devbuild.GitRefValidator(v); err != nil {
-			return &ValidationError{Name: "git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_ref": %w`, err)}
+			return &ValidationError{Name: "gitRef", err: fmt.Errorf(`ent: validator failed for field "DevBuild.gitRef": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.GitSha(); ok {
-		if err := devbuild.GitShaValidator(v); err != nil {
-			return &ValidationError{Name: "git_sha", err: fmt.Errorf(`ent: validator failed for field "DevBuild.git_sha": %w`, err)}
+	if v, ok := _u.mutation.GitHash(); ok {
+		if err := devbuild.GitHashValidator(v); err != nil {
+			return &ValidationError{Name: "gitHash", err: fmt.Errorf(`ent: validator failed for field "DevBuild.gitHash": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.PluginGitRef(); ok {
 		if err := devbuild.PluginGitRefValidator(v); err != nil {
-			return &ValidationError{Name: "plugin_git_ref", err: fmt.Errorf(`ent: validator failed for field "DevBuild.plugin_git_ref": %w`, err)}
+			return &ValidationError{Name: "pluginGitRef", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pluginGitRef": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.TargetImg(); ok {
 		if err := devbuild.TargetImgValidator(v); err != nil {
-			return &ValidationError{Name: "target_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.target_img": %w`, err)}
+			return &ValidationError{Name: "targetImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.targetImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.PipelineEngine(); ok {
 		if err := devbuild.PipelineEngineValidator(v); err != nil {
-			return &ValidationError{Name: "pipeline_engine", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pipeline_engine": %w`, err)}
+			return &ValidationError{Name: "pipelineEngine", err: fmt.Errorf(`ent: validator failed for field "DevBuild.pipelineEngine": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BuilderImg(); ok {
 		if err := devbuild.BuilderImgValidator(v); err != nil {
-			return &ValidationError{Name: "builder_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.builder_img": %w`, err)}
+			return &ValidationError{Name: "builderImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.builderImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BuildEnv(); ok {
 		if err := devbuild.BuildEnvValidator(v); err != nil {
-			return &ValidationError{Name: "build_env", err: fmt.Errorf(`ent: validator failed for field "DevBuild.build_env": %w`, err)}
+			return &ValidationError{Name: "buildEnv", err: fmt.Errorf(`ent: validator failed for field "DevBuild.buildEnv": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Features(); ok {
@@ -1497,12 +1513,12 @@ func (_u *DevBuildUpdateOne) check() error {
 	}
 	if v, ok := _u.mutation.ProductBaseImg(); ok {
 		if err := devbuild.ProductBaseImgValidator(v); err != nil {
-			return &ValidationError{Name: "product_base_img", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_base_img": %w`, err)}
+			return &ValidationError{Name: "productBaseImg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.productBaseImg": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.ProductDockerfile(); ok {
 		if err := devbuild.ProductDockerfileValidator(v); err != nil {
-			return &ValidationError{Name: "product_dockerfile", err: fmt.Errorf(`ent: validator failed for field "DevBuild.product_dockerfile": %w`, err)}
+			return &ValidationError{Name: "productDockerfile", err: fmt.Errorf(`ent: validator failed for field "DevBuild.productDockerfile": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Status(); ok {
@@ -1512,7 +1528,7 @@ func (_u *DevBuildUpdateOne) check() error {
 	}
 	if v, ok := _u.mutation.ErrMsg(); ok {
 		if err := devbuild.ErrMsgValidator(v); err != nil {
-			return &ValidationError{Name: "err_msg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.err_msg": %w`, err)}
+			return &ValidationError{Name: "errMsg", err: fmt.Errorf(`ent: validator failed for field "DevBuild.errMsg": %w`, err)}
 		}
 	}
 	return nil
@@ -1589,11 +1605,11 @@ func (_u *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, err 
 	if _u.mutation.GitRefCleared() {
 		_spec.ClearField(devbuild.FieldGitRef, field.TypeString)
 	}
-	if value, ok := _u.mutation.GitSha(); ok {
-		_spec.SetField(devbuild.FieldGitSha, field.TypeString, value)
+	if value, ok := _u.mutation.GitHash(); ok {
+		_spec.SetField(devbuild.FieldGitHash, field.TypeString, value)
 	}
-	if _u.mutation.GitShaCleared() {
-		_spec.ClearField(devbuild.FieldGitSha, field.TypeString)
+	if _u.mutation.GitHashCleared() {
+		_spec.ClearField(devbuild.FieldGitHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.PluginGitRef(); ok {
 		_spec.SetField(devbuild.FieldPluginGitRef, field.TypeString, value)
@@ -1604,11 +1620,11 @@ func (_u *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, err 
 	if value, ok := _u.mutation.IsHotfix(); ok {
 		_spec.SetField(devbuild.FieldIsHotfix, field.TypeBool, value)
 	}
-	if value, ok := _u.mutation.IsPushGcr(); ok {
-		_spec.SetField(devbuild.FieldIsPushGcr, field.TypeBool, value)
+	if value, ok := _u.mutation.IsPushGCR(); ok {
+		_spec.SetField(devbuild.FieldIsPushGCR, field.TypeBool, value)
 	}
-	if _u.mutation.IsPushGcrCleared() {
-		_spec.ClearField(devbuild.FieldIsPushGcr, field.TypeBool)
+	if _u.mutation.IsPushGCRCleared() {
+		_spec.ClearField(devbuild.FieldIsPushGCR, field.TypeBool)
 	}
 	if value, ok := _u.mutation.TargetImg(); ok {
 		_spec.SetField(devbuild.FieldTargetImg, field.TypeString, value)
