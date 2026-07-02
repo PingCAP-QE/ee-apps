@@ -95,11 +95,16 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*de
 	if p.CreatedBy != nil {
 		query.Where(entdevbuild.CreatedBy(*p.CreatedBy))
 	}
-	if p.Sort != "" {
+	// Map camelCase sort values to Ent column names
+	sortColumnMap := map[string]string{
+		"createdAt": "created_at",
+		"updatedAt": "updated_at",
+	}
+	if col, ok := sortColumnMap[p.Sort]; ok {
 		if p.Direction == "desc" {
-			query.Order(ent.Desc(p.Sort))
+			query.Order(ent.Desc(col))
 		} else {
-			query.Order(ent.Asc(p.Sort))
+			query.Order(ent.Asc(col))
 		}
 	}
 
@@ -186,7 +191,7 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 	if p.Status.TektonStatus != nil {
 		// Convert Goa TektonStatus to schema TektonStatus
 		tektonStatus := schema.TektonStatus{
-			TriggersEventIds: p.Status.TektonStatus.TriggersEventIds,
+			TriggersEventIds: p.Status.TektonStatus.TriggersEventIDs,
 		}
 		// Convert pipelines if present
 		if len(p.Status.TektonStatus.Pipelines) > 0 {

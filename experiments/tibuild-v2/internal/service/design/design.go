@@ -63,31 +63,31 @@ var _ = Service("devbuild", func() {
 			Attribute("page", Int, "The page number of items", func() {
 				Default(1)
 			})
-			Attribute("page_size", Int, "Page size", func() {
+			Attribute("pageSize", Int, "Page size", func() {
 				Default(30)
 			})
 			Attribute("hotfix", Boolean, "Filter hotfix", func() {
 				Default(false)
 			})
 			Attribute("sort", String, "What to sort results by", func() {
-				Enum("created_at", "updated_at")
-				Default("created_at")
+				Enum("createdAt", "updatedAt")
+				Default("createdAt")
 			})
 			Attribute("direction", String, "The direction of the sort", func() {
 				Enum("asc", "desc")
 				Default("desc")
 			})
-			Attribute("created_by", String, "Filter created by")
+			Attribute("createdBy", String, "Filter created by")
 		})
 		Result(ArrayOf(DevBuild), "List of dev builds")
 		HTTP(func() {
 			GET("/")
 			Param("page")
-			Param("page_size")
+			Param("pageSize")
 			Param("hotfix")
 			Param("sort")
 			Param("direction")
-			Param("created_by")
+			Param("createdBy")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 		})
@@ -96,16 +96,16 @@ var _ = Service("devbuild", func() {
 	Method("create", func() {
 		Description("Create and trigger devbuild")
 		Payload(func() {
-			Attribute("created_by", String, "Creator of build", func() {
-				Format(FormatEmail)
-			})
-			Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
-				Required("product", "version", "edition", "git_ref")
-			})
-			Attribute("dryrun", Boolean, "Dry run", func() {
-				Default(false)
-			})
-			Required("created_by", "request")
+		Attribute("createdBy", String, "Creator of build", func() {
+			Format(FormatEmail)
+		})
+		Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
+			Required("product", "version", "edition", "gitRef")
+		})
+		Attribute("dryrun", Boolean, "Dry run", func() {
+			Default(false)
+		})
+		Required("createdBy", "request")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -255,21 +255,21 @@ var DevBuild = Type("DevBuild", func() {
 })
 
 var DevBuildMeta = Type("DevBuildMeta", func() {
-	Attribute("created_by", String, func() {
+	Attribute("createdBy", String, func() {
 		Format(FormatEmail)
 	})
-	Attribute("created_at", String, func() {
+	Attribute("createdAt", String, func() {
 		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
-	Attribute("updated_at", String, func() {
+	Attribute("updatedAt", String, func() {
 		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
-	Required("created_at", "created_by", "updated_at")
+	Required("createdAt", "createdBy", "updatedAt")
 })
 
 var DevBuildSpec = Type("DevBuildSpec", func() {
-	Attribute("build_env", String)
-	Attribute("builder_img", String)
+	Attribute("buildEnv", String)
+	Attribute("builderImg", String)
 	Attribute("edition", String, func() {
 		Enum("enterprise", "community", "fips", "failpoint", "experiment", "nextgen", "next-gen")
 	})
@@ -278,17 +278,17 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 		Enum("all", "linux", "darwin", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64")
 	})
 	Attribute("features", String, func() {
-		Description("[Deprecated] use build_env for custom features")
+		Description("[Deprecated] use buildEnv for custom features")
 	})
-	Attribute("git_ref", String)
-	Attribute("git_sha", String)
-	Attribute("github_repo", String)
-	Attribute("is_hotfix", Boolean)
-	Attribute("is_push_gcr", Boolean)
-	Attribute("pipeline_engine", String, func() {
+	Attribute("gitRef", String)
+	Attribute("gitSha", String)
+	Attribute("githubRepo", String)
+	Attribute("isHotfix", Boolean)
+	Attribute("isPushGCR", Boolean)
+	Attribute("pipelineEngine", String, func() {
 		Enum("jenkins", "tekton")
 	})
-	Attribute("plugin_git_ref", String)
+	Attribute("pluginGitRef", String)
 	Attribute("product", String, func() {
 		Enum(
 			"dm",                                       // from pingcap/tiflow repo.
@@ -308,44 +308,44 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 			"tiproxy",        // from pingcap/tiproxy repo.
 		)
 	})
-	Attribute("product_base_img", String)
-	Attribute("product_dockerfile", String)
-	Attribute("target_img", String)
+	Attribute("productBaseImg", String)
+	Attribute("productDockerfile", String)
+	Attribute("targetImg", String)
 	Attribute("version", String)
 })
 
 var DevBuildStatus = Type("DevBuildStatus", func() {
-	Attribute("build_report", BuildReport)
-	Attribute("err_msg", String)
-	Attribute("pipeline_build_id", Int)
-	Attribute("pipeline_start_at", String, func() {
+	Attribute("buildReport", BuildReport)
+	Attribute("errMsg", String)
+	Attribute("pipelineBuildID", Int)
+	Attribute("pipelineStartAt", String, func() {
 		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
-	Attribute("pipeline_end_at", String, func() {
+	Attribute("pipelineEndAt", String, func() {
 		Pattern(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 	})
-	Attribute("pipeline_view_url", String, func() { Format(FormatURI) })
-	Attribute("pipeline_view_urls", ArrayOf(String, func() { Format(FormatURI) }))
+	Attribute("pipelineViewURL", String, func() { Format(FormatURI) })
+	Attribute("pipelineViewURLs", ArrayOf(String, func() { Format(FormatURI) }))
 	Attribute("status", BuildStatus)
-	Attribute("tekton_status", TektonStatus)
+	Attribute("tektonStatus", TektonStatus)
 
 	Required("status")
 })
 
 var BuildReport = Type("BuildReport", func() {
 	Attribute("binaries", ArrayOf(BinArtifact))
-	Attribute("git_sha", String, func() { MaxLength(40) })
+	Attribute("gitSha", String, func() { MaxLength(40) })
 	Attribute("images", ArrayOf(ImageArtifact))
-	Attribute("plugin_git_sha", String, func() { MaxLength(40) })
-	Attribute("printed_version", String)
+	Attribute("pluginGitSha", String, func() { MaxLength(40) })
+	Attribute("printedVersion", String)
 })
 
 var BinArtifact = Type("BinArtifact", func() {
 	Attribute("component", String)
-	Attribute("oci_file", OciFile)
+	Attribute("ociFile", OciFile)
 	Attribute("platform", String)
-	Attribute("sha256_oci_file", OciFile)
-	Attribute("sha256_url", String, func() { Format(FormatURI) })
+	Attribute("sha256OCIFile", OciFile)
+	Attribute("sha256URL", String, func() { Format(FormatURI) })
 	Attribute("url", String, func() { Format(FormatURI) })
 })
 
@@ -359,13 +359,13 @@ var OciFile = Type("OciFile", func() {
 var ImageArtifact = Type("ImageArtifact", func() {
 	Attribute("platform", String)
 	Attribute("url", String)
-	Attribute("internal_url", String)
+	Attribute("internalURL", String)
 	Required("platform", "url")
 })
 
 var TektonStatus = Type("TektonStatus", func() {
 	Attribute("pipelines", ArrayOf(TektonPipeline))
-	Attribute("triggers_event_ids", ArrayOf(String, func() { Format(FormatUUID) }))
+	Attribute("triggersEventIDs", ArrayOf(String, func() { Format(FormatUUID) }))
 	Required("pipelines")
 })
 
@@ -373,10 +373,10 @@ var TektonPipeline = Type("TektonPipeline", func() {
 	Attribute("name", String)
 	Attribute("namespace", String)
 	Attribute("status", BuildStatus)
-	Attribute("start_at", String, func() { Format(FormatDateTime) })
-	Attribute("end_at", String, func() { Format(FormatDateTime) })
+	Attribute("startAt", String, func() { Format(FormatDateTime) })
+	Attribute("endAt", String, func() { Format(FormatDateTime) })
 	Attribute("images", ArrayOf(ImageArtifact))
-	Attribute("oci_artifacts", ArrayOf(OciArtifact))
+	Attribute("ociArtifacts", ArrayOf(OciArtifact))
 	Attribute("platform", String)
 	Attribute("url", String, func() { Format(FormatURI) })
 

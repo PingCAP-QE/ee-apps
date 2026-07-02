@@ -19,7 +19,7 @@ import (
 // HTTP request body.
 type CreateRequestBody struct {
 	// Creator of build
-	CreatedBy *string `form:"created_by,omitempty" json:"created_by,omitempty" xml:"created_by,omitempty"`
+	CreatedBy *string `form:"createdBy,omitempty" json:"createdBy,omitempty" xml:"createdBy,omitempty"`
 	// Build to create, only spec field is required, others are ignored
 	Request *DevBuildSpecRequestBody `form:"request,omitempty" json:"request,omitempty" xml:"request,omitempty"`
 }
@@ -144,62 +144,62 @@ type DevBuildResponse struct {
 
 // DevBuildMetaResponse is used to define fields on response body types.
 type DevBuildMetaResponse struct {
-	CreatedBy string `form:"created_by" json:"created_by" xml:"created_by"`
-	CreatedAt string `form:"created_at" json:"created_at" xml:"created_at"`
-	UpdatedAt string `form:"updated_at" json:"updated_at" xml:"updated_at"`
+	CreatedBy string `form:"createdBy" json:"createdBy" xml:"createdBy"`
+	CreatedAt string `form:"createdAt" json:"createdAt" xml:"createdAt"`
+	UpdatedAt string `form:"updatedAt" json:"updatedAt" xml:"updatedAt"`
 }
 
 // DevBuildSpecResponse is used to define fields on response body types.
 type DevBuildSpecResponse struct {
-	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	BuildEnv   *string `form:"buildEnv,omitempty" json:"buildEnv,omitempty" xml:"buildEnv,omitempty"`
+	BuilderImg *string `form:"builderImg,omitempty" json:"builderImg,omitempty" xml:"builderImg,omitempty"`
 	Edition    string  `form:"edition" json:"edition" xml:"edition"`
 	Platform   string  `form:"platform" json:"platform" xml:"platform"`
-	// [Deprecated] use build_env for custom features
+	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
-	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
-	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
-	GithubRepo        *string `form:"github_repo,omitempty" json:"github_repo,omitempty" xml:"github_repo,omitempty"`
-	IsHotfix          *bool   `form:"is_hotfix,omitempty" json:"is_hotfix,omitempty" xml:"is_hotfix,omitempty"`
-	IsPushGcr         *bool   `form:"is_push_gcr,omitempty" json:"is_push_gcr,omitempty" xml:"is_push_gcr,omitempty"`
-	PipelineEngine    *string `form:"pipeline_engine,omitempty" json:"pipeline_engine,omitempty" xml:"pipeline_engine,omitempty"`
-	PluginGitRef      *string `form:"plugin_git_ref,omitempty" json:"plugin_git_ref,omitempty" xml:"plugin_git_ref,omitempty"`
+	GitRef            string  `form:"gitRef" json:"gitRef" xml:"gitRef"`
+	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
+	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
+	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
+	PipelineEngine    *string `form:"pipelineEngine,omitempty" json:"pipelineEngine,omitempty" xml:"pipelineEngine,omitempty"`
+	PluginGitRef      *string `form:"pluginGitRef,omitempty" json:"pluginGitRef,omitempty" xml:"pluginGitRef,omitempty"`
 	Product           string  `form:"product" json:"product" xml:"product"`
-	ProductBaseImg    *string `form:"product_base_img,omitempty" json:"product_base_img,omitempty" xml:"product_base_img,omitempty"`
-	ProductDockerfile *string `form:"product_dockerfile,omitempty" json:"product_dockerfile,omitempty" xml:"product_dockerfile,omitempty"`
-	TargetImg         *string `form:"target_img,omitempty" json:"target_img,omitempty" xml:"target_img,omitempty"`
+	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
+	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
+	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
 	Version           string  `form:"version" json:"version" xml:"version"`
 }
 
 // DevBuildStatusResponse is used to define fields on response body types.
 type DevBuildStatusResponse struct {
-	BuildReport      *BuildReportResponse  `form:"build_report,omitempty" json:"build_report,omitempty" xml:"build_report,omitempty"`
-	ErrMsg           *string               `form:"err_msg,omitempty" json:"err_msg,omitempty" xml:"err_msg,omitempty"`
-	PipelineBuildID  *int                  `form:"pipeline_build_id,omitempty" json:"pipeline_build_id,omitempty" xml:"pipeline_build_id,omitempty"`
-	PipelineStartAt  *string               `form:"pipeline_start_at,omitempty" json:"pipeline_start_at,omitempty" xml:"pipeline_start_at,omitempty"`
-	PipelineEndAt    *string               `form:"pipeline_end_at,omitempty" json:"pipeline_end_at,omitempty" xml:"pipeline_end_at,omitempty"`
-	PipelineViewURL  *string               `form:"pipeline_view_url,omitempty" json:"pipeline_view_url,omitempty" xml:"pipeline_view_url,omitempty"`
-	PipelineViewUrls []string              `form:"pipeline_view_urls,omitempty" json:"pipeline_view_urls,omitempty" xml:"pipeline_view_urls,omitempty"`
+	BuildReport      *BuildReportResponse  `form:"buildReport,omitempty" json:"buildReport,omitempty" xml:"buildReport,omitempty"`
+	ErrMsg           *string               `form:"errMsg,omitempty" json:"errMsg,omitempty" xml:"errMsg,omitempty"`
+	PipelineBuildID  *int                  `form:"pipelineBuildID,omitempty" json:"pipelineBuildID,omitempty" xml:"pipelineBuildID,omitempty"`
+	PipelineStartAt  *string               `form:"pipelineStartAt,omitempty" json:"pipelineStartAt,omitempty" xml:"pipelineStartAt,omitempty"`
+	PipelineEndAt    *string               `form:"pipelineEndAt,omitempty" json:"pipelineEndAt,omitempty" xml:"pipelineEndAt,omitempty"`
+	PipelineViewURL  *string               `form:"pipelineViewURL,omitempty" json:"pipelineViewURL,omitempty" xml:"pipelineViewURL,omitempty"`
+	PipelineViewURLs []string              `form:"pipelineViewURLs,omitempty" json:"pipelineViewURLs,omitempty" xml:"pipelineViewURLs,omitempty"`
 	Status           string                `form:"status" json:"status" xml:"status"`
-	TektonStatus     *TektonStatusResponse `form:"tekton_status,omitempty" json:"tekton_status,omitempty" xml:"tekton_status,omitempty"`
+	TektonStatus     *TektonStatusResponse `form:"tektonStatus,omitempty" json:"tektonStatus,omitempty" xml:"tektonStatus,omitempty"`
 }
 
 // BuildReportResponse is used to define fields on response body types.
 type BuildReportResponse struct {
 	Binaries       []*BinArtifactResponse   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                  `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
+	GitSha         *string                  `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
 	Images         []*ImageArtifactResponse `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                  `form:"plugin_git_sha,omitempty" json:"plugin_git_sha,omitempty" xml:"plugin_git_sha,omitempty"`
-	PrintedVersion *string                  `form:"printed_version,omitempty" json:"printed_version,omitempty" xml:"printed_version,omitempty"`
+	PluginGitSha   *string                  `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PrintedVersion *string                  `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
 // BinArtifactResponse is used to define fields on response body types.
 type BinArtifactResponse struct {
 	Component     *string          `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
-	OciFile       *OciFileResponse `form:"oci_file,omitempty" json:"oci_file,omitempty" xml:"oci_file,omitempty"`
+	OciFile       *OciFileResponse `form:"ociFile,omitempty" json:"ociFile,omitempty" xml:"ociFile,omitempty"`
 	Platform      *string          `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	Sha256OciFile *OciFileResponse `form:"sha256_oci_file,omitempty" json:"sha256_oci_file,omitempty" xml:"sha256_oci_file,omitempty"`
-	Sha256URL     *string          `form:"sha256_url,omitempty" json:"sha256_url,omitempty" xml:"sha256_url,omitempty"`
+	Sha256OCIFile *OciFileResponse `form:"sha256OCIFile,omitempty" json:"sha256OCIFile,omitempty" xml:"sha256OCIFile,omitempty"`
+	Sha256URL     *string          `form:"sha256URL,omitempty" json:"sha256URL,omitempty" xml:"sha256URL,omitempty"`
 	URL           *string          `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
 
@@ -214,13 +214,13 @@ type OciFileResponse struct {
 type ImageArtifactResponse struct {
 	Platform    string  `form:"platform" json:"platform" xml:"platform"`
 	URL         string  `form:"url" json:"url" xml:"url"`
-	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
+	InternalURL *string `form:"internalURL,omitempty" json:"internalURL,omitempty" xml:"internalURL,omitempty"`
 }
 
 // TektonStatusResponse is used to define fields on response body types.
 type TektonStatusResponse struct {
 	Pipelines        []*TektonPipelineResponse `form:"pipelines" json:"pipelines" xml:"pipelines"`
-	TriggersEventIds []string                  `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
+	TriggersEventIDs []string                  `form:"triggersEventIDs,omitempty" json:"triggersEventIDs,omitempty" xml:"triggersEventIDs,omitempty"`
 }
 
 // TektonPipelineResponse is used to define fields on response body types.
@@ -228,10 +228,10 @@ type TektonPipelineResponse struct {
 	Name         string                   `form:"name" json:"name" xml:"name"`
 	Namespace    string                   `form:"namespace" json:"namespace" xml:"namespace"`
 	Status       string                   `form:"status" json:"status" xml:"status"`
-	StartAt      *string                  `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
-	EndAt        *string                  `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
+	StartAt      *string                  `form:"startAt,omitempty" json:"startAt,omitempty" xml:"startAt,omitempty"`
+	EndAt        *string                  `form:"endAt,omitempty" json:"endAt,omitempty" xml:"endAt,omitempty"`
 	Images       []*ImageArtifactResponse `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	OciArtifacts []*OciArtifactResponse   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
+	OciArtifacts []*OciArtifactResponse   `form:"ociArtifacts,omitempty" json:"ociArtifacts,omitempty" xml:"ociArtifacts,omitempty"`
 	Platform     *string                  `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	URL          *string                  `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
@@ -245,62 +245,62 @@ type OciArtifactResponse struct {
 
 // DevBuildMetaResponseBody is used to define fields on response body types.
 type DevBuildMetaResponseBody struct {
-	CreatedBy string `form:"created_by" json:"created_by" xml:"created_by"`
-	CreatedAt string `form:"created_at" json:"created_at" xml:"created_at"`
-	UpdatedAt string `form:"updated_at" json:"updated_at" xml:"updated_at"`
+	CreatedBy string `form:"createdBy" json:"createdBy" xml:"createdBy"`
+	CreatedAt string `form:"createdAt" json:"createdAt" xml:"createdAt"`
+	UpdatedAt string `form:"updatedAt" json:"updatedAt" xml:"updatedAt"`
 }
 
 // DevBuildSpecResponseBody is used to define fields on response body types.
 type DevBuildSpecResponseBody struct {
-	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	BuildEnv   *string `form:"buildEnv,omitempty" json:"buildEnv,omitempty" xml:"buildEnv,omitempty"`
+	BuilderImg *string `form:"builderImg,omitempty" json:"builderImg,omitempty" xml:"builderImg,omitempty"`
 	Edition    string  `form:"edition" json:"edition" xml:"edition"`
 	Platform   string  `form:"platform" json:"platform" xml:"platform"`
-	// [Deprecated] use build_env for custom features
+	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
-	GitRef            string  `form:"git_ref" json:"git_ref" xml:"git_ref"`
-	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
-	GithubRepo        *string `form:"github_repo,omitempty" json:"github_repo,omitempty" xml:"github_repo,omitempty"`
-	IsHotfix          *bool   `form:"is_hotfix,omitempty" json:"is_hotfix,omitempty" xml:"is_hotfix,omitempty"`
-	IsPushGcr         *bool   `form:"is_push_gcr,omitempty" json:"is_push_gcr,omitempty" xml:"is_push_gcr,omitempty"`
-	PipelineEngine    *string `form:"pipeline_engine,omitempty" json:"pipeline_engine,omitempty" xml:"pipeline_engine,omitempty"`
-	PluginGitRef      *string `form:"plugin_git_ref,omitempty" json:"plugin_git_ref,omitempty" xml:"plugin_git_ref,omitempty"`
+	GitRef            string  `form:"gitRef" json:"gitRef" xml:"gitRef"`
+	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
+	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
+	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
+	PipelineEngine    *string `form:"pipelineEngine,omitempty" json:"pipelineEngine,omitempty" xml:"pipelineEngine,omitempty"`
+	PluginGitRef      *string `form:"pluginGitRef,omitempty" json:"pluginGitRef,omitempty" xml:"pluginGitRef,omitempty"`
 	Product           string  `form:"product" json:"product" xml:"product"`
-	ProductBaseImg    *string `form:"product_base_img,omitempty" json:"product_base_img,omitempty" xml:"product_base_img,omitempty"`
-	ProductDockerfile *string `form:"product_dockerfile,omitempty" json:"product_dockerfile,omitempty" xml:"product_dockerfile,omitempty"`
-	TargetImg         *string `form:"target_img,omitempty" json:"target_img,omitempty" xml:"target_img,omitempty"`
+	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
+	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
+	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
 	Version           string  `form:"version" json:"version" xml:"version"`
 }
 
 // DevBuildStatusResponseBody is used to define fields on response body types.
 type DevBuildStatusResponseBody struct {
-	BuildReport      *BuildReportResponseBody  `form:"build_report,omitempty" json:"build_report,omitempty" xml:"build_report,omitempty"`
-	ErrMsg           *string                   `form:"err_msg,omitempty" json:"err_msg,omitempty" xml:"err_msg,omitempty"`
-	PipelineBuildID  *int                      `form:"pipeline_build_id,omitempty" json:"pipeline_build_id,omitempty" xml:"pipeline_build_id,omitempty"`
-	PipelineStartAt  *string                   `form:"pipeline_start_at,omitempty" json:"pipeline_start_at,omitempty" xml:"pipeline_start_at,omitempty"`
-	PipelineEndAt    *string                   `form:"pipeline_end_at,omitempty" json:"pipeline_end_at,omitempty" xml:"pipeline_end_at,omitempty"`
-	PipelineViewURL  *string                   `form:"pipeline_view_url,omitempty" json:"pipeline_view_url,omitempty" xml:"pipeline_view_url,omitempty"`
-	PipelineViewUrls []string                  `form:"pipeline_view_urls,omitempty" json:"pipeline_view_urls,omitempty" xml:"pipeline_view_urls,omitempty"`
+	BuildReport      *BuildReportResponseBody  `form:"buildReport,omitempty" json:"buildReport,omitempty" xml:"buildReport,omitempty"`
+	ErrMsg           *string                   `form:"errMsg,omitempty" json:"errMsg,omitempty" xml:"errMsg,omitempty"`
+	PipelineBuildID  *int                      `form:"pipelineBuildID,omitempty" json:"pipelineBuildID,omitempty" xml:"pipelineBuildID,omitempty"`
+	PipelineStartAt  *string                   `form:"pipelineStartAt,omitempty" json:"pipelineStartAt,omitempty" xml:"pipelineStartAt,omitempty"`
+	PipelineEndAt    *string                   `form:"pipelineEndAt,omitempty" json:"pipelineEndAt,omitempty" xml:"pipelineEndAt,omitempty"`
+	PipelineViewURL  *string                   `form:"pipelineViewURL,omitempty" json:"pipelineViewURL,omitempty" xml:"pipelineViewURL,omitempty"`
+	PipelineViewURLs []string                  `form:"pipelineViewURLs,omitempty" json:"pipelineViewURLs,omitempty" xml:"pipelineViewURLs,omitempty"`
 	Status           string                    `form:"status" json:"status" xml:"status"`
-	TektonStatus     *TektonStatusResponseBody `form:"tekton_status,omitempty" json:"tekton_status,omitempty" xml:"tekton_status,omitempty"`
+	TektonStatus     *TektonStatusResponseBody `form:"tektonStatus,omitempty" json:"tektonStatus,omitempty" xml:"tektonStatus,omitempty"`
 }
 
 // BuildReportResponseBody is used to define fields on response body types.
 type BuildReportResponseBody struct {
 	Binaries       []*BinArtifactResponseBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                      `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
+	GitSha         *string                      `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
 	Images         []*ImageArtifactResponseBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                      `form:"plugin_git_sha,omitempty" json:"plugin_git_sha,omitempty" xml:"plugin_git_sha,omitempty"`
-	PrintedVersion *string                      `form:"printed_version,omitempty" json:"printed_version,omitempty" xml:"printed_version,omitempty"`
+	PluginGitSha   *string                      `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PrintedVersion *string                      `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
 // BinArtifactResponseBody is used to define fields on response body types.
 type BinArtifactResponseBody struct {
 	Component     *string              `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
-	OciFile       *OciFileResponseBody `form:"oci_file,omitempty" json:"oci_file,omitempty" xml:"oci_file,omitempty"`
+	OciFile       *OciFileResponseBody `form:"ociFile,omitempty" json:"ociFile,omitempty" xml:"ociFile,omitempty"`
 	Platform      *string              `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	Sha256OciFile *OciFileResponseBody `form:"sha256_oci_file,omitempty" json:"sha256_oci_file,omitempty" xml:"sha256_oci_file,omitempty"`
-	Sha256URL     *string              `form:"sha256_url,omitempty" json:"sha256_url,omitempty" xml:"sha256_url,omitempty"`
+	Sha256OCIFile *OciFileResponseBody `form:"sha256OCIFile,omitempty" json:"sha256OCIFile,omitempty" xml:"sha256OCIFile,omitempty"`
+	Sha256URL     *string              `form:"sha256URL,omitempty" json:"sha256URL,omitempty" xml:"sha256URL,omitempty"`
 	URL           *string              `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
 
@@ -315,13 +315,13 @@ type OciFileResponseBody struct {
 type ImageArtifactResponseBody struct {
 	Platform    string  `form:"platform" json:"platform" xml:"platform"`
 	URL         string  `form:"url" json:"url" xml:"url"`
-	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
+	InternalURL *string `form:"internalURL,omitempty" json:"internalURL,omitempty" xml:"internalURL,omitempty"`
 }
 
 // TektonStatusResponseBody is used to define fields on response body types.
 type TektonStatusResponseBody struct {
 	Pipelines        []*TektonPipelineResponseBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
-	TriggersEventIds []string                      `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
+	TriggersEventIDs []string                      `form:"triggersEventIDs,omitempty" json:"triggersEventIDs,omitempty" xml:"triggersEventIDs,omitempty"`
 }
 
 // TektonPipelineResponseBody is used to define fields on response body types.
@@ -329,10 +329,10 @@ type TektonPipelineResponseBody struct {
 	Name         string                       `form:"name" json:"name" xml:"name"`
 	Namespace    string                       `form:"namespace" json:"namespace" xml:"namespace"`
 	Status       string                       `form:"status" json:"status" xml:"status"`
-	StartAt      *string                      `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
-	EndAt        *string                      `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
+	StartAt      *string                      `form:"startAt,omitempty" json:"startAt,omitempty" xml:"startAt,omitempty"`
+	EndAt        *string                      `form:"endAt,omitempty" json:"endAt,omitempty" xml:"endAt,omitempty"`
 	Images       []*ImageArtifactResponseBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	OciArtifacts []*OciArtifactResponseBody   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
+	OciArtifacts []*OciArtifactResponseBody   `form:"ociArtifacts,omitempty" json:"ociArtifacts,omitempty" xml:"ociArtifacts,omitempty"`
 	Platform     *string                      `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	URL          *string                      `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
@@ -346,55 +346,55 @@ type OciArtifactResponseBody struct {
 
 // DevBuildSpecRequestBody is used to define fields on request body types.
 type DevBuildSpecRequestBody struct {
-	BuildEnv   *string `form:"build_env,omitempty" json:"build_env,omitempty" xml:"build_env,omitempty"`
-	BuilderImg *string `form:"builder_img,omitempty" json:"builder_img,omitempty" xml:"builder_img,omitempty"`
+	BuildEnv   *string `form:"buildEnv,omitempty" json:"buildEnv,omitempty" xml:"buildEnv,omitempty"`
+	BuilderImg *string `form:"builderImg,omitempty" json:"builderImg,omitempty" xml:"builderImg,omitempty"`
 	Edition    *string `form:"edition,omitempty" json:"edition,omitempty" xml:"edition,omitempty"`
 	Platform   *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	// [Deprecated] use build_env for custom features
+	// [Deprecated] use buildEnv for custom features
 	Features          *string `form:"features,omitempty" json:"features,omitempty" xml:"features,omitempty"`
-	GitRef            *string `form:"git_ref,omitempty" json:"git_ref,omitempty" xml:"git_ref,omitempty"`
-	GitSha            *string `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
-	GithubRepo        *string `form:"github_repo,omitempty" json:"github_repo,omitempty" xml:"github_repo,omitempty"`
-	IsHotfix          *bool   `form:"is_hotfix,omitempty" json:"is_hotfix,omitempty" xml:"is_hotfix,omitempty"`
-	IsPushGcr         *bool   `form:"is_push_gcr,omitempty" json:"is_push_gcr,omitempty" xml:"is_push_gcr,omitempty"`
-	PipelineEngine    *string `form:"pipeline_engine,omitempty" json:"pipeline_engine,omitempty" xml:"pipeline_engine,omitempty"`
-	PluginGitRef      *string `form:"plugin_git_ref,omitempty" json:"plugin_git_ref,omitempty" xml:"plugin_git_ref,omitempty"`
+	GitRef            *string `form:"gitRef,omitempty" json:"gitRef,omitempty" xml:"gitRef,omitempty"`
+	GitSha            *string `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
+	GithubRepo        *string `form:"githubRepo,omitempty" json:"githubRepo,omitempty" xml:"githubRepo,omitempty"`
+	IsHotfix          *bool   `form:"isHotfix,omitempty" json:"isHotfix,omitempty" xml:"isHotfix,omitempty"`
+	IsPushGCR         *bool   `form:"isPushGCR,omitempty" json:"isPushGCR,omitempty" xml:"isPushGCR,omitempty"`
+	PipelineEngine    *string `form:"pipelineEngine,omitempty" json:"pipelineEngine,omitempty" xml:"pipelineEngine,omitempty"`
+	PluginGitRef      *string `form:"pluginGitRef,omitempty" json:"pluginGitRef,omitempty" xml:"pluginGitRef,omitempty"`
 	Product           *string `form:"product,omitempty" json:"product,omitempty" xml:"product,omitempty"`
-	ProductBaseImg    *string `form:"product_base_img,omitempty" json:"product_base_img,omitempty" xml:"product_base_img,omitempty"`
-	ProductDockerfile *string `form:"product_dockerfile,omitempty" json:"product_dockerfile,omitempty" xml:"product_dockerfile,omitempty"`
-	TargetImg         *string `form:"target_img,omitempty" json:"target_img,omitempty" xml:"target_img,omitempty"`
+	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
+	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
+	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
 	Version           *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
 // DevBuildStatusRequestBody is used to define fields on request body types.
 type DevBuildStatusRequestBody struct {
-	BuildReport      *BuildReportRequestBody  `form:"build_report,omitempty" json:"build_report,omitempty" xml:"build_report,omitempty"`
-	ErrMsg           *string                  `form:"err_msg,omitempty" json:"err_msg,omitempty" xml:"err_msg,omitempty"`
-	PipelineBuildID  *int                     `form:"pipeline_build_id,omitempty" json:"pipeline_build_id,omitempty" xml:"pipeline_build_id,omitempty"`
-	PipelineStartAt  *string                  `form:"pipeline_start_at,omitempty" json:"pipeline_start_at,omitempty" xml:"pipeline_start_at,omitempty"`
-	PipelineEndAt    *string                  `form:"pipeline_end_at,omitempty" json:"pipeline_end_at,omitempty" xml:"pipeline_end_at,omitempty"`
-	PipelineViewURL  *string                  `form:"pipeline_view_url,omitempty" json:"pipeline_view_url,omitempty" xml:"pipeline_view_url,omitempty"`
-	PipelineViewUrls []string                 `form:"pipeline_view_urls,omitempty" json:"pipeline_view_urls,omitempty" xml:"pipeline_view_urls,omitempty"`
+	BuildReport      *BuildReportRequestBody  `form:"buildReport,omitempty" json:"buildReport,omitempty" xml:"buildReport,omitempty"`
+	ErrMsg           *string                  `form:"errMsg,omitempty" json:"errMsg,omitempty" xml:"errMsg,omitempty"`
+	PipelineBuildID  *int                     `form:"pipelineBuildID,omitempty" json:"pipelineBuildID,omitempty" xml:"pipelineBuildID,omitempty"`
+	PipelineStartAt  *string                  `form:"pipelineStartAt,omitempty" json:"pipelineStartAt,omitempty" xml:"pipelineStartAt,omitempty"`
+	PipelineEndAt    *string                  `form:"pipelineEndAt,omitempty" json:"pipelineEndAt,omitempty" xml:"pipelineEndAt,omitempty"`
+	PipelineViewURL  *string                  `form:"pipelineViewURL,omitempty" json:"pipelineViewURL,omitempty" xml:"pipelineViewURL,omitempty"`
+	PipelineViewURLs []string                 `form:"pipelineViewURLs,omitempty" json:"pipelineViewURLs,omitempty" xml:"pipelineViewURLs,omitempty"`
 	Status           *string                  `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
-	TektonStatus     *TektonStatusRequestBody `form:"tekton_status,omitempty" json:"tekton_status,omitempty" xml:"tekton_status,omitempty"`
+	TektonStatus     *TektonStatusRequestBody `form:"tektonStatus,omitempty" json:"tektonStatus,omitempty" xml:"tektonStatus,omitempty"`
 }
 
 // BuildReportRequestBody is used to define fields on request body types.
 type BuildReportRequestBody struct {
 	Binaries       []*BinArtifactRequestBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitSha         *string                     `form:"git_sha,omitempty" json:"git_sha,omitempty" xml:"git_sha,omitempty"`
+	GitSha         *string                     `form:"gitSha,omitempty" json:"gitSha,omitempty" xml:"gitSha,omitempty"`
 	Images         []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitSha   *string                     `form:"plugin_git_sha,omitempty" json:"plugin_git_sha,omitempty" xml:"plugin_git_sha,omitempty"`
-	PrintedVersion *string                     `form:"printed_version,omitempty" json:"printed_version,omitempty" xml:"printed_version,omitempty"`
+	PluginGitSha   *string                     `form:"pluginGitSha,omitempty" json:"pluginGitSha,omitempty" xml:"pluginGitSha,omitempty"`
+	PrintedVersion *string                     `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
 }
 
 // BinArtifactRequestBody is used to define fields on request body types.
 type BinArtifactRequestBody struct {
 	Component     *string             `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
-	OciFile       *OciFileRequestBody `form:"oci_file,omitempty" json:"oci_file,omitempty" xml:"oci_file,omitempty"`
+	OciFile       *OciFileRequestBody `form:"ociFile,omitempty" json:"ociFile,omitempty" xml:"ociFile,omitempty"`
 	Platform      *string             `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	Sha256OciFile *OciFileRequestBody `form:"sha256_oci_file,omitempty" json:"sha256_oci_file,omitempty" xml:"sha256_oci_file,omitempty"`
-	Sha256URL     *string             `form:"sha256_url,omitempty" json:"sha256_url,omitempty" xml:"sha256_url,omitempty"`
+	Sha256OCIFile *OciFileRequestBody `form:"sha256OCIFile,omitempty" json:"sha256OCIFile,omitempty" xml:"sha256OCIFile,omitempty"`
+	Sha256URL     *string             `form:"sha256URL,omitempty" json:"sha256URL,omitempty" xml:"sha256URL,omitempty"`
 	URL           *string             `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
 
@@ -409,13 +409,13 @@ type OciFileRequestBody struct {
 type ImageArtifactRequestBody struct {
 	Platform    *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	URL         *string `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-	InternalURL *string `form:"internal_url,omitempty" json:"internal_url,omitempty" xml:"internal_url,omitempty"`
+	InternalURL *string `form:"internalURL,omitempty" json:"internalURL,omitempty" xml:"internalURL,omitempty"`
 }
 
 // TektonStatusRequestBody is used to define fields on request body types.
 type TektonStatusRequestBody struct {
 	Pipelines        []*TektonPipelineRequestBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
-	TriggersEventIds []string                     `form:"triggers_event_ids,omitempty" json:"triggers_event_ids,omitempty" xml:"triggers_event_ids,omitempty"`
+	TriggersEventIDs []string                     `form:"triggersEventIDs,omitempty" json:"triggersEventIDs,omitempty" xml:"triggersEventIDs,omitempty"`
 }
 
 // TektonPipelineRequestBody is used to define fields on request body types.
@@ -423,10 +423,10 @@ type TektonPipelineRequestBody struct {
 	Name         *string                     `form:"name,omitempty" json:"name,omitempty" xml:"name,omitempty"`
 	Namespace    *string                     `form:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
 	Status       *string                     `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
-	StartAt      *string                     `form:"start_at,omitempty" json:"start_at,omitempty" xml:"start_at,omitempty"`
-	EndAt        *string                     `form:"end_at,omitempty" json:"end_at,omitempty" xml:"end_at,omitempty"`
+	StartAt      *string                     `form:"startAt,omitempty" json:"startAt,omitempty" xml:"startAt,omitempty"`
+	EndAt        *string                     `form:"endAt,omitempty" json:"endAt,omitempty" xml:"endAt,omitempty"`
 	Images       []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	OciArtifacts []*OciArtifactRequestBody   `form:"oci_artifacts,omitempty" json:"oci_artifacts,omitempty" xml:"oci_artifacts,omitempty"`
+	OciArtifacts []*OciArtifactRequestBody   `form:"ociArtifacts,omitempty" json:"ociArtifacts,omitempty" xml:"ociArtifacts,omitempty"`
 	Platform     *string                     `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
 	URL          *string                     `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
 }
@@ -669,13 +669,13 @@ func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 // ValidateCreateRequestBody runs the validations defined on CreateRequestBody
 func ValidateCreateRequestBody(body *CreateRequestBody) (err error) {
 	if body.CreatedBy == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("created_by", "body"))
+		err = goa.MergeErrors(err, goa.MissingFieldError("createdBy", "body"))
 	}
 	if body.Request == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("request", "body"))
 	}
 	if body.CreatedBy != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.created_by", *body.CreatedBy, goa.FormatEmail))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdBy", *body.CreatedBy, goa.FormatEmail))
 	}
 	if body.Request != nil {
 		if err2 := ValidateDevBuildSpecRequestBody(body.Request); err2 != nil {
@@ -711,7 +711,7 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 		err = goa.MergeErrors(err, goa.MissingFieldError("edition", "body"))
 	}
 	if body.GitRef == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("git_ref", "body"))
+		err = goa.MergeErrors(err, goa.MissingFieldError("gitRef", "body"))
 	}
 	if body.Edition != nil {
 		if !(*body.Edition == "enterprise" || *body.Edition == "community" || *body.Edition == "fips" || *body.Edition == "failpoint" || *body.Edition == "experiment" || *body.Edition == "nextgen" || *body.Edition == "next-gen") {
@@ -725,7 +725,7 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 	}
 	if body.PipelineEngine != nil {
 		if !(*body.PipelineEngine == "jenkins" || *body.PipelineEngine == "tekton") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipeline_engine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.pipelineEngine", *body.PipelineEngine, []any{"jenkins", "tekton"}))
 		}
 	}
 	if body.Product != nil {
@@ -748,16 +748,16 @@ func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err err
 		}
 	}
 	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_start_at", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineStartAt", *body.PipelineStartAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipeline_end_at", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.pipelineEndAt", *body.PipelineEndAt, "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
 	}
 	if body.PipelineViewURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_url", *body.PipelineViewURL, goa.FormatURI))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
 	}
-	for _, e := range body.PipelineViewUrls {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipeline_view_urls[*]", e, goa.FormatURI))
+	for _, e := range body.PipelineViewURLs {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
 	}
 	if body.Status != nil {
 		if !(*body.Status == "pending" || *body.Status == "processing" || *body.Status == "aborted" || *body.Status == "success" || *body.Status == "failure" || *body.Status == "error") {
@@ -784,7 +784,7 @@ func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
 	}
 	if body.GitSha != nil {
 		if utf8.RuneCountInString(*body.GitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.git_sha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitSha", *body.GitSha, utf8.RuneCountInString(*body.GitSha), 40, false))
 		}
 	}
 	for _, e := range body.Images {
@@ -796,7 +796,7 @@ func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
 	}
 	if body.PluginGitSha != nil {
 		if utf8.RuneCountInString(*body.PluginGitSha) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.plugin_git_sha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitSha", *body.PluginGitSha, utf8.RuneCountInString(*body.PluginGitSha), 40, false))
 		}
 	}
 	return
@@ -810,13 +810,13 @@ func ValidateBinArtifactRequestBody(body *BinArtifactRequestBody) (err error) {
 			err = goa.MergeErrors(err, err2)
 		}
 	}
-	if body.Sha256OciFile != nil {
-		if err2 := ValidateOciFileRequestBody(body.Sha256OciFile); err2 != nil {
+	if body.Sha256OCIFile != nil {
+		if err2 := ValidateOciFileRequestBody(body.Sha256OCIFile); err2 != nil {
 			err = goa.MergeErrors(err, err2)
 		}
 	}
 	if body.Sha256URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.sha256_url", *body.Sha256URL, goa.FormatURI))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.sha256URL", *body.Sha256URL, goa.FormatURI))
 	}
 	if body.URL != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
@@ -863,8 +863,8 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 			}
 		}
 	}
-	for _, e := range body.TriggersEventIds {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggers_event_ids[*]", e, goa.FormatUUID))
+	for _, e := range body.TriggersEventIDs {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggersEventIDs[*]", e, goa.FormatUUID))
 	}
 	return
 }
@@ -887,10 +887,10 @@ func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err err
 		}
 	}
 	if body.StartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.start_at", *body.StartAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.startAt", *body.StartAt, goa.FormatDateTime))
 	}
 	if body.EndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.end_at", *body.EndAt, goa.FormatDateTime))
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.endAt", *body.EndAt, goa.FormatDateTime))
 	}
 	for _, e := range body.Images {
 		if e != nil {

@@ -126,7 +126,7 @@ func TestDevBuildCRUD(t *testing.T) {
 		listPayload := &devbuild.ListPayload{
 			Page:      1,
 			PageSize:  10,
-			Sort:      "created_at",
+			Sort:      "createdAt",
 			Direction: "desc",
 		}
 

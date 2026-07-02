@@ -30,7 +30,7 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			}
 		}
 		if len(urls) > 0 {
-			status.PipelineViewUrls = urls
+			status.PipelineViewURLs = urls
 		}
 	}
 
@@ -50,7 +50,7 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			GitRef:            build.GitRef,
 			GithubRepo:        &build.GithubRepo,
 			IsHotfix:          &build.IsHotfix,
-			IsPushGcr:         &build.IsPushGcr,
+			IsPushGCR:         &build.IsPushGcr,
 			PipelineEngine:    &build.PipelineEngine,
 			Platform:          build.Platform,
 			PluginGitRef:      &build.PluginGitRef,
@@ -122,7 +122,7 @@ func transformBuildReport(report map[string]any) *devbuild.BuildReport {
 // transformTektonStatus converts a schema.TektonStatus to a devbuild.TektonStatus
 func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 	tektonStatus := &devbuild.TektonStatus{
-		TriggersEventIds: status.TriggersEventIds,
+		TriggersEventIDs: status.TriggersEventIds,
 	}
 
 	// Transform pipelines
@@ -194,7 +194,7 @@ func ociArtifactToBinArtifacts(repo, tag string, files []string) []*devbuild.Bin
 
 	for _, bin := range result {
 		if bin.OciFile != nil {
-			bin.Sha256OciFile = sha256Map[bin.OciFile.File]
+			bin.Sha256OCIFile = sha256Map[bin.OciFile.File]
 		}
 	}
 

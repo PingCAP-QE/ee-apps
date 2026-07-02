@@ -73,7 +73,7 @@ paths:
                   type: integer
                   format: int64
                   default: 1
-                - name: page_size
+                - name: pageSize
                   in: query
                   description: Page size
                   required: false
@@ -91,10 +91,10 @@ paths:
                   description: What to sort results by
                   required: false
                   type: string
-                  default: created_at
+                  default: createdAt
                   enum:
-                    - created_at
-                    - updated_at
+                    - createdAt
+                    - updatedAt
                 - name: direction
                   in: query
                   description: The direction of the sort
@@ -104,7 +104,7 @@ paths:
                   enum:
                     - asc
                     - desc
-                - name: created_by
+                - name: createdBy
                   in: query
                   description: Filter created by
                   required: false
@@ -144,7 +144,7 @@ paths:
                   schema:
                     $ref: '#/definitions/DevbuildCreateRequestBody'
                     required:
-                        - created_by
+                        - createdBy
                         - request
             responses:
                 "200":
@@ -449,14 +449,14 @@ definitions:
             component:
                 type: string
                 example: Qui dolor quas velit enim autem.
-            oci_file:
+            ociFile:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
                 example: Nemo enim ut rerum ut qui.
-            sha256_oci_file:
+            sha256OCIFile:
                 $ref: '#/definitions/OciFile'
-            sha256_url:
+            sha256URL:
                 type: string
                 example: http://osinskigusikowski.com/gabriella
                 format: uri
@@ -466,16 +466,16 @@ definitions:
                 format: uri
         example:
             component: Aut fugiat.
-            oci_file:
+            ociFile:
                 file: Culpa rerum accusamus in.
                 repo: Et officia necessitatibus et.
                 tag: Sint fuga enim minima.
             platform: Qui maxime accusantium.
-            sha256_oci_file:
+            sha256OCIFile:
                 file: Culpa rerum accusamus in.
                 repo: Et officia necessitatibus et.
                 tag: Sint fuga enim minima.
-            sha256_url: http://murraydicki.org/corine_carroll
+            sha256URL: http://murraydicki.org/corine_carroll
             url: http://champlin.name/zaria_satterfield
     BuildReport:
         title: BuildReport
@@ -487,54 +487,54 @@ definitions:
                     $ref: '#/definitions/BinArtifact'
                 example:
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
-            git_sha:
+            gitSha:
                 type: string
                 example: gy5
                 maxLength: 40
@@ -543,73 +543,73 @@ definitions:
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-            plugin_git_sha:
+            pluginGitSha:
                 type: string
                 example: 60l
                 maxLength: 40
-            printed_version:
+            printedVersion:
                 type: string
                 example: Itaque repellendus veniam error qui repudiandae earum.
         example:
             binaries:
                 - component: Sed reprehenderit neque velit.
-                  oci_file:
+                  ociFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
                   platform: Vel qui nulla qui quod.
-                  sha256_oci_file:
+                  sha256OCIFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
-                  sha256_url: http://botsford.net/sophia_ortiz
+                  sha256URL: http://botsford.net/sophia_ortiz
                   url: http://baumbach.biz/buster
                 - component: Sed reprehenderit neque velit.
-                  oci_file:
+                  ociFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
                   platform: Vel qui nulla qui quod.
-                  sha256_oci_file:
+                  sha256OCIFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
-                  sha256_url: http://botsford.net/sophia_ortiz
+                  sha256URL: http://botsford.net/sophia_ortiz
                   url: http://baumbach.biz/buster
                 - component: Sed reprehenderit neque velit.
-                  oci_file:
+                  ociFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
                   platform: Vel qui nulla qui quod.
-                  sha256_oci_file:
+                  sha256OCIFile:
                     file: Culpa rerum accusamus in.
                     repo: Et officia necessitatibus et.
                     tag: Sint fuga enim minima.
-                  sha256_url: http://botsford.net/sophia_ortiz
+                  sha256URL: http://botsford.net/sophia_ortiz
                   url: http://baumbach.biz/buster
-            git_sha: wn9
+            gitSha: wn9
             images:
-                - internal_url: Magni eaque quas eos.
+                - internalURL: Magni eaque quas eos.
                   platform: Eos consequatur laudantium aut vitae.
                   url: Ut odit.
-                - internal_url: Magni eaque quas eos.
+                - internalURL: Magni eaque quas eos.
                   platform: Eos consequatur laudantium aut vitae.
                   url: Ut odit.
-            plugin_git_sha: 9ic
-            printed_version: Voluptatum quae animi saepe qui rerum quia.
+            pluginGitSha: 9ic
+            printedVersion: Voluptatum quae animi saepe qui rerum quia.
     DevBuild:
         title: DevBuild
         type: object
@@ -627,93 +627,93 @@ definitions:
         example:
             id: 3691637501428525743
             meta:
-                created_at: 1695-43-55 24:23:36
-                created_by: leola@spinka.com
-                updated_at: 5905-30-95 27:20:31
+                createdAt: 1695-43-55 24:23:36
+                createdBy: leola@spinka.com
+                updatedAt: 5905-30-95 27:20:31
             spec:
-                build_env: Qui necessitatibus possimus ab quos facere.
-                builder_img: Repudiandae voluptatem rem earum aut at nulla.
+                buildEnv: Qui necessitatibus possimus ab quos facere.
+                builderImg: Repudiandae voluptatem rem earum aut at nulla.
                 edition: community
                 features: Esse maxime aliquid sunt numquam at illo.
-                git_ref: Dolor atque cum beatae sunt nesciunt amet.
-                git_sha: Accusantium sit accusamus aspernatur aut laboriosam aspernatur.
-                github_repo: Perspiciatis atque.
-                is_hotfix: false
-                is_push_gcr: true
-                pipeline_engine: jenkins
+                gitRef: Dolor atque cum beatae sunt nesciunt amet.
+                gitSha: Accusantium sit accusamus aspernatur aut laboriosam aspernatur.
+                githubRepo: Perspiciatis atque.
+                isHotfix: false
+                isPushGCR: true
+                pipelineEngine: jenkins
                 platform: darwin
-                plugin_git_ref: Libero magnam sapiente dolores qui voluptates velit.
+                pluginGitRef: Libero magnam sapiente dolores qui voluptates velit.
                 product: drainer
-                product_base_img: Deleniti at consequatur doloribus culpa velit et.
-                product_dockerfile: Deserunt voluptas hic dolores ut.
-                target_img: Iusto id officiis quidem.
+                productBaseImg: Deleniti at consequatur doloribus culpa velit et.
+                productDockerfile: Deserunt voluptas hic dolores ut.
+                targetImg: Iusto id officiis quidem.
                 version: Ut perspiciatis porro libero distinctio.
             status:
-                build_report:
+                buildReport:
                     binaries:
                         - component: Sed reprehenderit neque velit.
-                          oci_file:
+                          ociFile:
                             file: Culpa rerum accusamus in.
                             repo: Et officia necessitatibus et.
                             tag: Sint fuga enim minima.
                           platform: Vel qui nulla qui quod.
-                          sha256_oci_file:
+                          sha256OCIFile:
                             file: Culpa rerum accusamus in.
                             repo: Et officia necessitatibus et.
                             tag: Sint fuga enim minima.
-                          sha256_url: http://botsford.net/sophia_ortiz
+                          sha256URL: http://botsford.net/sophia_ortiz
                           url: http://baumbach.biz/buster
                         - component: Sed reprehenderit neque velit.
-                          oci_file:
+                          ociFile:
                             file: Culpa rerum accusamus in.
                             repo: Et officia necessitatibus et.
                             tag: Sint fuga enim minima.
                           platform: Vel qui nulla qui quod.
-                          sha256_oci_file:
+                          sha256OCIFile:
                             file: Culpa rerum accusamus in.
                             repo: Et officia necessitatibus et.
                             tag: Sint fuga enim minima.
-                          sha256_url: http://botsford.net/sophia_ortiz
+                          sha256URL: http://botsford.net/sophia_ortiz
                           url: http://baumbach.biz/buster
-                    git_sha: cgu
+                    gitSha: cgu
                     images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                    plugin_git_sha: tpl
-                    printed_version: Ipsam autem vel veniam et provident qui.
-                err_msg: Quis quia vitae non ratione.
-                pipeline_build_id: 5404955515901094986
-                pipeline_end_at: 0390-67-15 79:11:24
-                pipeline_start_at: 4181-73-99 17:37:26
-                pipeline_view_url: http://gerholdbailey.net/preston
-                pipeline_view_urls:
+                    pluginGitSha: tpl
+                    printedVersion: Ipsam autem vel veniam et provident qui.
+                errMsg: Quis quia vitae non ratione.
+                pipelineBuildID: 5404955515901094986
+                pipelineEndAt: 0390-67-15 79:11:24
+                pipelineStartAt: 4181-73-99 17:37:26
+                pipelineViewURL: http://gerholdbailey.net/preston
+                pipelineViewURLs:
                     - http://bechtelar.org/sophia_rosenbaum
                     - http://harvey.info/alicia.schulist
                     - http://gleichner.name/erica_barrows
                 status: failure
-                tekton_status:
+                tektonStatus:
                     pipelines:
-                        - end_at: "1988-02-13T03:40:06Z"
+                        - endAt: "1988-02-13T03:40:06Z"
                           images:
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
                           name: Libero labore.
                           namespace: Sit rerum qui qui soluta error.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Nostrum blanditiis.
                                 - Libero est.
@@ -730,26 +730,26 @@ definitions:
                               repo: Occaecati harum magni est ipsa.
                               tag: Alias veritatis et ipsa.
                           platform: Sed veniam eaque.
-                          start_at: "2003-12-19T05:23:07Z"
+                          startAt: "2003-12-19T05:23:07Z"
                           status: failure
                           url: http://zemlak.net/jasper
-                        - end_at: "1988-02-13T03:40:06Z"
+                        - endAt: "1988-02-13T03:40:06Z"
                           images:
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
                           name: Libero labore.
                           namespace: Sit rerum qui qui soluta error.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Nostrum blanditiis.
                                 - Libero est.
@@ -766,26 +766,26 @@ definitions:
                               repo: Occaecati harum magni est ipsa.
                               tag: Alias veritatis et ipsa.
                           platform: Sed veniam eaque.
-                          start_at: "2003-12-19T05:23:07Z"
+                          startAt: "2003-12-19T05:23:07Z"
                           status: failure
                           url: http://zemlak.net/jasper
-                        - end_at: "1988-02-13T03:40:06Z"
+                        - endAt: "1988-02-13T03:40:06Z"
                           images:
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
-                            - internal_url: Magni eaque quas eos.
+                            - internalURL: Magni eaque quas eos.
                               platform: Eos consequatur laudantium aut vitae.
                               url: Ut odit.
                           name: Libero labore.
                           namespace: Sit rerum qui qui soluta error.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Nostrum blanditiis.
                                 - Libero est.
@@ -802,10 +802,10 @@ definitions:
                               repo: Occaecati harum magni est ipsa.
                               tag: Alias veritatis et ipsa.
                           platform: Sed veniam eaque.
-                          start_at: "2003-12-19T05:23:07Z"
+                          startAt: "2003-12-19T05:23:07Z"
                           status: failure
                           url: http://zemlak.net/jasper
-                    triggers_event_ids:
+                    triggersEventIDs:
                         - 63f2c054-cb19-4448-beb5-6111f29834af
                         - 13f1ea6f-abd8-4771-a7c7-95f2add79b48
                         - 514308d0-4574-48ca-b58a-fad914494473
@@ -819,34 +819,34 @@ definitions:
         title: DevBuildMeta
         type: object
         properties:
-            created_at:
+            createdAt:
                 type: string
                 example: 1727-64-08 05:55:90
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
-            created_by:
+            createdBy:
                 type: string
                 example: jacquelyn.reichert@weimann.net
                 format: email
-            updated_at:
+            updatedAt:
                 type: string
                 example: 1832-53-13 56:39:99
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
         example:
-            created_at: 0138-32-96 82:95:98
-            created_by: johnson.heathcote@volkman.info
-            updated_at: 9535-48-11 41:25:33
+            createdAt: 0138-32-96 82:95:98
+            createdBy: johnson.heathcote@volkman.info
+            updatedAt: 9535-48-11 41:25:33
         required:
-            - created_at
-            - created_by
-            - updated_at
+            - createdAt
+            - createdBy
+            - updatedAt
     DevBuildSpec:
         title: DevBuildSpec
         type: object
         properties:
-            build_env:
+            buildEnv:
                 type: string
                 example: Nisi nemo rem possimus.
-            builder_img:
+            builderImg:
                 type: string
                 example: Est velit.
             edition:
@@ -862,24 +862,24 @@ definitions:
                     - next-gen
             features:
                 type: string
-                description: '[Deprecated] use build_env for custom features'
+                description: '[Deprecated] use buildEnv for custom features'
                 example: Voluptas totam deleniti quisquam saepe.
-            git_ref:
+            gitRef:
                 type: string
                 example: Error consequatur.
-            git_sha:
+            gitSha:
                 type: string
                 example: Facilis id in debitis adipisci hic.
-            github_repo:
+            githubRepo:
                 type: string
                 example: Officia recusandae vitae iure voluptatem magni quia.
-            is_hotfix:
+            isHotfix:
                 type: boolean
                 example: true
-            is_push_gcr:
+            isPushGCR:
                 type: boolean
                 example: true
-            pipeline_engine:
+            pipelineEngine:
                 type: string
                 example: tekton
                 enum:
@@ -897,7 +897,7 @@ definitions:
                     - linux/arm64
                     - darwin/amd64
                     - darwin/arm64
-            plugin_git_ref:
+            pluginGitRef:
                 type: string
                 example: Aliquam officia id minus.
             product:
@@ -924,67 +924,67 @@ definitions:
                     - tiflash
                     - tikv
                     - tiproxy
-            product_base_img:
+            productBaseImg:
                 type: string
                 example: Accusamus et alias qui nesciunt id.
-            product_dockerfile:
+            productDockerfile:
                 type: string
                 example: Qui consectetur sunt nemo repellendus.
-            target_img:
+            targetImg:
                 type: string
                 example: Nihil inventore repudiandae cum.
             version:
                 type: string
                 example: Numquam vel.
         example:
-            build_env: Sint iusto nihil impedit nulla praesentium.
-            builder_img: Eaque et explicabo hic rerum quis quo.
+            buildEnv: Sint iusto nihil impedit nulla praesentium.
+            builderImg: Eaque et explicabo hic rerum quis quo.
             edition: enterprise
             features: Qui dolor non illo.
-            git_ref: Sint impedit doloremque expedita quo velit nobis.
-            git_sha: Unde perferendis iste.
-            github_repo: Quam sint.
-            is_hotfix: true
-            is_push_gcr: false
-            pipeline_engine: jenkins
+            gitRef: Sint impedit doloremque expedita quo velit nobis.
+            gitSha: Unde perferendis iste.
+            githubRepo: Quam sint.
+            isHotfix: true
+            isPushGCR: false
+            pipelineEngine: jenkins
             platform: darwin
-            plugin_git_ref: Quia voluptas quia.
+            pluginGitRef: Quia voluptas quia.
             product: tici
-            product_base_img: Blanditiis eos ut.
-            product_dockerfile: Omnis odit quaerat quia et enim.
-            target_img: Quo est laborum est.
+            productBaseImg: Blanditiis eos ut.
+            productDockerfile: Omnis odit quaerat quia et enim.
+            targetImg: Quo est laborum est.
             version: Velit velit id omnis aut.
         required:
             - product
             - version
             - edition
-            - git_ref
+            - gitRef
     DevBuildStatus:
         title: DevBuildStatus
         type: object
         properties:
-            build_report:
+            buildReport:
                 $ref: '#/definitions/BuildReport'
-            err_msg:
+            errMsg:
                 type: string
                 example: Sit facilis voluptatum soluta nulla et.
-            pipeline_build_id:
+            pipelineBuildID:
                 type: integer
                 example: 1624719087871820684
                 format: int64
-            pipeline_end_at:
+            pipelineEndAt:
                 type: string
                 example: 4023-16-82 18:12:65
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
-            pipeline_start_at:
+            pipelineStartAt:
                 type: string
                 example: 2302-57-54 85:71:28
                 pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
-            pipeline_view_url:
+            pipelineViewURL:
                 type: string
                 example: http://ryan.info/nicholaus.gibson
                 format: uri
-            pipeline_view_urls:
+            pipelineViewURLs:
                 type: array
                 items:
                     type: string
@@ -1004,74 +1004,74 @@ definitions:
                     - success
                     - failure
                     - error
-            tekton_status:
+            tektonStatus:
                 $ref: '#/definitions/TektonStatus'
         example:
-            build_report:
+            buildReport:
                 binaries:
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
                     - component: Sed reprehenderit neque velit.
-                      oci_file:
+                      ociFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
                       platform: Vel qui nulla qui quod.
-                      sha256_oci_file:
+                      sha256OCIFile:
                         file: Culpa rerum accusamus in.
                         repo: Et officia necessitatibus et.
                         tag: Sint fuga enim minima.
-                      sha256_url: http://botsford.net/sophia_ortiz
+                      sha256URL: http://botsford.net/sophia_ortiz
                       url: http://baumbach.biz/buster
-                git_sha: cgu
+                gitSha: cgu
                 images:
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                plugin_git_sha: tpl
-                printed_version: Ipsam autem vel veniam et provident qui.
-            err_msg: Qui velit facere sed expedita.
-            pipeline_build_id: 5048319588684580391
-            pipeline_end_at: 3721-40-81 68:36:04
-            pipeline_start_at: 3335-88-14 68:59:80
-            pipeline_view_url: http://kub.biz/oma
-            pipeline_view_urls:
+                pluginGitSha: tpl
+                printedVersion: Ipsam autem vel veniam et provident qui.
+            errMsg: Qui velit facere sed expedita.
+            pipelineBuildID: 5048319588684580391
+            pipelineEndAt: 3721-40-81 68:36:04
+            pipelineStartAt: 3335-88-14 68:59:80
+            pipelineViewURL: http://kub.biz/oma
+            pipelineViewURLs:
                 - http://purdymueller.biz/antonietta
                 - http://waelchi.com/solon
                 - http://nicolas.biz/jovani
             status: success
-            tekton_status:
+            tektonStatus:
                 pipelines:
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1088,26 +1088,26 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1124,26 +1124,26 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1160,10 +1160,10 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                triggers_event_ids:
+                triggersEventIDs:
                     - 63f2c054-cb19-4448-beb5-6111f29834af
                     - 13f1ea6f-abd8-4771-a7c7-95f2add79b48
                     - 514308d0-4574-48ca-b58a-fad914494473
@@ -1174,7 +1174,7 @@ definitions:
         title: DevbuildCreateRequestBody
         type: object
         properties:
-            created_by:
+            createdBy:
                 type: string
                 description: Creator of build
                 example: dayne.fritsch@botsford.com
@@ -1182,27 +1182,27 @@ definitions:
             request:
                 $ref: '#/definitions/DevBuildSpec'
         example:
-            created_by: jaycee_moen@sporer.biz
+            createdBy: jaycee_moen@sporer.biz
             request:
-                build_env: Similique aut illo minus omnis officiis voluptatem.
-                builder_img: Dolor velit dignissimos culpa.
+                buildEnv: Similique aut illo minus omnis officiis voluptatem.
+                builderImg: Dolor velit dignissimos culpa.
                 edition: enterprise
                 features: Earum sint vel officiis maxime beatae.
-                git_ref: Suscipit repellat ipsum sit debitis.
-                git_sha: Et ab dolores.
-                github_repo: A ea ullam sint.
-                is_hotfix: false
-                is_push_gcr: true
-                pipeline_engine: tekton
+                gitRef: Suscipit repellat ipsum sit debitis.
+                gitSha: Et ab dolores.
+                githubRepo: A ea ullam sint.
+                isHotfix: false
+                isPushGCR: true
+                pipelineEngine: tekton
                 platform: darwin/arm64
-                plugin_git_ref: Aut quia nesciunt quis quis voluptate fugit.
+                pluginGitRef: Aut quia nesciunt quis quis voluptate fugit.
                 product: enterprise-plugin
-                product_base_img: Animi architecto quae maiores sapiente nihil.
-                product_dockerfile: Molestias consequatur.
-                target_img: Facere ex cum.
+                productBaseImg: Animi architecto quae maiores sapiente nihil.
+                productDockerfile: Molestias consequatur.
+                targetImg: Facere ex cum.
                 version: Aut quisquam et temporibus.
         required:
-            - created_by
+            - createdBy
             - request
     DevbuildUpdateRequestBody:
         title: DevbuildUpdateRequestBody
@@ -1212,76 +1212,76 @@ definitions:
                 $ref: '#/definitions/DevBuildStatus'
         example:
             status:
-                build_report:
+                buildReport:
                     binaries:
                         - component: Et blanditiis et sit quod qui voluptates.
-                          oci_file:
+                          ociFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
                           platform: Magnam porro assumenda.
-                          sha256_oci_file:
+                          sha256OCIFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
-                          sha256_url: http://smithammurphy.net/queen
+                          sha256URL: http://smithammurphy.net/queen
                           url: http://champlin.com/pietro.kshlerin
                         - component: Et blanditiis et sit quod qui voluptates.
-                          oci_file:
+                          ociFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
                           platform: Magnam porro assumenda.
-                          sha256_oci_file:
+                          sha256OCIFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
-                          sha256_url: http://smithammurphy.net/queen
+                          sha256URL: http://smithammurphy.net/queen
                           url: http://champlin.com/pietro.kshlerin
                         - component: Et blanditiis et sit quod qui voluptates.
-                          oci_file:
+                          ociFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
                           platform: Magnam porro assumenda.
-                          sha256_oci_file:
+                          sha256OCIFile:
                             file: Fuga saepe quae.
                             repo: Dolorem vero aut repellendus a blanditiis dignissimos.
                             tag: Odio reiciendis omnis modi dolorum.
-                          sha256_url: http://smithammurphy.net/queen
+                          sha256URL: http://smithammurphy.net/queen
                           url: http://champlin.com/pietro.kshlerin
-                    git_sha: x9m
+                    gitSha: x9m
                     images:
-                        - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                        - internalURL: Ut non suscipit veniam laboriosam voluptas.
                           platform: Sit enim itaque.
                           url: Perspiciatis dolorem.
-                        - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                        - internalURL: Ut non suscipit veniam laboriosam voluptas.
                           platform: Sit enim itaque.
                           url: Perspiciatis dolorem.
-                    plugin_git_sha: cbh
-                    printed_version: Dicta at numquam unde assumenda similique.
-                err_msg: Deserunt sunt ipsum.
-                pipeline_build_id: 3032102476044022159
-                pipeline_end_at: 9611-19-65 75:62:49
-                pipeline_start_at: 4418-34-24 92:40:28
-                pipeline_view_url: http://wiegand.name/fleta_brakus
-                pipeline_view_urls:
+                    pluginGitSha: cbh
+                    printedVersion: Dicta at numquam unde assumenda similique.
+                errMsg: Deserunt sunt ipsum.
+                pipelineBuildID: 3032102476044022159
+                pipelineEndAt: 9611-19-65 75:62:49
+                pipelineStartAt: 4418-34-24 92:40:28
+                pipelineViewURL: http://wiegand.name/fleta_brakus
+                pipelineViewURLs:
                     - http://casper.com/kelvin
                     - http://mcdermott.com/reva
                 status: pending
-                tekton_status:
+                tektonStatus:
                     pipelines:
-                        - end_at: "1983-10-30T06:28:00Z"
+                        - endAt: "1983-10-30T06:28:00Z"
                           images:
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
                           name: Praesentium dolore consequatur incidunt iste ex.
                           namespace: Enim alias facere.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Quia itaque nisi.
                                 - Rerum aut dolorem est non.
@@ -1304,20 +1304,20 @@ definitions:
                               repo: Consequuntur sit suscipit ipsum.
                               tag: Et cupiditate.
                           platform: Dolorem at autem nam voluptas vitae.
-                          start_at: "2004-05-23T23:02:08Z"
+                          startAt: "2004-05-23T23:02:08Z"
                           status: pending
                           url: http://sporer.info/elsie
-                        - end_at: "1983-10-30T06:28:00Z"
+                        - endAt: "1983-10-30T06:28:00Z"
                           images:
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
                           name: Praesentium dolore consequatur incidunt iste ex.
                           namespace: Enim alias facere.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Quia itaque nisi.
                                 - Rerum aut dolorem est non.
@@ -1340,20 +1340,20 @@ definitions:
                               repo: Consequuntur sit suscipit ipsum.
                               tag: Et cupiditate.
                           platform: Dolorem at autem nam voluptas vitae.
-                          start_at: "2004-05-23T23:02:08Z"
+                          startAt: "2004-05-23T23:02:08Z"
                           status: pending
                           url: http://sporer.info/elsie
-                        - end_at: "1983-10-30T06:28:00Z"
+                        - endAt: "1983-10-30T06:28:00Z"
                           images:
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
-                            - internal_url: Ut non suscipit veniam laboriosam voluptas.
+                            - internalURL: Ut non suscipit veniam laboriosam voluptas.
                               platform: Sit enim itaque.
                               url: Perspiciatis dolorem.
                           name: Praesentium dolore consequatur incidunt iste ex.
                           namespace: Enim alias facere.
-                          oci_artifacts:
+                          ociArtifacts:
                             - files:
                                 - Quia itaque nisi.
                                 - Rerum aut dolorem est non.
@@ -1376,10 +1376,10 @@ definitions:
                               repo: Consequuntur sit suscipit ipsum.
                               tag: Et cupiditate.
                           platform: Dolorem at autem nam voluptas vitae.
-                          start_at: "2004-05-23T23:02:08Z"
+                          startAt: "2004-05-23T23:02:08Z"
                           status: pending
                           url: http://sporer.info/elsie
-                    triggers_event_ids:
+                    triggersEventIDs:
                         - 5b2aab6f-9d32-4b70-833d-bd2037b240a0
                         - ba04dd69-1bdd-491f-8c5c-2f58d0697c50
         required:
@@ -1477,7 +1477,7 @@ definitions:
         title: ImageArtifact
         type: object
         properties:
-            internal_url:
+            internalURL:
                 type: string
                 example: Rem sint nostrum et quidem.
             platform:
@@ -1487,7 +1487,7 @@ definitions:
                 type: string
                 example: Eius quo consequatur excepturi non.
         example:
-            internal_url: Aut delectus adipisci quos quam id laudantium.
+            internalURL: Aut delectus adipisci quos quam id laudantium.
             platform: Quia fugit non ut.
             url: Veniam qui quis aut.
         required:
@@ -1564,7 +1564,7 @@ definitions:
         title: TektonPipeline
         type: object
         properties:
-            end_at:
+            endAt:
                 type: string
                 example: "1976-04-18T19:20:30Z"
                 format: date-time
@@ -1573,13 +1573,13 @@ definitions:
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
             name:
@@ -1588,7 +1588,7 @@ definitions:
             namespace:
                 type: string
                 example: Eius similique sit fugiat sed et.
-            oci_artifacts:
+            ociArtifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
@@ -1606,7 +1606,7 @@ definitions:
             platform:
                 type: string
                 example: Corporis minima enim rerum id quisquam vitae.
-            start_at:
+            startAt:
                 type: string
                 example: "1970-05-11T21:22:48Z"
                 format: date-time
@@ -1625,17 +1625,17 @@ definitions:
                 example: http://ferry.name/adrianna
                 format: uri
         example:
-            end_at: "2000-04-10T14:26:32Z"
+            endAt: "2000-04-10T14:26:32Z"
             images:
-                - internal_url: Magni eaque quas eos.
+                - internalURL: Magni eaque quas eos.
                   platform: Eos consequatur laudantium aut vitae.
                   url: Ut odit.
-                - internal_url: Magni eaque quas eos.
+                - internalURL: Magni eaque quas eos.
                   platform: Eos consequatur laudantium aut vitae.
                   url: Ut odit.
             name: Consequatur tenetur ut sed assumenda sed.
             namespace: Sint et.
-            oci_artifacts:
+            ociArtifacts:
                 - files:
                     - Nostrum blanditiis.
                     - Libero est.
@@ -1657,7 +1657,7 @@ definitions:
                   repo: Occaecati harum magni est ipsa.
                   tag: Alias veritatis et ipsa.
             platform: Dolores dolor eos.
-            start_at: "1992-02-29T04:25:43Z"
+            startAt: "1992-02-29T04:25:43Z"
             status: processing
             url: http://bergstrom.com/trever
         required:
@@ -1673,23 +1673,23 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1706,26 +1706,26 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1742,26 +1742,26 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1778,26 +1778,26 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-                    - end_at: "1988-02-13T03:40:06Z"
+                    - endAt: "1988-02-13T03:40:06Z"
                       images:
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
-                        - internal_url: Magni eaque quas eos.
+                        - internalURL: Magni eaque quas eos.
                           platform: Eos consequatur laudantium aut vitae.
                           url: Ut odit.
                       name: Libero labore.
                       namespace: Sit rerum qui qui soluta error.
-                      oci_artifacts:
+                      ociArtifacts:
                         - files:
                             - Nostrum blanditiis.
                             - Libero est.
@@ -1814,10 +1814,10 @@ definitions:
                           repo: Occaecati harum magni est ipsa.
                           tag: Alias veritatis et ipsa.
                       platform: Sed veniam eaque.
-                      start_at: "2003-12-19T05:23:07Z"
+                      startAt: "2003-12-19T05:23:07Z"
                       status: failure
                       url: http://zemlak.net/jasper
-            triggers_event_ids:
+            triggersEventIDs:
                 type: array
                 items:
                     type: string
@@ -1828,23 +1828,23 @@ definitions:
                     - 3fe3a7af-4f3d-4d75-90a4-6d05c5157f83
         example:
             pipelines:
-                - end_at: "1988-02-13T03:40:06Z"
+                - endAt: "1988-02-13T03:40:06Z"
                   images:
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
                   name: Libero labore.
                   namespace: Sit rerum qui qui soluta error.
-                  oci_artifacts:
+                  ociArtifacts:
                     - files:
                         - Nostrum blanditiis.
                         - Libero est.
@@ -1861,26 +1861,26 @@ definitions:
                       repo: Occaecati harum magni est ipsa.
                       tag: Alias veritatis et ipsa.
                   platform: Sed veniam eaque.
-                  start_at: "2003-12-19T05:23:07Z"
+                  startAt: "2003-12-19T05:23:07Z"
                   status: failure
                   url: http://zemlak.net/jasper
-                - end_at: "1988-02-13T03:40:06Z"
+                - endAt: "1988-02-13T03:40:06Z"
                   images:
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
-                    - internal_url: Magni eaque quas eos.
+                    - internalURL: Magni eaque quas eos.
                       platform: Eos consequatur laudantium aut vitae.
                       url: Ut odit.
                   name: Libero labore.
                   namespace: Sit rerum qui qui soluta error.
-                  oci_artifacts:
+                  ociArtifacts:
                     - files:
                         - Nostrum blanditiis.
                         - Libero est.
@@ -1897,10 +1897,10 @@ definitions:
                       repo: Occaecati harum magni est ipsa.
                       tag: Alias veritatis et ipsa.
                   platform: Sed veniam eaque.
-                  start_at: "2003-12-19T05:23:07Z"
+                  startAt: "2003-12-19T05:23:07Z"
                   status: failure
                   url: http://zemlak.net/jasper
-            triggers_event_ids:
+            triggersEventIDs:
                 - 7cc53ee2-669c-42e5-882a-31fa5c06a893
                 - 2e865a72-30d0-4b66-b2fb-982208dc03ad
                 - 836433d3-867d-49ad-a28a-2f130876e171
