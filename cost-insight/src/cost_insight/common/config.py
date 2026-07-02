@@ -382,6 +382,14 @@ def load_settings(
                 ),
                 20000,
             ),
+            cleanup_ac_delete_batch_size=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
+                    "COST_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE",
+                ),
+                500000,
+            ),
             cleanup_batch_size=_read_positive_int_any(
                 env,
                 (

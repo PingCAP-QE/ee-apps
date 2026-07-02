@@ -1754,7 +1754,8 @@ AS
     execute(
         f"""DELETE FROM {current_table}
 WHERE object_kind = 'ac'
-  AND object_name IN (SELECT object_name FROM {missing_ac_table})""",
+  AND object_name IN (SELECT object_name FROM {missing_ac_table})
+  AND last_seen_at < TIMESTAMP('{snapshot_time}')""",
         parameters=[],
     ).total_bytes_processed
     execute(
