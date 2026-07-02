@@ -22,7 +22,7 @@ type NotificationInfo struct {
 	Version      string
 	Status       string
 	CreatedBy    string
-	GitRef       string
+	GitRef       string // e.g. "branch/master", "tag/v9.0.0", "pull/1234", or commit SHA
 	GithubRepo   string
 	Platform     string
 	ErrMsg       string

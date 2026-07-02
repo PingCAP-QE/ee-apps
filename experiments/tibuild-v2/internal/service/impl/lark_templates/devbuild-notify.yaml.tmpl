@@ -12,7 +12,12 @@ elements:
       **Product:** {{ .Product }}
       **Version:** {{ .Version }}
       **Platform:** {{ .Platform }}
-      **Git Ref:** {{ .GitRef }}
+        {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
+        {{- if $gitRefURL }}
+        **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
+        {{- else }}
+        **Git Ref:** {{ .GitRef }}
+        {{- end }}
       **Created By:** {{ .CreatedBy }}
 
   {{- if .GithubRepo }}
