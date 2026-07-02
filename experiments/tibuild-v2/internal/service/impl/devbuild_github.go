@@ -46,6 +46,13 @@ func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqG
 		}
 		return strings.Join([]string{"refs", "tags", tagName}, "/"), ref.Object.GetSHA()
 
+	case strings.HasPrefix(reqGitRef, "commit/"):
+		sha := strings.TrimPrefix(reqGitRef, "commit/")
+		if len(sha) != 40 || !isHex(sha) {
+			return "", ""
+		}
+		return sha, sha
+
 	case strings.HasPrefix(reqGitRef, "pull/"):
 		prNumberStr := strings.TrimPrefix(reqGitRef, "pull/")
 		prNumber, err := strconv.Atoi(prNumberStr)

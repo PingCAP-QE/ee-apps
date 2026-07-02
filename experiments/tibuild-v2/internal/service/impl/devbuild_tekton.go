@@ -120,6 +120,13 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 		}
 
 		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, ref, sha, prNumber)
+	case strings.HasPrefix(record.GitRef, "commit/"):
+		if record.IsHotfix {
+			event.SetType(ceTypeFakeGHPushHotfixBuild)
+		} else {
+			event.SetType(ceTypeFakeGHPushDevBuild)
+		}
+		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, sha)
 	default:
 		return nil, fmt.Errorf("unknown git ref format")
 	}

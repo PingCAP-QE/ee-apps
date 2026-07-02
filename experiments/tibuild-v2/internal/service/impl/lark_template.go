@@ -42,6 +42,12 @@ func gitRefURL(gitRef, repo string) string {
 		return "https://github.com/" + repo + "/tree/" + gitRef[4:]
 	case len(gitRef) > 5 && gitRef[:5] == "pull/":
 		return "https://github.com/" + repo + "/pull/" + gitRef[5:]
+	case len(gitRef) > 7 && gitRef[:7] == "commit/":
+		sha := gitRef[7:]
+		if isHex(sha) {
+			return "https://github.com/" + repo + "/commit/" + sha
+		}
+		return ""
 	default:
 		return ""
 	}
