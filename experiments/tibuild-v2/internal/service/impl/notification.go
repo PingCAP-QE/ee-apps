@@ -122,10 +122,11 @@ func StatusColor(status string) string {
 }
 
 // PipelineStatusEmoji returns an emoji for a PipelineRun status.
-// These are Tekton's own status values, different from DevBuild status.
+// Uses Tekton's own condition Reason/Status values so users can distinguish
+// between Failed, Cancelled, TimedOut, Skipped, etc. at a glance.
 func PipelineStatusEmoji(status string) string {
 	switch status {
-	case "Succeeded", "True":
+	case "Succeeded", "Completed", "True":
 		return "✅"
 	case "Failed", "False":
 		return "❌"
@@ -133,10 +134,14 @@ func PipelineStatusEmoji(status string) string {
 		return "🚫"
 	case "Skipped":
 		return "⏭️"
-	case "Running":
-		return "🔄"
+	case "TimedOut":
+		return "⏰"
+	case "ExceededNodeResources":
+		return "💥"
 	case "Started":
 		return "🚀"
+	case "Running", "Unknown":
+		return "🔄"
 	default:
 		return "⏳"
 	}

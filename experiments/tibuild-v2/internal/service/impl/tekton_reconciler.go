@@ -273,13 +273,13 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 
 		condition := getSucceededCondition(pr)
 		if condition != nil {
-			switch condition.Status {
-			case "True":
-				pipeline.Status = "SUCCESS"
-			case "False":
-				pipeline.Status = "FAILURE"
-			default:
-				pipeline.Status = "PROCESSING"
+			// Use the more informative Reason if available (e.g., "Succeeded",
+			// "Failed", "Cancelled", "TimedOut", "Skipped", "ExceededNodeResources").
+			// Fall back to Status (True/False/Unknown) when Reason is empty.
+			if condition.Reason != "" {
+				pipeline.Status = condition.Reason
+			} else {
+				pipeline.Status = string(condition.Status)
 			}
 		}
 
