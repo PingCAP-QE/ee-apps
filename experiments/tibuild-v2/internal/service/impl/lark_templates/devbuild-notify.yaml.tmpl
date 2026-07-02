@@ -12,7 +12,7 @@ elements:
       - is_short: false
         text:
           tag: lark_md
-          content: "**Status:**\t{{ StatusEmoji . }}"
+          content: "**Status:**\t{{ StatusEmoji . }}{{ . }}"
       {{- end }}
       {{- with .CreatedBy }}
       - is_short: false
@@ -55,7 +55,12 @@ elements:
     content: |-
       **Build Report**
       {{- if .GitSha }}
+      {{- $shaURL := GitRefURL .GitSha $.GithubRepo }}
+      {{- if $shaURL }}
+      - **Git SHA:** [{{ .GitSha }}]({{ $shaURL }})
+      {{- else }}
       - **Git SHA:** {{ .GitSha }}
+      {{- end }}
       {{- end }}
       {{- if .Images }}
       - **Docker Images:**
