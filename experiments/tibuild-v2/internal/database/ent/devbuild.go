@@ -63,6 +63,8 @@ type DevBuild struct {
 	Status string `json:"status,omitempty"`
 	// Build status message
 	ErrMsg string `json:"errMsg,omitempty"`
+	// Notification delivery state for each channel (Lark DM, group chat, etc.)
+	NotificationState schema.NotificationState `json:"notificationState,omitempty"`
 	// ID of the pipeline build
 	PipelineBuildID int `json:"pipelineBuildID,omitempty"`
 	// Build pipeline started time
@@ -81,7 +83,7 @@ func (*DevBuild) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case devbuild.FieldBuildReport, devbuild.FieldTektonStatus:
+		case devbuild.FieldNotificationState, devbuild.FieldBuildReport, devbuild.FieldTektonStatus:
 			values[i] = new([]byte)
 		case devbuild.FieldIsHotfix, devbuild.FieldIsPushGCR:
 			values[i] = new(sql.NullBool)
@@ -244,6 +246,14 @@ func (_m *DevBuild) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ErrMsg = value.String
 			}
+		case devbuild.FieldNotificationState:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field notificationState", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.NotificationState); err != nil {
+					return fmt.Errorf("unmarshal field notificationState: %w", err)
+				}
+			}
 		case devbuild.FieldPipelineBuildID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field pipelineBuildID", values[i])
@@ -379,6 +389,9 @@ func (_m *DevBuild) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("errMsg=")
 	builder.WriteString(_m.ErrMsg)
+	builder.WriteString(", ")
+	builder.WriteString("notificationState=")
+	builder.WriteString(fmt.Sprintf("%v", _m.NotificationState))
 	builder.WriteString(", ")
 	builder.WriteString("pipelineBuildID=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PipelineBuildID))

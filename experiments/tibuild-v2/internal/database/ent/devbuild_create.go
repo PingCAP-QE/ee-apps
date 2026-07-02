@@ -329,6 +329,20 @@ func (_c *DevBuildCreate) SetNillableErrMsg(v *string) *DevBuildCreate {
 	return _c
 }
 
+// SetNotificationState sets the "notificationState" field.
+func (_c *DevBuildCreate) SetNotificationState(v schema.NotificationState) *DevBuildCreate {
+	_c.mutation.SetNotificationState(v)
+	return _c
+}
+
+// SetNillableNotificationState sets the "notificationState" field if the given value is not nil.
+func (_c *DevBuildCreate) SetNillableNotificationState(v *schema.NotificationState) *DevBuildCreate {
+	if v != nil {
+		_c.SetNotificationState(*v)
+	}
+	return _c
+}
+
 // SetPipelineBuildID sets the "pipelineBuildID" field.
 func (_c *DevBuildCreate) SetPipelineBuildID(v int) *DevBuildCreate {
 	_c.mutation.SetPipelineBuildID(v)
@@ -669,6 +683,10 @@ func (_c *DevBuildCreate) createSpec() (*DevBuild, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ErrMsg(); ok {
 		_spec.SetField(devbuild.FieldErrMsg, field.TypeString, value)
 		_node.ErrMsg = value
+	}
+	if value, ok := _c.mutation.NotificationState(); ok {
+		_spec.SetField(devbuild.FieldNotificationState, field.TypeJSON, value)
+		_node.NotificationState = value
 	}
 	if value, ok := _c.mutation.PipelineBuildID(); ok {
 		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)

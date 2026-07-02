@@ -183,6 +183,10 @@ func (DevBuildStatus) Fields() []ent.Field {
 			MaxLen(256).
 			Comment("Build status message"),
 
+		field.JSON("notificationState", NotificationState{}).
+			Optional().
+			Comment("Notification delivery state for each channel (Lark DM, group chat, etc.)"),
+
 		field.Int("pipelineBuildID").
 			Optional().
 			Comment("ID of the pipeline build"),

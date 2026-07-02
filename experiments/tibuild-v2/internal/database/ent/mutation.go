@@ -56,6 +56,7 @@ type DevBuildMutation struct {
 	productDockerfile  *string
 	status             *string
 	errMsg             *string
+	notificationState  *schema.NotificationState
 	pipelineBuildID    *int
 	addpipelineBuildID *int
 	pipelineStartAt    *time.Time
@@ -1205,6 +1206,55 @@ func (m *DevBuildMutation) ResetErrMsg() {
 	delete(m.clearedFields, devbuild.FieldErrMsg)
 }
 
+// SetNotificationState sets the "notificationState" field.
+func (m *DevBuildMutation) SetNotificationState(ss schema.NotificationState) {
+	m.notificationState = &ss
+}
+
+// NotificationState returns the value of the "notificationState" field in the mutation.
+func (m *DevBuildMutation) NotificationState() (r schema.NotificationState, exists bool) {
+	v := m.notificationState
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotificationState returns the old "notificationState" field's value of the DevBuild entity.
+// If the DevBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DevBuildMutation) OldNotificationState(ctx context.Context) (v schema.NotificationState, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotificationState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotificationState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotificationState: %w", err)
+	}
+	return oldValue.NotificationState, nil
+}
+
+// ClearNotificationState clears the value of the "notificationState" field.
+func (m *DevBuildMutation) ClearNotificationState() {
+	m.notificationState = nil
+	m.clearedFields[devbuild.FieldNotificationState] = struct{}{}
+}
+
+// NotificationStateCleared returns if the "notificationState" field was cleared in this mutation.
+func (m *DevBuildMutation) NotificationStateCleared() bool {
+	_, ok := m.clearedFields[devbuild.FieldNotificationState]
+	return ok
+}
+
+// ResetNotificationState resets all changes to the "notificationState" field.
+func (m *DevBuildMutation) ResetNotificationState() {
+	m.notificationState = nil
+	delete(m.clearedFields, devbuild.FieldNotificationState)
+}
+
 // SetPipelineBuildID sets the "pipelineBuildID" field.
 func (m *DevBuildMutation) SetPipelineBuildID(i int) {
 	m.pipelineBuildID = &i
@@ -1505,7 +1555,7 @@ func (m *DevBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DevBuildMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.createdBy != nil {
 		fields = append(fields, devbuild.FieldCreatedBy)
 	}
@@ -1571,6 +1621,9 @@ func (m *DevBuildMutation) Fields() []string {
 	}
 	if m.errMsg != nil {
 		fields = append(fields, devbuild.FieldErrMsg)
+	}
+	if m.notificationState != nil {
+		fields = append(fields, devbuild.FieldNotificationState)
 	}
 	if m.pipelineBuildID != nil {
 		fields = append(fields, devbuild.FieldPipelineBuildID)
@@ -1639,6 +1692,8 @@ func (m *DevBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case devbuild.FieldErrMsg:
 		return m.ErrMsg()
+	case devbuild.FieldNotificationState:
+		return m.NotificationState()
 	case devbuild.FieldPipelineBuildID:
 		return m.PipelineBuildID()
 	case devbuild.FieldPipelineStartAt:
@@ -1702,6 +1757,8 @@ func (m *DevBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldStatus(ctx)
 	case devbuild.FieldErrMsg:
 		return m.OldErrMsg(ctx)
+	case devbuild.FieldNotificationState:
+		return m.OldNotificationState(ctx)
 	case devbuild.FieldPipelineBuildID:
 		return m.OldPipelineBuildID(ctx)
 	case devbuild.FieldPipelineStartAt:
@@ -1875,6 +1932,13 @@ func (m *DevBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetErrMsg(v)
 		return nil
+	case devbuild.FieldNotificationState:
+		v, ok := value.(schema.NotificationState)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotificationState(v)
+		return nil
 	case devbuild.FieldPipelineBuildID:
 		v, ok := value.(int)
 		if !ok {
@@ -2012,6 +2076,9 @@ func (m *DevBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(devbuild.FieldErrMsg) {
 		fields = append(fields, devbuild.FieldErrMsg)
 	}
+	if m.FieldCleared(devbuild.FieldNotificationState) {
+		fields = append(fields, devbuild.FieldNotificationState)
+	}
 	if m.FieldCleared(devbuild.FieldPipelineBuildID) {
 		fields = append(fields, devbuild.FieldPipelineBuildID)
 	}
@@ -2097,6 +2164,9 @@ func (m *DevBuildMutation) ClearField(name string) error {
 		return nil
 	case devbuild.FieldErrMsg:
 		m.ClearErrMsg()
+		return nil
+	case devbuild.FieldNotificationState:
+		m.ClearNotificationState()
 		return nil
 	case devbuild.FieldPipelineBuildID:
 		m.ClearPipelineBuildID()
@@ -2186,6 +2256,9 @@ func (m *DevBuildMutation) ResetField(name string) error {
 		return nil
 	case devbuild.FieldErrMsg:
 		m.ResetErrMsg()
+		return nil
+	case devbuild.FieldNotificationState:
+		m.ResetNotificationState()
 		return nil
 	case devbuild.FieldPipelineBuildID:
 		m.ResetPipelineBuildID()

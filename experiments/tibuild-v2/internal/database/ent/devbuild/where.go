@@ -1639,6 +1639,16 @@ func ErrMsgContainsFold(v string) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldContainsFold(FieldErrMsg, v))
 }
 
+// NotificationStateIsNil applies the IsNil predicate on the "notificationState" field.
+func NotificationStateIsNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldIsNull(FieldNotificationState))
+}
+
+// NotificationStateNotNil applies the NotNil predicate on the "notificationState" field.
+func NotificationStateNotNil() predicate.DevBuild {
+	return predicate.DevBuild(sql.FieldNotNull(FieldNotificationState))
+}
+
 // PipelineBuildIDEQ applies the EQ predicate on the "pipelineBuildID" field.
 func PipelineBuildIDEQ(v int) predicate.DevBuild {
 	return predicate.DevBuild(sql.FieldEQ(FieldPipelineBuildID, v))

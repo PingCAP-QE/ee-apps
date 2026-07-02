@@ -57,6 +57,8 @@ const (
 	FieldStatus = "status"
 	// FieldErrMsg holds the string denoting the errmsg field in the database.
 	FieldErrMsg = "err_msg"
+	// FieldNotificationState holds the string denoting the notificationstate field in the database.
+	FieldNotificationState = "notification_state"
 	// FieldPipelineBuildID holds the string denoting the pipelinebuildid field in the database.
 	FieldPipelineBuildID = "pipeline_build_id"
 	// FieldPipelineStartAt holds the string denoting the pipelinestartat field in the database.
@@ -96,6 +98,7 @@ var Columns = []string{
 	FieldProductDockerfile,
 	FieldStatus,
 	FieldErrMsg,
+	FieldNotificationState,
 	FieldPipelineBuildID,
 	FieldPipelineStartAt,
 	FieldPipelineEndAt,

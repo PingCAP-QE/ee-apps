@@ -443,6 +443,26 @@ func (_u *DevBuildUpdate) ClearErrMsg() *DevBuildUpdate {
 	return _u
 }
 
+// SetNotificationState sets the "notificationState" field.
+func (_u *DevBuildUpdate) SetNotificationState(v schema.NotificationState) *DevBuildUpdate {
+	_u.mutation.SetNotificationState(v)
+	return _u
+}
+
+// SetNillableNotificationState sets the "notificationState" field if the given value is not nil.
+func (_u *DevBuildUpdate) SetNillableNotificationState(v *schema.NotificationState) *DevBuildUpdate {
+	if v != nil {
+		_u.SetNotificationState(*v)
+	}
+	return _u
+}
+
+// ClearNotificationState clears the value of the "notificationState" field.
+func (_u *DevBuildUpdate) ClearNotificationState() *DevBuildUpdate {
+	_u.mutation.ClearNotificationState()
+	return _u
+}
+
 // SetPipelineBuildID sets the "pipelineBuildID" field.
 func (_u *DevBuildUpdate) SetPipelineBuildID(v int) *DevBuildUpdate {
 	_u.mutation.ResetPipelineBuildID()
@@ -815,6 +835,12 @@ func (_u *DevBuildUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ErrMsgCleared() {
 		_spec.ClearField(devbuild.FieldErrMsg, field.TypeString)
+	}
+	if value, ok := _u.mutation.NotificationState(); ok {
+		_spec.SetField(devbuild.FieldNotificationState, field.TypeJSON, value)
+	}
+	if _u.mutation.NotificationStateCleared() {
+		_spec.ClearField(devbuild.FieldNotificationState, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.PipelineBuildID(); ok {
 		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)
@@ -1283,6 +1309,26 @@ func (_u *DevBuildUpdateOne) ClearErrMsg() *DevBuildUpdateOne {
 	return _u
 }
 
+// SetNotificationState sets the "notificationState" field.
+func (_u *DevBuildUpdateOne) SetNotificationState(v schema.NotificationState) *DevBuildUpdateOne {
+	_u.mutation.SetNotificationState(v)
+	return _u
+}
+
+// SetNillableNotificationState sets the "notificationState" field if the given value is not nil.
+func (_u *DevBuildUpdateOne) SetNillableNotificationState(v *schema.NotificationState) *DevBuildUpdateOne {
+	if v != nil {
+		_u.SetNotificationState(*v)
+	}
+	return _u
+}
+
+// ClearNotificationState clears the value of the "notificationState" field.
+func (_u *DevBuildUpdateOne) ClearNotificationState() *DevBuildUpdateOne {
+	_u.mutation.ClearNotificationState()
+	return _u
+}
+
 // SetPipelineBuildID sets the "pipelineBuildID" field.
 func (_u *DevBuildUpdateOne) SetPipelineBuildID(v int) *DevBuildUpdateOne {
 	_u.mutation.ResetPipelineBuildID()
@@ -1685,6 +1731,12 @@ func (_u *DevBuildUpdateOne) sqlSave(ctx context.Context) (_node *DevBuild, err 
 	}
 	if _u.mutation.ErrMsgCleared() {
 		_spec.ClearField(devbuild.FieldErrMsg, field.TypeString)
+	}
+	if value, ok := _u.mutation.NotificationState(); ok {
+		_spec.SetField(devbuild.FieldNotificationState, field.TypeJSON, value)
+	}
+	if _u.mutation.NotificationStateCleared() {
+		_spec.ClearField(devbuild.FieldNotificationState, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.PipelineBuildID(); ok {
 		_spec.SetField(devbuild.FieldPipelineBuildID, field.TypeInt, value)

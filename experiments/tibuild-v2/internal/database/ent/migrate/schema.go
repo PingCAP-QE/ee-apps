@@ -34,6 +34,7 @@ var (
 		{Name: "product_dockerfile", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "status", Type: field.TypeString, Nullable: true, Size: 16, Default: "PENDING"},
 		{Name: "err_msg", Type: field.TypeString, Nullable: true, Size: 256},
+		{Name: "notification_state", Type: field.TypeJSON, Nullable: true},
 		{Name: "pipeline_build_id", Type: field.TypeInt, Nullable: true},
 		{Name: "pipeline_start_at", Type: field.TypeTime, Nullable: true},
 		{Name: "pipeline_end_at", Type: field.TypeTime, Nullable: true},

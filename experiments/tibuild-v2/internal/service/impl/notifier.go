@@ -11,30 +11,40 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
+const larkErrMsgNotFound = 230001
+
 // Notifier defines the interface for sending build notifications.
+// Returns the updated notification state for persistence.
 type Notifier interface {
-	Notify(ctx context.Context, build *ent.DevBuild) error
+	Notify(ctx context.Context, build *ent.DevBuild) (*schema.NotificationState, error)
 }
 
-// LarkNotifier sends Lark IM messages when builds reach terminal state.
-// The client is stored atomically to support safe runtime updates via config reload.
+// LarkNotifier sends Lark IM messages for each configured channel.
+// Each channel's first send creates a card; subsequent updates refresh it in place.
 type LarkNotifier struct {
-	client atomic.Value // stores *larksdk.Client
-	logger *zerolog.Logger
+	client   atomic.Value // stores *larksdk.Client
+	channels []config.LarkChannel
+	logger   *zerolog.Logger
 }
 
-// NewLarkNotifier creates a new LarkNotifier with the given Lark app credentials.
-func NewLarkNotifier(appID, appSecret string, logger *zerolog.Logger) *LarkNotifier {
-	n := &LarkNotifier{logger: logger}
+// NewLarkNotifier creates a new LarkNotifier with Lark app credentials and optional channels.
+func NewLarkNotifier(appID, appSecret string, channels []config.LarkChannel, logger *zerolog.Logger) *LarkNotifier {
+	n := &LarkNotifier{
+		channels: channels,
+		logger:   logger,
+	}
 	n.client.Store(newLarkClient(appID, appSecret))
 	return n
 }
 
-// Reload updates the Lark client with new credentials. Safe to call concurrently with Notify.
-func (n *LarkNotifier) Reload(appID, appSecret string) {
+// Reload updates credentials and channels at runtime.
+func (n *LarkNotifier) Reload(appID, appSecret string, channels []config.LarkChannel) {
 	n.client.Store(newLarkClient(appID, appSecret))
+	n.channels = channels
 }
 
 // Disable clears the Lark client, effectively disabling notifications.
@@ -42,195 +52,117 @@ func (n *LarkNotifier) Disable() {
 	n.client.Store((*larksdk.Client)(nil))
 }
 
-// Notify sends a Lark notification for the given build to the createdBy user.
-func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) error {
+// Notify delivers or updates cards for all channels and returns the updated state.
+func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema.NotificationState, error) {
 	client := n.client.Load().(*larksdk.Client)
 	if client == nil {
 		n.logger.Debug().Msg("lark client not configured, skipping notification")
-		return nil
-	}
-
-	receiver := build.CreatedBy
-	if receiver == "" {
-		n.logger.Debug().Int("build_id", build.ID).Msg("createdBy is empty, skipping notification")
-		return nil
+		return nil, nil
 	}
 
 	cardStr, err := NewLarkCardJSON(buildNotificationInfo(build))
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to build notification card")
-		return err
+		return nil, err
 	}
 
+	state := build.NotificationState
+	changed := false
+
+	// --- DM to build creator (identified by empty ChatID) ---
+	if build.CreatedBy != "" {
+		dm := findLarkState(&state, "")
+		newID, err := n.sendOrUpdate(ctx, client, build.ID, build.CreatedBy, dm.MessageID, cardStr)
+		if err != nil {
+			n.logger.Err(err).Int("build_id", build.ID).Msg("lark DM notification failed")
+		} else if newID != dm.MessageID {
+			dm.MessageID = newID
+			changed = true
+		}
+	}
+
+	// --- Group chat channels ---
+	for _, ch := range n.channels {
+		cur := findLarkState(&state, ch.ChatID)
+		newID, err := n.sendOrUpdate(ctx, client, build.ID, ch.ChatID, cur.MessageID, cardStr)
+		if err != nil {
+			n.logger.Err(err).Int("build_id", build.ID).Str("channel", ch.Name).Msg("lark channel notification failed")
+		} else if newID != cur.MessageID {
+			cur.MessageID = newID
+			cur.ChatID = ch.ChatID
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil, nil
+	}
+	return &state, nil
+}
+
+// sendOrUpdate creates a new card or updates an existing one.
+// Returns the current (or new) message ID.
+func (n *LarkNotifier) sendOrUpdate(ctx context.Context, client *larksdk.Client, buildID int, receiver, existingMsgID, cardStr string) (string, error) {
+	if existingMsgID != "" {
+		// Try update first
+		req := larkim.NewUpdateMessageReqBuilder().
+			MessageId(existingMsgID).
+			Body(larkim.NewUpdateMessageReqBodyBuilder().
+				MsgType(larkim.MsgTypeInteractive).
+				Content(cardStr).
+				Build()).
+			Build()
+
+		resp, err := client.Im.Message.Update(ctx, req)
+		if err == nil && resp.Success() {
+			n.logger.Debug().Int("build_id", buildID).Str("message_id", existingMsgID).Msg("card updated")
+			return existingMsgID, nil
+		}
+		if err == nil && resp.Code == larkErrMsgNotFound {
+			n.logger.Warn().Int("build_id", buildID).Str("message_id", existingMsgID).Msg("card was deleted, sending new one")
+		} else if err != nil {
+			n.logger.Err(err).Int("build_id", buildID).Msg("update failed, will try create")
+		}
+	}
+
+	// Create new card
 	req := larkim.NewCreateMessageReqBuilder().
 		ReceiveIdType(getLarkReceiverIDType(receiver)).
 		Body(larkim.NewCreateMessageReqBodyBuilder().
 			MsgType(larkim.MsgTypeInteractive).
 			ReceiveId(receiver).
 			Content(cardStr).
-			Uuid(newLarkMsgUUID(build.ID, receiver)).
+			Uuid(newLarkMsgUUID(buildID, receiver)).
 			Build()).
 		Build()
 
 	resp, err := client.Im.Message.Create(ctx, req)
 	if err != nil {
-		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to send lark message")
-		return err
+		return "", err
 	}
 	if !resp.Success() {
-		n.logger.Error().
-			Int("build_id", build.ID).
-			Str("request_id", resp.RequestId()).
-			Int("code", resp.Code).
-			Str("msg", resp.Msg).
-			Msg("lark message API returned error")
-		return fmt.Errorf("lark message API error: code=%d msg=%s", resp.Code, resp.Msg)
+		return "", fmt.Errorf("lark create message error: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 
-	n.logger.Info().
-		Int("build_id", build.ID).
-		Str("receiver", receiver).
-		Str("message_id", *resp.Data.MessageId).
-		Msg("lark notification sent successfully")
-	return nil
+	n.logger.Info().Int("build_id", buildID).Str("receiver", receiver).Str("msg_id", *resp.Data.MessageId).Msg("card created")
+	return *resp.Data.MessageId, nil
 }
 
-// newLarkMsgUUID generates a deterministic UUID for idempotency.
+// findLarkState returns the LarkMessageState for a given ChatID, creating one if missing.
+// Use ChatID="" to get/create the DM state (receiver = build creator).
+func findLarkState(state *schema.NotificationState, chatID string) *schema.LarkMessageState {
+	for i := range state.Lark {
+		if state.Lark[i].ChatID == chatID {
+			return &state.Lark[i]
+		}
+	}
+	state.Lark = append(state.Lark, schema.LarkMessageState{ChatID: chatID})
+	return &state.Lark[len(state.Lark)-1]
+}
+
+// newLarkMsgUUID generates a deterministic idempotency key.
 func newLarkMsgUUID(buildID int, receiver string) string {
 	h := sha1.New()
 	fmt.Fprintf(h, "devbuild-%d-%s", buildID, receiver)
 	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// buildNotificationInfo builds a NotificationInfo from a build record.
-func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
-	info := &NotificationInfo{
-		BuildID:    build.ID,
-		Product:    build.Product,
-		Version:    build.Version,
-		Status:     build.Status,
-		CreatedBy:  build.CreatedBy,
-		GitRef:     build.GitRef,
-		GithubRepo: build.GithubRepo,
-		Platform:   build.Platform,
-		ErrMsg:     build.ErrMsg,
-	}
-
-	// Extract pipeline run info from TektonStatus
-	if len(build.TektonStatus.Pipelines) > 0 {
-		info.PipelineRuns = make([]PipelineRunInfo, len(build.TektonStatus.Pipelines))
-		for i, p := range build.TektonStatus.Pipelines {
-			info.PipelineRuns[i] = PipelineRunInfo{
-				Name:   p.Name,
-				Status: p.Status,
-				URL:    p.URL,
-			}
-		}
-	}
-
-	// Extract build report data on success
-	if build.Status == "SUCCESS" {
-		if build.BuildReport.GitHash != "" {
-			info.GitSha = build.BuildReport.GitHash
-		}
-
-		if len(build.BuildReport.Images) > 0 {
-			images := make([]ImageInfo, 0, len(build.BuildReport.Images))
-			for _, img := range build.BuildReport.Images {
-				images = append(images, ImageInfo{
-					Platform: img.Platform,
-					URL:      img.URL,
-				})
-			}
-			info.Images = images
-		}
-
-		for _, oci := range build.BuildReport.Binaries {
-			for _, f := range oci.Files {
-				info.Binaries = append(info.Binaries, BinaryInfo{
-					OciReference: oci.Repo + ":" + oci.Tag + "/" + f,
-				})
-			}
-		}
-	}
-
-	return info
-}
-
-// ImageInfo contains information about a Docker image artifact for notification.
-type ImageInfo struct {
-	Platform string
-	URL      string
-}
-
-// BinaryInfo contains information about a binary artifact for notification.
-type BinaryInfo struct {
-	OciReference string
-}
-
-// NotificationInfo contains information for building a notification card.
-type NotificationInfo struct {
-	BuildID      int
-	Product      string
-	Version      string
-	Status       string
-	CreatedBy    string
-	GitRef       string
-	GithubRepo   string
-	Platform     string
-	ErrMsg       string
-	PipelineRuns []PipelineRunInfo
-	// Build report fields (populated on success)
-	GitSha   string
-	Images   []ImageInfo
-	Binaries []BinaryInfo
-}
-
-// PipelineRunInfo contains information about a single pipeline run.
-type PipelineRunInfo struct {
-	Name   string
-	Status string
-	URL    string
-}
-
-// isTerminalStatus checks if the build status is terminal.
-func isTerminalStatus(status string) bool {
-	switch status {
-	case "SUCCESS", "FAILURE", "ERROR", "ABORTED":
-		return true
-	default:
-		return false
-	}
-}
-
-// StatusColor returns the Lark card header template color for a status.
-func StatusColor(status string) string {
-	switch status {
-	case "SUCCESS":
-		return "green"
-	case "FAILURE", "ERROR":
-		return "red"
-	case "ABORTED":
-		return "orange"
-	case "PROCESSING", "RUNNING":
-		return "blue"
-	default:
-		return "grey"
-	}
-}
-
-// StatusEmoji returns an emoji for the build status.
-func StatusEmoji(status string) string {
-	switch status {
-	case "SUCCESS":
-		return "✅"
-	case "FAILURE", "ERROR":
-		return "❌"
-	case "ABORTED":
-		return "🚫"
-	case "PROCESSING", "RUNNING":
-		return "🔄"
-	default:
-		return "⏳"
-	}
 }

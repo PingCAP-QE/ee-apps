@@ -45,3 +45,17 @@ type OciArtifact struct {
 	Repo  string   `json:"repo,omitzero"`
 	Tag   string   `json:"tag,omitzero"`
 }
+
+// NotificationState holds the delivery state for all notification channels.
+// Each entry's ChatID distinguishes the target:
+//   - "" empty     → DM to build creator (implicit receiver = createdBy)
+//   - "oc_xxxxxx"  → Lark group chat
+type NotificationState struct {
+	Lark []LarkMessageState `json:"lark,omitempty"`
+}
+
+// LarkMessageState tracks a single notification card delivery for update purposes.
+type LarkMessageState struct {
+	ChatID    string `json:"chat_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
+}

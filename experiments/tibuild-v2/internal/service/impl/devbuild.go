@@ -77,7 +77,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 
 	// Register Lark notification hook if enabled
 	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
-		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, logger)
+		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
 		registerNotificationHook(dbClient, srvc.larkNotifier, logger)
 		logger.Info().Msg("lark notification hook registered")
 	}
@@ -357,7 +357,8 @@ func newStoreClient(cfg config.Store) (*ent.Client, error) {
 }
 
 // registerNotificationHook registers an Ent hook that sends Lark notifications
-// when a DevBuild reaches a terminal status (success, failure, error, aborted).
+// on every DevBuild status change. The first notification creates a new card;
+// subsequent updates refresh the same card in place.
 func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *zerolog.Logger) {
 	dbClient.Use(func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -378,8 +379,8 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 			}
 
 			// Check if status field was changed
-			newStatus, exists := mut.Status()
-			if !exists || !isTerminalStatus(newStatus) {
+			_, exists := mut.Status()
+			if !exists {
 				return v, nil
 			}
 
@@ -391,8 +392,20 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 					logger.Err(err).Int("build_id", buildID).Msg("failed to get build for notification")
 					return
 				}
-				if notifyErr := notifier.Notify(context.Background(), build); notifyErr != nil {
+
+				newState, notifyErr := notifier.Notify(context.Background(), build)
+				if notifyErr != nil {
 					logger.Err(notifyErr).Int("build_id", buildID).Msg("failed to send notification")
+					return
+				}
+
+				// Persist the updated notification state (message IDs for each channel).
+				if newState != nil {
+					if _, err := dbClient.DevBuild.UpdateOneID(build.ID).
+						SetNotificationState(*newState).
+						Save(context.Background()); err != nil {
+						logger.Err(err).Int("build_id", buildID).Msg("failed to store notification state")
+					}
 				}
 			}()
 
