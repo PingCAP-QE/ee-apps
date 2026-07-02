@@ -1095,8 +1095,8 @@ func ValidateTektonPipelineResponse(body *TektonPipelineResponse) (err error) {
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "Started" || *body.Status == "Running" || *body.Status == "Succeeded" || *body.Status == "Failed" || *body.Status == "Cancelled" || *body.Status == "Skipped" || *body.Status == "TimedOut" || *body.Status == "ExceededNodeResources") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1369,8 +1369,8 @@ func ValidateTektonPipelineResponseBody(body *TektonPipelineResponseBody) (err e
 		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
 	}
 	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+		if !(*body.Status == "Started" || *body.Status == "Running" || *body.Status == "Succeeded" || *body.Status == "Failed" || *body.Status == "Cancelled" || *body.Status == "Skipped" || *body.Status == "TimedOut" || *body.Status == "ExceededNodeResources") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources"}))
 		}
 	}
 	if body.StartAt != nil {
@@ -1502,8 +1502,8 @@ func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) 
 // ValidateTektonPipelineRequestBody runs the validations defined on
 // TektonPipelineRequestBody
 func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err error) {
-	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+	if !(body.Status == "Started" || body.Status == "Running" || body.Status == "Succeeded" || body.Status == "Failed" || body.Status == "Cancelled" || body.Status == "Skipped" || body.Status == "TimedOut" || body.Status == "ExceededNodeResources") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources"}))
 	}
 	if body.StartAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.startAt", *body.StartAt, goa.FormatDateTime))

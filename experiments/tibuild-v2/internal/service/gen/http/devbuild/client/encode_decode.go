@@ -768,7 +768,7 @@ func unmarshalTektonPipelineResponseToDevbuildTektonPipeline(v *TektonPipelineRe
 	res := &devbuild.TektonPipeline{
 		Name:      *v.Name,
 		Namespace: *v.Namespace,
-		Status:    devbuild.BuildStatus(*v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,
@@ -1070,7 +1070,7 @@ func unmarshalTektonPipelineResponseBodyToDevbuildTektonPipeline(v *TektonPipeli
 	res := &devbuild.TektonPipeline{
 		Name:      *v.Name,
 		Namespace: *v.Namespace,
-		Status:    devbuild.BuildStatus(*v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(*v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,
@@ -1472,7 +1472,7 @@ func marshalTektonPipelineRequestBodyToDevbuildTektonPipeline(v *TektonPipelineR
 	res := &devbuild.TektonPipeline{
 		Name:      v.Name,
 		Namespace: v.Namespace,
-		Status:    devbuild.BuildStatus(v.Status),
+		Status:    devbuild.TektonPipelineRunStatus(v.Status),
 		StartAt:   v.StartAt,
 		EndAt:     v.EndAt,
 		Platform:  v.Platform,

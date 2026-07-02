@@ -125,26 +125,20 @@ func StatusColor(status string) string {
 // Uses Tekton's own condition Reason/Status values so users can distinguish
 // between Failed, Cancelled, TimedOut, Skipped, etc. at a glance.
 func PipelineStatusEmoji(status string) string {
-	switch status {
-	case "Succeeded", "Completed", "True":
-		return "✅"
-	case "Failed", "False":
-		return "❌"
-	case "Cancelled":
-		return "🚫"
-	case "Skipped":
-		return "⏭️"
-	case "TimedOut":
-		return "⏰"
-	case "ExceededNodeResources":
-		return "💥"
-	case "Started":
-		return "🚀"
-	case "Running", "Unknown":
-		return "🔄"
-	default:
-		return "⏳"
+	emojiMap := map[string]string{
+		"Started":               "🚀",
+		"Running":               "🔄",
+		"Succeeded":             "✅",
+		"Failed":                "❌",
+		"Cancelled":             "🚫",
+		"Skipped":               "⏭️",
+		"TimedOut":              "⏰",
+		"ExceededNodeResources": "💥",
 	}
+	if emoji, ok := emojiMap[status]; ok {
+		return emoji
+	}
+	return "❓"
 }
 
 // StatusEmoji returns an emoji for the build status.

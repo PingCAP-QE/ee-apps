@@ -176,7 +176,7 @@ type RerunPayload struct {
 type TektonPipeline struct {
 	Name         string
 	Namespace    string
-	Status       BuildStatus
+	Status       TektonPipelineRunStatus
 	StartAt      *string
 	EndAt        *string
 	Images       []*ImageArtifact
@@ -184,6 +184,8 @@ type TektonPipeline struct {
 	Platform     *string
 	URL          *string
 }
+
+type TektonPipelineRunStatus string
 
 type TektonStatus struct {
 	Pipelines        []*TektonPipeline

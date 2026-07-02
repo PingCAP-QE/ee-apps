@@ -96,16 +96,16 @@ var _ = Service("devbuild", func() {
 	Method("create", func() {
 		Description("Create and trigger devbuild")
 		Payload(func() {
-		Attribute("createdBy", String, "Creator of build", func() {
-			Format(FormatEmail)
-		})
-		Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
-			Required("product", "version", "edition", "gitRef")
-		})
-		Attribute("dryrun", Boolean, "Dry run", func() {
-			Default(false)
-		})
-		Required("createdBy", "request")
+			Attribute("createdBy", String, "Creator of build", func() {
+				Format(FormatEmail)
+			})
+			Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
+				Required("product", "version", "edition", "gitRef")
+			})
+			Attribute("dryrun", Boolean, "Dry run", func() {
+				Default(false)
+			})
+			Required("createdBy", "request")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -372,7 +372,7 @@ var TektonStatus = Type("TektonStatus", func() {
 var TektonPipeline = Type("TektonPipeline", func() {
 	Attribute("name", String)
 	Attribute("namespace", String)
-	Attribute("status", BuildStatus)
+	Attribute("status", TektonPipelineRunStatus)
 	Attribute("startAt", String, func() { Format(FormatDateTime) })
 	Attribute("endAt", String, func() { Format(FormatDateTime) })
 	Attribute("images", ArrayOf(ImageArtifact))
@@ -392,6 +392,10 @@ var OciArtifact = Type("OciArtifact", func() {
 
 var BuildStatus = Type("BuildStatus", String, func() {
 	Enum("PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR")
+})
+
+var TektonPipelineRunStatus = Type("TektonPipelineRunStatus", String, func() {
+	Enum("Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources")
 })
 
 var HTTPError = Type("HTTPError", func() {
