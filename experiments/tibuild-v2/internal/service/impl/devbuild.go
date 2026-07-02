@@ -360,15 +360,16 @@ func registerNotificationHook(dbClient *ent.Client, notifier Notifier, logger *z
 				return v, nil
 			}
 
-			// Only trigger on Update or UpdateOne operations
-			if !m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
+			// Trigger on Create (initial PENDING) and Update (status changes)
+			if !m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
 				return v, nil
 			}
 
-			// Check if status field was changed
-			_, exists := mut.Status()
-			if !exists {
-				return v, nil
+			// For updates, skip if status wasn't changed
+			if m.Op().Is(ent.OpUpdate | ent.OpUpdateOne) {
+				if _, exists := mut.Status(); !exists {
+					return v, nil
+				}
 			}
 
 			// Get the build ID and send notification asynchronously
