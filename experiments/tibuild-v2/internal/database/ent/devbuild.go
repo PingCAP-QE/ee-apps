@@ -20,11 +20,11 @@ type DevBuild struct {
 	// ID of the ent.
 	ID int `json:"id,omitempty"`
 	// User who created the build
-	CreatedBy string `json:"created_by,omitempty"`
+	CreatedBy string `json:"createdBy,omitempty"`
 	// Time when the build was created
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 	// Time when the build was last updated
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 	// Product being built
 	Product string `json:"product,omitempty"`
 	// Edition of the product

@@ -6,7 +6,7 @@ import "time"
 // This mirrors the Goa-generated devbuild.TektonStatus struct.
 type TektonStatus struct {
 	Pipelines        []TektonPipeline `json:"pipelines,omitempty"`
-	TriggersEventIds []string         `json:"triggers_event_ids,omitempty"`
+	TriggersEventIds []string         `json:"triggersEventIDs,omitempty"`
 }
 
 // TektonPipeline represents a single Tekton pipeline run.
@@ -15,10 +15,10 @@ type TektonPipeline struct {
 	Name         string          `json:"name"`
 	Namespace    string          `json:"namespace"`
 	Status       string          `json:"status"`
-	StartAt      *time.Time      `json:"start_at,omitzero"`
-	EndAt        *time.Time      `json:"end_at,omitzero"`
+	StartAt      *time.Time      `json:"startAt,omitzero"`
+	EndAt        *time.Time      `json:"endAt,omitzero"`
 	Images       []ImageArtifact `json:"images,omitzero"`
-	OciArtifacts []OciArtifact   `json:"oci_artifacts,omitzero"`
+	OciArtifacts []OciArtifact   `json:"ociArtifacts,omitzero"`
 	Platform     string          `json:"platform,omitzero"`
 	URL          string          `json:"url,omitzero"`
 }

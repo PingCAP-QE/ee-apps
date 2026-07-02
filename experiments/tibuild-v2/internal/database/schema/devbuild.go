@@ -48,22 +48,22 @@ type DevBuildMeta struct {
 // Fields of the DevBuildMeta.
 func (DevBuildMeta) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("created_by").
-			Optional().
-			MaxLen(64).
-			Comment("User who created the build").
-			StructTag(`json:"created_by,omitempty"`),
+	field.String("created_by").
+		Optional().
+		MaxLen(64).
+		Comment("User who created the build").
+		StructTag(`json:"createdBy,omitempty"`),
 
-		field.Time("created_at").
-			Default(time.Now).
-			Comment("Time when the build was created").
-			StructTag(`json:"created_at,omitempty"`),
+	field.Time("created_at").
+		Default(time.Now).
+		Comment("Time when the build was created").
+		StructTag(`json:"createdAt,omitempty"`),
 
-		field.Time("updated_at").
-			Default(time.Now).
-			UpdateDefault(time.Now).
-			Comment("Time when the build was last updated").
-			StructTag(`json:"updated_at,omitempty"`),
+	field.Time("updated_at").
+		Default(time.Now).
+		UpdateDefault(time.Now).
+		Comment("Time when the build was last updated").
+		StructTag(`json:"updatedAt,omitempty"`),
 	}
 }
 
