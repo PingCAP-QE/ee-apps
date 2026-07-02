@@ -115,7 +115,7 @@ CHECKS: list[Check] = [
         name="ci_l1_pr_events",
         level="MEDIUM",
         description="Latest PR event_time in ci_l1_pr_events",
-        threshold_description="4 hours",
+        threshold_description="30 hours",
         sql="SELECT MAX(event_time) FROM ci_l1_pr_events WHERE event_time IS NOT NULL",
         db="ci",
     ),
