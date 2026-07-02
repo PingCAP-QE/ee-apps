@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"goa.design/clue/health"
 	goahttp "goa.design/goa/v3/http"
 	httpmdlwr "goa.design/goa/v3/http/middleware"
@@ -25,6 +26,7 @@ import (
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
+	"github.com/ks3sdklib/aws-sdk-go/service/s3"
 	"oras.land/oras-go/v2/registry/remote"
 )
 
@@ -33,9 +35,19 @@ type ociRepoProvider interface {
 	GetTargetRepo(repo string) (*remote.Repository, error)
 }
 
+// ks3HeadProvider is implemented by KS3 service types that can check object existence.
+type ks3HeadProvider interface {
+	HeadObject(bucket, key string) (*s3.HeadObjectOutput, error)
+}
+
+// gcsHeadProvider is implemented by GCS service types that can check object existence.
+type gcsHeadProvider interface {
+	HeadObject(ctx context.Context, bucket, key string) (*storage.ObjectAttrs, error)
+}
+
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, gcsEndpoints *gcs.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
+func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, gcsEndpoints *gcs.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service, ks3Svc ks3.Service, gcsSvc gcs.Service) {
 
 	// Setup goa log adapter.
 	var (
@@ -100,6 +112,12 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	{
 		if provider, ok := ociSvc.(ociRepoProvider); ok {
 			handler = headOCIMiddleware(provider, logger)(handler)
+		}
+		if provider, ok := ks3Svc.(ks3HeadProvider); ok {
+			handler = headKS3Middleware(provider, logger)(handler)
+		}
+		if provider, ok := gcsSvc.(gcsHeadProvider); ok {
+			handler = headGCSMiddleware(provider, logger)(handler)
 		}
 		handler = httpmdlwr.Log(adapter)(handler)
 		handler = httpmdlwr.RequestID()(handler)
@@ -235,6 +253,83 @@ func headOCIMiddleware(provider ociRepoProvider, logger *log.Logger) func(http.H
 
 			w.Header().Set("Content-Disposition", attachment.ContentDisposition(targetFile))
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", descriptor.Size))
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+}
+
+// headKS3Middleware intercepts HEAD requests to /s3-obj/{bucket}/{*key} and
+// checks object existence without downloading, enabling wget --spider.
+func headKS3Middleware(provider ks3HeadProvider, logger *log.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodHead {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !strings.HasPrefix(r.URL.Path, "/s3-obj/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			path := strings.TrimPrefix(r.URL.Path, "/s3-obj/")
+			parts := strings.SplitN(path, "/", 2)
+			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				http.Error(w, "invalid path: expected /s3-obj/{bucket}/{key}", http.StatusBadRequest)
+				return
+			}
+
+			result, err := provider.HeadObject(parts[0], parts[1])
+			if err != nil {
+				logger.Printf("HEAD s3-obj: %v", err)
+				http.Error(w, "object not found", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Disposition", attachment.ContentDisposition(parts[1]))
+			if result.ContentLength != nil {
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", *result.ContentLength))
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+}
+
+// headGCSMiddleware intercepts HEAD requests to /gcs-obj/{bucket}/{*key} and
+// checks object existence without downloading, enabling wget --spider.
+func headGCSMiddleware(provider gcsHeadProvider, logger *log.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodHead {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !strings.HasPrefix(r.URL.Path, "/gcs-obj/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			path := strings.TrimPrefix(r.URL.Path, "/gcs-obj/")
+			parts := strings.SplitN(path, "/", 2)
+			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				http.Error(w, "invalid path: expected /gcs-obj/{bucket}/{key}", http.StatusBadRequest)
+				return
+			}
+
+			ctx := r.Context()
+			attrs, err := provider.HeadObject(ctx, parts[0], parts[1])
+			if err != nil {
+				logger.Printf("HEAD gcs-obj: %v", err)
+				http.Error(w, "object not found", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Disposition", attachment.ContentDisposition(parts[1]))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", attrs.Size))
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.WriteHeader(http.StatusOK)
 		})

@@ -65,6 +65,11 @@ func New(logger *log.Logger, cfgFile string) gcs.Service {
 	return &gcssrvc{logger: logger, client: client}
 }
 
+func (s *gcssrvc) HeadObject(ctx context.Context, bucket, key string) (*storage.ObjectAttrs, error) {
+	obj := s.client.Bucket(bucket).Object(key)
+	return obj.Attrs(ctx)
+}
+
 func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPayload) (res *gcs.DownloadObjectResult, resp io.ReadCloser, err error) {
 	obj := s.client.Bucket(p.Bucket).Object(p.Key)
 	attrs, err := obj.Attrs(ctx)

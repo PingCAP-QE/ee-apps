@@ -57,6 +57,15 @@ func New(logger *log.Logger, cfgFile string) ks3.Service {
 	return &ks3srvc{logger: logger, client: newClient(&cfg)}
 }
 
+// HeadObject checks if an object exists in KS3 without downloading.
+func (s *ks3srvc) HeadObject(bucket, key string) (*s3.HeadObjectOutput, error) {
+	headParams := &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+	return s.client.HeadObject(headParams)
+}
+
 // DownloadObject implements download-object.
 func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPayload) (res *ks3.DownloadObjectResult, resp io.ReadCloser, err error) {
 	getParams := &s3.GetObjectInput{

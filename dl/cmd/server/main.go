@@ -107,7 +107,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, gcsEndpoints, &wg, errc, logger, *dbgF, ociSvc)
+			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, gcsEndpoints, &wg, errc, logger, *dbgF, ociSvc, ks3Svc, gcsSvc)
 		}
 
 	default:
