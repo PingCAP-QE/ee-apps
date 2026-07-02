@@ -15,8 +15,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
-const larkErrMsgNotFound = 230001
-
 // Notifier defines the interface for sending build notifications.
 // Returns the updated notification state for persistence.
 type Notifier interface {
@@ -104,24 +102,21 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema
 // Returns the current (or new) message ID.
 func (n *LarkNotifier) sendOrUpdate(ctx context.Context, client *larksdk.Client, buildID int, receiver, existingMsgID, cardStr string) (string, error) {
 	if existingMsgID != "" {
-		// Try update first
-		req := larkim.NewUpdateMessageReqBuilder().
+		// Update interactive card via PATCH (PUT does not support interactive cards)
+		req := larkim.NewPatchMessageReqBuilder().
 			MessageId(existingMsgID).
-			Body(larkim.NewUpdateMessageReqBodyBuilder().
-				MsgType(larkim.MsgTypeInteractive).
-				Content(cardStr).
-				Build()).
+			Body(&larkim.PatchMessageReqBody{Content: &cardStr}).
 			Build()
 
-		resp, err := client.Im.Message.Update(ctx, req)
+		resp, err := client.Im.Message.Patch(ctx, req)
 		if err == nil && resp.Success() {
 			n.logger.Debug().Int("build_id", buildID).Str("message_id", existingMsgID).Msg("card updated")
 			return existingMsgID, nil
 		}
-		if err == nil && resp.Code == larkErrMsgNotFound {
-			n.logger.Warn().Int("build_id", buildID).Str("message_id", existingMsgID).Msg("card was deleted, sending new one")
-		} else if err != nil {
-			n.logger.Err(err).Int("build_id", buildID).Msg("update failed, will try create")
+		if err == nil {
+			n.logger.Warn().Int("build_id", buildID).Int("code", resp.Code).Str("msg", resp.Msg).Msg("update failed, will try create")
+		} else {
+			n.logger.Err(err).Int("build_id", buildID).Msg("update request failed, will try create")
 		}
 	}
 

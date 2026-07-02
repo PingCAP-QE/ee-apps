@@ -112,7 +112,7 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 			pipeline := &devbuild.TektonPipeline{
 				Name:      p.Name,
 				Namespace: p.Namespace,
-				Status:    devbuild.BuildStatus(p.Status),
+				Status:    devbuild.TektonPipelineRunStatus(p.Status),
 				Platform:  &p.Platform,
 				URL:       nonEmptyPtr(p.URL),
 			}
