@@ -98,7 +98,6 @@ def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_r
 
 def test_run_sync_gcs_cache_ac_references_incremental_updates_watermark_and_replaces_refs() -> None:
     captured_queries = []
-    loaded_rows = []
 
     def fake_execute(query, parameters):
         captured_queries.append((query, {param.name: param.value for param in parameters}))
@@ -153,6 +152,64 @@ def test_run_sync_gcs_cache_ac_references_incremental_updates_watermark_and_repl
         in query
         for query, _ in captured_queries
     )
+
+
+def test_run_sync_gcs_cache_ac_references_replaces_once_per_shard() -> None:
+    captured_queries = []
+    load_calls = []
+    extract_calls = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append((query, {param.name: param.value for param in parameters}))
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        yield {"object_name": "ac/00aaaa"}
+        yield {"object_name": "ac/00bbbb"}
+        yield {"object_name": "ac/00cccc"}
+
+    def fake_extract_references(**kwargs):
+        names = kwargs["ac_object_names"]
+        extract_calls.append(names)
+        return tuple(
+            AcReferenceExtraction(
+                ac_object_name=name,
+                exists=True,
+                cas_object_names=(f"cas/{name[-6:]}",),
+            )
+            for name in names
+        )
+
+    def fake_load_json_rows(settings, *, shard, edge_rows, run_suffix=""):
+        load_calls.append((shard, tuple(edge_rows)))
+        return f"`project.dataset._tmp_shard_edge_stage_{shard}`"
+
+    run_sync_gcs_cache_ac_references(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_batch_size=2,
+        ),
+        mode="bootstrap",
+        shard_start=0,
+        shard_end=0,
+        dry_run=False,
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        load_json_rows=fake_load_json_rows,
+        extract_references=fake_extract_references,
+        now=lambda: datetime(2026, 6, 22, 10, 0, tzinfo=UTC),
+    )
+
+    assert extract_calls == [("ac/00aaaa", "ac/00bbbb"), ("ac/00cccc",)]
+    assert len(load_calls) == 1
+    assert len(load_calls[0][1]) == 3
+    replace_queries = [
+        query
+        for query, _ in captured_queries
+        if "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_refs_by_ac`"
+        in query
+    ]
+    assert len(replace_queries) == 1
 
 
 def test_run_sync_incremental_zero_ref_ac_writes_sentinel_and_filters_insert() -> None:

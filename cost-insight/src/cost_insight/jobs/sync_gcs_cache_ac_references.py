@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import islice
+from time import perf_counter
 
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
@@ -16,6 +18,7 @@ QueryExecutor = Callable[[str, Sequence[BigQueryParameter]], BigQueryQueryResult
 ReferenceExtractor = Callable[..., tuple[AcReferenceExtraction, ...]]
 RowStreamer = Callable[[str, Sequence[BigQueryParameter]], Iterator[dict[str, object]]]
 JsonLoader = Callable[..., str]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,35 @@ def run_sync_gcs_cache_ac_references(
     )
 
     for shard in range(shard_start, resolved_shard_end + 1):
+        shard_started_at = perf_counter()
+        shard_source_start = source_object_count
+        shard_missing_start = missing_object_count
+        shard_parse_error_start = parse_error_count
+        shard_replaced_start = replaced_ac_object_count
+        shard_reference_start = reference_row_count
+        logger.info(
+            "AC reference sync shard started: mode=%s shard=%s shard_end=%s",
+            mode,
+            shard,
+            resolved_shard_end,
+        )
+
+        def log_shard_finished(status: str) -> None:
+            logger.info(
+                "AC reference sync shard finished: mode=%s shard=%s status=%s "
+                "source=%s replaced=%s missing=%s references=%s parse_errors=%s "
+                "elapsed_seconds=%.1f",
+                mode,
+                shard,
+                status,
+                source_object_count - shard_source_start,
+                replaced_ac_object_count - shard_replaced_start,
+                missing_object_count - shard_missing_start,
+                reference_row_count - shard_reference_start,
+                parse_error_count - shard_parse_error_start,
+                perf_counter() - shard_started_at,
+            )
+
         watermark = (
             None
             if mode == "bootstrap"
@@ -177,6 +209,7 @@ def run_sync_gcs_cache_ac_references(
 
         if dry_run:
             indexed_through = run_started_at
+            log_shard_finished("dry_run")
             continue
 
         # Parse error fail-closed: any parse error → clear indexed_through to NULL.
@@ -194,6 +227,7 @@ WHERE shard = {shard}""",
                         parameters=[],
                     ).total_bytes_processed,
                 )
+            log_shard_finished("parse_error")
             continue
 
         # Reconcile missing AC objects from last_seen_current and by_ac.
@@ -246,6 +280,7 @@ WHERE shard = {shard}""",
             ).total_bytes_processed,
         )
         indexed_through = run_started_at
+        log_shard_finished("succeeded")
 
     if failed_shards and not dry_run:
         raise RuntimeError(
