@@ -29,6 +29,12 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	// 2. get the commit sha
 	_, commitSha := getGhRefAndSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
 
+	// Normalize raw hex SHA to "commit/<sha>" for consistent storage.
+	gitRef := p.Request.GitRef
+	if isHex(gitRef) {
+		gitRef = "commit/" + gitRef
+	}
+
 	// 3. create the entity
 	edition := normalizeEdition(p.Request.Edition)
 	create := s.dbClient.DevBuild.Create().
@@ -36,7 +42,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetEdition(edition).
 		SetVersion(p.Request.Version).
 		SetGithubRepo(githubFullRepo).
-		SetGitRef(p.Request.GitRef).
+		SetGitRef(gitRef).
 		SetGitHash(commitSha).
 		SetNillableIsHotfix(p.Request.IsHotfix).
 		SetCreatedAt(time.Now()).

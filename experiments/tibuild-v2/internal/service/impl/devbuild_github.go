@@ -66,6 +66,11 @@ func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqG
 		return *pr.Base.Ref, pr.Head.GetSHA()
 	}
 
+	// Fallback: treat raw 40-char hex as a commit SHA for convenience.
+	if isHex(reqGitRef) {
+		return reqGitRef, reqGitRef
+	}
+
 	return "", ""
 }
 
