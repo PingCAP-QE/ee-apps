@@ -1301,3 +1301,66 @@ def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
     assert "LIMIT 500" in ac_queries[0]
+
+
+def test_cas_from_index_default_ac_cap_without_max_delete_objects(monkeypatch) -> None:
+    """cas-from-index uses default cleanup_max_delete_ac_objects=100000 when no flag."""
+    from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
+
+    monkeypatch.setattr(
+        cleanup_gcs_cache,
+        "run_sync_gcs_cache_ac_references",
+        lambda **kwargs: sync_gcs_cache_ac_references.SyncGcsCacheAcReferencesSummary(
+            account_id="test", bucket_name="test", mode="incremental",
+            shard_start=0, shard_end=255, source_object_count=0,
+            missing_object_count=0, parse_error_count=0,
+            replaced_ac_object_count=0, reference_row_count=0,
+            sample_parse_errors=(), dry_run=False,
+            indexed_through=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+            bytes_processed=0,
+            run_started_at=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+            run_finished_at=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+        ),
+    )
+
+    captured_queries = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append(query)
+        if "ready_shards" in query:
+            return BigQueryQueryResult(rows=({"ready_shards": 256},), total_bytes_processed=1)
+        if "fresh_shards" in query:
+            return BigQueryQueryResult(rows=({"fresh_shards": 256},), total_bytes_processed=1)
+        if "COUNT(*)" in query or "object_count" in query:
+            return BigQueryQueryResult(rows=({"object_count": 10},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        if "cas_preselect" in query:
+            yield {"object_name": "cas/deadbeef"}
+        return
+
+    def fake_resolve_metadata(**kwargs):
+        return (GcsObjectMetadata(object_name="dummy", exists=True, generation=1, size_bytes=1024),)
+
+    def fake_load_jsonl(*args, **kwargs):
+        pass
+
+    now = datetime(2026, 7, 2, 10, 0, tzinfo=UTC)
+    # No max_delete_objects flag
+    run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="dry-run",
+        execute_kind="cas-from-index",
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        resolve_object_metadata=fake_resolve_metadata,
+        load_jsonl_file=fake_load_jsonl,
+        now=lambda: now,
+        run_id_factory=lambda: "test-default-ac-cap",
+    )
+
+    # Default AC cap is 100000 (not 10000000)
+    ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
+    assert len(ac_queries) >= 1
+    assert "LIMIT 100000" in ac_queries[0]

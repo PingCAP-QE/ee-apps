@@ -200,7 +200,11 @@ def run_cleanup_gcs_cache(
             cleanup_safety_buffer_days=resolved_safety_buffer_days,
             cleanup_sample_limit=resolved_sample_limit,
             cleanup_max_delete_objects=resolved_max_delete_objects,
-            cleanup_max_delete_ac_objects=resolved_max_delete_objects,
+            cleanup_max_delete_ac_objects=(
+                max_delete_objects
+                if max_delete_objects is not None
+                else settings.cleanup_max_delete_ac_objects
+            ),
             cleanup_max_delete_cas_objects=resolved_max_delete_cas_objects,
             cleanup_max_delete_cas_bytes=settings.cleanup_max_delete_cas_bytes,
             cleanup_cas_preselect_limit=settings.cleanup_cas_preselect_limit,
