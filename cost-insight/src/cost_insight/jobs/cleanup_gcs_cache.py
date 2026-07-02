@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from contextlib import ExitStack
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
