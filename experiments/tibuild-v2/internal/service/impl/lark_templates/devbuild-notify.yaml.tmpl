@@ -6,29 +6,48 @@ header:
     content: "{{ StatusEmoji .Status }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Version }}"
     tag: plain_text
 elements:
+  - tag: div
+    fields:
+      {{- with .Status }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "**Status:**\t{{ StatusEmoji . }}"
+      {{- end }}
+      {{- with .CreatedBy }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "🧑‍💻 **Created By:**\t{{ . }}"
+      {{- end }}
+      {{- with .CreatedAt }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "🛫 **Created at:**\t{{ . }}"
+      {{- end }}
+      {{- with .CompletedAt }}
+      - is_short: false
+        text:
+          tag: lark_md
+          content: "🛬 **Completed time:**\t{{ . }}"
+      {{- end }}
+  - tag: hr
   - tag: markdown
     content: |-
-      **Status:** {{ StatusEmoji .Status }} {{ .Status }}
-      **Product:** {{ .Product }}
-      **Version:** {{ .Version }}
-      **Platform:** {{ .Platform }}
-      **Created At:** `{{ .CreatedAt }}`
-      {{- if .CompletedAt }}
-      **Completed At:** `{{ .CompletedAt }}`
+      **Request:**
+      - **Product:** {{ .Product }}
+      - **Version:** {{ .Version }}
+      - **Platform:** {{ .Platform }}
+      {{- with .GithubRepo }}
+      - **Repository:** [{{ . }}](https://github.com/{{ . }})
       {{- end }}
       {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
       {{- if $gitRefURL }}
-      **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
+      - **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
       {{- else }}
-      **Git Ref:** {{ .GitRef }}
+      - **Git Ref:** {{ .GitRef }}
       {{- end }}
-      **Created By:** {{ .CreatedBy }}
-
-  {{- if .GithubRepo }}
-  - tag: markdown
-    content: |-
-      **Repository:** [{{ .GithubRepo }}](https://github.com/{{ .GithubRepo }})
-  {{- end }}
 
   {{- if or .GitSha .Images .Binaries }}
   - tag: hr
@@ -36,7 +55,7 @@ elements:
     content: |-
       **Build Report**
       {{- if .GitSha }}
-      **Git SHA:** `{{ .GitSha }}`
+      - **Git SHA:** {{ .GitSha }}
       {{- end }}
       {{- if .Images }}
       - **Docker Images:**
