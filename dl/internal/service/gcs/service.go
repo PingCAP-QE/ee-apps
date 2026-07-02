@@ -96,7 +96,6 @@ func (s *gcssrvc) HeadObject(ctx context.Context, p *gcs.HeadObjectPayload) (*gc
 	if err != nil {
 		return nil, err
 	}
-
 	res := &gcs.HeadObjectResult{
 		Length: attrs.Size,
 	}

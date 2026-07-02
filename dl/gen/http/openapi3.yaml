@@ -143,8 +143,8 @@ paths:
                             schema:
                                 type: string
                                 description: Content-Disposition header for downloading
-                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz.sha256
-                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz.sha256
+                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
+                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
                         Content-Length:
                             description: Length is the downloaded content length in bytes.
                             schema:
