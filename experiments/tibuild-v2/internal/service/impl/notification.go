@@ -1,6 +1,8 @@
 package impl
 
 import (
+	"time"
+
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 )
 
@@ -22,6 +24,8 @@ type NotificationInfo struct {
 	Version      string
 	Status       string
 	CreatedBy    string
+	CreatedAt    string // RFC3339 formatted build creation time
+	CompletedAt  string // RFC3339 formatted build completion time, empty if still running
 	GitRef       string // e.g. "branch/master", "tag/v9.0.0", "pull/1234", or commit SHA
 	GithubRepo   string
 	Platform     string
@@ -42,16 +46,22 @@ type PipelineRunInfo struct {
 
 // buildNotificationInfo builds a NotificationInfo from a build record.
 func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
+	completedAt := ""
+	if !build.PipelineEndAt.IsZero() {
+		completedAt = build.PipelineEndAt.UTC().Format(time.RFC3339)
+	}
 	info := &NotificationInfo{
-		BuildID:    build.ID,
-		Product:    build.Product,
-		Version:    build.Version,
-		Status:     build.Status,
-		CreatedBy:  build.CreatedBy,
-		GitRef:     build.GitRef,
-		GithubRepo: build.GithubRepo,
-		Platform:   build.Platform,
-		ErrMsg:     build.ErrMsg,
+		BuildID:     build.ID,
+		Product:     build.Product,
+		Version:     build.Version,
+		Status:      build.Status,
+		CreatedBy:   build.CreatedBy,
+		CreatedAt:   build.CreatedAt.UTC().Format(time.RFC3339),
+		CompletedAt: completedAt,
+		GitRef:      build.GitRef,
+		GithubRepo:  build.GithubRepo,
+		Platform:    build.Platform,
+		ErrMsg:      build.ErrMsg,
 	}
 
 	// Extract pipeline run info from TektonStatus

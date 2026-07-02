@@ -8,16 +8,20 @@ header:
 elements:
   - tag: markdown
     content: |-
-      **Status:** {{ StatusEmoji .Status }}
+      **Status:** {{ StatusEmoji .Status }} {{ .Status }}
       **Product:** {{ .Product }}
       **Version:** {{ .Version }}
       **Platform:** {{ .Platform }}
-        {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
-        {{- if $gitRefURL }}
-        **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
-        {{- else }}
-        **Git Ref:** {{ .GitRef }}
-        {{- end }}
+      **Created At:** `{{ .CreatedAt }}`
+      {{- if .CompletedAt }}
+      **Completed At:** `{{ .CompletedAt }}`
+      {{- end }}
+      {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
+      {{- if $gitRefURL }}
+      **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
+      {{- else }}
+      **Git Ref:** {{ .GitRef }}
+      {{- end }}
       **Created By:** {{ .CreatedBy }}
 
   {{- if .GithubRepo }}
@@ -35,16 +39,16 @@ elements:
       **Git SHA:** `{{ .GitSha }}`
       {{- end }}
       {{- if .Images }}
-      **Docker Images:**
-      {{- range .Images }}
-      - `{{ .URL }}` ({{ .Platform }})
-      {{- end }}
+      - **Docker Images:**
+        {{- range .Images }}
+        - `{{ .URL }}` ({{ .Platform }})
+        {{- end }}
       {{- end }}
       {{- if .Binaries }}
-      **Binaries:**
-      {{- range .Binaries }}
-      - `{{ .OciReference }}`
-      {{- end }}
+      - **Binaries:**
+        {{- range .Binaries }}
+        - `{{ .OciReference }}`
+        {{- end }}
       {{- end }}
   {{- end }}
 
@@ -54,23 +58,8 @@ elements:
     content: |-
         **Pipeline Runs:**
         {{- range .PipelineRuns }}
-        - {{ PipelineStatusEmoji .Status }} **{{ .Name }}:** {{ .Status }}
+        - {{ PipelineStatusEmoji .Status }} **{{ .Name }}:** [{{ .Status }}]({{ .URL }})
         {{- end }}
-  {{- end }}
-
-  {{- if .PipelineRuns }}
-  - tag: action
-    actions:
-      {{- range .PipelineRuns }}
-      {{- if .URL }}
-      - tag: button
-        text:
-          content: "View {{ .Name }}"
-          tag: plain_text
-        url: "{{ .URL }}"
-        type: primary
-      {{- end }}
-      {{- end }}
   {{- end }}
 
   {{- if .ErrMsg }}
