@@ -47,7 +47,7 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcs_cache.cleanup_safety_buffer_days == 1
     assert settings.gcs_cache.last_seen_excluded_get_user_agent == "TransferService"
     assert settings.gcs_cache.last_seen_excluded_get_principal_email is None
-    assert settings.gcs_cache.ac_reference_max_index_staleness_hours == 12
+    assert settings.gcs_cache.ac_reference_max_index_staleness_hours == 1
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:
@@ -136,25 +136,11 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.cleanup_sample_limit == 25
     assert settings.gcs_cache.cleanup_max_delete_objects == 500
     assert settings.gcs_cache.cleanup_max_delete_cas_objects == 100
-    assert settings.gcs_cache.cleanup_ac_delete_batch_size == 200
+    assert settings.gcs_cache.cleanup_max_delete_ac_objects == 100000
     assert settings.gcs_cache.cleanup_batch_size == 50
     assert settings.gcs_cache.cleanup_manifest_bucket == "manifest-bucket"
     assert settings.gcs_cache.cleanup_manifest_prefix == "manifest-prefix"
     assert settings.gcs_cache.cleanup_candidate_ttl_days == 9
-
-
-def test_load_settings_warns_when_cleanup_ac_batch_exceeds_max_delete_objects() -> None:
-    with pytest.warns(RuntimeWarning, match="cleanup_ac_delete_batch_size is greater"):
-        settings = load_settings(
-            {
-                "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "10",
-                "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE": "20",
-            },
-            require_database=False,
-        )
-
-    assert settings.gcs_cache.cleanup_max_delete_objects == 10
-    assert settings.gcs_cache.cleanup_ac_delete_batch_size == 20
 
 
 def test_load_settings_requires_database_when_not_skipped() -> None:

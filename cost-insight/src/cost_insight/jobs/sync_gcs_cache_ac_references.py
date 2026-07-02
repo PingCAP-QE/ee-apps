@@ -15,7 +15,7 @@ from cost_insight.common.gcs_cache_references import (
 QueryExecutor = Callable[[str, Sequence[BigQueryParameter]], BigQueryQueryResult]
 ReferenceExtractor = Callable[..., tuple[AcReferenceExtraction, ...]]
 RowStreamer = Callable[[str, Sequence[BigQueryParameter]], Iterator[dict[str, object]]]
-JsonLoader = Callable[[str, Sequence[dict[str, object]]], None]
+JsonLoader = Callable[..., str]
 
 
 @dataclass(frozen=True)
@@ -38,10 +38,13 @@ class SyncGcsCacheAcReferencesSummary:
     reference_row_count: int
     sample_parse_errors: tuple[SyncGcsCacheAcReferenceParseErrorSample, ...]
     dry_run: bool
-    indexed_through: datetime
+    indexed_through: datetime | None
     bytes_processed: int | None
     run_started_at: datetime
     run_finished_at: datetime
+
+
+_AC_HEX_REGEX = r'^ac/[0-9a-fA-F]{64}$'
 
 
 def run_sync_gcs_cache_ac_references(
@@ -77,6 +80,8 @@ def run_sync_gcs_cache_ac_references(
     replaced_ac_object_count = 0
     reference_row_count = 0
     sample_parse_errors: list[SyncGcsCacheAcReferenceParseErrorSample] = []
+    indexed_through: datetime | None = None
+    failed_shards: list[int] = []
 
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
@@ -84,31 +89,6 @@ def run_sync_gcs_cache_ac_references(
             build_ensure_gcs_cache_ac_reference_tables_query(settings), parameters=[]
         ).total_bytes_processed,
     )
-
-    run_id = run_started_at.strftime("%Y%m%dt%H%M%S")
-    object_stage_table = _table_ref(
-        settings.project_id,
-        settings.dataset,
-        f"_tmp_gcs_cache_ac_reference_objects_{run_id.lower()}_{shard_start}_{resolved_shard_end}",
-    )
-    edge_stage_table = _table_ref(
-        settings.project_id,
-        settings.dataset,
-        f"_tmp_gcs_cache_ac_reference_edges_{run_id.lower()}_{shard_start}_{resolved_shard_end}",
-    )
-
-    if not dry_run:
-        bytes_processed_total = _add_bytes(
-            bytes_processed_total,
-            execute(
-                build_create_gcs_cache_ac_reference_stage_tables_query(
-                    object_stage_table=object_stage_table,
-                    edge_stage_table=edge_stage_table,
-                    ttl_days=settings.cleanup_candidate_ttl_days,
-                ),
-                parameters=[],
-            ).total_bytes_processed,
-        )
 
     for shard in range(shard_start, resolved_shard_end + 1):
         watermark = (
@@ -141,6 +121,11 @@ def run_sync_gcs_cache_ac_references(
         )
 
         rows = stream_rows(query, parameters)
+        shard_edge_rows: list[dict[str, object]] = []
+        shard_affected_names: set[str] = set()
+        shard_missing_names: set[str] = set()
+        shard_parse_error_count = 0
+
         for batch_rows in _batched(rows, settings.ac_reference_batch_size):
             batch_object_names = tuple(str(row["object_name"]) for row in batch_rows)
             if not batch_object_names:
@@ -153,11 +138,10 @@ def run_sync_gcs_cache_ac_references(
                 max_workers=settings.ac_reference_download_workers,
             )
 
-            object_rows = []
-            edge_rows = []
             for extraction in extractions:
                 if extraction.parse_error:
                     parse_error_count += 1
+                    shard_parse_error_count += 1
                     if len(sample_parse_errors) < 10:
                         sample_parse_errors.append(
                             SyncGcsCacheAcReferenceParseErrorSample(
@@ -166,48 +150,108 @@ def run_sync_gcs_cache_ac_references(
                             )
                         )
                     continue
-                object_rows.append({"ac_object_name": extraction.ac_object_name})
                 replaced_ac_object_count += 1
                 if not extraction.exists:
                     missing_object_count += 1
+                    shard_missing_names.add(extraction.ac_object_name)
                     continue
+                shard_affected_names.add(extraction.ac_object_name)
                 for cas_object_name in extraction.cas_object_names:
-                    edge_rows.append(
+                    shard_edge_rows.append(
                         {
                             "ac_object_name": extraction.ac_object_name,
                             "cas_object_name": cas_object_name,
                         }
                     )
-            reference_row_count += len(edge_rows)
+        reference_row_count += len(shard_edge_rows)
 
-            if dry_run:
-                continue
+        # Write sentinel rows for affected ACs with zero CAS refs.
+        # These need their old refs cleaned up but contribute no new edge rows.
+        zero_ref_ac_names = shard_affected_names - {
+            r["ac_object_name"] for r in shard_edge_rows
+        }
+        for ac_name in sorted(zero_ref_ac_names):
+            shard_edge_rows.append(
+                {"ac_object_name": ac_name, "cas_object_name": ""}
+            )
 
-            load_json_rows(object_stage_table, object_rows)
-            load_json_rows(edge_stage_table, edge_rows)
+        if dry_run:
+            indexed_through = run_started_at
+            continue
+
+        # Parse error fail-closed: any parse error → clear indexed_through to NULL.
+        # This invalidates the shard regardless of whether it had a previous
+        # successful watermark (incremental) or was NULL (bootstrap).
+        if shard_parse_error_count > 0:
+            failed_shards.append(shard)
+            if not dry_run:
+                bytes_processed_total = _add_bytes(
+                    bytes_processed_total,
+                    execute(
+                        f"""UPDATE {_table_ref(settings.project_id, settings.dataset, settings.ac_reference_index_state_table)}
+SET indexed_through = NULL
+WHERE shard = {shard}""",
+                        parameters=[],
+                    ).total_bytes_processed,
+                )
+            continue
+
+        # Reconcile missing AC objects from last_seen_current and by_ac.
+        if shard_missing_names:
+            missing_stage = _write_missing_stage(
+                settings, shard=shard, missing_names=shard_missing_names,
+                run_suffix=run_started_at.strftime("%Y%m%dt%H%M%S%f"),
+            )
             bytes_processed_total = _add_bytes(
                 bytes_processed_total,
                 execute(
-                    build_replace_gcs_cache_ac_references_query(
+                    build_reconcile_missing_ac_query(
                         settings,
-                        object_stage_table=object_stage_table,
-                        edge_stage_table=edge_stage_table,
+                        shard=shard,
+                        missing_stage_table=missing_stage,
                     ),
                     parameters=[],
                 ).total_bytes_processed,
             )
 
-        if not dry_run:
-            bytes_processed_total = _add_bytes(
-                bytes_processed_total,
-                execute(
-                    build_update_gcs_cache_ac_reference_index_state_query(settings),
-                    parameters=[
-                        BigQueryParameter("shard", "INT64", shard),
-                        BigQueryParameter("indexed_through", "TIMESTAMP", run_started_at),
-                    ],
-                ).total_bytes_processed,
-            )
+        # Per-shard replace: DELETE old rows, INSERT new rows.
+        # Single DELETE+INSERT pair per shard — no O(n²) stage accumulation.
+        stage_table = load_json_rows(
+            settings, shard=shard, edge_rows=shard_edge_rows,
+            run_suffix=run_started_at.strftime("%Y%m%dt%H%M%S%f"),
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_replace_gcs_cache_ac_references_query(
+                    settings,
+                    shard=shard,
+                    edge_row_count=len(shard_edge_rows),
+                    stage_table=stage_table,
+                    mode=mode,
+                ),
+                parameters=[],
+            ).total_bytes_processed,
+        )
+
+        # Only update indexed_through if parse error count is 0.
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                build_update_gcs_cache_ac_reference_index_state_query(settings),
+                parameters=[
+                    BigQueryParameter("shard", "INT64", shard),
+                    BigQueryParameter("indexed_through", "TIMESTAMP", run_started_at),
+                ],
+            ).total_bytes_processed,
+        )
+        indexed_through = run_started_at
+
+    if failed_shards and not dry_run:
+        raise RuntimeError(
+            f"AC reference sync failed: {len(failed_shards)} shard(s) had parse errors: "
+            f"{failed_shards}. Fix parse errors and re-run the affected shards."
+        )
 
     run_finished_at = now()
     return SyncGcsCacheAcReferencesSummary(
@@ -223,7 +267,7 @@ def run_sync_gcs_cache_ac_references(
         reference_row_count=reference_row_count,
         sample_parse_errors=tuple(sample_parse_errors),
         dry_run=dry_run,
-        indexed_through=run_started_at,
+        indexed_through=indexed_through,
         bytes_processed=bytes_processed_total,
         run_started_at=run_started_at,
         run_finished_at=run_finished_at,
@@ -231,17 +275,28 @@ def run_sync_gcs_cache_ac_references(
 
 
 def build_ensure_gcs_cache_ac_reference_tables_query(settings: GcsCacheSettings) -> str:
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
+    by_ac_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
+    )
+    by_cas_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_cas_table
     )
     state_table = _table_ref(
         settings.project_id, settings.dataset, settings.ac_reference_index_state_table
     )
     return f"""
-CREATE TABLE IF NOT EXISTS {references_table} (
+CREATE TABLE IF NOT EXISTS {by_ac_table} (
+  shard INT64 NOT NULL,
   ac_object_name STRING NOT NULL,
   cas_object_name STRING NOT NULL
-);
+)
+CLUSTER BY shard, ac_object_name;
+
+CREATE TABLE IF NOT EXISTS {by_cas_table} (
+  ac_object_name STRING NOT NULL,
+  cas_object_name STRING NOT NULL
+)
+CLUSTER BY cas_object_name, ac_object_name;
 
 CREATE TABLE IF NOT EXISTS {state_table} (
   shard INT64 NOT NULL,
@@ -260,30 +315,6 @@ WHEN NOT MATCHED THEN
 """.strip()
 
 
-def build_create_gcs_cache_ac_reference_stage_tables_query(
-    *,
-    object_stage_table: str,
-    edge_stage_table: str,
-    ttl_days: int,
-) -> str:
-    return f"""
-CREATE OR REPLACE TABLE {object_stage_table} (
-  ac_object_name STRING NOT NULL
-)
-OPTIONS (
-  expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY)
-);
-
-CREATE OR REPLACE TABLE {edge_stage_table} (
-  ac_object_name STRING NOT NULL,
-  cas_object_name STRING NOT NULL
-)
-OPTIONS (
-  expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY)
-);
-""".strip()
-
-
 def build_bootstrap_gcs_cache_ac_reference_source_query(settings: GcsCacheSettings) -> str:
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
@@ -292,6 +323,7 @@ def build_bootstrap_gcs_cache_ac_reference_source_query(settings: GcsCacheSettin
 SELECT object_name
 FROM {current_table}
 WHERE object_kind = 'ac'
+  AND REGEXP_CONTAINS(object_name, r'{_AC_HEX_REGEX}')
   AND {_ac_shard_expression("object_name")} = @shard
 ORDER BY object_name ASC
 """.strip()
@@ -313,6 +345,7 @@ SELECT DISTINCT object_name
 FROM extracted
 WHERE object_name IS NOT NULL
   AND STARTS_WITH(object_name, 'ac/')
+  AND REGEXP_CONTAINS(object_name, r'{_AC_HEX_REGEX}')
   AND {_ac_shard_expression("object_name")} = @shard
 ORDER BY object_name ASC
 """.strip()
@@ -321,27 +354,69 @@ ORDER BY object_name ASC
 def build_replace_gcs_cache_ac_references_query(
     settings: GcsCacheSettings,
     *,
-    object_stage_table: str,
-    edge_stage_table: str,
+    shard: int,
+    edge_row_count: int,
+    stage_table: str,
+    mode: str,
 ) -> str:
-    references_table = _table_ref(
-        settings.project_id, settings.dataset, settings.ac_cas_references_table
-    )
-    return f"""
-DELETE FROM {references_table}
-WHERE ac_object_name IN (
-  SELECT ac_object_name
-  FROM {object_stage_table}
-);
+    """Per-shard replace.
 
-INSERT INTO {references_table} (
-  ac_object_name,
-  cas_object_name
-)
-SELECT
-  ac_object_name,
-  cas_object_name
-FROM {edge_stage_table};
+    Bootstrap: full shard DELETE (complete replace of all ACs in shard).
+    Incremental: targeted DELETE via stage table (only ACs with create events).
+    """
+    by_ac_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
+    )
+    del edge_row_count
+    if mode == "bootstrap":
+        return f"""
+DELETE FROM {by_ac_table}
+WHERE shard = {shard};
+
+INSERT INTO {by_ac_table} (shard, ac_object_name, cas_object_name)
+SELECT {shard}, ac_object_name, cas_object_name
+FROM {stage_table}
+WHERE cas_object_name != '';
+""".strip()
+    # incremental: only delete rows for ACs in the stage table.
+    # Sentinels (cas_object_name = '') ensure zero-ref ACs have old refs cleaned up.
+    return f"""
+DELETE FROM {by_ac_table}
+WHERE shard = {shard}
+  AND ac_object_name IN (SELECT DISTINCT ac_object_name FROM {stage_table});
+
+INSERT INTO {by_ac_table} (shard, ac_object_name, cas_object_name)
+SELECT {shard}, ac_object_name, cas_object_name
+FROM {stage_table}
+WHERE cas_object_name != '';
+""".strip()
+
+
+def build_reconcile_missing_ac_query(
+    settings: GcsCacheSettings,
+    *,
+    shard: int,
+    missing_stage_table: str,
+) -> str:
+    """Remove missing AC objects from last_seen_current and by_ac.
+
+    Uses `missing_stage_table` instead of a literal list to avoid
+    oversized SQL when there are many missing ACs.
+    """
+    current_table = _table_ref(
+        settings.project_id, settings.dataset, settings.last_seen_current_table
+    )
+    by_ac_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
+    )
+    del shard  # kept for caller symmetry
+    return f"""
+DELETE FROM {current_table}
+WHERE object_kind = 'ac'
+  AND object_name IN (SELECT object_name FROM {missing_stage_table});
+
+DELETE FROM {by_ac_table}
+WHERE ac_object_name IN (SELECT object_name FROM {missing_stage_table});
 """.strip()
 
 
@@ -418,32 +493,90 @@ def _stream_query_rows(
         yield dict(row.items())
 
 
-def _load_json_rows(table_ref: str, rows: Sequence[dict[str, object]]) -> None:
+def _write_missing_stage(
+    settings: GcsCacheSettings,
+    *,
+    shard: int,
+    missing_names: set[str],
+    run_suffix: str = "",
+) -> str:
+    """Write missing AC names to a stage table. Returns fully-qualified ref."""
     from google.cloud import bigquery
 
     client = bigquery.Client()
-    destination = table_ref.strip("`")
+    ttl_days = settings.cleanup_candidate_ttl_days
+    run_part = f"_{run_suffix}" if run_suffix else ""
+    stage_table = f"{settings.project_id}.{settings.dataset}._tmp_missing_stage_{shard}{run_part}"
+    stage_table_ref = f"`{stage_table}`"
+
+    client.query(
+        f"""CREATE OR REPLACE TABLE {stage_table_ref} (
+  object_name STRING NOT NULL
+)
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY))"""
+    ).result()
+
+    rows = [{"object_name": name} for name in sorted(missing_names)]
     if rows:
-        if len(rows[0]) == 1:
-            schema = [bigquery.SchemaField("ac_object_name", "STRING", mode="REQUIRED")]
-        else:
-            schema = [
-                bigquery.SchemaField("ac_object_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("cas_object_name", "STRING", mode="REQUIRED"),
-            ]
+        schema = [bigquery.SchemaField("object_name", "STRING", mode="REQUIRED")]
         job = client.load_table_from_json(
-            list(rows),
-            destination,
+            rows,
+            stage_table,
             job_config=bigquery.LoadJobConfig(
                 schema=schema,
-                write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
             ),
         )
         job.result()
-        return
+    return stage_table_ref
 
-    job = client.query(f"TRUNCATE TABLE {table_ref}")
-    job.result()
+
+def _load_json_rows(
+    settings: GcsCacheSettings,
+    *,
+    shard: int,
+    edge_rows: Sequence[dict[str, object]],
+    run_suffix: str = "",
+) -> str:
+    """Load edge rows into a run-scoped per-shard stage table. Returns the fully-qualified table ref."""
+    from google.cloud import bigquery
+
+    client = bigquery.Client()
+    ttl_days = settings.cleanup_candidate_ttl_days
+    run_part = f"_{run_suffix}" if run_suffix else ""
+    stage_table = f"{settings.project_id}.{settings.dataset}._tmp_shard_edge_stage_{shard}{run_part}"
+    stage_table_ref = f"`{stage_table}`"
+
+    # Create with TTL first, then load data.
+    client.query(
+        f"""CREATE OR REPLACE TABLE {stage_table_ref} (
+  shard INT64 NOT NULL,
+  ac_object_name STRING NOT NULL,
+  cas_object_name STRING NOT NULL
+)
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl_days} DAY))"""
+    ).result()
+
+    rows_with_shard = [
+        {"shard": shard, "ac_object_name": r["ac_object_name"], "cas_object_name": r["cas_object_name"]}
+        for r in edge_rows
+    ]
+    if rows_with_shard:
+        schema = [
+            bigquery.SchemaField("shard", "INT64", mode="REQUIRED"),
+            bigquery.SchemaField("ac_object_name", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("cas_object_name", "STRING", mode="REQUIRED"),
+        ]
+        job = client.load_table_from_json(
+            list(rows_with_shard),
+            stage_table,
+            job_config=bigquery.LoadJobConfig(
+                schema=schema,
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            ),
+        )
+        job.result()
+    return stage_table_ref
 
 
 def _batched(
@@ -469,7 +602,7 @@ def _validate_shard_range(*, shard_start: int, shard_end: int, shard_count: int)
 
 
 def _ac_shard_expression(column_name: str) -> str:
-    return f"TO_CODE_POINTS(FROM_HEX(SUBSTR({column_name}, 4, 2)))[OFFSET(0)]"
+    return f"MOD(TO_CODE_POINTS(FROM_HEX(SUBSTR({column_name}, 4, 2)))[OFFSET(0)], 256)"
 
 
 def _table_ref(project_id: str, dataset: str, table: str) -> str:

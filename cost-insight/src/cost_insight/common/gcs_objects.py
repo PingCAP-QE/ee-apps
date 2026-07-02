@@ -12,6 +12,7 @@ class GcsObjectMetadata:
     object_name: str
     exists: bool
     generation: int | None
+    size_bytes: int | None = None
 
 
 def fetch_object_metadata_batch(
@@ -35,12 +36,15 @@ def fetch_object_metadata_batch(
                 object_name=object_name,
                 exists=False,
                 generation=None,
+                size_bytes=None,
             )
         generation = int(blob.generation) if blob.generation is not None else None
+        size_bytes = int(blob.size) if blob.size is not None else None
         return GcsObjectMetadata(
             object_name=object_name,
             exists=True,
             generation=generation,
+            size_bytes=size_bytes,
         )
 
     if max_workers <= 1 or len(names) == 1:

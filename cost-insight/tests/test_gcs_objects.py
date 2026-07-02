@@ -2,8 +2,9 @@ from cost_insight.common import gcs_objects
 
 
 class _FakeBlob:
-    def __init__(self, generation: str | None) -> None:
+    def __init__(self, generation: str | None, size: int | None = 1024) -> None:
         self.generation = generation
+        self.size = size
 
 
 class _FakeBucket:
@@ -65,16 +66,19 @@ def test_fetch_object_metadata_batch_reads_objects_sequentially(monkeypatch) -> 
             object_name="cas/present",
             exists=True,
             generation=123,
+            size_bytes=1024,
         ),
         gcs_objects.GcsObjectMetadata(
             object_name="cas/missing",
             exists=False,
             generation=None,
+            size_bytes=None,
         ),
         gcs_objects.GcsObjectMetadata(
             object_name="cas/no-generation",
             exists=True,
             generation=None,
+            size_bytes=1024,
         ),
     )
     assert bucket.requested_names == ["cas/present", "cas/missing", "cas/no-generation"]
@@ -123,6 +127,6 @@ def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(monkeypatch
     assert used_max_workers == [4]
     assert observed_pool_sizes == [4]
     assert metadata == (
-        gcs_objects.GcsObjectMetadata(object_name="cas/one", exists=True, generation=11),
-        gcs_objects.GcsObjectMetadata(object_name="cas/two", exists=True, generation=22),
+        gcs_objects.GcsObjectMetadata(object_name="cas/one", exists=True, generation=11, size_bytes=1024),
+        gcs_objects.GcsObjectMetadata(object_name="cas/two", exists=True, generation=22, size_bytes=1024),
     )
