@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 
-from cost_insight.common.bigquery import BigQueryQueryResult
+from cost_insight.common.bigquery import BigQueryExecutionError, BigQueryQueryResult
 from cost_insight.common.config import GcsCacheSettings
 from cost_insight.common.gcs_cache_references import AcReferenceExtraction
 from cost_insight.jobs.sync_gcs_cache_ac_references import (
     build_bootstrap_gcs_cache_ac_reference_source_query,
     build_ensure_gcs_cache_ac_reference_tables_query,
     build_incremental_gcs_cache_ac_reference_source_query,
+    _execute_with_bigquery_dml_retry,
     run_sync_gcs_cache_ac_references,
 )
 
@@ -210,6 +211,145 @@ def test_run_sync_gcs_cache_ac_references_replaces_once_per_shard() -> None:
         in query
     ]
     assert len(replace_queries) == 1
+
+
+def test_run_sync_gcs_cache_ac_references_can_skip_ensure_tables() -> None:
+    captured_queries = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append(query)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        return iter(())
+
+    run_sync_gcs_cache_ac_references(
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        mode="bootstrap",
+        shard_start=0,
+        shard_end=0,
+        dry_run=True,
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        ensure_tables=False,
+        now=lambda: datetime(2026, 6, 22, 10, 0, tzinfo=UTC),
+    )
+
+    assert captured_queries == []
+
+
+def test_execute_with_bigquery_dml_retry_retries_concurrent_update() -> None:
+    calls = 0
+    sleeps = []
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise BigQueryExecutionError(
+                "Could not serialize access to table due to concurrent update"
+            )
+        return BigQueryQueryResult(rows=(), total_bytes_processed=7)
+
+    result = _execute_with_bigquery_dml_retry(
+        fake_execute,
+        "DELETE FROM table",
+        parameters=[],
+        max_attempts=2,
+        sleep_seconds=sleeps.append,
+        jitter_seconds=lambda _delay: 0.0,
+    )
+
+    assert result.total_bytes_processed == 7
+    assert calls == 2
+    assert sleeps == [5.0]
+
+
+def test_execute_with_bigquery_dml_retry_uses_cause_reason() -> None:
+    calls = 0
+    sleeps = []
+
+    class FakeRateLimitError(Exception):
+        reason = "rateLimitExceeded"
+        errors = [{"reason": "rateLimitExceeded", "message": "quota"}]
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            cause = FakeRateLimitError("wrapped google error")
+            try:
+                raise BigQueryExecutionError("BigQuery query failed") from cause
+            except BigQueryExecutionError as exc:
+                raise exc
+        return BigQueryQueryResult(rows=(), total_bytes_processed=8)
+
+    result = _execute_with_bigquery_dml_retry(
+        fake_execute,
+        "DELETE FROM table",
+        parameters=[],
+        max_attempts=2,
+        sleep_seconds=sleeps.append,
+        jitter_seconds=lambda _delay: 1.5,
+    )
+
+    assert result.total_bytes_processed == 8
+    assert calls == 2
+    assert sleeps == [6.5]
+
+
+def test_execute_with_bigquery_dml_retry_reraises_non_retryable_error() -> None:
+    calls = 0
+    sleeps = []
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        raise BigQueryExecutionError("Syntax error")
+
+    try:
+        _execute_with_bigquery_dml_retry(
+            fake_execute,
+            "bad query",
+            parameters=[],
+            max_attempts=3,
+            sleep_seconds=sleeps.append,
+            jitter_seconds=lambda _delay: 0.0,
+        )
+    except BigQueryExecutionError as exc:
+        assert "Syntax error" in str(exc)
+    else:
+        raise AssertionError("expected BigQueryExecutionError")
+
+    assert calls == 1
+    assert sleeps == []
+
+
+def test_execute_with_bigquery_dml_retry_reraises_after_max_attempts() -> None:
+    calls = 0
+    sleeps = []
+
+    def fake_execute(query, parameters):
+        nonlocal calls
+        calls += 1
+        raise BigQueryExecutionError("Could not serialize access to table")
+
+    try:
+        _execute_with_bigquery_dml_retry(
+            fake_execute,
+            "DELETE FROM table",
+            parameters=[],
+            max_attempts=2,
+            sleep_seconds=sleeps.append,
+            jitter_seconds=lambda _delay: 0.0,
+        )
+    except BigQueryExecutionError as exc:
+        assert "Could not serialize access" in str(exc)
+    else:
+        raise AssertionError("expected BigQueryExecutionError")
+
+    assert calls == 2
+    assert sleeps == [5.0]
 
 
 def test_run_sync_incremental_zero_ref_ac_writes_sentinel_and_filters_insert() -> None:

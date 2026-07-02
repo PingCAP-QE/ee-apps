@@ -396,6 +396,7 @@ def test_cli_rejects_non_positive_cleanup_safety_buffer_days(capsys) -> None:
 
 def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, capsys) -> None:
     calls = []
+    run_kwargs = []
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
         aws_billing=AwsBillingSettings(),
@@ -409,10 +410,9 @@ def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, cap
 
     monkeypatch.setattr(cli, "get_settings", fake_get_settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(
-        cli,
-        "run_sync_gcs_cache_ac_references",
-        lambda **kwargs: SyncGcsCacheAcReferencesSummary(
+    def fake_run_sync_gcs_cache_ac_references(**kwargs):
+        run_kwargs.append(kwargs)
+        return SyncGcsCacheAcReferencesSummary(
             account_id="pingcap-testing-account",
             bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
             mode="bootstrap",
@@ -429,7 +429,12 @@ def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, cap
             bytes_processed=33,
             run_started_at=datetime(2026, 6, 22, 0, 0, tzinfo=UTC),
             run_finished_at=datetime(2026, 6, 22, 0, 0, tzinfo=UTC),
-        ),
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "run_sync_gcs_cache_ac_references",
+        fake_run_sync_gcs_cache_ac_references,
     )
 
     exit_code = cli.main(
@@ -442,11 +447,13 @@ def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, cap
             "--shard-end",
             "15",
             "--dry-run",
+            "--skip-ensure-tables",
         ]
     )
 
     assert exit_code == 0
     assert calls == [False]
+    assert run_kwargs[0]["ensure_tables"] is False
     assert '"reference_row_count": 22' in capsys.readouterr().out
 
 

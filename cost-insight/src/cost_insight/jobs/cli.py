@@ -172,6 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_gcs_cache_ac_refs.add_argument("--shard-start", type=_parse_non_negative_int, default=0)
     sync_gcs_cache_ac_refs.add_argument("--shard-end", type=_parse_non_negative_int, default=None)
     sync_gcs_cache_ac_refs.add_argument("--dry-run", action="store_true")
+    sync_gcs_cache_ac_refs.add_argument(
+        "--skip-ensure-tables",
+        action="store_true",
+        help="Skip AC reference table creation/state initialization for parallel shard workers",
+    )
 
     cleanup_gcs_cache = subparsers.add_parser(
         "cleanup-gcs-cache",
@@ -396,6 +401,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             shard_start=args.shard_start,
             shard_end=args.shard_end,
             dry_run=args.dry_run,
+            ensure_tables=not args.skip_ensure_tables,
         )
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
         return 0

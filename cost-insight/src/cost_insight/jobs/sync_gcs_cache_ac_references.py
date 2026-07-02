@@ -5,9 +5,15 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import islice
-from time import perf_counter
+from random import uniform
+from time import perf_counter, sleep
 
-from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
+from cost_insight.common.bigquery import (
+    BigQueryExecutionError,
+    BigQueryParameter,
+    BigQueryQueryResult,
+    execute_query,
+)
 from cost_insight.common.config import GcsCacheSettings
 from cost_insight.common.gcs_cache_references import (
     AcReferenceExtraction,
@@ -61,6 +67,7 @@ def run_sync_gcs_cache_ac_references(
     stream_rows: RowStreamer | None = None,
     load_json_rows: JsonLoader | None = None,
     extract_references: ReferenceExtractor = extract_action_cache_references_batch,
+    ensure_tables: bool = True,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> SyncGcsCacheAcReferencesSummary:
     if mode not in {"bootstrap", "incremental"}:
@@ -86,12 +93,15 @@ def run_sync_gcs_cache_ac_references(
     indexed_through: datetime | None = None
     failed_shards: list[int] = []
 
-    bytes_processed_total = _add_bytes(
-        bytes_processed_total,
-        execute(
-            build_ensure_gcs_cache_ac_reference_tables_query(settings), parameters=[]
-        ).total_bytes_processed,
-    )
+    if ensure_tables:
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            _execute_with_bigquery_dml_retry(
+                execute,
+                build_ensure_gcs_cache_ac_reference_tables_query(settings),
+                parameters=[],
+            ).total_bytes_processed,
+        )
 
     for shard in range(shard_start, resolved_shard_end + 1):
         shard_started_at = perf_counter()
@@ -100,13 +110,6 @@ def run_sync_gcs_cache_ac_references(
         shard_parse_error_start = parse_error_count
         shard_replaced_start = replaced_ac_object_count
         shard_reference_start = reference_row_count
-        logger.info(
-            "AC reference sync shard started: mode=%s shard=%s shard_end=%s",
-            mode,
-            shard,
-            resolved_shard_end,
-        )
-
         def log_shard_finished(status: str) -> None:
             logger.info(
                 "AC reference sync shard finished: mode=%s shard=%s status=%s "
@@ -137,6 +140,12 @@ def run_sync_gcs_cache_ac_references(
                 "AC reference index bootstrap is incomplete: "
                 f"shard {shard} has no indexed_through watermark"
             )
+        logger.info(
+            "AC reference sync shard started: mode=%s shard=%s run_shard_end=%s",
+            mode,
+            shard,
+            resolved_shard_end,
+        )
 
         query = (
             build_bootstrap_gcs_cache_ac_reference_source_query(settings)
@@ -220,7 +229,8 @@ def run_sync_gcs_cache_ac_references(
             if not dry_run:
                 bytes_processed_total = _add_bytes(
                     bytes_processed_total,
-                    execute(
+                    _execute_with_bigquery_dml_retry(
+                        execute,
                         f"""UPDATE {_table_ref(settings.project_id, settings.dataset, settings.ac_reference_index_state_table)}
 SET indexed_through = NULL
 WHERE shard = {shard}""",
@@ -238,7 +248,8 @@ WHERE shard = {shard}""",
             )
             bytes_processed_total = _add_bytes(
                 bytes_processed_total,
-                execute(
+                _execute_with_bigquery_dml_retry(
+                    execute,
                     build_reconcile_missing_ac_query(
                         settings,
                         shard=shard,
@@ -256,7 +267,8 @@ WHERE shard = {shard}""",
         )
         bytes_processed_total = _add_bytes(
             bytes_processed_total,
-            execute(
+            _execute_with_bigquery_dml_retry(
+                execute,
                 build_replace_gcs_cache_ac_references_query(
                     settings,
                     shard=shard,
@@ -271,7 +283,8 @@ WHERE shard = {shard}""",
         # Only update indexed_through if parse error count is 0.
         bytes_processed_total = _add_bytes(
             bytes_processed_total,
-            execute(
+            _execute_with_bigquery_dml_retry(
+                execute,
                 build_update_gcs_cache_ac_reference_index_state_query(settings),
                 parameters=[
                     BigQueryParameter("shard", "INT64", shard),
@@ -642,6 +655,64 @@ def _ac_shard_expression(column_name: str) -> str:
 
 def _table_ref(project_id: str, dataset: str, table: str) -> str:
     return f"`{project_id}.{dataset}.{table}`"
+
+
+def _execute_with_bigquery_dml_retry(
+    execute: QueryExecutor,
+    query: str,
+    *,
+    parameters: Sequence[BigQueryParameter],
+    max_attempts: int = 5,
+    sleep_seconds: Callable[[float], None] = sleep,
+    jitter_seconds: Callable[[float], float] = lambda delay: uniform(0.0, delay * 0.5),
+) -> BigQueryQueryResult:
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be positive")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return execute(query, parameters)
+        except BigQueryExecutionError as exc:
+            if attempt >= max_attempts or not _is_retryable_bigquery_dml_error(exc):
+                raise
+            base_delay_seconds = min(60.0, 5.0 * (2 ** (attempt - 1)))
+            delay_seconds = base_delay_seconds + jitter_seconds(base_delay_seconds)
+            logger.warning(
+                "Retry BigQuery DML after transient error: attempt=%s max_attempts=%s "
+                "delay_seconds=%.1f error=%s",
+                attempt,
+                max_attempts,
+                delay_seconds,
+                exc,
+            )
+            sleep_seconds(delay_seconds)
+
+
+def _is_retryable_bigquery_dml_error(exc: BigQueryExecutionError) -> bool:
+    message = _exception_search_text(exc)
+    return (
+        "could not serialize access" in message
+        or "too many table update operations" in message
+        or "exceeded rate limits" in message
+        or "ratelimitexceeded" in message
+        or "rate limit exceeded" in message
+        or "concurrent update" in message
+    )
+
+
+def _exception_search_text(exc: BaseException) -> str:
+    parts = [type(exc).__name__, str(exc)]
+    cause = exc.__cause__
+    if cause is not None:
+        parts.extend([type(cause).__name__, str(cause)])
+        reason = getattr(cause, "reason", None)
+        if reason:
+            parts.append(str(reason))
+        for error in getattr(cause, "errors", ()) or ():
+            if isinstance(error, dict):
+                parts.extend(str(error.get(key, "")) for key in ("reason", "message"))
+            else:
+                parts.append(str(error))
+    return " ".join(parts).lower()
 
 
 def _add_bytes(total: int, value: int | None) -> int:
