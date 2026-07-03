@@ -1088,7 +1088,7 @@ def build_ac_reverse_lookup_query(
     )
     return f"""
 SELECT DISTINCT
-  refs.ac_object_name,
+  refs.ac_object_name AS object_name,
   cur.last_seen_at
 FROM {by_cas_table} AS refs
 JOIN {cold_cas_table} AS cas

@@ -14,6 +14,7 @@ from cost_insight.common.storage_batch_operations import (
 )
 from cost_insight.jobs.cleanup_gcs_cache import (
     _populate_ac_stage_tables,
+    build_ac_reverse_lookup_query,
     build_cleanup_gcs_cache_cas_candidate_table_query,
     build_cleanup_gcs_cache_final_cas_delete_table_query,
     build_cleanup_gcs_cache_final_ac_delete_table_query,
@@ -69,6 +70,17 @@ def test_stale_ac_candidates_query_outputs_object_name_for_metadata_stage() -> N
     )
 
     assert "by_ac.ac_object_name AS object_name" in query
+
+
+def test_ac_reverse_lookup_query_outputs_object_name_for_metadata_stage() -> None:
+    query = build_ac_reverse_lookup_query(
+        GcsCacheSettings(project_id="pingcap-testing-account"),
+        cold_cas_table="`project.dataset.ready_cas`",
+        snapshot_time="2026-07-03 10:00:00 UTC",
+        ac_cutoff_days=11,
+    )
+
+    assert "refs.ac_object_name AS object_name" in query
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
