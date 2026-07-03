@@ -1119,6 +1119,10 @@ def test_run_cleanup_gcs_cache_from_index_dry_run_returns_summary_with_candidate
     assert summary.candidate_cas_object_count >= 0
     assert summary.candidate_ac_object_count >= 0
     assert summary.candidate_cas_delete_object_count >= 0
+    by_cas_dryrun_query = next(
+        query for query, _ in captured_queries if "by_cas_dryrun" in query
+    )
+    assert by_cas_dryrun_query.index("CLUSTER BY") < by_cas_dryrun_query.index("OPTIONS")
 
 
 def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatch) -> None:
