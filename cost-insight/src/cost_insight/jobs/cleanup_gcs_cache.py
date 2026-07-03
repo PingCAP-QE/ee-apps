@@ -1295,8 +1295,8 @@ OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {ttl
             bytes_processed_total,
             execute(
                 f"""CREATE OR REPLACE TABLE {by_cas_table}
-OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 CLUSTER BY cas_object_name, ac_object_name
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 AS
 SELECT ac_object_name, cas_object_name
 FROM {_table_ref(settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table)}""",
