@@ -1034,12 +1034,22 @@ select {
   font-size: 0.78rem;
 }
 
+.dimension-chip small {
+  flex: none;
+  color: #6f8790;
+  font-size: 0.74rem;
+}
+
 .dimension-chip--active {
   border-color: rgba(42, 157, 143, 0.42);
   background: rgba(42, 157, 143, 0.12);
 }
 
 .dimension-chip--active strong {
+  color: #0f7c82;
+}
+
+.dimension-chip--active small {
   color: #0f7c82;
 }
 

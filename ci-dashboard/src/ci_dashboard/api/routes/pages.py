@@ -98,7 +98,7 @@ def cost_weekly_account_summaries_page(
 
 @router.get("/cost-repo-group-stack")
 def cost_repo_group_stack_page(
-    group_by: str = Query("repo", pattern="^(repo|author|team|target_branch)$"),
+    group_by: str = Query("repo", pattern="^(repo|author|team|target_branch|service)$"),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:

@@ -56,11 +56,12 @@ export default function CostPage({ filters }) {
   const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
   const summary = trend.data?.meta?.summary || {};
   const configuredAnnualBudget = Number(weeklyOverview.data?.budget_health?.annual_budget || 0);
+  const weeklyBudget = Number(weeklyOverview.data?.budget_health?.weekly_budget || 0);
   const hasConfiguredBudget = configuredAnnualBudget > 0;
   const costTrendSeries = withBudgetSeries(
     trend.data?.series,
     costFilters.granularity,
-    trend.data?.meta?.annual_budgets,
+    trend.data?.meta?.budget_targets,
   );
   const activeCostStackGroup = COST_STACK_GROUPS.find(
     (group) => group.key === costStackGroupBy,
@@ -113,7 +114,7 @@ export default function CostPage({ filters }) {
               value={formatCurrency(weeklyOverview.data?.summary?.net_cost)}
               detail={
                 hasConfiguredBudget
-                  ? `Weekly budget ${formatCurrency(configuredAnnualBudget / 52)}`
+                  ? `Weekly budget ${formatCurrency(weeklyBudget)}`
                   : "Budget not configured for this source"
               }
               delta={formatDelta(weeklyOverview.data?.summary?.net_cost_wow_pct)}
@@ -158,7 +159,7 @@ export default function CostPage({ filters }) {
           />
           <BudgetHealthGauge
             title="Budget pace"
-            subtitle="Observed YTD net cost, a lag-adjusted checkpoint, and a year-end forecast from the prior 14 observed days."
+            subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
             data={weeklyOverview.data?.budget_health}
             emptyMessage="Budget pace is not configured for this source yet."
           />
@@ -184,11 +185,11 @@ export default function CostPage({ filters }) {
           tone="amber"
         />
         <StatCard
-          label="Annual budget"
+          label="Fiscal budget"
           value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
           detail={
             hasConfiguredBudget
-              ? "Configured annual budget for the selected source"
+              ? "Configured budget for the selected fiscal period"
               : "Budget not configured for the selected source"
           }
           tone="rose"
@@ -294,6 +295,7 @@ const COST_STACK_GROUPS = [
   { key: "repo", label: "Repo", description: "repos" },
   { key: "author", label: "Author", description: "authors" },
   { key: "team", label: "Team", description: "teams" },
+  { key: "service", label: "Services", description: "services" },
 ];
 
 function CostStackGroupSelector({ value, onChange }) {
@@ -309,6 +311,7 @@ function CostStackGroupSelector({ value, onChange }) {
 
 function CostStackTrend({ data, selectedName, onSelect }) {
   const items = data?.items || [];
+  const totalValue = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const series = selectedName
     ? (data?.series || []).filter((item) => item.label === selectedName)
     : data?.series;
@@ -338,18 +341,24 @@ function CostStackTrend({ data, selectedName, onSelect }) {
         >
           All
         </button>
-        {items.map((item) => (
-          <button
-            key={item.name}
-            type="button"
-            className={buildDimensionChipClassName(selectedName === item.name)}
-            title={`${item.name}: ${formatCurrency(item.value)}`}
-            onClick={() => onSelect(selectedName === item.name ? "" : item.name)}
-          >
-            <span>{item.name}</span>
-            <strong>{formatCompactCurrency(item.value)}</strong>
-          </button>
-        ))}
+        {items.map((item) => {
+          const sharePct = totalValue
+            ? (Number(item.value || 0) / totalValue) * 100
+            : 0;
+          return (
+            <button
+              key={item.name}
+              type="button"
+              className={buildDimensionChipClassName(selectedName === item.name)}
+              title={`${item.name}: ${formatCurrency(item.value)} (${formatPercent(sharePct)})`}
+              onClick={() => onSelect(selectedName === item.name ? "" : item.name)}
+            >
+              <span>{item.name}</span>
+              <strong>{formatCompactCurrency(item.value)}</strong>
+              <small>{formatPercent(sharePct)}</small>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -395,28 +404,24 @@ function formatDelta(value) {
   return `WoW ${sign}${formatPercent(numeric)}`;
 }
 
-function withBudgetSeries(series, granularity, annualBudgets) {
+function withBudgetSeries(series, granularity, budgetTargets) {
   if (!series?.length) {
     return series;
   }
-  const budgetByYear =
-    annualBudgets && typeof annualBudgets === "object" ? annualBudgets : {};
-  const budgetYears = Object.keys(budgetByYear);
-  if (!budgetYears.length) {
+  const targetsByBucket =
+    budgetTargets && typeof budgetTargets === "object" ? budgetTargets : {};
+  if (!Object.keys(targetsByBucket).length) {
     return series;
   }
   const labels = Array.from(
     new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
   ).sort();
   const budgetPoints = labels.map((label) => {
-    const budgetYear = String(label).slice(0, 4);
-    const annualBudget = Number(budgetByYear[budgetYear] || 0);
-    if (!annualBudget) {
+    const budgetTarget = Number(targetsByBucket[label] || 0);
+    if (!budgetTarget) {
       return [label, null];
     }
-    const budgetPerBucket =
-      granularity === "month" ? annualBudget / 12 : annualBudget / 52;
-    return [label, budgetPerBucket];
+    return [label, budgetTarget];
   });
   if (!budgetPoints.some(([, value]) => value != null)) {
     return series;
