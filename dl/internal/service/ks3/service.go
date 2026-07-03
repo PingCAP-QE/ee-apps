@@ -2,10 +2,12 @@ package ks3
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/ks3sdklib/aws-sdk-go/aws"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
@@ -21,6 +23,7 @@ import (
 type ks3srvc struct {
 	logger *log.Logger
 	client *s3.S3
+	mu     sync.RWMutex
 }
 
 func newClient(cfg *pkgks3.Config) *s3.S3 {
@@ -45,7 +48,6 @@ func newClient(cfg *pkgks3.Config) *s3.S3 {
 // New returns the ks3 service implementation.
 func New(logger *log.Logger, cfgFile string) ks3.Service {
 	var cfg pkgks3.Config
-
 	cfgBytes, err := os.ReadFile(cfgFile)
 	if err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
@@ -53,8 +55,33 @@ func New(logger *log.Logger, cfgFile string) ks3.Service {
 	if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
-
 	return &ks3srvc{logger: logger, client: newClient(&cfg)}
+}
+
+func (s *ks3srvc) getClient() *s3.S3 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.client
+}
+
+// Reload re-reads the config file and recreates the KS3 client. It is safe for
+// concurrent use with DownloadObject and HeadObject.
+func (s *ks3srvc) Reload(ctx context.Context, cfgFile string) error {
+	var cfg pkgks3.Config
+	cfgBytes, err := os.ReadFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to read config file %q: %w", cfgFile, err)
+	}
+	if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
+		return fmt.Errorf("failed to parse config file %q: %w", cfgFile, err)
+	}
+
+	s.mu.Lock()
+	s.client = newClient(&cfg)
+	s.mu.Unlock()
+
+	s.logger.Printf("KS3 client reloaded from %q", cfgFile)
+	return nil
 }
 
 // DownloadObject implements download-object.
@@ -64,7 +91,7 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 		Key:    aws.String(p.Key),
 	}
 
-	getObjectOutput, err := s.client.GetObject(getParams)
+	getObjectOutput, err := s.getClient().GetObject(getParams)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,7 +113,7 @@ func (s *ks3srvc) DownloadObject(ctx context.Context, p *ks3.DownloadObjectPaylo
 
 // HeadObject implements head-object.
 func (s *ks3srvc) HeadObject(ctx context.Context, p *ks3.HeadObjectPayload) (*ks3.HeadObjectResult, error) {
-	output, err := s.client.HeadObject(&s3.HeadObjectInput{
+	output, err := s.getClient().HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(p.Bucket),
 		Key:    aws.String(p.Key),
 	})

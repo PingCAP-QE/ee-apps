@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
@@ -23,6 +24,7 @@ import (
 type ocisrvc struct {
 	logger     *log.Logger
 	credential *auth.Credential
+	mu         sync.RWMutex
 }
 
 // New returns the oci service implementation.
@@ -63,6 +65,37 @@ func (s *ocisrvc) ListFiles(ctx context.Context, p *oci.ListFilesPayload) (res [
 	return files, nil
 }
 
+func (s *ocisrvc) getCredential() *auth.Credential {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.credential
+}
+
+// Reload re-reads the config file and updates the OCI credentials. It is safe
+// for concurrent use with all other methods.
+func (s *ocisrvc) Reload(ctx context.Context, cfgFile string) error {
+	var cfg pkgoci.Config
+	cfgBytes, err := os.ReadFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to read config file %q: %w", cfgFile, err)
+	}
+	if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
+		return fmt.Errorf("failed to parse config file %q: %w", cfgFile, err)
+	}
+
+	cred := &auth.Credential{
+		Username: cfg.Username,
+		Password: cfg.Password,
+	}
+
+	s.mu.Lock()
+	s.credential = cred
+	s.mu.Unlock()
+
+	s.logger.Printf("OCI credentials reloaded from %q", cfgFile)
+	return nil
+}
+
 // GetTargetRepo creates a remote.Repository with auth configured for the given repo string.
 func (s *ocisrvc) GetTargetRepo(repo string) (*remote.Repository, error) {
 	repository, err := remote.NewRepository(repo)
@@ -74,7 +107,7 @@ func (s *ocisrvc) GetTargetRepo(repo string) (*remote.Repository, error) {
 	repository.Client = &auth.Client{
 		Client:     retry.DefaultClient,
 		Cache:      auth.DefaultCache,
-		Credential: auth.StaticCredential(reg, *s.credential),
+		Credential: auth.StaticCredential(reg, *s.getCredential()),
 	}
 
 	return repository, nil

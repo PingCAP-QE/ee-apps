@@ -18,6 +18,7 @@ import (
 	gcssvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/gcs"
 	ks3svc "github.com/PingCAP-QE/ee-apps/dl/internal/service/ks3"
 	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
+	"github.com/PingCAP-QE/ee-apps/dl/pkg/reload"
 )
 
 func main() {
@@ -82,6 +83,28 @@ func main() {
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start config file watchers for hot reload.
+	{
+		type reloader interface {
+			Reload(ctx context.Context, cfgFile string) error
+		}
+		if r, ok := gcsSvc.(reloader); ok {
+			go reload.WatchFile(ctx, *gcsCfgPathF, logger, func() error {
+				return r.Reload(ctx, *gcsCfgPathF)
+			})
+		}
+		if r, ok := ks3Svc.(reloader); ok {
+			go reload.WatchFile(ctx, *ks3CfgPathF, logger, func() error {
+				return r.Reload(ctx, *ks3CfgPathF)
+			})
+		}
+		if r, ok := ociSvc.(reloader); ok {
+			go reload.WatchFile(ctx, *ociCfgPathF, logger, func() error {
+				return r.Reload(ctx, *ociCfgPathF)
+			})
+		}
+	}
 
 	// Start the servers and send errors (if any) to the error channel.
 	switch *hostF {
