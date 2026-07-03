@@ -1038,7 +1038,7 @@ def build_stale_ac_candidates_query(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
     return f"""
-SELECT DISTINCT by_ac.ac_object_name
+SELECT DISTINCT by_ac.ac_object_name AS object_name
 FROM {by_ac_table} AS by_ac
 WHERE NOT EXISTS (
   SELECT 1

@@ -23,6 +23,7 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     build_cleanup_gcs_cache_run_references_table_query,
     build_cleanup_gcs_cache_summary_query,
     build_cas_ready_for_cascade_query,
+    build_stale_ac_candidates_query,
     run_cleanup_gcs_cache,
 )
 
@@ -60,6 +61,14 @@ def test_cas_ready_for_cascade_query_blocks_warm_ac_references() -> None:
         "cur.last_seen_at >= TIMESTAMP_SUB(TIMESTAMP('2026-07-03 10:00:00 UTC'), "
         "INTERVAL 11 DAY)"
     ) in query
+
+
+def test_stale_ac_candidates_query_outputs_object_name_for_metadata_stage() -> None:
+    query = build_stale_ac_candidates_query(
+        GcsCacheSettings(project_id="pingcap-testing-account")
+    )
+
+    assert "by_ac.ac_object_name AS object_name" in query
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
