@@ -1324,7 +1324,7 @@ export function BudgetHealthGauge({
 
       <dl className="budget-gauge__metrics">
         <div>
-          <dt>Annual budget</dt>
+          <dt>Fiscal budget</dt>
           <dd>{formatCurrency(annualBudget)}</dd>
         </div>
         <div>
