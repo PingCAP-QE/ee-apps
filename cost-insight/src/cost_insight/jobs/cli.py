@@ -196,12 +196,24 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_gcs_cache.add_argument("--ac-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--cas-retention-days", type=_parse_positive_int, default=None)
     cleanup_gcs_cache.add_argument("--safety-buffer-days", type=_parse_positive_int, default=None)
-    cleanup_gcs_cache.add_argument("--max-delete-objects", type=_parse_positive_int, default=None)
+    cleanup_gcs_cache.add_argument(
+        "--max-delete-objects",
+        type=_parse_positive_int,
+        default=None,
+        help=(
+            "Maximum delete target count. For --execute-kind cas-from-index, "
+            "this caps CAS candidates; referenced cold ACs are expanded and "
+            "deleted first."
+        ),
+    )
     cleanup_gcs_cache.add_argument(
         "--max-delete-cas-objects",
         type=_parse_positive_int,
         default=None,
-        help="Deprecated compatibility option; ignored by v3 AC-driven cascade cleanup",
+        help=(
+            "CAS candidate cap used by --execute-kind cas-from-index when "
+            "--max-delete-objects is not set."
+        ),
     )
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 

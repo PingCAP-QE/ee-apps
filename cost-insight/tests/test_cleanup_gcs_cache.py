@@ -1323,7 +1323,12 @@ def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
         run_id_factory=lambda: "test-canary",
     )
 
-    cold_cas_queries = [q for q in captured_queries if "CREATE OR REPLACE TABLE" in q and "cold_cas" in q]
+    cold_cas_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cold_cas_test-canary`"
+    )
+    cold_cas_queries = [
+        q for q in captured_queries if f"CREATE OR REPLACE TABLE {cold_cas_table}" in q
+    ]
     assert len(cold_cas_queries) >= 1
     assert "rn <= 500" in cold_cas_queries[0]
 
@@ -1390,7 +1395,12 @@ def test_cas_from_index_default_cas_cap_without_max_delete_objects(monkeypatch) 
         run_id_factory=lambda: "test-default-cas-cap",
     )
 
-    cold_cas_queries = [q for q in captured_queries if "CREATE OR REPLACE TABLE" in q and "cold_cas" in q]
+    cold_cas_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cold_cas_test-default-cas-cap`"
+    )
+    cold_cas_queries = [
+        q for q in captured_queries if f"CREATE OR REPLACE TABLE {cold_cas_table}" in q
+    ]
     assert len(cold_cas_queries) >= 1
     assert "rn <= 10000" in cold_cas_queries[0]
 
