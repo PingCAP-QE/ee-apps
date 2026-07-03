@@ -2,11 +2,14 @@ package gcs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/option"
@@ -17,9 +20,12 @@ import (
 	pkggcs "github.com/PingCAP-QE/ee-apps/dl/pkg/gcs"
 )
 
+var errGCSNotConfigured = errors.New("GCS is not configured")
+
 type gcssrvc struct {
 	logger *log.Logger
 	client *storage.Client
+	mu     sync.RWMutex
 }
 
 func newClient(ctx context.Context, cfg *pkggcs.Config) (*storage.Client, error) {
@@ -40,33 +46,84 @@ func isJSONFile(filename string) bool {
 }
 
 func New(logger *log.Logger, cfgFile string) gcs.Service {
+	if cfgFile == "" {
+		return &gcssrvc{logger: logger}
+	}
+
 	var cfg pkggcs.Config
 
-	if cfgFile != "" {
-		cfgBytes, err := os.ReadFile(cfgFile)
-		if err != nil {
-			logger.Printf("Config file %q not found, using Application Default Credentials", cfgFile)
-		} else {
-			if isJSONFile(cfgFile) {
-				cfg.CredentialsJSON = string(cfgBytes)
-			} else {
-				if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
-					logger.Fatalf("Failed to load configuration: %v", err)
-				}
-			}
+	cfgBytes, err := os.ReadFile(cfgFile)
+	if err != nil {
+		logger.Printf("Config file %q not found, GCS service unavailable", cfgFile)
+		return &gcssrvc{logger: logger}
+	}
+
+	if isJSONFile(cfgFile) {
+		cfg.CredentialsJSON = string(cfgBytes)
+	} else {
+		if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
+			logger.Fatalf("Failed to load configuration: %v", err)
 		}
 	}
 
 	client, err := newClient(context.Background(), &cfg)
 	if err != nil {
-		logger.Fatalf("Failed to create GCS client: %v", err)
+		logger.Printf("Failed to create GCS client: %v", err)
+		return &gcssrvc{logger: logger}
 	}
 
 	return &gcssrvc{logger: logger, client: client}
 }
 
+func (s *gcssrvc) getClient() (*storage.Client, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.client == nil {
+		return nil, errGCSNotConfigured
+	}
+	return s.client, nil
+}
+
+// Reload re-reads the config file and recreates the GCS client. It is safe for
+// concurrent use with DownloadObject and HeadObject.
+func (s *gcssrvc) Reload(ctx context.Context, cfgFile string) error {
+	var cfg pkggcs.Config
+	cfgBytes, err := os.ReadFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to read config file %q: %w", cfgFile, err)
+	}
+	if isJSONFile(cfgFile) {
+		cfg.CredentialsJSON = string(cfgBytes)
+	} else {
+		if err := yaml.Unmarshal(cfgBytes, &cfg); err != nil {
+			return fmt.Errorf("failed to parse config file %q: %w", cfgFile, err)
+		}
+	}
+	client, err := newClient(ctx, &cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create GCS client from %q: %w", cfgFile, err)
+	}
+
+	s.mu.Lock()
+	old := s.client
+	s.client = client
+	s.mu.Unlock()
+
+	if old != nil {
+		old.Close()
+	}
+
+	s.logger.Printf("GCS client reloaded from %q", cfgFile)
+	return nil
+}
+
 func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPayload) (res *gcs.DownloadObjectResult, resp io.ReadCloser, err error) {
-	obj := s.client.Bucket(p.Bucket).Object(p.Key)
+	client, err := s.getClient()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	obj := client.Bucket(p.Bucket).Object(p.Key)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -91,7 +148,12 @@ func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPaylo
 
 // HeadObject implements head-object.
 func (s *gcssrvc) HeadObject(ctx context.Context, p *gcs.HeadObjectPayload) (*gcs.HeadObjectResult, error) {
-	obj := s.client.Bucket(p.Bucket).Object(p.Key)
+	client, err := s.getClient()
+	if err != nil {
+		return nil, err
+	}
+
+	obj := client.Bucket(p.Bucket).Object(p.Key)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		return nil, err
