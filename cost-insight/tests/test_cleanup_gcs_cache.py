@@ -22,6 +22,7 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     build_cleanup_gcs_cache_reconcile_deleted_cas_query,
     build_cleanup_gcs_cache_run_references_table_query,
     build_cleanup_gcs_cache_summary_query,
+    build_cas_ready_for_cascade_query,
     run_cleanup_gcs_cache,
 )
 
@@ -38,6 +39,27 @@ def test_cleanup_gcs_cache_summary_query_targets_current_and_reference_tables() 
     assert "@ac_cutoff_days" in query
     assert "WITH cold_ac AS" in query
     assert "0 AS candidate_cas_object_count" in query
+
+
+def test_cas_ready_for_cascade_query_blocks_warm_ac_references() -> None:
+    settings = GcsCacheSettings(project_id="pingcap-testing-account")
+    query = build_cas_ready_for_cascade_query(
+        settings,
+        cold_cas_table="`project.dataset.cold_cas`",
+        snapshot_time="2026-07-03 10:00:00 UTC",
+        ac_cutoff_days=11,
+    )
+
+    assert "FROM `project.dataset.cold_cas` AS cas" in query
+    assert "WHERE NOT EXISTS" in query
+    assert "refs.cas_object_name = cas.object_name" in query
+    assert "LEFT JOIN" in query
+    assert "cur.object_kind = 'ac'" in query
+    assert "cur.object_name IS NULL" in query
+    assert (
+        "cur.last_seen_at >= TIMESTAMP_SUB(TIMESTAMP('2026-07-03 10:00:00 UTC'), "
+        "INTERVAL 11 DAY)"
+    ) in query
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
@@ -1245,7 +1267,7 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
 
 
 def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
-    """cas-from-index --max-delete-objects 500 limits AC deletion to 500."""
+    """cas-from-index --max-delete-objects 500 limits CAS selection to 500."""
     from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
 
     monkeypatch.setattr(
@@ -1301,14 +1323,23 @@ def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
         run_id_factory=lambda: "test-canary",
     )
 
-    # The AC reverse lookup query should have LIMIT 500, not the default 100000
+    cold_cas_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cold_cas_test-canary`"
+    )
+    cold_cas_queries = [
+        q for q in captured_queries if f"CREATE OR REPLACE TABLE {cold_cas_table}" in q
+    ]
+    assert len(cold_cas_queries) >= 1
+    assert "rn <= 500" in cold_cas_queries[0]
+
+    # AC refs are expanded for the selected CAS set and are not independently capped.
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
-    assert "LIMIT 500" in ac_queries[0]
+    assert "LIMIT 500" not in ac_queries[0]
 
 
-def test_cas_from_index_default_ac_cap_without_max_delete_objects(monkeypatch) -> None:
-    """cas-from-index uses default cleanup_max_delete_ac_objects=100000 when no flag."""
+def test_cas_from_index_default_cas_cap_without_max_delete_objects(monkeypatch) -> None:
+    """cas-from-index uses the default CAS cap when no max-delete flag is set."""
     from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
 
     monkeypatch.setattr(
@@ -1361,10 +1392,18 @@ def test_cas_from_index_default_ac_cap_without_max_delete_objects(monkeypatch) -
         resolve_object_metadata=fake_resolve_metadata,
         load_jsonl_file=fake_load_jsonl,
         now=lambda: now,
-        run_id_factory=lambda: "test-default-ac-cap",
+        run_id_factory=lambda: "test-default-cas-cap",
     )
 
-    # Default AC cap is 100000 (not 10000000)
+    cold_cas_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cold_cas_test-default-cas-cap`"
+    )
+    cold_cas_queries = [
+        q for q in captured_queries if f"CREATE OR REPLACE TABLE {cold_cas_table}" in q
+    ]
+    assert len(cold_cas_queries) >= 1
+    assert "rn <= 10000" in cold_cas_queries[0]
+
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
-    assert "LIMIT 100000" in ac_queries[0]
+    assert "LIMIT 100000" not in ac_queries[0]
