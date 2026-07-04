@@ -1348,6 +1348,11 @@ FROM {_table_ref(settings.project_id, settings.dataset, settings.ac_cas_refs_by_
     # ---- Two-phase CAS selection ----
     # Phase A: preselect by last_seen_at
     cas_preselect_table = _tmp_table_ref(settings, "cas_preselect", run_id=run_id)
+    # ponytail: keep the tuning knob, but never let it silently cap the requested CAS budget.
+    cas_preselect_limit = max(
+        settings.cleanup_cas_preselect_limit,
+        settings.cleanup_max_delete_cas_objects,
+    )
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         execute(
@@ -1358,7 +1363,7 @@ AS
     settings,
     snapshot_time=snapshot_time,
     cas_cutoff_days=cas_cutoff_days,
-    preselect_limit=settings.cleanup_cas_preselect_limit,
+    preselect_limit=cas_preselect_limit,
 )}""",
             parameters=[],
         ).total_bytes_processed,
