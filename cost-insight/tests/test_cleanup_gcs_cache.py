@@ -1287,8 +1287,8 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
     assert rebuild_positions[-1] < zero_ref_pos
 
 
-def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
-    """cas-from-index --max-delete-objects 500 limits CAS selection to 500."""
+def test_cas_from_index_raises_preselect_to_max_delete_objects(monkeypatch) -> None:
+    """cas-from-index does not let the default preselect window hide the requested cap."""
     from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
 
     monkeypatch.setattr(
@@ -1335,7 +1335,7 @@ def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
         settings=GcsCacheSettings(project_id="pingcap-testing-account"),
         mode="dry-run",
         execute_kind="cas-from-index",
-        max_delete_objects=500,
+        max_delete_objects=5000000,
         execute=fake_execute,
         stream_rows=fake_stream_rows,
         resolve_object_metadata=fake_resolve_metadata,
@@ -1347,16 +1347,25 @@ def test_cas_from_index_respects_max_delete_objects_canary(monkeypatch) -> None:
     cold_cas_table = (
         "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cold_cas_test-canary`"
     )
+    cas_preselect_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cas_preselect_test-canary`"
+    )
+    cas_preselect_queries = [
+        q for q in captured_queries if f"CREATE OR REPLACE TABLE {cas_preselect_table}" in q
+    ]
+    assert len(cas_preselect_queries) >= 1
+    assert "LIMIT 5000000" in cas_preselect_queries[0]
+
     cold_cas_queries = [
         q for q in captured_queries if f"CREATE OR REPLACE TABLE {cold_cas_table}" in q
     ]
     assert len(cold_cas_queries) >= 1
-    assert "rn <= 500" in cold_cas_queries[0]
+    assert "rn <= 5000000" in cold_cas_queries[0]
 
     # AC refs are expanded for the selected CAS set and are not independently capped.
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
-    assert "LIMIT 500" not in ac_queries[0]
+    assert "LIMIT 5000000" not in ac_queries[0]
 
 
 def test_cas_from_index_default_cas_cap_without_max_delete_objects(monkeypatch) -> None:
