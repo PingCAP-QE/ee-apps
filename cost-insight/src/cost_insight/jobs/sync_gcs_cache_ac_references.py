@@ -177,6 +177,7 @@ def run_sync_gcs_cache_ac_references(
                 bucket_name=settings.bucket_name,
                 ac_object_names=batch_object_names,
                 max_workers=settings.ac_reference_download_workers,
+                pool_maxsize=settings.ac_reference_http_pool_maxsize,
             )
 
             for extraction in extractions:
@@ -457,14 +458,14 @@ def build_reconcile_missing_ac_query(
     by_ac_table = _table_ref(
         settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
     )
-    del shard  # kept for caller symmetry
     return f"""
 DELETE FROM {current_table}
 WHERE object_kind = 'ac'
   AND object_name IN (SELECT object_name FROM {missing_stage_table});
 
 DELETE FROM {by_ac_table}
-WHERE ac_object_name IN (SELECT object_name FROM {missing_stage_table});
+WHERE shard = {shard}
+  AND ac_object_name IN (SELECT object_name FROM {missing_stage_table});
 """.strip()
 
 

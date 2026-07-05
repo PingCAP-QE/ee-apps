@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import UTC, datetime
+from threading import Event, Lock
 
 import pytest
 
@@ -14,6 +15,7 @@ from cost_insight.common.storage_batch_operations import (
 )
 from cost_insight.jobs.cleanup_gcs_cache import (
     _populate_ac_stage_tables,
+    _run_catch_up_sync,
     build_ac_reverse_lookup_query,
     build_cleanup_gcs_cache_cas_candidate_table_query,
     build_cleanup_gcs_cache_final_cas_delete_table_query,
@@ -27,6 +29,248 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     build_stale_ac_candidates_query,
     run_cleanup_gcs_cache,
 )
+
+
+def test_run_catch_up_sync_invokes_all_shards(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    calls: list[dict[str, object]] = []
+    active_count = 0
+    max_active_count = 0
+    lock = Lock()
+    two_workers_active = Event()
+
+    def fake_sync(**kwargs):
+        nonlocal active_count, max_active_count
+        calls.append(kwargs)
+        with lock:
+            active_count += 1
+            max_active_count = max(max_active_count, active_count)
+            if active_count >= 2:
+                two_workers_active.set()
+        two_workers_active.wait(timeout=2)
+        with lock:
+            active_count -= 1
+
+    monkeypatch.setattr(cleanup_gcs_cache, "run_sync_gcs_cache_ac_references", fake_sync)
+
+    until = datetime(2026, 7, 5, 10, 0, tzinfo=UTC)
+    settings = GcsCacheSettings(
+        project_id="pingcap-testing-account",
+        ac_reference_shard_count=4,
+        ac_reference_download_workers=64,
+        ac_reference_catch_up_workers=2,
+        ac_reference_catch_up_max_workers=8,
+    )
+
+    _run_catch_up_sync(settings=settings, until=until, execute=lambda query, parameters: None)
+
+    assert sorted(call["shard_start"] for call in calls) == [0, 1, 2, 3]
+    assert [call["shard_start"] for call in calls] == [call["shard_end"] for call in calls]
+    assert all(call["mode"] == "incremental" for call in calls)
+    assert all(call["ensure_tables"] is False for call in calls)
+    assert all(call["now"]() == until for call in calls)
+    assert all(
+        call["settings"].ac_reference_download_workers == 32
+        for call in calls
+    )
+    assert all(
+        call["settings"].ac_reference_http_pool_maxsize == 64
+        for call in calls
+    )
+    assert max_active_count >= 2
+
+
+def test_run_catch_up_sync_clamps_shard_workers_to_download_budget(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    calls: list[dict[str, object]] = []
+    active_count = 0
+    max_active_count = 0
+    lock = Lock()
+    three_workers_active = Event()
+
+    def fake_sync(**kwargs):
+        nonlocal active_count, max_active_count
+        calls.append(kwargs)
+        with lock:
+            active_count += 1
+            max_active_count = max(max_active_count, active_count)
+            if active_count >= 3:
+                three_workers_active.set()
+        three_workers_active.wait(timeout=2)
+        with lock:
+            active_count -= 1
+
+    monkeypatch.setattr(cleanup_gcs_cache, "run_sync_gcs_cache_ac_references", fake_sync)
+
+    _run_catch_up_sync(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_shard_count=3,
+            ac_reference_download_workers=3,
+            ac_reference_http_pool_maxsize=9,
+            ac_reference_catch_up_workers=100,
+            ac_reference_catch_up_max_workers=8,
+        ),
+        until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+        execute=lambda query, parameters: None,
+    )
+
+    assert sorted(call["shard_start"] for call in calls) == [0, 1, 2]
+    assert max_active_count == 3
+    assert all(call["settings"].ac_reference_download_workers == 1 for call in calls)
+    assert all(call["settings"].ac_reference_http_pool_maxsize == 3 for call in calls)
+
+
+def test_run_catch_up_sync_clamps_shard_workers_to_bigquery_dml_cap(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    calls: list[dict[str, object]] = []
+    active_count = 0
+    max_active_count = 0
+    lock = Lock()
+    two_workers_active = Event()
+
+    def fake_sync(**kwargs):
+        nonlocal active_count, max_active_count
+        calls.append(kwargs)
+        with lock:
+            active_count += 1
+            max_active_count = max(max_active_count, active_count)
+            if active_count >= 2:
+                two_workers_active.set()
+        two_workers_active.wait(timeout=2)
+        with lock:
+            active_count -= 1
+
+    monkeypatch.setattr(cleanup_gcs_cache, "run_sync_gcs_cache_ac_references", fake_sync)
+
+    _run_catch_up_sync(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_shard_count=4,
+            ac_reference_download_workers=64,
+            ac_reference_http_pool_maxsize=128,
+            ac_reference_catch_up_workers=64,
+            ac_reference_catch_up_max_workers=2,
+        ),
+        until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+        execute=lambda query, parameters: None,
+    )
+
+    assert sorted(call["shard_start"] for call in calls) == [0, 1, 2, 3]
+    assert max_active_count == 2
+    assert all(call["settings"].ac_reference_download_workers == 32 for call in calls)
+    assert all(call["settings"].ac_reference_http_pool_maxsize == 64 for call in calls)
+
+
+def test_run_catch_up_sync_reports_failed_shards(monkeypatch, caplog) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    def fake_sync(**kwargs):
+        if kwargs["shard_start"] in {1, 3}:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(cleanup_gcs_cache, "run_sync_gcs_cache_ac_references", fake_sync)
+
+    with pytest.raises(RuntimeError, match=r"2 shard\(s\).*shard 1: boom.*shard 3: boom"):
+        _run_catch_up_sync(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                ac_reference_shard_count=4,
+                ac_reference_download_workers=64,
+                ac_reference_catch_up_workers=2,
+                ac_reference_catch_up_max_workers=8,
+            ),
+            until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+            execute=lambda query, parameters: None,
+        )
+
+    assert "AC reference catch-up shard failed: shard=1" in caplog.text
+    assert "AC reference catch-up shard failed: shard=3" in caplog.text
+    assert "Traceback" in caplog.text
+
+
+def test_run_catch_up_sync_serial_path_aggregates_failed_shards(monkeypatch, caplog) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    calls: list[int] = []
+
+    def fake_sync(**kwargs):
+        shard = int(kwargs["shard_start"])
+        calls.append(shard)
+        if shard in {0, 2}:
+            raise RuntimeError(f"boom-{shard}")
+
+    monkeypatch.setattr(cleanup_gcs_cache, "run_sync_gcs_cache_ac_references", fake_sync)
+
+    with pytest.raises(RuntimeError, match=r"2 shard\(s\).*shard 0: boom-0.*shard 2: boom-2"):
+        _run_catch_up_sync(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                ac_reference_shard_count=3,
+                ac_reference_download_workers=64,
+                ac_reference_catch_up_workers=1,
+                ac_reference_catch_up_max_workers=8,
+            ),
+            until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+            execute=lambda query, parameters: None,
+        )
+
+    assert calls == [0, 1, 2]
+    assert "AC reference catch-up shard failed: shard=0" in caplog.text
+    assert "AC reference catch-up shard failed: shard=2" in caplog.text
+
+
+def test_run_catch_up_sync_returns_when_shard_count_is_zero(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache
+
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        cleanup_gcs_cache,
+        "run_sync_gcs_cache_ac_references",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    _run_catch_up_sync(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_shard_count=0,
+            ac_reference_download_workers=64,
+            ac_reference_catch_up_workers=4,
+        ),
+        until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+        execute=lambda query, parameters: None,
+    )
+
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    (
+        ("ac_reference_download_workers", "ac_reference_download_workers must be positive"),
+        ("ac_reference_catch_up_workers", "ac_reference_catch_up_workers must be positive"),
+        ("ac_reference_catch_up_max_workers", "ac_reference_catch_up_max_workers must be positive"),
+    ),
+)
+def test_run_catch_up_sync_rejects_non_positive_worker_settings(field, message) -> None:
+    settings_kwargs = {
+        "project_id": "pingcap-testing-account",
+        "ac_reference_shard_count": 1,
+        "ac_reference_download_workers": 64,
+        "ac_reference_catch_up_workers": 4,
+        "ac_reference_catch_up_max_workers": 8,
+        field: 0,
+    }
+
+    with pytest.raises(ValueError, match=message):
+        _run_catch_up_sync(
+            settings=GcsCacheSettings(**settings_kwargs),
+            until=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+            execute=lambda query, parameters: None,
+        )
 
 
 def test_cleanup_gcs_cache_summary_query_targets_current_and_reference_tables() -> None:

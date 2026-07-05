@@ -106,6 +106,9 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_CURRENT_TABLE": "current_table",
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_USER_AGENT": "CustomTransferService",
             "COST_INSIGHT_GCS_CACHE_LAST_SEEN_EXCLUDED_GET_PRINCIPAL_EMAIL": "cleanup@example.com",
+            "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_HTTP_POOL_MAXSIZE": "256",
+            "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_CATCH_UP_WORKERS": "16",
+            "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_CATCH_UP_MAX_WORKERS": "12",
             "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS": "6",
             "COST_INSIGHT_GCS_CACHE_AC_RETENTION_DAYS": "21",
             "COST_INSIGHT_GCS_CACHE_CAS_RETENTION_DAYS": "35",
@@ -131,6 +134,9 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.last_seen_current_table == "current_table"
     assert settings.gcs_cache.last_seen_excluded_get_user_agent == "CustomTransferService"
     assert settings.gcs_cache.last_seen_excluded_get_principal_email == "cleanup@example.com"
+    assert settings.gcs_cache.ac_reference_http_pool_maxsize == 256
+    assert settings.gcs_cache.ac_reference_catch_up_workers == 16
+    assert settings.gcs_cache.ac_reference_catch_up_max_workers == 12
     assert settings.gcs_cache.ac_reference_max_index_staleness_hours == 6
     assert settings.gcs_cache.ac_retention_days == 21
     assert settings.gcs_cache.cas_retention_days == 35

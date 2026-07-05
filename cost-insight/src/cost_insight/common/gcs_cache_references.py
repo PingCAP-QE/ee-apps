@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Event, Lock
 
-from cost_insight.common.gcs_client import create_storage_client
+from cost_insight.common.gcs_client import create_storage_client, resolve_storage_pool_maxsize
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,7 @@ def extract_action_cache_references_batch(
     bucket_name: str,
     ac_object_names: Iterable[str],
     max_workers: int = 64,
+    pool_maxsize: int | None = None,
 ) -> tuple[AcReferenceExtraction, ...]:
     from google.api_core.exceptions import NotFound
 
@@ -42,7 +43,13 @@ def extract_action_cache_references_batch(
     if not names:
         return ()
 
-    client = create_storage_client(project_id=project_id, pool_maxsize=max_workers)
+    client = create_storage_client(
+        project_id=project_id,
+        pool_maxsize=resolve_storage_pool_maxsize(
+            max_workers=max_workers,
+            pool_maxsize=pool_maxsize,
+        ),
+    )
     bucket = client.bucket(bucket_name)
     blob_cache: dict[str, bytes | None | Event | BaseException] = {}
     blob_cache_lock = Lock()

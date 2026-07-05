@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from contextlib import ExitStack
+import logging
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import ExitStack
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from itertools import islice
 from pathlib import Path
@@ -35,6 +37,7 @@ ReferenceExtractor = Callable[..., tuple[AcReferenceExtraction, ...]]
 JsonFileLoader = Callable[[str, Path, Sequence[tuple[str, str]], str], None]
 BatchJobCreator = Callable[..., StorageBatchOperationsJob]
 BatchJobWaiter = Callable[..., StorageBatchOperationsJobStatus]
+logger = logging.getLogger(__name__)
 
 # "all" is kept as a compatibility alias for older dry-run CronJob arguments.
 # "cas" is the legacy v3 per-run AC-driven cascade.
@@ -1899,16 +1902,71 @@ def _run_catch_up_sync(
     until: datetime,
     execute: QueryExecutor,
 ) -> None:
-    """Run incremental sync for all 256 shards up to `until`."""
-    run_sync_gcs_cache_ac_references(
-        settings=settings,
-        mode="incremental",
-        shard_start=0,
-        shard_end=settings.ac_reference_shard_count - 1,
-        dry_run=False,
-        execute=execute,
-        now=lambda: until,
+    """Run incremental sync for all AC reference shards up to `until`."""
+    shard_count = settings.ac_reference_shard_count
+    if shard_count <= 0:
+        return
+    if settings.ac_reference_download_workers <= 0:
+        raise ValueError("ac_reference_download_workers must be positive")
+    if settings.ac_reference_catch_up_workers <= 0:
+        raise ValueError("ac_reference_catch_up_workers must be positive")
+    if settings.ac_reference_catch_up_max_workers <= 0:
+        raise ValueError("ac_reference_catch_up_max_workers must be positive")
+    worker_count = min(
+        settings.ac_reference_catch_up_workers,
+        settings.ac_reference_catch_up_max_workers,
+        shard_count,
+        settings.ac_reference_download_workers,
     )
+    per_shard_download_workers = max(1, settings.ac_reference_download_workers // worker_count)
+    catch_up_settings = replace(
+        settings,
+        ac_reference_download_workers=per_shard_download_workers,
+        ac_reference_http_pool_maxsize=max(
+            per_shard_download_workers,
+            settings.ac_reference_http_pool_maxsize // worker_count,
+        ),
+    )
+
+    def sync_one_shard(shard: int) -> None:
+        run_sync_gcs_cache_ac_references(
+            settings=catch_up_settings,
+            mode="incremental",
+            shard_start=shard,
+            shard_end=shard,
+            dry_run=False,
+            execute=execute,
+            now=lambda: until,
+            ensure_tables=False,
+        )
+
+    failed: list[tuple[int, Exception]] = []
+
+    def record_failure(shard: int, exc: Exception) -> None:
+        logger.exception("AC reference catch-up shard failed: shard=%s", shard)
+        failed.append((shard, exc))
+
+    if worker_count <= 1:
+        for shard in range(shard_count):
+            try:
+                sync_one_shard(shard)
+            except Exception as exc:
+                record_failure(shard, exc)
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {executor.submit(sync_one_shard, shard): shard for shard in range(shard_count)}
+            for future in as_completed(futures):
+                shard = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    record_failure(shard, exc)
+
+    if failed:
+        failed.sort(key=lambda item: item[0])
+        details = ", ".join(f"shard {shard}: {exc}" for shard, exc in failed[:10])
+        suffix = "" if len(failed) <= 10 else f", ... {len(failed) - 10} more"
+        raise RuntimeError(f"AC reference catch-up failed for {len(failed)} shard(s): {details}{suffix}")
 
 
 def _tmp_table_ref(settings: GcsCacheSettings, suffix: str, *, run_id: str = "") -> str:
@@ -1950,6 +2008,7 @@ def _populate_metadata_stage_table(
                     bucket_name=settings.bucket_name,
                     object_names=object_names,
                     max_workers=settings.ac_reference_download_workers,
+                    pool_maxsize=settings.ac_reference_http_pool_maxsize,
                 )
                 live_rows = [
                     {
@@ -2034,6 +2093,7 @@ def _populate_ac_stage_tables(
                     bucket_name=settings.bucket_name,
                     object_names=object_names,
                     max_workers=settings.ac_reference_download_workers,
+                    pool_maxsize=settings.ac_reference_http_pool_maxsize,
                 )
                 live_rows = [
                     {
@@ -2053,6 +2113,7 @@ def _populate_ac_stage_tables(
                         bucket_name=settings.bucket_name,
                         ac_object_names=reference_batch,
                         max_workers=settings.ac_reference_download_workers,
+                        pool_maxsize=settings.ac_reference_http_pool_maxsize,
                     )
                 )
                 parse_failed_names = {
