@@ -94,7 +94,9 @@ def test_extract_cas_references_from_tree_bytes_rejects_overlong_varint() -> Non
         extract_cas_references_from_tree_bytes(tree_bytes)
 
 
-def test_extract_action_cache_references_batch_uses_worker_count_for_http_pool(monkeypatch) -> None:
+def test_extract_action_cache_references_batch_pool_maxsize_overrides_worker_count(
+    monkeypatch,
+) -> None:
     observed_pool_sizes: list[int] = []
 
     class _FakeBucket:
@@ -127,9 +129,10 @@ def test_extract_action_cache_references_batch_uses_worker_count_for_http_pool(m
         bucket_name="test-bucket",
         ac_object_names=("ac/one", "ac/two"),
         max_workers=32,
+        pool_maxsize=96,
     )
 
-    assert observed_pool_sizes == [32]
+    assert observed_pool_sizes == [96]
     assert rows == (
         gcs_cache_references.AcReferenceExtraction(
             ac_object_name="ac/one",
@@ -142,6 +145,90 @@ def test_extract_action_cache_references_batch_uses_worker_count_for_http_pool(m
             cas_object_names=("cas/a", "cas/b"),
         ),
     )
+
+
+def test_extract_action_cache_references_batch_preserves_explicit_zero_pool_maxsize(
+    monkeypatch,
+) -> None:
+    observed_pool_sizes: list[int] = []
+
+    class _FakeBucket:
+        def blob(self, object_name: str):
+            class _FakeBlob:
+                def download_as_bytes(self) -> bytes:
+                    return b""
+
+            return _FakeBlob()
+
+    class _FakeClient:
+        def bucket(self, bucket_name: str) -> _FakeBucket:
+            assert bucket_name == "test-bucket"
+            return _FakeBucket()
+
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: (
+            observed_pool_sizes.append(pool_maxsize) or _FakeClient()
+        ),
+    )
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "extract_cas_references_from_action_result_bytes",
+        lambda action_result_bytes, *, fetch_cas_blob: set(),
+    )
+
+    gcs_cache_references.extract_action_cache_references_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        ac_object_names=("ac/one",),
+        max_workers=32,
+        pool_maxsize=0,
+    )
+
+    assert observed_pool_sizes == [0]
+
+
+def test_extract_action_cache_references_batch_floors_positive_pool_maxsize_at_worker_count(
+    monkeypatch,
+) -> None:
+    observed_pool_sizes: list[int] = []
+
+    class _FakeBucket:
+        def blob(self, object_name: str):
+            class _FakeBlob:
+                def download_as_bytes(self) -> bytes:
+                    return b""
+
+            return _FakeBlob()
+
+    class _FakeClient:
+        def bucket(self, bucket_name: str) -> _FakeBucket:
+            assert bucket_name == "test-bucket"
+            return _FakeBucket()
+
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: (
+            observed_pool_sizes.append(pool_maxsize) or _FakeClient()
+        ),
+    )
+    monkeypatch.setattr(
+        gcs_cache_references,
+        "extract_cas_references_from_action_result_bytes",
+        lambda action_result_bytes, *, fetch_cas_blob: set(),
+    )
+
+    gcs_cache_references.extract_action_cache_references_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        ac_object_names=("ac/one",),
+        max_workers=32,
+        pool_maxsize=16,
+    )
+
+    assert observed_pool_sizes == [32]
 
 
 def test_extract_action_cache_references_batch_shares_cas_blob_cache(monkeypatch) -> None:

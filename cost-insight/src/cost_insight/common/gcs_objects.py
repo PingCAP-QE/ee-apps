@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Iterable
 
-from cost_insight.common.gcs_client import create_storage_client
+from cost_insight.common.gcs_client import create_storage_client, resolve_storage_pool_maxsize
 
 
 @dataclass(frozen=True)
@@ -21,12 +21,19 @@ def fetch_object_metadata_batch(
     bucket_name: str,
     object_names: Iterable[str],
     max_workers: int = 64,
+    pool_maxsize: int | None = None,
 ) -> tuple[GcsObjectMetadata, ...]:
     names = tuple(object_names)
     if not names:
         return ()
 
-    client = create_storage_client(project_id=project_id, pool_maxsize=max_workers)
+    client = create_storage_client(
+        project_id=project_id,
+        pool_maxsize=resolve_storage_pool_maxsize(
+            max_workers=max_workers,
+            pool_maxsize=pool_maxsize,
+        ),
+    )
     bucket = client.bucket(bucket_name)
 
     def fetch_one(object_name: str) -> GcsObjectMetadata:

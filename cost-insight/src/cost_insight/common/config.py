@@ -78,6 +78,14 @@ class GcsCacheSettings:
     ac_reference_shard_count: int = 256
     ac_reference_batch_size: int = 500
     ac_reference_download_workers: int = 64
+    ac_reference_http_pool_maxsize: int = 128
+    # Catch-up shard workers are capped separately from GCS download workers
+    # because each shard also issues BigQuery DML. Workers are clamped to
+    # min(catch_up_workers, catch_up_max_workers, shard_count, download_workers).
+    # They share ac_reference_download_workers as a global GCS download budget,
+    # so per-shard GCS workers can drop to 1 when catch_up_workers is high.
+    ac_reference_catch_up_workers: int = 4
+    ac_reference_catch_up_max_workers: int = 8
     ac_reference_max_index_staleness_hours: int = 1
     ac_retention_days: int = 10
     cas_retention_days: int = 15
@@ -302,6 +310,30 @@ def load_settings(
                     "COST_GCS_CACHE_AC_REFERENCE_DOWNLOAD_WORKERS",
                 ),
                 64,
+            ),
+            ac_reference_http_pool_maxsize=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_HTTP_POOL_MAXSIZE",
+                    "COST_GCS_CACHE_AC_REFERENCE_HTTP_POOL_MAXSIZE",
+                ),
+                128,
+            ),
+            ac_reference_catch_up_workers=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_CATCH_UP_WORKERS",
+                    "COST_GCS_CACHE_AC_REFERENCE_CATCH_UP_WORKERS",
+                ),
+                4,
+            ),
+            ac_reference_catch_up_max_workers=_read_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_CATCH_UP_MAX_WORKERS",
+                    "COST_GCS_CACHE_AC_REFERENCE_CATCH_UP_MAX_WORKERS",
+                ),
+                8,
             ),
             ac_reference_max_index_staleness_hours=_read_positive_int_any(
                 env,

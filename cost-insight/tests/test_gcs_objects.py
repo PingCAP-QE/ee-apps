@@ -84,7 +84,7 @@ def test_fetch_object_metadata_batch_reads_objects_sequentially(monkeypatch) -> 
     assert bucket.requested_names == ["cas/present", "cas/missing", "cas/no-generation"]
 
 
-def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(monkeypatch) -> None:
+def test_fetch_object_metadata_batch_pool_maxsize_overrides_worker_count(monkeypatch) -> None:
     bucket = _FakeBucket(
         {
             "cas/one": _FakeBlob("11"),
@@ -122,11 +122,58 @@ def test_fetch_object_metadata_batch_uses_executor_for_parallel_path(monkeypatch
         bucket_name="test-bucket",
         object_names=("cas/one", "cas/two"),
         max_workers=4,
+        pool_maxsize=16,
     )
 
     assert used_max_workers == [4]
-    assert observed_pool_sizes == [4]
+    assert observed_pool_sizes == [16]
     assert metadata == (
         gcs_objects.GcsObjectMetadata(object_name="cas/one", exists=True, generation=11, size_bytes=1024),
         gcs_objects.GcsObjectMetadata(object_name="cas/two", exists=True, generation=22, size_bytes=1024),
     )
+
+
+def test_fetch_object_metadata_batch_preserves_explicit_zero_pool_maxsize(monkeypatch) -> None:
+    observed_pool_sizes: list[int] = []
+    monkeypatch.setattr(
+        gcs_objects,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: (
+            observed_pool_sizes.append(pool_maxsize)
+            or _FakeClient(project=project_id, bucket=_FakeBucket({"cas/one": _FakeBlob("1")}))
+        ),
+    )
+
+    gcs_objects.fetch_object_metadata_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        object_names=("cas/one",),
+        max_workers=4,
+        pool_maxsize=0,
+    )
+
+    assert observed_pool_sizes == [0]
+
+
+def test_fetch_object_metadata_batch_floors_positive_pool_maxsize_at_worker_count(
+    monkeypatch,
+) -> None:
+    observed_pool_sizes: list[int] = []
+    monkeypatch.setattr(
+        gcs_objects,
+        "create_storage_client",
+        lambda *, project_id, pool_maxsize: (
+            observed_pool_sizes.append(pool_maxsize)
+            or _FakeClient(project=project_id, bucket=_FakeBucket({"cas/one": _FakeBlob("1")}))
+        ),
+    )
+
+    gcs_objects.fetch_object_metadata_batch(
+        project_id="test-project",
+        bucket_name="test-bucket",
+        object_names=("cas/one",),
+        max_workers=4,
+        pool_maxsize=2,
+    )
+
+    assert observed_pool_sizes == [4]

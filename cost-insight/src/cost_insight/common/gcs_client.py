@@ -13,6 +13,14 @@ def create_storage_client(*, project_id: str, pool_maxsize: int):
     return client
 
 
+def resolve_storage_pool_maxsize(*, max_workers: int, pool_maxsize: int | None) -> int:
+    if pool_maxsize is None:
+        return max_workers
+    if pool_maxsize <= 0:
+        return pool_maxsize
+    return max(max_workers, pool_maxsize)
+
+
 def configure_storage_client_http_pool(*, client, pool_maxsize: int) -> None:
     if pool_maxsize <= 0:
         return

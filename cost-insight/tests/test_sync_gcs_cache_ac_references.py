@@ -7,6 +7,7 @@ from cost_insight.jobs.sync_gcs_cache_ac_references import (
     build_bootstrap_gcs_cache_ac_reference_source_query,
     build_ensure_gcs_cache_ac_reference_tables_query,
     build_incremental_gcs_cache_ac_reference_source_query,
+    build_reconcile_missing_ac_query,
     _execute_with_bigquery_dml_retry,
     run_sync_gcs_cache_ac_references,
 )
@@ -41,6 +42,19 @@ def test_incremental_gcs_cache_ac_reference_source_query_targets_create_events()
     assert "timestamp > @indexed_through" in query
     assert "timestamp <= @run_until" in query
     assert "REGEXP_CONTAINS(object_name, r'^ac/[0-9a-fA-F]{64}$')" in query
+
+
+def test_reconcile_missing_ac_query_scopes_by_ac_delete_to_shard() -> None:
+    settings = GcsCacheSettings(project_id="pingcap-testing-account")
+    query = build_reconcile_missing_ac_query(
+        settings,
+        shard=17,
+        missing_stage_table="`project.dataset.missing_ac`",
+    )
+
+    assert "DELETE FROM `pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_refs_by_ac`" in query
+    assert "WHERE shard = 17" in query
+    assert "ac_object_name IN (SELECT object_name FROM `project.dataset.missing_ac`)" in query
 
 
 def test_run_sync_gcs_cache_ac_references_bootstrap_dry_run_counts_objects_and_refs() -> None:
