@@ -6,6 +6,7 @@ from cost_insight.common.config import (
     DEFAULT_AWS_BILLING_TABLE,
     DEFAULT_GCP_ACCOUNT_ID,
     DEFAULT_GCP_BILLING_TABLE,
+    DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES,
     load_settings,
 )
 
@@ -112,6 +113,7 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
             "COST_INSIGHT_GCS_CACHE_CLEANUP_SAMPLE_LIMIT": "25",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS": "500",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_OBJECTS": "100",
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES": "123456",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_AC_DELETE_BATCH_SIZE": "200",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_BATCH_SIZE": "50",
             "COST_INSIGHT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET": "manifest-bucket",
@@ -136,11 +138,22 @@ def test_load_settings_reads_gcs_cache_settings_without_database() -> None:
     assert settings.gcs_cache.cleanup_sample_limit == 25
     assert settings.gcs_cache.cleanup_max_delete_objects == 500
     assert settings.gcs_cache.cleanup_max_delete_cas_objects == 100
+    assert settings.gcs_cache.cleanup_max_delete_cas_bytes == 123456
     assert settings.gcs_cache.cleanup_max_delete_ac_objects == 100000
     assert settings.gcs_cache.cleanup_batch_size == 50
     assert settings.gcs_cache.cleanup_manifest_bucket == "manifest-bucket"
     assert settings.gcs_cache.cleanup_manifest_prefix == "manifest-prefix"
     assert settings.gcs_cache.cleanup_candidate_ttl_days == 9
+
+
+def test_gcs_cache_default_cas_delete_byte_cap_is_50_tib() -> None:
+    settings = load_settings({}, require_database=False)
+
+    assert (
+        settings.gcs_cache.cleanup_max_delete_cas_bytes
+        == DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES
+        == 50 * 1024**4
+    )
 
 
 def test_load_settings_requires_database_when_not_skipped() -> None:

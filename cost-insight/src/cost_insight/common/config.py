@@ -24,6 +24,7 @@ DEFAULT_GCS_CACHE_AC_CAS_REFS_BY_CAS_TABLE = "gcs_cache_ac_cas_refs_by_cas"
 DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE = "gcs_cache_ac_reference_index_state"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
+DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES = 50 * 1024**4
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ class GcsCacheSettings:
     cleanup_max_delete_objects: int = 10000000
     cleanup_max_delete_ac_objects: int = 100000
     cleanup_max_delete_cas_objects: int = 10000
-    cleanup_max_delete_cas_bytes: int = 1099511627776
+    cleanup_max_delete_cas_bytes: int = DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES
     cleanup_cas_preselect_limit: int = 20000
     cleanup_ac_delete_batch_size: int = 500000
     cleanup_batch_size: int = 1000
@@ -372,7 +373,7 @@ def load_settings(
                     "COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES",
                     "COST_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES",
                 ),
-                1099511627776,
+                DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES,
             ),
             cleanup_cas_preselect_limit=_read_positive_int_any(
                 env,
