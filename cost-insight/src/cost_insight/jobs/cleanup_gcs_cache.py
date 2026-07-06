@@ -1349,6 +1349,8 @@ def run_cleanup_gcs_cache_from_index(
 
     # ---- Gate 2: freshness (catch-up must have reached snapshot_time) ----
     # Now verify all watermarks are within staleness of the cleanup snapshot.
+    # Delete mode should be exact after the preceding catch-up; the staleness
+    # allowance mainly keeps dry-run read-only while still rejecting old indexes.
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         _require_fresh_ac_reference_index(
