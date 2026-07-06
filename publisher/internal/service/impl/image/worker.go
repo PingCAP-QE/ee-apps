@@ -14,20 +14,21 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/image"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/share"
 )
 
 // imageWorker handles async multi-arch image collection requests and publishing requests.
 type imageWorker struct {
 	logger      zerolog.Logger
-	redisClient redis.Cmdable
+	redisClient redis.UniversalClient
 	options     struct {
 		LarkWebhookURL string
 	}
 }
 
 // NewWorker creates a new MultiarchWorker instance.
-func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[string]string) *imageWorker {
+func NewWorker(logger *zerolog.Logger, redisClient redis.UniversalClient, options map[string]string) (impl.Worker, error) {
 	handler := imageWorker{redisClient: redisClient}
 	if logger == nil {
 		handler.logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
@@ -37,7 +38,7 @@ func NewWorker(logger *zerolog.Logger, redisClient redis.Cmdable, options map[st
 
 	handler.options.LarkWebhookURL = options["lark_webhook_url"]
 
-	return &handler
+	return &handler, nil
 }
 
 func (p *imageWorker) SupportEventTypes() []string {

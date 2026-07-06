@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/fileserver"
+	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/image"
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl/tiup"
 	"github.com/PingCAP-QE/ee-apps/publisher/pkg/config"
 )
@@ -59,8 +59,8 @@ func main() {
 		wg.Go(workerFn)
 	}
 
-	// fileserver worker
-	if workerFn := newWorkerFunc(ctx, "fileserver", fileserver.NewWorker, cfg.FileServer); workerFn != nil {
+	// image worker
+	if workerFn := newWorkerFunc(ctx, "image", image.NewWorker, cfg.Image); workerFn != nil {
 		wg.Go(workerFn)
 	}
 

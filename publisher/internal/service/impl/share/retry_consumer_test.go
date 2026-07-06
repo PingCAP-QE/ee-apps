@@ -12,8 +12,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-
-	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/impl"
 )
 
 // MockWorker is a mock implementation of impl.Worker
