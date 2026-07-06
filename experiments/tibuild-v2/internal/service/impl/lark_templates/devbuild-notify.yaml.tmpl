@@ -39,7 +39,7 @@ elements:
       - **Product:** {{ .Product }}
       - **Version:** {{ .Version }}
       - **Platform:** {{ .Platform }}
-      {{- with .GithubRepo }}
+      {{- with .GithubRepo -}}
       - **Repository:** [{{ . }}](https://github.com/{{ . }})
       {{- end }}
       {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
@@ -64,15 +64,19 @@ elements:
       {{- end }}
       {{- if .Images }}
       - **Docker Images:**
+        ```YAML
         {{- range .Images }}
-        - `{{ .URL }}` ({{ .Platform }})
+        - {{ .URL }}
         {{- end }}
+        ```
       {{- end }}
       {{- if .Binaries }}
       - **Binaries:**
+        ```YAML
         {{- range .Binaries }}
-        - `{{ .OciReference }}`
+        - {{ .OciReference }}
         {{- end }}
+        ```
       {{- end }}
   {{- end }}
 
