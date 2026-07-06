@@ -39,7 +39,7 @@ elements:
       - **Product:** {{ .Product }}
       - **Version:** {{ .Version }}
       - **Platform:** {{ .Platform }}
-      {{- with .GithubRepo -}}
+      {{- with .GithubRepo }}
       - **Repository:** [{{ . }}](https://github.com/{{ . }})
       {{- end }}
       {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
