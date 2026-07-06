@@ -215,6 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
             "--max-delete-objects is not set."
         ),
     )
+    cleanup_gcs_cache.add_argument(
+        "--max-delete-ac-objects",
+        type=_parse_positive_int,
+        default=None,
+        help="AC candidate cap for CAS reverse-lookup cleanup.",
+    )
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
     return parser
@@ -427,6 +433,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             cas_retention_days=args.cas_retention_days,
             safety_buffer_days=args.safety_buffer_days,
             max_delete_objects=args.max_delete_objects,
+            max_delete_ac_objects=args.max_delete_ac_objects,
             max_delete_cas_objects=args.max_delete_cas_objects,
             sample_limit=args.sample_limit,
         )
