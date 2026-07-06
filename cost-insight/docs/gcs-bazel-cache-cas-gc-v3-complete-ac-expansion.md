@@ -356,16 +356,28 @@ cleanup 执行时：
 总是早于检查时刻。必须用固定 snapshot。
 
 **竞态残余风险**（无法完全消除）：
-即使 catch-up 到 `cleanup_snapshot_time`，cleanup 本身需要时间执行（AC 删除 +
-CAS manifest export + delete）。在 cleanup 执行期间，新的 AC 仍可能被上传并引用
-待删除的冷 CAS，且不对 CAS 产生 audit 事件。
+即使 catch-up 到 `cleanup_snapshot_time`，cleanup 本身需要时间执行（metadata
+解析、AC 删除、CAS manifest export + delete）。在 cleanup 执行期间，新的 AC 仍
+可能被上传并引用待删除的冷 CAS，且不对 CAS 产生 audit 事件。orphan-first
+不能防止这种新引用：snapshot 时的 orphan CAS 可能在运行期间第一次被新 AC 引用。
 
 **缓解措施**：
-- 在最终 CAS manifest export 前，再做一次**短增量 catch-up**（覆盖
-  `cleanup_snapshot_time` 到当前时刻），重新计算 zero-ref
-- 仍有极小窗口（第二次 catch-up 到 manifest export 之间），但窗口从小时级
-  缩小到分钟级
-- CAS cap 作为最后防线
+- 当前实现只做一次全量 `by_cas` rebuild，避免第二次重建大表。
+- AC 删除后、CAS manifest export 前再跑一次 incremental catch-up，只把 `by_ac`
+  推进到 post-AC-delete 时间点。
+- 基于本轮 `ac_removed` 临时表从 snapshot `by_cas` 中逻辑扣减引用，得到
+  zero-ref snapshot 候选。
+- 随后用当前 live `by_ac` 对 zero-ref snapshot 候选做 blocklist recheck：
+  只要仍有任意 AC ref 指向该 CAS，就排除该 CAS。这一步检测 cleanup 运行期间
+  新建 AC 对 orphan / linked CAS 的引用，不依赖 `last_seen_current`。
+- 这个 live recheck 按 `cas_object_name` 访问 `by_ac`，而 `by_ac` 当前是
+  `CLUSTER BY shard, ac_object_name`，因此需要按全表扫描级别评估成本。它省掉的是
+  第二次 `by_cas` 全量重建和写入，不是省掉全部 ref 表读取。若成本过高，后续应增加
+  `cas_object_name` 访问路径，或给 `by_ac` 增加 `indexed_at` 后改查 post-snapshot delta。
+- 2026-07-06 实测：当前 `by_ac` 约 36.7M rows / 5.4GB logical bytes；用
+  1M candidate 形状执行 live recheck count，实际 processed/billed 约 2.65GB，
+  final execution duration 约 28.9s。当前可接受，但需要随 ref 表增长继续观察。
+- CAS cap 和 AC cap 作为最后防线，限制异常情况下的影响半径。
 
 **Implementation**：
 
@@ -383,24 +395,20 @@ cleanup():
     # 重建 by_cas 快照 —— 必须在 catch-up + 保鲜之后
     rebuild_by_cas_from_by_ac()
 
-    # Phase 3: AC delete phase
-    # 先 bounded CAS selection（受 CAS cap 限制，控制 AC 删除半径）
-    cold_cas = select_cold_cas(snapshot_time, limit=CAS_CAP)
-    acs_to_delete = reverse_lookup_ac(cold_cas, age > ac_cutoff)
+    # Phase 3: orphan-first CAS selection（受 CAS cap 限制）
+    cold_cas = select_cold_cas_orphan_first(snapshot_time, limit=CAS_CAP)
+    acs_to_delete = reverse_lookup_ac(cold_cas, age > ac_cutoff, limit=AC_CAP)
     delete_ac(acs_to_delete)
-    reconcile_ac(acs_to_delete)  # 只删 by_ac；by_cas 下次重建自动消失
+    ac_removed = reconcile_ac(acs_to_delete)  # deleted + confirmed missing AC
 
-    # 短增量 catch-up + 保鲜（缩小竞态窗口）
-    snapshot_time_2 = NOW()
-    run_incremental_sync(until=snapshot_time_2)
-    assert all_shards_indexed_through >= snapshot_time_2
-    run_stale_reconciliation()
+    # 基于初始 by_cas snapshot 逻辑扣减本轮移除的 AC，避免第二次 by_cas rebuild
+    zero_ref_snapshot = recompute_zero_ref_after_ac_removal(cold_cas, ac_removed)
 
-    # 第二次重建 by_cas 快照 —— AC 删除后的最新状态
-    rebuild_by_cas_from_by_ac()
-
-    # 重新计算 zero-ref（基于最新的 by_cas）
-    cas_to_delete = recompute_zero_ref(cold_cas, snapshot_time_2)
+    # Phase 4: post-delete catch-up + live by_ac recheck
+    post_delete_recheck_time = NOW()
+    run_incremental_sync(until=post_delete_recheck_time)
+    assert all_shards_indexed_through >= post_delete_recheck_time
+    cas_to_delete = exclude_cas_with_any_live_by_ac_ref(zero_ref_snapshot)
 
     # CAS delete phase（受 CAS cap 限制）
     delete_cas(cas_to_delete)
@@ -453,18 +461,42 @@ LIMIT @ac_object_cap;  -- AC cap
 -- → 执行 AC 删除 + reconcile（只删 by_ac）
 ```
 
-### 查询 B：最终 zero-ref CAS 判断（第二次 by_cas 重建后执行）
+### 查询 B：zero-ref snapshot 判断（AC 删除后，基于本轮移除集逻辑扣减）
 
 ```sql
--- AC 删除后重建 by_cas，deleted AC refs 已自然消失，不需要 ac_to_delete 来扣除。
--- 这是故意设计：少一个状态变量，少一个错法。
-CREATE TEMP TABLE cas_to_delete AS
+-- 不做第二次 by_cas 重建。用本轮成功删除或确认 missing 的 AC 集合扣减
+-- cleanup snapshot 中的 refs。
+CREATE TEMP TABLE zero_ref_snapshot AS
 SELECT cold_cas.object_name, cold_cas.last_seen_at
 FROM cold_cas
 LEFT JOIN gcs_cache_ac_cas_refs_by_cas AS refs
   ON refs.cas_object_name = cold_cas.object_name
+LEFT JOIN ac_removed
+  ON ac_removed.object_name = refs.ac_object_name
 GROUP BY cold_cas.object_name, cold_cas.last_seen_at
-HAVING COUNT(refs.ac_object_name) = 0;
+HAVING COUNTIF(
+  refs.ac_object_name IS NOT NULL
+  AND ac_removed.object_name IS NULL
+) = 0;
+```
+
+### 查询 C：live `by_ac` 新引用 recheck（CAS manifest export 前执行）
+
+```sql
+-- AC 删除成功后，先再跑一次 incremental sync，把 by_ac 推进到当前时间点。
+-- 然后只检查本轮 zero-ref snapshot 候选是否仍有 live by_ac ref。
+CREATE TEMP TABLE blocked_by_live_ac_ref AS
+SELECT DISTINCT cas.object_name
+FROM zero_ref_snapshot AS cas
+JOIN gcs_cache_ac_cas_refs_by_ac AS refs
+  ON refs.cas_object_name = cas.object_name;
+
+CREATE TEMP TABLE cas_to_delete AS
+SELECT source.object_name, source.last_seen_at
+FROM zero_ref_snapshot AS source
+LEFT JOIN blocked_by_live_ac_ref AS blocked
+  ON blocked.object_name = source.object_name
+WHERE blocked.object_name IS NULL;
 ```
 
 所有中间结果保留为 row-level，不做 ARRAY_AGG。
@@ -558,19 +590,24 @@ WHERE cas.object_kind = 'cas'
                    │                        │
                    ▼                        │
           ┌─────────────────┐               │
-          │ 第二次短增量       │               │
-          │ catch-up + 保鲜   │               │
-          └────────┬────────┘               │
-                   │                        │
-                   ▼                        │
-          ┌─────────────────┐               │
-          │ ★ 重建 by_cas（第 2 次）         │
-          │ EXPORT by_ac → IMPORT by_cas    │
+          │ ac_removed 逻辑扣减              │
+          │ snapshot by_cas refs             │
           └────────┬────────┘               │
                    │                        │
                    ▼                        ▼
           ┌─────────────────────────────────┐
-          │ CAS 引用计数 = 0                 │
+          │ zero-ref snapshot               │
+          └───────────────┬─────────────────┘
+                          │
+                          ▼
+          ┌─────────────────────────────────┐
+          │ post catch-up + live by_ac       │
+          │ ref blocklist                    │
+          └───────────────┬─────────────────┘
+                          │
+                          ▼
+          ┌─────────────────────────────────┐
+          │ 最终 CAS delete candidates       │
           │ + live metadata (generation,     │
           │   size_bytes) check             │
           │ + audit recheck                 │
@@ -670,6 +707,10 @@ cas_live_metadata:
 - `planned_cas_delete_bytes`：本 run 计划删除的 bytes
 - `deleted_cas_bytes`：实际删除的 bytes
 
+**Dry-run 语义**：dry-run 不执行 post-delete catch-up，也不做 live `by_ac`
+recheck，因此 CAS delete candidate count 是执行前基于 snapshot 的上界估算。真实
+delete 可能因为 post-delete live ref blocklist 再排除一部分 CAS。
+
 ## Implementation Plan
 
 ### Step 0: AC Source 完整性验证
@@ -709,25 +750,25 @@ cas_live_metadata:
 - [ ] NotFound → reconcile（DELETE from by_ac + last_seen_current；by_cas 下次重建时自动消失）
 - [ ] 保鲜完成后才进入 CAS 反查
 
-### Step 5: Cleanup 前置增量 catch-up + by_cas 重建 + 双 snapshot 机制
+### Step 5: Cleanup 前置增量 catch-up + by_cas 重建 + 单 snapshot 机制
 
 - [ ] 实现固定 `cleanup_snapshot_time`（一次性取值）
 - [ ] Cleanup 入口：先增量 catch-up 覆盖到 snapshot_time
 - [ ] 验证 gate：所有 shard `indexed_through >= snapshot_time`
 - [ ] 再跑索引保鲜（Step 4）
-- [ ] **第一次 by_cas 重建**：EXPORT by_ac → IMPORT 重建 by_cas
-- [ ] bounded cold_cas 选择（受 CAS cap 约束，控制 AC 删除半径）
+- [ ] **by_cas 重建**：EXPORT by_ac → IMPORT 重建 by_cas
+- [ ] orphan-first bounded cold_cas 选择（受 CAS cap 约束，控制 AC 删除半径）
 - [ ] AC 删除
-- [ ] 第二次短增量 catch-up + 保鲜
-- [ ] **第二次 by_cas 重建**
-- [ ] 重新计算 zero-ref
+- [ ] 用 `ac_removed` 逻辑扣减 snapshot refs 后重新计算 zero-ref snapshot
+- [ ] CAS manifest export 前再跑 incremental catch-up，并用 live `by_ac` 排除仍有引用的 CAS
 
 ### Step 6: 实现 CAS 反推 AC 清理
 
 - [ ] 新增 `execute_kind: cas-from-index`
-- [ ] 实现两阶段 CAS 选择（初筛 object count → metadata HEAD → bytes cap 二次筛选）
+- [ ] 实现 orphan-first 两阶段 CAS 选择（初筛 object count → metadata HEAD → bytes cap 二次筛选）
 - [ ] 实现 AC 删除规划 query（查询 A）+ AC cap 截断
-- [ ] AC 删除后第二次 by_cas 重建 + 简单 zero-ref 查询（查询 B，LEFT JOIN + HAVING COUNT = 0）
+- [ ] AC 删除后基于 `ac_removed` 做逻辑 zero-ref 查询（查询 B，LEFT JOIN + COUNTIF）
+- [ ] post catch-up 后基于 live `by_ac` 做新引用 blocklist（查询 C）
 - [ ] 实现新 manifest export 和 delete 流程
 - [ ] Dry-run 输出完整中间结果（含 bytes、AC 候选数）
 
@@ -782,7 +823,7 @@ COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS=10000000
 
 - **Shared CAS**：全量索引 → 精确知道每个 CAS 的 AC 引用
 - **Parse error 容忍**：fail-closed，shard 不 ready 则 cleanup 不可用
-- **Index staleness 时间窗口**：cleanup 强制前置增量 catch-up + 双 snapshot
+- **Index staleness 时间窗口**：cleanup 强制前置增量 catch-up + 单 snapshot
 - **O(n²) stage table**：改为全 shard 收集后一次性 replace
 - **CLUSTER 方向与写入冲突**：by_ac 持续维护，by_cas 只做全量快照重建，不增量维护
 - **ARRAY_AGG row size**：改为 row-level 输出
@@ -796,9 +837,15 @@ COST_INSIGHT_GCS_CACHE_CLEANUP_MAX_DELETE_OBJECTS=10000000
 2. **Missing AC 引用永久丢失**：
    - 缓解：从 last_seen_current + both refs tables reconcile；CAS 受年龄窗口保护
 
-3. **Cleanup 执行期间的竞态**（第二次 catch-up 后到 CAS manifest export 之间）：
-   - 缓解：双 snapshot 机制把窗口缩到分钟级；CAS cap 作为最后防线
-   - 无法完全线性化（除非暂停 GCS 写入，不现实）
+3. **Cleanup 执行期间的新 AC 引用竞态**：
+   - 风险：snapshot 时 orphan 或 zero-ref 的 CAS，可能在 cleanup 运行期间被新 AC 第一次引用
+   - 缓解：AC 删除后、CAS manifest export 前再次 incremental catch-up，并用 live `by_ac` blocklist 排除仍有引用的 CAS
+   - 剩余窗口：post catch-up 完成后到 CAS batch delete 生效前；CAS cap / AC cap 只限制影响半径，不提供逻辑保护
 
 4. **首次零引用 CAS 规模未知**：
    - 缓解：dry-run 先评估规模；双重 cap (object + bytes) 限制
+
+5. **并发 cleanup 运行覆盖 persistent `by_cas` snapshot**：
+   - 风险：`by_cas` 是持久表，每次 delete 入口会 rebuild；两个 cleanup run 并发时，后一个 run 可能覆盖前一个 run 仍在使用的 snapshot
+   - 当前部署：`cost-insight-cleanup-gcs-cache-delete-cas` CronJob 使用 `concurrencyPolicy: Forbid`，按单实例运行
+   - 后续：如果引入手动并发或多个调度入口，需要增加 lease/lock，或改为每 run 独立 snapshot 表

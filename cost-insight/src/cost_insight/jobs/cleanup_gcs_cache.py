@@ -132,6 +132,7 @@ def run_cleanup_gcs_cache(
     cas_retention_days: int | None = None,
     safety_buffer_days: int | None = None,
     max_delete_objects: int | None = None,
+    max_delete_ac_objects: int | None = None,
     max_delete_cas_objects: int | None = None,
     sample_limit: int | None = None,
     execute: QueryExecutor = execute_query,
@@ -175,6 +176,11 @@ def run_cleanup_gcs_cache(
         if max_delete_cas_objects is not None
         else settings.cleanup_max_delete_cas_objects
     )
+    resolved_max_delete_ac_objects = (
+        max_delete_ac_objects
+        if max_delete_ac_objects is not None
+        else settings.cleanup_max_delete_ac_objects
+    )
     ac_cutoff_days = resolved_ac_days + resolved_safety_buffer_days
     cas_cutoff_days = resolved_cas_days + resolved_safety_buffer_days
 
@@ -196,12 +202,16 @@ def run_cleanup_gcs_cache(
             ac_reference_shard_count=settings.ac_reference_shard_count,
             ac_reference_batch_size=settings.ac_reference_batch_size,
             ac_reference_download_workers=settings.ac_reference_download_workers,
+            ac_reference_http_pool_maxsize=settings.ac_reference_http_pool_maxsize,
+            ac_reference_catch_up_workers=settings.ac_reference_catch_up_workers,
+            ac_reference_catch_up_max_workers=settings.ac_reference_catch_up_max_workers,
             ac_reference_max_index_staleness_hours=settings.ac_reference_max_index_staleness_hours,
             ac_retention_days=resolved_ac_days,
             cas_retention_days=resolved_cas_days,
             cleanup_safety_buffer_days=resolved_safety_buffer_days,
             cleanup_sample_limit=resolved_sample_limit,
             cleanup_max_delete_objects=resolved_max_delete_objects,
+            cleanup_max_delete_ac_objects=resolved_max_delete_ac_objects,
             cleanup_max_delete_cas_objects=(
                 resolved_max_delete_objects
                 if max_delete_objects is not None
@@ -1081,6 +1091,7 @@ def build_ac_reverse_lookup_query(
     snapshot_time: str,
     ac_cutoff_days: int,
     by_cas_table_override: str | None = None,
+    limit: int | None = None,
 ) -> str:
     """Find cold ACs that reference the bounded cold CAS set."""
     by_cas_table = by_cas_table_override or _table_ref(
@@ -1089,6 +1100,7 @@ def build_ac_reverse_lookup_query(
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
     )
+    limit_clause = "" if limit is None else f"\nLIMIT {limit}"
     return f"""
 SELECT DISTINCT
   refs.ac_object_name AS object_name,
@@ -1101,6 +1113,7 @@ JOIN {current_table} AS cur
  AND cur.object_kind = 'ac'
  AND cur.last_seen_at < TIMESTAMP_SUB(TIMESTAMP('{snapshot_time}'), INTERVAL {ac_cutoff_days} DAY)
 ORDER BY cur.last_seen_at ASC
+{limit_clause}
 """.strip()
 
 
@@ -1143,7 +1156,7 @@ def build_zero_ref_cas_query(
     cold_cas_table: str,
     by_cas_table_override: str | None = None,
 ) -> str:
-    """After AC deletion and by_cas rebuild: find CAS with zero remaining references."""
+    """Find CAS with zero refs in an already-current by_cas table."""
     by_cas_table = by_cas_table_override or _table_ref(
         settings.project_id, settings.dataset, settings.ac_cas_refs_by_cas_table
     )
@@ -1154,6 +1167,67 @@ LEFT JOIN {by_cas_table} AS refs
   ON refs.cas_object_name = cas.object_name
 GROUP BY cas.object_name, cas.last_seen_at
 HAVING COUNT(refs.ac_object_name) = 0
+""".strip()
+
+
+def build_zero_ref_cas_after_ac_removal_query(
+    settings: GcsCacheSettings,
+    *,
+    cold_cas_table: str,
+    removed_ac_table: str,
+    by_cas_table_override: str | None = None,
+) -> str:
+    """Find CAS whose remaining refs are zero after this run's AC removals."""
+    by_cas_table = by_cas_table_override or _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_cas_table
+    )
+    return f"""
+SELECT cas.object_name, cas.last_seen_at
+FROM {cold_cas_table} AS cas
+LEFT JOIN {by_cas_table} AS refs
+  ON refs.cas_object_name = cas.object_name
+LEFT JOIN {removed_ac_table} AS removed_ac
+  ON removed_ac.object_name = refs.ac_object_name
+GROUP BY cas.object_name, cas.last_seen_at
+HAVING COUNTIF(
+  refs.ac_object_name IS NOT NULL
+  AND removed_ac.object_name IS NULL
+) = 0
+""".strip()
+
+
+def build_live_ac_ref_cas_blocklist_query(
+    settings: GcsCacheSettings,
+    *,
+    candidate_table: str,
+) -> str:
+    """Find candidate CAS that still have any live by_ac reference.
+
+    This intentionally scans by_ac by cas_object_name, which is not the cluster
+    prefix. It is a safety recheck, not a cheap point lookup.
+    """
+    by_ac_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_cas_refs_by_ac_table
+    )
+    return f"""
+SELECT DISTINCT cas.object_name
+FROM {candidate_table} AS cas
+JOIN {by_ac_table} AS refs
+  ON refs.cas_object_name = cas.object_name
+""".strip()
+
+
+def build_final_zero_ref_after_live_recheck_query(
+    *,
+    zero_ref_snapshot_table: str,
+    live_ref_blocked_cas_table: str,
+) -> str:
+    return f"""
+SELECT source.object_name, source.last_seen_at
+FROM {zero_ref_snapshot_table} AS source
+LEFT JOIN {live_ref_blocked_cas_table} AS blocked
+  ON blocked.object_name = source.object_name
+WHERE blocked.object_name IS NULL
 """.strip()
 
 
@@ -1215,6 +1289,7 @@ class CleanupGcsCacheAcDeleteResult:
     selected_ac_count: int
     manifest_uri: str
     batch_job_name: str
+    removed_ac_table: str
 
 
 def run_cleanup_gcs_cache_from_index(
@@ -1234,6 +1309,10 @@ def run_cleanup_gcs_cache_from_index(
 
     This is the cas-from-index execution path. It requires a complete
     by_ac index (all 256 shard indexed_through IS NOT NULL).
+    Delete mode catches up the index at the start, builds one by_cas snapshot,
+    and later catches up by_ac again before CAS deletion. The final live by_ac
+    recheck restores detection of ACs created during the run without doing a
+    second full by_cas rebuild.
     """
     stream_rows = _stream_query_rows if stream_rows is None else stream_rows
     load_jsonl_file = _load_jsonl_file if load_jsonl_file is None else load_jsonl_file
@@ -1270,22 +1349,18 @@ def run_cleanup_gcs_cache_from_index(
 
     # ---- Gate 2: freshness (catch-up must have reached snapshot_time) ----
     # Now verify all watermarks are within staleness of the cleanup snapshot.
-    if settings.cleanup_require_fresh_index:
-        staleness_hours = settings.ac_reference_max_index_staleness_hours
-        result = execute(
-            f"""SELECT COUNTIF(indexed_through >= TIMESTAMP_SUB(TIMESTAMP('{snapshot_time}'), INTERVAL {staleness_hours} HOUR)) AS fresh_shards
-FROM {state_table}""",
-            parameters=[],
+    # Delete mode should be exact after the preceding catch-up; the staleness
+    # allowance mainly keeps dry-run read-only while still rejecting old indexes.
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total,
+        _require_fresh_ac_reference_index(
+            settings=settings,
+            execute=execute,
+            target_time=run_started_at,
+            target_label="cleanup snapshot",
+            max_staleness_hours=settings.ac_reference_max_index_staleness_hours,
         )
-        fresh = int(result.rows[0].get("fresh_shards", 0) or 0) if result.rows else 0
-        if fresh < settings.ac_reference_shard_count:
-            raise RuntimeError(
-                f"AC reference index is stale after catch-up: only {fresh}/{settings.ac_reference_shard_count} "
-                f"shards have indexed_through within {staleness_hours}h of cleanup snapshot "
-                f"({snapshot_time}). Check incremental sync logs, increase max_staleness_hours, "
-                "or set COST_INSIGHT_GCS_CACHE_CLEANUP_REQUIRE_FRESH_INDEX=false to bypass."
-            )
-        bytes_processed_total = _add_bytes(bytes_processed_total, result.total_bytes_processed)
+    )
     cas_cutoff_days = settings.cas_retention_days + settings.cleanup_safety_buffer_days
     ac_cutoff_days = settings.ac_retention_days + settings.cleanup_safety_buffer_days
 
@@ -1404,27 +1479,45 @@ AS
     cas_live_table = _tmp_table_ref(settings, "cas_live_metadata", run_id=run_id)
     cold_cas_table = _tmp_table_ref(settings, "cold_cas", run_id=run_id)
 
-    # ponytail: apply caps in SQL with rolling sum; accept that window function
-    # over the preselected set is enough, per-design preselect window trade-off.
+    # Prefer orphan CAS first. The linked-CAS cascade path remains available
+    # once the orphan backlog stops filling the configured CAS budget.
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         execute(
             f"""CREATE OR REPLACE TABLE {cold_cas_table}
 OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 AS
-WITH ranked AS (
+WITH annotated AS (
   SELECT
     live.object_name,
     preselect.last_seen_at,
     live.size_bytes,
     live.generation,
-    SUM(live.size_bytes) OVER (ORDER BY live.size_bytes DESC, preselect.last_seen_at ASC) AS running_bytes,
-    ROW_NUMBER() OVER (ORDER BY live.size_bytes DESC, preselect.last_seen_at ASC) AS rn
+    NOT EXISTS (
+      SELECT 1
+      FROM {by_cas_table} AS refs
+      WHERE refs.cas_object_name = live.object_name
+    ) AS is_orphan
   FROM {cas_preselect_table} AS preselect
   JOIN {cas_live_table} AS live
     USING (object_name)
+),
+ranked AS (
+  SELECT
+    object_name,
+    last_seen_at,
+    size_bytes,
+    generation,
+    is_orphan,
+    SUM(size_bytes) OVER (
+      ORDER BY is_orphan DESC, size_bytes DESC, last_seen_at ASC
+    ) AS running_bytes,
+    ROW_NUMBER() OVER (
+      ORDER BY is_orphan DESC, size_bytes DESC, last_seen_at ASC
+    ) AS rn
+  FROM annotated
 )
-SELECT object_name, last_seen_at, size_bytes, generation
+SELECT object_name, last_seen_at, size_bytes, generation, is_orphan
 FROM ranked
 WHERE rn <= {settings.cleanup_max_delete_cas_objects}
   AND running_bytes <= {settings.cleanup_max_delete_cas_bytes}
@@ -1436,16 +1529,46 @@ WHERE rn <= {settings.cleanup_max_delete_cas_objects}
     cold_cas_count = _count_table_rows(execute=execute, table_ref=cold_cas_table)
     bytes_processed_total = _add_bytes(bytes_processed_total, cold_cas_count.bytes_processed)
 
-    ready_cas_table = _tmp_table_ref(settings, "ready_cas", run_id=run_id)
+    orphan_cas_table = _tmp_table_ref(settings, "orphan_cas", run_id=run_id)
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         execute(
-            f"""CREATE OR REPLACE TABLE {ready_cas_table}
+            f"""CREATE OR REPLACE TABLE {orphan_cas_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
+AS
+SELECT object_name, last_seen_at, size_bytes, generation
+FROM {cold_cas_table}
+WHERE is_orphan""",
+            parameters=[],
+        ).total_bytes_processed,
+    )
+    orphan_cas_count = _count_table_rows(execute=execute, table_ref=orphan_cas_table)
+    bytes_processed_total = _add_bytes(bytes_processed_total, orphan_cas_count.bytes_processed)
+
+    linked_cas_table = _tmp_table_ref(settings, "linked_cas", run_id=run_id)
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total,
+        execute(
+            f"""CREATE OR REPLACE TABLE {linked_cas_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
+AS
+SELECT object_name, last_seen_at, size_bytes, generation
+FROM {cold_cas_table}
+WHERE NOT is_orphan""",
+            parameters=[],
+        ).total_bytes_processed,
+    )
+
+    ready_linked_cas_table = _tmp_table_ref(settings, "ready_linked_cas", run_id=run_id)
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total,
+        execute(
+            f"""CREATE OR REPLACE TABLE {ready_linked_cas_table}
 OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 AS
 {build_cas_ready_for_cascade_query(
     settings,
-    cold_cas_table=cold_cas_table,
+    cold_cas_table=linked_cas_table,
     snapshot_time=snapshot_time,
     ac_cutoff_days=ac_cutoff_days,
     by_cas_table_override=by_cas_table,
@@ -1453,28 +1576,42 @@ AS
             parameters=[],
         ).total_bytes_processed,
     )
-    ready_cas_count = _count_table_rows(execute=execute, table_ref=ready_cas_table)
-    bytes_processed_total = _add_bytes(bytes_processed_total, ready_cas_count.bytes_processed)
+    ready_linked_cas_count = _count_table_rows(
+        execute=execute, table_ref=ready_linked_cas_table
+    )
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total, ready_linked_cas_count.bytes_processed
+    )
+    candidate_cas_delete_count = (
+        orphan_cas_count.object_count + ready_linked_cas_count.object_count
+    )
 
     # ---- AC reverse lookup + deletion (dry-run: compute only) ----
     if mode == "dry-run":
-        ac_candidate_table = _tmp_table_ref(settings, "ac_to_delete", run_id=run_id)
-        execute(
-            f"""CREATE OR REPLACE TABLE {ac_candidate_table}
+        candidate_ac_count = 0
+        if ready_linked_cas_count.object_count > 0:
+            ac_candidate_table = _tmp_table_ref(settings, "ac_to_delete", run_id=run_id)
+            execute(
+                f"""CREATE OR REPLACE TABLE {ac_candidate_table}
 OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 AS
 {build_ac_reverse_lookup_query(
     settings,
-    cold_cas_table=ready_cas_table,
+    cold_cas_table=ready_linked_cas_table,
     snapshot_time=snapshot_time,
     ac_cutoff_days=ac_cutoff_days,
     by_cas_table_override=by_cas_table,
+    limit=settings.cleanup_max_delete_ac_objects,
 )}""",
-            parameters=[],
-        )
-        ac_candidate_count = _count_table_rows(execute=execute, table_ref=ac_candidate_table)
-        bytes_processed_total = _add_bytes(bytes_processed_total, ac_candidate_count.bytes_processed)
-        candidate_ac_count = ac_candidate_count.object_count
+                parameters=[],
+            )
+            ac_candidate_count = _count_table_rows(
+                execute=execute, table_ref=ac_candidate_table
+            )
+            bytes_processed_total = _add_bytes(
+                bytes_processed_total, ac_candidate_count.bytes_processed
+            )
+            candidate_ac_count = ac_candidate_count.object_count
 
         run_finished_at = now()
         return CleanupGcsCacheSummary(
@@ -1489,7 +1626,7 @@ AS
             safety_buffer_days=settings.cleanup_safety_buffer_days,
             candidate_cas_object_count=cold_cas_count.object_count,
             candidate_ac_object_count=candidate_ac_count,
-            candidate_cas_delete_object_count=ready_cas_count.object_count,
+            candidate_cas_delete_object_count=candidate_cas_delete_count,
             ac_parse_error_count=0,
             selected_ac_object_count=0,
             selected_cas_object_count=0,
@@ -1503,40 +1640,118 @@ AS
         )
 
     # ---- DELETE mode from here on ----
-    ac_delete_result = _delete_acs_referenced_by_cold_cas(
-        settings=settings,
-        execute=execute,
-        stream_rows=stream_rows,
-        resolve_object_metadata=resolve_object_metadata,
-        extract_references=None,
-        load_jsonl_file=load_jsonl_file,
-        create_batch_job=create_batch_job,
-        wait_for_batch_job=wait_for_batch_job,
-        cold_cas_table=ready_cas_table,
-        snapshot_time=snapshot_time,
-        ac_cutoff_days=ac_cutoff_days,
-        run_id=run_id,
-        run_started_at=run_started_at,
-    )
+    if ready_linked_cas_count.object_count > 0:
+        ac_delete_result = _delete_acs_referenced_by_cold_cas(
+            settings=settings,
+            execute=execute,
+            stream_rows=stream_rows,
+            resolve_object_metadata=resolve_object_metadata,
+            extract_references=None,
+            load_jsonl_file=load_jsonl_file,
+            create_batch_job=create_batch_job,
+            wait_for_batch_job=wait_for_batch_job,
+            cold_cas_table=ready_linked_cas_table,
+            by_cas_table=by_cas_table,
+            snapshot_time=snapshot_time,
+            ac_cutoff_days=ac_cutoff_days,
+            run_id=run_id,
+            run_started_at=run_started_at,
+        )
+    else:
+        ac_delete_result = CleanupGcsCacheAcDeleteResult(
+            candidate_ac_count=0,
+            selected_ac_count=0,
+            manifest_uri="",
+            batch_job_name="",
+            removed_ac_table="",
+        )
     bytes_processed_total = _add_bytes(bytes_processed_total, 0)
     selected_ac_count = ac_delete_result.selected_ac_count
 
-    # ---- Second incremental catch-up (design requirement) ----
-    # Catch up again after AC deletion to pick up any new ACs created during
-    # the delete phase, before we recompute zero-ref CAS.
-    snapshot_time_2 = now()
-    _run_catch_up_sync(settings=settings, until=snapshot_time_2, execute=execute)
+    # ---- Zero-ref CAS selection from the initial by_cas snapshot ----
+    zero_ref_snapshot_table = _tmp_table_ref(
+        settings, "cas_zero_ref_snapshot", run_id=run_id
+    )
+    if ready_linked_cas_count.object_count > 0:
+        linked_zero_ref_table = _tmp_table_ref(settings, "linked_cas_zero_ref", run_id=run_id)
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            execute(
+                f"""CREATE OR REPLACE TABLE {linked_zero_ref_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
+AS
+{build_zero_ref_cas_after_ac_removal_query(
+    settings,
+    cold_cas_table=ready_linked_cas_table,
+    removed_ac_table=ac_delete_result.removed_ac_table,
+    by_cas_table_override=by_cas_table,
+)}""",
+                parameters=[],
+            ).total_bytes_processed,
+        )
+        zero_ref_source_query = f"""
+SELECT object_name, last_seen_at
+FROM {orphan_cas_table}
+UNION DISTINCT
+SELECT object_name, last_seen_at
+FROM {linked_zero_ref_table}
+""".strip()
+    else:
+        zero_ref_source_query = f"""
+SELECT object_name, last_seen_at
+FROM {orphan_cas_table}
+""".strip()
 
-    # ---- Second by_cas rebuild (after AC deletion + catch-up) ----
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
         execute(
-            build_rebuild_by_cas_from_by_ac_query(settings),
+            f"""CREATE OR REPLACE TABLE {zero_ref_snapshot_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
+AS
+{zero_ref_source_query}""",
             parameters=[],
         ).total_bytes_processed,
     )
 
-    # ---- Final zero-ref CAS selection ----
+    # Catch AC refs created while this cleanup was running, then block any CAS
+    # that still has a live by_ac edge. This keeps the expensive by_cas rebuild
+    # single-snapshot while restoring the old flow's new-AC detection.
+    if candidate_cas_delete_count > 0:
+        post_delete_recheck_time = now()
+        _run_catch_up_sync(
+            settings=settings,
+            until=post_delete_recheck_time,
+            execute=execute,
+        )
+        bytes_processed_total = _add_bytes(
+            bytes_processed_total,
+            _require_fresh_ac_reference_index(
+                settings=settings,
+                execute=execute,
+                target_time=post_delete_recheck_time,
+                target_label="post-delete live by_ac recheck",
+                max_staleness_hours=0,
+            ),
+        )
+
+    live_ref_blocked_cas_table = _tmp_table_ref(
+        settings, "cas_blocked_by_live_ac_ref", run_id=run_id
+    )
+    bytes_processed_total = _add_bytes(
+        bytes_processed_total,
+        execute(
+            f"""CREATE OR REPLACE TABLE {live_ref_blocked_cas_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
+AS
+{build_live_ac_ref_cas_blocklist_query(
+    settings,
+    candidate_table=zero_ref_snapshot_table,
+)}""",
+            parameters=[],
+        ).total_bytes_processed,
+    )
+
+    # ---- Final zero-ref CAS after live by_ac recheck ----
     zero_ref_table = _tmp_table_ref(settings, "cas_zero_ref", run_id=run_id)
     bytes_processed_total = _add_bytes(
         bytes_processed_total,
@@ -1544,7 +1759,10 @@ AS
             f"""CREATE OR REPLACE TABLE {zero_ref_table}
 OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
 AS
-{build_zero_ref_cas_query(settings, cold_cas_table=ready_cas_table)}""",
+{build_final_zero_ref_after_live_recheck_query(
+    zero_ref_snapshot_table=zero_ref_snapshot_table,
+    live_ref_blocked_cas_table=live_ref_blocked_cas_table,
+)}""",
             parameters=[],
         ).total_bytes_processed,
     )
@@ -1747,12 +1965,23 @@ def _delete_acs_referenced_by_cold_cas(
     create_batch_job: BatchJobCreator,
     wait_for_batch_job: BatchJobWaiter,
     cold_cas_table: str,
+    by_cas_table: str,
     snapshot_time: str,
     ac_cutoff_days: int,
     run_id: str,
     run_started_at: datetime,
 ) -> CleanupGcsCacheAcDeleteResult:
     """Plan and execute AC deletion for ACs referenced by the bounded cold CAS set."""
+    ac_removed_table = _tmp_table_ref(settings, "ac_removed", run_id=run_id)
+    execute(
+        _create_table_query(
+            ac_removed_table,
+            columns=(("object_name", "STRING"),),
+            ttl_days=settings.cleanup_candidate_ttl_days,
+        ),
+        parameters=[],
+    ).total_bytes_processed
+
     ac_candidate_table = _tmp_table_ref(settings, "ac_to_delete", run_id=run_id)
     execute(
         f"""CREATE OR REPLACE TABLE {ac_candidate_table}
@@ -1763,6 +1992,8 @@ AS
     cold_cas_table=cold_cas_table,
     snapshot_time=snapshot_time,
     ac_cutoff_days=ac_cutoff_days,
+    by_cas_table_override=by_cas_table,
+    limit=settings.cleanup_max_delete_ac_objects,
 )}""",
         parameters=[],
     ).total_bytes_processed
@@ -1775,6 +2006,7 @@ AS
             selected_ac_count=0,
             manifest_uri="",
             batch_job_name="",
+            removed_ac_table=ac_removed_table,
         )
 
     # Resolve live AC metadata
@@ -1789,8 +2021,8 @@ AS
         batch_size=settings.cleanup_batch_size,
     )
 
-    # Reconcile missing ACs from last_seen_current and by_ac so ghost refs
-    # don't survive into the second by_cas rebuild.
+    # Reconcile missing ACs from last_seen_current and by_ac. The old by_cas
+    # snapshot is adjusted later through ac_removed_table.
     missing_ac_table = _tmp_table_ref(settings, "ac_missing_metadata", run_id=run_id)
     current_table = _table_ref(
         settings.project_id, settings.dataset, settings.last_seen_current_table
@@ -1831,12 +2063,25 @@ ORDER BY object_name ASC""",
 
     selected_ac_count = _count_table_rows(execute=execute, table_ref=ac_delete_table)
 
+    execute(
+        f"""CREATE OR REPLACE TABLE {ac_removed_table}
+OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL {settings.cleanup_candidate_ttl_days} DAY))
+AS
+SELECT object_name
+FROM {missing_ac_table}
+UNION DISTINCT
+SELECT object_name
+FROM {ac_delete_table}""",
+        parameters=[],
+    ).total_bytes_processed
+
     if selected_ac_count.object_count <= 0:
         return CleanupGcsCacheAcDeleteResult(
             candidate_ac_count=ac_candidate_count.object_count,
             selected_ac_count=0,
             manifest_uri="",
             batch_job_name="",
+            removed_ac_table=ac_removed_table,
         )
 
     # Export AC manifest + delete
@@ -1893,7 +2138,41 @@ WHERE ac_object_name IN (SELECT object_name FROM {ac_delete_table})""",
         selected_ac_count=selected_ac_count.object_count,
         manifest_uri=ac_manifest_uri,
         batch_job_name=ac_batch_job.job_name,
+        removed_ac_table=ac_removed_table,
     )
+
+
+def _require_fresh_ac_reference_index(
+    *,
+    settings: GcsCacheSettings,
+    execute: QueryExecutor,
+    target_time: datetime,
+    target_label: str,
+    max_staleness_hours: int,
+) -> int:
+    if not settings.cleanup_require_fresh_index:
+        return 0
+
+    target_time_text = target_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    state_table = _table_ref(
+        settings.project_id, settings.dataset, settings.ac_reference_index_state_table
+    )
+    result = execute(
+        f"""SELECT COUNTIF(indexed_through >= TIMESTAMP_SUB(TIMESTAMP('{target_time_text}'), INTERVAL {max_staleness_hours} HOUR)) AS fresh_shards
+FROM {state_table}""",
+        parameters=[],
+    )
+    fresh = int(result.rows[0].get("fresh_shards", 0) or 0) if result.rows else 0
+    if fresh < settings.ac_reference_shard_count:
+        raise RuntimeError(
+            f"AC reference index is stale after catch-up: only "
+            f"{fresh}/{settings.ac_reference_shard_count} shards have indexed_through "
+            f"within {max_staleness_hours}h of {target_label} ({target_time_text}). "
+            "Check incremental sync logs, increase max_staleness_hours if this is an "
+            "initial cleanup snapshot gate, or set "
+            "COST_INSIGHT_GCS_CACHE_CLEANUP_REQUIRE_FRESH_INDEX=false to bypass."
+        )
+    return result.total_bytes_processed
 
 
 def _run_catch_up_sync(

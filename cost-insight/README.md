@@ -198,12 +198,16 @@ Validate the query shape without writing BigQuery summary tables:
 cost-insight sync-gcs-cache-last-seen --run-date 2026-06-08 --dry-run
 ```
 
-Build a daily steady-state dry-run candidate report from the current last-seen
-table:
+Build an index-based dry-run candidate report from the current last-seen table:
 
 ```bash
-cost-insight cleanup-gcs-cache --mode dry-run
+cost-insight cleanup-gcs-cache --mode dry-run --execute-kind cas-from-index
 ```
+
+The dry-run report does not run the post-delete catch-up or live `by_ac`
+recheck used by delete mode, so the CAS delete candidate count is an upper
+bound. A real delete may block additional CAS if newly indexed AC refs appear
+before the manifest is exported.
 
 Override retention windows during validation:
 
@@ -218,14 +222,21 @@ cost-insight cleanup-gcs-cache \
 Run a real-delete steady-state canary with `500 ac + 500 cas`:
 
 ```bash
-cost-insight cleanup-gcs-cache --mode delete --execute-kind mixed-canary
+cost-insight cleanup-gcs-cache \
+  --mode delete \
+  --execute-kind cas-from-index \
+  --max-delete-objects 500
 ```
 
-Run a real-delete `ac` cleanup wave with an explicit hard cap:
+Run a real-delete CAS cleanup wave with an explicit hard cap. The job performs
+one full `by_cas` rebuild, prefers orphan CAS, only expands linked ACs when the
+orphan backlog no longer fills the CAS budget, and rechecks live `by_ac`
+references before exporting the CAS delete manifest:
 
 ```bash
 cost-insight cleanup-gcs-cache \
   --mode delete \
-  --execute-kind ac \
-  --max-delete-objects 10000000
+  --execute-kind cas-from-index \
+  --max-delete-objects 10000000 \
+  --max-delete-ac-objects 100000
 ```

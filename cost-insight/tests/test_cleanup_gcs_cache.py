@@ -1,5 +1,6 @@
 import json
 import re
+import sqlite3
 from datetime import UTC, datetime
 from threading import Event, Lock
 
@@ -26,7 +27,10 @@ from cost_insight.jobs.cleanup_gcs_cache import (
     build_cleanup_gcs_cache_run_references_table_query,
     build_cleanup_gcs_cache_summary_query,
     build_cas_ready_for_cascade_query,
+    build_final_zero_ref_after_live_recheck_query,
+    build_live_ac_ref_cas_blocklist_query,
     build_stale_ac_candidates_query,
+    build_zero_ref_cas_after_ac_removal_query,
     run_cleanup_gcs_cache,
 )
 
@@ -322,9 +326,84 @@ def test_ac_reverse_lookup_query_outputs_object_name_for_metadata_stage() -> Non
         cold_cas_table="`project.dataset.ready_cas`",
         snapshot_time="2026-07-03 10:00:00 UTC",
         ac_cutoff_days=11,
+        limit=100000,
     )
 
     assert "refs.ac_object_name AS object_name" in query
+    assert "LIMIT 100000" in query
+
+
+def test_zero_ref_cas_after_ac_removal_ignores_removed_ac_refs() -> None:
+    query = build_zero_ref_cas_after_ac_removal_query(
+        GcsCacheSettings(project_id="pingcap-testing-account"),
+        cold_cas_table="`project.dataset.ready_cas`",
+        removed_ac_table="`project.dataset.ac_removed`",
+    )
+
+    assert "LEFT JOIN `project.dataset.ac_removed` AS removed_ac" in query
+    assert "removed_ac.object_name = refs.ac_object_name" in query
+    assert "COUNTIF(" in query
+    assert "removed_ac.object_name IS NULL" in query
+
+
+def test_live_ac_ref_blocklist_uses_current_by_ac_refs() -> None:
+    query = build_live_ac_ref_cas_blocklist_query(
+        GcsCacheSettings(project_id="pingcap-testing-account"),
+        candidate_table="`project.dataset.cas_zero_ref_snapshot`",
+    )
+
+    assert "FROM `project.dataset.cas_zero_ref_snapshot` AS cas" in query
+    assert "gcs_cache_ac_cas_refs_by_ac" in query
+    assert "refs.cas_object_name = cas.object_name" in query
+    assert "removed_ac" not in query
+
+
+def test_live_ac_ref_recheck_blocks_only_candidates_with_live_refs() -> None:
+    settings = GcsCacheSettings(project_id="pingcap-testing-account")
+    snapshot_table = "`project.dataset.cas_zero_ref_snapshot`"
+    blocked_table = "`project.dataset.cas_blocked_by_live_ac_ref`"
+    by_ac_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_refs_by_ac`"
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.execute(f"CREATE TABLE {snapshot_table} (object_name TEXT, last_seen_at TEXT)")
+    conn.execute(
+        f"CREATE TABLE {by_ac_table} ("
+        "shard INTEGER, ac_object_name TEXT, cas_object_name TEXT)"
+    )
+    conn.executemany(
+        f"INSERT INTO {snapshot_table} VALUES (?, ?)",
+        (
+            ("cas/blocked", "2026-07-03 00:00:00 UTC"),
+            ("cas/free", "2026-07-03 00:00:00 UTC"),
+        ),
+    )
+    conn.executemany(
+        f"INSERT INTO {by_ac_table} VALUES (?, ?, ?)",
+        (
+            (1, "ac/new-1", "cas/blocked"),
+            (1, "ac/new-1", "cas/blocked"),
+            (2, "ac/other", "cas/not-a-candidate"),
+        ),
+    )
+
+    conn.execute(
+        f"CREATE TABLE {blocked_table} AS "
+        + build_live_ac_ref_cas_blocklist_query(
+            settings,
+            candidate_table=snapshot_table,
+        )
+    )
+    blocked_rows = conn.execute(f"SELECT object_name FROM {blocked_table}").fetchall()
+    assert blocked_rows == [("cas/blocked",)]
+
+    final_rows = conn.execute(
+        build_final_zero_ref_after_live_recheck_query(
+            zero_ref_snapshot_table=snapshot_table,
+            live_ref_blocked_cas_table=blocked_table,
+        )
+    ).fetchall()
+    assert final_rows == [("cas/free", "2026-07-03 00:00:00 UTC")]
 
 
 def test_cleanup_gcs_cache_manifest_export_query_uses_generation() -> None:
@@ -1413,16 +1492,16 @@ def test_run_cleanup_gcs_cache_from_index_dry_run_returns_summary_with_candidate
 
 
 def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatch) -> None:
-    """cas-from-index delete: AC delete → second catch-up → by_cas rebuild → CAS delete."""
+    """cas-from-index delete: AC delete → post catch-up → live-ref recheck → CAS delete."""
     from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
 
-    # Mock catch-up sync
-    monkeypatch.setattr(
-        cleanup_gcs_cache,
-        "run_sync_gcs_cache_ac_references",
-        lambda **kwargs: sync_gcs_cache_ac_references.SyncGcsCacheAcReferencesSummary(
+    sync_calls: list[dict[str, object]] = []
+
+    def fake_sync(**kwargs):
+        sync_calls.append(kwargs)
+        return sync_gcs_cache_ac_references.SyncGcsCacheAcReferencesSummary(
             account_id="test", bucket_name="test", mode="incremental",
-            shard_start=0, shard_end=255, source_object_count=0,
+            shard_start=kwargs["shard_start"], shard_end=kwargs["shard_end"], source_object_count=0,
             missing_object_count=0, parse_error_count=0,
             replaced_ac_object_count=0, reference_row_count=0,
             sample_parse_errors=(), dry_run=False,
@@ -1430,11 +1509,28 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
             bytes_processed=0,
             run_started_at=datetime(2026, 7, 1, 9, 59, tzinfo=UTC),
             run_finished_at=datetime(2026, 7, 1, 9, 59, tzinfo=UTC),
-        ),
+        )
+
+    monkeypatch.setattr(
+        cleanup_gcs_cache,
+        "run_sync_gcs_cache_ac_references",
+        fake_sync,
     )
 
     captured_queries = []
     step_order: list[str] = []
+    persistent_by_cas_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs.gcs_cache_ac_cas_refs_by_cas`"
+    )
+    zero_ref_snapshot_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cas_zero_ref_snapshot_test-delete-run`"
+    )
+    live_ref_blocklist_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cas_blocked_by_live_ac_ref_test-delete-run`"
+    )
+    final_zero_ref_table = (
+        "`pingcap-testing-account.ci_bazel_cache_logs._tmp_cas_zero_ref_test-delete-run`"
+    )
 
     def fake_execute(query, parameters):
         captured_queries.append(query)
@@ -1446,12 +1542,16 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
             return BigQueryQueryResult(rows=({"object_count": 3},), total_bytes_processed=1)
         # Track operation order
         if "CREATE OR REPLACE TABLE" in query:
-            if "by_cas" in query and "by_cas_dryrun" not in query:
+            if f"CREATE OR REPLACE TABLE {live_ref_blocklist_table}" in query:
+                step_order.append("live_ref_recheck")
+            elif f"CREATE OR REPLACE TABLE {zero_ref_snapshot_table}" in query:
+                step_order.append("zero_ref_snapshot")
+            elif f"CREATE OR REPLACE TABLE {final_zero_ref_table}" in query:
+                step_order.append("zero_ref_cas")
+            elif f"CREATE OR REPLACE TABLE {persistent_by_cas_table}" in query:
                 step_order.append("rebuild_by_cas")
             elif "ac_to_delete" in query:
                 step_order.append("ac_reverse_lookup")
-            elif "cas_zero_ref" in query:
-                step_order.append("zero_ref_cas")
             elif "delete_ac" in query:
                 step_order.append("ac_delete_manifest")
             elif "delete_cas" in query:
@@ -1505,7 +1605,10 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
 
     now = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
     summary = run_cleanup_gcs_cache(
-        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_shard_count=4,
+        ),
         mode="delete",
         execute_kind="cas-from-index",
         execute=fake_execute,
@@ -1522,13 +1625,122 @@ def test_run_cleanup_gcs_cache_from_index_delete_cascades_ac_then_cas(monkeypatc
     assert summary.dry_run is False
     assert summary.selected_ac_object_count > 0
     assert summary.selected_cas_object_count > 0
+    assert sorted(call["shard_start"] for call in sync_calls) == [0, 0, 1, 1, 2, 2, 3, 3]
     # Verify operation order: AC before CAS
     assert step_order.index("ac_manifest_export") < step_order.index("cas_manifest_export")
-    # Second by_cas rebuild before zero-ref
+    # Single by_cas rebuild before zero-ref; live by_ac catches refs created during cleanup.
     rebuild_positions = [i for i, s in enumerate(step_order) if s == "rebuild_by_cas"]
+    zero_ref_snapshot_pos = step_order.index("zero_ref_snapshot")
+    live_ref_recheck_pos = step_order.index("live_ref_recheck")
     zero_ref_pos = step_order.index("zero_ref_cas")
-    assert len(rebuild_positions) >= 2
-    assert rebuild_positions[-1] < zero_ref_pos
+    assert len(rebuild_positions) == 1
+    assert rebuild_positions[0] < zero_ref_snapshot_pos
+    assert step_order.index("ac_manifest_export") < zero_ref_snapshot_pos
+    assert zero_ref_snapshot_pos < live_ref_recheck_pos < zero_ref_pos
+    linked_zero_ref_query = next(
+        q for q in captured_queries if "linked_cas_zero_ref" in q and "removed_ac" in q
+    )
+    assert "removed_ac" in linked_zero_ref_query
+    zero_ref_snapshot_query = next(
+        q
+        for q in captured_queries
+        if f"CREATE OR REPLACE TABLE {zero_ref_snapshot_table}" in q
+    )
+    assert "UNION DISTINCT" in zero_ref_snapshot_query
+    live_ref_recheck_query = next(
+        q for q in captured_queries if "cas_blocked_by_live_ac_ref" in q
+    )
+    assert "gcs_cache_ac_cas_refs_by_ac" in live_ref_recheck_query
+    assert "removed_ac" not in live_ref_recheck_query
+    final_zero_ref_query = next(
+        q
+        for q in captured_queries
+        if "CREATE OR REPLACE TABLE `pingcap-testing-account.ci_bazel_cache_logs._tmp_cas_zero_ref_test-delete-run`"
+        in q
+    )
+    assert "blocked.object_name IS NULL" in final_zero_ref_query
+
+
+def test_cas_from_index_delete_requires_fresh_post_delete_catch_up(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
+
+    monkeypatch.setattr(
+        cleanup_gcs_cache,
+        "run_sync_gcs_cache_ac_references",
+        lambda **kwargs: sync_gcs_cache_ac_references.SyncGcsCacheAcReferencesSummary(
+            account_id="test",
+            bucket_name="test",
+            mode="incremental",
+            shard_start=kwargs["shard_start"],
+            shard_end=kwargs["shard_end"],
+            source_object_count=0,
+            missing_object_count=0,
+            parse_error_count=0,
+            replaced_ac_object_count=0,
+            reference_row_count=0,
+            sample_parse_errors=(),
+            dry_run=False,
+            indexed_through=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+            bytes_processed=0,
+            run_started_at=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+            run_finished_at=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+        ),
+    )
+
+    fresh_shard_counts = [2, 1]
+    captured_queries: list[str] = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append(query)
+        if "ready_shards" in query:
+            return BigQueryQueryResult(rows=({"ready_shards": 2},), total_bytes_processed=1)
+        if "fresh_shards" in query:
+            return BigQueryQueryResult(
+                rows=({"fresh_shards": fresh_shard_counts.pop(0)},),
+                total_bytes_processed=1,
+            )
+        if "_tmp_ready_linked_cas_post-gate" in query and "COUNT(*)" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        if "COUNT(*)" in query or "object_count" in query:
+            return BigQueryQueryResult(rows=({"object_count": 1},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        if "cas_preselect" in query:
+            yield {"object_name": "cas/aaa"}
+        return
+
+    def fake_resolve_metadata(**kwargs):
+        return (
+            GcsObjectMetadata(
+                object_name="cas/aaa",
+                exists=True,
+                generation=1,
+                size_bytes=1024,
+            ),
+        )
+
+    def fail_create_batch_job(**kwargs):
+        raise AssertionError("CAS delete should not start when post-delete gate fails")
+
+    with pytest.raises(RuntimeError, match="post-delete live by_ac recheck"):
+        run_cleanup_gcs_cache(
+            settings=GcsCacheSettings(
+                project_id="pingcap-testing-account",
+                ac_reference_shard_count=2,
+            ),
+            mode="delete",
+            execute_kind="cas-from-index",
+            execute=fake_execute,
+            stream_rows=fake_stream_rows,
+            resolve_object_metadata=fake_resolve_metadata,
+            load_jsonl_file=lambda *args, **kwargs: None,
+            create_batch_job=fail_create_batch_job,
+            now=lambda: datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+            run_id_factory=lambda: "post-gate",
+        )
+
+    assert not any("_tmp_delete_cas_post-gate" in query for query in captured_queries)
 
 
 def test_cas_from_index_raises_preselect_to_max_delete_objects(monkeypatch) -> None:
@@ -1605,11 +1817,108 @@ def test_cas_from_index_raises_preselect_to_max_delete_objects(monkeypatch) -> N
     ]
     assert len(cold_cas_queries) >= 1
     assert "rn <= 5000000" in cold_cas_queries[0]
+    assert "is_orphan DESC" in cold_cas_queries[0]
+    assert "NOT EXISTS" in cold_cas_queries[0]
 
-    # AC refs are expanded for the selected CAS set and are not independently capped.
+    # CAS cap stays at 500w while linked AC expansion uses the AC cap.
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
     assert "LIMIT 5000000" not in ac_queries[0]
+    assert "LIMIT 100000" in ac_queries[0]
+
+
+def test_cas_from_index_delete_bypasses_ac_when_only_orphan_cas(monkeypatch) -> None:
+    from cost_insight.jobs import cleanup_gcs_cache, sync_gcs_cache_ac_references
+
+    monkeypatch.setattr(
+        cleanup_gcs_cache,
+        "run_sync_gcs_cache_ac_references",
+        lambda **kwargs: sync_gcs_cache_ac_references.SyncGcsCacheAcReferencesSummary(
+            account_id="test",
+            bucket_name="test",
+            mode="incremental",
+            shard_start=kwargs["shard_start"],
+            shard_end=kwargs["shard_end"],
+            source_object_count=0,
+            missing_object_count=0,
+            parse_error_count=0,
+            replaced_ac_object_count=0,
+            reference_row_count=0,
+            sample_parse_errors=(),
+            dry_run=False,
+            indexed_through=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+            bytes_processed=0,
+            run_started_at=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+            run_finished_at=datetime(2026, 7, 2, 9, 59, tzinfo=UTC),
+        ),
+    )
+
+    captured_queries: list[str] = []
+
+    def fake_execute(query, parameters):
+        captured_queries.append(query)
+        if "ready_shards" in query:
+            return BigQueryQueryResult(rows=({"ready_shards": 2},), total_bytes_processed=1)
+        if "fresh_shards" in query:
+            return BigQueryQueryResult(rows=({"fresh_shards": 2},), total_bytes_processed=1)
+        if "_tmp_ready_linked_cas_orphan-only" in query and "COUNT(*)" in query:
+            return BigQueryQueryResult(rows=({"object_count": 0},), total_bytes_processed=1)
+        if "COUNT(*)" in query or "object_count" in query:
+            return BigQueryQueryResult(rows=({"object_count": 3},), total_bytes_processed=1)
+        return BigQueryQueryResult(rows=(), total_bytes_processed=1)
+
+    def fake_stream_rows(query, parameters):
+        if "cas_preselect" in query:
+            yield {"object_name": "cas/aaa"}
+        return
+
+    def fake_resolve_metadata(**kwargs):
+        return (
+            GcsObjectMetadata(
+                object_name="cas/aaa",
+                exists=True,
+                generation=1,
+                size_bytes=1024,
+            ),
+        )
+
+    def fail_create_batch_job(**kwargs):
+        if "-ac-" in kwargs["job_id"]:
+            raise AssertionError("orphan-only cleanup should not create an AC delete job")
+        return StorageBatchOperationsJob(job_name=kwargs["job_id"], operation_name=None)
+
+    def fake_wait_for_batch_job(**kwargs):
+        return StorageBatchOperationsJobStatus(
+            job_name=kwargs["job_name"],
+            state="SUCCEEDED",
+            failed_object_count=0,
+            total_object_count=3,
+            succeeded_object_count=3,
+            total_bytes_transformed=0,
+            complete_time=None,
+        )
+
+    summary = run_cleanup_gcs_cache(
+        settings=GcsCacheSettings(
+            project_id="pingcap-testing-account",
+            ac_reference_shard_count=2,
+        ),
+        mode="delete",
+        execute_kind="cas-from-index",
+        execute=fake_execute,
+        stream_rows=fake_stream_rows,
+        resolve_object_metadata=fake_resolve_metadata,
+        load_jsonl_file=lambda *args, **kwargs: None,
+        create_batch_job=fail_create_batch_job,
+        wait_for_batch_job=fake_wait_for_batch_job,
+        now=lambda: datetime(2026, 7, 2, 10, 0, tzinfo=UTC),
+        run_id_factory=lambda: "orphan-only",
+    )
+
+    assert summary.selected_ac_object_count == 0
+    assert summary.selected_cas_object_count > 0
+    assert not any("ac_to_delete" in query for query in captured_queries)
+    assert not any("delete_ac" in query for query in captured_queries)
 
 
 def test_cas_from_index_default_cas_cap_without_max_delete_objects(monkeypatch) -> None:
@@ -1680,4 +1989,4 @@ def test_cas_from_index_default_cas_cap_without_max_delete_objects(monkeypatch) 
 
     ac_queries = [q for q in captured_queries if "ac_to_delete" in q]
     assert len(ac_queries) >= 1
-    assert "LIMIT 100000" not in ac_queries[0]
+    assert "LIMIT 100000" in ac_queries[0]
