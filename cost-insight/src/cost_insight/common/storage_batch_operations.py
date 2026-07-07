@@ -125,18 +125,21 @@ def wait_for_delete_job(
 
     request_url = f"https://storagebatchoperations.googleapis.com/v1/{job_name}"
     elapsed = 0
+    auth_retried = False
     while True:
         try:
             _refresh_credentials_if_needed(credentials, auth_request)
             payload = _get_job_payload(request_url=request_url, token=credentials.token)
         except StorageBatchOperationsAuthError:
+            if auth_retried:
+                raise
             logger.info(
                 "Refreshing credentials while polling Storage Batch Operations job %s",
                 job_name,
-                exc_info=True,
             )
+            auth_retried = True
             credentials.refresh(auth_request)
-            payload = _get_job_payload(request_url=request_url, token=credentials.token)
+            continue
         except StorageBatchOperationsTransientError:
             logger.debug(
                 "Polling Storage Batch Operations job %s hit transient error after %ss",
@@ -151,6 +154,7 @@ def wait_for_delete_job(
                 elapsed=elapsed,
             )
             continue
+        auth_retried = False
         state = str(payload.get("state") or "STATE_UNSPECIFIED")
         logger.debug(
             "Polling Storage Batch Operations job %s: state=%s elapsed=%ss",

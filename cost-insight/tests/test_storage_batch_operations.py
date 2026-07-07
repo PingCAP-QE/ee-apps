@@ -291,6 +291,120 @@ def test_wait_for_delete_job_refreshes_token_after_auth_error(
     )
 
 
+def test_wait_for_delete_job_retries_transient_after_auth_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import google.auth
+    from google.auth.transport import requests
+
+    class ExpiringCredentials:
+        valid = True
+        token = "expired-token"
+
+        def __init__(self) -> None:
+            self.refresh_count = 0
+
+        def refresh(self, _request) -> None:
+            self.refresh_count += 1
+            self.token = f"fresh-token-{self.refresh_count}"
+            self.valid = True
+
+    credentials = ExpiringCredentials()
+    monkeypatch.setattr(google.auth, "default", lambda scopes=None: (credentials, "test"))
+    monkeypatch.setattr(requests, "Request", lambda: object())
+
+    responses: list[object] = [
+        storage_batch_operations.StorageBatchOperationsAuthError("expired"),
+        storage_batch_operations.StorageBatchOperationsTransientError("retry later"),
+        {
+            "state": "SUCCEEDED",
+            "counters": {
+                "totalObjectCount": "5",
+                "succeededObjectCount": "5",
+                "failedObjectCount": "0",
+                "totalBytesTransformed": "789",
+            },
+        },
+    ]
+    seen_tokens: list[str] = []
+
+    def fake_get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
+        assert request_url.endswith("/projects/test/locations/global/jobs/job-transient")
+        seen_tokens.append(token)
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    sleeps: list[int] = []
+    monkeypatch.setattr(storage_batch_operations, "_get_job_payload", fake_get_job_payload)
+    monkeypatch.setattr(storage_batch_operations, "sleep", lambda seconds: sleeps.append(seconds))
+
+    status = storage_batch_operations.wait_for_delete_job(
+        job_name="projects/test/locations/global/jobs/job-transient",
+        timeout_seconds=60,
+        poll_interval_seconds=5,
+    )
+
+    assert seen_tokens == ["expired-token", "fresh-token-1", "fresh-token-1"]
+    assert sleeps == [5]
+    assert credentials.refresh_count == 1
+    assert status == storage_batch_operations.StorageBatchOperationsJobStatus(
+        job_name="projects/test/locations/global/jobs/job-transient",
+        state="SUCCEEDED",
+        total_object_count=5,
+        succeeded_object_count=5,
+        failed_object_count=0,
+        total_bytes_transformed=789,
+        complete_time=None,
+    )
+
+
+def test_wait_for_delete_job_raises_after_repeated_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import google.auth
+    from google.auth.transport import requests
+
+    class ExpiringCredentials:
+        valid = True
+        token = "expired-token"
+
+        def __init__(self) -> None:
+            self.refresh_count = 0
+
+        def refresh(self, _request) -> None:
+            self.refresh_count += 1
+            self.token = f"fresh-token-{self.refresh_count}"
+            self.valid = True
+
+    credentials = ExpiringCredentials()
+    monkeypatch.setattr(google.auth, "default", lambda scopes=None: (credentials, "test"))
+    monkeypatch.setattr(requests, "Request", lambda: object())
+
+    seen_tokens: list[str] = []
+
+    def fake_get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
+        assert request_url.endswith("/projects/test/locations/global/jobs/job-auth-fail")
+        seen_tokens.append(token)
+        raise storage_batch_operations.StorageBatchOperationsAuthError("still unauthorized")
+
+    monkeypatch.setattr(storage_batch_operations, "_get_job_payload", fake_get_job_payload)
+
+    with pytest.raises(
+        storage_batch_operations.StorageBatchOperationsAuthError,
+        match="still unauthorized",
+    ):
+        storage_batch_operations.wait_for_delete_job(
+            job_name="projects/test/locations/global/jobs/job-auth-fail",
+            timeout_seconds=60,
+            poll_interval_seconds=5,
+        )
+
+    assert seen_tokens == ["expired-token", "fresh-token-1"]
+    assert credentials.refresh_count == 1
+
+
 def test_wait_for_delete_job_retries_transient_errors_and_state_unspecified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
