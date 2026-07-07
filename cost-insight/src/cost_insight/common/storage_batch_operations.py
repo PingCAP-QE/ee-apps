@@ -129,18 +129,12 @@ def wait_for_delete_job(
         try:
             _refresh_credentials_if_needed(credentials, auth_request)
         except StorageBatchOperationsTransientError:
-            logger.debug(
-                "Refreshing credentials while polling Storage Batch Operations job %s "
-                "hit transient error after %ss",
-                job_name,
-                elapsed,
-                exc_info=True,
-            )
-            elapsed = _sleep_or_raise_timeout(
+            elapsed = _sleep_for_transient(
                 job_name=job_name,
                 timeout_seconds=timeout_seconds,
                 poll_interval_seconds=poll_interval_seconds,
                 elapsed=elapsed,
+                log_prefix="Refreshing credentials while polling",
             )
             auth_retried = False
             continue
@@ -157,34 +151,23 @@ def wait_for_delete_job(
             try:
                 _refresh_credentials(credentials, auth_request)
             except StorageBatchOperationsTransientError:
-                logger.debug(
-                    "Refreshing credentials while polling Storage Batch Operations job %s "
-                    "hit transient error after %ss",
-                    job_name,
-                    elapsed,
-                    exc_info=True,
-                )
-                elapsed = _sleep_or_raise_timeout(
+                elapsed = _sleep_for_transient(
                     job_name=job_name,
                     timeout_seconds=timeout_seconds,
                     poll_interval_seconds=poll_interval_seconds,
                     elapsed=elapsed,
+                    log_prefix="Refreshing credentials while polling",
                 )
                 continue
             auth_retried = True
             continue
         except StorageBatchOperationsTransientError:
-            logger.debug(
-                "Polling Storage Batch Operations job %s hit transient error after %ss",
-                job_name,
-                elapsed,
-                exc_info=True,
-            )
-            elapsed = _sleep_or_raise_timeout(
+            elapsed = _sleep_for_transient(
                 job_name=job_name,
                 timeout_seconds=timeout_seconds,
                 poll_interval_seconds=poll_interval_seconds,
                 elapsed=elapsed,
+                log_prefix="Polling",
             )
             auth_retried = False
             continue
@@ -277,6 +260,29 @@ def _coerce_counter(value: object) -> int:
     if value is None:
         return 0
     return int(str(value))
+
+
+def _sleep_for_transient(
+    *,
+    job_name: str,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
+    elapsed: int,
+    log_prefix: str,
+) -> int:
+    logger.debug(
+        "%s Storage Batch Operations job %s hit transient error after %ss",
+        log_prefix,
+        job_name,
+        elapsed,
+        exc_info=True,
+    )
+    return _sleep_or_raise_timeout(
+        job_name=job_name,
+        timeout_seconds=timeout_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+        elapsed=elapsed,
+    )
 
 
 def _sleep_or_raise_timeout(
