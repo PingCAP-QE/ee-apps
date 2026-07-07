@@ -121,7 +121,6 @@ def wait_for_delete_job(
 
     credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     auth_request = GoogleAuthRequest()
-    _refresh_credentials_if_needed(credentials, auth_request)
 
     request_url = f"https://storagebatchoperations.googleapis.com/v1/{job_name}"
     elapsed = 0
@@ -137,8 +136,24 @@ def wait_for_delete_job(
                 "Refreshing credentials while polling Storage Batch Operations job %s",
                 job_name,
             )
+            try:
+                _refresh_credentials(credentials, auth_request)
+            except StorageBatchOperationsTransientError:
+                logger.debug(
+                    "Refreshing credentials while polling Storage Batch Operations job %s "
+                    "hit transient error after %ss",
+                    job_name,
+                    elapsed,
+                    exc_info=True,
+                )
+                elapsed = _sleep_or_raise_timeout(
+                    job_name=job_name,
+                    timeout_seconds=timeout_seconds,
+                    poll_interval_seconds=poll_interval_seconds,
+                    elapsed=elapsed,
+                )
+                continue
             auth_retried = True
-            credentials.refresh(auth_request)
             continue
         except StorageBatchOperationsTransientError:
             logger.debug(
@@ -153,6 +168,7 @@ def wait_for_delete_job(
                 poll_interval_seconds=poll_interval_seconds,
                 elapsed=elapsed,
             )
+            auth_retried = False
             continue
         auth_retried = False
         state = str(payload.get("state") or "STATE_UNSPECIFIED")
@@ -202,7 +218,22 @@ def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
 
 def _refresh_credentials_if_needed(credentials, auth_request) -> None:
     if not credentials.valid:
+        _refresh_credentials(credentials, auth_request)
+
+
+def _refresh_credentials(credentials, auth_request) -> None:
+    from google.auth import exceptions as google_auth_exceptions
+
+    try:
         credentials.refresh(auth_request)
+    except URLError as exc:
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations credential refresh transient failure: {str(exc.reason)}"
+        ) from exc
+    except (google_auth_exceptions.RefreshError, google_auth_exceptions.TransportError) as exc:
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations credential refresh transient failure: {exc}"
+        ) from exc
 
 
 def _coerce_job_status(
