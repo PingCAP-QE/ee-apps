@@ -35,6 +35,10 @@ class StorageBatchOperationsTransientError(RuntimeError):
     """Raised when polling should retry after a transient API failure."""
 
 
+class StorageBatchOperationsAuthError(RuntimeError):
+    """Raised when polling should refresh credentials and retry once."""
+
+
 def create_delete_job(
     *,
     project_id: str,
@@ -48,8 +52,8 @@ def create_delete_job(
     from google.auth.transport.requests import Request as GoogleAuthRequest
 
     credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    if not credentials.valid:
-        credentials.refresh(GoogleAuthRequest())
+    auth_request = GoogleAuthRequest()
+    _refresh_credentials_if_needed(credentials, auth_request)
 
     request_url = (
         "https://storagebatchoperations.googleapis.com/v1/"
@@ -116,28 +120,58 @@ def wait_for_delete_job(
     from google.auth.transport.requests import Request as GoogleAuthRequest
 
     credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    if not credentials.valid:
-        credentials.refresh(GoogleAuthRequest())
+    auth_request = GoogleAuthRequest()
 
     request_url = f"https://storagebatchoperations.googleapis.com/v1/{job_name}"
     elapsed = 0
+    auth_retried = False
     while True:
         try:
-            payload = _get_job_payload(request_url=request_url, token=credentials.token)
+            _refresh_credentials_if_needed(credentials, auth_request)
         except StorageBatchOperationsTransientError:
-            logger.debug(
-                "Polling Storage Batch Operations job %s hit transient error after %ss",
-                job_name,
-                elapsed,
-                exc_info=True,
-            )
-            elapsed = _sleep_or_raise_timeout(
+            elapsed = _sleep_for_transient(
                 job_name=job_name,
                 timeout_seconds=timeout_seconds,
                 poll_interval_seconds=poll_interval_seconds,
                 elapsed=elapsed,
+                log_prefix="Refreshing credentials while polling",
             )
+            auth_retried = False
             continue
+
+        try:
+            payload = _get_job_payload(request_url=request_url, token=credentials.token)
+        except StorageBatchOperationsAuthError:
+            if auth_retried:
+                raise
+            logger.info(
+                "Refreshing credentials while polling Storage Batch Operations job %s",
+                job_name,
+            )
+            try:
+                _refresh_credentials(credentials, auth_request)
+            except StorageBatchOperationsTransientError:
+                elapsed = _sleep_for_transient(
+                    job_name=job_name,
+                    timeout_seconds=timeout_seconds,
+                    poll_interval_seconds=poll_interval_seconds,
+                    elapsed=elapsed,
+                    log_prefix="Refreshing credentials while polling",
+                )
+                continue
+            auth_retried = True
+            continue
+        except StorageBatchOperationsTransientError:
+            elapsed = _sleep_for_transient(
+                job_name=job_name,
+                timeout_seconds=timeout_seconds,
+                poll_interval_seconds=poll_interval_seconds,
+                elapsed=elapsed,
+                log_prefix="Polling",
+            )
+            auth_retried = False
+            continue
+        auth_retried = False
         state = str(payload.get("state") or "STATE_UNSPECIFIED")
         logger.debug(
             "Polling Storage Batch Operations job %s: state=%s elapsed=%ss",
@@ -168,6 +202,10 @@ def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 401:
+            raise StorageBatchOperationsAuthError(
+                f"Storage Batch Operations get job authentication failure ({exc.code}): {detail}"
+            ) from exc
         if exc.code in {429, 500, 502, 503, 504}:
             raise StorageBatchOperationsTransientError(
                 f"Storage Batch Operations get job transient failure ({exc.code}): {detail}"
@@ -176,6 +214,26 @@ def _get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
     except URLError as exc:
         raise StorageBatchOperationsTransientError(
             f"Storage Batch Operations get job transient failure: {str(exc.reason)}"
+        ) from exc
+
+
+def _refresh_credentials_if_needed(credentials, auth_request) -> None:
+    if not credentials.valid:
+        _refresh_credentials(credentials, auth_request)
+
+
+def _refresh_credentials(credentials, auth_request) -> None:
+    from google.auth import exceptions as google_auth_exceptions
+
+    try:
+        credentials.refresh(auth_request)
+    except URLError as exc:
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations credential refresh transient failure: {str(exc.reason)}"
+        ) from exc
+    except google_auth_exceptions.TransportError as exc:
+        raise StorageBatchOperationsTransientError(
+            f"Storage Batch Operations credential refresh transient failure: {exc}"
         ) from exc
 
 
@@ -202,6 +260,29 @@ def _coerce_counter(value: object) -> int:
     if value is None:
         return 0
     return int(str(value))
+
+
+def _sleep_for_transient(
+    *,
+    job_name: str,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
+    elapsed: int,
+    log_prefix: str,
+) -> int:
+    logger.debug(
+        "%s Storage Batch Operations job %s hit transient error after %ss",
+        log_prefix,
+        job_name,
+        elapsed,
+        exc_info=True,
+    )
+    return _sleep_or_raise_timeout(
+        job_name=job_name,
+        timeout_seconds=timeout_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+        elapsed=elapsed,
+    )
 
 
 def _sleep_or_raise_timeout(
