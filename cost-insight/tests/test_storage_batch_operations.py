@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 from datetime import UTC, datetime
 from urllib.error import HTTPError, URLError
 
@@ -504,6 +505,7 @@ def test_wait_for_delete_job_retries_refresh_transport_error(
 
 def test_wait_for_delete_job_retries_proactive_refresh_transport_error(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     import google.auth
     from google.auth.exceptions import TransportError
@@ -545,6 +547,7 @@ def test_wait_for_delete_job_retries_proactive_refresh_transport_error(
     sleeps: list[int] = []
     monkeypatch.setattr(storage_batch_operations, "_get_job_payload", fake_get_job_payload)
     monkeypatch.setattr(storage_batch_operations, "sleep", lambda seconds: sleeps.append(seconds))
+    caplog.set_level(logging.DEBUG, logger=storage_batch_operations.logger.name)
 
     status = storage_batch_operations.wait_for_delete_job(
         job_name="projects/test/locations/global/jobs/job-proactive-refresh",
@@ -555,6 +558,16 @@ def test_wait_for_delete_job_retries_proactive_refresh_transport_error(
     assert seen_tokens == ["fresh-token-2"]
     assert sleeps == [5]
     assert credentials.refresh_count == 2
+    assert (
+        "Refreshing credentials while polling Storage Batch Operations job "
+        "projects/test/locations/global/jobs/job-proactive-refresh hit transient error after 0s"
+        in caplog.text
+    )
+    assert (
+        "Polling Storage Batch Operations job "
+        "projects/test/locations/global/jobs/job-proactive-refresh hit transient error"
+        not in caplog.text
+    )
     assert status == storage_batch_operations.StorageBatchOperationsJobStatus(
         job_name="projects/test/locations/global/jobs/job-proactive-refresh",
         state="SUCCEEDED",

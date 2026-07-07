@@ -128,6 +128,24 @@ def wait_for_delete_job(
     while True:
         try:
             _refresh_credentials_if_needed(credentials, auth_request)
+        except StorageBatchOperationsTransientError:
+            logger.debug(
+                "Refreshing credentials while polling Storage Batch Operations job %s "
+                "hit transient error after %ss",
+                job_name,
+                elapsed,
+                exc_info=True,
+            )
+            elapsed = _sleep_or_raise_timeout(
+                job_name=job_name,
+                timeout_seconds=timeout_seconds,
+                poll_interval_seconds=poll_interval_seconds,
+                elapsed=elapsed,
+            )
+            auth_retried = False
+            continue
+
+        try:
             payload = _get_job_payload(request_url=request_url, token=credentials.token)
         except StorageBatchOperationsAuthError:
             if auth_retried:
