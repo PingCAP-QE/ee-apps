@@ -230,7 +230,7 @@ def _refresh_credentials(credentials, auth_request) -> None:
         raise StorageBatchOperationsTransientError(
             f"Storage Batch Operations credential refresh transient failure: {str(exc.reason)}"
         ) from exc
-    except (google_auth_exceptions.RefreshError, google_auth_exceptions.TransportError) as exc:
+    except google_auth_exceptions.TransportError as exc:
         raise StorageBatchOperationsTransientError(
             f"Storage Batch Operations credential refresh transient failure: {exc}"
         ) from exc

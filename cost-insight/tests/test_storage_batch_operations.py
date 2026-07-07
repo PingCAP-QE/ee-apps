@@ -430,11 +430,11 @@ def test_wait_for_delete_job_resets_auth_retry_after_transient_boundary(
     )
 
 
-def test_wait_for_delete_job_retries_refresh_transient_error(
+def test_wait_for_delete_job_retries_refresh_transport_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import google.auth
-    from google.auth.exceptions import RefreshError
+    from google.auth.exceptions import TransportError
     from google.auth.transport import requests
 
     class ExpiringCredentials:
@@ -447,7 +447,7 @@ def test_wait_for_delete_job_retries_refresh_transient_error(
         def refresh(self, _request) -> None:
             self.refresh_count += 1
             if self.refresh_count == 1:
-                raise RefreshError("token endpoint unavailable")
+                raise TransportError("token endpoint unavailable")
             self.token = f"fresh-token-{self.refresh_count}"
             self.valid = True
 
@@ -502,11 +502,75 @@ def test_wait_for_delete_job_retries_refresh_transient_error(
     )
 
 
+def test_wait_for_delete_job_retries_proactive_refresh_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import google.auth
+    from google.auth.exceptions import TransportError
+    from google.auth.transport import requests
+
+    class ExpiringCredentials:
+        valid = False
+        token = "expired-token"
+
+        def __init__(self) -> None:
+            self.refresh_count = 0
+
+        def refresh(self, _request) -> None:
+            self.refresh_count += 1
+            if self.refresh_count == 1:
+                raise TransportError("token endpoint unavailable")
+            self.token = f"fresh-token-{self.refresh_count}"
+            self.valid = True
+
+    credentials = ExpiringCredentials()
+    monkeypatch.setattr(google.auth, "default", lambda scopes=None: (credentials, "test"))
+    monkeypatch.setattr(requests, "Request", lambda: object())
+
+    seen_tokens: list[str] = []
+
+    def fake_get_job_payload(*, request_url: str, token: str) -> dict[str, object]:
+        assert request_url.endswith("/projects/test/locations/global/jobs/job-proactive-refresh")
+        seen_tokens.append(token)
+        return {
+            "state": "SUCCEEDED",
+            "counters": {
+                "totalObjectCount": "2",
+                "succeededObjectCount": "2",
+                "failedObjectCount": "0",
+                "totalBytesTransformed": "321",
+            },
+        }
+
+    sleeps: list[int] = []
+    monkeypatch.setattr(storage_batch_operations, "_get_job_payload", fake_get_job_payload)
+    monkeypatch.setattr(storage_batch_operations, "sleep", lambda seconds: sleeps.append(seconds))
+
+    status = storage_batch_operations.wait_for_delete_job(
+        job_name="projects/test/locations/global/jobs/job-proactive-refresh",
+        timeout_seconds=60,
+        poll_interval_seconds=5,
+    )
+
+    assert seen_tokens == ["fresh-token-2"]
+    assert sleeps == [5]
+    assert credentials.refresh_count == 2
+    assert status == storage_batch_operations.StorageBatchOperationsJobStatus(
+        job_name="projects/test/locations/global/jobs/job-proactive-refresh",
+        state="SUCCEEDED",
+        total_object_count=2,
+        succeeded_object_count=2,
+        failed_object_count=0,
+        total_bytes_transformed=321,
+        complete_time=None,
+    )
+
+
 def test_refresh_credentials_wraps_transient_errors() -> None:
-    from google.auth.exceptions import RefreshError
+    from google.auth.exceptions import TransportError
 
     for refresh_error, expected in [
-        (RefreshError("token endpoint unavailable"), "token endpoint unavailable"),
+        (TransportError("token endpoint unavailable"), "token endpoint unavailable"),
         (URLError("socket timeout"), "socket timeout"),
     ]:
 
@@ -519,6 +583,17 @@ def test_refresh_credentials_wraps_transient_errors() -> None:
             match=expected,
         ):
             storage_batch_operations._refresh_credentials(Credentials(), object())
+
+
+def test_refresh_credentials_raises_refresh_error_without_wrapping() -> None:
+    from google.auth.exceptions import RefreshError
+
+    class Credentials:
+        def refresh(self, _request) -> None:
+            raise RefreshError("invalid_grant")
+
+    with pytest.raises(RefreshError, match="invalid_grant"):
+        storage_batch_operations._refresh_credentials(Credentials(), object())
 
 
 def test_wait_for_delete_job_raises_after_repeated_auth_error(
