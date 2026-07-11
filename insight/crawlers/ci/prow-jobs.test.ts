@@ -128,3 +128,26 @@ Deno.test("rejects prow jobs with states outside the database enum", () => {
     "invalid status.state: unknown-state",
   );
 });
+
+Deno.test("rejects prow jobs missing insert-required metadata and spec fields", () => {
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ metadata: { namespace: "" } })),
+    "missing metadata.namespace",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ metadata: { name: "" } })),
+    "missing metadata.name",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { job: "" } })),
+    "missing spec.job",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { type: "" } })),
+    "missing spec.type",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { type: "weird" } })),
+    "invalid spec.type: weird",
+  );
+});

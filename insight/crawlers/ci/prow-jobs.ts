@@ -21,16 +21,16 @@ const VALID_JOB_TYPES = new Set([
 export interface prowJobRun {
   kind: string;
   metadata: {
-    name: string;
-    namespace: string;
-    labels: Record<string, string>;
+    name?: string;
+    namespace?: string;
+    labels?: Record<string, string>;
   };
   spec: {
-    type: string;
-    agent: string;
-    cluster: string;
-    namespace: string;
-    job: string;
+    type?: string;
+    agent?: string;
+    cluster?: string;
+    namespace?: string;
+    job?: string;
     report?: boolean;
     refs?: {
       org: string;
@@ -236,10 +236,10 @@ function jobInsertValues(job: prowJobRun) {
   };
 
   return [
-    job.metadata.namespace,
-    job.metadata.name,
-    job.spec.job,
-    job.spec.type,
+    job.metadata.namespace!,
+    job.metadata.name!,
+    job.spec.job!,
+    job.spec.type!,
     job.status.state!,
     new Date(job.status.startTime!),
     job.status.completionTime ? new Date(job.status.completionTime) : null,
@@ -301,7 +301,11 @@ export async function saveJobs(
     `;
     const flattenedValues = values.flat();
     await client.execute(sql, flattenedValues);
-    console.info(`Saved ${i}/${insertableJobs.length} jobs`);
+    console.info(
+      `Saved ${
+        Math.min(i + chunkSize, insertableJobs.length)
+      }/${insertableJobs.length} jobs`,
+    );
   }
 }
 
