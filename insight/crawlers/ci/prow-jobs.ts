@@ -2,7 +2,23 @@ import { parseArgs } from "jsr:@std/cli@1.0.14/parse-args";
 import * as mysql from "https://deno.land/x/mysql@v2.12.1/mod.ts";
 import { convertDsnToClientConfig } from "../../db/utils.ts";
 
-interface prowJobRun {
+const VALID_JOB_STATES = new Set([
+  "triggered",
+  "pending",
+  "success",
+  "failure",
+  "error",
+  "aborted",
+]);
+
+const VALID_JOB_TYPES = new Set([
+  "presubmit",
+  "postsubmit",
+  "batch",
+  "periodic",
+]);
+
+export interface prowJobRun {
   kind: string;
   metadata: {
     name: string;
@@ -15,7 +31,7 @@ interface prowJobRun {
     cluster: string;
     namespace: string;
     job: string;
-    report: boolean;
+    report?: boolean;
     refs?: {
       org: string;
       repo: string;
@@ -33,11 +49,11 @@ interface prowJobRun {
     };
   };
   status: {
-    state: string;
-    startTime: string;
-    pendingTime: string;
-    completionTime: string;
-    url: string;
+    state?: string | null;
+    startTime?: string | null;
+    pendingTime?: string | null;
+    completionTime?: string | null;
+    url?: string | null;
   };
 }
 
@@ -50,10 +66,63 @@ export async function fetchProwJobs(prowBaseUrl: string) {
   return data.items;
 }
 
+function hasValidDate(value: string | null | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+export function invalidProwJobReason(job: prowJobRun): string | null {
+  if (!job.metadata?.namespace) {
+    return "missing metadata.namespace";
+  }
+  if (!job.metadata?.name) {
+    return "missing metadata.name";
+  }
+  if (!job.spec?.job) {
+    return "missing spec.job";
+  }
+  if (!job.spec?.type) {
+    return "missing spec.type";
+  }
+  if (!VALID_JOB_TYPES.has(job.spec.type)) {
+    return `invalid spec.type: ${job.spec.type}`;
+  }
+  if (!job.status?.state) {
+    return "missing status.state";
+  }
+  if (!VALID_JOB_STATES.has(job.status.state)) {
+    return `invalid status.state: ${job.status.state}`;
+  }
+  if (!hasValidDate(job.status.startTime)) {
+    return "missing or invalid status.startTime";
+  }
+  return null;
+}
+
+export function filterInsertableJobs(jobs: prowJobRun[]) {
+  const insertableJobs: prowJobRun[] = [];
+  const skippedJobs: { job: prowJobRun; reason: string }[] = [];
+
+  for (const job of jobs) {
+    const reason = invalidProwJobReason(job);
+    if (reason) {
+      skippedJobs.push({ job, reason });
+      continue;
+    }
+    insertableJobs.push(job);
+  }
+
+  return { insertableJobs, skippedJobs };
+}
+
 export async function createJobTable(client: mysql.Client, tableName: string) {
   // Validate table name to prevent SQL injection (only allow alphanumeric and underscores)
   if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
-    throw new Error(`Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`);
+    throw new Error(
+      `Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`,
+    );
   }
 
   const sql = `
@@ -89,17 +158,22 @@ export async function createJobTable(client: mysql.Client, tableName: string) {
 export async function migrateJobTable(client: mysql.Client, tableName: string) {
   // Validate table name to prevent SQL injection (only allow alphanumeric and underscores)
   if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
-    throw new Error(`Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`);
+    throw new Error(
+      `Invalid table name: ${tableName}. Only alphanumeric characters and underscores are allowed.`,
+    );
   }
 
   // Check if table exists
   const tableExistsResult = await client.query(
     `SELECT COUNT(*) as count FROM information_schema.tables
      WHERE table_schema = DATABASE() AND table_name = ?`,
-    [tableName]
+    [tableName],
   );
 
-  if (!tableExistsResult || tableExistsResult.length === 0 || tableExistsResult[0].count === 0) {
+  if (
+    !tableExistsResult || tableExistsResult.length === 0 ||
+    tableExistsResult[0].count === 0
+  ) {
     console.info(`Table ${tableName} does not exist, skipping migration`);
     return;
   }
@@ -108,18 +182,18 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
   const columnsResult = await client.query(
     `SELECT COLUMN_NAME FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = ?`,
-    [tableName]
+    [tableName],
   );
 
   const existingColumns = new Set(
-    columnsResult.map((row: any) => row.COLUMN_NAME)
+    columnsResult.map((row: { COLUMN_NAME: string }) => row.COLUMN_NAME),
   );
 
   // Add retest column if it doesn't exist
   if (!existingColumns.has("retest")) {
     console.info(`Adding column 'retest' to table ${tableName}`);
     await client.execute(
-      `ALTER TABLE \`${tableName}\` ADD COLUMN retest BOOLEAN DEFAULT NULL AFTER url`
+      `ALTER TABLE \`${tableName}\` ADD COLUMN retest BOOLEAN DEFAULT NULL AFTER url`,
     );
   }
 
@@ -127,7 +201,7 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
   if (!existingColumns.has("author")) {
     console.info(`Adding column 'author' to table ${tableName}`);
     await client.execute(
-      `ALTER TABLE \`${tableName}\` ADD COLUMN author VARCHAR(128) AFTER retest`
+      `ALTER TABLE \`${tableName}\` ADD COLUMN author VARCHAR(128) AFTER retest`,
     );
   }
 
@@ -135,7 +209,7 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
   if (!existingColumns.has("event_guid")) {
     console.info(`Adding column 'event_guid' to table ${tableName}`);
     await client.execute(
-      `ALTER TABLE \`${tableName}\` ADD COLUMN event_guid VARCHAR(128) AFTER author`
+      `ALTER TABLE \`${tableName}\` ADD COLUMN event_guid VARCHAR(128) AFTER author`,
     );
   }
 
@@ -143,6 +217,8 @@ export async function migrateJobTable(client: mysql.Client, tableName: string) {
 }
 
 function jobInsertValues(job: prowJobRun) {
+  const labels = job.metadata.labels ?? {};
+
   // Helper to parse the retest label into a nullable boolean
   const parseRetestLabel = (label: string | undefined): boolean | null => {
     if (label === "true") return true;
@@ -164,20 +240,20 @@ function jobInsertValues(job: prowJobRun) {
     job.metadata.name,
     job.spec.job,
     job.spec.type,
-    job.status.state,
-    new Date(job.status.startTime),
+    job.status.state!,
+    new Date(job.status.startTime!),
     job.status.completionTime ? new Date(job.status.completionTime) : null,
-    job.metadata.labels["prow.k8s.io/is-optional"] === "true",
+    labels["prow.k8s.io/is-optional"] === "true",
     job.spec.report || false,
     job.spec.refs?.org || null,
     job.spec.refs?.repo || null,
     job.spec.refs?.base_ref || null,
-    job.metadata.labels["prow.k8s.io/refs.pull"] || null,
-    job.metadata.labels["prow.k8s.io/context"] || null,
+    labels["prow.k8s.io/refs.pull"] || null,
+    labels["prow.k8s.io/context"] || null,
     job.status.url || null,
-    parseRetestLabel(job.metadata.labels["prow.k8s.io/retest"]),
+    parseRetestLabel(labels["prow.k8s.io/retest"]),
     getAuthor(),
-    job.metadata.labels["event-GUID"] || null,
+    labels["event-GUID"] || null,
     JSON.stringify(job.spec),
     JSON.stringify(job.status),
   ];
@@ -189,8 +265,21 @@ export async function saveJobs(
   jobs: prowJobRun[],
   chunkSize = 100, // Default chunk size
 ) {
-  for (let i = 0; i < jobs.length; i += chunkSize) {
-    const chunk = jobs.slice(i, i + chunkSize);
+  const { insertableJobs, skippedJobs } = filterInsertableJobs(jobs);
+
+  if (skippedJobs.length > 0) {
+    console.warn(
+      `Skipping ${skippedJobs.length}/${jobs.length} prow jobs with incomplete data`,
+    );
+    for (const { job, reason } of skippedJobs.slice(0, 5)) {
+      console.warn(
+        `Skipped prow job ${job.metadata?.name ?? "<unknown>"}: ${reason}`,
+      );
+    }
+  }
+
+  for (let i = 0; i < insertableJobs.length; i += chunkSize) {
+    const chunk = insertableJobs.slice(i, i + chunkSize);
     const values = chunk.map((job) => jobInsertValues(job));
     const placeholders = values.map((value) =>
       `(${value.map(() => "?").join(", ")})`
@@ -212,7 +301,7 @@ export async function saveJobs(
     `;
     const flattenedValues = values.flat();
     await client.execute(sql, flattenedValues);
-    console.info(`Saved ${i}/${jobs.length} jobs`);
+    console.info(`Saved ${i}/${insertableJobs.length} jobs`);
   }
 }
 
