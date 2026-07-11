@@ -1,5 +1,44 @@
-import { assertEquals, assertThrows } from "jsr:@std/assert";
-import { convertDsnToClientConfig } from "./prow-jobs.ts";
+import { assertEquals, assertThrows } from "jsr:@std/assert@1.0.19";
+import { convertDsnToClientConfig } from "../../db/utils.ts";
+import {
+  filterInsertableJobs,
+  invalidProwJobReason,
+  type prowJobRun,
+} from "./prow-jobs.ts";
+
+function makeProwJob(overrides: Partial<prowJobRun> = {}): prowJobRun {
+  const job: prowJobRun = {
+    kind: "ProwJob",
+    metadata: {
+      name: "valid-prow-job",
+      namespace: "prow-test-pods",
+      labels: {},
+    },
+    spec: {
+      type: "periodic",
+      agent: "kubernetes",
+      cluster: "default",
+      namespace: "prow-test-pods",
+      job: "periodic-crawl-ci-run-data",
+      report: true,
+    },
+    status: {
+      state: "success",
+      startTime: "2026-07-11T02:11:48Z",
+      pendingTime: "2026-07-11T02:11:48Z",
+      completionTime: "2026-07-11T02:14:10Z",
+      url: "https://prow.tidb.net/view/gs/prow-tidb-logs/logs/example/1",
+    },
+  };
+
+  return {
+    ...job,
+    ...overrides,
+    metadata: { ...job.metadata, ...overrides.metadata },
+    spec: { ...job.spec, ...overrides.spec },
+    status: { ...job.status, ...overrides.status },
+  };
+}
 
 Deno.test("should correctly parse a valid DSN", () => {
   const dsn = "mysql://user:password@localhost:5432/database";
@@ -43,4 +82,72 @@ Deno.test("should correctly parse a DSN with special characters in user and pass
     password: "pass:word",
     db: "database",
   });
+});
+
+Deno.test("filters prow jobs missing insert-required status fields", () => {
+  const validJob = makeProwJob();
+  const missingStateJob = makeProwJob({
+    metadata: {
+      name: "missing-state",
+      namespace: "prow-test-pods",
+      labels: {},
+    },
+    status: { state: null },
+  });
+  const missingStartTimeJob = makeProwJob({
+    metadata: {
+      name: "missing-start-time",
+      namespace: "prow-test-pods",
+      labels: {},
+    },
+    status: { startTime: null },
+  });
+
+  const { insertableJobs, skippedJobs } = filterInsertableJobs([
+    validJob,
+    missingStateJob,
+    missingStartTimeJob,
+  ]);
+
+  assertEquals(insertableJobs.map((job) => job.metadata.name), [
+    "valid-prow-job",
+  ]);
+  assertEquals(skippedJobs.map(({ reason }) => reason), [
+    "missing status.state",
+    "missing or invalid status.startTime",
+  ]);
+});
+
+Deno.test("rejects prow jobs with states outside the database enum", () => {
+  const job = makeProwJob({
+    status: { state: "unknown-state" },
+  });
+
+  assertEquals(
+    invalidProwJobReason(job),
+    "invalid status.state: unknown-state",
+  );
+});
+
+Deno.test("rejects prow jobs missing insert-required metadata and spec fields", () => {
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ metadata: { namespace: "" } })),
+    "missing metadata.namespace",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ metadata: { name: "" } })),
+    "missing metadata.name",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { job: "" } })),
+    "missing spec.job",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { type: "" } })),
+    "missing spec.type",
+  );
+  assertEquals(
+    invalidProwJobReason(makeProwJob({ spec: { type: "weird" } })),
+    "invalid spec.type: weird",
+  );
 });
