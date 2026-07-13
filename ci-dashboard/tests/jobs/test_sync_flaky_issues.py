@@ -283,6 +283,66 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     assert total_rows["count"] == 1
 
 
+def test_sync_flaky_issues_accepts_legacy_flaky_test_title(sqlite_engine, monkeypatch) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=52792,
+        repo="pingcap/tidb",
+        number=52792,
+        title="flaky test TestSomeOfStoreUnsupported",
+        state="closed",
+        created_at="2024-04-22T03:31:12Z",
+        updated_at="2026-06-22T12:47:18Z",
+        timeline=[
+            {"event": "closed", "created_at": "2026-06-22T12:47:17Z"},
+        ],
+    )
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=52793,
+        repo="pingcap/tidb",
+        number=52793,
+        title="flaky testcase should not match",
+        state="closed",
+        created_at="2024-04-22T03:31:12Z",
+        updated_at="2026-06-22T12:47:18Z",
+        timeline=[],
+    )
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for pingcap/tidb issue sync")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 1
+    assert summary.rows_written == 1
+
+    with sqlite_engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT issue_number, issue_title, case_name, issue_status, issue_branch
+                FROM ci_l1_flaky_issues
+                ORDER BY issue_number
+                """
+            )
+        ).mappings().all()
+
+    assert [dict(row) for row in rows] == [
+        {
+            "issue_number": 52792,
+            "issue_title": "flaky test TestSomeOfStoreUnsupported",
+            "case_name": "TestSomeOfStoreUnsupported",
+            "issue_status": "closed",
+            "issue_branch": "master",
+        }
+    ]
+
+
 def test_sync_flaky_issues_defaults_branch_to_master_when_ticket_body_missing(
     sqlite_engine,
     monkeypatch,
@@ -1027,7 +1087,10 @@ def test_sync_flaky_issue_helpers_cover_fallbacks_and_payload_shapes(monkeypatch
         _normalize_issue_comments(123)
 
     assert _parse_case_name("Flaky test: TestCase in nightly") == "TestCase"
+    assert _parse_case_name("flaky test:TestFoo in pkg") == "TestFoo"
     assert _parse_case_name("Flaky test: TestCase") == "TestCase"
+    assert _parse_case_name("Flaky test TestCase") == "TestCase"
+    assert _parse_case_name("flaky test TestSomeOfStoreUnsupported") == "TestSomeOfStoreUnsupported"
     assert _parse_case_name("Plain title") == "Plain title"
     assert _parse_timeline(None) == []
     assert _parse_timeline('[{"event":"closed"},"bad"]') == [{"event": "closed"}]
