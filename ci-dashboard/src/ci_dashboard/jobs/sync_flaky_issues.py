@@ -33,8 +33,12 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "ci-sync-flaky-issues"
 DEFAULT_FLAKY_ISSUE_REPOS = ("pingcap/tidb", "tikv/pd")
 BODY_PR_FALLBACK_REPOS = {"tikv/pd"}
-TITLE_PATTERN = "Flaky test:%"
-CASE_NAME_PATTERN = re.compile(r"^Flaky test:\s*(.+?)\s+in\s+.+$")
+TITLE_COLON_PATTERN = "flaky test:%"
+TITLE_SPACE_PATTERN = "flaky test %"
+CASE_NAME_PATTERN = re.compile(
+    r"^flaky test(?::\s*|\s+)(.+?)(?:\s+in\s+.+)?$",
+    re.IGNORECASE,
+)
 BRANCH_PATTERN = re.compile(r"- Branch:\s*([^\n<\"]+)")
 BODY_PR_LIST_PATTERN = re.compile(r"\bPRs?:\s*([0-9][0-9,\s]*)", re.IGNORECASE)
 GITHUB_PR_URL_PATTERN = re.compile(
@@ -464,11 +468,18 @@ def _fetch_source_issue_rows(
             FROM github_tickets
             WHERE type = 'issue'
               AND repo IN ({repo_placeholders})
-              AND title LIKE :title_pattern
+              AND (
+                LOWER(title) LIKE :title_colon_pattern
+                OR LOWER(title) LIKE :title_space_pattern
+              )
             ORDER BY repo, number
             """
         ),
-        {**repo_params, "title_pattern": TITLE_PATTERN},
+        {
+            **repo_params,
+            "title_colon_pattern": TITLE_COLON_PATTERN,
+            "title_space_pattern": TITLE_SPACE_PATTERN,
+        },
     ).mappings()
     return [dict(row) for row in rows]
 
