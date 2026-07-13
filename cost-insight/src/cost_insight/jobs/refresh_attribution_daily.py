@@ -387,19 +387,16 @@ _INSERT_ATTRIBUTION_DAILY = text(
         raw.net_cost
       FROM cost_raw_details raw
       LEFT JOIN roster_employees override_employee
-        ON override_employee.is_active = 1
-       AND raw.author IS NOT NULL
+        ON raw.author IS NOT NULL
        AND override_employee.email IS NOT NULL
        AND LOWER(override_employee.email) = LOWER({_RAW_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
         ON override_employee.id IS NULL
-       AND github_employee.is_active = 1
        AND raw.author IS NOT NULL
        AND github_employee.github_id IS NOT NULL
        AND LOWER(github_employee.github_id) = LOWER(raw.author)
       LEFT JOIN roster_employees email_employee
         ON github_employee.id IS NULL
-       AND email_employee.is_active = 1
        AND raw.author IS NOT NULL
        AND email_employee.email IS NOT NULL
        AND (
@@ -409,7 +406,6 @@ _INSERT_ATTRIBUTION_DAILY = text(
       LEFT JOIN roster_employees normalized_employee
         ON github_employee.id IS NULL
        AND email_employee.id IS NULL
-       AND normalized_employee.is_active = 1
        AND raw.author IS NOT NULL
        AND (
          normalized_employee.github_id IS NOT NULL
@@ -603,19 +599,16 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.net_cost
       FROM cost_bq_export_summary_daily summary
       LEFT JOIN roster_employees override_employee
-        ON override_employee.is_active = 1
-       AND summary.author IS NOT NULL
+        ON summary.author IS NOT NULL
        AND override_employee.email IS NOT NULL
        AND LOWER(override_employee.email) = LOWER({_SUMMARY_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
         ON override_employee.id IS NULL
-       AND github_employee.is_active = 1
        AND summary.author IS NOT NULL
        AND github_employee.github_id IS NOT NULL
        AND LOWER(github_employee.github_id) = LOWER(summary.author)
       LEFT JOIN roster_employees email_employee
         ON github_employee.id IS NULL
-       AND email_employee.is_active = 1
        AND summary.author IS NOT NULL
        AND email_employee.email IS NOT NULL
        AND (
@@ -625,7 +618,6 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       LEFT JOIN roster_employees normalized_employee
         ON github_employee.id IS NULL
        AND email_employee.id IS NULL
-       AND normalized_employee.is_active = 1
        AND summary.author IS NOT NULL
        AND (
          normalized_employee.github_id IS NOT NULL

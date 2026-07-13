@@ -60,10 +60,19 @@ Optional Lark settings:
 
 ```bash
 ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID=...
+ROSTER_LARK_COLLABORATION_TENANT_KEYS=tenant_key_a,tenant_key_b
 ROSTER_LARK_NOTIFY_OPEN_ID=...
 ROSTER_LARK_NOTIFY_OPEN_IDS=ou_xxx,ou_yyy
 ROSTER_LARK_ROOT_DEPARTMENT_ID=0
 ```
+
+`ROSTER_LARK_COLLABORATION_TENANT_KEYS` enables syncing visible linked
+organization departments and members via the trust party visible organization
+API. The Lark app must have `trust_party:collaboration.tenant:readonly`; use
+`trust_party:collaboration_rule:read` to list available collaboration tenant
+keys from the admin API. Linked organization responses do not include Lark
+custom attributes such as GitHub ID, so this path only fills sparse roster
+identity and group data.
 
 `ROSTER_LARK_NOTIFY_OPEN_ID` stays supported for the existing single-recipient setup.
 Use `ROSTER_LARK_NOTIFY_OPEN_IDS` when the weekly summary should be sent to
@@ -89,5 +98,6 @@ Render a CronJob manifest:
 ```
 
 The DB secret should contain `ROSTER_DB_URL`, `CI_DASHBOARD_DB_URL`,
-`ROSTER_TIDB_*`, or `TIDB_*` fields. The Lark secret should contain `ROSTER_LARK_APP_ID` and
-`ROSTER_LARK_APP_SECRET`, plus optional `ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID`.
+`ROSTER_TIDB_*`, or `TIDB_*` fields. The Lark secret should contain
+`ROSTER_LARK_APP_ID` and `ROSTER_LARK_APP_SECRET`, plus optional
+`ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID` and `ROSTER_LARK_COLLABORATION_TENANT_KEYS`.

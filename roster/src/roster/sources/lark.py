@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -9,6 +11,9 @@ from urllib import error, parse, request
 from roster.jobs.sync_roster import FetchedEmployee, FetchedGroup, FetchedRoster, RosterSource
 
 LARK_OPENAPI_BASE_URL = "https://open.feishu.cn/open-apis"
+COLLABORATION_GROUP_PREFIX = "collab"
+COLLABORATION_ROOT_DEPARTMENT_ID = "0"
+LOG = logging.getLogger(__name__)
 
 
 class LarkTransport(Protocol):
@@ -146,12 +151,24 @@ class LarkRosterSource(RosterSource):
     client: LarkApiClient
     root_department_id: str = "0"
     github_custom_attr_id: str | None = None
+    collaboration_tenant_keys: tuple[str, ...] = ()
     page_size: int = 50
 
     def fetch_roster(self) -> FetchedRoster:
         token = self.client.tenant_access_token()
         groups = self._fetch_groups(token)
         employees = self._fetch_employees(token, groups)
+        if self.collaboration_tenant_keys:
+            collaboration_roster = self._fetch_collaboration_roster(token)
+            groups.extend(collaboration_roster.groups)
+            # Both the contact API request below and the trust_party API return union_id values
+            # (called union_user_id by visible_organization). Prefer the richer contact row.
+            existing_employee_ids = {employee.lark_id for employee in employees}
+            for employee in collaboration_roster.employees:
+                if employee.lark_id in existing_employee_ids:
+                    continue
+                employees.append(employee)
+                existing_employee_ids.add(employee.lark_id)
         return FetchedRoster(groups=groups, employees=employees)
 
     def _fetch_groups(self, token: str) -> list[FetchedGroup]:
@@ -185,12 +202,79 @@ class LarkRosterSource(RosterSource):
                 employees_by_lark_id.setdefault(employee.lark_id, employee)
         return list(employees_by_lark_id.values())
 
+    def _fetch_collaboration_roster(self, token: str) -> FetchedRoster:
+        groups: list[FetchedGroup] = []
+        employees_by_lark_id: dict[str, FetchedEmployee] = {}
+        for tenant_key in self.collaboration_tenant_keys:
+            tenant_roster = self._fetch_collaboration_tenant_roster(token, tenant_key)
+            groups.extend(tenant_roster.groups)
+            for employee in tenant_roster.employees:
+                employees_by_lark_id.setdefault(employee.lark_id, employee)
+        return FetchedRoster(groups=groups, employees=list(employees_by_lark_id.values()))
+
+    def _fetch_collaboration_tenant_roster(
+        self,
+        token: str,
+        tenant_key: str,
+    ) -> FetchedRoster:
+        groups_by_id: dict[str, FetchedGroup] = {}
+        employees_by_lark_id: dict[str, FetchedEmployee] = {}
+        queue: deque[tuple[str, str | None]] = deque(
+            [(COLLABORATION_ROOT_DEPARTMENT_ID, None)]
+        )
+        visited_departments: set[str] = set()
+
+        while queue:
+            target_department_id, parent_group_id = queue.popleft()
+            if target_department_id in visited_departments:
+                continue
+            visited_departments.add(target_department_id)
+            entities = self._paginate(
+                token,
+                f"/trust_party/v1/collaboration_tenants/{tenant_key}/visible_organization",
+                params={
+                    "department_id_type": "open_department_id",
+                    "target_department_id": target_department_id,
+                    "page_size": self.page_size,
+                },
+                items_key="collaboration_entity_list",
+            )
+            for item in entities:
+                entity_type = item.get("collaboration_entity_type")
+                if entity_type == "department":
+                    department_id = _required_text(item, "open_department_id")
+                    group_id = _collaboration_group_id(tenant_key, department_id)
+                    if group_id in groups_by_id:
+                        continue
+                    group = self._map_collaboration_group(
+                        item,
+                        tenant_key=tenant_key,
+                        parent_group_id=parent_group_id,
+                    )
+                    groups_by_id[group.lark_group_id] = group
+                    if department_id not in visited_departments:
+                        queue.append((department_id, group.lark_group_id))
+                elif entity_type == "user":
+                    employee = self._map_collaboration_employee(
+                        item,
+                        tenant_key=tenant_key,
+                        fallback_group_id=parent_group_id,
+                    )
+                    if employee is not None:
+                        employees_by_lark_id.setdefault(employee.lark_id, employee)
+
+        return FetchedRoster(
+            groups=list(groups_by_id.values()),
+            employees=list(employees_by_lark_id.values()),
+        )
+
     def _paginate(
         self,
         token: str,
         path: str,
         *,
         params: dict[str, object],
+        items_key: str = "items",
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         page_token: str | None = None
@@ -202,9 +286,9 @@ class LarkRosterSource(RosterSource):
             data = response.get("data")
             if not isinstance(data, dict):
                 raise RuntimeError(f"Lark API {path} response did not include data")
-            page_items = data.get("items") or []
+            page_items = data.get(items_key) or []
             if not isinstance(page_items, list):
-                raise RuntimeError(f"Lark API {path} data.items is not a list")
+                raise RuntimeError(f"Lark API {path} data.{items_key} is not a list")
             items.extend(item for item in page_items if isinstance(item, dict))
             if not data.get("has_more"):
                 return items
@@ -235,6 +319,51 @@ class LarkRosterSource(RosterSource):
             join_time=_join_time_from_epoch(item.get("join_time")),
             manager_lark_id=_optional_text(item.get("leader_user_id")),
             group_lark_id=_primary_group_id(item, fallback_group_id=fallback_group_id),
+        )
+
+    def _map_collaboration_group(
+        self,
+        item: dict[str, Any],
+        *,
+        tenant_key: str,
+        parent_group_id: str | None,
+    ) -> FetchedGroup:
+        group_id = _collaboration_group_id(tenant_key, _required_text(item, "open_department_id"))
+        return FetchedGroup(
+            lark_group_id=group_id,
+            name=_collaboration_department_name(item),
+            parent_lark_group_id=parent_group_id,
+        )
+
+    def _map_collaboration_employee(
+        self,
+        item: dict[str, Any],
+        *,
+        tenant_key: str,
+        fallback_group_id: str | None,
+    ) -> FetchedEmployee | None:
+        raw_lark_id = _optional_text(item.get("union_user_id"))
+        if raw_lark_id is None:
+            LOG.warning(
+                "skipping Lark collaboration user without union_user_id",
+                extra={
+                    "tenant_key": tenant_key,
+                    "open_user_id": _optional_text(item.get("open_user_id")),
+                    "user_id": _optional_text(item.get("user_id")),
+                },
+            )
+            return None
+        department_id = _optional_text(item.get("open_department_id"))
+        group_lark_id = (
+            _collaboration_group_id(tenant_key, department_id)
+            if department_id and department_id != COLLABORATION_ROOT_DEPARTMENT_ID
+            else fallback_group_id
+        )
+        return FetchedEmployee(
+            lark_id=raw_lark_id,
+            name=_collaboration_user_name(item),
+            en_name=_i18n_text(item.get("i18n_user_name"), "en_us"),
+            group_lark_id=group_lark_id,
         )
 
     def _github_id_from_custom_attrs(self, item: dict[str, Any]) -> str | None:
@@ -283,6 +412,34 @@ def _primary_group_id(item: dict[str, Any], *, fallback_group_id: str) -> str:
             if normalized:
                 return normalized
     return fallback_group_id
+
+
+def _collaboration_group_id(tenant_key: str, open_department_id: str) -> str:
+    return f"{COLLABORATION_GROUP_PREFIX}:{tenant_key}:{open_department_id}"
+
+
+def _collaboration_department_name(item: dict[str, Any]) -> str:
+    return (
+        _optional_text(item.get("department_name"))
+        or _i18n_text(item.get("i18n_department_name"), "zh_cn")
+        or _i18n_text(item.get("i18n_department_name"), "en_us")
+        or _required_text(item, "open_department_id")
+    )
+
+
+def _collaboration_user_name(item: dict[str, Any]) -> str:
+    return (
+        _optional_text(item.get("user_name"))
+        or _i18n_text(item.get("i18n_user_name"), "zh_cn")
+        or _i18n_text(item.get("i18n_user_name"), "en_us")
+        or _required_text(item, "open_user_id")
+    )
+
+
+def _i18n_text(value: object, locale: str) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    return _optional_text(value.get(locale))
 
 
 def _required_text(item: dict[str, Any], key: str) -> str:

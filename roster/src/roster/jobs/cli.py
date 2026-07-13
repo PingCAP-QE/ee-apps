@@ -126,6 +126,7 @@ def _build_lark_source(settings) -> LarkRosterSource:
         LarkApiClient(settings.lark.app_id, settings.lark.app_secret),
         github_custom_attr_id=settings.lark.github_custom_attr_id,
         root_department_id=settings.lark.root_department_id,
+        collaboration_tenant_keys=settings.lark.collaboration_tenant_keys,
     )
 
 

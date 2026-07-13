@@ -331,6 +331,10 @@ def test_insert_sql_contains_roster_matching_and_daily_dimensions() -> None:
 
     assert "LEFT JOIN roster_employees github_employee" in sql
     assert "LEFT JOIN roster_employees override_employee" in sql
+    assert "override_employee.is_active" not in sql
+    assert "github_employee.is_active" not in sql
+    assert "email_employee.is_active" not in sql
+    assert "normalized_employee.is_active" not in sql
     assert "flaky-claw" in sql
     assert "yinsu@pingcap.com" in sql
     assert "ti-chi-bot" in sql
@@ -361,6 +365,10 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "target_branch" in sql
     assert "LEFT JOIN roster_employees github_employee" in sql
     assert "LEFT JOIN roster_employees override_employee" in sql
+    assert "override_employee.is_active" not in sql
+    assert "github_employee.is_active" not in sql
+    assert "email_employee.is_active" not in sql
+    assert "normalized_employee.is_active" not in sql
     assert "LOWER(github_employee.github_id) = LOWER(summary.author)" in sql
     assert "author_override" in sql
     assert "author_normalized" in sql

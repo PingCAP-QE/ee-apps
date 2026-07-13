@@ -90,6 +90,7 @@ def test_main_builds_lark_source_when_configured(monkeypatch) -> None:
         app_secret="secret",
         github_custom_attr_id="github_attr",
         root_department_id="od-root",
+        collaboration_tenant_keys=("tenant-key",),
     )
     settings = SimpleNamespace(log_level="INFO", lark=lark_settings)
     engine = SimpleNamespace(dispose=lambda: calls.setdefault("disposed", True))
@@ -104,8 +105,18 @@ def test_main_builds_lark_source_when_configured(monkeypatch) -> None:
         calls["client"] = (app_id, app_secret)
         return client
 
-    def fake_lark_roster_source(built_client, github_custom_attr_id, root_department_id):
-        calls["source_args"] = (built_client, github_custom_attr_id, root_department_id)
+    def fake_lark_roster_source(
+        built_client,
+        github_custom_attr_id,
+        root_department_id,
+        collaboration_tenant_keys,
+    ):
+        calls["source_args"] = (
+            built_client,
+            github_custom_attr_id,
+            root_department_id,
+            collaboration_tenant_keys,
+        )
         return source
 
     monkeypatch.setattr(cli, "LarkApiClient", fake_lark_api_client)
@@ -120,7 +131,7 @@ def test_main_builds_lark_source_when_configured(monkeypatch) -> None:
     assert cli.main(["sync-roster"]) == 0
     assert calls == {
         "client": ("cli_xxx", "secret"),
-        "source_args": (client, "github_attr", "od-root"),
+        "source_args": (client, "github_attr", "od-root", ("tenant-key",)),
         "sync": (engine, source),
         "disposed": True,
     }
@@ -219,6 +230,7 @@ def test_main_validate_lark_prints_json(monkeypatch, capsys) -> None:
         app_secret="secret",
         github_custom_attr_id="github_attr",
         root_department_id="od-root",
+        collaboration_tenant_keys=("tenant-key",),
     )
     settings = SimpleNamespace(log_level="INFO", lark=lark_settings)
     client = object()
