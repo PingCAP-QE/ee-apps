@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import urllib.error
 
 import pytest
@@ -203,6 +204,265 @@ def test_lark_roster_source_handles_pagination_and_deduplicates_users() -> None:
     assert roster.employees[0].name == "Alice"
     assert transport.calls[2]["params"]["page_token"] == "next-dept"
     assert transport.calls[4]["params"]["page_token"] == "next-user"
+
+
+def test_lark_roster_source_fetches_collaboration_visible_organization() -> None:
+    transport = FakeTransport(
+        [
+            {"code": 0, "tenant_access_token": "token"},
+            {"code": 0, "data": {"has_more": False, "items": []}},
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "department",
+                            "open_department_id": "od-product-rd",
+                            "department_name": "产品研发部",
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "department",
+                            "open_department_id": "od-kernel",
+                            "department_name": "内核研发中心",
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "department",
+                            "open_department_id": "od-rd3",
+                            "department_name": "研发三组",
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "od-rd3",
+                            "union_user_id": "on_sun",
+                            "open_user_id": "ou_sun",
+                            "user_name": "孙小琳",
+                            "i18n_user_name": {"en_us": "Lynn Sun"},
+                        },
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "od-rd3",
+                            "union_user_id": "on_li",
+                            "open_user_id": "ou_li",
+                            "user_name": "李淳竹",
+                            "i18n_user_name": {"en_us": "Chunzhu Li"},
+                        },
+                    ],
+                },
+            },
+        ]
+    )
+    source = LarkRosterSource(
+        LarkApiClient("app_id", "app_secret", transport=transport),
+        collaboration_tenant_keys=("tenant-key",),
+    )
+
+    roster = source.fetch_roster()
+
+    assert [group.name for group in roster.groups] == ["产品研发部", "内核研发中心", "研发三组"]
+    assert roster.groups[0].lark_group_id == "collab:tenant-key:od-product-rd"
+    assert roster.groups[0].parent_lark_group_id is None
+    assert roster.groups[1].parent_lark_group_id == "collab:tenant-key:od-product-rd"
+    assert roster.groups[2].parent_lark_group_id == "collab:tenant-key:od-kernel"
+    assert [(employee.lark_id, employee.name, employee.en_name) for employee in roster.employees] == [
+        ("on_sun", "孙小琳", "Lynn Sun"),
+        ("on_li", "李淳竹", "Chunzhu Li"),
+    ]
+    assert {employee.group_lark_id for employee in roster.employees} == {
+        "collab:tenant-key:od-rd3"
+    }
+    assert [employee.github_id for employee in roster.employees] == [None, None]
+    assert transport.calls[2]["path"] == (
+        "/trust_party/v1/collaboration_tenants/tenant-key/visible_organization"
+    )
+    assert transport.calls[2]["method"] == "GET"
+    assert transport.calls[2]["params"]["target_department_id"] == "0"
+    assert transport.calls[5]["params"]["target_department_id"] == "od-rd3"
+
+
+def test_lark_roster_source_paginates_collaboration_visible_organization() -> None:
+    transport = FakeTransport(
+        [
+            {"code": 0, "tenant_access_token": "token"},
+            {"code": 0, "data": {"has_more": False, "items": []}},
+            {
+                "code": 0,
+                "data": {
+                    "has_more": True,
+                    "page_token": "next-collab",
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "department",
+                            "open_department_id": "od-rd2",
+                            "department_name": "研发二组",
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "0",
+                            "union_user_id": "on_root",
+                            "user_name": "Root User",
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "od-rd2",
+                            "union_user_id": "on_rd2",
+                            "user_name": "研发二组成员",
+                        }
+                    ],
+                },
+            },
+        ]
+    )
+    source = LarkRosterSource(
+        LarkApiClient("app_id", "app_secret", transport=transport),
+        collaboration_tenant_keys=("tenant-key",),
+    )
+
+    roster = source.fetch_roster()
+
+    assert [employee.lark_id for employee in roster.employees] == ["on_root", "on_rd2"]
+    assert roster.employees[0].group_lark_id is None
+    assert roster.employees[1].group_lark_id == "collab:tenant-key:od-rd2"
+    assert transport.calls[2]["method"] == "GET"
+    assert transport.calls[3]["params"]["page_token"] == "next-collab"
+    assert transport.calls[4]["params"]["target_department_id"] == "od-rd2"
+
+
+def test_lark_roster_source_keeps_primary_employee_when_collaboration_id_matches() -> None:
+    transport = FakeTransport(
+        [
+            {"code": 0, "tenant_access_token": "token"},
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "items": [{"open_department_id": "od-eng", "name": "Engineering"}],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "items": [
+                        {
+                            "union_id": "on_same",
+                            "name": "Primary Employee",
+                            "enterprise_email": "primary@example.com",
+                            "department_ids": ["od-eng"],
+                            "custom_attrs": [
+                                {
+                                    "id": "github_attr",
+                                    "type": "TEXT",
+                                    "value": {"text": "primary-gh"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "0",
+                            "union_user_id": "on_same",
+                            "user_name": "Sparse Collaboration Employee",
+                        }
+                    ],
+                },
+            },
+        ]
+    )
+    source = LarkRosterSource(
+        LarkApiClient("app_id", "app_secret", transport=transport),
+        github_custom_attr_id="github_attr",
+        collaboration_tenant_keys=("tenant-key",),
+    )
+
+    roster = source.fetch_roster()
+
+    assert len(roster.employees) == 1
+    employee = roster.employees[0]
+    assert employee.name == "Primary Employee"
+    assert employee.email == "primary@example.com"
+    assert employee.github_id == "primary-gh"
+
+
+def test_lark_roster_source_skips_collaboration_user_without_union_id(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger="roster.sources.lark")
+    transport = FakeTransport(
+        [
+            {"code": 0, "tenant_access_token": "token"},
+            {"code": 0, "data": {"has_more": False, "items": []}},
+            {
+                "code": 0,
+                "data": {
+                    "has_more": False,
+                    "collaboration_entity_list": [
+                        {
+                            "collaboration_entity_type": "user",
+                            "open_department_id": "0",
+                            "open_user_id": "ou_unstable",
+                            "user_id": "user_unstable",
+                            "user_name": "Unstable User",
+                        }
+                    ],
+                },
+            },
+        ]
+    )
+    source = LarkRosterSource(
+        LarkApiClient("app_id", "app_secret", transport=transport),
+        collaboration_tenant_keys=("tenant-key",),
+    )
+
+    roster = source.fetch_roster()
+
+    assert roster.employees == []
+    assert "without union_user_id" in caplog.text
 
 
 def test_lark_api_client_raises_on_lark_error() -> None:

@@ -28,6 +28,7 @@ def test_load_settings_builds_tidb_fields() -> None:
             "ROSTER_LARK_APP_ID": "cli_xxx",
             "ROSTER_LARK_APP_SECRET": "secret",
             "ROSTER_LARK_GITHUB_CUSTOM_ATTR_ID": "github_attr",
+            "ROSTER_LARK_COLLABORATION_TENANT_KEYS": "tenant-a, tenant-b, tenant-a",
             "ROSTER_LARK_NOTIFY_OPEN_ID": "ou_xxx",
             "ROSTER_LARK_NOTIFY_OPEN_IDS": "ou_xxx, ou_yyy",
             "ROSTER_LARK_ROOT_DEPARTMENT_ID": "od-root",
@@ -43,6 +44,7 @@ def test_load_settings_builds_tidb_fields() -> None:
     assert settings.lark.app_id == "cli_xxx"
     assert settings.lark.app_secret == "secret"
     assert settings.lark.github_custom_attr_id == "github_attr"
+    assert settings.lark.collaboration_tenant_keys == ("tenant-a", "tenant-b")
     assert settings.lark.notify_open_id == "ou_xxx"
     assert settings.lark.notify_open_ids == ("ou_xxx", "ou_yyy")
     assert settings.lark.all_notify_open_ids == ("ou_xxx", "ou_yyy")
