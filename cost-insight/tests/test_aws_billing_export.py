@@ -56,6 +56,10 @@ def test_build_aws_billing_summary_query_contains_expected_filters() -> None:
 
     assert "line_item_usage_account_id = @account_id" in query
     assert "PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end" in query
+    assert "WHERE kv.key = 'user_shared_pool'" in query
+    assert "NULLIF(tag_cluster, '') AS `cluster`" in query
+    assert "TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))" in query
+    assert "END AS vendor_tags_json" in query
     assert "ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount" in query
     assert "LIMIT 20" in query
 
@@ -68,6 +72,9 @@ def test_build_aws_unmatched_resource_query_contains_usage_seconds_logic() -> No
 
     assert "WHEN COUNTIF(pricing_unit = 'hour') = COUNT(*)" in query
     assert "resource_name IS NOT NULL" in query
+    assert "WHERE kv.key = 'user_shared_pool'" in query
+    assert "NULLIF(tag_cluster, '') AS `cluster`" in query
+    assert "END AS vendor_tags_json" in query
     assert "ROUND(SUM(net_cost), 2) AS net_cost" in query
     assert "LIMIT 10" in query
 

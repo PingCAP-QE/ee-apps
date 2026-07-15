@@ -25,6 +25,7 @@ DEFAULT_GCS_CACHE_AC_REFERENCE_INDEX_STATE_TABLE = "gcs_cache_ac_reference_index
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_BUCKET = "pingcap-ci-console-logs-us-central1"
 DEFAULT_GCS_CACHE_CLEANUP_MANIFEST_PREFIX = "gcs-cache-steady-state-delete"
 DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES = 50 * 1024**4
+DEFAULT_TCMS_ALLOCATION_TABLE = "tcms_cost.resource_allocation"
 
 
 @dataclass(frozen=True)
@@ -105,11 +106,17 @@ class GcsCacheSettings:
 
 
 @dataclass(frozen=True)
+class TcmsAllocationSettings:
+    allocation_table: str = DEFAULT_TCMS_ALLOCATION_TABLE
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     gcp_billing: GcpBillingSettings = GcpBillingSettings()
     aws_billing: AwsBillingSettings = AwsBillingSettings()
     gcs_cache: GcsCacheSettings = GcsCacheSettings()
+    tcms_allocation: TcmsAllocationSettings = TcmsAllocationSettings()
     log_level: str = "INFO"
 
 
@@ -458,6 +465,14 @@ def load_settings(
                     "COST_GCS_CACHE_CLEANUP_REQUIRE_FRESH_INDEX",
                 ),
                 True,
+            ),
+        ),
+        tcms_allocation=TcmsAllocationSettings(
+            allocation_table=_read_any(
+                env,
+                DEFAULT_TCMS_ALLOCATION_TABLE,
+                "COST_INSIGHT_TCMS_ALLOCATION_TABLE",
+                "COST_TCMS_ALLOCATION_TABLE",
             ),
         ),
         log_level=_read_any(env, "INFO", "COST_INSIGHT_LOG_LEVEL", "COST_LOG_LEVEL").upper(),

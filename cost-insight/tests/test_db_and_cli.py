@@ -10,6 +10,7 @@ from cost_insight.common.config import (
     DatabaseSettings,
     GcpBillingSettings,
     Settings,
+    TcmsAllocationSettings,
 )
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
@@ -479,15 +480,25 @@ def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
         aws_billing=AwsBillingSettings(),
+        tcms_allocation=TcmsAllocationSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(engine, *, source, start_date, end_date, dry_run):
+    def fake_refresh(
+        engine,
+        *,
+        source,
+        start_date,
+        end_date,
+        dry_run,
+        tcms_allocation_table=None,
+    ):
         captured["engine"] = engine
         captured["source"] = source
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
+        captured["tcms_allocation_table"] = tcms_allocation_table
         return RefreshAttributionSummary(
             vendor=source.vendor,
             account_id=source.account_id,
@@ -708,15 +719,25 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
         aws_billing=AwsBillingSettings(),
+        tcms_allocation=TcmsAllocationSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(engine, *, source, start_date, end_date, dry_run):
+    def fake_refresh(
+        engine,
+        *,
+        source,
+        start_date,
+        end_date,
+        dry_run,
+        tcms_allocation_table=None,
+    ):
         captured["engine"] = engine
         captured["source"] = source
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
+        captured["tcms_allocation_table"] = tcms_allocation_table
         return RefreshAttributionSummary(
             vendor=source.vendor,
             account_id=source.account_id,
@@ -753,6 +774,7 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
         vendor="gcp",
         account_id="pingcap-testing-account",
     )
+    assert captured["tcms_allocation_table"] == "tcms_cost.resource_allocation"
     assert '"summary_rows": 10' in output
 
 
@@ -872,6 +894,7 @@ def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
             "2026-05-01",
             "--export-partition-end",
             "2026-05-01",
+            "--replace-existing-partitions",
             "--dry-run",
         ]
     )
@@ -880,6 +903,7 @@ def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
     assert exit_code == 0
     assert disposed == [True]
     assert captured["account_id"] == "946646677266"
+    assert captured["replace_existing_partitions"] is True
     assert '"account_id": "946646677266"' in output
     assert '"rows_written": 4' in output
 
@@ -947,11 +971,20 @@ def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
         aws_billing=AwsBillingSettings(),
+        tcms_allocation=TcmsAllocationSettings(),
         log_level="INFO",
     )
 
-    def fake_refresh(_engine, *, source, start_date, end_date, dry_run):
-        calls.append((source.account_id, start_date, end_date, dry_run))
+    def fake_refresh(
+        _engine,
+        *,
+        source,
+        start_date,
+        end_date,
+        dry_run,
+        tcms_allocation_table=None,
+    ):
+        calls.append((source.account_id, start_date, end_date, dry_run, tcms_allocation_table))
         return RefreshAttributionSummary(
             vendor=source.vendor,
             account_id=source.account_id,
@@ -982,8 +1015,20 @@ def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
     )
 
     assert calls == [
-        ("pingcap-testing-account", date(2026, 5, 9), date(2026, 5, 9), False),
-        ("pingcap-testing-account", date(2026, 5, 10), date(2026, 5, 10), False),
+        (
+            "pingcap-testing-account",
+            date(2026, 5, 9),
+            date(2026, 5, 9),
+            False,
+            "tcms_cost.resource_allocation",
+        ),
+        (
+            "pingcap-testing-account",
+            date(2026, 5, 10),
+            date(2026, 5, 10),
+            False,
+            "tcms_cost.resource_allocation",
+        ),
     ]
     assert '"start_date": "2026-05-09"' in capsys.readouterr().out
 

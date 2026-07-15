@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -10,6 +11,38 @@ def nullable_text(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def normalize_vendor_tags_json(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        parsed = json.loads(text)
+    elif isinstance(value, dict):
+        parsed = value
+    else:
+        raise ValueError(f"Unsupported vendor_tags_json value: {value!r}")
+    if not isinstance(parsed, dict):
+        raise ValueError(f"vendor_tags_json must be a JSON object: {value!r}")
+
+    normalized: dict[str, str] = {}
+    for key in ("cluster", "shared_pool"):
+        normalized_value = nullable_text(parsed.get(key))
+        if normalized_value is not None:
+            normalized[key] = normalized_value
+    for key, raw_value in parsed.items():
+        if key in normalized:
+            continue
+        normalized_value = nullable_text(raw_value)
+        if normalized_value is not None:
+            normalized[str(key)] = normalized_value
+
+    if not normalized:
+        return None
+    return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
 def coerce_date(value: Any) -> date | None:

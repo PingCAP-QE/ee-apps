@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -14,9 +15,12 @@ from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_co
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_summary import (
     SyncGcpBillingSummaryResult,
+    _dump_spooled_row,
+    _iter_spooled_rows,
     _normalize_summary_row,
     _select_billing_account_id,
     _watermark as gcp_watermark,
+    replace_summary_partitions,
     write_summary_rows,
 )
 from cost_insight.sources.aws_billing_export import fetch_aws_billing_summary_rows
@@ -42,6 +46,7 @@ def run_sync_aws_billing_summary(
     earliest_usage_date: date | None = None,
     dry_run: bool = False,
     limit: int | None = None,
+    replace_existing_partitions: bool = False,
     fetch_rows: RowFetcher = fetch_aws_billing_summary_rows,
 ) -> SyncAwsBillingSummaryResult:
     resolved_end = export_partition_end or _month_floor(datetime.now(timezone.utc).date())
@@ -74,24 +79,52 @@ def run_sync_aws_billing_summary(
         rows_written = 0
         source_billing_account_ids: set[str] = set()
         batch: list[dict[str, Any]] = []
-        for source_row in fetch_rows(
-            billing_table=settings.billing_table,
-            account_id=account_id,
-            export_partition_start=resolved_start,
-            export_partition_end=resolved_end,
-            earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
-            page_size=settings.page_size,
-            limit=limit,
-        ):
-            rows_seen += 1
-            normalized = _normalize_summary_row(source_row)
-            if normalized["billing_account_id"]:
-                source_billing_account_ids.add(str(normalized["billing_account_id"]))
-            batch.append(normalized)
-            if len(batch) >= settings.page_size:
-                rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
-                batch.clear()
-        rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
+        if replace_existing_partitions:
+            with tempfile.TemporaryFile("w+b") as row_spool:
+                for source_row in fetch_rows(
+                    billing_table=settings.billing_table,
+                    account_id=account_id,
+                    export_partition_start=resolved_start,
+                    export_partition_end=resolved_end,
+                    earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
+                    page_size=settings.page_size,
+                    limit=limit,
+                ):
+                    rows_seen += 1
+                    normalized = _normalize_summary_row(source_row)
+                    if normalized["billing_account_id"]:
+                        source_billing_account_ids.add(str(normalized["billing_account_id"]))
+                    _dump_spooled_row(row_spool, normalized)
+                rows_written += replace_summary_partitions(
+                    engine,
+                    _iter_spooled_rows(row_spool),
+                    row_count=rows_seen,
+                    vendor="aws",
+                    account_id=account_id,
+                    export_partition_start=resolved_start,
+                    export_partition_end=resolved_end,
+                    dry_run=dry_run,
+                    batch_size=settings.page_size,
+                )
+        else:
+            for source_row in fetch_rows(
+                billing_table=settings.billing_table,
+                account_id=account_id,
+                export_partition_start=resolved_start,
+                export_partition_end=resolved_end,
+                earliest_usage_date=earliest_usage_date or settings.earliest_usage_date,
+                page_size=settings.page_size,
+                limit=limit,
+            ):
+                rows_seen += 1
+                normalized = _normalize_summary_row(source_row)
+                if normalized["billing_account_id"]:
+                    source_billing_account_ids.add(str(normalized["billing_account_id"]))
+                batch.append(normalized)
+                if len(batch) >= settings.page_size:
+                    rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
+                    batch.clear()
+            rows_written += write_summary_rows(engine, batch, dry_run=dry_run)
 
         touched_usage_dates: tuple[date, ...] = ()
         if not dry_run:
