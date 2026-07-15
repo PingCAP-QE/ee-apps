@@ -81,6 +81,37 @@ def test_rule_engine_classifies_pull_mysql_test_diff_as_unit_test_failure() -> N
     assert classification.source == "rule:unit_mysql_test_failure"
 
 
+def test_rule_engine_classifies_ghpr_check2_sql_diff_as_unit_test_failure_over_node_shutdown() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response to imminent node shutdown.\n"
+            "ERROR[2131] 1 tests failed\n"
+            "ERRO[2131] run test [planner/core/issuetest/planner_issue] err: "
+            "sql:explain format='plan_tree' SELECT 1: failed to run query\n"
+            "around line 532,\n"
+            "we need(1084):\n"
+            "stats:partial[col_17:missing]\n"
+            "but got(1084):\n"
+            "stats:partial[col_17:unInitialized]\n"
+            "diff:\n"
+            "stats:partial[col_17:unInitialized]\n"
+            "org.jenkinsci.plugins.workflow.support.steps.AgentOfflineException: "
+            "Unable to create live FilePath for pingcap-tidb-ghpr-check2-5702-gp65f\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/ghpr_check2",
+            "url": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/5702/",
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "UT"
+    assert classification.l2_subcategory == "TEST_FAILURE"
+    assert classification.source == "rule:ghpr_check2_sql_test_failure"
+
+
 def test_rule_engine_prefers_unit_bazel_failure_over_k8s_noise() -> None:
     engine = RuleEngine.from_file()
 
@@ -1618,6 +1649,40 @@ def test_rule_engine_matches_bazel_strict_dependency_failure() -> None:
     assert classification.l1_category == "BUILD"
     assert classification.l2_subcategory == "DEPENDENCY"
     assert classification.source == "rule:build_dependency_failure"
+
+
+def test_rule_engine_classifies_bazel_rules_cc_toolchain_attr_mismatch_as_dependency() -> None:
+    engine = RuleEngine.from_file()
+
+    classification = engine.classify(
+        log_text=(
+            "Failed in branch Matrix - SCRIPT_AND_ARGS = "
+            "'tests/realtikvtest/scripts/next-gen/run-tests.sh bazel_sessiontest'\n"
+            "ERROR: /home/jenkins/.tidb/tmp/dce1e71c/external/rules_cc/cc/private/"
+            "bazel7/BUILD:21:19: @rules_cc//cc/private/bazel7:"
+            "optional_current_cc_toolchain: no such attribute 'mandatory' "
+            "in 'cc_toolchain_alias' rule\n"
+            "ERROR: Analysis of target '//:gazelle' failed; build aborted:\n"
+            "FAILED: Build did NOT complete successfully (83 packages loaded, "
+            "6531 targets configured)\n"
+            "make: *** [Makefile:674: bazel_ci_simple_prepare] Error 1\n"
+            "Timeout waiting for agent to come back\n"
+            "Pod [Failed][TerminationByKubelet] Pod was terminated in response "
+            "to imminent node shutdown.\n"
+        ),
+        build={
+            "job_name": "pingcap/tidb/pull_integration_realcluster_test_next_gen",
+            "url": (
+                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/"
+                "pull_integration_realcluster_test_next_gen/5446/"
+            ),
+        },
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "DEPENDENCY"
+    assert classification.source == "rule:build_bazel_toolchain_dependency_failure"
 
 
 def test_rule_engine_matches_missing_go_sum_dependency_failure() -> None:
