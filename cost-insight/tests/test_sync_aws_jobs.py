@@ -62,6 +62,7 @@ def _sqlite_engine():
               org TEXT,
               repo TEXT,
               target_branch TEXT,
+              vendor_tags_json TEXT,
               author TEXT,
               list_cost REAL,
               effective_cost REAL,
@@ -88,6 +89,7 @@ def _sqlite_engine():
               org TEXT,
               repo TEXT,
               target_branch TEXT,
+              vendor_tags_json TEXT,
               author TEXT,
               resource_name TEXT NOT NULL,
               usage_seconds REAL,
@@ -234,6 +236,51 @@ def test_run_sync_aws_billing_summary_writes_rows_and_touched_dates() -> None:
         assert state is not None
         assert state.last_status == "succeeded"
         assert source == "payer-1"
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_aws_billing_summary_can_replace_existing_partitions() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=2)
+
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id="946646677266",
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            fetch_rows=lambda **_kwargs: [_summary_row("2026-05-01"), _summary_row("2026-05-02")],
+        )
+
+        summary = run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id="946646677266",
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            replace_existing_partitions=True,
+            fetch_rows=lambda **_kwargs: [_summary_row("2026-05-03")],
+        )
+
+        assert summary.rows_seen == 1
+        assert summary.rows_written == 1
+        assert summary.touched_usage_dates == (date(2026, 5, 3),)
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date
+                    FROM cost_bq_export_summary_daily
+                    WHERE vendor = 'aws'
+                      AND account_id = '946646677266'
+                      AND export_partition_date = '2026-05-01'
+                    ORDER BY usage_date
+                    """
+                )
+            ).scalars().all()
+        assert rows == ["2026-05-03"]
     finally:
         engine.dispose()
 

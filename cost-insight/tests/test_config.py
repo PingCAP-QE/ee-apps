@@ -7,6 +7,7 @@ from cost_insight.common.config import (
     DEFAULT_GCP_ACCOUNT_ID,
     DEFAULT_GCP_BILLING_TABLE,
     DEFAULT_GCS_CACHE_CLEANUP_MAX_DELETE_CAS_BYTES,
+    DEFAULT_TCMS_ALLOCATION_TABLE,
     load_settings,
 )
 
@@ -49,6 +50,7 @@ def test_load_settings_can_skip_database_for_validation() -> None:
     assert settings.gcs_cache.last_seen_excluded_get_user_agent == "TransferService"
     assert settings.gcs_cache.last_seen_excluded_get_principal_email is None
     assert settings.gcs_cache.ac_reference_max_index_staleness_hours == 1
+    assert settings.tcms_allocation.allocation_table == DEFAULT_TCMS_ALLOCATION_TABLE
 
 
 def test_load_settings_falls_back_to_tidb_parts() -> None:
@@ -93,6 +95,17 @@ def test_load_settings_reads_aws_billing_settings() -> None:
     assert settings.aws_billing.export_overlap_months == 2
     assert settings.aws_billing.sync_initial_lookback_months == 6
     assert settings.aws_billing.page_size == 1000
+
+
+def test_load_settings_reads_tcms_allocation_settings() -> None:
+    settings = load_settings(
+        {
+            "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight",
+            "COST_INSIGHT_TCMS_ALLOCATION_TABLE": "custom_tcms.resource_allocation",
+        }
+    )
+
+    assert settings.tcms_allocation.allocation_table == "custom_tcms.resource_allocation"
 
 
 def test_load_settings_reads_gcs_cache_settings_without_database() -> None:

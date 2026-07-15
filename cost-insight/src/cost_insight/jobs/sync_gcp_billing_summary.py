@@ -19,6 +19,7 @@ from cost_insight.common.row_utils import (
     coerce_date,
     coerce_datetime,
     hash_value,
+    normalize_vendor_tags_json,
     nullable_text,
 )
 from cost_insight.jobs import state_store
@@ -46,6 +47,7 @@ HASH_FIELDS = (
     "org",
     "repo",
     "target_branch",
+    "vendor_tags_json",
 )
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -126,6 +128,7 @@ def run_sync_gcp_billing_summary(
                     engine,
                     _iter_spooled_rows(row_spool),
                     row_count=rows_seen,
+                    vendor="gcp",
                     account_id=settings.account_id,
                     export_partition_start=resolved_start,
                     export_partition_end=resolved_end,
@@ -242,6 +245,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
+        "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
         "credit_amount": decimal_or_none(row.get("credit_amount")),
@@ -259,7 +263,10 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_summary_row_hash(row: dict[str, Any]) -> str:
-    payload = {field: hash_value(row.get(field)) for field in HASH_FIELDS}
+    hash_fields = HASH_FIELDS
+    if row.get("vendor_tags_json") is None:
+        hash_fields = tuple(field for field in HASH_FIELDS if field != "vendor_tags_json")
+    payload = {field: hash_value(row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -280,6 +287,7 @@ def replace_summary_partitions(
     rows: Iterable[dict[str, Any]],
     *,
     row_count: int,
+    vendor: str = "gcp",
     account_id: str,
     export_partition_start: date,
     export_partition_end: date,
@@ -291,6 +299,7 @@ def replace_summary_partitions(
             "dry-run skipped cost_bq_export_summary_daily partition replacement",
             extra={
                 "row_count": row_count,
+                "vendor": vendor,
                 "account_id": account_id,
                 "export_partition_start": export_partition_start,
                 "export_partition_end": export_partition_end,
@@ -302,6 +311,7 @@ def replace_summary_partitions(
     with engine.begin() as connection:
         _delete_existing_summary_partitions(
             connection,
+            vendor=vendor,
             account_id=account_id,
             export_partition_start=export_partition_start,
             export_partition_end=export_partition_end,
@@ -322,6 +332,7 @@ def _write_summary_rows(connection: Connection, rows: Sequence[dict[str, Any]]) 
     if not rows:
         return
     _delete_legacy_summary_rows(connection, rows)
+    _delete_superseded_unlabeled_summary_rows(connection, rows)
     _delete_superseded_owner_override_rows(connection, rows)
     connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
 
@@ -372,12 +383,41 @@ def _delete_superseded_owner_override_rows(
                 "org": row.get("org") or "",
                 "repo": row.get("repo") or "",
                 "target_branch": row.get("target_branch") or "",
+                "vendor_tags_json": row.get("vendor_tags_json") or "",
             }
             for row in rows[offset : offset + OWNER_OVERRIDE_DELETE_CHUNK_SIZE]
             if _is_owner_override_row(row)
         ]
         if params:
             connection.execute(_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS, params)
+
+
+def _delete_superseded_unlabeled_summary_rows(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
+    # The reverse direction is handled by partition replacement to avoid deleting
+    # legitimate labeled rows when labeled and unlabeled groups coexist.
+    params = [
+        {
+            "vendor": row.get("vendor") or "",
+            "account_id": row.get("account_id") or "",
+            "billing_account_id": row.get("billing_account_id") or "",
+            "export_partition_date": row["export_partition_date"],
+            "usage_date": row["usage_date"],
+            "service_name": row.get("service_name") or "",
+            "sku_name": row.get("sku_name") or "",
+            "author": row.get("author") or "",
+            "org": row.get("org") or "",
+            "repo": row.get("repo") or "",
+            "target_branch": row.get("target_branch") or "",
+        }
+        for row in rows
+        if row.get("vendor_tags_json") is not None
+    ]
+    if params:
+        connection.execute(_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS, params)
 
 
 def _is_owner_override_row(row: dict[str, Any]) -> bool:
@@ -417,6 +457,7 @@ def _get_touched_usage_dates(
 def _delete_existing_summary_partitions(
     connection: Connection,
     *,
+    vendor: str = "gcp",
     account_id: str,
     export_partition_start: date,
     export_partition_end: date,
@@ -424,7 +465,7 @@ def _delete_existing_summary_partitions(
     connection.execute(
         _DELETE_EXISTING_SUMMARY_PARTITIONS,
         {
-            "vendor": "gcp",
+            "vendor": vendor,
             "account_id": account_id,
             "export_partition_start": export_partition_start,
             "export_partition_end": export_partition_end,
@@ -447,6 +488,7 @@ def _build_upsert_statement(connection: Connection):
               org,
               repo,
               target_branch,
+              vendor_tags_json,
               author,
               list_cost,
               effective_cost,
@@ -465,6 +507,7 @@ def _build_upsert_statement(connection: Connection):
               :org,
               :repo,
               :target_branch,
+              :vendor_tags_json,
               :author,
               :list_cost,
               :effective_cost,
@@ -499,6 +542,7 @@ def _build_upsert_statement(connection: Connection):
           org,
           repo,
           target_branch,
+          vendor_tags_json,
           author,
           list_cost,
           effective_cost,
@@ -517,6 +561,7 @@ def _build_upsert_statement(connection: Connection):
           :org,
           :repo,
           :target_branch,
+          :vendor_tags_json,
           :author,
           :list_cost,
           :effective_cost,
@@ -587,7 +632,27 @@ _DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
       AND COALESCE(org, '') = :org
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
+      AND COALESCE(vendor_tags_json, '') = :vendor_tags_json
       AND author IS NULL
+    """
+)
+
+
+_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
+    """
+    DELETE FROM cost_bq_export_summary_daily
+    WHERE vendor = :vendor
+      AND account_id = :account_id
+      AND COALESCE(billing_account_id, '') = :billing_account_id
+      AND export_partition_date = :export_partition_date
+      AND usage_date = :usage_date
+      AND COALESCE(service_name, '') = :service_name
+      AND COALESCE(sku_name, '') = :sku_name
+      AND COALESCE(author, '') = :author
+      AND COALESCE(org, '') = :org
+      AND COALESCE(repo, '') = :repo
+      AND COALESCE(target_branch, '') = :target_branch
+      AND vendor_tags_json IS NULL
     """
 )
 

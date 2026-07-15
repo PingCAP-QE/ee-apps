@@ -99,6 +99,13 @@ WITH normalized AS (
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
     NULLIF(tag_project, '') AS repo,
+    (
+      SELECT NULLIF(kv.value, '')
+      FROM UNNEST(resource_tags.key_value) AS kv
+      WHERE kv.key = 'user_shared_pool'
+      LIMIT 1
+    ) AS shared_pool,
+    NULLIF(tag_cluster, '') AS `cluster`,
     pricing_unit,
     line_item_usage_amount,
     COALESCE(pricing_public_on_demand_cost, 0) AS list_cost,
@@ -126,6 +133,10 @@ SELECT
   author,
   org,
   repo,
+  CASE
+    WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
+    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+  END AS vendor_tags_json,
   ROUND(SUM(list_cost), 2) AS list_cost,
   ROUND(SUM(effective_cost), 2) AS effective_cost,
   ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount,
@@ -141,8 +152,17 @@ GROUP BY
   sku_name,
   author,
   org,
-  repo
-ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo{limit_clause}
+  repo,
+  vendor_tags_json
+ORDER BY
+  export_partition_date,
+  usage_date,
+  service_name,
+  sku_name,
+  author,
+  org,
+  repo,
+  vendor_tags_json{limit_clause}
 """.strip()
 
 
@@ -165,6 +185,13 @@ WITH normalized AS (
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
     NULLIF(tag_project, '') AS repo,
+    (
+      SELECT NULLIF(kv.value, '')
+      FROM UNNEST(resource_tags.key_value) AS kv
+      WHERE kv.key = 'user_shared_pool'
+      LIMIT 1
+    ) AS shared_pool,
+    NULLIF(tag_cluster, '') AS `cluster`,
     COALESCE(
       NULLIF(line_item_resource_id, ''),
       NULLIF(split_line_item_parent_resource_id, ''),
@@ -198,6 +225,10 @@ SELECT
   author,
   org,
   repo,
+  CASE
+    WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
+    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+  END AS vendor_tags_json,
   resource_name,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0
@@ -229,6 +260,7 @@ GROUP BY
   author,
   org,
   repo,
+  vendor_tags_json,
   resource_name
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()

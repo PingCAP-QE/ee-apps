@@ -17,6 +17,7 @@ from cost_insight.common.row_utils import (
     coerce_date,
     coerce_datetime,
     hash_value,
+    normalize_vendor_tags_json,
     nullable_text,
 )
 from cost_insight.jobs import state_store
@@ -43,6 +44,7 @@ HASH_FIELDS = (
     "org",
     "repo",
     "target_branch",
+    "vendor_tags_json",
     "resource_name",
 )
 
@@ -195,6 +197,7 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
+        "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
         "resource_name": nullable_text(row.get("resource_name")),
         "usage_seconds": decimal_or_none(row.get("usage_seconds")),
         "list_cost": decimal_or_none(row.get("list_cost")),
@@ -216,7 +219,10 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_unmatched_resource_row_hash(row: dict[str, Any]) -> str:
-    payload = {field: hash_value(row.get(field)) for field in HASH_FIELDS}
+    hash_fields = HASH_FIELDS
+    if row.get("vendor_tags_json") is None:
+        hash_fields = tuple(field for field in HASH_FIELDS if field != "vendor_tags_json")
+    payload = {field: hash_value(row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -233,6 +239,7 @@ def write_unmatched_resource_rows(
         LOG.info("dry-run skipped cost_unmatched_resource_daily upsert", extra={"row_count": len(rows)})
         return 0
     with engine.begin() as connection:
+        _delete_superseded_unlabeled_resource_rows(connection, rows)
         connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
     return len(rows)
 
@@ -242,6 +249,36 @@ def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[d
     if connection.dialect.name != "sqlite":
         return bound_rows
     return bind_decimal_rows(bound_rows)
+
+
+def _delete_superseded_unlabeled_resource_rows(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
+    # The reverse direction is handled by partition replacement to avoid deleting
+    # legitimate labeled rows when labeled and unlabeled groups coexist.
+    params = [
+        {
+            "vendor": row.get("vendor") or "",
+            "account_id": row.get("account_id") or "",
+            "billing_account_id": row.get("billing_account_id") or "",
+            "export_partition_date": row["export_partition_date"],
+            "usage_date": row["usage_date"],
+            "service_name": row.get("service_name") or "",
+            "sku_name": row.get("sku_name") or "",
+            "namespace": row.get("namespace") or "",
+            "author": row.get("author") or "",
+            "org": row.get("org") or "",
+            "repo": row.get("repo") or "",
+            "target_branch": row.get("target_branch") or "",
+            "resource_name": row.get("resource_name") or "",
+        }
+        for row in rows
+        if row.get("vendor_tags_json") is not None
+    ]
+    if params:
+        connection.execute(_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS, params)
 
 
 def _build_upsert_statement(connection: Connection):
@@ -260,6 +297,7 @@ def _build_upsert_statement(connection: Connection):
               org,
               repo,
               target_branch,
+              vendor_tags_json,
               author,
               resource_name,
               usage_seconds,
@@ -281,6 +319,7 @@ def _build_upsert_statement(connection: Connection):
               :org,
               :repo,
               :target_branch,
+              :vendor_tags_json,
               :author,
               :resource_name,
               :usage_seconds,
@@ -317,6 +356,7 @@ def _build_upsert_statement(connection: Connection):
           org,
           repo,
           target_branch,
+          vendor_tags_json,
           author,
           resource_name,
           usage_seconds,
@@ -338,6 +378,7 @@ def _build_upsert_statement(connection: Connection):
           :org,
           :repo,
           :target_branch,
+          :vendor_tags_json,
           :author,
           :resource_name,
           :usage_seconds,
@@ -360,3 +401,24 @@ def _build_upsert_statement(connection: Connection):
           updated_at = CURRENT_TIMESTAMP
         """
     )
+
+
+_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
+    """
+    DELETE FROM cost_unmatched_resource_daily
+    WHERE vendor = :vendor
+      AND account_id = :account_id
+      AND COALESCE(billing_account_id, '') = :billing_account_id
+      AND export_partition_date = :export_partition_date
+      AND usage_date = :usage_date
+      AND COALESCE(service_name, '') = :service_name
+      AND COALESCE(sku_name, '') = :sku_name
+      AND COALESCE(namespace, '') = :namespace
+      AND COALESCE(author, '') = :author
+      AND COALESCE(org, '') = :org
+      AND COALESCE(repo, '') = :repo
+      AND COALESCE(target_branch, '') = :target_branch
+      AND resource_name = :resource_name
+      AND vendor_tags_json IS NULL
+    """
+)

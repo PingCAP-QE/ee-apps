@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_aws_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
     sync_aws_summary.add_argument("--dry-run", action="store_true")
     sync_aws_summary.add_argument("--limit", type=int, default=None)
+    sync_aws_summary.add_argument(
+        "--replace-existing-partitions",
+        action="store_true",
+        help="Delete existing AWS summary rows for the requested export partition range before importing.",
+    )
 
     sync_unmatched = subparsers.add_parser(
         "sync-gcp-unmatched-resources",
@@ -274,6 +279,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.command == "sync-aws-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
         engine = build_engine(settings)
         try:
             summaries = []
@@ -288,6 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         earliest_usage_date=args.earliest_usage_date,
                         dry_run=args.dry_run,
                         limit=args.limit,
+                        replace_existing_partitions=args.replace_existing_partitions,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
@@ -386,7 +398,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 aws_settings=settings.aws_billing,
             ):
                 summaries.extend(
-                    _run_refresh_attribution_from_summary_command(engine, source=source, args=args)
+                    _run_refresh_attribution_from_summary_command(
+                        engine,
+                        source=source,
+                        args=args,
+                        tcms_allocation_table=settings.tcms_allocation.allocation_table,
+                    )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
@@ -548,7 +565,13 @@ def _run_refresh_attribution_command(engine, *, source: CostAttributionSource, a
     return [summary]
 
 
-def _run_refresh_attribution_from_summary_command(engine, *, source: CostAttributionSource, args):
+def _run_refresh_attribution_from_summary_command(
+    engine,
+    *,
+    source: CostAttributionSource,
+    args,
+    tcms_allocation_table: str,
+):
     logger = logging.getLogger(__name__)
     if args.split_by_day:
         summaries = []
@@ -567,6 +590,7 @@ def _run_refresh_attribution_from_summary_command(engine, *, source: CostAttribu
                 start_date=usage_date,
                 end_date=usage_date,
                 dry_run=args.dry_run,
+                tcms_allocation_table=tcms_allocation_table,
             )
             logger.info(
                 "refresh-cost-attribution-from-summary day finished",
@@ -581,6 +605,7 @@ def _run_refresh_attribution_from_summary_command(engine, *, source: CostAttribu
         start_date=args.start_date,
         end_date=args.end_date,
         dry_run=args.dry_run,
+        tcms_allocation_table=tcms_allocation_table,
     )
     logger.info(
         "refresh-cost-attribution-from-summary finished",
