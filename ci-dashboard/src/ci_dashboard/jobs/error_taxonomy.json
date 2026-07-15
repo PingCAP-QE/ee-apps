@@ -140,6 +140,14 @@
       ]
     },
     {
+      "name": "build_bazel_toolchain_dependency_failure",
+      "l1": "BUILD",
+      "l2": "DEPENDENCY",
+      "text_patterns": [
+        "no such attribute 'mandatory' in 'cc_toolchain_alias' rule"
+      ]
+    },
+    {
       "name": "unit_mysql_test_failure",
       "l1": "UT",
       "l2": "TEST_FAILURE",
@@ -180,6 +188,21 @@
       "text_patterns": [
         "Validating nogo output for //[^\\r\\n]+ failed",
         "Running nogo on //[^\\r\\n]+ failed"
+      ]
+    },
+    {
+      "name": "ghpr_check2_sql_test_failure",
+      "l1": "UT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)ghpr_check2$",
+        "(^|/)pull_check2[^/]*$",
+        "(^|_)ghpr_check2($|_)",
+        "(^|_)pull_check2($|_)"
+      ],
+      "text_patterns": [
+        "run test \\[[^\\]]+\\] err:",
+        "[1-9][0-9]* tests failed[\\s\\S]*run test \\[[^\\]]+\\] err:"
       ]
     },
     {
