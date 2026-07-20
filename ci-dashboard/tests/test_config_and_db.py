@@ -17,6 +17,7 @@ def test_load_settings_supports_db_url() -> None:
             "CI_DASHBOARD_BATCH_SIZE": "12",
             "CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE": "7",
             "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "3456",
+            "CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP": "true",
             "CI_DASHBOARD_KAFKA_BOOTSTRAP_SERVERS": "kafka-a:9092,kafka-b:9092",
             "CI_DASHBOARD_KAFKA_JENKINS_EVENTS_TOPIC": "jenkins-event-test",
             "CI_DASHBOARD_KAFKA_JENKINS_GROUP_ID": "ci-dashboard-test",
@@ -44,6 +45,7 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.jobs.batch_size == 12
     assert settings.jobs.refresh_group_batch_size == 7
     assert settings.jobs.refresh_build_limit == 3456
+    assert settings.jobs.force_flaky_stale_cleanup is True
     assert settings.kafka.bootstrap_servers == ("kafka-a:9092", "kafka-b:9092")
     assert settings.kafka.jenkins_events_topic == "jenkins-event-test"
     assert settings.kafka.jenkins_consumer_group == "ci-dashboard-test"
@@ -118,6 +120,19 @@ def test_load_settings_rejects_non_positive_refresh_build_limit() -> None:
             {
                 "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
                 "CI_DASHBOARD_REFRESH_BUILD_LIMIT": "0",
+            }
+        )
+
+
+def test_load_settings_rejects_invalid_flaky_stale_cleanup_force() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP must be a boolean, got 'sometimes'",
+    ):
+        load_settings(
+            {
+                "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///tmp/example.db",
+                "CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP": "sometimes",
             }
         )
 

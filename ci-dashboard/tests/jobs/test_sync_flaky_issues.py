@@ -26,6 +26,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     _parse_timeline,
     _resolve_issue_branch,
     _reuse_existing_issue_branch_if_fresh,
+    _stale_cleanup_skip_reason,
     _upsert_flaky_issues,
     fetch_issue_details_via_github_api,
     parse_issue_branch,
@@ -35,7 +36,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
 )
 
 
-def _settings(batch_size: int = 100) -> Settings:
+def _settings(batch_size: int = 100, *, force_flaky_stale_cleanup: bool = False) -> Settings:
     return Settings(
         database=DatabaseSettings(
             url="sqlite+pysqlite:///:memory:",
@@ -46,7 +47,10 @@ def _settings(batch_size: int = 100) -> Settings:
             database=None,
             ssl_ca=None,
         ),
-        jobs=JobSettings(batch_size=batch_size),
+        jobs=JobSettings(
+            batch_size=batch_size,
+            force_flaky_stale_cleanup=force_flaky_stale_cleanup,
+        ),
         log_level="INFO",
     )
 
@@ -59,6 +63,7 @@ def _insert_issue_ticket(
     number: int,
     title: str,
     body: str | None = None,
+    labels: list[str] | None = None,
     comments: list[dict[str, object]] | None = None,
     state: str,
     created_at: str,
@@ -70,9 +75,9 @@ def _insert_issue_ticket(
             text(
                 """
                 INSERT INTO github_tickets (
-                  id, type, repo, number, title, body, comments, state, created_at, updated_at, timeline, branches
+                  id, type, repo, number, title, body, labels, comments, state, created_at, updated_at, timeline, branches
                 ) VALUES (
-                  :ticket_id, 'issue', :repo, :number, :title, :body, :comments, :state, :created_at, :updated_at,
+                  :ticket_id, 'issue', :repo, :number, :title, :body, :labels, :comments, :state, :created_at, :updated_at,
                   :timeline, NULL
                 )
                 """
@@ -83,6 +88,7 @@ def _insert_issue_ticket(
                 "number": number,
                 "title": title,
                 "body": body,
+                "labels": json.dumps(["flaky-test"] if labels is None else labels),
                 "comments": json.dumps(comments) if comments is not None else None,
                 "state": state,
                 "created_at": created_at,
@@ -156,6 +162,40 @@ def _insert_pull_ticket(
         )
 
 
+def _insert_derived_flaky_issue(
+    connection,
+    *,
+    repo: str = "pingcap/tidb",
+    number: int,
+    source_ticket_id: int | None = None,
+) -> None:
+    connection.execute(
+        text(
+            """
+            INSERT INTO ci_l1_flaky_issues (
+              repo, issue_number, issue_url, issue_title, case_name, issue_status,
+              issue_branch, branch_source, issue_created_at, issue_updated_at,
+              issue_closed_at, last_reopened_at, reopen_count, source_ticket_id,
+              source_ticket_updated_at
+            ) VALUES (
+              :repo, :number, :issue_url, :issue_title, :case_name, 'open',
+              'master', 'legacy_title_seed', '2026-04-10 08:00:00',
+              '2026-04-15 09:00:00', NULL, NULL, 0, :source_ticket_id,
+              '2026-04-15 09:00:00'
+            )
+            """
+        ),
+        {
+            "repo": repo,
+            "number": number,
+            "issue_url": f"https://github.com/{repo}/issues/{number}",
+            "issue_title": f"Flaky test: TestDerived{number} in nightly",
+            "case_name": f"TestDerived{number}",
+            "source_ticket_id": source_ticket_id if source_ticket_id is not None else number,
+        },
+    )
+
+
 def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monkeypatch) -> None:
     _insert_issue_ticket(
         sqlite_engine,
@@ -179,6 +219,7 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
         repo="pingcap/tidb",
         number=80000,
         title="RFC: not a flaky issue",
+        labels=[],
         state="open",
         created_at="2026-04-10T08:00:00Z",
         updated_at="2026-04-10T08:00:00Z",
@@ -283,7 +324,7 @@ def test_sync_flaky_issues_end_to_end_and_idempotent_refresh(sqlite_engine, monk
     assert total_rows["count"] == 1
 
 
-def test_sync_flaky_issues_accepts_legacy_flaky_test_title(sqlite_engine, monkeypatch) -> None:
+def test_sync_flaky_issues_filters_by_flaky_test_label_not_title(sqlite_engine, monkeypatch) -> None:
     _insert_issue_ticket(
         sqlite_engine,
         ticket_id=52792,
@@ -302,10 +343,22 @@ def test_sync_flaky_issues_accepts_legacy_flaky_test_title(sqlite_engine, monkey
         ticket_id=52793,
         repo="pingcap/tidb",
         number=52793,
-        title="flaky testcase should not match",
+        title="Flaky test: title-only issue should not match",
+        labels=[],
         state="closed",
         created_at="2024-04-22T03:31:12Z",
         updated_at="2026-06-22T12:47:18Z",
+        timeline=[],
+    )
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=52794,
+        repo="pingcap/tidb",
+        number=52794,
+        title="Issue with flaky-test label but custom title",
+        state="open",
+        created_at="2024-04-23T03:31:12Z",
+        updated_at="2026-06-23T12:47:18Z",
         timeline=[],
     )
 
@@ -318,8 +371,8 @@ def test_sync_flaky_issues_accepts_legacy_flaky_test_title(sqlite_engine, monkey
 
     summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
 
-    assert summary.source_rows_scanned == 1
-    assert summary.rows_written == 1
+    assert summary.source_rows_scanned == 2
+    assert summary.rows_written == 2
 
     with sqlite_engine.begin() as connection:
         rows = connection.execute(
@@ -339,8 +392,396 @@ def test_sync_flaky_issues_accepts_legacy_flaky_test_title(sqlite_engine, monkey
             "case_name": "TestSomeOfStoreUnsupported",
             "issue_status": "closed",
             "issue_branch": "master",
-        }
+        },
+        {
+            "issue_number": 52794,
+            "issue_title": "Issue with flaky-test label but custom title",
+            "case_name": "Issue with flaky-test label but custom title",
+            "issue_status": "open",
+            "issue_branch": "master",
+        },
     ]
+
+
+def test_sync_flaky_issues_deletes_stale_rows_outside_label_source(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=71000,
+        repo="pingcap/tidb",
+        number=71000,
+        title="Flaky test: TestKept in nightly",
+        state="open",
+        created_at="2026-04-10T08:00:00Z",
+        updated_at="2026-04-15T09:00:00Z",
+        timeline=[],
+    )
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=71001,
+        repo="pingcap/tidb",
+        number=71001,
+        title="Flaky test: TestStaleTitleOnly in nightly",
+        labels=[],
+        state="open",
+        created_at="2026-04-10T08:00:00Z",
+        updated_at="2026-04-15T09:00:00Z",
+        timeline=[],
+    )
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_issues (
+                  repo,
+                  issue_number,
+                  issue_url,
+                  issue_title,
+                  case_name,
+                  issue_status,
+                  issue_branch,
+                  branch_source,
+                  issue_created_at,
+                  issue_updated_at,
+                  issue_closed_at,
+                  last_reopened_at,
+                  reopen_count,
+                  source_ticket_id,
+                  source_ticket_updated_at,
+                  created_at,
+                  updated_at
+                ) VALUES (
+                  'pingcap/tidb',
+                  71001,
+                  'https://github.com/pingcap/tidb/issues/71001',
+                  'Flaky test: TestStaleTitleOnly in nightly',
+                  'TestStaleTitleOnly',
+                  'open',
+                  'master',
+                  'legacy_title_seed',
+                  '2026-04-10 08:00:00',
+                  '2026-04-15 09:00:00',
+                  NULL,
+                  NULL,
+                  0,
+                  71001,
+                  '2026-04-15 09:00:00',
+                  CURRENT_TIMESTAMP,
+                  CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_issue_pr_links (
+                  issue_repo,
+                  issue_number,
+                  pr_repo,
+                  pr_number,
+                  pr_url,
+                  pr_title,
+                  link_type,
+                  source_event_type,
+                  source_event_id,
+                  linked_at,
+                  source_ticket_updated_at
+                ) VALUES (
+                  'pingcap/tidb',
+                  71001,
+                  'pingcap/tidb',
+                  71002,
+                  'https://github.com/pingcap/tidb/pull/71002',
+                  'stale flaky fix',
+                  'linked_pull_request',
+                  'cross-referenced',
+                  71002,
+                  '2026-04-16 10:00:00',
+                  '2026-04-16 10:00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_linked_prs (
+                  pr_repo,
+                  pr_number,
+                  pr_url,
+                  pr_title,
+                  pr_state,
+                  pr_created_at,
+                  pr_closed_at,
+                  pr_merged_at
+                ) VALUES (
+                  'pingcap/tidb',
+                  71002,
+                  'https://github.com/pingcap/tidb/pull/71002',
+                  'stale flaky fix',
+                  'closed',
+                  '2026-04-16 10:00:00',
+                  '2026-04-17 10:00:00',
+                  '2026-04-17 10:00:00'
+                )
+                """
+            )
+        )
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for pingcap/tidb issue sync")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 1
+    assert summary.rows_written == 1
+    assert summary.stale_cleanup_forced is False
+    assert summary.stale_issue_rows_deleted == 1
+    assert summary.stale_issue_pr_links_deleted == 1
+
+    with sqlite_engine.begin() as connection:
+        issues = connection.execute(
+            text(
+                """
+                SELECT issue_number
+                FROM ci_l1_flaky_issues
+                ORDER BY issue_number
+                """
+            )
+        ).mappings().all()
+        stale_links = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_issue_pr_links")
+        ).mappings().one()
+        stale_linked_prs = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_linked_prs")
+        ).mappings().one()
+
+    assert [row["issue_number"] for row in issues] == [71000]
+    assert stale_links["count"] == 0
+    assert stale_linked_prs["count"] == 0
+
+
+def test_sync_flaky_issues_skips_stale_cleanup_when_label_source_is_empty(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    _insert_issue_ticket(
+        sqlite_engine,
+        ticket_id=72001,
+        repo="pingcap/tidb",
+        number=72001,
+        title="Flaky test: TestPreservedWhenSourceIsEmpty in nightly",
+        labels=[],
+        state="open",
+        created_at="2026-04-10T08:00:00Z",
+        updated_at="2026-04-15T09:00:00Z",
+        timeline=[],
+    )
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_issues (
+                  repo, issue_number, issue_url, issue_title, case_name, issue_status,
+                  issue_branch, branch_source, issue_created_at, issue_updated_at,
+                  issue_closed_at, last_reopened_at, reopen_count, source_ticket_id,
+                  source_ticket_updated_at
+                ) VALUES (
+                  'pingcap/tidb', 72001, 'https://github.com/pingcap/tidb/issues/72001',
+                  'Flaky test: TestPreservedWhenSourceIsEmpty in nightly',
+                  'TestPreservedWhenSourceIsEmpty', 'open', 'master', 'legacy_title_seed',
+                  '2026-04-10 08:00:00', '2026-04-15 09:00:00', NULL, NULL, 0,
+                  72001, '2026-04-15 09:00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_issue_pr_links (
+                  issue_repo, issue_number, pr_repo, pr_number, pr_url, pr_title,
+                  link_type, source_event_type, source_event_id, linked_at,
+                  source_ticket_updated_at
+                ) VALUES (
+                  'pingcap/tidb', 72001, 'pingcap/tidb', 72002,
+                  'https://github.com/pingcap/tidb/pull/72002', 'preserved flaky fix',
+                  'linked_pull_request', 'cross-referenced', 72002,
+                  '2026-04-16 10:00:00', '2026-04-16 10:00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ci_l1_flaky_linked_prs (
+                  pr_repo, pr_number, pr_url, pr_title, pr_state, pr_created_at,
+                  pr_closed_at, pr_merged_at
+                ) VALUES (
+                  'pingcap/tidb', 72002, 'https://github.com/pingcap/tidb/pull/72002',
+                  'preserved flaky fix', 'closed', '2026-04-16 10:00:00',
+                  '2026-04-17 10:00:00', '2026-04-17 10:00:00'
+                )
+                """
+            )
+        )
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called when source is empty")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 0
+    assert summary.rows_written == 0
+    assert summary.stale_cleanup_skipped is True
+    assert summary.stale_cleanup_forced is False
+    assert summary.stale_cleanup_skip_reason == "empty_source"
+    assert summary.stale_issue_rows_deleted == 0
+    assert summary.stale_issue_pr_links_deleted == 0
+
+    with sqlite_engine.begin() as connection:
+        issue_count = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_issues")
+        ).mappings().one()
+        link_count = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_issue_pr_links")
+        ).mappings().one()
+        linked_pr_count = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_linked_prs")
+        ).mappings().one()
+
+    assert issue_count["count"] == 1
+    assert link_count["count"] == 1
+    assert linked_pr_count["count"] == 1
+
+
+def test_sync_flaky_issues_skips_stale_cleanup_when_source_ratio_is_low(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    for offset in range(3):
+        number = 73001 + offset
+        _insert_issue_ticket(
+            sqlite_engine,
+            ticket_id=number,
+            repo="pingcap/tidb",
+            number=number,
+            title=f"Flaky test: TestKept{offset} in nightly",
+            state="open",
+            created_at="2026-04-10T08:00:00Z",
+            updated_at="2026-04-15T09:00:00Z",
+            timeline=[],
+        )
+
+    with sqlite_engine.begin() as connection:
+        for number in range(73101, 73111):
+            _insert_derived_flaky_issue(connection, number=number)
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for pingcap/tidb issue sync")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.source_rows_scanned == 3
+    assert summary.rows_written == 3
+    assert summary.stale_cleanup_skipped is True
+    assert summary.stale_cleanup_forced is False
+    assert summary.stale_cleanup_skip_reason == "source_count_below_safety_ratio"
+    assert summary.stale_issue_rows_deleted == 0
+    assert summary.stale_issue_pr_links_deleted == 0
+
+    with sqlite_engine.begin() as connection:
+        issue_count = connection.execute(
+            text("SELECT COUNT(*) AS count FROM ci_l1_flaky_issues")
+        ).mappings().one()
+
+    assert issue_count["count"] == 13
+
+
+def test_sync_flaky_issues_force_stale_cleanup_allows_low_source_ratio(
+    sqlite_engine,
+    monkeypatch,
+) -> None:
+    for offset in range(3):
+        number = 74001 + offset
+        _insert_issue_ticket(
+            sqlite_engine,
+            ticket_id=number,
+            repo="pingcap/tidb",
+            number=number,
+            title=f"Flaky test: TestForceKept{offset} in nightly",
+            state="open",
+            created_at="2026-04-10T08:00:00Z",
+            updated_at="2026-04-15T09:00:00Z",
+            timeline=[],
+        )
+
+    with sqlite_engine.begin() as connection:
+        for number in range(74101, 74111):
+            _insert_derived_flaky_issue(connection, number=number)
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("GitHub API should not be called for pingcap/tidb issue sync")
+        ),
+    )
+
+    summary = run_sync_flaky_issues(
+        sqlite_engine,
+        _settings(batch_size=10, force_flaky_stale_cleanup=True),
+    )
+
+    assert summary.source_rows_scanned == 3
+    assert summary.rows_written == 3
+    assert summary.stale_cleanup_skipped is False
+    assert summary.stale_cleanup_forced is True
+    assert summary.stale_cleanup_skip_reason is None
+    assert summary.stale_issue_rows_deleted == 10
+
+    with sqlite_engine.begin() as connection:
+        issues = connection.execute(
+            text(
+                """
+                SELECT issue_number
+                FROM ci_l1_flaky_issues
+                ORDER BY issue_number
+                """
+            )
+        ).mappings().all()
+
+    assert [row["issue_number"] for row in issues] == [74001, 74002, 74003]
+
+
+def test_stale_cleanup_skip_reason_guards_empty_and_low_source() -> None:
+    assert (
+        _stale_cleanup_skip_reason(source_issue_count=0, existing_issue_count=10)
+        == "empty_source"
+    )
+    assert (
+        _stale_cleanup_skip_reason(source_issue_count=4, existing_issue_count=10)
+        == "source_count_below_safety_ratio"
+    )
+    assert _stale_cleanup_skip_reason(source_issue_count=5, existing_issue_count=10) is None
+    assert _stale_cleanup_skip_reason(source_issue_count=1, existing_issue_count=0) is None
 
 
 def test_sync_flaky_issues_defaults_branch_to_master_when_ticket_body_missing(

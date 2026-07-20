@@ -99,6 +99,11 @@ class RefreshBuildDerivedSummary:
 class SyncFlakyIssuesSummary:
     source_rows_scanned: int = 0
     rows_written: int = 0
+    stale_cleanup_skipped: bool = False
+    stale_cleanup_forced: bool = False
+    stale_cleanup_skip_reason: str | None = None
+    stale_issue_rows_deleted: int = 0
+    stale_issue_pr_links_deleted: int = 0
     issue_pr_links_written: int = 0
     linked_pr_rows_written: int = 0
     linked_pr_fetch_attempted: int = 0

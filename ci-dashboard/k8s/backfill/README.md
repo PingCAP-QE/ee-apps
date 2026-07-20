@@ -70,6 +70,19 @@ If you want to backfill a closed date range instead of open-ended import:
   > /tmp/ci-dashboard-backfill.yaml
 ```
 
+For a one-off forced flaky issue stale cleanup after an intentional large
+`flaky-test` label purge:
+
+```bash
+./scripts/render_backfill_job.sh \
+  --job-command sync-flaky-issues \
+  --force-flaky-stale-cleanup true \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
+  --db-secret ci-dashboard-eq-prd-insight-db \
+  --github-secret prow-github \
+  > /tmp/ci-dashboard-sync-flaky-issues-once.yaml
+```
+
 ## 4. Watch Progress
 
 ```bash

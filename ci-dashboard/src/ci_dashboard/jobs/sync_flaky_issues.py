@@ -33,8 +33,8 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "ci-sync-flaky-issues"
 DEFAULT_FLAKY_ISSUE_REPOS = ("pingcap/tidb", "tikv/pd")
 BODY_PR_FALLBACK_REPOS = {"tikv/pd"}
-TITLE_COLON_PATTERN = "flaky test:%"
-TITLE_SPACE_PATTERN = "flaky test %"
+FLAKY_ISSUE_LABEL = "flaky-test"
+MIN_STALE_CLEANUP_SOURCE_TO_EXISTING_RATIO = 0.5
 CASE_NAME_PATTERN = re.compile(
     r"^flaky test(?::\s*|\s+)(.+?)(?:\s+in\s+.+)?$",
     re.IGNORECASE,
@@ -119,6 +119,11 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
             existing_rows = _load_existing_issue_rows(connection)
 
         summary.source_rows_scanned = len(source_rows)
+        source_issue_keys = sorted({(str(row["repo"]), int(row["number"])) for row in source_rows})
+        existing_issue_count = _count_existing_issue_rows_for_repos(
+            existing_rows,
+            DEFAULT_FLAKY_ISSUE_REPOS,
+        )
 
         prepared_batches: list[tuple[FlakyIssueRow, list[FlakyIssuePrLinkRow]]] = []
         fetched_linked_prs: set[tuple[str, int]] = set()
@@ -174,10 +179,57 @@ def run_sync_flaky_issues(engine: Engine, settings: Settings) -> SyncFlakyIssues
 
         last_ticket_updated_at = _format_watermark_datetime(latest_updated_at)
         new_watermark = {"last_ticket_updated_at": last_ticket_updated_at}
+        stale_cleanup_skip_reason = _stale_cleanup_skip_reason(
+            source_issue_count=len(source_issue_keys),
+            existing_issue_count=existing_issue_count,
+        )
+        stale_cleanup_forced = (
+            stale_cleanup_skip_reason == "source_count_below_safety_ratio"
+            and settings.jobs.force_flaky_stale_cleanup
+        )
+        if stale_cleanup_forced:
+            stale_cleanup_skip_reason = None
         with engine.begin() as connection:
+            if stale_cleanup_skip_reason is None:
+                if stale_cleanup_forced:
+                    LOG.warning(
+                        "forcing stale flaky issue cleanup despite safety ratio",
+                        extra={
+                            "source_issue_count": len(source_issue_keys),
+                            "existing_issue_count": existing_issue_count,
+                            "minimum_source_to_existing_ratio": (
+                                MIN_STALE_CLEANUP_SOURCE_TO_EXISTING_RATIO
+                            ),
+                        },
+                    )
+                stale_links_deleted, stale_issues_deleted = _delete_stale_flaky_issue_rows(
+                    connection,
+                    repos=DEFAULT_FLAKY_ISSUE_REPOS,
+                    source_issue_keys=source_issue_keys,
+                )
+            else:
+                stale_links_deleted = 0
+                stale_issues_deleted = 0
+                LOG.warning(
+                    "skipping stale flaky issue cleanup because source set looks unsafe",
+                    extra={
+                        "reason": stale_cleanup_skip_reason,
+                        "source_issue_count": len(source_issue_keys),
+                        "existing_issue_count": existing_issue_count,
+                        "force_stale_cleanup": settings.jobs.force_flaky_stale_cleanup,
+                        "minimum_source_to_existing_ratio": (
+                            MIN_STALE_CLEANUP_SOURCE_TO_EXISTING_RATIO
+                        ),
+                    },
+                )
             _delete_orphaned_flaky_linked_prs(connection)
             mark_job_succeeded(connection, JOB_NAME, new_watermark)
 
+        summary.stale_cleanup_skipped = stale_cleanup_skip_reason is not None
+        summary.stale_cleanup_forced = stale_cleanup_forced
+        summary.stale_cleanup_skip_reason = stale_cleanup_skip_reason
+        summary.stale_issue_rows_deleted = stale_issues_deleted
+        summary.stale_issue_pr_links_deleted = stale_links_deleted
         summary.last_ticket_updated_at = last_ticket_updated_at
         return summary
     except Exception as exc:
@@ -451,37 +503,45 @@ def _fetch_source_issue_rows(
 ) -> list[dict[str, Any]]:
     repo_params = {f"repo_{index}": repo for index, repo in enumerate(repos)}
     repo_placeholders = ", ".join(f":repo_{index}" for index in range(len(repos)))
+    label_filter = _flaky_issue_label_filter(connection)
     rows = connection.execute(
         text(
             f"""
             SELECT
-              id,
-              repo,
-              number,
-              title,
-              body,
-              comments,
-              state,
-              created_at,
-              updated_at,
-              timeline
-            FROM github_tickets
-            WHERE type = 'issue'
-              AND repo IN ({repo_placeholders})
-              AND (
-                LOWER(title) LIKE :title_colon_pattern
-                OR LOWER(title) LIKE :title_space_pattern
-              )
-            ORDER BY repo, number
+              gt.id,
+              gt.repo,
+              gt.number,
+              gt.title,
+              gt.body,
+              gt.comments,
+              gt.state,
+              gt.created_at,
+              gt.updated_at,
+              gt.timeline
+            FROM github_tickets gt
+            WHERE gt.type = 'issue'
+              AND gt.repo IN ({repo_placeholders})
+              AND {label_filter}
+            ORDER BY gt.repo, gt.number
             """
         ),
         {
             **repo_params,
-            "title_colon_pattern": TITLE_COLON_PATTERN,
-            "title_space_pattern": TITLE_SPACE_PATTERN,
+            "flaky_issue_label": FLAKY_ISSUE_LABEL,
         },
     ).mappings()
     return [dict(row) for row in rows]
+
+
+def _flaky_issue_label_filter(connection: Connection) -> str:
+    if connection.dialect.name == "sqlite":
+        return (
+            "EXISTS ("
+            "SELECT 1 FROM json_each(gt.labels) "
+            "WHERE json_each.value = :flaky_issue_label"
+            ")"
+        )
+    return "JSON_CONTAINS(gt.labels, JSON_QUOTE(:flaky_issue_label))"
 
 
 def _load_existing_issue_rows(
@@ -1019,6 +1079,97 @@ def _delete_orphaned_flaky_linked_prs(connection: Connection) -> None:
             """
         )
     )
+
+
+def _delete_stale_flaky_issue_rows(
+    connection: Connection,
+    *,
+    repos: tuple[str, ...],
+    source_issue_keys: list[tuple[str, int]],
+) -> tuple[int, int]:
+    if not repos:
+        return 0, 0
+
+    repo_clause, repo_params = _build_repo_in_clause("repo", repos)
+    issue_repo_clause, issue_repo_params = _build_repo_in_clause("issue_repo", repos)
+    keep_clause, keep_params = _build_issue_key_keep_clause(source_issue_keys)
+    params = {**repo_params, **keep_params}
+
+    stale_links_result = connection.execute(
+        text(
+            f"""
+            DELETE FROM ci_l1_flaky_issue_pr_links
+            WHERE {issue_repo_clause}
+              AND (issue_repo, issue_number) IN (
+                SELECT repo, issue_number
+                FROM ci_l1_flaky_issues
+                WHERE {repo_clause}
+                  AND NOT ({keep_clause})
+              )
+            """
+        ),
+        {**issue_repo_params, **params},
+    )
+    stale_issues_result = connection.execute(
+        text(
+            f"""
+            DELETE FROM ci_l1_flaky_issues
+            WHERE {repo_clause}
+              AND NOT ({keep_clause})
+            """
+        ),
+        params,
+    )
+    return _statement_rowcount(stale_links_result.rowcount), _statement_rowcount(
+        stale_issues_result.rowcount
+    )
+
+
+def _count_existing_issue_rows_for_repos(
+    existing_rows: dict[tuple[str, int], dict[str, Any]],
+    repos: tuple[str, ...],
+) -> int:
+    repo_set = set(repos)
+    return sum(1 for repo, _issue_number in existing_rows if repo in repo_set)
+
+
+def _stale_cleanup_skip_reason(
+    *,
+    source_issue_count: int,
+    existing_issue_count: int,
+) -> str | None:
+    if source_issue_count == 0:
+        return "empty_source"
+    if existing_issue_count == 0:
+        return None
+    if source_issue_count / existing_issue_count < MIN_STALE_CLEANUP_SOURCE_TO_EXISTING_RATIO:
+        return "source_count_below_safety_ratio"
+    return None
+
+
+def _statement_rowcount(value: int | None) -> int:
+    if value is None or value < 0:
+        return 0
+    return int(value)
+
+
+def _build_repo_in_clause(column_name: str, repos: tuple[str, ...]) -> tuple[str, dict[str, str]]:
+    params = {f"{column_name}_{index}": repo for index, repo in enumerate(repos)}
+    placeholders = ", ".join(f":{key}" for key in params)
+    return f"{column_name} IN ({placeholders})", params
+
+
+def _build_issue_key_keep_clause(issue_keys: list[tuple[str, int]]) -> tuple[str, dict[str, Any]]:
+    if not issue_keys:
+        return "0 = 1", {}
+
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    for index, (repo, issue_number) in enumerate(issue_keys):
+        clauses.append(f"(repo = :keep_repo_{index} AND issue_number = :keep_issue_number_{index})")
+        params[f"keep_repo_{index}"] = repo
+        params[f"keep_issue_number_{index}"] = issue_number
+    return " OR ".join(clauses), params
 
 
 def _row_to_params(row: FlakyIssueRow) -> dict[str, Any]:

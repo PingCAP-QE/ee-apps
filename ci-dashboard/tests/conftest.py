@@ -147,6 +147,7 @@ def _create_test_schema(engine: Engine) -> None:
           number INTEGER NOT NULL,
           title TEXT NULL,
           body TEXT NULL,
+          labels TEXT NULL,
           comments TEXT NULL,
           state TEXT NULL,
           created_at TEXT NULL,
