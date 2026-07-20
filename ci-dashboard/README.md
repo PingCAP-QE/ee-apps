@@ -73,6 +73,7 @@ Notes:
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes
+- `CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP=true` lets `sync-flaky-issues` apply stale flaky issue cleanup after an intentional large `flaky-test` label purge; empty source sets still skip cleanup, and the one-off Job renderer exposes this as `--force-flaky-stale-cleanup true`
 - `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 - `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest

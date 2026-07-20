@@ -24,6 +24,18 @@ def _read_int(environ: Mapping[str, str], key: str, default: int) -> int:
     return value
 
 
+def _read_bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
+    raw = environ.get(key)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{key} must be a boolean, got {raw!r}")
+
+
 def _read_csv(environ: Mapping[str, str], key: str, default: tuple[str, ...]) -> tuple[str, ...]:
     raw = environ.get(key)
     if raw is None:
@@ -48,6 +60,7 @@ class JobSettings:
     batch_size: int = 1000
     refresh_group_batch_size: int = 25
     refresh_build_limit: int = 5000
+    force_flaky_stale_cleanup: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,6 +150,11 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
                 env,
                 "CI_DASHBOARD_REFRESH_BUILD_LIMIT",
                 5000,
+            ),
+            force_flaky_stale_cleanup=_read_bool(
+                env,
+                "CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP",
+                False,
             ),
         ),
         kafka=KafkaSettings(

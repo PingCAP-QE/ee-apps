@@ -4,12 +4,15 @@ set -euo pipefail
 namespace="apps"
 image="ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest"
 db_secret="ci-dashboard-eq-prd-insight-db"
+github_secret=""
+github_token_key="token"
 start_date=""
 end_date=""
 job_command="backfill-range"
 batch_size="2000"
 refresh_group_batch_size=""
 log_level="INFO"
+force_flaky_stale_cleanup="false"
 job_name="ci-dashboard-backfill-$(date -u +%Y%m%d%H%M%S)"
 image_pull_policy="IfNotPresent"
 service_account=""
@@ -29,9 +32,10 @@ Render a one-off Kubernetes Job manifest for CI dashboard backfill.
 
 Usage:
   render_backfill_job.sh --start-date YYYY-MM-DD [options]
+  render_backfill_job.sh --job-command sync-flaky-issues [options]
 
 Required:
-  --start-date DATE         Inclusive start date for the selected job command.
+  --start-date DATE         Inclusive start date for date-window job commands.
 
 Optional:
   --job-command NAME        CLI subcommand. Default: backfill-range
@@ -39,11 +43,15 @@ Optional:
   --namespace NAME          Kubernetes namespace. Default: apps
   --image IMAGE             Jobs image. Default: ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest
   --db-secret NAME          Secret containing TIDB_* or CI_DASHBOARD_DB_URL. Default: ci-dashboard-eq-prd-insight-db
+  --github-secret NAME      Optional secret containing GitHub API token.
+  --github-token-key NAME   Key inside GitHub secret. Default: token
   --job-name NAME           Fixed Job name. Default: ci-dashboard-backfill-<timestamp>
   --batch-size N            CI_DASHBOARD_BATCH_SIZE override. Default: 2000
   --refresh-group-batch-size N
                             CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE override.
   --log-level LEVEL         CI_DASHBOARD_LOG_LEVEL override. Default: INFO
+  --force-flaky-stale-cleanup true|false
+                            Set CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP. Default: false
   --image-pull-policy P     Image pull policy. Default: IfNotPresent
   --service-account NAME    Optional service account name.
   --ca-secret NAME          Optional secret containing CA file for TIDB SSL.
@@ -85,6 +93,14 @@ while [[ $# -gt 0 ]]; do
       db_secret="${2:-}"
       shift 2
       ;;
+    --github-secret)
+      github_secret="${2:-}"
+      shift 2
+      ;;
+    --github-token-key)
+      github_token_key="${2:-}"
+      shift 2
+      ;;
     --job-name)
       job_name="${2:-}"
       shift 2
@@ -99,6 +115,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --log-level)
       log_level="${2:-}"
+      shift 2
+      ;;
+    --force-flaky-stale-cleanup)
+      force_flaky_stale_cleanup="${2:-}"
       shift 2
       ;;
     --image-pull-policy)
@@ -157,18 +177,40 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${start_date}" ]]; then
-  echo "--start-date is required" >&2
+case "${force_flaky_stale_cleanup}" in
+  true|false)
+    ;;
+  *)
+    echo "--force-flaky-stale-cleanup must be true or false" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if [[ "${job_command}" == "sync-flaky-issues" || "${job_command}" == "backfill-flaky-issue-pr-links" ]]; then
+  if [[ -n "${start_date}" || -n "${end_date}" ]]; then
+    echo "${job_command} does not accept --start-date or --end-date" >&2
+    usage >&2
+    exit 1
+  fi
+elif [[ -z "${start_date}" ]]; then
+  echo "--start-date is required for ${job_command}" >&2
   usage >&2
   exit 1
 fi
 
 args_block=$(cat <<EOF
             - ${job_command}
+EOF
+)
+if [[ -n "${start_date}" ]]; then
+  args_block+=$'\n'
+  args_block+=$(cat <<EOF
             - --start-date
             - "${start_date}"
 EOF
 )
+fi
 if [[ -n "${end_date}" ]]; then
   args_block+=$'\n'
   args_block+=$(cat <<EOF
@@ -191,6 +233,18 @@ if [[ -n "${refresh_group_batch_size}" ]]; then
   refresh_group_env_block=$(cat <<EOF
             - name: CI_DASHBOARD_REFRESH_GROUP_BATCH_SIZE
               value: "${refresh_group_batch_size}"
+EOF
+)
+fi
+
+github_env_block=""
+if [[ -n "${github_secret}" ]]; then
+  github_env_block=$(cat <<EOF
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ${github_secret}
+                  key: ${github_token_key}
 EOF
 )
 fi
@@ -256,9 +310,12 @@ ${args_block}
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
+${github_env_block}
             - name: CI_DASHBOARD_BATCH_SIZE
               value: "${batch_size}"
 ${refresh_group_env_block}
+            - name: CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP
+              value: "${force_flaky_stale_cleanup}"
             - name: CI_DASHBOARD_LOG_LEVEL
               value: "${log_level}"
 ${ca_env_block}
