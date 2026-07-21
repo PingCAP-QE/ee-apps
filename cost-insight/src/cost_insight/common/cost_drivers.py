@@ -1,3 +1,9 @@
+"""Cost driver bucketing spec.
+
+`COST_DRIVER_LABELS` is spec-only and consumed by the cross-package label parity
+test; runtime classification returns keys only.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
