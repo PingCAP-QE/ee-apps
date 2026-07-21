@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.cost_drivers import classify_cost_driver
 from cost_insight.common.row_utils import (
     bind_decimal_rows,
     coerce_date,
@@ -50,6 +51,7 @@ HASH_FIELDS = (
     "target_branch",
     "vendor_tags_json",
 )
+# usage_type and cost_driver_key are derived display fields, not source row identity.
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
 
@@ -242,6 +244,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "usage_date": coerce_date(row.get("usage_date")),
         "service_name": nullable_text(row.get("service_name")),
         "sku_name": nullable_text(row.get("sku_name")),
+        "usage_type": nullable_text(row.get("usage_type")),
         "region": nullable_text(row.get("region")),
         "author": nullable_text(row.get("author")),
         "org": nullable_text(row.get("org")),
@@ -254,6 +257,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "net_cost": decimal_or_none(row.get("net_cost")),
         "source_export_time": coerce_datetime(row.get("source_export_time")),
     }
+    normalized["cost_driver_key"] = classify_cost_driver(normalized)
     if normalized["account_id"] is None:
         raise ValueError(f"Missing account_id in billing summary row: {row!r}")
     if normalized["export_partition_date"] is None:
@@ -495,6 +499,8 @@ def _build_upsert_statement(connection: Connection):
               usage_date,
               service_name,
               sku_name,
+              usage_type,
+              cost_driver_key,
               region,
               org,
               repo,
@@ -515,6 +521,8 @@ def _build_upsert_statement(connection: Connection):
               :usage_date,
               :service_name,
               :sku_name,
+              :usage_type,
+              :cost_driver_key,
               :region,
               :org,
               :repo,
@@ -537,6 +545,8 @@ def _build_upsert_statement(connection: Connection):
           net_cost = excluded.net_cost,
           service_name = excluded.service_name,
           sku_name = excluded.sku_name,
+          usage_type = excluded.usage_type,
+          cost_driver_key = excluded.cost_driver_key,
           region = excluded.region,
           source_export_time = excluded.source_export_time,
           updated_at = CURRENT_TIMESTAMP
@@ -552,6 +562,8 @@ def _build_upsert_statement(connection: Connection):
           usage_date,
           service_name,
           sku_name,
+          usage_type,
+          cost_driver_key,
           region,
           org,
           repo,
@@ -572,6 +584,8 @@ def _build_upsert_statement(connection: Connection):
           :usage_date,
           :service_name,
           :sku_name,
+          :usage_type,
+          :cost_driver_key,
           :region,
           :org,
           :repo,
@@ -586,7 +600,7 @@ def _build_upsert_statement(connection: Connection):
           :source_row_hash
         )
         ON DUPLICATE KEY UPDATE
-          -- Dimension columns are part of source_row_hash; same hash means same dimensions.
+          -- usage_type and cost_driver_key are derived display fields refreshed in place.
           billing_account_id = VALUES(billing_account_id),
           list_cost = VALUES(list_cost),
           effective_cost = VALUES(effective_cost),
@@ -594,6 +608,8 @@ def _build_upsert_statement(connection: Connection):
           net_cost = VALUES(net_cost),
           service_name = VALUES(service_name),
           sku_name = VALUES(sku_name),
+          usage_type = VALUES(usage_type),
+          cost_driver_key = VALUES(cost_driver_key),
           region = VALUES(region),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP

@@ -331,6 +331,7 @@ const COST_BREAKDOWN_GROUPS = [
   { key: "owner", label: "Owner", description: "owners" },
   { key: "team", label: "Team", description: "teams" },
   { key: "service", label: "SKU", description: "SKUs" },
+  { key: "cost_driver", label: "Driver", description: "cost drivers" },
   { key: "project", label: "Project", description: "projects" },
   { key: "service_exec_id", label: "Exec ID", description: "service exec IDs" },
 ];

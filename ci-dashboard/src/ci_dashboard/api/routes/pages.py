@@ -83,7 +83,10 @@ def cost_trend_page(
 
 @router.get("/cost-share")
 def cost_share_page(
-    dimension: str = Query("owner", pattern="^(owner|team|service|project|service_exec_id|region)$"),
+    dimension: str = Query(
+        "owner",
+        pattern="^(owner|team|service|cost_driver|project|service_exec_id|region)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -110,7 +113,7 @@ def cost_weekly_account_summaries_page(
 def cost_repo_group_stack_page(
     group_by: str = Query(
         "repo",
-        pattern="^(repo|author|owner|team|target_branch|service|project|service_exec_id)$",
+        pattern="^(repo|author|owner|team|target_branch|service|cost_driver|project|service_exec_id)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),

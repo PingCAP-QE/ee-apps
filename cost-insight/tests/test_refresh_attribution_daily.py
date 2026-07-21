@@ -449,6 +449,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
                       region TEXT,
                       org TEXT,
                       repo TEXT,
@@ -472,6 +474,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
                       region TEXT,
                       org TEXT,
                       repo TEXT,
@@ -590,41 +594,47 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                     """
                     INSERT INTO cost_bq_export_summary_daily (
                       usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
-                      target_branch, vendor_tags_json, author, list_cost,
+                      usage_type, cost_driver_key, target_branch, vendor_tags_json, author, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'BoxUsage', 'us-east-1', 'pingcap', 'tidb', 'master', NULL,
+                        'BoxUsage', 'us-east-1', 'pingcap', 'tidb',
+                        'USE1-BoxUsage:m6i.large', 'compute', 'master', NULL,
                         'alice', 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ClusterUsage', 'us-east-1', NULL, NULL, NULL,
+                        'ClusterUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
                         NULL, 20, 20, 0, 20
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'AuthClusterUsage', 'us-east-1', NULL, NULL, NULL,
+                        'AuthClusterUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
                         'alice', 7, 7, 0, 7
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'FakeAuthorClusterUsage', 'us-east-1', NULL, NULL, NULL,
+                        'FakeAuthorClusterUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-no-allocation","shared_pool":"pool-1"}',
                         'alice', 11, 11, 0, 11
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ClusterUsage', 'us-east-1', NULL, NULL, NULL,
+                        'ClusterUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-2","shared_pool":"pool-1"}',
                         NULL, 30, 30, 0, 30
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'SharedUsage', 'us-east-1', NULL, NULL, NULL,
+                        'SharedUsage', 'us-east-1', NULL, NULL,
+                        'USE1-DataTransfer-Out-Bytes', 'data_transfer', NULL,
                         '{"shared_pool":"pool-1"}',
                         NULL, 5, 5, 0, 5
                       )
@@ -648,6 +658,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                     SELECT
                       sku_name,
                       region,
+                      usage_type,
+                      cost_driver_key,
                       author,
                       owner,
                       service,
@@ -701,6 +713,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
 
         assert total_net_cost == 83.0
         assert {row["region"] for row in rows} == {"us-east-1"}
+        assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
+        assert cluster_x_row["cost_driver_key"] == "compute"
+        assert shared_x_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
+        assert shared_x_row["cost_driver_key"] == "data_transfer"
         assert author_row["owner"] is None
         assert author_row["attribution_source"] == "missing_author"
         assert author_row["attribution_status"] == "unattributed"
@@ -909,6 +925,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
                       region TEXT,
                       org TEXT,
                       repo TEXT,
@@ -932,6 +950,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
                       region TEXT,
                       org TEXT,
                       repo TEXT,
@@ -1153,6 +1173,8 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "FROM cost_bq_export_summary_daily summary" in sql
     assert "summary.service_name" in sql
     assert "summary.sku_name" in sql
+    assert "summary.usage_type" in sql
+    assert "summary.cost_driver_key" in sql
     assert "NULL AS resource_name" in sql
     assert "NULL AS usage_seconds" in sql
     assert "target_branch" in sql

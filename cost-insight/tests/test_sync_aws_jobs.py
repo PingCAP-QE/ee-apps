@@ -59,6 +59,8 @@ def _sqlite_engine():
               usage_date TEXT NOT NULL,
               service_name TEXT,
               sku_name TEXT,
+              usage_type TEXT,
+              cost_driver_key TEXT,
               region TEXT,
               org TEXT,
               repo TEXT,
@@ -119,6 +121,7 @@ def _summary_row(day: str = "2026-05-01") -> dict[str, object]:
         "usage_date": day,
         "service_name": "Amazon Elastic Compute Cloud",
         "sku_name": "EBS:VolumeUsage.gp3",
+        "usage_type": "USE1-EBS:VolumeUsage.gp3",
         "region": "us-east-1",
         "author": "test-infra",
         "org": "qe",
@@ -221,6 +224,14 @@ def test_run_sync_aws_billing_summary_writes_rows_and_touched_dates() -> None:
         assert summary.touched_usage_dates == (date(2026, 5, 1), date(2026, 5, 2))
         with engine.begin() as connection:
             count = connection.execute(text("SELECT COUNT(*) FROM cost_bq_export_summary_daily")).scalar_one()
+            driver_rows = connection.execute(
+                text(
+                    """
+                    SELECT DISTINCT usage_type, cost_driver_key
+                    FROM cost_bq_export_summary_daily
+                    """
+                )
+            ).all()
             state = state_store.get_job_state(
                 connection,
                 source_job_name(SUMMARY_JOB_NAME, vendor="aws", account_id="946646677266"),
@@ -235,6 +246,7 @@ def test_run_sync_aws_billing_summary_writes_rows_and_touched_dates() -> None:
                 )
             ).scalar_one()
         assert count == 2
+        assert driver_rows == [("USE1-EBS:VolumeUsage.gp3", "block_storage")]
         assert state is not None
         assert state.last_status == "succeeded"
         assert source == "payer-1"

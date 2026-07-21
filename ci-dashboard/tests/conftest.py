@@ -337,6 +337,8 @@ def _create_test_schema(engine: Engine) -> None:
           account_id TEXT NOT NULL,
           service_name TEXT NULL,
           sku_name TEXT NULL,
+          usage_type TEXT NULL,
+          cost_driver_key TEXT NULL,
           region TEXT NULL,
           org TEXT NULL,
           repo TEXT NULL,

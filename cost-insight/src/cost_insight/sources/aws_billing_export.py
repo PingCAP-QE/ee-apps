@@ -96,6 +96,7 @@ WITH normalized AS (
       NULLIF(line_item_usage_type, ''),
       NULLIF(line_item_line_item_description, '')
     ) AS sku_name,
+    NULLIF(line_item_usage_type, '') AS usage_type,
     COALESCE(
       NULLIF(product_region_code, ''),
       REGEXP_EXTRACT(NULLIF(line_item_availability_zone, ''), r'^([a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)'),
@@ -137,6 +138,10 @@ SELECT
   usage_date,
   service_name,
   sku_name,
+  -- ponytail: usage_type is a display hint, not source identity. If one
+  -- product_sku mixes driver classes, add usage_type to GROUP BY/HASH_FIELDS
+  -- and rebuild affected partitions.
+  MIN(usage_type) AS usage_type,
   region,
   author,
   org,
