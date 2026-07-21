@@ -201,6 +201,7 @@ export function TrendChart({
   selectedBucketLabel = null,
   onBucketSelect = null,
   preserveLabelOrder = false,
+  showTooltipSum = false,
 }) {
   const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -361,6 +362,7 @@ export function TrendChart({
           width,
           height,
           padding,
+          showSum: showTooltipSum,
         });
   const handleBucketHoverStart = (index) => {
     if (hoverTimerRef.current) {
@@ -639,6 +641,20 @@ export function TrendChart({
                 </text>
               </g>
             ))}
+            {hoveredBucket.sumRow ? (
+              <g transform={`translate(0, ${34 + hoveredBucket.rows.length * 18})`}>
+                <line
+                  x1="12"
+                  x2={hoveredBucket.width - 12}
+                  y1="-6"
+                  y2="-6"
+                  className="chart-tooltip__divider"
+                />
+                <text x="12" y="12" className="chart-tooltip__text chart-tooltip__text--strong">
+                  Sum: {hoveredBucket.sumRow.value}
+                </text>
+              </g>
+            ) : null}
           </g>
         ) : null}
 
@@ -944,7 +960,10 @@ export function DonutShareChart({
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
   headerAction,
+  className = "",
 }) {
+  const [hoveredSegment, setHoveredSegment] = useState(null);
+
   if (!items?.length) {
     return <EmptyState message={emptyMessage} compact />;
   }
@@ -960,9 +979,28 @@ export function DonutShareChart({
   const size = 220;
   const center = size / 2;
   let startAngle = -Math.PI / 2;
+  const segments = items.map((item, index) => {
+    const value = Number(item.value || 0);
+    const angle = (value / total) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+    const segment = {
+      item,
+      index,
+      value,
+      percent: Number(item.share_pct || 0),
+      startAngle,
+      endAngle,
+      fill: donutColor(item.name, index),
+      path: describeDonutArc(center, center, innerRadius, radius, startAngle, endAngle),
+      key: `${title}-${item.name}`,
+    };
+    startAngle = endAngle;
+    return segment;
+  });
+  const cardClassName = ["donut-card", className].filter(Boolean).join(" ");
 
   return (
-    <article className="donut-card">
+    <article className={cardClassName}>
       <header className="donut-card__header">
         <div>
           <strong>{title}</strong>
@@ -980,23 +1018,28 @@ export function DonutShareChart({
       <div className="donut-card__body">
         <div className="donut-chart">
           <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${title} share chart`}>
-            {items.map((item, index) => {
-              const value = Number(item.value || 0);
-              const angle = (value / total) * Math.PI * 2;
-              const endAngle = startAngle + angle;
-              const fill = donutColor(item.name, index);
-              const path = describeDonutArc(center, center, innerRadius, radius, startAngle, endAngle);
-              const percent = Number(item.share_pct || 0);
-              const key = `${title}-${item.name}`;
+            {segments.map((segment) => {
+              const { item, value, percent } = segment;
               const interactive = typeof onItemSelect === "function" && item.interactive !== false;
+              const segmentClassName = [
+                "donut-chart__segment",
+                interactive ? "donut-chart__segment--interactive" : "",
+                item.highlight ? "donut-chart__segment--highlight" : "",
+              ].filter(Boolean).join(" ");
               const element = (
                 <path
-                  d={path}
-                  fill={fill}
-                  className={interactive ? "donut-chart__segment donut-chart__segment--interactive" : "donut-chart__segment"}
+                  d={segment.path}
+                  fill={segment.fill}
+                  className={segmentClassName}
                   role={interactive ? "button" : undefined}
                   tabIndex={interactive ? 0 : undefined}
                   aria-label={`${item.name}: ${formatCompact(value)} ${totalLabel}, ${formatPercent(percent)}`}
+                  onMouseMove={() => setHoveredSegment(segment)}
+                  onMouseOver={() => setHoveredSegment(segment)}
+                  onMouseEnter={() => setHoveredSegment(segment)}
+                  onMouseLeave={() => setHoveredSegment(null)}
+                  onFocus={() => setHoveredSegment(segment)}
+                  onBlur={() => setHoveredSegment(null)}
                   onClick={interactive ? () => onItemSelect(item) : undefined}
                   onKeyDown={
                     interactive
@@ -1010,8 +1053,7 @@ export function DonutShareChart({
                   }
                 />
               );
-              startAngle = endAngle;
-              return <g key={key}>{element}</g>;
+              return <g key={segment.key}>{element}</g>;
             })}
             <circle cx={center} cy={center} r={innerRadius - 3} fill="#fcf7ef" />
             <text x={center} y={center - 6} textAnchor="middle" className="donut-chart__center-value">
@@ -1020,18 +1062,37 @@ export function DonutShareChart({
             <text x={center} y={center + 16} textAnchor="middle" className="donut-chart__center-label">
               {totalLabel}
             </text>
+            {hoveredSegment ? (
+              <g className="donut-tooltip" transform={`translate(${center - 84}, ${center - 35})`}>
+                <rect width="168" height="70" rx="8" className="chart-tooltip__box" />
+                <text x="12" y="20" className="chart-tooltip__title">
+                  {truncateText(hoveredSegment.item.name, 24)}
+                </text>
+                <text x="12" y="43" className="chart-tooltip__text">
+                  {formatCompact(hoveredSegment.value)} {totalLabel}
+                </text>
+                <text x="12" y="59" className="chart-tooltip__text">
+                  {formatPercent(hoveredSegment.percent)} of total
+                </text>
+              </g>
+            ) : null}
           </svg>
         </div>
 
         <div className="donut-legend">
-          {items.map((item, index) => {
+          {segments.map(({ item, index }) => {
             const interactive = typeof onItemSelect === "function" && item.interactive !== false;
+            const legendClassName = [
+              "donut-legend__item",
+              interactive ? "" : "donut-legend__item--static",
+              item.highlight ? "donut-legend__item--highlight" : "",
+            ].filter(Boolean).join(" ");
             if (interactive) {
               return (
                 <button
                   key={`${title}-${item.name}-legend`}
                   type="button"
-                  className="donut-legend__item"
+                  className={legendClassName}
                   onClick={() => onItemSelect(item)}
                 >
                   <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
@@ -1045,7 +1106,7 @@ export function DonutShareChart({
             return (
               <div
                 key={`${title}-${item.name}-legend`}
-                className="donut-legend__item donut-legend__item--static"
+                className={legendClassName}
               >
                 <span className="chart-legend__swatch" style={{ backgroundColor: donutColor(item.name, index) }} />
                 <span className="donut-legend__name">{item.name}</span>
@@ -1697,6 +1758,7 @@ function buildBucketTooltip({
   width,
   height,
   padding,
+  showSum = false,
 }) {
   const rows = series
     .map((item) => {
@@ -1709,15 +1771,22 @@ function buildBucketTooltip({
         key: item.key,
         label: item.label || formatSeriesLabel(item.key),
         value: formatter(rawValue),
+        rawValue: Number(rawValue || 0),
       };
     })
     .filter(Boolean);
+  const sumRow = showSum && rows.length > 1
+    ? {
+        value: yFormatter(rows.reduce((sum, row) => sum + row.rawValue, 0)),
+      }
+    : null;
   const longestRowLength = Math.max(
     String(formatBottomAxisLabel(label)).length,
     ...rows.map((row) => `${row.label}: ${row.value}`.length),
+    sumRow ? `Sum: ${sumRow.value}`.length : 0,
   );
   const tooltipWidth = Math.min(Math.max(170, longestRowLength * 7 + 42), 300);
-  const tooltipHeight = Math.max(48, 34 + rows.length * 18 + 10);
+  const tooltipHeight = Math.max(48, 34 + rows.length * 18 + (sumRow ? 34 : 10));
   const preferredX = xForIndex(index) + 14;
   const x =
     preferredX + tooltipWidth > width - 8
@@ -1728,6 +1797,7 @@ function buildBucketTooltip({
   return {
     label,
     rows,
+    sumRow,
     x,
     y,
     width: tooltipWidth,
@@ -1829,6 +1899,14 @@ function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle
     `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
     "Z",
   ].join(" ");
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || "");
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(maxLength - 3, 0))}...`;
 }
 
 function describeOpenArc(cx, cy, radius, startAngle, endAngle) {

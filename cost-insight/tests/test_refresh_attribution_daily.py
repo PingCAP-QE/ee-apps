@@ -449,6 +449,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      region TEXT,
                       org TEXT,
                       repo TEXT,
                       target_branch TEXT,
@@ -471,6 +472,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       account_id TEXT NOT NULL,
                       service_name TEXT,
                       sku_name TEXT,
+                      region TEXT,
                       org TEXT,
                       repo TEXT,
                       target_branch TEXT,
@@ -587,36 +589,42 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text(
                     """
                     INSERT INTO cost_bq_export_summary_daily (
-                      usage_date, vendor, account_id, service_name, sku_name, org, repo,
+                      usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
                       target_branch, vendor_tags_json, author, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'BoxUsage', 'pingcap', 'tidb', 'master', NULL,
+                        'BoxUsage', 'us-east-1', 'pingcap', 'tidb', 'master', NULL,
                         'alice', 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ClusterUsage', NULL, NULL, NULL,
+                        'ClusterUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
                         NULL, 20, 20, 0, 20
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'AuthClusterUsage', NULL, NULL, NULL,
+                        'AuthClusterUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
                         'alice', 7, 7, 0, 7
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ClusterUsage', NULL, NULL, NULL,
+                        'FakeAuthorClusterUsage', 'us-east-1', NULL, NULL, NULL,
+                        '{"cluster":"cluster-no-allocation","shared_pool":"pool-1"}',
+                        'alice', 11, 11, 0, 11
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'ClusterUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"cluster":"cluster-2","shared_pool":"pool-1"}',
                         NULL, 30, 30, 0, 30
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'SharedUsage', NULL, NULL, NULL,
+                        'SharedUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"shared_pool":"pool-1"}',
                         NULL, 5, 5, 0, 5
                       )
@@ -632,13 +640,14 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 6
+        assert summary.rows_inserted == 7
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
                     """
                     SELECT
                       sku_name,
+                      region,
                       author,
                       owner,
                       service,
@@ -688,10 +697,18 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             sku_name="SharedUsage", project="project-y", allocate_method="shared_weighted"
         )
 
-        assert total_net_cost == 72.0
-        assert author_row["attribution_source"] == "author_github"
-        assert author_row["attribution_status"] == "matched"
-        assert author_row["employee_id"] == 1
+        fake_author_row = find_row(sku_name="FakeAuthorClusterUsage", author="alice")
+
+        assert total_net_cost == 83.0
+        assert {row["region"] for row in rows} == {"us-east-1"}
+        assert author_row["owner"] is None
+        assert author_row["attribution_source"] == "missing_author"
+        assert author_row["attribution_status"] == "unattributed"
+        assert author_row["employee_id"] is None
+        assert fake_author_row["owner"] is None
+        assert fake_author_row["attribution_source"] == "missing_label_allocation"
+        assert fake_author_row["attribution_status"] == "unattributed"
+        assert fake_author_row["employee_id"] is None
         assert cluster_x_row["owner"] == "bob@pingcap.com"
         assert cluster_x_row["service"] == "TestInfra"
         assert cluster_x_row["attribution_source"] == "owner_email"
@@ -741,7 +758,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert subset_summary.rows_inserted == 5
+        assert subset_summary.rows_inserted == 6
         with engine.begin() as connection:
             subset_rows = connection.execute(
                 text(
@@ -764,7 +781,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert subset_total_net_cost == 72.0
+        assert subset_total_net_cost == 83.0
         subset_authored_cluster = next(
             row
             for row in subset_rows
@@ -781,10 +798,16 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             if row["sku_name"] == "ClusterUsage" and row["project"] == "project-y"
         )
         subset_shared = next(row for row in subset_rows if row["sku_name"] == "SharedUsage")
+        subset_fake_author = next(
+            row for row in subset_rows if row["sku_name"] == "FakeAuthorClusterUsage"
+        )
 
         assert subset_authored_cluster["net_cost"] == 7.0
         assert subset_cluster_x["net_cost"] == 20.0
         assert subset_cluster_y["net_cost"] == 30.0
+        assert subset_fake_author["owner"] == "dave@pingcap.com"
+        assert subset_fake_author["attribution_source"] == "owner_email"
+        assert subset_fake_author["attribution_status"] == "matched"
         assert subset_shared["owner"] == "dave@pingcap.com"
         assert subset_shared["project"] == "project-pool"
         assert subset_shared["attribution_source"] == "owner_email"
@@ -795,8 +818,23 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
 
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM resource_allocation"))
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO resource_allocation (
+                      id, vendor, account_id, vendor_tags_json, owner_email,
+                      service, project, service_exec_id, valid_from, valid_to
+                    ) VALUES (
+                      4, 'aws', '946646677266',
+                      '{"cluster":"cluster-1","shared_pool":"pool-1"}',
+                      'bob@pingcap.com', 'TestInfra', 'expired-project', 'expired-exec',
+                      NULL, '2026-06-30'
+                    )
+                    """
+                )
+            )
 
-        empty_tcms_summary = run_refresh_cost_attribution_from_summary(
+        expired_tcms_summary = run_refresh_cost_attribution_from_summary(
             engine,
             source=source,
             start_date=date(2026, 7, 14),
@@ -804,7 +842,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert empty_tcms_summary.rows_inserted == 5
+        assert expired_tcms_summary.rows_inserted == 6
         with engine.begin() as connection:
             fallback_rows = connection.execute(
                 text(
@@ -833,7 +871,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert fallback_total_net_cost == 72.0
+        assert fallback_total_net_cost == 83.0
         fallback_auth = next(row for row in fallback_rows if row["sku_name"] == "BoxUsage")
         fallback_auth_cluster = next(
             row for row in fallback_rows if row["sku_name"] == "AuthClusterUsage"
@@ -852,6 +890,231 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fallback_shared["attribution_status"] == "unattributed"
         assert fallback_shared["allocate_method"] is None
         assert fallback_shared["net_cost"] == 5.0
+    finally:
+        engine.dispose()
+
+
+def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> None:
+    engine = _sqlite_engine()
+    source = CostAttributionSource(vendor="aws", account_id="946646677266")
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_bq_export_summary_daily (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      vendor_tags_json TEXT,
+                      author TEXT,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_attribution_daily (
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      attribution_key TEXT,
+                      attribution_source TEXT,
+                      attribution_status TEXT,
+                      allocate_method TEXT,
+                      employee_id INTEGER,
+                      group_id INTEGER,
+                      manager_id INTEGER,
+                      usage_seconds REAL,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      source_rows INTEGER,
+                      dimension_hash TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_employees (
+                      id INTEGER PRIMARY KEY,
+                      email TEXT,
+                      github_id TEXT,
+                      en_name TEXT,
+                      group_id INTEGER,
+                      manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_groups (
+                      id INTEGER PRIMARY KEY,
+                      is_active INTEGER,
+                      manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE resource_allocation (
+                      id INTEGER PRIMARY KEY,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT,
+                      vendor_tags_json TEXT NOT NULL,
+                      owner_email TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      valid_from TEXT,
+                      valid_to TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO roster_employees (
+                      id, email, github_id, en_name, group_id, manager_id
+                    ) VALUES
+                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO roster_groups (id, is_active, manager_id)
+                    VALUES (20, 1, 200)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO resource_allocation (
+                      id, vendor, account_id, vendor_tags_json, owner_email,
+                      service, project, service_exec_id, valid_from, valid_to
+                    ) VALUES
+                      (
+                        1, 'aws', '946646677266',
+                        '{"cluster":"cluster-external"}', 'external@vendor.com',
+                        'TestInfra', 'project-external', 'exec-external', NULL, NULL
+                      ),
+                      (
+                        2, 'aws', '946646677266',
+                        '{"cluster":"cluster-internal"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-internal', 'exec-internal', NULL, NULL
+                      )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
+                      target_branch, vendor_tags_json, author, list_cost,
+                      effective_cost, credit_amount, net_cost
+                    ) VALUES
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        '{"cluster":"cluster-external"}',
+                        NULL, 10, 10, 0, 10
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        '{"cluster":"cluster-internal"}',
+                        NULL, 20, 20, 0, 20
+                      )
+                    """
+                )
+            )
+
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=source,
+            start_date=date(2026, 7, 14),
+            end_date=date(2026, 7, 14),
+            tcms_allocation_table="resource_allocation",
+        )
+
+        assert summary.rows_inserted == 2
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT
+                      sku_name,
+                      owner,
+                      attribution_key,
+                      attribution_source,
+                      attribution_status,
+                      employee_id,
+                      group_id,
+                      manager_id
+                    FROM cost_attribution_daily
+                    ORDER BY sku_name
+                    """
+                )
+            ).mappings().all()
+
+        external_row = next(
+            row for row in rows if row["sku_name"] == "ExternalOwnerUsage"
+        )
+        internal_row = next(
+            row for row in rows if row["sku_name"] == "InternalOwnerUsage"
+        )
+
+        assert external_row["owner"] == "external@vendor.com"
+        assert external_row["attribution_key"] == "owner_email:external@vendor.com"
+        assert external_row["attribution_source"] == "owner_email"
+        assert external_row["attribution_status"] == "unmatched"
+        assert external_row["employee_id"] is None
+        assert external_row["group_id"] is None
+        assert external_row["manager_id"] is None
+        assert internal_row["owner"] == "bob@pingcap.com"
+        assert internal_row["attribution_key"] == "employee:2"
+        assert internal_row["attribution_source"] == "owner_email"
+        assert internal_row["attribution_status"] == "matched"
+        assert internal_row["employee_id"] == 2
+        assert internal_row["group_id"] == 20
+        assert internal_row["manager_id"] == 200
     finally:
         engine.dispose()
 

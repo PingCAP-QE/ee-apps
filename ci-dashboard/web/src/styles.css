@@ -571,6 +571,68 @@ select {
   padding: 0.3rem 0.58rem;
 }
 
+.cost-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.68fr) minmax(360px, 0.92fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.cost-analysis-grid > *,
+.cost-breakdown-grid > *,
+.cost-stack-card {
+  min-width: 0;
+}
+
+.cost-analysis-grid .panel,
+.cost-breakdown-grid .donut-card,
+.cost-stack-card {
+  height: 100%;
+}
+
+.cost-breakdown-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.54fr) minmax(210px, 0.54fr) minmax(330px, 1.2fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.cost-stack-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(49, 87, 114, 0.08);
+  align-content: start;
+}
+
+.cost-share-donut .donut-card__body {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.cost-share-donut .donut-chart svg {
+  max-width: 200px;
+}
+
+.cost-share-donut .donut-legend {
+  gap: 0.38rem;
+}
+
+.cost-share-donut .donut-legend__item {
+  padding: 0.5rem 0.58rem;
+  border-radius: 12px;
+  gap: 0.38rem;
+}
+
+.cost-share-donut .donut-legend__name,
+.cost-share-donut .donut-legend__value,
+.cost-share-donut .donut-legend__share {
+  font-size: 0.76rem;
+}
+
 @media (max-width: 900px) {
   .scope-note__grid {
     grid-template-columns: 1fr;
@@ -1087,6 +1149,15 @@ select {
   font-size: 11px;
 }
 
+.chart-tooltip__text--strong {
+  font-weight: 800;
+}
+
+.chart-tooltip__divider {
+  stroke: rgba(248, 251, 252, 0.24);
+  stroke-width: 1;
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1536,6 +1607,7 @@ select {
   width: 100%;
   max-width: 240px;
   height: auto;
+  overflow: visible;
 }
 
 .donut-card--labeled {
@@ -1573,6 +1645,11 @@ select {
   stroke-width: 2;
 }
 
+.donut-chart__segment--highlight {
+  stroke: #f59e0b;
+  stroke-width: 4;
+}
+
 .donut-chart__segment--interactive {
   cursor: pointer;
   transition: transform 140ms ease, opacity 140ms ease;
@@ -1591,6 +1668,10 @@ select {
 
 .donut-chart__center-label {
   font-size: 0.8rem;
+}
+
+.donut-tooltip {
+  pointer-events: none;
 }
 
 .donut-legend {
@@ -1621,6 +1702,11 @@ select {
 
 .donut-legend__item--static {
   cursor: default;
+}
+
+.donut-legend__item--highlight {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(251, 191, 36, 0.14);
 }
 
 .donut-legend__name {
@@ -2199,6 +2285,8 @@ select {
   .progress-summary-grid,
   .weekly-summary__cost-grid,
   .cost-weekly-overview__grid,
+  .cost-analysis-grid,
+  .cost-breakdown-grid,
   .page-grid--overview,
   .flaky-highlight-row,
   .page-grid--two-column {
@@ -2236,6 +2324,8 @@ select {
   .progress-summary-grid,
   .weekly-summary__cost-grid,
   .cost-weekly-overview__grid,
+  .cost-analysis-grid,
+  .cost-breakdown-grid,
   .page-grid--overview,
   .flaky-highlight-row,
   .flaky-highlight-stack,

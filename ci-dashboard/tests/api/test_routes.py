@@ -501,9 +501,14 @@ def _insert_cost_attribution(
     resource_name: str | None = None,
     author: str | None = "alice",
     owner: str | None = "alice",
+    service: str | None = None,
+    project: str | None = None,
+    service_exec_id: str | None = None,
+    region: str | None = None,
     attribution_key: str | None = "employee:1",
     attribution_source: str = "author_github",
     attribution_status: str = "matched",
+    allocate_method: str | None = None,
     employee_id: int | None = 1,
     usage_seconds: float = 3600,
     service_name: str = "Compute Engine",
@@ -516,13 +521,16 @@ def _insert_cost_attribution(
                 """
                 INSERT INTO cost_attribution_daily (
                   usage_date, vendor, account_id, service_name, sku_name, org, repo,
-                  target_branch, resource_name, author, owner, attribution_key, attribution_source,
-                  attribution_status, employee_id, group_id, manager_id, usage_seconds,
+                  region, target_branch, resource_name, author, owner, service, project, service_exec_id,
+                  attribution_key, attribution_source, attribution_status, allocate_method,
+                  employee_id, group_id, manager_id, usage_seconds,
                   list_cost, effective_cost, credit_amount, net_cost, source_rows, dimension_hash
                 ) VALUES (
                   :usage_date, :vendor, :account_id, :service_name, :sku_name,
-                  'pingcap', :repo, :target_branch, :resource_name, :author, :owner, :attribution_key, :attribution_source,
-                  :attribution_status, :employee_id, :group_id, NULL, :usage_seconds, :list_cost, :effective_cost,
+                  'pingcap', :repo, :region, :target_branch, :resource_name, :author, :owner,
+                  :service, :project, :service_exec_id, :attribution_key, :attribution_source,
+                  :attribution_status, :allocate_method, :employee_id, :group_id, NULL,
+                  :usage_seconds, :list_cost, :effective_cost,
                   0, :net_cost, 1, :dimension_hash
                 )
                 """
@@ -532,14 +540,19 @@ def _insert_cost_attribution(
                 "vendor": vendor,
                 "account_id": account_id,
                 "repo": repo,
+                "region": region,
                 "target_branch": target_branch,
                 "group_id": group_id,
                 "resource_name": resource_name,
                 "author": author,
                 "owner": owner,
+                "service": service,
+                "project": project,
+                "service_exec_id": service_exec_id,
                 "attribution_key": attribution_key,
                 "attribution_source": attribution_source,
                 "attribution_status": attribution_status,
+                "allocate_method": allocate_method,
                 "employee_id": employee_id,
                 "usage_seconds": usage_seconds,
                 "service_name": service_name,
@@ -2275,6 +2288,312 @@ def test_cost_page_route(sqlite_engine, api_client: TestClient) -> None:
     assert level1["Database"]["share_pct"] == 53.33
     level2 = {item["name"]: item for item in engineering_share["level2"]["items"]}
     assert level2["TiDB"]["value"] == 15.0
+
+
+def test_cost_trend_summary_uses_matched_status_for_owner_email(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=30,
+        effective_cost=35,
+        list_cost=40,
+        owner="alice@example.com",
+        attribution_key="owner_email:alice@example.com",
+        attribution_source="owner_email",
+        attribution_status="matched",
+        employee_id=None,
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-07",
+        repo="tidb",
+        group_id=110,
+        net_cost=20,
+        effective_cost=25,
+        list_cost=60,
+        owner="unmatched-author",
+        attribution_key="author:unmatched-author",
+        attribution_source="author_label",
+        attribution_status="unmatched",
+        employee_id=1,
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-trend",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "granularity": "week",
+        },
+    )
+
+    assert response.status_code == 200
+    summary = response.json()["meta"]["summary"]
+    assert summary["matched_resource_pct"] == 40.0
+    assert summary["matched_resource_cost"] == 40.0
+    assert summary["total_resource_cost"] == 100.0
+
+
+def test_cost_share_route_limits_dimension_values_with_others(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    for index in range(9):
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date="2026-04-06",
+            repo=f"repo-{index}",
+            group_id=110,
+            net_cost=index + 1,
+            list_cost=index + 1,
+            owner=f"owner-{index}",
+            project=f"project-{index % 2}",
+            service_exec_id=f"exec-{index % 3}",
+            dimension_hash=f"owner-share-{index}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "owner",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["dimension"] == "owner"
+    assert body["meta"]["limit"] == 8
+    assert body["meta"]["total_list_cost"] == 45.0
+    assert len(body["items"]) == 8
+    assert [item["name"] for item in body["items"][:2]] == ["owner-8", "owner-7"]
+    assert body["items"][-1] == {
+        "name": "Others",
+        "value": 3.0,
+        "share_pct": 6.67,
+        "interactive": False,
+    }
+
+    project_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "project",
+        },
+    )
+    assert project_response.status_code == 200
+    assert [item["name"] for item in project_response.json()["items"]] == [
+        "project-0",
+        "project-1",
+    ]
+
+    exec_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "service_exec_id",
+        },
+    )
+    assert exec_response.status_code == 200
+    assert [item["name"] for item in exec_response.json()["items"]] == [
+        "exec-2",
+        "exec-1",
+        "exec-0",
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "group_by": "project",
+        },
+    )
+    assert stack_response.status_code == 200
+    assert [item["name"] for item in stack_response.json()["items"]] == [
+        "project-0",
+        "project-1",
+    ]
+
+    team_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "team",
+        },
+    )
+    assert team_response.status_code == 200
+    assert team_response.json()["items"] == [
+        {"name": "(no team)", "value": 45.0, "share_pct": 100.0, "interactive": False}
+    ]
+
+
+def test_cost_owner_dimensions_do_not_fallback_to_author(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        author="fake-author",
+        owner=None,
+        list_cost=10,
+        net_cost=10,
+        dimension_hash="owner-no-author-fallback",
+    )
+
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "owner",
+        },
+    )
+
+    assert share_response.status_code == 200
+    assert share_response.json()["items"] == [
+        {"name": "(no owner)", "value": 10.0, "share_pct": 100.0, "interactive": False}
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "granularity": "week",
+            "group_by": "owner",
+        },
+    )
+
+    assert stack_response.status_code == 200
+    body = stack_response.json()
+    assert body["items"] == [{"name": "(no owner)", "value": 10.0}]
+    assert body["series"][0]["key"] == "owner__no_owner"
+    assert body["series"][0]["label"] == "(no owner)"
+
+
+def test_cost_share_route_marks_low_share_regions(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=100,
+        list_cost=100,
+        region="us-east-1",
+        dimension_hash="region-us-east-1",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=0.5,
+        list_cost=0.5,
+        region="ap-south-1",
+        dimension_hash="region-ap-south-1",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "region",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["dimension"] == "region"
+    assert body["meta"]["highlight_threshold_pct"] == 1.0
+    assert body["items"] == [
+        {"name": "us-east-1", "value": 100.0, "share_pct": 99.5, "interactive": False},
+        {
+            "name": "ap-south-1",
+            "value": 0.5,
+            "share_pct": 0.5,
+            "interactive": False,
+            "highlight": True,
+        },
+    ]
+
+
+def test_cost_share_route_normalizes_aws_service_names(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=70,
+        list_cost=70,
+        vendor="aws",
+        account_id="296171618728",
+        service_name="AmazonEC2",
+        sku_name="EBS:VolumeUsage.gp3",
+        dimension_hash="aws-ebs",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=30,
+        list_cost=30,
+        vendor="aws",
+        account_id="296171618728",
+        service_name="AmazonEC2",
+        sku_name="BoxUsage:m6i.large",
+        dimension_hash="aws-ec2",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=10,
+        list_cost=10,
+        vendor="aws",
+        account_id="296171618728",
+        service_name="AmazonS3",
+        sku_name="TimedStorage-ByteHrs",
+        dimension_hash="aws-s3",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "cost_source": "aws:296171618728",
+            "dimension": "service",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"] == [
+        {"name": "EBS", "value": 70.0, "share_pct": 63.64, "interactive": False},
+        {"name": "EC2", "value": 30.0, "share_pct": 27.27, "interactive": False},
+        {"name": "S3", "value": 10.0, "share_pct": 9.09, "interactive": False},
+    ]
 
 
 def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) -> None:

@@ -26,7 +26,7 @@ const SHARED_COST_GROUP = "Efficiency & Quality";
 export default function CostPage({ filters }) {
   const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
   const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
-  const [costStackGroupBy, setCostStackGroupBy] = useState("repo");
+  const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
@@ -47,10 +47,20 @@ export default function CostPage({ filters }) {
   };
   const costStackFilters = {
     ...costFilters,
-    group_by: costStackGroupBy,
+    group_by: costBreakdownGroupBy,
+  };
+  const costShareFilters = {
+    ...costFilters,
+    dimension: costBreakdownGroupBy,
+  };
+  const regionShareFilters = {
+    ...costFilters,
+    dimension: "region",
   };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costFilters);
+  const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
+  const regionShare = useApiData("/api/v1/pages/cost-share", regionShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
   const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
   const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
@@ -63,9 +73,9 @@ export default function CostPage({ filters }) {
     costFilters.granularity,
     trend.data?.meta?.budget_targets,
   );
-  const activeCostStackGroup = COST_STACK_GROUPS.find(
-    (group) => group.key === costStackGroupBy,
-  ) || COST_STACK_GROUPS[0];
+  const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
+    (group) => group.key === costBreakdownGroupBy,
+  ) || COST_BREAKDOWN_GROUPS[0];
   const weeklyLevel2Items = withSharedCostAllocation(
     weeklyOverview.data?.level2_share?.items,
     isWeeklyLevel2Shared,
@@ -179,9 +189,9 @@ export default function CostPage({ filters }) {
           tone="teal"
         />
         <StatCard
-          label="Resource labeled rate"
+          label="Employee matched rate"
           value={formatPercent(summary.matched_resource_pct)}
-          detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched to employee`}
+          detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`}
           tone="amber"
         />
         <StatCard
@@ -196,7 +206,55 @@ export default function CostPage({ filters }) {
         />
       </section>
 
-      <div className="page-grid page-grid--two-column">
+      <div className="cost-analysis-grid">
+        <Panel
+          title="Cost breakdown (list cost)"
+          subtitle={`Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`}
+          loading={costShare.loading || regionShare.loading || repoGroupStack.loading}
+          error={costShare.error || regionShare.error || repoGroupStack.error}
+          className="cost-breakdown-panel"
+          actions={
+            <CostBreakdownGroupSelector
+              value={costBreakdownGroupBy}
+              onChange={(nextGroup) => {
+                setCostBreakdownGroupBy(nextGroup);
+                setSelectedCostStackName("");
+              }}
+            />
+          }
+        >
+          <div className="cost-breakdown-grid">
+            <DonutShareChart
+              className="cost-share-donut"
+              title={`${activeCostBreakdownGroup.label} share`}
+              items={costShare.data?.items}
+              totalValue={costShare.data?.meta?.total_list_cost}
+              totalLabel="list cost"
+              emptyMessage="No cost share data for the current filters."
+            />
+            <DonutShareChart
+              className="cost-share-donut cost-region-donut"
+              title="Region share"
+              items={regionShare.data?.items}
+              totalValue={regionShare.data?.meta?.total_list_cost}
+              totalLabel="list cost"
+              emptyMessage="No region cost data for the current filters."
+            />
+            <article className="cost-stack-card">
+              <header className="donut-card__header">
+                <div>
+                  <strong>Cost stack</strong>
+                </div>
+              </header>
+              <CostStackTrend
+                data={repoGroupStack.data}
+                selectedName={selectedCostStackName}
+                onSelect={setSelectedCostStackName}
+              />
+            </article>
+          </div>
+        </Panel>
+
         <Panel
           title="Cost trend"
           subtitle="Weekly or monthly list cost with net cost as the final billing comparison line."
@@ -209,28 +267,6 @@ export default function CostPage({ filters }) {
             height={320}
             yTickMode="thousands-rounded"
             yTickSegments={5}
-          />
-        </Panel>
-
-        <Panel
-          title={`${activeCostStackGroup.label} cost stack`}
-          subtitle={`Top ${activeCostStackGroup.description} stacked by list cost bucket.`}
-          loading={repoGroupStack.loading}
-          error={repoGroupStack.error}
-          actions={
-            <CostStackGroupSelector
-              value={costStackGroupBy}
-              onChange={(nextGroup) => {
-                setCostStackGroupBy(nextGroup);
-                setSelectedCostStackName("");
-              }}
-            />
-          }
-        >
-          <CostStackTrend
-            data={repoGroupStack.data}
-            selectedName={selectedCostStackName}
-            onSelect={setSelectedCostStackName}
           />
         </Panel>
       </div>
@@ -291,18 +327,19 @@ export default function CostPage({ filters }) {
   );
 }
 
-const COST_STACK_GROUPS = [
-  { key: "repo", label: "Repo", description: "repos" },
-  { key: "author", label: "Author", description: "authors" },
+const COST_BREAKDOWN_GROUPS = [
+  { key: "owner", label: "Owner", description: "owners" },
   { key: "team", label: "Team", description: "teams" },
-  { key: "service", label: "Services", description: "services" },
+  { key: "service", label: "SKU", description: "SKUs" },
+  { key: "project", label: "Project", description: "projects" },
+  { key: "service_exec_id", label: "Exec ID", description: "service exec IDs" },
 ];
 
-function CostStackGroupSelector({ value, onChange }) {
+function CostBreakdownGroupSelector({ value, onChange }) {
   return (
     <SegmentedControl
-      ariaLabel="Cost stack grouping"
-      options={COST_STACK_GROUPS}
+      ariaLabel="Cost breakdown grouping"
+      options={COST_BREAKDOWN_GROUPS}
       value={value}
       onChange={onChange}
     />
@@ -332,6 +369,7 @@ function CostStackTrend({ data, selectedName, onSelect }) {
         yTickSegments={5}
         barGroupWidthFactor={0.56}
         barMaxWidth={58}
+        showTooltipSum={!selectedName}
       />
       <div className="dimension-selector" aria-label="Cost stack value selector">
         <button

@@ -23,6 +23,7 @@ from ci_dashboard.api.queries.builds import (
 from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
     get_cost_page,
+    get_cost_share,
     get_weekly_account_summaries,
     list_cost_sources,
     get_cost_trend,
@@ -247,6 +248,15 @@ def get_cost_trend_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_cost_trend(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_share_page(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    dimension: str = "owner",
+) -> dict[str, Any]:
+    return get_cost_share(engine, _normalize_cost_filters(filters), dimension=dimension)
 
 
 def get_cost_weekly_overview_page(

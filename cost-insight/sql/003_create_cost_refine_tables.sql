@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS cost_bq_export_summary_daily (
   usage_date DATE NOT NULL,
   service_name VARCHAR(255) NULL,
   sku_name VARCHAR(255) NULL,
+  region VARCHAR(128) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
   target_branch VARCHAR(255) NULL,

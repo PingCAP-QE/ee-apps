@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS cost_attribution_daily (
   account_id VARCHAR(128) NOT NULL,
   service_name VARCHAR(255) NULL,
   sku_name VARCHAR(255) NULL,
+  region VARCHAR(128) NULL,
   org VARCHAR(255) NULL,
   repo VARCHAR(255) NULL,
   target_branch VARCHAR(255) NULL,
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS cost_attribution_daily (
   KEY idx_cost_attribution_daily_author (usage_date, author),
   KEY idx_cost_attribution_daily_repo (usage_date, org, repo),
   KEY idx_cost_attribution_daily_branch (usage_date, target_branch),
+  KEY idx_cost_attribution_daily_region (usage_date, region),
   KEY idx_cost_attribution_daily_group (usage_date, group_id),
   KEY idx_cost_attribution_daily_manager (usage_date, manager_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

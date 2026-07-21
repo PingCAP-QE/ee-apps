@@ -12,7 +12,14 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
 
 COST_STACK_LIMIT = 8
-VALID_COST_STACK_GROUPS = frozenset({"repo", "author", "team", "target_branch", "service"})
+VALID_COST_STACK_GROUPS = frozenset(
+    {"repo", "author", "owner", "team", "target_branch", "service", "project", "service_exec_id"}
+)
+COST_SHARE_LIMIT = 8
+VALID_COST_SHARE_DIMENSIONS = frozenset(
+    {"owner", "team", "service", "project", "service_exec_id", "region"}
+)
+LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 UNMATCHED_RESOURCE_LIMIT = 20
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 ENGINEERING_GROUP_NAME = "Engineering Group"
@@ -102,7 +109,7 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
                 f"""
                 SELECT
                   SUM({list_cost_expr}) AS total_resource_cost,
-                  SUM(CASE WHEN c.employee_id IS NOT NULL THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
+                  SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
                 FROM cost_attribution_daily c
                 WHERE {where_clause}
                   AND c.list_cost IS NOT NULL
@@ -370,6 +377,72 @@ def get_repo_group_cost_stack(
             for key in values_by_key
         ],
         "meta": {**filters.meta(), "limit": COST_STACK_LIMIT, "group_by": group_by},
+    }
+
+
+def get_cost_share(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    dimension: str = "owner",
+) -> dict[str, Any]:
+    if dimension not in VALID_COST_SHARE_DIMENSIONS:
+        dimension = "owner"
+
+    with engine.begin() as connection:
+        where_clause, params = _build_cost_where(filters, table_alias="c")
+        dimension_config = _cost_share_dimension(connection, dimension)
+        list_cost_expr = _billing_report_list_cost_expr("c")
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT
+                  {dimension_config["expr"]} AS dimension_name,
+                  SUM({list_cost_expr}) AS list_cost
+                FROM {dimension_config["from_clause"]}
+                WHERE {where_clause}
+                  AND c.list_cost IS NOT NULL
+                GROUP BY dimension_name
+                ORDER BY list_cost DESC, dimension_name
+                """
+            ),
+            {**params, **dimension_config["params"]},
+        ).mappings()
+        all_items = []
+        for row in rows:
+            value = _money(row["list_cost"])
+            if value <= 0:
+                continue
+            all_items.append(
+                {
+                    "name": str(row["dimension_name"] or dimension_config["empty_label"]),
+                    "value": value,
+                }
+            )
+
+    total = sum(item["value"] for item in all_items)
+    for item in all_items:
+        item["share_pct"] = rate_pct(item["value"], total)
+        item["interactive"] = False
+        if dimension == "region" and 0 < item["share_pct"] < LOW_REGION_SHARE_THRESHOLD_PCT:
+            item["highlight"] = True
+
+    meta = {
+        **filters.meta(),
+        "dimension": dimension,
+        "limit": COST_SHARE_LIMIT,
+        "total_list_cost": round(total, 2),
+    }
+    if dimension == "region":
+        meta["highlight_threshold_pct"] = LOW_REGION_SHARE_THRESHOLD_PCT
+
+    return {
+        "items": _share_items_limited_with_others(
+            all_items,
+            limit=COST_SHARE_LIMIT,
+            total=total,
+        ),
+        "meta": meta,
     }
 
 
@@ -1004,6 +1077,32 @@ def _share_items_above_threshold_with_others(
     ]
 
 
+def _share_items_limited_with_others(
+    all_items: list[dict[str, Any]],
+    *,
+    limit: int,
+    total: float,
+) -> list[dict[str, Any]]:
+    if limit < 2 or len(all_items) <= limit:
+        return all_items[:limit]
+
+    visible_items = all_items[: limit - 1]
+    hidden_items = all_items[limit - 1 :]
+    others_value = total - sum(_number_or_zero(item.get("value")) for item in visible_items)
+    if others_value <= 0:
+        return visible_items
+    others_item = {
+        "name": "Others",
+        "value": _money(others_value),
+        "share_pct": rate_pct(others_value, total),
+        "interactive": False,
+    }
+    if any(item.get("highlight") for item in hidden_items):
+        others_item["highlight"] = True
+
+    return [*visible_items, others_item]
+
+
 def _previous_window(filters: CommonFilters) -> tuple[date | None, date | None]:
     if filters.start_date is None or filters.end_date is None:
         return None, None
@@ -1303,6 +1402,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
             "params": {},
             "empty_label": "(unknown author)",
         }
+    if group_by == "owner":
+        return {
+            "expr": "COALESCE(NULLIF(c.owner, ''), '(no owner)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no owner)",
+        }
     if group_by == "team":
         team_match = _like_prefix_expr(connection, "c_group.path", "target_group.path")
         return {
@@ -1312,20 +1418,18 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
                 LEFT JOIN roster_groups c_group
                   ON c_group.id = c.group_id
                 LEFT JOIN (
-                  SELECT id, path
-                  FROM roster_groups
-                  WHERE name = :cost_stack_root_group_name
-                    AND is_active = 1
-                  ORDER BY id
-                  LIMIT 1
-                ) root_group
-                  ON 1=1
-                LEFT JOIN roster_groups target_parent
-                  ON target_parent.is_active = 1
-                 AND target_parent.parent_id = root_group.id
-                LEFT JOIN roster_groups target_group
-                  ON target_group.is_active = 1
-                 AND target_group.parent_id = target_parent.id
+                  SELECT target_group.name, target_group.path
+                  FROM roster_groups root_group
+                  JOIN roster_groups target_parent
+                    ON target_parent.is_active = 1
+                   AND target_parent.parent_id = root_group.id
+                  JOIN roster_groups target_group
+                    ON target_group.is_active = 1
+                   AND target_group.parent_id = target_parent.id
+                  WHERE root_group.name = :cost_stack_root_group_name
+                    AND root_group.is_active = 1
+                ) target_group
+                  ON c_group.path IS NOT NULL
                  AND {team_match}
             """,
             "params": {"cost_stack_root_group_name": ENGINEERING_GROUP_NAME},
@@ -1340,10 +1444,24 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
         }
     if group_by == "service":
         return {
-            "expr": "COALESCE(NULLIF(c.service_name, ''), '(no service)')",
+            "expr": _cost_service_share_expr("c"),
             "from_clause": "cost_attribution_daily c",
             "params": {},
             "empty_label": "(no service)",
+        }
+    if group_by == "project":
+        return {
+            "expr": "COALESCE(NULLIF(c.project, ''), '(no project)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no project)",
+        }
+    if group_by == "service_exec_id":
+        return {
+            "expr": "COALESCE(NULLIF(c.service_exec_id, ''), '(no service exec id)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no service exec id)",
         }
     return {
         "expr": "COALESCE(NULLIF(c.repo, ''), '(no repo)')",
@@ -1353,17 +1471,85 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
     }
 
 
+def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, Any]:
+    if dimension not in VALID_COST_SHARE_DIMENSIONS:
+        dimension = "owner"
+
+    if dimension == "owner":
+        return {
+            "expr": "COALESCE(NULLIF(c.owner, ''), '(no owner)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no owner)",
+        }
+    if dimension == "team":
+        return _cost_stack_dimension(connection, "team")
+    if dimension == "service":
+        return {
+            "expr": _cost_service_share_expr("c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no service)",
+        }
+    if dimension == "project":
+        return {
+            "expr": "COALESCE(NULLIF(c.project, ''), '(no project)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no project)",
+        }
+    if dimension == "region":
+        return {
+            "expr": "COALESCE(NULLIF(c.region, ''), '(no region)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no region)",
+        }
+    return {
+        "expr": "COALESCE(NULLIF(c.service_exec_id, ''), '(no service exec id)')",
+        "from_clause": "cost_attribution_daily c",
+        "params": {},
+        "empty_label": "(no service exec id)",
+    }
+
+
+def _cost_service_share_expr(table_alias: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    service = f"{prefix}service_name"
+    sku = f"{prefix}sku_name"
+    return (
+        "CASE "
+        f"WHEN LOWER(COALESCE({service}, '')) = 'amazonec2' "
+        f"AND (LOWER(COALESCE({sku}, '')) LIKE '%ebs%' "
+        f"OR LOWER(COALESCE({sku}, '')) LIKE '%volume%' "
+        f"OR LOWER(COALESCE({sku}, '')) LIKE '%snapshot%' "
+        f"OR LOWER(COALESCE({sku}, '')) LIKE '%elastic block store%') "
+        "THEN 'EBS' "
+        f"WHEN LOWER(COALESCE({service}, '')) = 'amazonec2' THEN 'EC2' "
+        f"WHEN LOWER(COALESCE({service}, '')) = 'amazons3' THEN 'S3' "
+        f"WHEN NULLIF({service}, '') IS NULL THEN '(no service)' "
+        f"ELSE {service} "
+        "END"
+    )
+
+
 def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
     if group_by == "repo" and dimension_name == "(no repo)":
         return "repo__no_repo"
     if group_by == "author" and dimension_name == "(unknown author)":
         return "author__unknown_author"
+    if group_by == "owner" and dimension_name == "(no owner)":
+        return "owner__no_owner"
     if group_by == "team" and dimension_name == "(no team)":
         return "team__no_team"
     if group_by == "target_branch" and dimension_name == "(no target branch)":
         return "target_branch__no_target_branch"
     if group_by == "service" and dimension_name == "(no service)":
         return "service__no_service"
+    if group_by == "project" and dimension_name == "(no project)":
+        return "project__no_project"
+    if group_by == "service_exec_id" and dimension_name == "(no service exec id)":
+        return "service_exec_id__no_service_exec_id"
     return f"{group_by}__{index}"
 
 
