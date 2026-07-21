@@ -191,6 +191,7 @@ _SELECT_SUMMARY_ROWS = text(
       usage_date,
       service_name,
       sku_name,
+      region,
       author,
       org,
       repo,
@@ -212,11 +213,12 @@ _SELECT_SUMMARY_ROWS = text(
       usage_date,
       service_name,
       sku_name,
+      region,
       author,
       org,
       repo,
       target_branch
-    ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo, target_branch
+    ORDER BY export_partition_date, usage_date, service_name, sku_name, region, author, org, repo, target_branch
     """
 )
 

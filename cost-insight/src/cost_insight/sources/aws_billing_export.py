@@ -96,6 +96,13 @@ WITH normalized AS (
       NULLIF(line_item_usage_type, ''),
       NULLIF(line_item_line_item_description, '')
     ) AS sku_name,
+    COALESCE(
+      NULLIF(product_region_code, ''),
+      REGEXP_EXTRACT(NULLIF(line_item_availability_zone, ''), r'^([a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)'),
+      NULLIF(product_to_region_code, ''),
+      NULLIF(product_from_region_code, ''),
+      NULLIF(savings_plan_region, '')
+    ) AS region,
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
     NULLIF(tag_project, '') AS repo,
@@ -130,6 +137,7 @@ SELECT
   usage_date,
   service_name,
   sku_name,
+  region,
   author,
   org,
   repo,
@@ -150,6 +158,7 @@ GROUP BY
   usage_date,
   service_name,
   sku_name,
+  region,
   author,
   org,
   repo,
@@ -159,6 +168,7 @@ ORDER BY
   usage_date,
   service_name,
   sku_name,
+  region,
   author,
   org,
   repo,

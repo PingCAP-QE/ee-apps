@@ -43,6 +43,7 @@ HASH_FIELDS = (
     "usage_date",
     "service_name",
     "sku_name",
+    "region",
     "author",
     "org",
     "repo",
@@ -241,6 +242,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "usage_date": coerce_date(row.get("usage_date")),
         "service_name": nullable_text(row.get("service_name")),
         "sku_name": nullable_text(row.get("sku_name")),
+        "region": nullable_text(row.get("region")),
         "author": nullable_text(row.get("author")),
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
@@ -319,21 +321,27 @@ def replace_summary_partitions(
         for row in rows:
             batch.append(row)
             if len(batch) >= batch_size:
-                _write_summary_rows(connection, batch)
+                _write_summary_rows(connection, batch, cleanup_superseded=False)
                 rows_written += len(batch)
                 batch.clear()
         if batch:
-            _write_summary_rows(connection, batch)
+            _write_summary_rows(connection, batch, cleanup_superseded=False)
             rows_written += len(batch)
     return rows_written
 
 
-def _write_summary_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> None:
+def _write_summary_rows(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+    *,
+    cleanup_superseded: bool = True,
+) -> None:
     if not rows:
         return
-    _delete_legacy_summary_rows(connection, rows)
-    _delete_superseded_unlabeled_summary_rows(connection, rows)
-    _delete_superseded_owner_override_rows(connection, rows)
+    if cleanup_superseded:
+        _delete_legacy_summary_rows(connection, rows)
+        _delete_superseded_unlabeled_summary_rows(connection, rows)
+        _delete_superseded_owner_override_rows(connection, rows)
     connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
 
 
@@ -380,6 +388,7 @@ def _delete_superseded_owner_override_rows(
                 "usage_date": row["usage_date"],
                 "service_name": row.get("service_name") or "",
                 "sku_name": row.get("sku_name") or "",
+                "region": row.get("region") or "",
                 "org": row.get("org") or "",
                 "repo": row.get("repo") or "",
                 "target_branch": row.get("target_branch") or "",
@@ -408,6 +417,7 @@ def _delete_superseded_unlabeled_summary_rows(
             "usage_date": row["usage_date"],
             "service_name": row.get("service_name") or "",
             "sku_name": row.get("sku_name") or "",
+            "region": row.get("region") or "",
             "author": row.get("author") or "",
             "org": row.get("org") or "",
             "repo": row.get("repo") or "",
@@ -485,6 +495,7 @@ def _build_upsert_statement(connection: Connection):
               usage_date,
               service_name,
               sku_name,
+              region,
               org,
               repo,
               target_branch,
@@ -504,6 +515,7 @@ def _build_upsert_statement(connection: Connection):
               :usage_date,
               :service_name,
               :sku_name,
+              :region,
               :org,
               :repo,
               :target_branch,
@@ -525,6 +537,7 @@ def _build_upsert_statement(connection: Connection):
           net_cost = excluded.net_cost,
           service_name = excluded.service_name,
           sku_name = excluded.sku_name,
+          region = excluded.region,
           source_export_time = excluded.source_export_time,
           updated_at = CURRENT_TIMESTAMP
             """
@@ -539,6 +552,7 @@ def _build_upsert_statement(connection: Connection):
           usage_date,
           service_name,
           sku_name,
+          region,
           org,
           repo,
           target_branch,
@@ -558,6 +572,7 @@ def _build_upsert_statement(connection: Connection):
           :usage_date,
           :service_name,
           :sku_name,
+          :region,
           :org,
           :repo,
           :target_branch,
@@ -579,6 +594,7 @@ def _build_upsert_statement(connection: Connection):
           net_cost = VALUES(net_cost),
           service_name = VALUES(service_name),
           sku_name = VALUES(sku_name),
+          region = VALUES(region),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
         """
@@ -629,6 +645,7 @@ _DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
       AND usage_date = :usage_date
       AND COALESCE(service_name, '') = :service_name
       AND COALESCE(sku_name, '') = :sku_name
+      AND COALESCE(region, '') = :region
       AND COALESCE(org, '') = :org
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
@@ -648,6 +665,7 @@ _DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
       AND usage_date = :usage_date
       AND COALESCE(service_name, '') = :service_name
       AND COALESCE(sku_name, '') = :sku_name
+      AND COALESCE(region, '') = :region
       AND COALESCE(author, '') = :author
       AND COALESCE(org, '') = :org
       AND COALESCE(repo, '') = :repo

@@ -11,6 +11,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_engineering_group_share_page,
     get_cost_insight_page,
     get_cost_sources_page,
+    get_cost_share_page,
     get_cost_repo_group_stack_page,
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
@@ -80,6 +81,15 @@ def cost_trend_page(
     return get_cost_trend_page(engine, filters)
 
 
+@router.get("/cost-share")
+def cost_share_page(
+    dimension: str = Query("owner", pattern="^(owner|team|service|project|service_exec_id|region)$"),
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_share_page(engine, filters, dimension=dimension)
+
+
 @router.get("/cost-weekly-overview")
 def cost_weekly_overview_page(
     filters: CommonFilters = Depends(get_common_filters),
@@ -98,7 +108,10 @@ def cost_weekly_account_summaries_page(
 
 @router.get("/cost-repo-group-stack")
 def cost_repo_group_stack_page(
-    group_by: str = Query("repo", pattern="^(repo|author|team|target_branch|service)$"),
+    group_by: str = Query(
+        "repo",
+        pattern="^(repo|author|owner|team|target_branch|service|project|service_exec_id)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:

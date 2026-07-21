@@ -204,6 +204,7 @@ SELECT
   DATE(usage_start_time) AS usage_date,
   service.description AS service_name,
   sku.description AS sku_name,
+  location.region AS region,
   {author_expr} AS author,
   {_label_expr(("k8s-label/org", "org"))} AS org,
   {_label_expr(("k8s-label/repo", "repo"))} AS repo,
@@ -226,11 +227,12 @@ GROUP BY
   usage_date,
   service_name,
   sku_name,
+  region,
   author,
   org,
   repo,
   target_branch
-ORDER BY export_partition_date, usage_date, service_name, sku_name, author, org, repo, target_branch{limit_clause}
+ORDER BY export_partition_date, usage_date, service_name, sku_name, region, author, org, repo, target_branch{limit_clause}
 """.strip()
 
 

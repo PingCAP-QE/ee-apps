@@ -308,6 +308,24 @@ _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
 _ALLOCATION_MATCH_TAGS_JSON = _allocation_tags_for_match_sql(
     "allocation_raw.vendor_tags_json"
 )
+_MATCHED_OWNER = """
+COALESCE(
+  override_employee.email,
+  github_employee.email,
+  email_employee.email,
+  normalized_employee.email,
+  override_employee.en_name,
+  github_employee.en_name,
+  email_employee.en_name,
+  normalized_employee.en_name
+)
+""".strip()
+_TCMS_OWNER = f"""
+CASE
+  WHEN base.identity_kind = 'owner_email' THEN base.match_identity
+  ELSE {_MATCHED_OWNER}
+END
+""".strip()
 
 
 _INSERT_ATTRIBUTION_DAILY = text(
@@ -318,6 +336,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
       account_id,
       service_name,
       sku_name,
+      region,
       org,
       repo,
       target_branch,
@@ -344,6 +363,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
       attributed.account_id,
       attributed.service_name,
       attributed.sku_name,
+      attributed.region,
       attributed.org,
       attributed.repo,
       attributed.target_branch,
@@ -370,6 +390,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
           COALESCE(attributed.account_id, ''),
           COALESCE(attributed.service_name, ''),
           COALESCE(attributed.sku_name, ''),
+          COALESCE(attributed.region, ''),
           COALESCE(attributed.org, ''),
           COALESCE(attributed.repo, ''),
           COALESCE(attributed.target_branch, ''),
@@ -392,12 +413,13 @@ _INSERT_ATTRIBUTION_DAILY = text(
         raw.account_id,
         raw.service_name,
         raw.sku_name,
+        raw.region,
         raw.org,
         raw.repo,
         raw.target_branch,
         raw.resource_name,
         raw.author,
-        raw.author AS owner,
+        {_MATCHED_OWNER} AS owner,
         CASE
           WHEN COALESCE(
             override_employee.id,
@@ -508,6 +530,7 @@ _INSERT_ATTRIBUTION_DAILY = text(
       attributed.account_id,
       attributed.service_name,
       attributed.sku_name,
+      attributed.region,
       attributed.org,
       attributed.repo,
       attributed.target_branch,
@@ -532,6 +555,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       account_id,
       service_name,
       sku_name,
+      region,
       org,
       repo,
       target_branch,
@@ -558,6 +582,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.account_id,
       attributed.service_name,
       attributed.sku_name,
+      attributed.region,
       attributed.org,
       attributed.repo,
       attributed.target_branch,
@@ -584,6 +609,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           COALESCE(attributed.account_id, ''),
           COALESCE(attributed.service_name, ''),
           COALESCE(attributed.sku_name, ''),
+          COALESCE(attributed.region, ''),
           COALESCE(attributed.org, ''),
           COALESCE(attributed.repo, ''),
           COALESCE(attributed.target_branch, ''),
@@ -606,11 +632,12 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.account_id,
         summary.service_name,
         summary.sku_name,
+        summary.region,
         summary.org,
         summary.repo,
         summary.target_branch,
         summary.author,
-        summary.author AS owner,
+        {_MATCHED_OWNER} AS owner,
         CASE
           WHEN COALESCE(
             override_employee.id,
@@ -720,6 +747,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.account_id,
       attributed.service_name,
       attributed.sku_name,
+      attributed.region,
       attributed.org,
       attributed.repo,
       attributed.target_branch,
@@ -744,6 +772,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           account_id,
           service_name,
           sku_name,
+          region,
           org,
           repo,
           target_branch,
@@ -775,6 +804,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.account_id,
           attributed.service_name,
           attributed.sku_name,
+          attributed.region,
           attributed.org,
           attributed.repo,
           attributed.target_branch,
@@ -806,6 +836,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.account_id, ''),
               COALESCE(attributed.service_name, ''),
               COALESCE(attributed.sku_name, ''),
+              COALESCE(attributed.region, ''),
               COALESCE(attributed.org, ''),
               COALESCE(attributed.repo, ''),
               COALESCE(attributed.target_branch, ''),
@@ -833,17 +864,19 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.account_id,
             base.service_name,
             base.sku_name,
+            base.region,
             base.org,
             base.repo,
             base.target_branch,
             base.vendor_tags_json,
             base.author,
-            base.owner,
+            {_TCMS_OWNER} AS owner,
             base.service,
             base.project,
             base.service_exec_id,
             CASE
               WHEN COALESCE(
+                owner_email_employee.id,
                 override_employee.id,
                 github_employee.id,
                 email_employee.id,
@@ -851,6 +884,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               ) IS NOT NULL THEN CONCAT(
                 'employee:',
                 CAST(COALESCE(
+                  owner_email_employee.id,
                   override_employee.id,
                   github_employee.id,
                   email_employee.id,
@@ -875,6 +909,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             END AS attribution_source,
             CASE
               WHEN COALESCE(
+                owner_email_employee.id,
                 override_employee.id,
                 github_employee.id,
                 email_employee.id,
@@ -885,18 +920,21 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             END AS attribution_status,
             base.allocate_method,
             COALESCE(
+              owner_email_employee.id,
               override_employee.id,
               github_employee.id,
               email_employee.id,
               normalized_employee.id
             ) AS employee_id,
             COALESCE(
+              owner_email_employee.group_id,
               override_employee.group_id,
               github_employee.group_id,
               email_employee.group_id,
               normalized_employee.group_id
             ) AS group_id,
             COALESCE(
+              owner_email_employee.manager_id,
               override_employee.manager_id,
               github_employee.manager_id,
               email_employee.manager_id,
@@ -914,6 +952,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.account_id,
               summary.service_name,
               summary.sku_name,
+              summary.region,
               summary.org,
               summary.repo,
               summary.target_branch,
@@ -926,17 +965,19 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.author,
               CASE
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
-                WHEN summary.author IS NOT NULL THEN summary.author
+                WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
+                  THEN summary.author
                 ELSE NULL
               END AS owner,
               CASE
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
-                WHEN summary.author IS NOT NULL THEN summary.author
+                WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
+                  THEN summary.author
                 ELSE NULL
               END AS match_identity,
               CASE
                 WHEN allocation.id IS NOT NULL THEN 'owner_email'
-                WHEN summary.author IS NOT NULL THEN 'author'
+                WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL THEN 'author'
                 ELSE NULL
               END AS identity_kind,
               CASE WHEN allocation.id IS NOT NULL THEN allocation.service ELSE NULL END AS service,
@@ -994,6 +1035,20 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               WHERE match_rank = 1
             ) allocation
               ON allocation.summary_id = summary.id
+            LEFT JOIN (
+              SELECT DISTINCT summary.id AS summary_id
+              FROM cost_bq_export_summary_daily summary
+              JOIN {tcms_table} allocation_raw
+                ON allocation_raw.vendor = summary.vendor
+               AND allocation_raw.account_id = summary.account_id
+               AND allocation_raw.owner_email IS NOT NULL
+               AND summary.usage_date >= COALESCE(allocation_raw.valid_from, '1900-01-01')
+               AND summary.usage_date <= COALESCE(allocation_raw.valid_to, '9999-12-31')
+              WHERE summary.usage_date BETWEEN :start_date AND :end_date
+                AND summary.vendor = :vendor
+                AND summary.account_id = :account_id
+            ) account_allocation
+              ON account_allocation.summary_id = summary.id
             WHERE summary.usage_date BETWEEN :start_date AND :end_date
               AND summary.vendor = :vendor
               AND summary.account_id = :account_id
@@ -1004,6 +1059,11 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 AND allocation.id IS NULL
               )
           ) base
+          LEFT JOIN roster_employees owner_email_employee
+            ON base.identity_kind = 'owner_email'
+           AND base.match_identity IS NOT NULL
+           AND owner_email_employee.email IS NOT NULL
+           AND LOWER(owner_email_employee.email) = LOWER(base.match_identity)
           LEFT JOIN roster_employees override_employee
             ON base.identity_kind = 'author'
            AND base.match_identity IS NOT NULL
@@ -1017,6 +1077,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
            AND LOWER(github_employee.github_id) = LOWER(base.match_identity)
           LEFT JOIN roster_employees email_employee
             ON github_employee.id IS NULL
+           AND base.identity_kind = 'author'
            AND base.match_identity IS NOT NULL
            AND email_employee.email IS NOT NULL
            AND (
@@ -1041,6 +1102,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           LEFT JOIN roster_groups matched_group
             ON matched_group.is_active = 1
            AND matched_group.id = COALESCE(
+             owner_email_employee.group_id,
              override_employee.group_id,
              github_employee.group_id,
              email_employee.group_id,
@@ -1053,6 +1115,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.account_id,
           attributed.service_name,
           attributed.sku_name,
+          attributed.region,
           attributed.org,
           attributed.repo,
           attributed.target_branch,
@@ -1082,6 +1145,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
           account_id,
           service_name,
           sku_name,
+          region,
           org,
           repo,
           target_branch,
@@ -1187,6 +1251,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             summary.account_id,
             summary.service_name,
             summary.sku_name,
+            summary.region,
             summary.vendor_tags_json,
             {_SUMMARY_SHARED_POOL} AS shared_pool,
             SUM(summary.list_cost) AS list_cost,
@@ -1210,6 +1275,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             summary.account_id,
             summary.service_name,
             summary.sku_name,
+            summary.region,
             summary.vendor_tags_json,
             shared_pool
         )
@@ -1219,6 +1285,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
           allocated.account_id,
           allocated.service_name,
           allocated.sku_name,
+          allocated.region,
           NULL AS org,
           NULL AS repo,
           NULL AS target_branch,
@@ -1250,6 +1317,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
               COALESCE(allocated.account_id, ''),
               COALESCE(allocated.service_name, ''),
               COALESCE(allocated.sku_name, ''),
+              COALESCE(allocated.region, ''),
               '',
               '',
               '',
@@ -1277,6 +1345,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             shared_cost.account_id,
             shared_cost.service_name,
             shared_cost.sku_name,
+            shared_cost.region,
             shared_cost.vendor_tags_json,
             shared_cost.shared_pool,
             logical.service,
