@@ -27,25 +27,36 @@ var (
 // update-component-version-in-cloudconfig.
 func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context, p *tidbcloud.UpdateComponentVersionInCloudconfigPayload) (res *tidbcloud.UpdateComponentVersionInCloudconfigResult, err error) {
 	if p == nil {
-		return nil, fmt.Errorf("payload is nil")
+		err = fmt.Errorf("payload is nil")
+		s.Logger.Error().Err(err).Msg("tidbcloud.update-component-version-in-cloudconfig failed")
+		return nil, err
 	}
 	res = &tidbcloud.UpdateComponentVersionInCloudconfigResult{Stage: p.Stage}
 	if strings.TrimSpace(p.Stage) == "" {
-		return nil, fmt.Errorf("stage is empty")
+		err = fmt.Errorf("stage is empty")
+		s.Logger.Error().Err(err).Str("stage", p.Stage).Msg("tidbcloud.update-component-version-in-cloudconfig failed")
+		return nil, err
 	}
 	if strings.TrimSpace(p.Image) == "" {
-		return nil, fmt.Errorf("image is empty")
+		err = fmt.Errorf("image is empty")
+		s.Logger.Error().Err(err).Str("stage", p.Stage).Msg("tidbcloud.update-component-version-in-cloudconfig failed")
+		return nil, err
 	}
 	if s.opsCfg == nil {
-		return nil, fmt.Errorf("tidbcloud ops config is not configured")
+		err = fmt.Errorf("tidbcloud ops config is not configured")
+		s.Logger.Error().Err(err).Str("stage", p.Stage).Msg("tidbcloud.update-component-version-in-cloudconfig failed")
+		return nil, err
 	}
 	stageCfg, ok := s.opsCfg.Stages[p.Stage]
 	if !ok {
-		return nil, fmt.Errorf("stage %q not found in tidbcloud ops config", p.Stage)
+		err = fmt.Errorf("stage %q not found in tidbcloud ops config", p.Stage)
+		s.Logger.Error().Err(err).Str("stage", p.Stage).Msg("tidbcloud.update-component-version-in-cloudconfig failed")
+		return nil, err
 	}
 
 	imageRepo, imageTag, err := parseImageRepoTag(p.Image)
 	if err != nil {
+		s.Logger.Error().Err(err).Str("stage", p.Stage).Str("image", p.Image).Msg("tidbcloud.update-component-version-in-cloudconfig failed to parse image")
 		return nil, err
 	}
 
@@ -72,14 +83,15 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 
 	for _, component := range components {
 		c := stageCfg.Components[component]
-		ticket, err := s.callOpsPlatformAPI(ctx, p.Stage, component, c, imageRepo, imageTag, componentVersion)
-		if err != nil {
-			return nil, err
+		ticket, callErr := s.callOpsPlatformAPI(ctx, p.Stage, component, c, imageRepo, imageTag, componentVersion)
+		if callErr != nil {
+			s.Logger.Error().Err(callErr).Str("stage", p.Stage).Str("component", component).Str("image", p.Image).Str("image_repo", imageRepo).Str("image_tag", imageTag).Str("component_version", componentVersion).Msg("tidbcloud.update-component-version-in-cloudconfig: callOpsPlatformAPI failed")
+			return nil, callErr
 		}
 		res.Tickets = append(res.Tickets, ticket)
 	}
 
-	s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Int("tickets", len(res.Tickets)).Msg("tidbcloud.update-component-version-in-cloudconfig")
+	s.Logger.Info().Str("stage", p.Stage).Str("image", p.Image).Int("tickets", len(res.Tickets)).Msg("tidbcloud.update-component-version-in-cloudconfig succeeded")
 	return res, nil
 }
 
@@ -88,11 +100,12 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 	if componentCfg.GitHubRepo != "" {
 		md, mdErr := s.getTiBuildTagMetadata(ctx, componentCfg.GitHubRepo, imageTag)
 		if mdErr != nil {
-			s.Logger.Warn().Err(mdErr).Str("stage", stage).Str("component", component).Msg("failed to get tibuild tag metadata")
+			s.Logger.Warn().Err(mdErr).Str("stage", stage).Str("component", component).Str("github_repo", componentCfg.GitHubRepo).Str("image_tag", imageTag).Msg("failed to get tibuild tag metadata")
 		} else if md != nil {
 			author = md.Author
 			releaseID = md.Meta.OpsReq.ReleaseID
 			changeID = md.Meta.OpsReq.ChangeID
+			s.Logger.Debug().Str("stage", stage).Str("component", component).Str("author", author).Str("release_id", releaseID).Str("change_id", changeID).Msg("tibuild tag metadata resolved")
 		}
 	}
 
@@ -107,24 +120,41 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 		ChangeID:    changeID,
 	}
 
+	client := s.opsRestyClient(stage)
+	if client == nil {
+		err := fmt.Errorf("ops client is nil for stage %q: stage not found in config", stage)
+		s.Logger.Error().Err(err).Str("stage", stage).Str("component", component).Msg("callOpsPlatformAPI failed")
+		return nil, err
+	}
+
+	s.Logger.Debug().Str("stage", stage).Str("component", component).Str("cluster_type", componentCfg.ClusterType).Str("version", componentVersion).Str("base_image", imageRepo).Str("tag", imageTag).Msg("calling ops platform API")
+
 	var out OpsUpdateComponentResponse
-	resp, err := s.opsRestyClient(stage).R().
+	resp, err := client.R().
 		SetContext(ctx).
 		SetBody(&payload).
 		SetResult(&out).
 		SetPathParam("component", component).
 		Post("/{component}")
 	if err != nil {
-		return nil, fmt.Errorf("update ops config for component %s: %w", component, err)
+		err = fmt.Errorf("update ops config for component %s: %w", component, err)
+		s.Logger.Error().Err(err).Str("stage", stage).Str("component", component).Msg("callOpsPlatformAPI request failed")
+		return nil, err
 	}
 	if resp.IsError() {
-		return nil, fmt.Errorf("update ops config for component %s: http status %d: %s", component, resp.StatusCode(), strings.TrimSpace(string(resp.Body())))
+		err = fmt.Errorf("update ops config for component %s: http status %d: %s", component, resp.StatusCode(), strings.TrimSpace(string(resp.Body())))
+		s.Logger.Error().Err(err).Int("status", resp.StatusCode()).Str("response_body", string(resp.Body())).Str("stage", stage).Str("component", component).Msg("callOpsPlatformAPI returned error status")
+		return nil, err
 	}
 	if out.InstanceID <= 0 {
-		return nil, fmt.Errorf("ops response missing instance_id for component %s", component)
+		err = fmt.Errorf("ops response missing instance_id for component %s", component)
+		s.Logger.Error().Err(err).Str("stage", stage).Str("component", component).Int("instance_id", out.InstanceID).Msg("callOpsPlatformAPI invalid response")
+		return nil, err
 	}
 
 	ticketURL := opsInstanceURL(stage, out.InstanceID)
+	s.Logger.Info().Str("stage", stage).Str("component", component).Int("instance_id", out.InstanceID).Str("ticket_url", ticketURL).Msg("callOpsPlatformAPI succeeded")
+
 	var releaseIDPtr, changeIDPtr *string
 	if releaseID != "" {
 		releaseIDPtr = &releaseID
