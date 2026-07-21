@@ -49,6 +49,18 @@ def test_classify_cost_driver_keeps_v1_buckets_small() -> None:
         )
         == "block_storage"
     )
+    assert (
+        classify_cost_driver(
+            {"service_name": "Compute Engine", "sku_name": "Storage PD Capacity"}
+        )
+        == "block_storage"
+    )
+    assert (
+        classify_cost_driver(
+            {"service_name": "Compute Engine", "sku_name": "SSD PD Capacity"}
+        )
+        == "block_storage"
+    )
     assert classify_cost_driver({"service_name": "AmazonS3", "sku_name": "TimedStorage-ByteHrs"}) == "object_storage"
     assert classify_cost_driver({"service_name": "Cloud Logging", "sku_name": "Log Storage"}) == "logs"
     assert classify_cost_driver({"service_name": "AmazonEFS", "sku_name": "StorageUsage"}) == "other"

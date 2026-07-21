@@ -36,6 +36,7 @@ def classify_cost_driver(row: Mapping[str, Any]) -> str:
         "iops",
         "throughput",
         "persistent disk",
+        "pd capacity",
         "hyperdisk",
     ):
         return "block_storage"
