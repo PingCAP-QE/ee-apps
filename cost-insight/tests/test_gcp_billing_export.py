@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from cost_insight.sources.gcp_billing_export import (
+    _region_expr,
     build_gcp_billing_query,
     build_gcp_billing_summary_query,
     build_gcp_unmatched_resource_query,
@@ -15,6 +16,41 @@ from cost_insight.sources.gcp_billing_export import (
 def _assert_target_branch_label_keys(query: str) -> None:
     assert "'k8s-label/prow.k8s.io/refs.base_ref'" in query
     assert "'prow.k8s.io/refs.base_ref'" in query
+
+
+def _assert_region_bucket_expr(query: str) -> None:
+    region_expr = _region_expr()
+
+    assert f"{region_expr} AS region" in query
+    assert "location.region AS region" not in query
+    assert "service.description" not in region_expr
+    assert "artifact registry" not in region_expr.lower()
+    assert "bigquery" not in region_expr.lower()
+    assert "cloud logging" not in region_expr.lower()
+    assert "'multi-region'" in query
+    assert "'cross-region'" in query
+    assert "'global'" in query
+    assert "'unknown'" in query
+
+
+def test_region_expr_keeps_region_bucket_branch_order() -> None:
+    expr = _region_expr()
+
+    region_idx = expr.index("NULLIF(location.region, '') IS NOT NULL")
+    location_multi_idx = expr.index("LOWER(COALESCE(location.location, '')) IN")
+    sku_multi_idx = expr.index(r"r'\b(multi[- ]region|dual[- ]region)\b'")
+    sku_cross_idx = expr.index(r"r'\b(inter[- ]region|cross[- ]region|replication)\b'")
+    transfer_idx = expr.index(r"r'\b(data transfer|egress)\b.*\b(to|from|within)\b'")
+    location_global_idx = expr.index("LOWER(COALESCE(location.location, '')) = 'global'")
+
+    assert (
+        region_idx
+        < location_multi_idx
+        < sku_multi_idx
+        < sku_cross_idx
+        < transfer_idx
+        < location_global_idx
+    )
 
 
 def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
@@ -29,6 +65,7 @@ def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
     assert "cost_at_list" in query
     assert "pricing_unit NOT IN ('hour', 'minute', 'second')" in query
     assert "ROUND(SUM(amount_in_pricing_units) * 60, 2)" in query
+    _assert_region_bucket_expr(query)
     assert "Cloud Logging" in query
     assert "Compute Flexible Committed Use Discounts - 3 Year" in query
     assert "Compute Flexible Committed Use Discounts - 1 Year" in query
@@ -56,6 +93,7 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "resource_name" not in query
     assert "service.description AS service_name" in query
     assert "sku.description AS sku_name" in query
+    _assert_region_bucket_expr(query)
     assert "Cloud Logging" in query
     assert "Compute Flexible Committed Use Discounts - 3 Year" in query
     assert "Compute Flexible Committed Use Discounts - 1 Year" in query

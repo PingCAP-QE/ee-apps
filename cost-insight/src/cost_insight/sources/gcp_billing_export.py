@@ -7,6 +7,38 @@ from typing import Any
 
 
 DEFAULT_COST_OWNER_AUTHOR = "wei_zheng"
+_GCP_MULTI_REGION_LOCATIONS = ("us", "eu", "asia", "nam4", "eur4")
+_GCP_MULTI_REGION_SKU_PATTERN = r"\b(multi[- ]region|dual[- ]region)\b"
+_GCP_CROSS_REGION_SKU_PATTERN = r"\b(inter[- ]region|cross[- ]region|replication)\b"
+_GCP_TRANSFER_SKU_PATTERN = r"\b(data transfer|egress)\b.*\b(to|from|within)\b"
+
+
+def _region_expr() -> str:
+    lower_location = "LOWER(COALESCE(location.location, ''))"
+    lower_sku = "LOWER(COALESCE(sku.description, ''))"
+    multi_region_locations = ", ".join(repr(location) for location in _GCP_MULTI_REGION_LOCATIONS)
+    return f"""
+CASE
+  WHEN NULLIF(location.region, '') IS NOT NULL THEN location.region
+  WHEN {lower_location} IN ({multi_region_locations})
+    THEN 'multi-region'
+  WHEN REGEXP_CONTAINS({lower_sku}, r'{_GCP_MULTI_REGION_SKU_PATTERN}')
+    THEN 'multi-region'
+  WHEN REGEXP_CONTAINS(
+    {lower_sku},
+    r'{_GCP_CROSS_REGION_SKU_PATTERN}'
+  )
+    THEN 'cross-region'
+  WHEN REGEXP_CONTAINS(
+    {lower_sku},
+    r'{_GCP_TRANSFER_SKU_PATTERN}'
+  )
+    THEN 'cross-region'
+  WHEN {lower_location} = 'global'
+    THEN 'global'
+  ELSE 'unknown'
+END
+""".strip()
 
 
 def fetch_gcp_billing_rows(
@@ -114,6 +146,7 @@ def build_gcp_billing_query(*, billing_table: str, limit: int | None = None) -> 
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     author_expr = _author_expr_with_overrides()
     target_branch_expr = _target_branch_expr()
+    region_expr = _region_expr()
     return f"""
 WITH normalized AS (
   SELECT
@@ -122,7 +155,7 @@ WITH normalized AS (
     DATE(usage_start_time) AS usage_date,
     service.description AS service_name,
     sku.description AS sku_name,
-    location.region AS region,
+    {region_expr} AS region,
     {_label_expr(("k8s-namespace", "namespace"))} AS namespace,
     {author_expr} AS author,
     {_label_expr(("k8s-label/org", "org"))} AS org,
@@ -195,6 +228,7 @@ def build_gcp_billing_summary_query(*, billing_table: str, limit: int | None = N
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     author_expr = _author_expr_with_overrides()
     target_branch_expr = _target_branch_expr()
+    region_expr = _region_expr()
     return f"""
 SELECT
   'gcp' AS vendor,
@@ -204,7 +238,7 @@ SELECT
   DATE(usage_start_time) AS usage_date,
   service.description AS service_name,
   sku.description AS sku_name,
-  location.region AS region,
+  {region_expr} AS region,
   {author_expr} AS author,
   {_label_expr(("k8s-label/org", "org"))} AS org,
   {_label_expr(("k8s-label/repo", "repo"))} AS repo,
