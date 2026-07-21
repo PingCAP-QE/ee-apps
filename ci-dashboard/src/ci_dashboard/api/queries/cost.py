@@ -13,11 +13,21 @@ from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, 
 
 COST_STACK_LIMIT = 8
 VALID_COST_STACK_GROUPS = frozenset(
-    {"repo", "author", "owner", "team", "target_branch", "service", "project", "service_exec_id"}
+    {
+        "repo",
+        "author",
+        "owner",
+        "team",
+        "target_branch",
+        "service",
+        "cost_driver",
+        "project",
+        "service_exec_id",
+    }
 )
 COST_SHARE_LIMIT = 8
 VALID_COST_SHARE_DIMENSIONS = frozenset(
-    {"owner", "team", "service", "project", "service_exec_id", "region"}
+    {"owner", "team", "service", "cost_driver", "project", "service_exec_id", "region"}
 )
 LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 UNMATCHED_RESOURCE_LIMIT = 20
@@ -32,6 +42,15 @@ UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
     "goog-k8s-unsupported-sku",
     "goog-k8s-unknown",
 )
+COST_DRIVER_LABELS = {
+    "compute": "Compute",
+    "block_storage": "Block storage",
+    "nat": "NAT",
+    "data_transfer": "Data transfer",
+    "object_storage": "Object storage",
+    "logs": "Logs",
+    "other": "Other",
+}
 
 
 @dataclass(frozen=True)
@@ -1449,6 +1468,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
             "params": {},
             "empty_label": "(no service)",
         }
+    if group_by == "cost_driver":
+        return {
+            "expr": _cost_driver_share_expr("c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "Other",
+        }
     if group_by == "project":
         return {
             "expr": "COALESCE(NULLIF(c.project, ''), '(no project)')",
@@ -1490,6 +1516,13 @@ def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, A
             "from_clause": "cost_attribution_daily c",
             "params": {},
             "empty_label": "(no service)",
+        }
+    if dimension == "cost_driver":
+        return {
+            "expr": _cost_driver_share_expr("c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "Other",
         }
     if dimension == "project":
         return {
@@ -1533,6 +1566,21 @@ def _cost_service_share_expr(table_alias: str) -> str:
     )
 
 
+def _cost_driver_share_expr(table_alias: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    key = f"COALESCE(NULLIF({prefix}cost_driver_key, ''), 'other')"
+    branches = " ".join(
+        f"WHEN {key} = '{driver_key}' THEN '{label}'"
+        for driver_key, label in COST_DRIVER_LABELS.items()
+        if driver_key != "other"
+    )
+    return (
+        f"CASE {branches} "
+        f"ELSE '{COST_DRIVER_LABELS['other']}' "
+        "END"
+    )
+
+
 def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
     if group_by == "repo" and dimension_name == "(no repo)":
         return "repo__no_repo"
@@ -1546,6 +1594,8 @@ def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
         return "target_branch__no_target_branch"
     if group_by == "service" and dimension_name == "(no service)":
         return "service__no_service"
+    if group_by == "cost_driver" and dimension_name == "Other":
+        return "cost_driver__other"
     if group_by == "project" and dimension_name == "(no project)":
         return "project__no_project"
     if group_by == "service_exec_id" and dimension_name == "(no service exec id)":

@@ -238,6 +238,7 @@ SELECT
   DATE(usage_start_time) AS usage_date,
   service.description AS service_name,
   sku.description AS sku_name,
+  NULL AS usage_type,
   {region_expr} AS region,
   {author_expr} AS author,
   {_label_expr(("k8s-label/org", "org"))} AS org,

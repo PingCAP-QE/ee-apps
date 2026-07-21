@@ -513,6 +513,8 @@ def _insert_cost_attribution(
     usage_seconds: float = 3600,
     service_name: str = "Compute Engine",
     sku_name: str = "runner",
+    usage_type: str | None = None,
+    cost_driver_key: str | None = None,
     target_branch: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
@@ -521,13 +523,15 @@ def _insert_cost_attribution(
                 """
                 INSERT INTO cost_attribution_daily (
                   usage_date, vendor, account_id, service_name, sku_name, org, repo,
-                  region, target_branch, resource_name, author, owner, service, project, service_exec_id,
+                  usage_type, cost_driver_key, region, target_branch, resource_name, author,
+                  owner, service, project, service_exec_id,
                   attribution_key, attribution_source, attribution_status, allocate_method,
                   employee_id, group_id, manager_id, usage_seconds,
                   list_cost, effective_cost, credit_amount, net_cost, source_rows, dimension_hash
                 ) VALUES (
                   :usage_date, :vendor, :account_id, :service_name, :sku_name,
-                  'pingcap', :repo, :region, :target_branch, :resource_name, :author, :owner,
+                  'pingcap', :repo, :usage_type, :cost_driver_key, :region, :target_branch,
+                  :resource_name, :author, :owner,
                   :service, :project, :service_exec_id, :attribution_key, :attribution_source,
                   :attribution_status, :allocate_method, :employee_id, :group_id, NULL,
                   :usage_seconds, :list_cost, :effective_cost,
@@ -557,6 +561,8 @@ def _insert_cost_attribution(
                 "usage_seconds": usage_seconds,
                 "service_name": service_name,
                 "sku_name": sku_name,
+                "usage_type": usage_type,
+                "cost_driver_key": cost_driver_key,
                 "list_cost": list_cost if list_cost is not None else net_cost,
                 "effective_cost": effective_cost if effective_cost is not None else net_cost,
                 "net_cost": net_cost,
@@ -2594,6 +2600,73 @@ def test_cost_share_route_normalizes_aws_service_names(
         {"name": "EC2", "value": 30.0, "share_pct": 27.27, "interactive": False},
         {"name": "S3", "value": 10.0, "share_pct": 9.09, "interactive": False},
     ]
+
+
+def test_cost_share_route_groups_by_cost_driver(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=70,
+        list_cost=70,
+        cost_driver_key="compute",
+        dimension_hash="driver-compute",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=20,
+        list_cost=20,
+        cost_driver_key="nat",
+        dimension_hash="driver-nat",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=10,
+        list_cost=10,
+        cost_driver_key=None,
+        dimension_hash="driver-other",
+    )
+
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "cost_driver",
+        },
+    )
+
+    assert share_response.status_code == 200
+    assert share_response.json()["items"] == [
+        {"name": "Compute", "value": 70.0, "share_pct": 70.0, "interactive": False},
+        {"name": "NAT", "value": 20.0, "share_pct": 20.0, "interactive": False},
+        {"name": "Other", "value": 10.0, "share_pct": 10.0, "interactive": False},
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "group_by": "cost_driver",
+        },
+    )
+
+    assert stack_response.status_code == 200
+    stack_body = stack_response.json()
+    assert stack_body["meta"]["group_by"] == "cost_driver"
+    assert [item["name"] for item in stack_body["items"]] == ["Compute", "NAT", "Other"]
+    assert stack_body["series"][2]["key"] == "cost_driver__other"
 
 
 def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) -> None:

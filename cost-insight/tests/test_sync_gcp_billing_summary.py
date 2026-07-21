@@ -66,6 +66,8 @@ def _sqlite_engine():
                   usage_date TEXT NOT NULL,
                   service_name TEXT,
                   sku_name TEXT,
+                  usage_type TEXT,
+                  cost_driver_key TEXT,
                   region TEXT,
                   org TEXT,
                   repo TEXT,
@@ -217,8 +219,13 @@ def test_summary_hash_ignores_amount_changes() -> None:
     row = _normalize_summary_row(_summary_row())
     changed = {**row, "net_cost": "99.00"}
 
+    assert row["usage_type"] is None
+    assert row["cost_driver_key"] == "compute"
     assert build_summary_row_hash(row) == _legacy_summary_row_hash(row)
     assert build_summary_row_hash(row) == build_summary_row_hash(changed)
+    assert build_summary_row_hash(row) == build_summary_row_hash(
+        {**row, "usage_type": "duplicate-for-schema", "cost_driver_key": "other"}
+    )
     assert build_summary_row_hash(row) != build_summary_row_hash(
         {**row, "service_name": "Cloud Storage"}
     )
@@ -263,12 +270,21 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
             service_names = connection.execute(
                 text("SELECT DISTINCT service_name FROM cost_bq_export_summary_daily")
             ).scalars().all()
+            driver_rows = connection.execute(
+                text(
+                    """
+                    SELECT DISTINCT usage_type, cost_driver_key
+                    FROM cost_bq_export_summary_daily
+                    """
+                )
+            ).all()
             state = state_store.get_job_state(
                 connection,
                 source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
             )
         assert count == 2
         assert service_names == ["Compute Engine"]
+        assert driver_rows == [(None, "compute")]
         assert state is not None
         assert state.last_status == "succeeded"
     finally:

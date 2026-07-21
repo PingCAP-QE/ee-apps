@@ -62,6 +62,8 @@ def _sqlite_engine():
               usage_date TEXT NOT NULL,
               service_name TEXT,
               sku_name TEXT,
+              usage_type TEXT,
+              cost_driver_key TEXT,
               region TEXT,
               org TEXT,
               repo TEXT,
@@ -168,7 +170,15 @@ def test_backfill_cost_refine_from_raw_writes_summary_and_unmatched_rows() -> No
             summary_cost = connection.execute(
                 text(
                     """
-                    SELECT service_name, sku_name, region, list_cost, effective_cost, credit_amount, net_cost
+                    SELECT
+                      service_name,
+                      sku_name,
+                      cost_driver_key,
+                      region,
+                      list_cost,
+                      effective_cost,
+                      credit_amount,
+                      net_cost
                     FROM cost_bq_export_summary_daily
                     WHERE usage_date = '2026-05-17'
                     """
@@ -194,6 +204,7 @@ def test_backfill_cost_refine_from_raw_writes_summary_and_unmatched_rows() -> No
 
         assert summary_cost["service_name"] == "Compute Engine"
         assert summary_cost["sku_name"] == "Core running"
+        assert summary_cost["cost_driver_key"] == "compute"
         assert summary_cost["region"] == "us-central1"
         assert summary_cost["list_cost"] == 15
         assert summary_cost["effective_cost"] == 12

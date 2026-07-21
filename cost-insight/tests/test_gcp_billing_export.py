@@ -94,6 +94,7 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "service.description AS service_name" in query
     assert "sku.description AS sku_name" in query
     _assert_region_bucket_expr(query)
+    assert "NULL AS usage_type" in query
     assert "Cloud Logging" in query
     assert "Compute Flexible Committed Use Discounts - 3 Year" in query
     assert "Compute Flexible Committed Use Discounts - 1 Year" in query
