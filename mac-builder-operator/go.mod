@@ -2,7 +2,7 @@ module github.com/PingCAP-QE/ee-apps/mac-builder-operator
 
 go 1.25.0
 
-toolchain go1.25.4
+toolchain go1.26.5
 
 require (
 	github.com/go-logr/logr v1.4.2
