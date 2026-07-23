@@ -4,6 +4,7 @@ import calendar
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+import json
 from typing import Any, Mapping
 
 from sqlalchemy import text
@@ -20,18 +21,25 @@ VALID_COST_STACK_GROUPS = frozenset(
         "team",
         "target_branch",
         "service",
+        "sku",
         "cost_driver",
         "project",
+        "region",
         "service_exec_id",
     }
 )
 COST_SHARE_LIMIT = 8
 VALID_COST_SHARE_DIMENSIONS = frozenset(
-    {"owner", "team", "service", "cost_driver", "project", "service_exec_id", "region"}
+    {"owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
+COST_DRILLDOWN_CHILD_GROUPS = {
+    "team": "owner",
+    "cost_driver": "sku",
+}
 LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 UNMATCHED_RESOURCE_LIMIT = 20
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
+UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
@@ -95,9 +103,26 @@ def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     }
 
 
-def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_cost_trend(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
+) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        from_clause = "cost_attribution_daily c"
+        drilldown = _cost_drilldown_filter(
+            connection,
+            child_group=None,
+            drilldown_group=drilldown_group,
+            drilldown_value=drilldown_value,
+        )
+        if drilldown:
+            from_clause = drilldown["from_clause"]
+            where_clause = f"{where_clause} AND {drilldown['condition']}"
+            params = {**params, **drilldown["params"]}
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
@@ -108,7 +133,7 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
                   SUM(c.net_cost) AS net_cost,
                   SUM(c.effective_cost) AS effective_cost,
                   SUM({list_cost_expr}) AS list_cost
-                FROM cost_attribution_daily c
+                FROM {from_clause}
                 WHERE {where_clause}
                 GROUP BY bucket_start
                 ORDER BY bucket_start
@@ -129,7 +154,7 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
                 SELECT
                   SUM({list_cost_expr}) AS total_resource_cost,
                   SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
-                FROM cost_attribution_daily c
+                FROM {from_clause}
                 WHERE {where_clause}
                   AND c.list_cost IS NOT NULL
                 """
@@ -167,6 +192,14 @@ def get_cost_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
         ],
         "meta": {
             **filters.meta(),
+            **(
+                {
+                    "drilldown_group": drilldown["group"],
+                    "drilldown_value": drilldown["value"],
+                }
+                if drilldown
+                else {}
+            ),
             "budget_targets": budget_targets,
             "summary": {
                 "net_cost": round(summary_net_cost, 2),
@@ -301,6 +334,8 @@ def get_repo_group_cost_stack(
     filters: CommonFilters,
     *,
     group_by: str = "repo",
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
 ) -> dict[str, Any]:
     if group_by not in VALID_COST_STACK_GROUPS:
         group_by = "repo"
@@ -309,6 +344,19 @@ def get_repo_group_cost_stack(
         where_clause, params = _build_cost_where(filters, table_alias="c")
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
+        drilldown = _cost_drilldown_filter(
+            connection,
+            child_group=group_by,
+            drilldown_group=drilldown_group,
+            drilldown_value=drilldown_value,
+        )
+        if drilldown:
+            dimension = {
+                **dimension,
+                "from_clause": drilldown["from_clause"],
+                "params": {**dimension["params"], **drilldown["params"]},
+            }
+            where_clause = f"{where_clause} AND {drilldown['condition']}"
         list_cost_expr = _billing_report_list_cost_expr("c")
         top_rows = connection.execute(
             text(
@@ -330,7 +378,13 @@ def get_repo_group_cost_stack(
             return {
                 "series": [],
                 "items": [],
-                "meta": {**filters.meta(), "limit": COST_STACK_LIMIT, "group_by": group_by},
+                "meta": _cost_dimension_meta(
+                    filters,
+                    limit=COST_STACK_LIMIT,
+                    dimension_key="group_by",
+                    dimension=group_by,
+                    drilldown=drilldown,
+                ),
             }
 
         dimension_conditions = []
@@ -395,7 +449,13 @@ def get_repo_group_cost_stack(
             }
             for key in values_by_key
         ],
-        "meta": {**filters.meta(), "limit": COST_STACK_LIMIT, "group_by": group_by},
+        "meta": _cost_dimension_meta(
+            filters,
+            limit=COST_STACK_LIMIT,
+            dimension_key="group_by",
+            dimension=group_by,
+            drilldown=drilldown,
+        ),
     }
 
 
@@ -404,6 +464,8 @@ def get_cost_share(
     filters: CommonFilters,
     *,
     dimension: str = "owner",
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
 ) -> dict[str, Any]:
     if dimension not in VALID_COST_SHARE_DIMENSIONS:
         dimension = "owner"
@@ -411,6 +473,19 @@ def get_cost_share(
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         dimension_config = _cost_share_dimension(connection, dimension)
+        drilldown = _cost_drilldown_filter(
+            connection,
+            child_group=dimension,
+            drilldown_group=drilldown_group,
+            drilldown_value=drilldown_value,
+        )
+        if drilldown:
+            dimension_config = {
+                **dimension_config,
+                "from_clause": drilldown["from_clause"],
+                "params": {**dimension_config["params"], **drilldown["params"]},
+            }
+            where_clause = f"{where_clause} AND {drilldown['condition']}"
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
@@ -446,12 +521,14 @@ def get_cost_share(
         if dimension == "region" and 0 < item["share_pct"] < LOW_REGION_SHARE_THRESHOLD_PCT:
             item["highlight"] = True
 
-    meta = {
-        **filters.meta(),
-        "dimension": dimension,
-        "limit": COST_SHARE_LIMIT,
-        "total_list_cost": round(total, 2),
-    }
+    meta = _cost_dimension_meta(
+        filters,
+        limit=COST_SHARE_LIMIT,
+        dimension_key="dimension",
+        dimension=dimension,
+        drilldown=drilldown,
+        total_list_cost=round(total, 2),
+    )
     if dimension == "region":
         meta["highlight_threshold_pct"] = LOW_REGION_SHARE_THRESHOLD_PCT
 
@@ -643,7 +720,13 @@ def get_weekly_account_summaries(
     }
 
 
-def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_unmatched_resources(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    service_name: str | None = None,
+    sort_by: str = "list_cost",
+) -> dict[str, Any]:
     requested_filters = filters
     if (
         filters.start_date is not None
@@ -655,6 +738,15 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
             start_date=filters.end_date - timedelta(days=UNMATCHED_RESOURCE_MAX_WINDOW_DAYS - 1),
         )
 
+    if sort_by not in UNMATCHED_RESOURCE_SORTS:
+        sort_by = "list_cost"
+    service_filter_name = service_name or None
+    order_by = (
+        "u.usage_seconds DESC, u.list_cost DESC, u.resource_name"
+        if sort_by == "duration"
+        else "u.list_cost DESC, u.usage_seconds DESC, u.resource_name"
+    )
+
     with engine.begin() as connection:
         attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
         resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
@@ -663,59 +755,92 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
         repo_match = _null_safe_eq(connection, "m.repo", "r.repo")
         author_match = _null_safe_eq(connection, "m.author", "r.author")
         resource_list_cost_expr = _billing_report_list_cost_expr("r")
+        base_cte = f"""
+            WITH unmatched_dimensions AS (
+              SELECT
+                c.usage_date AS usage_date,
+                c.vendor AS vendor,
+                c.account_id AS account_id,
+                c.org AS org,
+                c.repo AS repo,
+                c.author AS author,
+                MAX(c.attribution_key) AS attribution_key,
+                MAX(c.attribution_source) AS attribution_source,
+                MAX(c.attribution_status) AS attribution_status
+              FROM cost_attribution_daily c
+              WHERE {attr_where_clause}
+                AND c.employee_id IS NULL
+              GROUP BY
+                c.usage_date,
+                c.vendor,
+                c.account_id,
+                c.org,
+                c.repo,
+                c.author
+            ),
+            unallocated_resource_rows AS (
+              SELECT
+                r.resource_name AS resource_name,
+                COALESCE(NULLIF(r.service_name, ''), '(no service)') AS service_name,
+                r.sku_name AS sku_name,
+                r.org AS org_name,
+                r.repo AS repo_name,
+                r.target_branch AS target_branch,
+                r.author AS author_name,
+                CAST(r.vendor_tags_json AS CHAR) AS vendor_tags_json,
+                r.usage_date AS usage_date,
+                r.namespace AS namespace,
+                r.usage_seconds AS usage_seconds,
+                {resource_list_cost_expr} AS list_cost,
+                m.attribution_key AS attribution_key,
+                m.attribution_source AS attribution_source,
+                m.attribution_status AS attribution_status
+              FROM cost_unmatched_resource_daily r
+              -- Keep attribution as the source of truth; resource rows alone are not roster-filtered.
+              JOIN unmatched_dimensions m
+                ON m.usage_date = r.usage_date
+               AND m.vendor = r.vendor
+               AND m.account_id = r.account_id
+               AND {org_match}
+               AND {repo_match}
+               AND {author_match}
+              WHERE {resource_where_clause}
+                AND r.resource_name IS NOT NULL
+                AND r.resource_name <> ''
+                AND ({namespace_clause})
+            )
+        """
+        query_params = {
+            **attr_params,
+            **resource_params,
+            **namespace_params,
+            "service_name": service_filter_name,
+        }
+        service_rows = connection.execute(
+            text(
+                f"""
+                {base_cte}
+                SELECT DISTINCT service_name
+                FROM unallocated_resource_rows
+                ORDER BY service_name
+                """
+            ),
+            query_params,
+        ).mappings()
+        services = [
+            {"value": str(row["service_name"]), "label": str(row["service_name"])}
+            for row in service_rows
+            if str(row["service_name"] or "").strip()
+        ]
+
         rows = connection.execute(
             text(
                 f"""
-                WITH unmatched_dimensions AS (
-                  SELECT
-                    c.usage_date AS usage_date,
-                    c.vendor AS vendor,
-                    c.account_id AS account_id,
-                    c.org AS org,
-                    c.repo AS repo,
-                    c.author AS author,
-                    MAX(c.attribution_key) AS attribution_key,
-                    MAX(c.attribution_source) AS attribution_source,
-                    MAX(c.attribution_status) AS attribution_status
-                  FROM cost_attribution_daily c
-                  WHERE {attr_where_clause}
-                    AND c.employee_id IS NULL
-                  GROUP BY
-                    c.usage_date,
-                    c.vendor,
-                    c.account_id,
-                    c.org,
-                    c.repo,
-                    c.author
-                ),
-                unallocated_resource_rows AS (
-                  SELECT
-                    r.resource_name AS resource_name,
-                    r.service_name AS service_name,
-                    r.sku_name AS sku_name,
-                    r.org AS org_name,
-                    r.repo AS repo_name,
-                    r.author AS author_name,
-                    r.usage_date AS usage_date,
-                    r.namespace AS namespace,
-                    r.usage_seconds AS usage_seconds,
-                    {resource_list_cost_expr} AS list_cost,
-                    m.attribution_key AS attribution_key,
-                    m.attribution_source AS attribution_source,
-                    m.attribution_status AS attribution_status
-                  FROM cost_unmatched_resource_daily r
-                  -- Keep attribution as the source of truth; resource rows alone are not roster-filtered.
-                  JOIN unmatched_dimensions m
-                    ON m.usage_date = r.usage_date
-                   AND m.vendor = r.vendor
-                   AND m.account_id = r.account_id
-                   AND {org_match}
-                   AND {repo_match}
-                   AND {author_match}
-                  WHERE {resource_where_clause}
-                    AND r.resource_name IS NOT NULL
-                    AND r.resource_name <> ''
-                    AND ({namespace_clause})
+                {base_cte},
+                filtered_unallocated_resource_rows AS (
+                  SELECT *
+                  FROM unallocated_resource_rows
+                  WHERE (:service_name IS NULL OR service_name = :service_name)
                 ),
                 unallocated_resources AS (
                   SELECT
@@ -724,7 +849,9 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                     MAX(sku_name) AS sku_name,
                     MAX(org_name) AS org_name,
                     MAX(repo_name) AS repo_name,
+                    MAX(target_branch) AS target_branch,
                     MAX(author_name) AS author_name,
+                    MAX(vendor_tags_json) AS vendor_tags_json,
                     MIN(usage_date) AS first_seen_date,
                     MAX(usage_date) AS last_seen_date,
                     GROUP_CONCAT(DISTINCT COALESCE(namespace, '<null>')) AS allocation_buckets,
@@ -733,7 +860,7 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                     MAX(attribution_key) AS attribution_key,
                     MAX(attribution_source) AS attribution_source,
                     MAX(attribution_status) AS attribution_status
-                  FROM unallocated_resource_rows
+                  FROM filtered_unallocated_resource_rows
                   GROUP BY resource_name
                 )
                 SELECT
@@ -742,7 +869,9 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                   u.sku_name AS sku_name,
                   u.org_name AS org_name,
                   u.repo_name AS repo_name,
+                  u.target_branch AS target_branch,
                   u.author_name AS author_name,
+                  u.vendor_tags_json AS vendor_tags_json,
                   u.first_seen_date AS first_seen_date,
                   u.last_seen_date AS last_seen_date,
                   u.attribution_key AS attribution_key,
@@ -752,14 +881,12 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
                   u.usage_seconds AS usage_seconds,
                   u.list_cost AS list_cost
                 FROM unallocated_resources u
-                ORDER BY list_cost DESC, u.resource_name
+                ORDER BY {order_by}
                 LIMIT :limit
                 """
             ),
             {
-                **attr_params,
-                **resource_params,
-                **namespace_params,
+                **query_params,
                 "limit": UNMATCHED_RESOURCE_LIMIT,
             },
         ).mappings()
@@ -797,6 +924,9 @@ def get_unmatched_resources(engine: Engine, filters: CommonFilters) -> dict[str,
             "window_limited": filters.start_date != requested_filters.start_date,
             "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
             "limit": UNMATCHED_RESOURCE_LIMIT,
+            "service_name": service_filter_name,
+            "sort_by": sort_by,
+            "services": services,
         },
     }
 
@@ -1135,6 +1265,53 @@ def _number_or_zero(value: Any) -> float:
     return float(to_number(value) or 0)
 
 
+def _cost_drilldown_filter(
+    connection: Connection,
+    *,
+    child_group: str | None,
+    drilldown_group: str | None,
+    drilldown_value: str | None,
+) -> dict[str, Any] | None:
+    if not drilldown_group or drilldown_value is None:
+        return None
+    if child_group is not None and COST_DRILLDOWN_CHILD_GROUPS.get(drilldown_group) != child_group:
+        return None
+
+    parent_dimension = _cost_stack_dimension(connection, drilldown_group)
+    return {
+        "group": drilldown_group,
+        "value": drilldown_value,
+        "from_clause": parent_dimension["from_clause"],
+        "condition": f"{parent_dimension['expr']} = :cost_drilldown_value",
+        "params": {
+            **parent_dimension["params"],
+            "cost_drilldown_value": drilldown_value,
+        },
+    }
+
+
+def _cost_dimension_meta(
+    filters: CommonFilters,
+    *,
+    limit: int,
+    dimension_key: str,
+    dimension: str,
+    drilldown: dict[str, Any] | None,
+    total_list_cost: float | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        **filters.meta(),
+        dimension_key: dimension,
+        "limit": limit,
+    }
+    if total_list_cost is not None:
+        meta["total_list_cost"] = total_list_cost
+    if drilldown:
+        meta["drilldown_group"] = drilldown["group"]
+        meta["drilldown_value"] = drilldown["value"]
+    return meta
+
+
 def _budget_period_for_filters(
     connection: Connection,
     filters: CommonFilters,
@@ -1468,6 +1645,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
             "params": {},
             "empty_label": "(no service)",
         }
+    if group_by == "sku":
+        return {
+            "expr": _cost_sku_share_expr(connection, "c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no SKU)",
+        }
     if group_by == "cost_driver":
         return {
             "expr": _cost_driver_share_expr("c"),
@@ -1481,6 +1665,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
             "from_clause": "cost_attribution_daily c",
             "params": {},
             "empty_label": "(no project)",
+        }
+    if group_by == "region":
+        return {
+            "expr": "COALESCE(NULLIF(c.region, ''), '(no region)')",
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no region)",
         }
     if group_by == "service_exec_id":
         return {
@@ -1516,6 +1707,13 @@ def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, A
             "from_clause": "cost_attribution_daily c",
             "params": {},
             "empty_label": "(no service)",
+        }
+    if dimension == "sku":
+        return {
+            "expr": _cost_sku_share_expr(connection, "c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no SKU)",
         }
     if dimension == "cost_driver":
         return {
@@ -1564,6 +1762,41 @@ def _cost_service_share_expr(table_alias: str) -> str:
         f"ELSE {service} "
         "END"
     )
+
+
+def _cost_sku_share_expr(connection: Connection, table_alias: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    usage = f"NULLIF({prefix}usage_type, '')"
+    sku = f"NULLIF({prefix}sku_name, '')"
+    if connection.dialect.name == "sqlite":
+        readable_usage = (
+            "CASE "
+            f"WHEN {prefix}vendor = 'aws' "
+            f"AND COALESCE({prefix}cost_driver_key, '') = 'compute' "
+            f"AND {usage} LIKE '%-BoxUsage:%' "
+            f"THEN substr({usage}, instr({usage}, '-BoxUsage:') + length('-BoxUsage:')) "
+            f"WHEN {prefix}vendor = 'aws' "
+            f"AND COALESCE({prefix}cost_driver_key, '') = 'compute' "
+            f"AND {usage} LIKE 'BoxUsage:%' "
+            f"THEN substr({usage}, length('BoxUsage:') + 1) "
+            f"ELSE {usage} "
+            "END"
+        )
+    else:
+        readable_usage = (
+            "CASE "
+            f"WHEN {prefix}vendor = 'aws' "
+            f"AND COALESCE({prefix}cost_driver_key, '') = 'compute' "
+            f"AND {usage} LIKE '%-BoxUsage:%' "
+            f"THEN SUBSTRING({usage}, LOCATE('-BoxUsage:', {usage}) + LENGTH('-BoxUsage:')) "
+            f"WHEN {prefix}vendor = 'aws' "
+            f"AND COALESCE({prefix}cost_driver_key, '') = 'compute' "
+            f"AND {usage} LIKE 'BoxUsage:%' "
+            f"THEN SUBSTRING({usage}, LENGTH('BoxUsage:') + 1) "
+            f"ELSE {usage} "
+            "END"
+        )
+    return f"COALESCE({readable_usage}, {sku}, '(no SKU)')"
 
 
 def _cost_driver_share_expr(table_alias: str) -> str:
@@ -1650,16 +1883,58 @@ def _bucket_end(bucket_start: date, granularity: str) -> date:
 
 def _resource_labels(row: Mapping[str, Any]) -> str:
     pairs = []
+    seen_keys = set()
+    for key, value in _resource_vendor_tag_pairs(row.get("vendor_tags_json")):
+        pairs.append(f"{key}={value}")
+        seen_keys.add(key)
+
     for key, label in (
         ("org_name", "org"),
         ("repo_name", "repo"),
+        ("target_branch", "branch"),
         ("author_name", "author"),
-        ("attribution_key", "key"),
     ):
         value = str(row[key] or "").strip()
-        if value:
+        if value and label not in seen_keys:
             pairs.append(f"{label}={value}")
+            seen_keys.add(label)
     return ", ".join(pairs)
+
+
+def _resource_vendor_tag_pairs(value: Any) -> list[tuple[str, str]]:
+    if value is None:
+        return []
+
+    raw_tags: Any
+    if isinstance(value, Mapping):
+        raw_tags = value
+    else:
+        text_value = str(value).strip()
+        if not text_value:
+            return []
+        try:
+            raw_tags = json.loads(text_value)
+        except json.JSONDecodeError:
+            return []
+
+    if not isinstance(raw_tags, Mapping):
+        return []
+
+    pairs = []
+    for raw_key in sorted(raw_tags):
+        raw_value = raw_tags[raw_key]
+        if raw_value is None:
+            continue
+        key = str(raw_key).strip()
+        if not key:
+            continue
+        if isinstance(raw_value, (Mapping, list, tuple)):
+            label_value = json.dumps(raw_value, ensure_ascii=False, sort_keys=True)
+        else:
+            label_value = str(raw_value).strip()
+        if label_value:
+            pairs.append((key, label_value))
+    return pairs
 
 
 def _build_unallocated_namespace_where(column: str) -> tuple[str, dict[str, Any]]:

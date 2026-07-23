@@ -26,6 +26,10 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     run_backfill_flaky_issue_pr_links,
     run_sync_flaky_issues,
 )
+from ci_dashboard.jobs.sync_unattached_ebs_volumes import (
+    run_sync_unattached_block_volumes,
+    run_sync_unattached_ebs_volumes,
+)
 from ci_dashboard.jobs.check_data_freshness import run_check_data_freshness
 from ci_dashboard.jobs.pod_watcher import run_watch_pods
 from ci_dashboard.jobs.sync_pods import run_reconcile_pod_linkage_for_time_window, run_sync_pods
@@ -227,6 +231,16 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "check-data-freshness",
         help="Daily data freshness check and Lark alert",
+    )
+    # Keep this AWS-only entrypoint for manual backfills; production schedules should use
+    # sync-unattached-block-volumes so AWS and GCP snapshots advance together.
+    subparsers.add_parser(
+        "sync-unattached-ebs-volumes",
+        help="Debug/backfill only: scan AWS available EBS volumes without GCP",
+    )
+    subparsers.add_parser(
+        "sync-unattached-block-volumes",
+        help="Scan AWS EBS and GCP block volumes into the cost-save snapshot table",
     )
     return parser
 
@@ -484,6 +498,24 @@ def main() -> int:
             },
         )
         return exit_code
+
+    if args.command == "sync-unattached-ebs-volumes":
+        engine = build_engine(settings)
+        summary = run_sync_unattached_ebs_volumes(engine, settings)
+        logging.getLogger(__name__).info(
+            "sync-unattached-ebs-volumes finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
+
+    if args.command == "sync-unattached-block-volumes":
+        engine = build_engine(settings)
+        summary = run_sync_unattached_block_volumes(engine, settings)
+        logging.getLogger(__name__).info(
+            "sync-unattached-block-volumes finished",
+            extra={"summary": summary.__dict__},
+        )
+        return 0
 
     if args.command == "backfill-range":
         if args.end_date is not None and args.start_date > args.end_date:

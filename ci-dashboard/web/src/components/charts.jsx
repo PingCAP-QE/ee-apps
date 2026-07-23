@@ -201,6 +201,7 @@ export function TrendChart({
   selectedBucketLabel = null,
   onBucketSelect = null,
   preserveLabelOrder = false,
+  xLabelFormatter = formatBottomAxisLabel,
   showTooltipSum = false,
 }) {
   const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
@@ -320,7 +321,7 @@ export function TrendChart({
   const xStep = labels.length > 1 ? xRangeWidth / (labels.length - 1) : plotWidth;
   const xForIndex = (index) =>
     labels.length > 1 ? padding.left + xInset + index * xStep : padding.left + plotWidth / 2;
-  const displayLabels = labels.map((label) => formatBottomAxisLabel(label));
+  const displayLabels = labels.map((label) => String(xLabelFormatter(label)));
   const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
   const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
   const maxBottomLabels = Math.max(2, Math.floor(plotWidth / estimatedBottomLabelWidth));
@@ -363,6 +364,7 @@ export function TrendChart({
           height,
           padding,
           showSum: showTooltipSum,
+          labelFormatter: xLabelFormatter,
         });
   const handleBucketHoverStart = (index) => {
     if (hoverTimerRef.current) {
@@ -631,7 +633,7 @@ export function TrendChart({
               className="chart-tooltip__box"
             />
             <text x="12" y="18" className="chart-tooltip__title">
-              {formatBottomAxisLabel(hoveredBucket.label)}
+              {hoveredBucket.displayLabel}
             </text>
             {hoveredBucket.rows.map((row, index) => (
               <g key={`${hoveredBucket.label}-${row.key}`} transform={`translate(0, ${34 + index * 18})`}>
@@ -641,7 +643,7 @@ export function TrendChart({
                 </text>
               </g>
             ))}
-            {hoveredBucket.sumRow ? (
+            {hoveredBucket.summaryRows.length ? (
               <g transform={`translate(0, ${34 + hoveredBucket.rows.length * 18})`}>
                 <line
                   x1="12"
@@ -650,9 +652,28 @@ export function TrendChart({
                   y2="-6"
                   className="chart-tooltip__divider"
                 />
-                <text x="12" y="12" className="chart-tooltip__text chart-tooltip__text--strong">
-                  Sum: {hoveredBucket.sumRow.value}
-                </text>
+                {hoveredBucket.summaryRows.map((row, index) =>
+                  row.type === "sum" ? (
+                    <text
+                      key={`${hoveredBucket.label}-${row.key}`}
+                      x="12"
+                      y={12 + index * 18}
+                      className="chart-tooltip__text chart-tooltip__text--strong"
+                    >
+                      {row.label}: {row.value}
+                    </text>
+                  ) : (
+                    <g
+                      key={`${hoveredBucket.label}-${row.key}`}
+                      transform={`translate(0, ${12 + index * 18})`}
+                    >
+                      <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                      <text x="25" y="0" className="chart-tooltip__text">
+                        {row.label}: {row.value}
+                      </text>
+                    </g>
+                  ),
+                )}
               </g>
             ) : null}
           </g>
@@ -1687,7 +1708,7 @@ export function UnmatchedResourceTable({ items }) {
                 ) : null}
               </th>
               <td>{formatCurrency(item.list_cost)}</td>
-              <td>{formatResourceDuration(item.observed_days)}</td>
+              <td>{formatResourceDuration(item.usage_seconds)}</td>
               <td>{item.service_name || "--"}</td>
               <td>{item.sku_name || "--"}</td>
               <td className="resource-table__labels">{item.labels || "--"}</td>
@@ -1703,6 +1724,57 @@ export function UnmatchedResourceTable({ items }) {
     </div>
   );
 }
+
+export function UnattachedBlockVolumeTable({ items }) {
+  if (!items?.length) {
+    return <EmptyState message="No scanned unattached block volumes." />;
+  }
+
+  return (
+    <div className="table-scroll table-scroll--compact-y">
+      <table className="data-table data-table--compact">
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th>Volume ID</th>
+            <th>Tags / labels</th>
+            <th>Owner</th>
+            <th>Owner status</th>
+            <th>Team</th>
+            <th>Manager</th>
+            <th>Size</th>
+            <th title="Actual billed cost in the selected date range when billing can be matched by volume id.">Cost</th>
+            <th title="Days since provider creation time. Actual unattached duration is lower-bound by the first scan that observed it unattached.">Age</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={`${item.vendor || "unknown"}:${item.volume_id}`}>
+              <td>{formatVendor(item.vendor)}</td>
+              <th scope="row">
+                <div className="resource-table__name">{item.volume_id}</div>
+              </th>
+              <td className="resource-table__labels">{item.tags || "--"}</td>
+              <td>{item.owner || "--"}</td>
+              <td>
+                <span className={`owner-status owner-status--${item.owner_status || "missing"}`}>
+                  {item.owner_status || "missing"}
+                </span>
+              </td>
+              <td>{item.team || "--"}</td>
+              <td>{item.manager || "--"}</td>
+              <td>{formatGib(item.size_gib)}</td>
+              <td>{item.cost == null ? "--" : formatCurrency(item.cost)}</td>
+              <td>{formatDaysDuration(item.age ?? item.duration)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export const UnattachedEbsVolumeTable = UnattachedBlockVolumeTable;
 
 export function EmptyState({ message, compact = false }) {
   return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
@@ -1759,6 +1831,7 @@ function buildBucketTooltip({
   height,
   padding,
   showSum = false,
+  labelFormatter = formatBottomAxisLabel,
 }) {
   const rows = series
     .map((item) => {
@@ -1772,21 +1845,32 @@ function buildBucketTooltip({
         label: item.label || formatSeriesLabel(item.key),
         value: formatter(rawValue),
         rawValue: Number(rawValue || 0),
+        type: item.type,
       };
     })
     .filter(Boolean);
-  const sumRow = showSum && rows.length > 1
+  const sumRows = rows.filter((row) => row.type === "bar");
+  const hasSummaryRows = showSum && sumRows.length > 0;
+  const visibleRows = hasSummaryRows ? sumRows : rows;
+  const comparisonRows = hasSummaryRows ? rows.filter((row) => row.type !== "bar") : [];
+  const sumRow = hasSummaryRows
     ? {
-        value: yFormatter(rows.reduce((sum, row) => sum + row.rawValue, 0)),
+        key: "__sum",
+        label: "Sum",
+        value: yFormatter(sumRows.reduce((sum, row) => sum + row.rawValue, 0)),
+        type: "sum",
       }
     : null;
+  const summaryRows = hasSummaryRows ? [sumRow, ...comparisonRows].filter(Boolean) : [];
+  const displayLabel = String(labelFormatter(label));
   const longestRowLength = Math.max(
-    String(formatBottomAxisLabel(label)).length,
-    ...rows.map((row) => `${row.label}: ${row.value}`.length),
-    sumRow ? `Sum: ${sumRow.value}`.length : 0,
+    displayLabel.length,
+    ...visibleRows.map((row) => `${row.label}: ${row.value}`.length),
+    ...summaryRows.map((row) => `${row.label}: ${row.value}`.length),
   );
   const tooltipWidth = Math.min(Math.max(170, longestRowLength * 7 + 42), 300);
-  const tooltipHeight = Math.max(48, 34 + rows.length * 18 + (sumRow ? 34 : 10));
+  const summaryHeight = summaryRows.length ? 16 + summaryRows.length * 18 : 10;
+  const tooltipHeight = Math.max(48, 34 + visibleRows.length * 18 + summaryHeight);
   const preferredX = xForIndex(index) + 14;
   const x =
     preferredX + tooltipWidth > width - 8
@@ -1796,8 +1880,9 @@ function buildBucketTooltip({
 
   return {
     label,
-    rows,
-    sumRow,
+    displayLabel,
+    rows: visibleRows,
+    summaryRows,
     x,
     y,
     width: tooltipWidth,
@@ -2113,11 +2198,38 @@ function formatShortDate(value) {
 }
 
 function formatResourceDuration(value) {
-  const days = Number(value || 0);
-  if (days <= 0) {
+  const seconds = Number(value || 0);
+  if (seconds <= 0) {
     return "--";
   }
-  return `${days.toFixed(0)}d`;
+  if (seconds >= 86400) {
+    return `${(seconds / 86400).toFixed(1)}d`;
+  }
+  return formatSeconds(seconds);
+}
+
+function formatVendor(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "--";
+  }
+  return text.toUpperCase();
+}
+
+function formatGib(value) {
+  const numeric = Number(value || 0);
+  if (numeric <= 0) {
+    return "--";
+  }
+  return `${Number.isInteger(numeric) ? numeric.toFixed(0) : numeric.toFixed(1)} GiB`;
+}
+
+function formatDaysDuration(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return "--";
+  }
+  return `${numeric.toFixed(0)}d`;
 }
 
 function getAnnotationY({

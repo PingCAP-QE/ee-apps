@@ -12,6 +12,7 @@ from sqlalchemy import event, text
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app, create_app
 from ci_dashboard.api.queries import cost as cost_queries
+from ci_dashboard.api.queries import ebs as ebs_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
@@ -401,6 +402,44 @@ def _insert_roster_group(
         )
 
 
+def _insert_roster_employee(
+    sqlite_engine,
+    *,
+    employee_id: int,
+    name: str,
+    email: str | None = None,
+    github_id: str | None = None,
+    group_id: int | None = None,
+    manager_id: int | None = None,
+    is_active: int = 1,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO roster_employees (
+                  id, lark_id, name, en_name, employee_no, email, github_id,
+                  manager_id, group_id, is_active
+                ) VALUES (
+                  :id, :lark_id, :name, :name, :employee_no, :email, :github_id,
+                  :manager_id, :group_id, :is_active
+                )
+                """
+            ),
+            {
+                "id": employee_id,
+                "lark_id": f"employee-{employee_id}",
+                "name": name,
+                "employee_no": f"E{employee_id}",
+                "email": email,
+                "github_id": github_id,
+                "manager_id": manager_id,
+                "group_id": group_id,
+                "is_active": is_active,
+            },
+        )
+
+
 def _insert_cost_source(
     sqlite_engine,
     *,
@@ -640,6 +679,7 @@ def _insert_cost_unmatched_resource(
     sku_name: str = "runner",
     source_row_hash: str | None = None,
     target_branch: str | None = None,
+    vendor_tags_json: dict | list | str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -647,12 +687,14 @@ def _insert_cost_unmatched_resource(
                 """
                 INSERT INTO cost_unmatched_resource_daily (
                   vendor, account_id, billing_account_id, export_partition_date, usage_date,
-                  service_name, sku_name, namespace, author, org, repo, target_branch, resource_name,
+                  service_name, sku_name, namespace, author, org, repo, target_branch,
+                  vendor_tags_json, resource_name,
                   usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
                   source_export_time, source_row_hash
                 ) VALUES (
                   :vendor, :account_id, :billing_account_id, :usage_date, :usage_date,
-                  :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :target_branch, :resource_name,
+                  :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :target_branch,
+                  :vendor_tags_json, :resource_name,
                   :usage_seconds, :list_cost, :effective_cost, 0, :net_cost,
                   '2026-05-19 00:00:00', :source_row_hash
                 )
@@ -669,6 +711,11 @@ def _insert_cost_unmatched_resource(
                 "author": author,
                 "repo": repo,
                 "target_branch": target_branch,
+                "vendor_tags_json": (
+                    json.dumps(vendor_tags_json, sort_keys=True)
+                    if isinstance(vendor_tags_json, (dict, list))
+                    else vendor_tags_json
+                ),
                 "resource_name": resource_name,
                 "usage_seconds": usage_seconds,
                 "list_cost": list_cost,
@@ -676,6 +723,57 @@ def _insert_cost_unmatched_resource(
                 "net_cost": net_cost if net_cost is not None else list_cost,
                 "source_row_hash": source_row_hash
                 or f"{usage_date}-{resource_name}-{namespace}-{list_cost}",
+            },
+        )
+
+
+def _insert_unattached_block_volume(
+    sqlite_engine,
+    *,
+    snapshot_date: str,
+    volume_id: str,
+    vendor: str = "aws",
+    account_id: str = "946646677266",
+    region: str = "us-east-1",
+    availability_zone: str | None = "us-east-1a",
+    state: str = "available",
+    size_gib: float = 100,
+    tags: dict | None = None,
+    owner: str | None = None,
+    owner_source: str | None = None,
+    first_seen_available: str | None = None,
+    source_created_at: str | None = None,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_unattached_block_volume_daily (
+                  snapshot_date, vendor, account_id, region, availability_zone,
+                  volume_id, state, size_gib, tags_json, owner, owner_source,
+                  first_seen_available, source_created_at, observed_at
+                ) VALUES (
+                  :snapshot_date, :vendor, :account_id, :region, :availability_zone,
+                  :volume_id, :state, :size_gib, :tags_json, :owner, :owner_source,
+                  :first_seen_available, :source_created_at, :observed_at
+                )
+                """
+            ),
+            {
+                "snapshot_date": snapshot_date,
+                "vendor": vendor,
+                "account_id": account_id,
+                "region": region,
+                "availability_zone": availability_zone,
+                "volume_id": volume_id,
+                "state": state,
+                "size_gib": size_gib,
+                "tags_json": json.dumps(tags or {}, sort_keys=True),
+                "owner": owner,
+                "owner_source": owner_source,
+                "first_seen_available": first_seen_available or snapshot_date,
+                "source_created_at": source_created_at,
+                "observed_at": f"{snapshot_date} 00:00:00",
             },
         )
 
@@ -2539,6 +2637,24 @@ def test_cost_share_route_marks_low_share_regions(
         },
     ]
 
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "granularity": "week",
+            "group_by": "region",
+        },
+    )
+
+    assert stack_response.status_code == 200
+    stack_body = stack_response.json()
+    assert stack_body["meta"]["group_by"] == "region"
+    assert stack_body["items"] == [
+        {"name": "us-east-1", "value": 100.0},
+        {"name": "ap-south-1", "value": 0.5},
+    ]
+
 
 def test_cost_share_route_normalizes_aws_service_names(
     sqlite_engine,
@@ -2669,6 +2785,248 @@ def test_cost_share_route_groups_by_cost_driver(
     assert stack_body["series"][2]["key"] == "cost_driver__other"
 
 
+def test_cost_breakdown_drilldown_filters_sku_class_to_skus(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=70,
+        list_cost=70,
+        vendor="aws",
+        service_name="Compute Engine",
+        sku_name="BB8UJWJ4XPFJB95G",
+        usage_type="USW2-EBS:VolumeUsage.gp3",
+        cost_driver_key="block_storage",
+        dimension_hash="drilldown-balanced-pd",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=30,
+        list_cost=30,
+        vendor="aws",
+        service_name="Compute Engine",
+        sku_name="F7C7QF7Y2XAMPLE",
+        usage_type="USW2-EBS:VolumeP-IOPS.gp3",
+        cost_driver_key="block_storage",
+        dimension_hash="drilldown-ssd-pd",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=50,
+        list_cost=50,
+        vendor="aws",
+        service_name="Compute Engine",
+        sku_name="SWX7SS3HHS4X3MPP",
+        usage_type="USW2-BoxUsage:c8g.2xlarge",
+        cost_driver_key="compute",
+        dimension_hash="drilldown-n2-core",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=20,
+        list_cost=20,
+        vendor="aws",
+        service_name="Compute Engine",
+        sku_name="5H983DFRNE5969S5",
+        usage_type="USW2-BoxUsage:m8g.2xlarge",
+        cost_driver_key="compute",
+        dimension_hash="drilldown-m8g-core",
+    )
+    params = {
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "drilldown_group": "cost_driver",
+        "drilldown_value": "Block storage",
+    }
+
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**params, "dimension": "sku"},
+    )
+
+    assert share_response.status_code == 200
+    share_body = share_response.json()
+    assert share_body["meta"]["dimension"] == "sku"
+    assert share_body["meta"]["drilldown_group"] == "cost_driver"
+    assert share_body["meta"]["drilldown_value"] == "Block storage"
+    assert share_body["meta"]["total_list_cost"] == 100.0
+    assert share_body["items"] == [
+        {"name": "USW2-EBS:VolumeUsage.gp3", "value": 70.0, "share_pct": 70.0, "interactive": False},
+        {"name": "USW2-EBS:VolumeP-IOPS.gp3", "value": 30.0, "share_pct": 30.0, "interactive": False},
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "sku"},
+    )
+
+    assert stack_response.status_code == 200
+    stack_body = stack_response.json()
+    assert stack_body["meta"]["group_by"] == "sku"
+    assert stack_body["meta"]["drilldown_group"] == "cost_driver"
+    assert stack_body["meta"]["drilldown_value"] == "Block storage"
+    assert [item["name"] for item in stack_body["items"]] == [
+        "USW2-EBS:VolumeUsage.gp3",
+        "USW2-EBS:VolumeP-IOPS.gp3",
+    ]
+    assert [series["label"] for series in stack_body["series"]] == [
+        "USW2-EBS:VolumeUsage.gp3",
+        "USW2-EBS:VolumeP-IOPS.gp3",
+    ]
+
+    compute_share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            **params,
+            "dimension": "sku",
+            "drilldown_value": "Compute",
+        },
+    )
+    assert compute_share_response.status_code == 200
+    assert compute_share_response.json()["items"] == [
+        {"name": "c8g.2xlarge", "value": 50.0, "share_pct": 71.43, "interactive": False},
+        {"name": "m8g.2xlarge", "value": 20.0, "share_pct": 28.57, "interactive": False},
+    ]
+
+
+def test_cost_breakdown_drilldown_filters_team_to_owners(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=100,
+        lark_group_id="eng",
+        name="Engineering Group",
+        path="/100/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=110,
+        lark_group_id="database",
+        name="Database",
+        parent_id=100,
+        path="/100/110/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=111,
+        lark_group_id="tidb",
+        name="TiDB",
+        parent_id=110,
+        path="/100/110/111/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=112,
+        lark_group_id="tikv",
+        name="TiKV",
+        parent_id=110,
+        path="/100/110/112/",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=111,
+        net_cost=60,
+        list_cost=60,
+        owner="alice",
+        dimension_hash="drilldown-tidb-alice",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=111,
+        net_cost=20,
+        list_cost=20,
+        owner="carol",
+        dimension_hash="drilldown-tidb-carol",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tikv",
+        group_id=112,
+        net_cost=40,
+        list_cost=40,
+        owner="bob",
+        dimension_hash="drilldown-tikv-bob",
+    )
+    params = {
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "drilldown_group": "team",
+        "drilldown_value": "TiDB",
+    }
+
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**params, "dimension": "owner"},
+    )
+
+    assert share_response.status_code == 200
+    share_body = share_response.json()
+    assert share_body["meta"]["dimension"] == "owner"
+    assert share_body["meta"]["drilldown_group"] == "team"
+    assert share_body["meta"]["drilldown_value"] == "TiDB"
+    assert share_body["meta"]["total_list_cost"] == 80.0
+    assert share_body["items"] == [
+        {"name": "alice", "value": 60.0, "share_pct": 75.0, "interactive": False},
+        {"name": "carol", "value": 20.0, "share_pct": 25.0, "interactive": False},
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "owner"},
+    )
+
+    assert stack_response.status_code == 200
+    stack_body = stack_response.json()
+    assert stack_body["meta"]["group_by"] == "owner"
+    assert stack_body["meta"]["drilldown_group"] == "team"
+    assert stack_body["meta"]["drilldown_value"] == "TiDB"
+    assert [item["name"] for item in stack_body["items"]] == ["alice", "carol"]
+    assert [series["label"] for series in stack_body["series"]] == ["alice", "carol"]
+
+    trend_response = api_client.get(
+        "/api/v1/pages/cost-trend",
+        params=params,
+    )
+    assert trend_response.status_code == 200
+    trend_body = trend_response.json()
+    assert trend_body["meta"]["drilldown_group"] == "team"
+    assert trend_body["meta"]["drilldown_value"] == "TiDB"
+    assert trend_body["meta"]["summary"]["net_cost"] == 80.0
+    assert ["2026-04-06", 80.0] in trend_body["series"][1]["points"]
+
+    invalid_drilldown_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "team",
+            "drilldown_group": "team",
+            "drilldown_value": "TiDB",
+        },
+    )
+    assert invalid_drilldown_response.status_code == 400
+
+
 def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) -> None:
     _insert_roster_group(
         sqlite_engine,
@@ -2713,6 +3071,7 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
         effective_cost=90,
         net_cost=0,
         usage_seconds=172800,
+        vendor_tags_json={"cluster": "prow", "component": "tidb"},
     )
     _insert_cost_attribution(
         sqlite_engine,
@@ -2829,13 +3188,17 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
     assert items[0]["first_seen_date"] == "2026-05-10"
     assert items[0]["last_seen_date"] == "2026-05-10"
     assert items[0]["observed_days"] == 1
-    assert items[0]["labels"] == "org=pingcap, repo=tidb"
+    assert items[0]["labels"] == "cluster=prow, component=tidb, org=pingcap, repo=tidb"
     assert items[0]["allocation_buckets"] == "kube:unallocated"
     assert items[0]["attribution_source"] == "missing_author"
     assert items[1]["list_cost"] == 60.0
     assert items[1]["first_seen_date"] == "2026-05-01"
     assert items[1]["last_seen_date"] == "2026-05-31"
     assert items[1]["observed_days"] is None
+    assert response.json()["meta"]["services"] == [
+        {"value": "Cloud Logging", "label": "Cloud Logging"},
+        {"value": "Compute Engine", "label": "Compute Engine"},
+    ]
 
     bounded_response = api_client.get(
         "/api/v1/pages/cost-unmatched-resources",
@@ -2852,6 +3215,383 @@ def test_cost_page_unmatched_resources(sqlite_engine, api_client: TestClient) ->
     assert bounded_meta["requested_start_date"] == "2026-01-01"
     assert bounded_meta["window_limited"] is True
     assert bounded_meta["max_window_days"] == 31
+
+
+def test_cost_unmatched_resources_filters_service_and_sorts(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-10",
+        repo="tidb",
+        group_id=110,
+        net_cost=0,
+        list_cost=100,
+        resource_name=None,
+        author=None,
+        owner=None,
+        attribution_source="missing_author",
+        attribution_status="unmatched",
+        employee_id=None,
+        usage_seconds=3600,
+        dimension_hash="unmatched-sort-compute-short",
+    )
+    _insert_cost_unmatched_resource(
+        sqlite_engine,
+        usage_date="2026-05-10",
+        repo="tidb",
+        resource_name="projects/pingcap-prod/zones/us-central1-a/instances/compute-short",
+        namespace=None,
+        author=None,
+        list_cost=100,
+        usage_seconds=3600,
+        service_name="Compute Engine",
+        source_row_hash="resource-compute-short",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-11",
+        repo="tidb",
+        group_id=110,
+        net_cost=0,
+        list_cost=20,
+        resource_name=None,
+        author=None,
+        owner=None,
+        attribution_source="missing_author",
+        attribution_status="unmatched",
+        employee_id=None,
+        usage_seconds=10800,
+        dimension_hash="unmatched-sort-compute-long",
+    )
+    _insert_cost_unmatched_resource(
+        sqlite_engine,
+        usage_date="2026-05-11",
+        repo="tidb",
+        resource_name="projects/pingcap-prod/zones/us-central1-a/instances/compute-long",
+        namespace=None,
+        author=None,
+        list_cost=20,
+        usage_seconds=10800,
+        service_name="Compute Engine",
+        source_row_hash="resource-compute-long",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-12",
+        repo="platform",
+        group_id=110,
+        net_cost=0,
+        list_cost=50,
+        resource_name=None,
+        author=None,
+        owner=None,
+        attribution_source="missing_author",
+        attribution_status="unmatched",
+        employee_id=None,
+        usage_seconds=7200,
+        dimension_hash="unmatched-sort-logging",
+    )
+    _insert_cost_unmatched_resource(
+        sqlite_engine,
+        usage_date="2026-05-12",
+        repo="platform",
+        resource_name="//logging.googleapis.com/projects/890604261603/locations/global/buckets/_Default",
+        namespace=None,
+        author=None,
+        list_cost=50,
+        usage_seconds=7200,
+        service_name="Cloud Logging",
+        source_row_hash="resource-logging",
+    )
+    _insert_cost_unmatched_resource(
+        sqlite_engine,
+        usage_date="2026-05-13",
+        repo="tidb",
+        resource_name="projects/pingcap-prod/zones/us-central1-a/instances/matched-only",
+        namespace=None,
+        author="matched-user",
+        list_cost=15,
+        usage_seconds=1800,
+        service_name="Matched Only Service",
+        source_row_hash="resource-matched-only",
+    )
+
+    duration_response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "service_name": "Compute Engine",
+            "sort_by": "duration",
+        },
+    )
+
+    assert duration_response.status_code == 200
+    duration_body = duration_response.json()
+    assert duration_body["meta"]["service_name"] == "Compute Engine"
+    assert duration_body["meta"]["sort_by"] == "duration"
+    assert [item["resource_name"] for item in duration_body["items"]] == [
+        "projects/pingcap-prod/zones/us-central1-a/instances/compute-long",
+        "projects/pingcap-prod/zones/us-central1-a/instances/compute-short",
+    ]
+    assert [item["usage_seconds"] for item in duration_body["items"]] == [10800.0, 3600.0]
+    assert duration_body["meta"]["services"] == [
+        {"value": "Cloud Logging", "label": "Cloud Logging"},
+        {"value": "Compute Engine", "label": "Compute Engine"},
+    ]
+
+    cost_response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "service_name": "Compute Engine",
+            "sort_by": "list_cost",
+        },
+    )
+
+    assert cost_response.status_code == 200
+    cost_body = cost_response.json()
+    assert cost_body["meta"]["sort_by"] == "list_cost"
+    assert [item["resource_name"] for item in cost_body["items"]] == [
+        "projects/pingcap-prod/zones/us-central1-a/instances/compute-short",
+        "projects/pingcap-prod/zones/us-central1-a/instances/compute-long",
+    ]
+
+
+def test_cost_unattached_block_volumes_route(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ebs_queries, "_today", lambda: date(2026, 7, 22))
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=110,
+        lark_group_id="database",
+        name="Database",
+        path="/110/",
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=900,
+        name="Mona Manager",
+        email="mona@example.com",
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=901,
+        name="Alice Owner",
+        email="alice@example.com",
+        github_id="alice",
+        group_id=110,
+        manager_id=900,
+        is_active=1,
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=902,
+        name="Bob Former",
+        email="bob@example.com",
+        github_id="bob",
+        group_id=110,
+        manager_id=900,
+        is_active=0,
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=903,
+        name="Alice Shadow",
+        email="shadow@example.com",
+        github_id="alice@example.com",
+        group_id=110,
+        manager_id=900,
+        is_active=0,
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-20",
+        volume_id="vol-inactive",
+        size_gib=50,
+        tags={"name": "old-cache", "owner": "bob@example.com", "project": "tidb"},
+        owner="bob@example.com",
+        owner_source="tag:owner",
+        first_seen_available="2026-07-01",
+        source_created_at="2026-06-20 00:00:00",
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-20",
+        volume_id="vol-active",
+        size_gib=100,
+        tags={"name": "tidb-cache", "owner": "alice@example.com", "project": "tidb"},
+        owner="alice@example.com",
+        owner_source="tag:owner",
+        first_seen_available="2026-07-10",
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-20",
+        volume_id="vol-missing",
+        size_gib=20,
+        tags={"name": "orphan", "project": "platform"},
+        first_seen_available="2026-07-12",
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-20",
+        volume_id="vol-no-cost-match",
+        size_gib=20,
+        tags={"name": "scanned-only", "project": "platform"},
+        first_seen_available="2026-07-13",
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-20",
+        volume_id="vol-in-use",
+        state="in-use",
+        size_gib=500,
+        tags={"name": "attached"},
+        first_seen_available="2026-07-01",
+    )
+    _insert_unattached_block_volume(
+        sqlite_engine,
+        snapshot_date="2026-07-19",
+        vendor="gcp",
+        account_id="pingcap-dev",
+        region="us-west1",
+        availability_zone="us-west1-a",
+        volume_id="gcp-cache",
+        state="READY",
+        size_gib=200,
+        tags={"disk_type": "hyperdisk-balanced", "owner": "alice@example.com"},
+        owner="alice@example.com",
+        owner_source="label:owner",
+        first_seen_available="2026-07-08",
+        source_created_at="2026-07-01 00:00:00",
+    )
+    for volume_id, cost, resource_name in (
+        ("vol-inactive", 30, "vol-inactive"),
+        ("vol-active", 30, "vol-active"),
+        (
+            "vol-missing",
+            5,
+            "arn:aws:ec2:us-east-1:946646677266:volume/vol-missing",
+        ),
+        ("vol-in-use", 100, "vol-in-use"),
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date="2026-07-15",
+            repo="tidb",
+            group_id=110,
+            vendor="aws",
+            account_id="946646677266",
+            service_name="AmazonEC2",
+            sku_name="EBS Volume",
+            resource_name=resource_name,
+            net_cost=cost,
+            effective_cost=cost,
+            list_cost=cost,
+            owner=None,
+            author=None,
+            dimension_hash=f"ebs-cost-{volume_id}",
+        )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-05",
+        repo="tidb",
+        group_id=110,
+        vendor="aws",
+        account_id="946646677266",
+        service_name="AmazonEC2",
+        sku_name="EBS Volume",
+        resource_name="vol-active",
+        net_cost=90,
+        effective_cost=90,
+        list_cost=90,
+        owner=None,
+        author=None,
+        dimension_hash="ebs-cost-vol-active-before-first-seen",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-15",
+        repo="tidb",
+        group_id=110,
+        vendor="gcp",
+        account_id="pingcap-dev",
+        service_name="Compute Engine",
+        sku_name="Hyperdisk Balanced",
+        resource_name="projects/pingcap-dev/zones/us-west1-a/disks/gcp-cache",
+        net_cost=25,
+        effective_cost=25,
+        list_cost=25,
+        owner=None,
+        author=None,
+        dimension_hash="gcp-disk-cost-gcp-cache",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-unattached-block-volumes",
+        params={
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-20",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["cost_basis"] == "net_cost"
+    assert body["meta"]["latest_snapshot_date"] == "2026-07-20"
+    assert [item["volume_id"] for item in body["items"]] == [
+        "vol-inactive",
+        "vol-active",
+        "gcp-cache",
+        "vol-missing",
+        "vol-no-cost-match",
+    ]
+    assert body["items"][0] == {
+        "vendor": "aws",
+        "volume_id": "vol-inactive",
+        "tags": "name=old-cache, owner=bob@example.com, project=tidb",
+        "owner": "bob@example.com",
+        "owner_status": "inactive",
+        "team": "Database",
+        "manager": "Mona Manager",
+        "size_gib": 50.0,
+        "cost": 30.0,
+        "duration": 21,
+        "age": 32,
+    }
+    assert body["items"][1]["owner_status"] == "active"
+    assert body["items"][1]["duration"] == 12
+    assert body["items"][2]["vendor"] == "gcp"
+    assert body["items"][2]["cost"] == 25.0
+    assert body["items"][2]["duration"] == 14
+    assert body["items"][2]["age"] == 21
+    assert body["items"][3]["owner_status"] == "missing"
+    assert body["items"][3]["owner"] == ""
+    assert body["items"][3]["cost"] == 5.0
+    assert body["items"][4]["cost"] is None
+
+    gcp_response = api_client.get(
+        "/api/v1/pages/cost-unattached-block-volumes",
+        params={
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-20",
+            "cost_source": "gcp:pingcap-dev",
+        },
+    )
+
+    assert gcp_response.status_code == 200
+    gcp_body = gcp_response.json()
+    assert gcp_body["meta"]["cost_source"] == "gcp:pingcap-dev"
+    assert gcp_body["meta"]["latest_snapshot_date"] == "2026-07-19"
+    assert [item["volume_id"] for item in gcp_body["items"]] == ["gcp-cache"]
+    assert gcp_body["items"][0]["vendor"] == "gcp"
 
 
 def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> None:

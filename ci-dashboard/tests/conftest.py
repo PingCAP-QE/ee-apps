@@ -317,6 +317,26 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
+        CREATE TABLE roster_employees (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          lark_id TEXT NULL,
+          name TEXT NOT NULL,
+          en_name TEXT NULL,
+          employee_no TEXT NULL,
+          email TEXT NULL,
+          github_id TEXT NULL,
+          join_time TEXT NULL,
+          manager_id INTEGER NULL,
+          manager_path TEXT NULL,
+          group_id INTEGER NULL,
+          group_path TEXT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          last_seen_at TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE cost_sources (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           vendor TEXT NOT NULL,
@@ -428,6 +448,7 @@ def _create_test_schema(engine: Engine) -> None:
           org TEXT NULL,
           repo TEXT NULL,
           target_branch TEXT NULL,
+          vendor_tags_json TEXT NULL,
           author TEXT NULL,
           resource_name TEXT NOT NULL,
           usage_seconds REAL NULL,
@@ -440,6 +461,28 @@ def _create_test_schema(engine: Engine) -> None:
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
+        )
+        """,
+        """
+        CREATE TABLE cost_unattached_block_volume_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          snapshot_date TEXT NOT NULL,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          region TEXT NOT NULL,
+          availability_zone TEXT NULL,
+          volume_id TEXT NOT NULL,
+          state TEXT NOT NULL,
+          size_gib REAL NULL,
+          tags_json TEXT NULL,
+          owner TEXT NULL,
+          owner_source TEXT NULL,
+          first_seen_available TEXT NOT NULL,
+          source_created_at TEXT NULL,
+          observed_at TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(snapshot_date, vendor, account_id, region, volume_id)
         )
         """,
     ]

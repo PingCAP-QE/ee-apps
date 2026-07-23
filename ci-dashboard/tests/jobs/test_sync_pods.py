@@ -415,7 +415,7 @@ def test_sync_pods_build_matching_helpers_cover_jenkins_paths(sqlite_engine, mon
                 """
             )
         )
-        prefix_map = _load_jenkins_pod_name_url_prefix_map(connection)
+        prefix_map = _load_jenkins_pod_name_url_prefix_map(connection, reference_time=datetime(2026, 4, 21))
 
     assert prefix_map["jenkins-agent"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/"
     resolved = _resolve_jenkins_build_metadata(

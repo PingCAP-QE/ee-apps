@@ -32,6 +32,7 @@ from ci_dashboard.api.queries.cost import (
     get_unmatched_resources,
     get_weekly_overview,
 )
+from ci_dashboard.api.queries.ebs import get_unattached_block_volumes
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
     get_failure_category_trend,
@@ -239,15 +240,45 @@ def get_cost_sources_page(engine: Engine) -> dict[str, Any]:
 def get_cost_unmatched_resources_page(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    service_name: str | None = None,
+    sort_by: str = "list_cost",
 ) -> dict[str, Any]:
-    return get_unmatched_resources(engine, _normalize_cost_filters(filters))
+    return get_unmatched_resources(
+        engine,
+        _normalize_cost_filters(filters),
+        service_name=service_name,
+        sort_by=sort_by,
+    )
+
+
+def get_cost_unattached_block_volumes_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_unattached_block_volumes(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_unattached_ebs_volumes_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_cost_unattached_block_volumes_page(engine, filters)
 
 
 def get_cost_trend_page(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
 ) -> dict[str, Any]:
-    return get_cost_trend(engine, _normalize_cost_filters(filters))
+    return get_cost_trend(
+        engine,
+        _normalize_cost_filters(filters),
+        drilldown_group=drilldown_group,
+        drilldown_value=drilldown_value,
+    )
 
 
 def get_cost_share_page(
@@ -255,8 +286,16 @@ def get_cost_share_page(
     filters: CommonFilters,
     *,
     dimension: str = "owner",
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
 ) -> dict[str, Any]:
-    return get_cost_share(engine, _normalize_cost_filters(filters), dimension=dimension)
+    return get_cost_share(
+        engine,
+        _normalize_cost_filters(filters),
+        dimension=dimension,
+        drilldown_group=drilldown_group,
+        drilldown_value=drilldown_value,
+    )
 
 
 def get_cost_weekly_overview_page(
@@ -278,11 +317,15 @@ def get_cost_repo_group_stack_page(
     filters: CommonFilters,
     *,
     group_by: str = "repo",
+    drilldown_group: str | None = None,
+    drilldown_value: str | None = None,
 ) -> dict[str, Any]:
     return get_repo_group_cost_stack(
         engine,
         _normalize_cost_filters(filters),
         group_by=group_by,
+        drilldown_group=drilldown_group,
+        drilldown_value=drilldown_value,
     )
 
 

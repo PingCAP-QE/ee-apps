@@ -103,6 +103,36 @@ class LLMSettings:
 
 
 @dataclass(frozen=True)
+class AwsEbsSettings:
+    regions: tuple[str, ...] = ()
+    account_id: str | None = None
+    owner_tag_keys: tuple[str, ...] = (
+        "owner",
+        "Owner",
+        "owner_email",
+        "ownerEmail",
+        "github",
+        "github_id",
+        "user",
+        "email",
+    )
+
+
+@dataclass(frozen=True)
+class GcpBlockVolumeSettings:
+    projects: tuple[str, ...] = ()
+    owner_label_keys: tuple[str, ...] = (
+        "owner",
+        "owner_email",
+        "ownerEmail",
+        "github",
+        "github_id",
+        "user",
+        "email",
+    )
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     jobs: JobSettings
@@ -111,6 +141,8 @@ class Settings:
     jenkins_ingest: JenkinsIngestSettings = JenkinsIngestSettings()
     archive: ArchiveSettings = ArchiveSettings()
     llm: LLMSettings = LLMSettings()
+    aws_ebs: AwsEbsSettings = AwsEbsSettings()
+    gcp_block_volumes: GcpBlockVolumeSettings = GcpBlockVolumeSettings()
     log_level: str = "INFO"
 
 
@@ -196,6 +228,27 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             api_key=env.get("CI_DASHBOARD_LLM_API_KEY") or None,
             base_url=env.get("CI_DASHBOARD_LLM_BASE_URL") or None,
             reasoning_effort=env.get("CI_DASHBOARD_LLM_REASONING_EFFORT") or None,
+        ),
+        aws_ebs=AwsEbsSettings(
+            regions=_read_csv(env, "CI_DASHBOARD_AWS_EBS_REGIONS", ()),
+            account_id=(env.get("CI_DASHBOARD_AWS_EBS_ACCOUNT_ID") or "").strip() or None,
+            owner_tag_keys=_read_csv(
+                env,
+                "CI_DASHBOARD_AWS_EBS_OWNER_TAG_KEYS",
+                AwsEbsSettings.owner_tag_keys,
+            ),
+        ),
+        gcp_block_volumes=GcpBlockVolumeSettings(
+            projects=_read_csv(
+                env,
+                "CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS",
+                _read_csv(env, "CI_DASHBOARD_GCP_PROJECT", ()),
+            ),
+            owner_label_keys=_read_csv(
+                env,
+                "CI_DASHBOARD_GCP_BLOCK_VOLUME_OWNER_LABEL_KEYS",
+                GcpBlockVolumeSettings.owner_label_keys,
+            ),
         ),
         log_level=(env.get("CI_DASHBOARD_LOG_LEVEL") or "INFO").upper(),
     )
