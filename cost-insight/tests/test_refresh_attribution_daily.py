@@ -538,10 +538,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       vendor TEXT NOT NULL,
                       account_id TEXT,
                       vendor_tags_json TEXT NOT NULL,
-                      owner_email TEXT,
-                      service TEXT,
-                      project TEXT,
-                      service_exec_id TEXT,
+                      icost_owner_email TEXT,
+                      icost_service TEXT,
+                      icost_project TEXT,
+                      icost_service_exec_id TEXT,
                       valid_from TEXT,
                       valid_to TEXT
                     )
@@ -573,8 +573,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text(
                     """
                     INSERT INTO resource_allocation (
-                      id, vendor, account_id, vendor_tags_json, owner_email,
-                      service, project, service_exec_id, valid_from, valid_to
+                      id, vendor, account_id, vendor_tags_json, icost_owner_email,
+                      icost_service, icost_project, icost_service_exec_id, valid_from, valid_to
                     ) VALUES
                       (
                         1, 'aws', '946646677266',
@@ -754,8 +754,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text(
                     """
                     INSERT INTO resource_allocation (
-                      id, vendor, account_id, vendor_tags_json, owner_email,
-                      service, project, service_exec_id, valid_from, valid_to
+                      id, vendor, account_id, vendor_tags_json, icost_owner_email,
+                      icost_service, icost_project, icost_service_exec_id, valid_from, valid_to
                     ) VALUES (
                       3, 'aws', '946646677266', :vendor_tags_json,
                       'dave@pingcap.com', 'TestInfra', 'project-pool', 'exec-pool',
@@ -838,8 +838,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text(
                     """
                     INSERT INTO resource_allocation (
-                      id, vendor, account_id, vendor_tags_json, owner_email,
-                      service, project, service_exec_id, valid_from, valid_to
+                      id, vendor, account_id, vendor_tags_json, icost_owner_email,
+                      icost_service, icost_project, icost_service_exec_id, valid_from, valid_to
                     ) VALUES (
                       4, 'aws', '946646677266',
                       '{"cluster":"cluster-1","shared_pool":"pool-1"}',
@@ -1014,10 +1014,10 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       vendor TEXT NOT NULL,
                       account_id TEXT,
                       vendor_tags_json TEXT NOT NULL,
-                      owner_email TEXT,
-                      service TEXT,
-                      project TEXT,
-                      service_exec_id TEXT,
+                      icost_owner_email TEXT,
+                      icost_service TEXT,
+                      icost_project TEXT,
+                      icost_service_exec_id TEXT,
                       valid_from TEXT,
                       valid_to TEXT
                     )
@@ -1046,8 +1046,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                 text(
                     """
                     INSERT INTO resource_allocation (
-                      id, vendor, account_id, vendor_tags_json, owner_email,
-                      service, project, service_exec_id, valid_from, valid_to
+                      id, vendor, account_id, vendor_tags_json, icost_owner_email,
+                      icost_service, icost_project, icost_service_exec_id, valid_from, valid_to
                     ) VALUES
                       (
                         1, 'aws', '946646677266',
@@ -1217,8 +1217,8 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "match_tags_json" in logical_sql
     assert "JSON_REMOVE" in logical_sql
     assert "missing_label_allocation" in logical_sql
-    assert "owner_email" in logical_sql
-    assert "service_exec_id" in logical_sql
+    assert "allocation_raw.icost_owner_email AS owner_email" in logical_sql
+    assert "allocation_raw.icost_service_exec_id AS service_exec_id" in logical_sql
     assert "allocate_method" in logical_sql
     assert "vendor_tag" in logical_sql
 

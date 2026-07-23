@@ -106,7 +106,7 @@ WITH normalized AS (
     ) AS region,
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
-    NULLIF(tag_project, '') AS repo,
+    NULLIF(tag_icost_project, '') AS repo,
     (
       SELECT NULLIF(kv.value, '')
       FROM UNNEST(resource_tags.key_value) AS kv
@@ -199,7 +199,7 @@ WITH normalized AS (
     NULL AS namespace,
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
-    NULLIF(tag_project, '') AS repo,
+    NULLIF(tag_icost_project, '') AS repo,
     (
       SELECT NULLIF(kv.value, '')
       FROM UNNEST(resource_tags.key_value) AS kv
