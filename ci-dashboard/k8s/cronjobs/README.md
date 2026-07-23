@@ -271,3 +271,83 @@ Notes:
 - The CronJob should only be rolled out after the jobs image includes the V3 `archive-error-logs` command.
 - The current `ci-dashboard` GKE service account does not yet appear to have confirmed GCS write access, so bucket IAM must be granted before unsuspending the recurring CronJob.
 - The first slice is intentionally serial: no fetch concurrency flag is required for bring-up.
+
+## Daily Unattached Block Volume Sync
+
+`sync-unattached-block-volumes` snapshots unattached block volumes for the Cost tab:
+
+- AWS EBS volumes whose state is `available`
+- GCP Persistent Disk / Hyperdisk resources whose `users` field is empty
+- `cost_unattached_block_volume_daily`
+- `ci_job_state`
+
+Preconditions:
+
+- apply `029_create_cost_unattached_block_volume_daily.sql` to the dashboard database before the first run
+- configure at least one scan target: `CI_DASHBOARD_AWS_EBS_REGIONS` or `CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS`
+- grant AWS read access for `ec2:DescribeVolumes`; if `CI_DASHBOARD_AWS_EBS_ACCOUNT_ID` is omitted, the job also needs `sts:GetCallerIdentity`
+- grant GCP read access for Compute Engine disks in each configured project; the job reads an access token from `CI_DASHBOARD_GCP_ACCESS_TOKEN` or from the pod metadata server
+- keep the job suspended until the SQL migration and cloud credentials are confirmed
+
+Render a CronJob manifest:
+
+```bash
+cd ci-dashboard
+./scripts/render_unattached_block_volumes_cronjob.sh \
+  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
+  --db-secret ci-dashboard-eq-prd-insight-db \
+  --ca-secret ci-dashboard-backfill-ca \
+  --service-account ci-dashboard \
+  --aws-ebs-regions us-west-2 \
+  --aws-ebs-account-id <aws-account-id> \
+  --gcp-projects <gcp-project-id> \
+  --suspend true \
+  > /tmp/ci-dashboard-sync-unattached-block-volumes.yaml
+```
+
+Apply it:
+
+```bash
+kubectl apply -f /tmp/ci-dashboard-sync-unattached-block-volumes.yaml
+```
+
+Recommended first bring-up:
+
+```bash
+kubectl -n apps create job --from=cronjob/ci-dashboard-sync-unattached-block-volumes ci-dashboard-sync-unattached-block-volumes-smoke-$(date +%s)
+kubectl -n apps logs job/<smoke-job-name> --follow
+```
+
+Useful overrides:
+
+- `--schedule "20 3 * * *"` keeps the default once-per-day scan.
+- `--aws-secret <secret>` injects `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` from a Kubernetes secret when runtime AWS identity is not available.
+- `--aws-session-token-key <key>` also injects `AWS_SESSION_TOKEN` for temporary AWS credentials.
+- `--aws-owner-tag-keys "owner,owner_email,github"` overrides the AWS owner tag parsing order.
+- `--gcp-access-token-secret <secret>` injects `CI_DASHBOARD_GCP_ACCESS_TOKEN`; otherwise the pod must be able to read a metadata-server token, for example through GKE Workload Identity.
+- `--gcp-owner-label-keys "owner,owner_email,github"` overrides the GCP owner label parsing order.
+- `--concurrency-policy Forbid` avoids overlapping daily scans.
+- `--suspend true` is recommended until the smoke job has written fresh rows.
+
+Validation:
+
+```bash
+kubectl -n apps get cronjob ci-dashboard-sync-unattached-block-volumes
+kubectl -n apps get jobs -l app.kubernetes.io/name=ci-dashboard-sync-unattached-block-volumes
+kubectl -n apps logs job/<latest-job-name>
+```
+
+Database checks:
+
+```sql
+SELECT snapshot_date, vendor, COUNT(*) AS volumes
+FROM cost_unattached_block_volume_daily
+GROUP BY snapshot_date, vendor
+ORDER BY snapshot_date DESC, vendor;
+```
+
+Notes:
+
+- The job only writes the snapshot table and job state; actual cost is joined later from existing billing attribution rows.
+- `sync-unattached-ebs-volumes` is kept for AWS-only debug/backfill. Production scheduling should use `sync-unattached-block-volumes` so AWS and GCP snapshots advance together.
+- Docker images copy `ci-dashboard/sql/`, but they do not apply migrations automatically. Apply SQL 029 through the existing database rollout path before unsuspending the CronJob.
