@@ -1,2 +1,0 @@
-[console_scripts]
-ci-dashboard = ci_dashboard.jobs.cli:main

@@ -17,6 +17,7 @@ import {
   Panel,
   StatCard,
   TrendChart,
+  UnattachedBlockVolumeTable,
   UnmatchedResourceTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
@@ -27,7 +28,10 @@ export default function CostPage({ filters }) {
   const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
   const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
+  const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
+  const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
+  const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
@@ -45,37 +49,66 @@ export default function CostPage({ filters }) {
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
   };
+  const costBreakdownDrilldownTargetGroup =
+    COST_BREAKDOWN_DRILLDOWN_GROUPS[costBreakdownGroupBy] || null;
+  const costBreakdownDrilldownTitleSuffix = costBreakdownDrilldown
+    ? `: ${costBreakdownDrilldown.parentName}`
+    : "";
+  const effectiveCostBreakdownGroupBy =
+    costBreakdownDrilldown?.childGroup || costBreakdownGroupBy;
+  const costDrilldownFilters = costBreakdownDrilldown
+    ? {
+        drilldown_group: costBreakdownDrilldown.parentGroup,
+        drilldown_value: costBreakdownDrilldown.parentName,
+      }
+    : {};
+  const costTrendFilters = {
+    ...costFilters,
+    ...costDrilldownFilters,
+  };
   const costStackFilters = {
     ...costFilters,
-    group_by: costBreakdownGroupBy,
+    ...costDrilldownFilters,
+    group_by: effectiveCostBreakdownGroupBy,
   };
   const costShareFilters = {
     ...costFilters,
-    dimension: costBreakdownGroupBy,
+    ...costDrilldownFilters,
+    dimension: effectiveCostBreakdownGroupBy,
   };
-  const regionShareFilters = {
+  const unmatchedResourceFilters = {
     ...costFilters,
-    dimension: "region",
+    service_name: unmatchedServiceName,
+    sort_by: unmatchedSortBy,
   };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
-  const trend = useApiData("/api/v1/pages/cost-trend", costFilters);
+  const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
-  const regionShare = useApiData("/api/v1/pages/cost-share", regionShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
   const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
-  const unmatchedResources = useApiData("/api/v1/pages/cost-unmatched-resources", costFilters);
+  const unmatchedResources = useApiData(
+    "/api/v1/pages/cost-unmatched-resources",
+    unmatchedResourceFilters,
+  );
+  const unattachedBlockVolumes = useApiData(
+    "/api/v1/pages/cost-unattached-block-volumes",
+    costFilters,
+  );
   const summary = trend.data?.meta?.summary || {};
   const configuredAnnualBudget = Number(weeklyOverview.data?.budget_health?.annual_budget || 0);
   const weeklyBudget = Number(weeklyOverview.data?.budget_health?.weekly_budget || 0);
   const hasConfiguredBudget = configuredAnnualBudget > 0;
-  const costTrendSeries = withBudgetSeries(
-    trend.data?.series,
-    costFilters.granularity,
-    trend.data?.meta?.budget_targets,
-  );
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
-    (group) => group.key === costBreakdownGroupBy,
+    (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
+  const parentCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
+    (group) => group.key === costBreakdownDrilldown?.parentGroup,
+  );
+  const canDrillDownCostBreakdown =
+    Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
+  const costBreakdownSubtitle = costBreakdownDrilldown
+    ? `${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
+    : `Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
   const weeklyLevel2Items = withSharedCostAllocation(
     weeklyOverview.data?.level2_share?.items,
     isWeeklyLevel2Shared,
@@ -84,6 +117,27 @@ export default function CostPage({ filters }) {
     engineeringGroupShare.data?.level2?.items,
     isSelectedLevel2Shared,
   );
+  const costShareItems = withCostBreakdownDrilldown(
+    costShare.data?.items,
+    canDrillDownCostBreakdown,
+  );
+
+  const startCostBreakdownDrilldown = (item) => {
+    if (!costBreakdownDrilldownTargetGroup) {
+      return;
+    }
+    setCostBreakdownDrilldown({
+      parentGroup: costBreakdownGroupBy,
+      parentName: item.name,
+      childGroup: costBreakdownDrilldownTargetGroup,
+    });
+    setSelectedCostStackName("");
+  };
+
+  const resetCostBreakdownDrilldown = () => {
+    setCostBreakdownDrilldown(null);
+    setSelectedCostStackName("");
+  };
 
   useEffect(() => {
     if (!selectedCostStackName) {
@@ -93,6 +147,17 @@ export default function CostPage({ filters }) {
       setSelectedCostStackName("");
     }
   }, [repoGroupStack.data?.items, selectedCostStackName]);
+
+  useEffect(() => {
+    if (!unmatchedServiceName || !unmatchedResources.data?.meta?.services) {
+      return;
+    }
+    if (
+      !unmatchedResources.data.meta.services.some((item) => item.value === unmatchedServiceName)
+    ) {
+      setUnmatchedServiceName("");
+    }
+  }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
 
   return (
     <div className="page-stack">
@@ -160,7 +225,7 @@ export default function CostPage({ filters }) {
             }
           />
           <DonutShareChart
-            title="GCP services"
+            title="services rate"
             subtitle="Services above 1% of list cost."
             items={weeklyOverview.data?.service_share?.items}
             totalValue={weeklyOverview.data?.service_share?.meta?.total_list_cost}
@@ -206,70 +271,65 @@ export default function CostPage({ filters }) {
         />
       </section>
 
-      <div className="cost-analysis-grid">
-        <Panel
-          title="Cost breakdown (list cost)"
-          subtitle={`Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`}
-          loading={costShare.loading || regionShare.loading || repoGroupStack.loading}
-          error={costShare.error || regionShare.error || repoGroupStack.error}
-          className="cost-breakdown-panel"
-          actions={
+      <Panel
+        title="Cost breakdown (list cost)"
+        subtitle={costBreakdownSubtitle}
+        loading={
+          costShare.loading || repoGroupStack.loading || trend.loading
+        }
+        error={costShare.error || repoGroupStack.error || trend.error}
+        className="cost-breakdown-panel"
+        actions={
+          <>
+            {costBreakdownDrilldown ? (
+              <button
+                type="button"
+                className="donut-card__action"
+                onClick={resetCostBreakdownDrilldown}
+              >
+                Back
+              </button>
+            ) : null}
             <CostBreakdownGroupSelector
               value={costBreakdownGroupBy}
               onChange={(nextGroup) => {
                 setCostBreakdownGroupBy(nextGroup);
+                setCostBreakdownDrilldown(null);
                 setSelectedCostStackName("");
               }}
             />
-          }
-        >
-          <div className="cost-breakdown-grid">
-            <DonutShareChart
-              className="cost-share-donut"
-              title={`${activeCostBreakdownGroup.label} share`}
-              items={costShare.data?.items}
-              totalValue={costShare.data?.meta?.total_list_cost}
-              totalLabel="list cost"
-              emptyMessage="No cost share data for the current filters."
-            />
-            <DonutShareChart
-              className="cost-share-donut cost-region-donut"
-              title="Region share"
-              items={regionShare.data?.items}
-              totalValue={regionShare.data?.meta?.total_list_cost}
-              totalLabel="list cost"
-              emptyMessage="No region cost data for the current filters."
-            />
-            <article className="cost-stack-card">
-              <header className="donut-card__header">
-                <div>
-                  <strong>Cost stack</strong>
-                </div>
-              </header>
-              <CostStackTrend
-                data={repoGroupStack.data}
-                selectedName={selectedCostStackName}
-                onSelect={setSelectedCostStackName}
-              />
-            </article>
-          </div>
-        </Panel>
-
-        <Panel
-          title="Cost trend"
-          subtitle="Weekly or monthly list cost with net cost as the final billing comparison line."
-          loading={trend.loading}
-          error={trend.error}
-        >
-          <TrendChart
-            series={costTrendSeries}
-            yFormatter={formatCompactCurrency}
-            height={320}
-            yTickMode="thousands-rounded"
-            yTickSegments={5}
+          </>
+        }
+      >
+        <div className="cost-breakdown-grid">
+          <DonutShareChart
+            className="cost-share-donut"
+            title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
+            items={costShareItems}
+            totalValue={costShare.data?.meta?.total_list_cost}
+            totalLabel="list cost"
+            emptyMessage="No cost share data for the current filters."
+            onItemSelect={canDrillDownCostBreakdown ? startCostBreakdownDrilldown : undefined}
           />
-        </Panel>
-      </div>
+          <article className="cost-stack-card">
+            <header className="donut-card__header">
+              <div>
+                <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
+              </div>
+            </header>
+            <CostStackTrend
+              data={repoGroupStack.data}
+              trendData={trend.data}
+              granularity={costFilters.granularity}
+              selectedName={selectedCostStackName}
+              onSelect={setSelectedCostStackName}
+              drilldownEnabled={canDrillDownCostBreakdown}
+              onDrilldown={startCostBreakdownDrilldown}
+              showComparisonLines={!costBreakdownDrilldown}
+            />
+          </article>
+        </div>
+      </Panel>
 
       <Panel
         title="Engineering Group allocation"
@@ -317,11 +377,29 @@ export default function CostPage({ filters }) {
 
       <Panel
         title="Top unmatched resources"
-        subtitle="Top 20 named resources without an employee match and without GKE workload allocation, ordered by unallocated list cost."
+        subtitle="Top 20 named resources without an employee match and without GKE workload allocation."
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
+        actions={
+          <UnmatchedResourcesControls
+            serviceName={unmatchedServiceName}
+            serviceOptions={unmatchedResources.data?.meta?.services}
+            sortBy={unmatchedSortBy}
+            onServiceChange={setUnmatchedServiceName}
+            onSortChange={setUnmatchedSortBy}
+          />
+        }
       >
         <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+      </Panel>
+
+      <Panel
+        title="Unattached Block Volumes"
+        subtitle="AWS available EBS volumes and GCP Persistent Disk / Hyperdisk volumes with no users. Cost is shown when billing rows can be matched by volume id."
+        loading={unattachedBlockVolumes.loading}
+        error={unattachedBlockVolumes.error}
+      >
+        <UnattachedBlockVolumeTable items={unattachedBlockVolumes.data?.items} />
       </Panel>
     </div>
   );
@@ -330,10 +408,21 @@ export default function CostPage({ filters }) {
 const COST_BREAKDOWN_GROUPS = [
   { key: "owner", label: "Owner", description: "owners" },
   { key: "team", label: "Team", description: "teams" },
-  { key: "service", label: "SKU", description: "SKUs" },
-  { key: "cost_driver", label: "Driver", description: "cost drivers" },
+  { key: "sku", label: "SKU", description: "SKUs" },
+  { key: "cost_driver", label: "SKU class", description: "SKU classes" },
   { key: "project", label: "Project", description: "projects" },
+  { key: "region", label: "Region", description: "regions" },
   { key: "service_exec_id", label: "Exec ID", description: "service exec IDs" },
+];
+
+const COST_BREAKDOWN_DRILLDOWN_GROUPS = {
+  team: "owner",
+  cost_driver: "sku",
+};
+
+const UNMATCHED_RESOURCE_SORT_OPTIONS = [
+  { key: "list_cost", label: "List cost" },
+  { key: "duration", label: "Duration" },
 ];
 
 function CostBreakdownGroupSelector({ value, onChange }) {
@@ -347,12 +436,61 @@ function CostBreakdownGroupSelector({ value, onChange }) {
   );
 }
 
-function CostStackTrend({ data, selectedName, onSelect }) {
+function UnmatchedResourcesControls({
+  serviceName,
+  serviceOptions,
+  sortBy,
+  onServiceChange,
+  onSortChange,
+}) {
+  return (
+    <>
+      <label className="panel-select-control">
+        <span>Service</span>
+        <select value={serviceName} onChange={(event) => onServiceChange(event.target.value)}>
+          <option value="">All services</option>
+          {(serviceOptions || []).map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <SegmentedControl
+        ariaLabel="Unmatched resource sort"
+        options={UNMATCHED_RESOURCE_SORT_OPTIONS}
+        value={sortBy}
+        onChange={onSortChange}
+      />
+    </>
+  );
+}
+
+function CostStackTrend({
+  data,
+  trendData,
+  granularity,
+  selectedName,
+  onSelect,
+  drilldownEnabled = false,
+  onDrilldown = null,
+  showComparisonLines = true,
+}) {
   const items = data?.items || [];
   const totalValue = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const series = selectedName
+  const baseSeries = selectedName
     ? (data?.series || []).filter((item) => item.label === selectedName)
     : data?.series;
+  const series = selectedName
+    ? baseSeries
+    : showComparisonLines
+      ? withCostComparisonLines(
+          baseSeries,
+          trendData?.series,
+          granularity,
+          trendData?.meta?.budget_targets,
+        )
+      : baseSeries;
 
   if (!items.length || !series?.length) {
     return <div className="empty-state">No cost stack data for the current filters.</div>;
@@ -363,16 +501,17 @@ function CostStackTrend({ data, selectedName, onSelect }) {
       <TrendChart
         series={series}
         yFormatter={formatCompactCurrency}
-        height={300}
+        height={340}
         compactY
         stackBars={!selectedName}
         yTickMode="thousands-rounded"
         yTickSegments={5}
         barGroupWidthFactor={0.56}
         barMaxWidth={58}
+        xLabelFormatter={granularity === "month" ? formatMonthAxisLabel : undefined}
         showTooltipSum={!selectedName}
       />
-      <div className="dimension-selector" aria-label="Cost stack value selector">
+      <div className="dimension-selector" aria-label="Cost trend value selector">
         <button
           type="button"
           className={buildDimensionChipClassName(!selectedName)}
@@ -390,7 +529,13 @@ function CostStackTrend({ data, selectedName, onSelect }) {
               type="button"
               className={buildDimensionChipClassName(selectedName === item.name)}
               title={`${item.name}: ${formatCurrency(item.value)} (${formatPercent(sharePct)})`}
-              onClick={() => onSelect(selectedName === item.name ? "" : item.name)}
+              onClick={() => {
+                if (drilldownEnabled && typeof onDrilldown === "function") {
+                  onDrilldown(item);
+                  return;
+                }
+                onSelect(selectedName === item.name ? "" : item.name);
+              }}
             >
               <span>{item.name}</span>
               <strong>{formatCompactCurrency(item.value)}</strong>
@@ -405,6 +550,15 @@ function CostStackTrend({ data, selectedName, onSelect }) {
 
 function hasCostStackItem(items, name) {
   return (items || []).some((item) => item.name === name);
+}
+
+function formatMonthAxisLabel(value) {
+  const text = String(value || "");
+  const match = text.match(/^\d{4}-(\d{2})(?:-\d{2})?$/);
+  if (!match) {
+    return text;
+  }
+  return match[1];
 }
 
 function withSharedCostAllocation(items, enabled) {
@@ -437,24 +591,54 @@ function withSharedCostAllocation(items, enabled) {
   });
 }
 
+function withCostBreakdownDrilldown(items, enabled) {
+  if (!enabled || !items?.length) {
+    return items;
+  }
+
+  return items.map((item) => ({
+    ...item,
+    interactive: true,
+  }));
+}
+
 function formatDelta(value) {
   const numeric = Number(value || 0);
   const sign = numeric > 0 ? "+" : "";
   return `WoW ${sign}${formatPercent(numeric)}`;
 }
 
-function withBudgetSeries(series, granularity, budgetTargets) {
-  if (!series?.length) {
-    return series;
+function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTargets) {
+  if (!baseSeries?.length) {
+    return baseSeries;
   }
+
+  const labels = Array.from(
+    new Set(baseSeries.flatMap((item) => item.points.map((point) => point[0]))),
+  ).sort();
+  const overlays = [];
+  const netCostSeries = trendSeries?.find((item) => item.key === "net_cost");
+  if (netCostSeries) {
+    const netCostByBucket = new Map(netCostSeries.points);
+    const netCostPoints = labels.map((label) => [
+      label,
+      netCostByBucket.has(label) ? netCostByBucket.get(label) : null,
+    ]);
+    if (netCostPoints.some(([, value]) => value != null)) {
+      overlays.push({
+        key: "net_cost",
+        label: "Net cost",
+        type: "line",
+        points: netCostPoints,
+      });
+    }
+  }
+
   const targetsByBucket =
     budgetTargets && typeof budgetTargets === "object" ? budgetTargets : {};
   if (!Object.keys(targetsByBucket).length) {
-    return series;
+    return [...baseSeries, ...overlays];
   }
-  const labels = Array.from(
-    new Set(series.flatMap((item) => item.points.map((point) => point[0]))),
-  ).sort();
   const budgetPoints = labels.map((label) => {
     const budgetTarget = Number(targetsByBucket[label] || 0);
     if (!budgetTarget) {
@@ -463,11 +647,12 @@ function withBudgetSeries(series, granularity, budgetTargets) {
     return [label, budgetTarget];
   });
   if (!budgetPoints.some(([, value]) => value != null)) {
-    return series;
+    return [...baseSeries, ...overlays];
   }
 
   return [
-    ...series,
+    ...baseSeries,
+    ...overlays,
     {
       key: "budget_target",
       label: granularity === "month" ? "Monthly budget" : "Weekly budget",
