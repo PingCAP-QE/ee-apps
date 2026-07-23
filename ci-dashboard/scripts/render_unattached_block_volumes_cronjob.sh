@@ -2,7 +2,7 @@
 set -euo pipefail
 
 namespace="apps"
-image="ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest"
+image=""
 cronjob_name="ci-dashboard-sync-unattached-block-volumes"
 schedule="20 3 * * *"
 time_zone="Asia/Shanghai"
@@ -42,9 +42,11 @@ Render a Kubernetes CronJob manifest for recurring unattached block volume sync.
 Usage:
   render_unattached_block_volumes_cronjob.sh [options]
 
+Required:
+  --image IMAGE                     Jobs image with the exact release workflow tag.
+
 Optional:
   --namespace NAME                  Kubernetes namespace. Default: apps
-  --image IMAGE                     Jobs image. Default: ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest
   --cronjob-name NAME               CronJob name. Default: ci-dashboard-sync-unattached-block-volumes
   --schedule CRON                   Cron expression. Default: "20 3 * * *"
   --time-zone TZ                    CronJob timeZone. Default: Asia/Shanghai
@@ -226,6 +228,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "${image}" ]]; then
+  echo "--image is required; use the exact ci-dashboard-jobs tag from the ee-apps release workflow" >&2
+  exit 1
+fi
+
 if [[ -z "${aws_ebs_regions}" && -z "${gcp_projects}" ]]; then
   echo "at least one of --aws-ebs-regions or --gcp-projects is required" >&2
   exit 1
@@ -275,6 +282,15 @@ EOF
 )
 fi
 
+aws_regions_env_block=""
+if [[ -n "${aws_ebs_regions}" ]]; then
+  aws_regions_env_block=$(cat <<EOF
+                - name: CI_DASHBOARD_AWS_EBS_REGIONS
+                  value: "${aws_ebs_regions}"
+EOF
+)
+fi
+
 aws_account_env_block=""
 if [[ -n "${aws_ebs_account_id}" ]]; then
   aws_account_env_block=$(cat <<EOF
@@ -319,6 +335,15 @@ EOF
 EOF
 )
   fi
+fi
+
+gcp_projects_env_block=""
+if [[ -n "${gcp_projects}" ]]; then
+  gcp_projects_env_block=$(cat <<EOF
+                - name: CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS
+                  value: "${gcp_projects}"
+EOF
+)
 fi
 
 gcp_owner_label_keys_env_block=""
@@ -385,14 +410,12 @@ ${service_account_block}
                   value: "1"
                 - name: CI_DASHBOARD_LOG_LEVEL
                   value: ${log_level}
-                - name: CI_DASHBOARD_AWS_EBS_REGIONS
-                  value: "${aws_ebs_regions}"
+${aws_regions_env_block}
 ${aws_account_env_block}
 ${aws_owner_tag_keys_env_block}
 ${aws_secret_env_block}
 ${aws_session_token_env_block}
-                - name: CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS
-                  value: "${gcp_projects}"
+${gcp_projects_env_block}
 ${gcp_owner_label_keys_env_block}
 ${gcp_access_token_env_block}
 ${ca_env_block}

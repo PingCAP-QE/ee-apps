@@ -284,6 +284,8 @@ Notes:
 Preconditions:
 
 - apply `029_create_cost_unattached_block_volume_daily.sql` to the dashboard database before the first run
+- use the exact `ci-dashboard-jobs` image tag printed by the successful ee-apps release workflow `Generating tags...` step; do not use `latest`, do not guess from dates, and do not treat `git describe` as final
+- confirm the jobs image exists in GHCR before applying ee-ops manifests, for example `docker manifest inspect ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag>`
 - configure at least one scan target: `CI_DASHBOARD_AWS_EBS_REGIONS` or `CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS`
 - grant AWS read access for `ec2:DescribeVolumes`; if `CI_DASHBOARD_AWS_EBS_ACCOUNT_ID` is omitted, the job also needs `sts:GetCallerIdentity`
 - grant GCP read access for Compute Engine disks in each configured project; the job reads an access token from `CI_DASHBOARD_GCP_ACCESS_TOKEN` or from the pod metadata server
@@ -350,4 +352,5 @@ Notes:
 
 - The job only writes the snapshot table and job state; actual cost is joined later from existing billing attribution rows.
 - `sync-unattached-ebs-volumes` is kept for AWS-only debug/backfill. Production scheduling should use `sync-unattached-block-volumes` so AWS and GCP snapshots advance together.
+- `CI_DASHBOARD_GCP_BLOCK_VOLUME_PROJECTS` falls back to `CI_DASHBOARD_GCP_PROJECT` when unset or empty. For an AWS-only CronJob, make sure the `envFrom` secret and pod environment do not define `CI_DASHBOARD_GCP_PROJECT`; an empty `--gcp-projects` value does not disable this fallback.
 - Docker images copy `ci-dashboard/sql/`, but they do not apply migrations automatically. Apply SQL 029 through the existing database rollout path before unsuspending the CronJob.
