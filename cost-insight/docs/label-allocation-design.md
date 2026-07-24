@@ -97,7 +97,9 @@ END AS vendor_tags_json
 其中 `shared_pool` 来自 nested `resource_tags.key_value` 的 `user_shared_pool`；`cluster` 来自扁平字段
 `tag_cluster`。已确认 account `946646677266` 近 30 天 staging key 是 `user_shared_pool`，不是
 AWS console 上看到的 `shared-pool`。
-`project` 资源标签同步读取 `icost_project`（staging 扁平列为 `tag_icost_project`）。
+AWS 资源 tag key 由 `project` 重命名为 `icost_project`（staging 扁平列为 `tag_icost_project`）。
+读取时用 `NULLIF(COALESCE(tag_icost_project, tag_project), '')` 兜底，使 retag 之前的历史
+CUR 行仍能归属 `repo`；待所有账户保留期内的分区完成 retag 后可去掉 `tag_project` 分支。
 sync 写入 TiDB 前会规范化 JSON，去掉 null/empty key，因此 shared_pool-only 行最终存为
 `{"shared_pool":"a"}`。
 
