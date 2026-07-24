@@ -22,10 +22,10 @@ CREATE TABLE tcms_cost.resource_allocation (
   vendor VARCHAR(32) NOT NULL,
   account_id VARCHAR(128) NULL,
   vendor_tags_json JSON NOT NULL,
-  owner_email VARCHAR(255) NULL,
-  service VARCHAR(255) NULL,
-  project VARCHAR(255) NULL,
-  service_exec_id VARCHAR(255) NULL,
+  icost_owner_email VARCHAR(255) NULL,
+  icost_service VARCHAR(255) NULL,
+  icost_project VARCHAR(255) NULL,
+  icost_service_exec_id VARCHAR(255) NULL,
   valid_from DATE NULL,
   valid_to DATE NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,8 +37,8 @@ CREATE TABLE tcms_cost.resource_allocation (
     valid_from,
     valid_to
   ),
-  KEY idx_resource_allocation_owner (owner_email),
-  KEY idx_resource_allocation_project (project)
+  KEY idx_resource_allocation_owner (icost_owner_email),
+  KEY idx_resource_allocation_project (icost_project)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;

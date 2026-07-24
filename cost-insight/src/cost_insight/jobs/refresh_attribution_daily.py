@@ -308,6 +308,18 @@ _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
 _ALLOCATION_MATCH_TAGS_JSON = _allocation_tags_for_match_sql(
     "allocation_raw.vendor_tags_json"
 )
+_ALLOCATION_SOURCE_COLUMNS = """
+allocation_raw.id,
+allocation_raw.vendor,
+allocation_raw.account_id,
+allocation_raw.vendor_tags_json,
+allocation_raw.icost_owner_email AS owner_email,
+allocation_raw.icost_service AS service,
+allocation_raw.icost_project AS project,
+allocation_raw.icost_service_exec_id AS service_exec_id,
+allocation_raw.valid_from,
+allocation_raw.valid_to
+""".strip()
 _MATCHED_OWNER = """
 COALESCE(
   override_employee.email,
@@ -1036,7 +1048,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 FROM cost_bq_export_summary_daily summary
                 JOIN (
                   SELECT
-                    allocation_raw.*,
+                    {_ALLOCATION_SOURCE_COLUMNS},
                     {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json
                   FROM {tcms_table} allocation_raw
                 ) allocation
@@ -1061,7 +1073,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               JOIN {tcms_table} allocation_raw
                 ON allocation_raw.vendor = summary.vendor
                AND allocation_raw.account_id = summary.account_id
-               AND allocation_raw.owner_email IS NOT NULL
+               AND allocation_raw.icost_owner_email IS NOT NULL
                AND summary.usage_date >= COALESCE(allocation_raw.valid_from, '1900-01-01')
                AND summary.usage_date <= COALESCE(allocation_raw.valid_to, '9999-12-31')
               WHERE summary.usage_date BETWEEN :start_date AND :end_date
@@ -1215,7 +1227,7 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             FROM cost_bq_export_summary_daily summary
             JOIN (
               SELECT
-                allocation_raw.*,
+                {_ALLOCATION_SOURCE_COLUMNS},
                 {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json
               FROM {tcms_table} allocation_raw
             ) allocation

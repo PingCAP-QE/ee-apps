@@ -56,6 +56,7 @@ def test_build_aws_billing_summary_query_contains_expected_filters() -> None:
 
     assert "line_item_usage_account_id = @account_id" in query
     assert "PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end" in query
+    assert "NULLIF(COALESCE(tag_icost_project, tag_project), '') AS repo" in query
     assert "WHERE kv.key = 'user_shared_pool'" in query
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
     assert "NULLIF(line_item_usage_type, '') AS usage_type" in query
@@ -74,6 +75,7 @@ def test_build_aws_unmatched_resource_query_contains_usage_seconds_logic() -> No
 
     assert "WHEN COUNTIF(pricing_unit = 'hour') = COUNT(*)" in query
     assert "resource_name IS NOT NULL" in query
+    assert "NULLIF(COALESCE(tag_icost_project, tag_project), '') AS repo" in query
     assert "WHERE kv.key = 'user_shared_pool'" in query
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
     assert "END AS vendor_tags_json" in query
