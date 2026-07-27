@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -33,21 +34,37 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	cfg, err := config.Load[config.Workers](*configFile)
+	cfgReloadable, err := config.NewReloadable[config.Workers](*configFile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("load config failed")
 	}
+	cfg := cfgReloadable.Get()
+
+	// Register reload handler for config changes.
+	cfgReloadable.OnReload(func(newCfg *config.Workers) {
+		log.Info().Msg("config reloaded - restart worker to apply Kafka/Redis changes")
+	})
 
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.
 	errc := make(chan error)
 
-	// Setup interrupt handler. This optional step configures the process so
-	// that SIGINT and SIGTERM signals cause the services to stop gracefully.
+	// Setup interrupt handler with SIGHUP for config reload.
 	go func() {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		errc <- fmt.Errorf("%s", <-c)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+		for {
+			sig := <-c
+			if sig == syscall.SIGHUP {
+				log.Info().Msg("received SIGHUP, reloading configuration")
+				if err := cfgReloadable.Reload(); err != nil {
+					log.Err(err).Msg("config reload error")
+				}
+			} else {
+				errc <- fmt.Errorf("%s", sig)
+				return
+			}
+		}
 	}()
 
 	// Start workers.
@@ -63,6 +80,9 @@ func main() {
 	if workerFn := newWorkerFunc(ctx, "image", image.NewWorker, cfg.Image); workerFn != nil {
 		wg.Go(workerFn)
 	}
+
+	// Start auto-reload polling
+	go cfgReloadable.AutoReload(ctx, 30*time.Second)
 
 	// Wait for signal.
 	log.Warn().Msgf("exiting (%v)", <-errc)

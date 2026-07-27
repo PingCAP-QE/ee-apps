@@ -35,12 +35,7 @@ func TestImageServiceCopyFlow(t *testing.T) {
 
 	// Create the service with a relatively short timeout
 	service := &imagesrvc{
-		BaseService: &share.BaseService{
-			Logger:      &logger,
-			KafkaWriter: nil,
-			RedisClient: redisClient,
-			EventSource: "test",
-		},
+		BaseService: share.NewBaseServiceForTest(&logger, nil, redisClient, "test"),
 	}
 
 	// Setup test image names

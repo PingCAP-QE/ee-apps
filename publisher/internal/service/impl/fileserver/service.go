@@ -26,6 +26,11 @@ func NewService(logger *zerolog.Logger, cfg config.Service) fileserver.Service {
 	}
 }
 
+// Reload re-creates Kafka and Redis clients from the given service config.
+func (s *fileserversrvc) Reload(cfg config.Service) {
+	s.BaseService.Reload(cfg)
+}
+
 // RequestToPublish implements request-to-publish.
 func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.RequestToPublishPayload) (res []string, err error) {
 	s.Logger.Info().Msgf("fileserver.request-to-publish")
@@ -47,7 +52,7 @@ func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.Req
 			Value: bs,
 		})
 	}
-	err = s.KafkaWriter.WriteMessages(ctx, messages...)
+	err = s.Writer().WriteMessages(ctx, messages...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send message to Kafka: %v", err)
 	}
@@ -59,7 +64,7 @@ func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.Req
 
 	// 4. Init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.RedisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.StateTTL).Err(); err != nil {
+		if err := s.Client().SetNX(ctx, requestID, share.PublishStateQueued, s.StateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}
@@ -71,7 +76,7 @@ func (s *fileserversrvc) RequestToPublish(ctx context.Context, p *fileserver.Req
 // QueryPublishingStatus implements query-publishing-status.
 func (s *fileserversrvc) QueryPublishingStatus(ctx context.Context, p *fileserver.QueryPublishingStatusPayload) (res string, err error) {
 	s.Logger.Info().Msgf("fileserver.query-publishing-status")
-	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.Client(), p.RequestID)
 }
 
 func (s *fileserversrvc) composeEvents(request *PublishRequestFS) []cloudevents.Event {

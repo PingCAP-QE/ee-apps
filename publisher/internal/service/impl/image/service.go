@@ -27,6 +27,11 @@ func NewService(logger *zerolog.Logger, cfg config.Service) image.Service {
 	}
 }
 
+// Reload re-creates Kafka and Redis clients from the given service config.
+func (s *imagesrvc) Reload(cfg config.Service) {
+	s.BaseService.Reload(cfg)
+}
+
 // RequestToCopy implements image.Service.
 func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPayload) (res string, err error) {
 	return s.enqueueRequest(ctx, share.EventTypeImagePublishRequest, p.Source, p)
@@ -34,7 +39,7 @@ func (s *imagesrvc) RequestToCopy(ctx context.Context, p *image.RequestToCopyPay
 
 // QueryCopyingStatus implements image.Service.
 func (s *imagesrvc) QueryCopyingStatus(ctx context.Context, p *image.QueryCopyingStatusPayload) (string, error) {
-	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.Client(), p.RequestID)
 }
 
 // RequestMultiarchCollect implements image.Service.
@@ -73,7 +78,7 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 					return nil, fmt.Errorf("multiarch collect failed, task state: %s", state)
 				}
 				// Fetch the result from Redis
-				resultJSON, err := s.RedisClient.Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
+				resultJSON, err := s.Client().Get(ctx, fmt.Sprintf("%s-result", requestID)).Bytes()
 				if err != nil {
 					return nil, fmt.Errorf("failed to get result from redis: %w", err)
 				}
@@ -88,7 +93,7 @@ func (s *imagesrvc) RequestMultiarchCollect(ctx context.Context, p *image.Reques
 
 // QueryMultiarchCollectStatus implements image.Service.
 func (s *imagesrvc) QueryMultiarchCollectStatus(ctx context.Context, p *image.QueryMultiarchCollectStatusPayload) (string, error) {
-	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.Client(), p.RequestID)
 }
 
 // RequestToCopy implements image.Service.
@@ -107,13 +112,13 @@ func (s *imagesrvc) enqueueRequest(ctx context.Context, requestType, subject str
 		Key:   []byte(event.ID()),
 		Value: bs,
 	}
-	if err := s.KafkaWriter.WriteMessages(ctx, message); err != nil {
+	if err := s.Writer().WriteMessages(ctx, message); err != nil {
 		return "", fmt.Errorf("failed to send message to Kafka: %v", err)
 	}
 
 	// 4. Init the request dealing status in redis with the request id.
 	requestID := event.ID()
-	if err := s.RedisClient.SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
+	if err := s.Client().SetNX(ctx, requestID, share.PublishStateQueued, share.DefaultStateTTL).Err(); err != nil {
 		return "", fmt.Errorf("failed to initialize request status: %v", err)
 	}
 	s.Logger.Info().

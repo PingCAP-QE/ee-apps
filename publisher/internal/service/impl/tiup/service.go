@@ -43,6 +43,27 @@ func NewService(logger *zerolog.Logger, cfg config.Service) gentiup.Service {
 	return srvc
 }
 
+// Reload re-creates Kafka/Redis clients and reloads the delivery config from the given service config.
+func (s *tiupsrvc) Reload(cfg config.Service) {
+	s.BaseService.Reload(cfg)
+
+	tiupCfg := cfg.Services["tiup"]
+	switch v := tiupCfg.(type) {
+	case map[string]any:
+		deliveryConfigFile := v[tiupServiceDeliveryCfgKey]
+		switch file := deliveryConfigFile.(type) {
+		case string:
+			ret, err := config.Load[DeliveryConfig](file)
+			if err != nil {
+				s.Logger.Err(err).Msg("failed to reload delivery config")
+				return
+			}
+			s.deliveryConfig = ret
+			s.Logger.Info().Msg("delivery config reloaded")
+		}
+	}
+}
+
 // RequestToPublish implements delivery-by-rules).
 func (s *tiupsrvc) DeliveryByRules(ctx context.Context, p *gentiup.DeliveryByRulesPayload) (res []string, err error) {
 	s.Logger.Info().Msgf("tiup.delivery-by-rules")
@@ -105,13 +126,13 @@ func (s *tiupsrvc) RequestToPublishSingle(ctx context.Context, p *gentiup.Publis
 // QueryPublishingStatus implements query-publishing-status.
 func (s *tiupsrvc) QueryPublishingStatus(ctx context.Context, p *gentiup.QueryPublishingStatusPayload) (res string, err error) {
 	s.Logger.Info().Msgf("tiup.query-publishing-status")
-	return share.QueryStatusFromRedis(ctx, s.RedisClient, p.RequestID)
+	return share.QueryStatusFromRedis(ctx, s.Client(), p.RequestID)
 }
 
 // ResetRateLimit implements tiup.Service.
 func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
 	// get the keys
-	iter := s.RedisClient.Scan(ctx, 0, fmt.Sprintf("%s:*", redisKeyPrefixTiupRateLimit), 0).Iterator()
+	iter := s.Client().Scan(ctx, 0, fmt.Sprintf("%s:*", redisKeyPrefixTiupRateLimit), 0).Iterator()
 	var keys []string
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
@@ -124,7 +145,7 @@ func (s *tiupsrvc) ResetRateLimit(ctx context.Context) error {
 	if len(keys) == 0 {
 		return nil
 	}
-	if err := s.RedisClient.Del(ctx, keys...).Err(); err != nil {
+	if err := s.Client().Del(ctx, keys...).Err(); err != nil {
 		s.Logger.Err(err).Any("keys", keys).Msg("failed to delete keys")
 		return fmt.Errorf("failed to delete keys: %v", err)
 	}
@@ -146,7 +167,7 @@ func (s *tiupsrvc) enqueueTiupPublishRequests(ctx context.Context, requests []ge
 			Value: bs,
 		})
 	}
-	err := s.KafkaWriter.WriteMessages(ctx, messages...)
+	err := s.Writer().WriteMessages(ctx, messages...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send message to Kafka: %v", err)
 	}
@@ -158,7 +179,7 @@ func (s *tiupsrvc) enqueueTiupPublishRequests(ctx context.Context, requests []ge
 
 	// init the request dealing status in redis with the request id.
 	for _, requestID := range requestIDs {
-		if err := s.RedisClient.SetNX(ctx, requestID, share.PublishStateQueued, s.StateTTL).Err(); err != nil {
+		if err := s.Client().SetNX(ctx, requestID, share.PublishStateQueued, s.StateTTL).Err(); err != nil {
 			return nil, fmt.Errorf("failed to set initial status in Redis: %v", err)
 		}
 	}

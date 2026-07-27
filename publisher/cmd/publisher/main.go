@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"goa.design/clue/debug"
@@ -59,11 +60,12 @@ func main() {
 	zerolog.SetGlobalLevel(logLevel)
 	loggerCtx := zerolog.New(os.Stderr).With().Timestamp()
 
-	// Load and parse configuration
-	cfg, err := config.Load[config.Service](*configFile)
+	// Load and parse configuration with hot-reload support
+	cfgReloadable, err := config.NewReloadable[config.Service](*configFile)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
 	}
+	cfg := cfgReloadable.Get()
 
 	// Initialize the services.
 	tiupLogger := loggerCtx.Str("service", "tiup").Logger()
@@ -74,6 +76,28 @@ func main() {
 	imgSvc := implimg.NewService(&imgLogger, *cfg)
 	tidbcloudLogger := loggerCtx.Str("service", "tidbcloud").Logger()
 	tidbcloudSvc := impltidbcloud.NewService(&tidbcloudLogger, *cfg)
+
+	// Register reload handlers for services that support hot-reload.
+	cfgReloadable.OnReload(func(newCfg *config.Service) {
+		if r, ok := tiupSvc.(interface{ Reload(config.Service) }); ok {
+			r.Reload(*newCfg)
+		}
+	})
+	cfgReloadable.OnReload(func(newCfg *config.Service) {
+		if r, ok := fsSvc.(interface{ Reload(config.Service) }); ok {
+			r.Reload(*newCfg)
+		}
+	})
+	cfgReloadable.OnReload(func(newCfg *config.Service) {
+		if r, ok := imgSvc.(interface{ Reload(config.Service) }); ok {
+			r.Reload(*newCfg)
+		}
+	})
+	cfgReloadable.OnReload(func(newCfg *config.Service) {
+		if r, ok := tidbcloudSvc.(interface{ Reload(config.Service) }); ok {
+			r.Reload(*newCfg)
+		}
+	})
 
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
@@ -107,14 +131,29 @@ func main() {
 
 	// Setup interrupt handler. This optional step configures the process so
 	// that SIGINT and SIGTERM signals cause the services to stop gracefully.
+	// SIGHUP triggers a configuration reload.
 	go func() {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		errc <- fmt.Errorf("%s", <-c)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+		for {
+			sig := <-c
+			if sig == syscall.SIGHUP {
+				log.Printf(ctx, "received SIGHUP, reloading configuration")
+				if err := cfgReloadable.Reload(); err != nil {
+					log.Printf(ctx, "config reload error: %v", err)
+				}
+			} else {
+				errc <- fmt.Errorf("%s", sig)
+				return
+			}
+		}
 	}()
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
+
+	// Start auto-reload polling
+	go cfgReloadable.AutoReload(ctx, 30*time.Second)
 
 	// Start the servers and send errors (if any) to the error channel.
 	switch *hostF {

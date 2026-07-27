@@ -56,6 +56,40 @@ func NewService(logger *zerolog.Logger, cfg config.Service) tidbcloud.Service {
 	return srvc
 }
 
+// Reload re-creates Kafka/Redis clients and reloads ops and test platforms configs.
+func (s *tidbcloudsrvc) Reload(cfg config.Service) {
+	s.BaseService.Reload(cfg)
+
+	tidbcloudCfg := cfg.Services["tidbcloud"]
+	switch v := tidbcloudCfg.(type) {
+	case map[string]any:
+		if configFileAny, ok := v["ops_config_file"]; ok {
+			configFile, ok := configFileAny.(string)
+			if ok && strings.TrimSpace(configFile) != "" {
+				ret, err := config.Load[OpsConfig](configFile)
+				if err != nil {
+					s.Logger.Err(err).Msg("failed to reload ops config")
+				} else {
+					s.opsCfg = ret
+					s.Logger.Info().Msg("ops config reloaded")
+				}
+			}
+		}
+		if configFileAny, ok := v["testplatforms_config_file"]; ok {
+			configFile, ok := configFileAny.(string)
+			if ok && strings.TrimSpace(configFile) != "" {
+				ret, err := config.Load[TestPlatformsConfig](configFile)
+				if err != nil {
+					s.Logger.Err(err).Msg("failed to reload test platforms config")
+				} else {
+					s.tpsCfg = ret
+					s.Logger.Info().Msg("test platforms config reloaded")
+				}
+			}
+		}
+	}
+}
+
 func parseImageRepoTag(image string) (string, string, error) {
 	// use existing helper for "@sha256:" support
 	if strings.Contains(image, "@sha256:") {
