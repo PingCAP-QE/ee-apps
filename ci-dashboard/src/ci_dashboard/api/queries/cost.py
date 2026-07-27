@@ -44,6 +44,8 @@ ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
 BUDGET_FALLBACK_MAX_DAYS = 31
+COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
+COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
 UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
     "kube:unallocated",
     "kube:system-overhead",
@@ -750,6 +752,8 @@ def get_unmatched_resources(
     with engine.begin() as connection:
         attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
         resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
+        attr_index_hint = _cost_attribution_index_hint(connection, filters)
+        resource_index_hint = _cost_unmatched_resource_index_hint(connection, filters)
         namespace_clause, namespace_params = _build_unallocated_namespace_where("r.namespace")
         org_match = _null_safe_eq(connection, "m.org", "r.org")
         repo_match = _null_safe_eq(connection, "m.repo", "r.repo")
@@ -757,7 +761,7 @@ def get_unmatched_resources(
         resource_list_cost_expr = _billing_report_list_cost_expr("r")
         base_cte = f"""
             WITH unmatched_dimensions AS (
-              SELECT
+              SELECT {attr_index_hint}
                 c.usage_date AS usage_date,
                 c.vendor AS vendor,
                 c.account_id AS account_id,
@@ -779,7 +783,7 @@ def get_unmatched_resources(
                 c.author
             ),
             unallocated_resource_rows AS (
-              SELECT
+              SELECT {resource_index_hint}
                 r.resource_name AS resource_name,
                 COALESCE(NULLIF(r.service_name, ''), '(no service)') AS service_name,
                 r.sku_name AS sku_name,
@@ -1561,6 +1565,48 @@ def _build_cost_where(
         conditions.append(f"{prefix}target_branch = :branch")
         params["branch"] = filters.branch
     return " AND ".join(conditions), params
+
+
+def _cost_attribution_index_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    table_alias: str = "c",
+) -> str:
+    return _source_date_index_hint(
+        connection,
+        filters,
+        table_alias=table_alias,
+        index_name=COST_ATTRIBUTION_SOURCE_DATE_INDEX,
+    )
+
+
+def _cost_unmatched_resource_index_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    table_alias: str = "r",
+) -> str:
+    return _source_date_index_hint(
+        connection,
+        filters,
+        table_alias=table_alias,
+        index_name=COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX,
+    )
+
+
+def _source_date_index_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    table_alias: str,
+    index_name: str,
+) -> str:
+    if connection.dialect.name == "sqlite":
+        return ""
+    if not (filters.cost_vendor and filters.cost_account_id):
+        return ""
+    if not (filters.start_date or filters.end_date):
+        return ""
+    return f"/*+ USE_INDEX({table_alias}, {index_name}) */"
 
 
 def _billing_report_list_cost_expr(table_alias: str) -> str:

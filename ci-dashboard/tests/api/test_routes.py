@@ -47,6 +47,32 @@ def test_cost_null_safe_eq_uses_dialect_specific_operator() -> None:
     assert cost_queries._null_safe_eq(mysql_connection, "m.org", "r.org") == "m.org <=> r.org"
 
 
+def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -> None:
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    scoped = CommonFilters(
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 7, 19),
+        cost_vendor="aws",
+        cost_account_id="946646677266",
+    )
+    all_sources = CommonFilters(start_date=date(2026, 6, 1), end_date=date(2026, 7, 19))
+    unbounded_source = CommonFilters(
+        cost_vendor="aws",
+        cost_account_id="946646677266",
+    )
+
+    assert cost_queries._cost_attribution_index_hint(mysql_connection, scoped) == (
+        "/*+ USE_INDEX(c, idx_cost_attribution_source_date_employee) */"
+    )
+    assert cost_queries._cost_unmatched_resource_index_hint(mysql_connection, scoped) == (
+        "/*+ USE_INDEX(r, idx_cost_unmatched_source_date_namespace) */"
+    )
+    assert cost_queries._cost_attribution_index_hint(mysql_connection, all_sources) == ""
+    assert cost_queries._cost_attribution_index_hint(mysql_connection, unbounded_source) == ""
+    assert cost_queries._cost_attribution_index_hint(sqlite_connection, scoped) == ""
+
+
 def _insert_build(
     sqlite_engine,
     *,
