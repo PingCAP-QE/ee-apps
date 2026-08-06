@@ -102,40 +102,6 @@ func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 	}
 }
 
-// reconcileBuild syncs a single build's status with its PipelineRun status.
-func (s *devbuildsrvc) reconcileBuild(ctx context.Context, build *ent.DevBuild) error {
-	logger := s.logger.With().Int("build_id", build.ID).Logger()
-
-	// Extract event IDs from tekton_status
-	eventIDs := build.TektonStatus.TriggersEventIds
-	if len(eventIDs) == 0 {
-		logger.Debug().Msg("no event IDs found, skipping")
-		return nil
-	}
-
-	// Query PipelineRuns for each event ID
-	for _, eventID := range eventIDs {
-		pipelineRuns, err := s.queryPipelineRuns(ctx, eventID)
-		if err != nil {
-			logger.Err(err).Str("event_id", eventID).Msg("failed to query pipeline runs")
-			continue
-		}
-
-		if len(pipelineRuns) == 0 {
-			logger.Debug().Str("event_id", eventID).Msg("no pipeline runs found for event ID")
-			continue
-		}
-
-		// Update build status based on PipelineRun status
-		if err := s.updateBuildFromPipelineRuns(ctx, build, pipelineRuns); err != nil {
-			logger.Err(err).Str("event_id", eventID).Msg("failed to update build from pipeline runs")
-			continue
-		}
-	}
-
-	return nil
-}
-
 // queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
 func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([]tknv1.PipelineRun, error) {
 	labelSelector := fmt.Sprintf("triggers.tekton.dev/triggers-eventid=%s", eventID)
