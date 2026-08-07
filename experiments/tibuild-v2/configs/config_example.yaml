@@ -25,6 +25,15 @@ tekton:
   reconciler_interval: "15s"
   reconciler_since: "24h"
 
+# Lark notifications (devbuild status changes). Disabled by default.
+lark:
+  enabled: false
+  app_id: "cli_xxxxxxxxxxxxxxxx"
+  app_secret: "your-app-secret"
+  channels:
+    - name: "devbuild-team"
+      chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:
   pd: pingcap/pd
