@@ -34,7 +34,7 @@ func UsageCommands() []string {
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Ipsam voluptatum enim harum dolorum.\",\n      \"target\": \"Quia illo blanditiis totam in beatae.\"\n   }'" + "\n" +
+	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Velit ipsam voluptatum enim harum.\",\n      \"target\": \"Natus quia illo blanditiis totam in.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "devbuild list --page 8383175744124057575 --page-size 217411124375301126 --hotfix false --sort \"updatedAt\" --direction \"asc\" --created-by \"Veniam eaque nisi.\"" + "\n" +
 		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
 		""
@@ -79,9 +79,8 @@ func ParseEndpoint(
 		devbuildCreateBodyFlag   = devbuildCreateFlags.String("body", "REQUIRED", "")
 		devbuildCreateDryrunFlag = devbuildCreateFlags.String("dryrun", "", "")
 
-		devbuildGetFlags    = flag.NewFlagSet("get", flag.ExitOnError)
-		devbuildGetIDFlag   = devbuildGetFlags.String("id", "REQUIRED", "ID of build")
-		devbuildGetSyncFlag = devbuildGetFlags.String("sync", "", "")
+		devbuildGetFlags  = flag.NewFlagSet("get", flag.ExitOnError)
+		devbuildGetIDFlag = devbuildGetFlags.String("id", "REQUIRED", "ID of build")
 
 		devbuildUpdateFlags      = flag.NewFlagSet("update", flag.ExitOnError)
 		devbuildUpdateBodyFlag   = devbuildUpdateFlags.String("body", "REQUIRED", "")
@@ -239,7 +238,7 @@ func ParseEndpoint(
 				data, err = devbuildc.BuildCreatePayload(*devbuildCreateBodyFlag, *devbuildCreateDryrunFlag)
 			case "get":
 				endpoint = c.Get()
-				data, err = devbuildc.BuildGetPayload(*devbuildGetIDFlag, *devbuildGetSyncFlag)
+				data, err = devbuildc.BuildGetPayload(*devbuildGetIDFlag)
 			case "update":
 				endpoint = c.Update()
 				data, err = devbuildc.BuildUpdatePayload(*devbuildUpdateBodyFlag, *devbuildUpdateIDFlag, *devbuildUpdateDryrunFlag)
@@ -293,7 +292,7 @@ func artifactSyncImageUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Ipsam voluptatum enim harum dolorum.\",\n      \"target\": \"Quia illo blanditiis totam in beatae.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Velit ipsam voluptatum enim harum.\",\n      \"target\": \"Natus quia illo blanditiis totam in.\"\n   }'")
 }
 
 func artifactGetImageSyncTaskUsage() {
@@ -406,7 +405,6 @@ func devbuildGetUsage() {
 	// Header with flags
 	fmt.Fprintf(os.Stderr, "%s [flags] devbuild get", os.Args[0])
 	fmt.Fprint(os.Stderr, " -id INT")
-	fmt.Fprint(os.Stderr, " -sync BOOL")
 	fmt.Fprintln(os.Stderr)
 
 	// Description
@@ -415,11 +413,10 @@ func devbuildGetUsage() {
 
 	// Flags list
 	fmt.Fprintln(os.Stderr, `    -id INT: ID of build`)
-	fmt.Fprintln(os.Stderr, `    -sync BOOL: `)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild get --id 1 --sync true")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild get --id 1")
 }
 
 func devbuildUpdateUsage() {

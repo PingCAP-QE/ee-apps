@@ -175,16 +175,12 @@ var _ = Service("devbuild", func() {
 			Attribute("id", Int, "ID of build", func() {
 				Example(1)
 			})
-			Attribute("sync", Boolean, "Whether sync with jenkins", func() {
-				Default(false)
-			})
 			Required("id")
 		})
 		Result(DevBuild)
 		Error("http_error", HTTPError, "Bad Request")
 		HTTP(func() {
 			GET("/{id}")
-			Param("sync")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)

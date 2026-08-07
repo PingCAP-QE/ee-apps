@@ -153,8 +153,7 @@ func TestDevBuildCRUD(t *testing.T) {
 
 		// Then get it
 		getPayload := &devbuild.GetPayload{
-			ID:   created.ID,
-			Sync: false,
+			ID: created.ID,
 		}
 
 		build, err := env.service.Get(ctx, getPayload)

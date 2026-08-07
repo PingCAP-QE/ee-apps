@@ -260,9 +260,8 @@ func DecodeGetRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Dec
 	return func(r *http.Request) (*devbuild.GetPayload, error) {
 		var payload *devbuild.GetPayload
 		var (
-			id   int
-			sync bool
-			err  error
+			id  int
+			err error
 
 			params = mux.Vars(r)
 		)
@@ -274,20 +273,10 @@ func DecodeGetRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Dec
 			}
 			id = int(v)
 		}
-		{
-			syncRaw := r.URL.Query().Get("sync")
-			if syncRaw != "" {
-				v, err2 := strconv.ParseBool(syncRaw)
-				if err2 != nil {
-					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("sync", syncRaw, "boolean"))
-				}
-				sync = v
-			}
-		}
 		if err != nil {
 			return payload, err
 		}
-		payload = NewGetPayload(id, sync)
+		payload = NewGetPayload(id)
 
 		return payload, nil
 	}

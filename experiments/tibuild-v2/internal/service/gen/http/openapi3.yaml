@@ -25,8 +25,8 @@ paths:
                         schema:
                             $ref: '#/components/schemas/ImageSyncRequest'
                         example:
-                            source: Ipsam voluptatum enim harum dolorum.
-                            target: Quia illo blanditiis totam in beatae.
+                            source: Velit ipsam voluptatum enim harum.
+                            target: Natus quia illo blanditiis totam in.
             responses:
                 "202":
                     description: Accepted response.
@@ -37,10 +37,10 @@ paths:
                             example:
                                 createdAt: "2015-04-10T21:38:09Z"
                                 errorMessage: Neque dolores.
-                                id: 5510594903106509897
-                                source: Aut placeat rerum dicta.
-                                status: Harum voluptatem enim aliquam.
-                                target: Ipsa veniam aspernatur.
+                                id: 1094906192390750507
+                                source: Tempore aut placeat rerum.
+                                status: Voluptatem enim aliquam.
+                                target: Excepturi ipsa veniam aspernatur quae.
                                 updatedAt: "1991-11-10T21:43:14Z"
                 "400":
                     description: 'BadRequest: Bad Request'
@@ -1464,16 +1464,6 @@ paths:
             description: Get devbuild
             operationId: devbuild#get
             parameters:
-                - name: sync
-                  in: query
-                  description: Whether sync with jenkins
-                  allowEmptyValue: true
-                  schema:
-                    type: boolean
-                    description: Whether sync with jenkins
-                    default: false
-                    example: true
-                  example: false
                 - name: id
                   in: path
                   description: ID of build
@@ -1492,7 +1482,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/DevBuild'
                             example:
-                                id: 5335453245826434936
+                                id: 2816866719883080638
                                 meta:
                                     createdAt: "2015-08-11T22:14:18Z"
                                     createdBy: carlos_anderson@grimes.biz
@@ -1652,8 +1642,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/HTTPError'
                             example:
-                                code: 7728550041647444443
-                                message: Deleniti quisquam saepe saepe.
+                                code: 5335453245826434936
+                                message: Totam deleniti quisquam saepe.
                 "500":
                     description: 'InternalServerError: Internal Server Error'
                     content:
@@ -1661,8 +1651,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/HTTPError'
                             example:
-                                code: 3032986111089411763
-                                message: Et facilis id.
+                                code: 330778728701988853
+                                message: Consequatur et facilis id.
         put:
             tags:
                 - devbuild
@@ -1679,7 +1669,7 @@ paths:
                     description: Dry run
                     default: false
                     example: true
-                  example: true
+                  example: false
                 - name: id
                   in: path
                   description: ID of build

@@ -122,8 +122,6 @@ type DevBuildStatus struct {
 type GetPayload struct {
 	// ID of build
 	ID int
-	// Whether sync with jenkins
-	Sync bool
 }
 
 type HTTPError struct {

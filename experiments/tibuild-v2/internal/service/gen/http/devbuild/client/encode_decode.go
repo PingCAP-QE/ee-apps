@@ -252,21 +252,6 @@ func (c *Client) BuildGetRequest(ctx context.Context, v any) (*http.Request, err
 	return req, nil
 }
 
-// EncodeGetRequest returns an encoder for requests sent to the devbuild get
-// server.
-func EncodeGetRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
-	return func(req *http.Request, v any) error {
-		p, ok := v.(*devbuild.GetPayload)
-		if !ok {
-			return goahttp.ErrInvalidType("devbuild", "get", "*devbuild.GetPayload", v)
-		}
-		values := req.URL.Query()
-		values.Add("sync", fmt.Sprintf("%v", p.Sync))
-		req.URL.RawQuery = values.Encode()
-		return nil
-	}
-}
-
 // DecodeGetResponse returns a decoder for responses returned by the devbuild
 // get endpoint. restoreBody controls whether the response body should be
 // restored after having been read.

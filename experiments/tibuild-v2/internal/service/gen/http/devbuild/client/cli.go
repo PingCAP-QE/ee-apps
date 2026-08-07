@@ -138,7 +138,7 @@ func BuildCreatePayload(devbuildCreateBody string, devbuildCreateDryrun string) 
 
 // BuildGetPayload builds the payload for the devbuild get endpoint from CLI
 // flags.
-func BuildGetPayload(devbuildGetID string, devbuildGetSync string) (*devbuild.GetPayload, error) {
+func BuildGetPayload(devbuildGetID string) (*devbuild.GetPayload, error) {
 	var err error
 	var id int
 	{
@@ -149,18 +149,8 @@ func BuildGetPayload(devbuildGetID string, devbuildGetSync string) (*devbuild.Ge
 			return nil, fmt.Errorf("invalid value for id, must be INT")
 		}
 	}
-	var sync bool
-	{
-		if devbuildGetSync != "" {
-			sync, err = strconv.ParseBool(devbuildGetSync)
-			if err != nil {
-				return nil, fmt.Errorf("invalid value for sync, must be BOOL")
-			}
-		}
-	}
 	v := &devbuild.GetPayload{}
 	v.ID = id
-	v.Sync = sync
 
 	return v, nil
 }
