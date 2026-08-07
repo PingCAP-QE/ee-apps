@@ -43,7 +43,7 @@ var _ = Service("artifact", func() {
 		Result(ImageSyncTask)
 
 		HTTP(func() {
-			POST("/sync-image")
+			POST("/sync-images")
 			Response(StatusAccepted)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)
@@ -60,7 +60,7 @@ var _ = Service("artifact", func() {
 		Result(ImageSyncTask)
 
 		HTTP(func() {
-			GET("/sync-image/{id}")
+			GET("/sync-images/{id}")
 			Response(StatusOK)
 			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
