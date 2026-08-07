@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// DevBuild is the client for interacting with the DevBuild builders.
 	DevBuild *DevBuildClient
+	// ImageSyncTask is the client for interacting with the ImageSyncTask builders.
+	ImageSyncTask *ImageSyncTaskClient
 
 	// lazily loaded.
 	client     *Client
@@ -146,6 +148,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.DevBuild = NewDevBuildClient(tx.config)
+	tx.ImageSyncTask = NewImageSyncTaskClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

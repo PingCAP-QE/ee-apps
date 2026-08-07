@@ -14,8 +14,12 @@ import (
 
 // The artifact service provides operations to manage artifacts.
 type Service interface {
-	// Sync hotfix image to dockerhub
-	SyncImage(context.Context, *ImageSyncRequest) (res *ImageSyncRequest, err error)
+	// Sync hotfix image to dockerhub asynchronously
+	SyncImage(context.Context, *ImageSyncRequest) (res *ImageSyncTask, err error)
+	// Get the status of an image sync task
+	GetImageSyncTask(context.Context, *GetImageSyncTaskPayload) (res *ImageSyncTask, err error)
+	// List image sync tasks with pagination and status filter
+	ListImageSyncTasks(context.Context, *ListImageSyncTasksPayload) (res []*ImageSyncTask, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -32,7 +36,14 @@ const ServiceName = "artifact"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [1]string{"syncImage"}
+var MethodNames = [3]string{"syncImage", "getImageSyncTask", "listImageSyncTasks"}
+
+// GetImageSyncTaskPayload is the payload type of the artifact service
+// getImageSyncTask method.
+type GetImageSyncTaskPayload struct {
+	// ID of the image sync task
+	ID int
+}
 
 type HTTPError struct {
 	Code    int
@@ -44,6 +55,32 @@ type HTTPError struct {
 type ImageSyncRequest struct {
 	Source string
 	Target string
+}
+
+// ImageSyncTask is the result type of the artifact service syncImage method.
+type ImageSyncTask struct {
+	ID           int
+	Source       string
+	Target       string
+	Status       string
+	ErrorMessage *string
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+// ListImageSyncTasksPayload is the payload type of the artifact service
+// listImageSyncTasks method.
+type ListImageSyncTasksPayload struct {
+	// The page number of items
+	Page int
+	// Page size
+	PageSize int
+	// Filter by task status (PENDING, PROCESSING, SUCCEEDED, FAILED)
+	Status *string
+	// What to sort results by
+	Sort string
+	// The direction of the sort
+	Direction string
 }
 
 // Error returns an error description.

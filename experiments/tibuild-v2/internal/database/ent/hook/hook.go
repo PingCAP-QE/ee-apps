@@ -21,6 +21,18 @@ func (f DevBuildFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DevBuildMutation", m)
 }
 
+// The ImageSyncTaskFunc type is an adapter to allow the use of ordinary
+// function as ImageSyncTask mutator.
+type ImageSyncTaskFunc func(context.Context, *ent.ImageSyncTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ImageSyncTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ImageSyncTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ImageSyncTaskMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

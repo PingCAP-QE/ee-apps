@@ -16,26 +16,63 @@ import (
 
 // Client is the "artifact" service client.
 type Client struct {
-	SyncImageEndpoint goa.Endpoint
+	SyncImageEndpoint          goa.Endpoint
+	GetImageSyncTaskEndpoint   goa.Endpoint
+	ListImageSyncTasksEndpoint goa.Endpoint
 }
 
 // NewClient initializes a "artifact" service client given the endpoints.
-func NewClient(syncImage goa.Endpoint) *Client {
+func NewClient(syncImage, getImageSyncTask, listImageSyncTasks goa.Endpoint) *Client {
 	return &Client{
-		SyncImageEndpoint: syncImage,
+		SyncImageEndpoint:          syncImage,
+		GetImageSyncTaskEndpoint:   getImageSyncTask,
+		ListImageSyncTasksEndpoint: listImageSyncTasks,
 	}
 }
 
 // SyncImage calls the "syncImage" endpoint of the "artifact" service.
 // SyncImage may return the following errors:
 //   - "BadRequest" (type *HTTPError): Bad Request
+//   - "NotFound" (type *HTTPError): Not Found
 //   - "InternalServerError" (type *HTTPError): Internal Server Error
 //   - error: internal error
-func (c *Client) SyncImage(ctx context.Context, p *ImageSyncRequest) (res *ImageSyncRequest, err error) {
+func (c *Client) SyncImage(ctx context.Context, p *ImageSyncRequest) (res *ImageSyncTask, err error) {
 	var ires any
 	ires, err = c.SyncImageEndpoint(ctx, p)
 	if err != nil {
 		return
 	}
-	return ires.(*ImageSyncRequest), nil
+	return ires.(*ImageSyncTask), nil
+}
+
+// GetImageSyncTask calls the "getImageSyncTask" endpoint of the "artifact"
+// service.
+// GetImageSyncTask may return the following errors:
+//   - "BadRequest" (type *HTTPError): Bad Request
+//   - "NotFound" (type *HTTPError): Not Found
+//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - error: internal error
+func (c *Client) GetImageSyncTask(ctx context.Context, p *GetImageSyncTaskPayload) (res *ImageSyncTask, err error) {
+	var ires any
+	ires, err = c.GetImageSyncTaskEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*ImageSyncTask), nil
+}
+
+// ListImageSyncTasks calls the "listImageSyncTasks" endpoint of the "artifact"
+// service.
+// ListImageSyncTasks may return the following errors:
+//   - "BadRequest" (type *HTTPError): Bad Request
+//   - "NotFound" (type *HTTPError): Not Found
+//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - error: internal error
+func (c *Client) ListImageSyncTasks(ctx context.Context, p *ListImageSyncTasksPayload) (res []*ImageSyncTask, err error) {
+	var ires any
+	ires, err = c.ListImageSyncTasksEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.([]*ImageSyncTask), nil
 }

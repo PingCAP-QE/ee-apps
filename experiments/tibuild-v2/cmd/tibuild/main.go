@@ -75,7 +75,15 @@ func main() {
 		zerolog.SetGlobalLevel(logLevel)
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", artifact.ServiceName).Logger()
-			artifactSvc = impl.NewArtifact(&logger)
+			artifactSvc = impl.NewArtifact(&logger, cfg.Get())
+			if artifactSvc == nil {
+				log.Fatalf(ctx, errors.New("failed to initialize artifact service"), "please check the configuration")
+			}
+
+			// Register artifact config hot-reload handler.
+			if r, ok := artifactSvc.(reloader); ok {
+				cfg.OnReload(func(newCfg *config.Service) { r.Reload(newCfg) })
+			}
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
@@ -183,6 +191,21 @@ func main() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 
+	// Start the image sync worker so that tasks survive a service restart.
+	// It processes tasks from the database queue in the background.
+	var stopWorker func()
+	if worker, ok := artifactSvc.(interface {
+		Start(context.Context)
+		Stop()
+	}); ok {
+		stopWorker = worker.Stop
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker.Start(ctx)
+		}()
+	}
+
 	// Start background config file watcher (polls every 30 seconds).
 	go cfg.AutoReload(ctx, 30*time.Second)
 
@@ -244,6 +267,11 @@ func main() {
 
 	// Wait for signal.
 	log.Printf(ctx, "exiting (%v)", <-errc)
+
+	// Let in-flight image copies finish before cancelling.
+	if stopWorker != nil {
+		stopWorker()
+	}
 
 	// Send cancellation signal to the goroutines.
 	cancel()

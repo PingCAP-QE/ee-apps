@@ -13,6 +13,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	goahttp "goa.design/goa/v3/http"
@@ -23,10 +24,10 @@ import (
 // artifact syncImage endpoint.
 func EncodeSyncImageResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
 	return func(ctx context.Context, w http.ResponseWriter, v any) error {
-		res, _ := v.(*artifact.ImageSyncRequest)
+		res, _ := v.(*artifact.ImageSyncTask)
 		enc := encoder(ctx, w)
 		body := NewSyncImageResponseBody(res)
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusAccepted)
 		return enc.Encode(body)
 	}
 }
@@ -101,4 +102,230 @@ func EncodeSyncImageError(encoder func(context.Context, http.ResponseWriter) goa
 			return encodeError(ctx, w, v)
 		}
 	}
+}
+
+// EncodeGetImageSyncTaskResponse returns an encoder for responses returned by
+// the artifact getImageSyncTask endpoint.
+func EncodeGetImageSyncTaskResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*artifact.ImageSyncTask)
+		enc := encoder(ctx, w)
+		body := NewGetImageSyncTaskResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeGetImageSyncTaskRequest returns a decoder for requests sent to the
+// artifact getImageSyncTask endpoint.
+func DecodeGetImageSyncTaskRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*artifact.GetImageSyncTaskPayload, error) {
+	return func(r *http.Request) (*artifact.GetImageSyncTaskPayload, error) {
+		var payload *artifact.GetImageSyncTaskPayload
+		var (
+			id  int
+			err error
+
+			params = mux.Vars(r)
+		)
+		{
+			idRaw := params["id"]
+			v, err2 := strconv.ParseInt(idRaw, 10, strconv.IntSize)
+			if err2 != nil {
+				err = goa.MergeErrors(err, goa.InvalidFieldTypeError("id", idRaw, "integer"))
+			}
+			id = int(v)
+		}
+		if err != nil {
+			return payload, err
+		}
+		payload = NewGetImageSyncTaskPayload(id)
+
+		return payload, nil
+	}
+}
+
+// EncodeGetImageSyncTaskError returns an encoder for errors returned by the
+// getImageSyncTask artifact endpoint.
+func EncodeGetImageSyncTaskError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "NotFound":
+			var res *artifact.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewGetImageSyncTaskNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *artifact.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewGetImageSyncTaskInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// EncodeListImageSyncTasksResponse returns an encoder for responses returned
+// by the artifact listImageSyncTasks endpoint.
+func EncodeListImageSyncTasksResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.([]*artifact.ImageSyncTask)
+		enc := encoder(ctx, w)
+		body := NewListImageSyncTasksResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeListImageSyncTasksRequest returns a decoder for requests sent to the
+// artifact listImageSyncTasks endpoint.
+func DecodeListImageSyncTasksRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*artifact.ListImageSyncTasksPayload, error) {
+	return func(r *http.Request) (*artifact.ListImageSyncTasksPayload, error) {
+		var payload *artifact.ListImageSyncTasksPayload
+		var (
+			page      int
+			pageSize  int
+			status    *string
+			sort      string
+			direction string
+			err       error
+		)
+		qp := r.URL.Query()
+		{
+			pageRaw := qp.Get("page")
+			if pageRaw == "" {
+				page = 1
+			} else {
+				v, err2 := strconv.ParseInt(pageRaw, 10, strconv.IntSize)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("page", pageRaw, "integer"))
+				}
+				page = int(v)
+			}
+		}
+		{
+			pageSizeRaw := qp.Get("pageSize")
+			if pageSizeRaw == "" {
+				pageSize = 30
+			} else {
+				v, err2 := strconv.ParseInt(pageSizeRaw, 10, strconv.IntSize)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("pageSize", pageSizeRaw, "integer"))
+				}
+				pageSize = int(v)
+			}
+		}
+		statusRaw := qp.Get("status")
+		if statusRaw != "" {
+			status = &statusRaw
+		}
+		if status != nil {
+			if !(*status == "PENDING" || *status == "PROCESSING" || *status == "SUCCEEDED" || *status == "FAILED") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("status", *status, []any{"PENDING", "PROCESSING", "SUCCEEDED", "FAILED"}))
+			}
+		}
+		sortRaw := qp.Get("sort")
+		if sortRaw != "" {
+			sort = sortRaw
+		} else {
+			sort = "createdAt"
+		}
+		if !(sort == "createdAt" || sort == "updatedAt") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"createdAt", "updatedAt"}))
+		}
+		directionRaw := qp.Get("direction")
+		if directionRaw != "" {
+			direction = directionRaw
+		} else {
+			direction = "desc"
+		}
+		if !(direction == "asc" || direction == "desc") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("direction", direction, []any{"asc", "desc"}))
+		}
+		if err != nil {
+			return payload, err
+		}
+		payload = NewListImageSyncTasksPayload(page, pageSize, status, sort, direction)
+
+		return payload, nil
+	}
+}
+
+// EncodeListImageSyncTasksError returns an encoder for errors returned by the
+// listImageSyncTasks artifact endpoint.
+func EncodeListImageSyncTasksError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *artifact.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewListImageSyncTasksBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *artifact.HTTPError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewListImageSyncTasksInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// marshalArtifactImageSyncTaskToImageSyncTaskResponse builds a value of type
+// *ImageSyncTaskResponse from a value of type *artifact.ImageSyncTask.
+func marshalArtifactImageSyncTaskToImageSyncTaskResponse(v *artifact.ImageSyncTask) *ImageSyncTaskResponse {
+	res := &ImageSyncTaskResponse{
+		ID:           v.ID,
+		Source:       v.Source,
+		Target:       v.Target,
+		Status:       v.Status,
+		ErrorMessage: v.ErrorMessage,
+		CreatedAt:    v.CreatedAt,
+		UpdatedAt:    v.UpdatedAt,
+	}
+
+	return res
 }

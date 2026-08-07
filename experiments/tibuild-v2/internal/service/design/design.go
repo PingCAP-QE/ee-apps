@@ -32,17 +32,69 @@ var _ = API("tibuild", func() {
 var _ = Service("artifact", func() {
 	Description("The artifact service provides operations to manage artifacts.")
 	Error("BadRequest", HTTPError, "Bad Request")
+	Error("NotFound", HTTPError, "Not Found")
 	Error("InternalServerError", HTTPError, "Internal Server Error")
 	HTTP(func() {
 		Path("/artifact")
 	})
 	Method("syncImage", func() {
-		Description("Sync hotfix image to dockerhub")
+		Description("Sync hotfix image to dockerhub asynchronously")
 		Payload(ImageSyncRequest)
-		Result(ImageSyncRequest)
+		Result(ImageSyncTask)
 
 		HTTP(func() {
 			POST("/sync-image")
+			Response(StatusAccepted)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+	Method("getImageSyncTask", func() {
+		Description("Get the status of an image sync task")
+		Payload(func() {
+			Attribute("id", Int, "ID of the image sync task", func() {
+				Example(1)
+			})
+			Required("id")
+		})
+		Result(ImageSyncTask)
+
+		HTTP(func() {
+			GET("/sync-image/{id}")
+			Response(StatusOK)
+			Response("NotFound", StatusNotFound)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+	Method("listImageSyncTasks", func() {
+		Description("List image sync tasks with pagination and status filter")
+		Payload(func() {
+			Attribute("page", Int, "The page number of items", func() {
+				Default(1)
+			})
+			Attribute("pageSize", Int, "Page size", func() {
+				Default(30)
+			})
+			Attribute("status", String, "Filter by task status (PENDING, PROCESSING, SUCCEEDED, FAILED)", func() {
+				Enum("PENDING", "PROCESSING", "SUCCEEDED", "FAILED")
+			})
+			Attribute("sort", String, "What to sort results by", func() {
+				Enum("createdAt", "updatedAt")
+				Default("createdAt")
+			})
+			Attribute("direction", String, "The direction of the sort", func() {
+				Enum("asc", "desc")
+				Default("desc")
+			})
+		})
+		Result(ArrayOf(ImageSyncTask), "List of image sync tasks")
+		HTTP(func() {
+			GET("/sync-images")
+			Param("page")
+			Param("pageSize")
+			Param("status")
+			Param("sort")
+			Param("direction")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("InternalServerError", StatusInternalServerError)
@@ -244,6 +296,21 @@ var ImageSyncRequest = Type("ImageSyncRequest", func() {
 	Attribute("source", String)
 	Attribute("target", String)
 	Required("source", "target")
+})
+
+var ImageSyncTask = Type("ImageSyncTask", func() {
+	Attribute("id", Int)
+	Attribute("source", String)
+	Attribute("target", String)
+	Attribute("status", String)
+	Attribute("errorMessage", String)
+	Attribute("createdAt", String, func() {
+		Format(FormatDateTime)
+	})
+	Attribute("updatedAt", String, func() {
+		Format(FormatDateTime)
+	})
+	Required("id", "source", "target", "status", "createdAt", "updatedAt")
 })
 
 var DevBuild = Type("DevBuild", func() {

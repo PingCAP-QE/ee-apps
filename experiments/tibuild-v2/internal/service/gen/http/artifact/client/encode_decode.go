@@ -11,12 +11,14 @@ package client
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
 	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	goahttp "goa.design/goa/v3/http"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildSyncImageRequest instantiates a HTTP request object with method and
@@ -72,7 +74,7 @@ func DecodeSyncImageResponse(decoder func(*http.Response) goahttp.Decoder, resto
 			defer resp.Body.Close()
 		}
 		switch resp.StatusCode {
-		case http.StatusOK:
+		case http.StatusAccepted:
 			var (
 				body SyncImageResponseBody
 				err  error
@@ -85,7 +87,7 @@ func DecodeSyncImageResponse(decoder func(*http.Response) goahttp.Decoder, resto
 			if err != nil {
 				return nil, goahttp.ErrValidationError("artifact", "syncImage", err)
 			}
-			res := NewSyncImageImageSyncRequestOK(&body)
+			res := NewSyncImageImageSyncTaskAccepted(&body)
 			return res, nil
 		case http.StatusBadRequest:
 			var (
@@ -120,4 +122,232 @@ func DecodeSyncImageResponse(decoder func(*http.Response) goahttp.Decoder, resto
 			return nil, goahttp.ErrInvalidResponse("artifact", "syncImage", resp.StatusCode, string(body))
 		}
 	}
+}
+
+// BuildGetImageSyncTaskRequest instantiates a HTTP request object with method
+// and path set to call the "artifact" service "getImageSyncTask" endpoint
+func (c *Client) BuildGetImageSyncTaskRequest(ctx context.Context, v any) (*http.Request, error) {
+	var (
+		id int
+	)
+	{
+		p, ok := v.(*artifact.GetImageSyncTaskPayload)
+		if !ok {
+			return nil, goahttp.ErrInvalidType("artifact", "getImageSyncTask", "*artifact.GetImageSyncTaskPayload", v)
+		}
+		id = p.ID
+	}
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: GetImageSyncTaskArtifactPath(id)}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("artifact", "getImageSyncTask", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeGetImageSyncTaskResponse returns a decoder for responses returned by
+// the artifact getImageSyncTask endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeGetImageSyncTaskResponse may return the following errors:
+//   - "NotFound" (type *artifact.HTTPError): http.StatusNotFound
+//   - "InternalServerError" (type *artifact.HTTPError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeGetImageSyncTaskResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body GetImageSyncTaskResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "getImageSyncTask", err)
+			}
+			err = ValidateGetImageSyncTaskResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "getImageSyncTask", err)
+			}
+			res := NewGetImageSyncTaskImageSyncTaskOK(&body)
+			return res, nil
+		case http.StatusNotFound:
+			var (
+				body GetImageSyncTaskNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "getImageSyncTask", err)
+			}
+			err = ValidateGetImageSyncTaskNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "getImageSyncTask", err)
+			}
+			return nil, NewGetImageSyncTaskNotFound(&body)
+		case http.StatusInternalServerError:
+			var (
+				body GetImageSyncTaskInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "getImageSyncTask", err)
+			}
+			err = ValidateGetImageSyncTaskInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "getImageSyncTask", err)
+			}
+			return nil, NewGetImageSyncTaskInternalServerError(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("artifact", "getImageSyncTask", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildListImageSyncTasksRequest instantiates a HTTP request object with
+// method and path set to call the "artifact" service "listImageSyncTasks"
+// endpoint
+func (c *Client) BuildListImageSyncTasksRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: ListImageSyncTasksArtifactPath()}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("artifact", "listImageSyncTasks", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeListImageSyncTasksRequest returns an encoder for requests sent to the
+// artifact listImageSyncTasks server.
+func EncodeListImageSyncTasksRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*artifact.ListImageSyncTasksPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("artifact", "listImageSyncTasks", "*artifact.ListImageSyncTasksPayload", v)
+		}
+		values := req.URL.Query()
+		values.Add("page", fmt.Sprintf("%v", p.Page))
+		values.Add("pageSize", fmt.Sprintf("%v", p.PageSize))
+		if p.Status != nil {
+			values.Add("status", *p.Status)
+		}
+		values.Add("sort", p.Sort)
+		values.Add("direction", p.Direction)
+		req.URL.RawQuery = values.Encode()
+		return nil
+	}
+}
+
+// DecodeListImageSyncTasksResponse returns a decoder for responses returned by
+// the artifact listImageSyncTasks endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeListImageSyncTasksResponse may return the following errors:
+//   - "BadRequest" (type *artifact.HTTPError): http.StatusBadRequest
+//   - "InternalServerError" (type *artifact.HTTPError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeListImageSyncTasksResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body []*ImageSyncTaskResponse
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "listImageSyncTasks", err)
+			}
+			for _, e := range body {
+				if e != nil {
+					if err2 := ValidateImageSyncTaskResponse(e); err2 != nil {
+						err = goa.MergeErrors(err, err2)
+					}
+				}
+			}
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "listImageSyncTasks", err)
+			}
+			res := NewListImageSyncTasksImageSyncTaskOK(body)
+			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body ListImageSyncTasksBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "listImageSyncTasks", err)
+			}
+			err = ValidateListImageSyncTasksBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "listImageSyncTasks", err)
+			}
+			return nil, NewListImageSyncTasksBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body ListImageSyncTasksInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("artifact", "listImageSyncTasks", err)
+			}
+			err = ValidateListImageSyncTasksInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("artifact", "listImageSyncTasks", err)
+			}
+			return nil, NewListImageSyncTasksInternalServerError(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("artifact", "listImageSyncTasks", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// unmarshalImageSyncTaskResponseToArtifactImageSyncTask builds a value of type
+// *artifact.ImageSyncTask from a value of type *ImageSyncTaskResponse.
+func unmarshalImageSyncTaskResponseToArtifactImageSyncTask(v *ImageSyncTaskResponse) *artifact.ImageSyncTask {
+	res := &artifact.ImageSyncTask{
+		ID:           *v.ID,
+		Source:       *v.Source,
+		Target:       *v.Target,
+		Status:       *v.Status,
+		ErrorMessage: v.ErrorMessage,
+		CreatedAt:    *v.CreatedAt,
+		UpdatedAt:    *v.UpdatedAt,
+	}
+
+	return res
 }

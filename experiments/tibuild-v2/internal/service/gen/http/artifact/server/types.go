@@ -23,9 +23,30 @@ type SyncImageRequestBody struct {
 // SyncImageResponseBody is the type of the "artifact" service "syncImage"
 // endpoint HTTP response body.
 type SyncImageResponseBody struct {
-	Source string `form:"source" json:"source" xml:"source"`
-	Target string `form:"target" json:"target" xml:"target"`
+	ID           int     `form:"id" json:"id" xml:"id"`
+	Source       string  `form:"source" json:"source" xml:"source"`
+	Target       string  `form:"target" json:"target" xml:"target"`
+	Status       string  `form:"status" json:"status" xml:"status"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    string  `form:"createdAt" json:"createdAt" xml:"createdAt"`
+	UpdatedAt    string  `form:"updatedAt" json:"updatedAt" xml:"updatedAt"`
 }
+
+// GetImageSyncTaskResponseBody is the type of the "artifact" service
+// "getImageSyncTask" endpoint HTTP response body.
+type GetImageSyncTaskResponseBody struct {
+	ID           int     `form:"id" json:"id" xml:"id"`
+	Source       string  `form:"source" json:"source" xml:"source"`
+	Target       string  `form:"target" json:"target" xml:"target"`
+	Status       string  `form:"status" json:"status" xml:"status"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    string  `form:"createdAt" json:"createdAt" xml:"createdAt"`
+	UpdatedAt    string  `form:"updatedAt" json:"updatedAt" xml:"updatedAt"`
+}
+
+// ListImageSyncTasksResponseBody is the type of the "artifact" service
+// "listImageSyncTasks" endpoint HTTP response body.
+type ListImageSyncTasksResponseBody []*ImageSyncTaskResponse
 
 // SyncImageBadRequestResponseBody is the type of the "artifact" service
 // "syncImage" endpoint HTTP response body for the "BadRequest" error.
@@ -42,12 +63,88 @@ type SyncImageInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// GetImageSyncTaskNotFoundResponseBody is the type of the "artifact" service
+// "getImageSyncTask" endpoint HTTP response body for the "NotFound" error.
+type GetImageSyncTaskNotFoundResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// GetImageSyncTaskInternalServerErrorResponseBody is the type of the
+// "artifact" service "getImageSyncTask" endpoint HTTP response body for the
+// "InternalServerError" error.
+type GetImageSyncTaskInternalServerErrorResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// ListImageSyncTasksBadRequestResponseBody is the type of the "artifact"
+// service "listImageSyncTasks" endpoint HTTP response body for the
+// "BadRequest" error.
+type ListImageSyncTasksBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// ListImageSyncTasksInternalServerErrorResponseBody is the type of the
+// "artifact" service "listImageSyncTasks" endpoint HTTP response body for the
+// "InternalServerError" error.
+type ListImageSyncTasksInternalServerErrorResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// ImageSyncTaskResponse is used to define fields on response body types.
+type ImageSyncTaskResponse struct {
+	ID           int     `form:"id" json:"id" xml:"id"`
+	Source       string  `form:"source" json:"source" xml:"source"`
+	Target       string  `form:"target" json:"target" xml:"target"`
+	Status       string  `form:"status" json:"status" xml:"status"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    string  `form:"createdAt" json:"createdAt" xml:"createdAt"`
+	UpdatedAt    string  `form:"updatedAt" json:"updatedAt" xml:"updatedAt"`
+}
+
 // NewSyncImageResponseBody builds the HTTP response body from the result of
 // the "syncImage" endpoint of the "artifact" service.
-func NewSyncImageResponseBody(res *artifact.ImageSyncRequest) *SyncImageResponseBody {
+func NewSyncImageResponseBody(res *artifact.ImageSyncTask) *SyncImageResponseBody {
 	body := &SyncImageResponseBody{
-		Source: res.Source,
-		Target: res.Target,
+		ID:           res.ID,
+		Source:       res.Source,
+		Target:       res.Target,
+		Status:       res.Status,
+		ErrorMessage: res.ErrorMessage,
+		CreatedAt:    res.CreatedAt,
+		UpdatedAt:    res.UpdatedAt,
+	}
+	return body
+}
+
+// NewGetImageSyncTaskResponseBody builds the HTTP response body from the
+// result of the "getImageSyncTask" endpoint of the "artifact" service.
+func NewGetImageSyncTaskResponseBody(res *artifact.ImageSyncTask) *GetImageSyncTaskResponseBody {
+	body := &GetImageSyncTaskResponseBody{
+		ID:           res.ID,
+		Source:       res.Source,
+		Target:       res.Target,
+		Status:       res.Status,
+		ErrorMessage: res.ErrorMessage,
+		CreatedAt:    res.CreatedAt,
+		UpdatedAt:    res.UpdatedAt,
+	}
+	return body
+}
+
+// NewListImageSyncTasksResponseBody builds the HTTP response body from the
+// result of the "listImageSyncTasks" endpoint of the "artifact" service.
+func NewListImageSyncTasksResponseBody(res []*artifact.ImageSyncTask) ListImageSyncTasksResponseBody {
+	body := make([]*ImageSyncTaskResponse, len(res))
+	for i, val := range res {
+		if val == nil {
+			body[i] = nil
+			continue
+		}
+		body[i] = marshalArtifactImageSyncTaskToImageSyncTaskResponse(val)
 	}
 	return body
 }
@@ -72,6 +169,49 @@ func NewSyncImageInternalServerErrorResponseBody(res *artifact.HTTPError) *SyncI
 	return body
 }
 
+// NewGetImageSyncTaskNotFoundResponseBody builds the HTTP response body from
+// the result of the "getImageSyncTask" endpoint of the "artifact" service.
+func NewGetImageSyncTaskNotFoundResponseBody(res *artifact.HTTPError) *GetImageSyncTaskNotFoundResponseBody {
+	body := &GetImageSyncTaskNotFoundResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewGetImageSyncTaskInternalServerErrorResponseBody builds the HTTP response
+// body from the result of the "getImageSyncTask" endpoint of the "artifact"
+// service.
+func NewGetImageSyncTaskInternalServerErrorResponseBody(res *artifact.HTTPError) *GetImageSyncTaskInternalServerErrorResponseBody {
+	body := &GetImageSyncTaskInternalServerErrorResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewListImageSyncTasksBadRequestResponseBody builds the HTTP response body
+// from the result of the "listImageSyncTasks" endpoint of the "artifact"
+// service.
+func NewListImageSyncTasksBadRequestResponseBody(res *artifact.HTTPError) *ListImageSyncTasksBadRequestResponseBody {
+	body := &ListImageSyncTasksBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewListImageSyncTasksInternalServerErrorResponseBody builds the HTTP
+// response body from the result of the "listImageSyncTasks" endpoint of the
+// "artifact" service.
+func NewListImageSyncTasksInternalServerErrorResponseBody(res *artifact.HTTPError) *ListImageSyncTasksInternalServerErrorResponseBody {
+	body := &ListImageSyncTasksInternalServerErrorResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewSyncImageImageSyncRequest builds a artifact service syncImage endpoint
 // payload.
 func NewSyncImageImageSyncRequest(body *SyncImageRequestBody) *artifact.ImageSyncRequest {
@@ -79,6 +219,28 @@ func NewSyncImageImageSyncRequest(body *SyncImageRequestBody) *artifact.ImageSyn
 		Source: *body.Source,
 		Target: *body.Target,
 	}
+
+	return v
+}
+
+// NewGetImageSyncTaskPayload builds a artifact service getImageSyncTask
+// endpoint payload.
+func NewGetImageSyncTaskPayload(id int) *artifact.GetImageSyncTaskPayload {
+	v := &artifact.GetImageSyncTaskPayload{}
+	v.ID = id
+
+	return v
+}
+
+// NewListImageSyncTasksPayload builds a artifact service listImageSyncTasks
+// endpoint payload.
+func NewListImageSyncTasksPayload(page int, pageSize int, status *string, sort string, direction string) *artifact.ListImageSyncTasksPayload {
+	v := &artifact.ListImageSyncTasksPayload{}
+	v.Page = page
+	v.PageSize = pageSize
+	v.Status = status
+	v.Sort = sort
+	v.Direction = direction
 
 	return v
 }

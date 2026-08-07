@@ -19,8 +19,10 @@ import (
 
 // Server lists the artifact service endpoint HTTP handlers.
 type Server struct {
-	Mounts    []*MountPoint
-	SyncImage http.Handler
+	Mounts             []*MountPoint
+	SyncImage          http.Handler
+	GetImageSyncTask   http.Handler
+	ListImageSyncTasks http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -51,8 +53,12 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"SyncImage", "POST", "/api/v2/artifact/sync-image"},
+			{"GetImageSyncTask", "GET", "/api/v2/artifact/sync-image/{id}"},
+			{"ListImageSyncTasks", "GET", "/api/v2/artifact/sync-images"},
 		},
-		SyncImage: NewSyncImageHandler(e.SyncImage, mux, decoder, encoder, errhandler, formatter),
+		SyncImage:          NewSyncImageHandler(e.SyncImage, mux, decoder, encoder, errhandler, formatter),
+		GetImageSyncTask:   NewGetImageSyncTaskHandler(e.GetImageSyncTask, mux, decoder, encoder, errhandler, formatter),
+		ListImageSyncTasks: NewListImageSyncTasksHandler(e.ListImageSyncTasks, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -62,6 +68,8 @@ func (s *Server) Service() string { return "artifact" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.SyncImage = m(s.SyncImage)
+	s.GetImageSyncTask = m(s.GetImageSyncTask)
+	s.ListImageSyncTasks = m(s.ListImageSyncTasks)
 }
 
 // MethodNames returns the methods served.
@@ -70,6 +78,8 @@ func (s *Server) MethodNames() []string { return artifact.MethodNames[:] }
 // Mount configures the mux to serve the artifact endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountSyncImageHandler(mux, h.SyncImage)
+	MountGetImageSyncTaskHandler(mux, h.GetImageSyncTask)
+	MountListImageSyncTasksHandler(mux, h.ListImageSyncTasks)
 }
 
 // Mount configures the mux to serve the artifact endpoints.
@@ -107,6 +117,112 @@ func NewSyncImageHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "syncImage")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "artifact")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountGetImageSyncTaskHandler configures the mux to serve the "artifact"
+// service "getImageSyncTask" endpoint.
+func MountGetImageSyncTaskHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/artifact/sync-image/{id}", f)
+}
+
+// NewGetImageSyncTaskHandler creates a HTTP handler which loads the HTTP
+// request and calls the "artifact" service "getImageSyncTask" endpoint.
+func NewGetImageSyncTaskHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeGetImageSyncTaskRequest(mux, decoder)
+		encodeResponse = EncodeGetImageSyncTaskResponse(encoder)
+		encodeError    = EncodeGetImageSyncTaskError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "getImageSyncTask")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "artifact")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountListImageSyncTasksHandler configures the mux to serve the "artifact"
+// service "listImageSyncTasks" endpoint.
+func MountListImageSyncTasksHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/artifact/sync-images", f)
+}
+
+// NewListImageSyncTasksHandler creates a HTTP handler which loads the HTTP
+// request and calls the "artifact" service "listImageSyncTasks" endpoint.
+func NewListImageSyncTasksHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeListImageSyncTasksRequest(mux, decoder)
+		encodeResponse = EncodeListImageSyncTasksResponse(encoder)
+		encodeError    = EncodeListImageSyncTasksError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "listImageSyncTasks")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "artifact")
 		payload, err := decodeRequest(r)
 		if err != nil {

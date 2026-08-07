@@ -22,6 +22,14 @@ type Client struct {
 	// endpoint.
 	SyncImageDoer goahttp.Doer
 
+	// GetImageSyncTask Doer is the HTTP client used to make requests to the
+	// getImageSyncTask endpoint.
+	GetImageSyncTaskDoer goahttp.Doer
+
+	// ListImageSyncTasks Doer is the HTTP client used to make requests to the
+	// listImageSyncTasks endpoint.
+	ListImageSyncTasksDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -42,12 +50,14 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		SyncImageDoer:       doer,
-		RestoreResponseBody: restoreBody,
-		scheme:              scheme,
-		host:                host,
-		decoder:             dec,
-		encoder:             enc,
+		SyncImageDoer:          doer,
+		GetImageSyncTaskDoer:   doer,
+		ListImageSyncTasksDoer: doer,
+		RestoreResponseBody:    restoreBody,
+		scheme:                 scheme,
+		host:                   host,
+		decoder:                dec,
+		encoder:                enc,
 	}
 }
 
@@ -70,6 +80,49 @@ func (c *Client) SyncImage() goa.Endpoint {
 		resp, err := c.SyncImageDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("artifact", "syncImage", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// GetImageSyncTask returns an endpoint that makes HTTP requests to the
+// artifact service getImageSyncTask server.
+func (c *Client) GetImageSyncTask() goa.Endpoint {
+	var (
+		decodeResponse = DecodeGetImageSyncTaskResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildGetImageSyncTaskRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.GetImageSyncTaskDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("artifact", "getImageSyncTask", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// ListImageSyncTasks returns an endpoint that makes HTTP requests to the
+// artifact service listImageSyncTasks server.
+func (c *Client) ListImageSyncTasks() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeListImageSyncTasksRequest(c.encoder)
+		decodeResponse = DecodeListImageSyncTasksResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildListImageSyncTasksRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.ListImageSyncTasksDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("artifact", "listImageSyncTasks", err)
 		}
 		return decodeResponse(resp)
 	}

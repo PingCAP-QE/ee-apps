@@ -48,6 +48,26 @@ go run ./cmd/server
 
 After waiting a few seconds, application is available and can be visited in the browser:[localhost:8080](http://localhost:8080/)
 
+## Testing
+
+```bash
+go test ./...
+```
+
+Integration tests (e.g. `internal/service/tests/artifact_test.go`) spin up a
+real registry via [testcontainers](https://golang.testcontainers.org/), so they
+require a running Docker daemon and are skipped with `go test -short ./...`.
+
+When using [colima](https://github.com/abiosoft/colima) as the Docker backend
+on macOS, set the following env vars so testcontainers can reach the daemon and
+mount its socket into containers:
+
+```bash
+DOCKER_HOST=unix://$HOME/.colima/default/docker.sock \
+TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock \
+go test ./...
+```
+
 ## File Structure
 
 > WIP

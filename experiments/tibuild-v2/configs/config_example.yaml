@@ -25,6 +25,15 @@ tekton:
   reconciler_interval: "15s"
   reconciler_since: "24h"
 
+# Lark notifications (devbuild status changes). Disabled by default.
+lark:
+  enabled: false
+  app_id: "cli_xxxxxxxxxxxxxxxx"
+  app_secret: "your-app-secret"
+  channels:
+    - name: "devbuild-team"
+      chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:
   pd: pingcap/pd
@@ -33,3 +42,13 @@ product_repo_map:
 # Map image URL prefix -> mirror URL prefix
 image_mirror_url_map:
   "gcr.io/": "<your-mirror>/"
+
+# Image sync (copy) service configuration
+image_sync:
+  # Validation regexes for source/target image references of a sync request.
+  # Empty values disable validation for the corresponding field.
+  # Hot-reloadable: changes take effect without a restart.
+  source_regx: '^(hub\.pingcap\.net|us-docker.pkg.dev/pingcap-testing-account/(hotfix|hub))/(pingcap|tikv)/[\w-/]+:v\d+\.\d+\.\d+-\d{8,}.*$'
+  target_regx: '^((docker\.io/)?pingcap/[\w-]+|gcr\.io/pingcap-public/dbaas/[\w-]+):v\d+\.\d+\.\d+-\d{8,}.*$'
+  # Worker polling interval for the async task queue (default: 10s).
+  polling_rate: "10s"

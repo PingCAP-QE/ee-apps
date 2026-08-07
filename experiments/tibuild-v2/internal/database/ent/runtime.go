@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
@@ -112,4 +113,38 @@ func init() {
 	devbuildDescErrMsg := devbuildMixinFields2[1].Descriptor()
 	// devbuild.ErrMsgValidator is a validator for the "errMsg" field. It is called by the builders before save.
 	devbuild.ErrMsgValidator = devbuildDescErrMsg.Validators[0].(func(string) error)
+	imagesynctaskFields := schema.ImageSyncTask{}.Fields()
+	_ = imagesynctaskFields
+	// imagesynctaskDescSource is the schema descriptor for source field.
+	imagesynctaskDescSource := imagesynctaskFields[0].Descriptor()
+	// imagesynctask.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	imagesynctask.SourceValidator = imagesynctaskDescSource.Validators[0].(func(string) error)
+	// imagesynctaskDescTarget is the schema descriptor for target field.
+	imagesynctaskDescTarget := imagesynctaskFields[1].Descriptor()
+	// imagesynctask.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	imagesynctask.TargetValidator = imagesynctaskDescTarget.Validators[0].(func(string) error)
+	// imagesynctaskDescStatus is the schema descriptor for status field.
+	imagesynctaskDescStatus := imagesynctaskFields[2].Descriptor()
+	// imagesynctask.DefaultStatus holds the default value on creation for the status field.
+	imagesynctask.DefaultStatus = imagesynctaskDescStatus.Default.(string)
+	// imagesynctask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	imagesynctask.StatusValidator = imagesynctaskDescStatus.Validators[0].(func(string) error)
+	// imagesynctaskDescErrMsg is the schema descriptor for errMsg field.
+	imagesynctaskDescErrMsg := imagesynctaskFields[3].Descriptor()
+	// imagesynctask.ErrMsgValidator is a validator for the "errMsg" field. It is called by the builders before save.
+	imagesynctask.ErrMsgValidator = imagesynctaskDescErrMsg.Validators[0].(func(string) error)
+	// imagesynctaskDescRetryCount is the schema descriptor for retryCount field.
+	imagesynctaskDescRetryCount := imagesynctaskFields[4].Descriptor()
+	// imagesynctask.DefaultRetryCount holds the default value on creation for the retryCount field.
+	imagesynctask.DefaultRetryCount = imagesynctaskDescRetryCount.Default.(int)
+	// imagesynctaskDescCreatedAt is the schema descriptor for createdAt field.
+	imagesynctaskDescCreatedAt := imagesynctaskFields[5].Descriptor()
+	// imagesynctask.DefaultCreatedAt holds the default value on creation for the createdAt field.
+	imagesynctask.DefaultCreatedAt = imagesynctaskDescCreatedAt.Default.(func() time.Time)
+	// imagesynctaskDescUpdatedAt is the schema descriptor for updatedAt field.
+	imagesynctaskDescUpdatedAt := imagesynctaskFields[6].Descriptor()
+	// imagesynctask.DefaultUpdatedAt holds the default value on creation for the updatedAt field.
+	imagesynctask.DefaultUpdatedAt = imagesynctaskDescUpdatedAt.Default.(func() time.Time)
+	// imagesynctask.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
+	imagesynctask.UpdateDefaultUpdatedAt = imagesynctaskDescUpdatedAt.UpdateDefault.(func() time.Time)
 }
