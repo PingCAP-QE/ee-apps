@@ -14,12 +14,12 @@ import (
 
 // SyncImageArtifactPath returns the URL path to the artifact service syncImage HTTP endpoint.
 func SyncImageArtifactPath() string {
-	return "/api/v2/artifact/sync-image"
+	return "/api/v2/artifact/sync-images"
 }
 
 // GetImageSyncTaskArtifactPath returns the URL path to the artifact service getImageSyncTask HTTP endpoint.
 func GetImageSyncTaskArtifactPath(id int) string {
-	return fmt.Sprintf("/api/v2/artifact/sync-image/%v", id)
+	return fmt.Sprintf("/api/v2/artifact/sync-images/%v", id)
 }
 
 // ListImageSyncTasksArtifactPath returns the URL path to the artifact service listImageSyncTasks HTTP endpoint.

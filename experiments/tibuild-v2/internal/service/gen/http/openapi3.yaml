@@ -11,106 +11,6 @@ servers:
     - url: http://localhost:8080
     - url: http://0.0.0.0:8080
 paths:
-    /api/v2/artifact/sync-image:
-        post:
-            tags:
-                - artifact
-            summary: syncImage artifact
-            description: Sync hotfix image to dockerhub asynchronously
-            operationId: artifact#syncImage
-            requestBody:
-                required: true
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ImageSyncRequest'
-                        example:
-                            source: Velit ipsam voluptatum enim harum.
-                            target: Natus quia illo blanditiis totam in.
-            responses:
-                "202":
-                    description: Accepted response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ImageSyncTask'
-                            example:
-                                createdAt: "2015-04-10T21:38:09Z"
-                                errorMessage: Neque dolores.
-                                id: 1094906192390750507
-                                source: Tempore aut placeat rerum.
-                                status: Voluptatem enim aliquam.
-                                target: Excepturi ipsa veniam aspernatur quae.
-                                updatedAt: "1991-11-10T21:43:14Z"
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/HTTPError'
-                            example:
-                                code: 6580110719789566934
-                                message: Placeat mollitia est animi sed.
-                "500":
-                    description: 'InternalServerError: Internal Server Error'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/HTTPError'
-                            example:
-                                code: 6946091921142250906
-                                message: Optio consectetur tempore accusantium odio.
-    /api/v2/artifact/sync-image/{id}:
-        get:
-            tags:
-                - artifact
-            summary: getImageSyncTask artifact
-            description: Get the status of an image sync task
-            operationId: artifact#getImageSyncTask
-            parameters:
-                - name: id
-                  in: path
-                  description: ID of the image sync task
-                  required: true
-                  schema:
-                    type: integer
-                    description: ID of the image sync task
-                    example: 1
-                    format: int64
-                  example: 1
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ImageSyncTask'
-                            example:
-                                createdAt: "1971-07-19T07:25:14Z"
-                                errorMessage: Saepe dolores ullam.
-                                id: 2958238442537334168
-                                source: Molestias est sed sequi doloremque nihil sapiente.
-                                status: Earum libero sunt et.
-                                target: Consequuntur quam alias minima rerum rem.
-                                updatedAt: "1983-11-04T02:38:04Z"
-                "404":
-                    description: 'NotFound: Not Found'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/HTTPError'
-                            example:
-                                code: 5263248405482665127
-                                message: Veniam eos numquam autem.
-                "500":
-                    description: 'InternalServerError: Internal Server Error'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/HTTPError'
-                            example:
-                                code: 3390853365280520369
-                                message: Expedita aut aspernatur facilis laboriosam.
     /api/v2/artifact/sync-images:
         get:
             tags:
@@ -253,6 +153,105 @@ paths:
                             example:
                                 code: 3025858676585833739
                                 message: Harum magni est ipsa et.
+        post:
+            tags:
+                - artifact
+            summary: syncImage artifact
+            description: Sync hotfix image to dockerhub asynchronously
+            operationId: artifact#syncImage
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ImageSyncRequest'
+                        example:
+                            source: Velit ipsam voluptatum enim harum.
+                            target: Natus quia illo blanditiis totam in.
+            responses:
+                "202":
+                    description: Accepted response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ImageSyncTask'
+                            example:
+                                createdAt: "2015-04-10T21:38:09Z"
+                                errorMessage: Neque dolores.
+                                id: 1094906192390750507
+                                source: Tempore aut placeat rerum.
+                                status: Voluptatem enim aliquam.
+                                target: Excepturi ipsa veniam aspernatur quae.
+                                updatedAt: "1991-11-10T21:43:14Z"
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 6580110719789566934
+                                message: Placeat mollitia est animi sed.
+                "500":
+                    description: 'InternalServerError: Internal Server Error'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 6946091921142250906
+                                message: Optio consectetur tempore accusantium odio.
+    /api/v2/artifact/sync-images/{id}:
+        get:
+            tags:
+                - artifact
+            summary: getImageSyncTask artifact
+            description: Get the status of an image sync task
+            operationId: artifact#getImageSyncTask
+            parameters:
+                - name: id
+                  in: path
+                  description: ID of the image sync task
+                  required: true
+                  schema:
+                    type: integer
+                    description: ID of the image sync task
+                    example: 1
+                    format: int64
+                  example: 1
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ImageSyncTask'
+                            example:
+                                createdAt: "1971-07-19T07:25:14Z"
+                                errorMessage: Saepe dolores ullam.
+                                id: 2958238442537334168
+                                source: Molestias est sed sequi doloremque nihil sapiente.
+                                status: Earum libero sunt et.
+                                target: Consequuntur quam alias minima rerum rem.
+                                updatedAt: "1983-11-04T02:38:04Z"
+                "404":
+                    description: 'NotFound: Not Found'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 5263248405482665127
+                                message: Veniam eos numquam autem.
+                "500":
+                    description: 'InternalServerError: Internal Server Error'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HTTPError'
+                            example:
+                                code: 3390853365280520369
+                                message: Expedita aut aspernatur facilis laboriosam.
     /api/v2/devbuilds:
         get:
             tags:
