@@ -23,8 +23,25 @@ type SyncImageRequestBody struct {
 // SyncImageResponseBody is the type of the "artifact" service "syncImage"
 // endpoint HTTP response body.
 type SyncImageResponseBody struct {
-	Source *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
-	Target *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
+	ID           *int    `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	Source       *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
+	Target       *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
+	Status       *string `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    *string `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
+	UpdatedAt    *string `form:"updatedAt,omitempty" json:"updatedAt,omitempty" xml:"updatedAt,omitempty"`
+}
+
+// GetImageSyncTaskResponseBody is the type of the "artifact" service
+// "getImageSyncTask" endpoint HTTP response body.
+type GetImageSyncTaskResponseBody struct {
+	ID           *int    `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	Source       *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
+	Target       *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
+	Status       *string `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    *string `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
+	UpdatedAt    *string `form:"updatedAt,omitempty" json:"updatedAt,omitempty" xml:"updatedAt,omitempty"`
 }
 
 // SyncImageBadRequestResponseBody is the type of the "artifact" service
@@ -42,6 +59,48 @@ type SyncImageInternalServerErrorResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// GetImageSyncTaskNotFoundResponseBody is the type of the "artifact" service
+// "getImageSyncTask" endpoint HTTP response body for the "NotFound" error.
+type GetImageSyncTaskNotFoundResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// GetImageSyncTaskInternalServerErrorResponseBody is the type of the
+// "artifact" service "getImageSyncTask" endpoint HTTP response body for the
+// "InternalServerError" error.
+type GetImageSyncTaskInternalServerErrorResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// ListImageSyncTasksBadRequestResponseBody is the type of the "artifact"
+// service "listImageSyncTasks" endpoint HTTP response body for the
+// "BadRequest" error.
+type ListImageSyncTasksBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// ListImageSyncTasksInternalServerErrorResponseBody is the type of the
+// "artifact" service "listImageSyncTasks" endpoint HTTP response body for the
+// "InternalServerError" error.
+type ListImageSyncTasksInternalServerErrorResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// ImageSyncTaskResponse is used to define fields on response body types.
+type ImageSyncTaskResponse struct {
+	ID           *int    `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	Source       *string `form:"source,omitempty" json:"source,omitempty" xml:"source,omitempty"`
+	Target       *string `form:"target,omitempty" json:"target,omitempty" xml:"target,omitempty"`
+	Status       *string `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
+	ErrorMessage *string `form:"errorMessage,omitempty" json:"errorMessage,omitempty" xml:"errorMessage,omitempty"`
+	CreatedAt    *string `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
+	UpdatedAt    *string `form:"updatedAt,omitempty" json:"updatedAt,omitempty" xml:"updatedAt,omitempty"`
+}
+
 // NewSyncImageRequestBody builds the HTTP request body from the payload of the
 // "syncImage" endpoint of the "artifact" service.
 func NewSyncImageRequestBody(p *artifact.ImageSyncRequest) *SyncImageRequestBody {
@@ -52,12 +111,17 @@ func NewSyncImageRequestBody(p *artifact.ImageSyncRequest) *SyncImageRequestBody
 	return body
 }
 
-// NewSyncImageImageSyncRequestOK builds a "artifact" service "syncImage"
-// endpoint result from a HTTP "OK" response.
-func NewSyncImageImageSyncRequestOK(body *SyncImageResponseBody) *artifact.ImageSyncRequest {
-	v := &artifact.ImageSyncRequest{
-		Source: *body.Source,
-		Target: *body.Target,
+// NewSyncImageImageSyncTaskAccepted builds a "artifact" service "syncImage"
+// endpoint result from a HTTP "Accepted" response.
+func NewSyncImageImageSyncTaskAccepted(body *SyncImageResponseBody) *artifact.ImageSyncTask {
+	v := &artifact.ImageSyncTask{
+		ID:           *body.ID,
+		Source:       *body.Source,
+		Target:       *body.Target,
+		Status:       *body.Status,
+		ErrorMessage: body.ErrorMessage,
+		CreatedAt:    *body.CreatedAt,
+		UpdatedAt:    *body.UpdatedAt,
 	}
 
 	return v
@@ -85,14 +149,137 @@ func NewSyncImageInternalServerError(body *SyncImageInternalServerErrorResponseB
 	return v
 }
 
+// NewGetImageSyncTaskImageSyncTaskOK builds a "artifact" service
+// "getImageSyncTask" endpoint result from a HTTP "OK" response.
+func NewGetImageSyncTaskImageSyncTaskOK(body *GetImageSyncTaskResponseBody) *artifact.ImageSyncTask {
+	v := &artifact.ImageSyncTask{
+		ID:           *body.ID,
+		Source:       *body.Source,
+		Target:       *body.Target,
+		Status:       *body.Status,
+		ErrorMessage: body.ErrorMessage,
+		CreatedAt:    *body.CreatedAt,
+		UpdatedAt:    *body.UpdatedAt,
+	}
+
+	return v
+}
+
+// NewGetImageSyncTaskNotFound builds a artifact service getImageSyncTask
+// endpoint NotFound error.
+func NewGetImageSyncTaskNotFound(body *GetImageSyncTaskNotFoundResponseBody) *artifact.HTTPError {
+	v := &artifact.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewGetImageSyncTaskInternalServerError builds a artifact service
+// getImageSyncTask endpoint InternalServerError error.
+func NewGetImageSyncTaskInternalServerError(body *GetImageSyncTaskInternalServerErrorResponseBody) *artifact.HTTPError {
+	v := &artifact.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewListImageSyncTasksImageSyncTaskOK builds a "artifact" service
+// "listImageSyncTasks" endpoint result from a HTTP "OK" response.
+func NewListImageSyncTasksImageSyncTaskOK(body []*ImageSyncTaskResponse) []*artifact.ImageSyncTask {
+	v := make([]*artifact.ImageSyncTask, len(body))
+	for i, val := range body {
+		if val == nil {
+			v[i] = nil
+			continue
+		}
+		v[i] = unmarshalImageSyncTaskResponseToArtifactImageSyncTask(val)
+	}
+
+	return v
+}
+
+// NewListImageSyncTasksBadRequest builds a artifact service listImageSyncTasks
+// endpoint BadRequest error.
+func NewListImageSyncTasksBadRequest(body *ListImageSyncTasksBadRequestResponseBody) *artifact.HTTPError {
+	v := &artifact.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewListImageSyncTasksInternalServerError builds a artifact service
+// listImageSyncTasks endpoint InternalServerError error.
+func NewListImageSyncTasksInternalServerError(body *ListImageSyncTasksInternalServerErrorResponseBody) *artifact.HTTPError {
+	v := &artifact.HTTPError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // ValidateSyncImageResponseBody runs the validations defined on
 // SyncImageResponseBody
 func ValidateSyncImageResponseBody(body *SyncImageResponseBody) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
 	if body.Source == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("source", "body"))
 	}
 	if body.Target == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("target", "body"))
+	}
+	if body.Status == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
+	}
+	if body.CreatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("createdAt", "body"))
+	}
+	if body.UpdatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("updatedAt", "body"))
+	}
+	if body.CreatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
+	}
+	if body.UpdatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updatedAt", *body.UpdatedAt, goa.FormatDateTime))
+	}
+	return
+}
+
+// ValidateGetImageSyncTaskResponseBody runs the validations defined on
+// GetImageSyncTaskResponseBody
+func ValidateGetImageSyncTaskResponseBody(body *GetImageSyncTaskResponseBody) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
+	if body.Source == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("source", "body"))
+	}
+	if body.Target == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("target", "body"))
+	}
+	if body.Status == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
+	}
+	if body.CreatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("createdAt", "body"))
+	}
+	if body.UpdatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("updatedAt", "body"))
+	}
+	if body.CreatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
+	}
+	if body.UpdatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updatedAt", *body.UpdatedAt, goa.FormatDateTime))
 	}
 	return
 }
@@ -117,6 +304,84 @@ func ValidateSyncImageInternalServerErrorResponseBody(body *SyncImageInternalSer
 	}
 	if body.Message == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateGetImageSyncTaskNotFoundResponseBody runs the validations defined on
+// getImageSyncTask_NotFound_response_body
+func ValidateGetImageSyncTaskNotFoundResponseBody(body *GetImageSyncTaskNotFoundResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateGetImageSyncTaskInternalServerErrorResponseBody runs the validations
+// defined on getImageSyncTask_InternalServerError_response_body
+func ValidateGetImageSyncTaskInternalServerErrorResponseBody(body *GetImageSyncTaskInternalServerErrorResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateListImageSyncTasksBadRequestResponseBody runs the validations
+// defined on listImageSyncTasks_BadRequest_response_body
+func ValidateListImageSyncTasksBadRequestResponseBody(body *ListImageSyncTasksBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateListImageSyncTasksInternalServerErrorResponseBody runs the
+// validations defined on listImageSyncTasks_InternalServerError_response_body
+func ValidateListImageSyncTasksInternalServerErrorResponseBody(body *ListImageSyncTasksInternalServerErrorResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateImageSyncTaskResponse runs the validations defined on
+// ImageSyncTaskResponse
+func ValidateImageSyncTaskResponse(body *ImageSyncTaskResponse) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
+	if body.Source == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("source", "body"))
+	}
+	if body.Target == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("target", "body"))
+	}
+	if body.Status == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
+	}
+	if body.CreatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("createdAt", "body"))
+	}
+	if body.UpdatedAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("updatedAt", "body"))
+	}
+	if body.CreatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
+	}
+	if body.UpdatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updatedAt", *body.UpdatedAt, goa.FormatDateTime))
 	}
 	return
 }

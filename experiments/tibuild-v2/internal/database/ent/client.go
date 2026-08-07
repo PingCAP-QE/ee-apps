@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 )
 
 // Client is the client that holds all ent builders.
@@ -24,6 +25,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// DevBuild is the client for interacting with the DevBuild builders.
 	DevBuild *DevBuildClient
+	// ImageSyncTask is the client for interacting with the ImageSyncTask builders.
+	ImageSyncTask *ImageSyncTaskClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -36,6 +39,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.DevBuild = NewDevBuildClient(c.config)
+	c.ImageSyncTask = NewImageSyncTaskClient(c.config)
 }
 
 type (
@@ -126,9 +130,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		DevBuild: NewDevBuildClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		DevBuild:      NewDevBuildClient(cfg),
+		ImageSyncTask: NewImageSyncTaskClient(cfg),
 	}, nil
 }
 
@@ -146,9 +151,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		DevBuild: NewDevBuildClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		DevBuild:      NewDevBuildClient(cfg),
+		ImageSyncTask: NewImageSyncTaskClient(cfg),
 	}, nil
 }
 
@@ -178,12 +184,14 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.DevBuild.Use(hooks...)
+	c.ImageSyncTask.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.DevBuild.Intercept(interceptors...)
+	c.ImageSyncTask.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -191,6 +199,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *DevBuildMutation:
 		return c.DevBuild.mutate(ctx, m)
+	case *ImageSyncTaskMutation:
+		return c.ImageSyncTask.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -329,12 +339,145 @@ func (c *DevBuildClient) mutate(ctx context.Context, m *DevBuildMutation) (Value
 	}
 }
 
+// ImageSyncTaskClient is a client for the ImageSyncTask schema.
+type ImageSyncTaskClient struct {
+	config
+}
+
+// NewImageSyncTaskClient returns a client for the ImageSyncTask from the given config.
+func NewImageSyncTaskClient(c config) *ImageSyncTaskClient {
+	return &ImageSyncTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `imagesynctask.Hooks(f(g(h())))`.
+func (c *ImageSyncTaskClient) Use(hooks ...Hook) {
+	c.hooks.ImageSyncTask = append(c.hooks.ImageSyncTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `imagesynctask.Intercept(f(g(h())))`.
+func (c *ImageSyncTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ImageSyncTask = append(c.inters.ImageSyncTask, interceptors...)
+}
+
+// Create returns a builder for creating a ImageSyncTask entity.
+func (c *ImageSyncTaskClient) Create() *ImageSyncTaskCreate {
+	mutation := newImageSyncTaskMutation(c.config, OpCreate)
+	return &ImageSyncTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ImageSyncTask entities.
+func (c *ImageSyncTaskClient) CreateBulk(builders ...*ImageSyncTaskCreate) *ImageSyncTaskCreateBulk {
+	return &ImageSyncTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ImageSyncTaskClient) MapCreateBulk(slice any, setFunc func(*ImageSyncTaskCreate, int)) *ImageSyncTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ImageSyncTaskCreateBulk{err: fmt.Errorf("calling to ImageSyncTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ImageSyncTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ImageSyncTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ImageSyncTask.
+func (c *ImageSyncTaskClient) Update() *ImageSyncTaskUpdate {
+	mutation := newImageSyncTaskMutation(c.config, OpUpdate)
+	return &ImageSyncTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ImageSyncTaskClient) UpdateOne(_m *ImageSyncTask) *ImageSyncTaskUpdateOne {
+	mutation := newImageSyncTaskMutation(c.config, OpUpdateOne, withImageSyncTask(_m))
+	return &ImageSyncTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ImageSyncTaskClient) UpdateOneID(id int) *ImageSyncTaskUpdateOne {
+	mutation := newImageSyncTaskMutation(c.config, OpUpdateOne, withImageSyncTaskID(id))
+	return &ImageSyncTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ImageSyncTask.
+func (c *ImageSyncTaskClient) Delete() *ImageSyncTaskDelete {
+	mutation := newImageSyncTaskMutation(c.config, OpDelete)
+	return &ImageSyncTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ImageSyncTaskClient) DeleteOne(_m *ImageSyncTask) *ImageSyncTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ImageSyncTaskClient) DeleteOneID(id int) *ImageSyncTaskDeleteOne {
+	builder := c.Delete().Where(imagesynctask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ImageSyncTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for ImageSyncTask.
+func (c *ImageSyncTaskClient) Query() *ImageSyncTaskQuery {
+	return &ImageSyncTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeImageSyncTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ImageSyncTask entity by its id.
+func (c *ImageSyncTaskClient) Get(ctx context.Context, id int) (*ImageSyncTask, error) {
+	return c.Query().Where(imagesynctask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ImageSyncTaskClient) GetX(ctx context.Context, id int) *ImageSyncTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ImageSyncTaskClient) Hooks() []Hook {
+	return c.hooks.ImageSyncTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *ImageSyncTaskClient) Interceptors() []Interceptor {
+	return c.inters.ImageSyncTask
+}
+
+func (c *ImageSyncTaskClient) mutate(ctx context.Context, m *ImageSyncTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ImageSyncTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ImageSyncTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ImageSyncTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ImageSyncTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ImageSyncTask mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		DevBuild []ent.Hook
+		DevBuild, ImageSyncTask []ent.Hook
 	}
 	inters struct {
-		DevBuild []ent.Interceptor
+		DevBuild, ImageSyncTask []ent.Interceptor
 	}
 )

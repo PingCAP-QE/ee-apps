@@ -16,19 +16,25 @@ import (
 
 // Endpoints wraps the "artifact" service endpoints.
 type Endpoints struct {
-	SyncImage goa.Endpoint
+	SyncImage          goa.Endpoint
+	GetImageSyncTask   goa.Endpoint
+	ListImageSyncTasks goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "artifact" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		SyncImage: NewSyncImageEndpoint(s),
+		SyncImage:          NewSyncImageEndpoint(s),
+		GetImageSyncTask:   NewGetImageSyncTaskEndpoint(s),
+		ListImageSyncTasks: NewListImageSyncTasksEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "artifact" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.SyncImage = m(e.SyncImage)
+	e.GetImageSyncTask = m(e.GetImageSyncTask)
+	e.ListImageSyncTasks = m(e.ListImageSyncTasks)
 }
 
 // NewSyncImageEndpoint returns an endpoint function that calls the method
@@ -37,5 +43,23 @@ func NewSyncImageEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*ImageSyncRequest)
 		return s.SyncImage(ctx, p)
+	}
+}
+
+// NewGetImageSyncTaskEndpoint returns an endpoint function that calls the
+// method "getImageSyncTask" of service "artifact".
+func NewGetImageSyncTaskEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*GetImageSyncTaskPayload)
+		return s.GetImageSyncTask(ctx, p)
+	}
+}
+
+// NewListImageSyncTasksEndpoint returns an endpoint function that calls the
+// method "listImageSyncTasks" of service "artifact".
+func NewListImageSyncTasksEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*ListImageSyncTasksPayload)
+		return s.ListImageSyncTasks(ctx, p)
 	}
 }

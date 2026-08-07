@@ -11,8 +11,10 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	artifact "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildSyncImagePayload builds the payload for the artifact syncImage endpoint
@@ -23,13 +25,104 @@ func BuildSyncImagePayload(artifactSyncImageBody string) (*artifact.ImageSyncReq
 	{
 		err = json.Unmarshal([]byte(artifactSyncImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"source\": \"Quod ut eum deleniti.\",\n      \"target\": \"Reprehenderit nihil animi.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"source\": \"Ipsam voluptatum enim harum dolorum.\",\n      \"target\": \"Quia illo blanditiis totam in beatae.\"\n   }'")
 		}
 	}
 	v := &artifact.ImageSyncRequest{
 		Source: body.Source,
 		Target: body.Target,
 	}
+
+	return v, nil
+}
+
+// BuildGetImageSyncTaskPayload builds the payload for the artifact
+// getImageSyncTask endpoint from CLI flags.
+func BuildGetImageSyncTaskPayload(artifactGetImageSyncTaskID string) (*artifact.GetImageSyncTaskPayload, error) {
+	var err error
+	var id int
+	{
+		var v int64
+		v, err = strconv.ParseInt(artifactGetImageSyncTaskID, 10, strconv.IntSize)
+		id = int(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for id, must be INT")
+		}
+	}
+	v := &artifact.GetImageSyncTaskPayload{}
+	v.ID = id
+
+	return v, nil
+}
+
+// BuildListImageSyncTasksPayload builds the payload for the artifact
+// listImageSyncTasks endpoint from CLI flags.
+func BuildListImageSyncTasksPayload(artifactListImageSyncTasksPage string, artifactListImageSyncTasksPageSize string, artifactListImageSyncTasksStatus string, artifactListImageSyncTasksSort string, artifactListImageSyncTasksDirection string) (*artifact.ListImageSyncTasksPayload, error) {
+	var err error
+	var page int
+	{
+		if artifactListImageSyncTasksPage != "" {
+			var v int64
+			v, err = strconv.ParseInt(artifactListImageSyncTasksPage, 10, strconv.IntSize)
+			page = int(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for page, must be INT")
+			}
+		}
+	}
+	var pageSize int
+	{
+		if artifactListImageSyncTasksPageSize != "" {
+			var v int64
+			v, err = strconv.ParseInt(artifactListImageSyncTasksPageSize, 10, strconv.IntSize)
+			pageSize = int(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for pageSize, must be INT")
+			}
+		}
+	}
+	var status *string
+	{
+		if artifactListImageSyncTasksStatus != "" {
+			status = &artifactListImageSyncTasksStatus
+			if !(*status == "PENDING" || *status == "PROCESSING" || *status == "SUCCEEDED" || *status == "FAILED") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("status", *status, []any{"PENDING", "PROCESSING", "SUCCEEDED", "FAILED"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var sort string
+	{
+		if artifactListImageSyncTasksSort != "" {
+			sort = artifactListImageSyncTasksSort
+			if !(sort == "createdAt" || sort == "updatedAt") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"createdAt", "updatedAt"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var direction string
+	{
+		if artifactListImageSyncTasksDirection != "" {
+			direction = artifactListImageSyncTasksDirection
+			if !(direction == "asc" || direction == "desc") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("direction", direction, []any{"asc", "desc"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	v := &artifact.ListImageSyncTasksPayload{}
+	v.Page = page
+	v.PageSize = pageSize
+	v.Status = status
+	v.Sort = sort
+	v.Direction = direction
 
 	return v, nil
 }

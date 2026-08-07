@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
@@ -25,7 +26,8 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeDevBuild = "DevBuild"
+	TypeDevBuild      = "DevBuild"
+	TypeImageSyncTask = "ImageSyncTask"
 )
 
 // DevBuildMutation represents an operation that mutates the DevBuild nodes in the graph.
@@ -2325,4 +2327,712 @@ func (m *DevBuildMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *DevBuildMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown DevBuild edge %s", name)
+}
+
+// ImageSyncTaskMutation represents an operation that mutates the ImageSyncTask nodes in the graph.
+type ImageSyncTaskMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	source        *string
+	target        *string
+	status        *string
+	errMsg        *string
+	retryCount    *int
+	addretryCount *int
+	createdAt     *time.Time
+	updatedAt     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ImageSyncTask, error)
+	predicates    []predicate.ImageSyncTask
+}
+
+var _ ent.Mutation = (*ImageSyncTaskMutation)(nil)
+
+// imagesynctaskOption allows management of the mutation configuration using functional options.
+type imagesynctaskOption func(*ImageSyncTaskMutation)
+
+// newImageSyncTaskMutation creates new mutation for the ImageSyncTask entity.
+func newImageSyncTaskMutation(c config, op Op, opts ...imagesynctaskOption) *ImageSyncTaskMutation {
+	m := &ImageSyncTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeImageSyncTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withImageSyncTaskID sets the ID field of the mutation.
+func withImageSyncTaskID(id int) imagesynctaskOption {
+	return func(m *ImageSyncTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ImageSyncTask
+		)
+		m.oldValue = func(ctx context.Context) (*ImageSyncTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ImageSyncTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withImageSyncTask sets the old ImageSyncTask of the mutation.
+func withImageSyncTask(node *ImageSyncTask) imagesynctaskOption {
+	return func(m *ImageSyncTaskMutation) {
+		m.oldValue = func(context.Context) (*ImageSyncTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ImageSyncTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ImageSyncTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ImageSyncTaskMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ImageSyncTaskMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ImageSyncTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSource sets the "source" field.
+func (m *ImageSyncTaskMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *ImageSyncTaskMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *ImageSyncTaskMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetTarget sets the "target" field.
+func (m *ImageSyncTaskMutation) SetTarget(s string) {
+	m.target = &s
+}
+
+// Target returns the value of the "target" field in the mutation.
+func (m *ImageSyncTaskMutation) Target() (r string, exists bool) {
+	v := m.target
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTarget returns the old "target" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldTarget(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTarget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTarget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTarget: %w", err)
+	}
+	return oldValue.Target, nil
+}
+
+// ResetTarget resets all changes to the "target" field.
+func (m *ImageSyncTaskMutation) ResetTarget() {
+	m.target = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ImageSyncTaskMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ImageSyncTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ImageSyncTaskMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetErrMsg sets the "errMsg" field.
+func (m *ImageSyncTaskMutation) SetErrMsg(s string) {
+	m.errMsg = &s
+}
+
+// ErrMsg returns the value of the "errMsg" field in the mutation.
+func (m *ImageSyncTaskMutation) ErrMsg() (r string, exists bool) {
+	v := m.errMsg
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrMsg returns the old "errMsg" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldErrMsg(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrMsg is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrMsg requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrMsg: %w", err)
+	}
+	return oldValue.ErrMsg, nil
+}
+
+// ClearErrMsg clears the value of the "errMsg" field.
+func (m *ImageSyncTaskMutation) ClearErrMsg() {
+	m.errMsg = nil
+	m.clearedFields[imagesynctask.FieldErrMsg] = struct{}{}
+}
+
+// ErrMsgCleared returns if the "errMsg" field was cleared in this mutation.
+func (m *ImageSyncTaskMutation) ErrMsgCleared() bool {
+	_, ok := m.clearedFields[imagesynctask.FieldErrMsg]
+	return ok
+}
+
+// ResetErrMsg resets all changes to the "errMsg" field.
+func (m *ImageSyncTaskMutation) ResetErrMsg() {
+	m.errMsg = nil
+	delete(m.clearedFields, imagesynctask.FieldErrMsg)
+}
+
+// SetRetryCount sets the "retryCount" field.
+func (m *ImageSyncTaskMutation) SetRetryCount(i int) {
+	m.retryCount = &i
+	m.addretryCount = nil
+}
+
+// RetryCount returns the value of the "retryCount" field in the mutation.
+func (m *ImageSyncTaskMutation) RetryCount() (r int, exists bool) {
+	v := m.retryCount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRetryCount returns the old "retryCount" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldRetryCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetryCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetryCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetryCount: %w", err)
+	}
+	return oldValue.RetryCount, nil
+}
+
+// AddRetryCount adds i to the "retryCount" field.
+func (m *ImageSyncTaskMutation) AddRetryCount(i int) {
+	if m.addretryCount != nil {
+		*m.addretryCount += i
+	} else {
+		m.addretryCount = &i
+	}
+}
+
+// AddedRetryCount returns the value that was added to the "retryCount" field in this mutation.
+func (m *ImageSyncTaskMutation) AddedRetryCount() (r int, exists bool) {
+	v := m.addretryCount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRetryCount resets all changes to the "retryCount" field.
+func (m *ImageSyncTaskMutation) ResetRetryCount() {
+	m.retryCount = nil
+	m.addretryCount = nil
+}
+
+// SetCreatedAt sets the "createdAt" field.
+func (m *ImageSyncTaskMutation) SetCreatedAt(t time.Time) {
+	m.createdAt = &t
+}
+
+// CreatedAt returns the value of the "createdAt" field in the mutation.
+func (m *ImageSyncTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.createdAt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "createdAt" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "createdAt" field.
+func (m *ImageSyncTaskMutation) ResetCreatedAt() {
+	m.createdAt = nil
+}
+
+// SetUpdatedAt sets the "updatedAt" field.
+func (m *ImageSyncTaskMutation) SetUpdatedAt(t time.Time) {
+	m.updatedAt = &t
+}
+
+// UpdatedAt returns the value of the "updatedAt" field in the mutation.
+func (m *ImageSyncTaskMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updatedAt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updatedAt" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updatedAt" field.
+func (m *ImageSyncTaskMutation) ResetUpdatedAt() {
+	m.updatedAt = nil
+}
+
+// Where appends a list predicates to the ImageSyncTaskMutation builder.
+func (m *ImageSyncTaskMutation) Where(ps ...predicate.ImageSyncTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ImageSyncTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ImageSyncTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ImageSyncTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ImageSyncTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ImageSyncTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ImageSyncTask).
+func (m *ImageSyncTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ImageSyncTaskMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.source != nil {
+		fields = append(fields, imagesynctask.FieldSource)
+	}
+	if m.target != nil {
+		fields = append(fields, imagesynctask.FieldTarget)
+	}
+	if m.status != nil {
+		fields = append(fields, imagesynctask.FieldStatus)
+	}
+	if m.errMsg != nil {
+		fields = append(fields, imagesynctask.FieldErrMsg)
+	}
+	if m.retryCount != nil {
+		fields = append(fields, imagesynctask.FieldRetryCount)
+	}
+	if m.createdAt != nil {
+		fields = append(fields, imagesynctask.FieldCreatedAt)
+	}
+	if m.updatedAt != nil {
+		fields = append(fields, imagesynctask.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ImageSyncTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case imagesynctask.FieldSource:
+		return m.Source()
+	case imagesynctask.FieldTarget:
+		return m.Target()
+	case imagesynctask.FieldStatus:
+		return m.Status()
+	case imagesynctask.FieldErrMsg:
+		return m.ErrMsg()
+	case imagesynctask.FieldRetryCount:
+		return m.RetryCount()
+	case imagesynctask.FieldCreatedAt:
+		return m.CreatedAt()
+	case imagesynctask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ImageSyncTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case imagesynctask.FieldSource:
+		return m.OldSource(ctx)
+	case imagesynctask.FieldTarget:
+		return m.OldTarget(ctx)
+	case imagesynctask.FieldStatus:
+		return m.OldStatus(ctx)
+	case imagesynctask.FieldErrMsg:
+		return m.OldErrMsg(ctx)
+	case imagesynctask.FieldRetryCount:
+		return m.OldRetryCount(ctx)
+	case imagesynctask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case imagesynctask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ImageSyncTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ImageSyncTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case imagesynctask.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case imagesynctask.FieldTarget:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTarget(v)
+		return nil
+	case imagesynctask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case imagesynctask.FieldErrMsg:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrMsg(v)
+		return nil
+	case imagesynctask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRetryCount(v)
+		return nil
+	case imagesynctask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case imagesynctask.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ImageSyncTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ImageSyncTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addretryCount != nil {
+		fields = append(fields, imagesynctask.FieldRetryCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ImageSyncTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case imagesynctask.FieldRetryCount:
+		return m.AddedRetryCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ImageSyncTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case imagesynctask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRetryCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ImageSyncTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ImageSyncTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(imagesynctask.FieldErrMsg) {
+		fields = append(fields, imagesynctask.FieldErrMsg)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ImageSyncTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ImageSyncTaskMutation) ClearField(name string) error {
+	switch name {
+	case imagesynctask.FieldErrMsg:
+		m.ClearErrMsg()
+		return nil
+	}
+	return fmt.Errorf("unknown ImageSyncTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ImageSyncTaskMutation) ResetField(name string) error {
+	switch name {
+	case imagesynctask.FieldSource:
+		m.ResetSource()
+		return nil
+	case imagesynctask.FieldTarget:
+		m.ResetTarget()
+		return nil
+	case imagesynctask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case imagesynctask.FieldErrMsg:
+		m.ResetErrMsg()
+		return nil
+	case imagesynctask.FieldRetryCount:
+		m.ResetRetryCount()
+		return nil
+	case imagesynctask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case imagesynctask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ImageSyncTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ImageSyncTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ImageSyncTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ImageSyncTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ImageSyncTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ImageSyncTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ImageSyncTaskMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ImageSyncTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ImageSyncTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ImageSyncTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ImageSyncTask edge %s", name)
 }

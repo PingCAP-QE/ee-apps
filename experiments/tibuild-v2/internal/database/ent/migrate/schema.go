@@ -47,14 +47,35 @@ var (
 		Columns:    DevBuildsV2Columns,
 		PrimaryKey: []*schema.Column{DevBuildsV2Columns[0]},
 	}
+	// ImageSyncTasksColumns holds the columns for the "image_sync_tasks" table.
+	ImageSyncTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "source", Type: field.TypeString, Size: 256},
+		{Name: "target", Type: field.TypeString, Size: 256},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "PENDING"},
+		{Name: "err_msg", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ImageSyncTasksTable holds the schema information for the "image_sync_tasks" table.
+	ImageSyncTasksTable = &schema.Table{
+		Name:       "image_sync_tasks",
+		Columns:    ImageSyncTasksColumns,
+		PrimaryKey: []*schema.Column{ImageSyncTasksColumns[0]},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		DevBuildsV2Table,
+		ImageSyncTasksTable,
 	}
 )
 
 func init() {
 	DevBuildsV2Table.Annotation = &entsql.Annotation{
 		Table: "dev_builds_v2",
+	}
+	ImageSyncTasksTable.Annotation = &entsql.Annotation{
+		Table: "image_sync_tasks",
 	}
 }

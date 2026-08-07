@@ -11,6 +11,19 @@ type Service struct {
 	ProductRepoMap map[string]string `yaml:"product_repo_map" json:"product_repo_map"`
 	// ImageMirrorURLMap is a map prefixes for transformation between direct url to mirror url.
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map" json:"image_mirror_url_map"`
+	// ImageSync holds the image sync (copy) service configuration.
+	ImageSync ImageSync `yaml:"image_sync" json:"image_sync"`
+}
+
+// ImageSync configures the image sync (copy) service.
+// SourceRegx and TargetRegx are the validation regexes for the source and
+// target image references of a sync request. An empty value disables
+// validation for the corresponding field.
+type ImageSync struct {
+	SourceRegx string `yaml:"source_regx,omitempty" json:"source_regx,omitempty"`
+	TargetRegx string `yaml:"target_regx,omitempty" json:"target_regx,omitempty"`
+	// PollingRate is the worker polling interval (e.g. "10s"). Defaults to 10s.
+	PollingRate string `yaml:"polling_rate,omitempty" json:"polling_rate,omitempty"`
 }
 
 type Github struct {

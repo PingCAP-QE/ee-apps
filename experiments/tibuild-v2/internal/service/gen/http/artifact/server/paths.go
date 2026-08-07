@@ -8,7 +8,21 @@
 
 package server
 
+import (
+	"fmt"
+)
+
 // SyncImageArtifactPath returns the URL path to the artifact service syncImage HTTP endpoint.
 func SyncImageArtifactPath() string {
 	return "/api/v2/artifact/sync-image"
+}
+
+// GetImageSyncTaskArtifactPath returns the URL path to the artifact service getImageSyncTask HTTP endpoint.
+func GetImageSyncTaskArtifactPath(id int) string {
+	return fmt.Sprintf("/api/v2/artifact/sync-image/%v", id)
+}
+
+// ListImageSyncTasksArtifactPath returns the URL path to the artifact service listImageSyncTasks HTTP endpoint.
+func ListImageSyncTasksArtifactPath() string {
+	return "/api/v2/artifact/sync-images"
 }
