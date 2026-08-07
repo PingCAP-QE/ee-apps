@@ -639,10 +639,9 @@ func NewCreatePayload(body *CreateRequestBody, dryrun bool) *devbuild.CreatePayl
 }
 
 // NewGetPayload builds a devbuild service get endpoint payload.
-func NewGetPayload(id int, sync bool) *devbuild.GetPayload {
+func NewGetPayload(id int) *devbuild.GetPayload {
 	v := &devbuild.GetPayload{}
 	v.ID = id
-	v.Sync = sync
 
 	return v
 }

@@ -93,8 +93,7 @@ func TestDevBuildPlatformField(t *testing.T) {
 		require.NoError(t, err)
 
 		getPayload := &devbuild.GetPayload{
-			ID:   created.ID,
-			Sync: false,
+			ID: created.ID,
 		}
 
 		fetched, err := env.service.Get(ctx, getPayload)

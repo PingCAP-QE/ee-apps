@@ -299,12 +299,6 @@ paths:
             description: Get devbuild
             operationId: devbuild#get
             parameters:
-                - name: sync
-                  in: query
-                  description: Whether sync with jenkins
-                  required: false
-                  type: boolean
-                  default: false
                 - name: id
                   in: path
                   description: ID of build
