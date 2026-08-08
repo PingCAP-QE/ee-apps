@@ -152,3 +152,17 @@ server:
   config:
     secretName: ""
     secretKey: config.yaml
+  # Additional volumes to mount, e.g. registry credentials:
+  #   volumes:
+  #     - name: docker-cred
+  #       secret:
+  #         secretName: image-release-cred
+  #         items:
+  #           - key: .dockerconfigjson
+  #             path: config.json
+  #   volumeMounts:
+  #     - name: docker-cred
+  #       mountPath: /root/.docker
+  #       readOnly: true
+  volumes: []
+  volumeMounts: []
