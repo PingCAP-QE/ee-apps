@@ -28,8 +28,14 @@ import {
 } from "./lib/filterUrl";
 
 const REPO_OPTIONS = [
+  { value: "pingcap/docs", label: "pingcap/docs" },
+  { value: "pingcap/ticdc", label: "pingcap/ticdc" },
   { value: "pingcap/tidb", label: "pingcap/tidb" },
+  { value: "pingcap/tiflash", label: "pingcap/tiflash" },
+  { value: "pingcap/tiflow", label: "pingcap/tiflow" },
+  { value: "tidbcloud/cloud-storage-engine", label: "tidbcloud/cloud-storage-engine" },
   { value: "tikv/pd", label: "tikv/pd" },
+  { value: "tikv/tikv", label: "tikv/tikv" },
 ];
 
 export default function App() {
