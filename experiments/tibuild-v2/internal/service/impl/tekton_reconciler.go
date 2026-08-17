@@ -307,9 +307,10 @@ func extractArtifactsFromResults(results []tknv1.PipelineRunResult, params tknv1
 			var bin binariesResultYAML
 			if err := yaml.Unmarshal([]byte(result.Value.StringVal), &bin); err == nil && bin.Oci != nil {
 				ociArtifacts = append(ociArtifacts, schema.OciArtifact{
-					Repo:  bin.Oci.Repo,
-					Tag:   bin.Oci.Tag,
-					Files: bin.Files,
+					Repo:     bin.Oci.Repo,
+					Tag:      bin.Oci.Tag,
+					Files:    bin.Files,
+					Platform: parsePlatformFromParams(params),
 				})
 			}
 		case "pushed-images":
@@ -363,9 +364,10 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 				var bin binariesResultYAML
 				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &bin); err == nil && bin.Oci != nil {
 					report.Binaries = append(report.Binaries, schema.OciArtifact{
-						Repo:  bin.Oci.Repo,
-						Tag:   bin.Oci.Tag,
-						Files: bin.Files,
+						Repo:     bin.Oci.Repo,
+						Tag:      bin.Oci.Tag,
+						Files:    bin.Files,
+						Platform: parsePlatformFromParams(pr.Spec.Params),
 					})
 					hasData = true
 				}

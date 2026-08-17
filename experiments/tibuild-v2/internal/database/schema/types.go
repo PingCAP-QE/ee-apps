@@ -41,9 +41,10 @@ type ImageArtifact struct {
 
 // OciArtifact represents an OCI artifact.
 type OciArtifact struct {
-	Files []string `json:"files,omitzero"`
-	Repo  string   `json:"repo,omitzero"`
-	Tag   string   `json:"tag,omitzero"`
+	Files    []string `json:"files,omitzero"`
+	Platform string   `json:"platform,omitzero"`
+	Repo     string   `json:"repo,omitzero"`
+	Tag      string   `json:"tag,omitzero"`
 }
 
 // NotificationState holds the delivery state for all notification channels.
