@@ -414,4 +414,23 @@ var _ = Service("tidbcloud", func() {
 			Response(StatusOK)
 		})
 	})
+	Method("request-sync-kernel-image", func() {
+		Description("Request to sync kernel image via ops platform kernel image build callback")
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Enum("dev", "prod")
+				Example("dev")
+			})
+			Attribute("image", String, "the source container image with tag", func() {
+				Pattern("^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+				Example("us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31")
+			})
+			Required("stage", "image")
+		})
+		Result(String, "request sync result message")
+		HTTP(func() {
+			POST("/devops/kernel-images/build-callback")
+			Response(StatusOK)
+		})
+	})
 })

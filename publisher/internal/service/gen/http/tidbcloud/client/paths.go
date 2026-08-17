@@ -17,3 +17,8 @@ func UpdateComponentVersionInCloudconfigTidbcloudPath() string {
 func AddTidbxImageTagInTcmsTidbcloudPath() string {
 	return "/tidbcloud/tidbx-component-image-builds"
 }
+
+// RequestSyncKernelImageTidbcloudPath returns the URL path to the tidbcloud service request-sync-kernel-image HTTP endpoint.
+func RequestSyncKernelImageTidbcloudPath() string {
+	return "/tidbcloud/devops/kernel-images/build-callback"
+}

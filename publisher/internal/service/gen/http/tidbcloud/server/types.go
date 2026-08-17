@@ -41,6 +41,15 @@ type AddTidbxImageTagInTcmsRequestBody struct {
 	} `form:"github,omitempty" json:"github,omitempty" xml:"github,omitempty"`
 }
 
+// RequestSyncKernelImageRequestBody is the type of the "tidbcloud" service
+// "request-sync-kernel-image" endpoint HTTP request body.
+type RequestSyncKernelImageRequestBody struct {
+	// env stage
+	Stage *string `form:"stage,omitempty" json:"stage,omitempty" xml:"stage,omitempty"`
+	// the source container image with tag
+	Image *string `form:"image,omitempty" json:"image,omitempty" xml:"image,omitempty"`
+}
+
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
@@ -149,6 +158,17 @@ func NewAddTidbxImageTagInTcmsPayload(body *AddTidbxImageTagInTcmsRequestBody) *
 	return v
 }
 
+// NewRequestSyncKernelImagePayload builds a tidbcloud service
+// request-sync-kernel-image endpoint payload.
+func NewRequestSyncKernelImagePayload(body *RequestSyncKernelImageRequestBody) *tidbcloud.RequestSyncKernelImagePayload {
+	v := &tidbcloud.RequestSyncKernelImagePayload{
+		Stage: *body.Stage,
+		Image: *body.Image,
+	}
+
+	return v
+}
+
 // ValidateUpdateComponentVersionInCloudconfigRequestBody runs the validations
 // defined on Update-Component-Version-In-CloudconfigRequestBody
 func ValidateUpdateComponentVersionInCloudconfigRequestBody(body *UpdateComponentVersionInCloudconfigRequestBody) (err error) {
@@ -184,6 +204,26 @@ func ValidateAddTidbxImageTagInTcmsRequestBody(body *AddTidbxImageTagInTcmsReque
 				err = goa.MergeErrors(err, goa.InvalidLengthError("body.github.commit_sha", *body.Github.CommitSha, utf8.RuneCountInString(*body.Github.CommitSha), 40, false))
 			}
 		}
+	}
+	return
+}
+
+// ValidateRequestSyncKernelImageRequestBody runs the validations defined on
+// Request-Sync-Kernel-ImageRequestBody
+func ValidateRequestSyncKernelImageRequestBody(body *RequestSyncKernelImageRequestBody) (err error) {
+	if body.Stage == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("stage", "body"))
+	}
+	if body.Image == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("image", "body"))
+	}
+	if body.Stage != nil {
+		if !(*body.Stage == "dev" || *body.Stage == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.stage", *body.Stage, []any{"dev", "prod"}))
+		}
+	}
+	if body.Image != nil {
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.image", *body.Image, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
 	}
 	return
 }

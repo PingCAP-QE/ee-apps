@@ -38,6 +38,18 @@ type OpsUpdateComponentResponse struct {
 	InstanceID int `json:"instance_id"`
 }
 
+type OpsKernelImageSyncRequest struct {
+	SourceApplicant  string `json:"source_applicant"`
+	SourceReleaseID  string `json:"source_release_id,omitempty"`
+	SourceChangeID   string `json:"source_change_id,omitempty"`
+	Repo             string `json:"repo"`
+	Branch           string `json:"branch,omitempty"`
+	CommitSHA        string `json:"commit_sha"`
+	GitTag           string `json:"git_tag,omitempty"`
+	SourceRepository string `json:"source_repository"`
+	SourceTag        string `json:"source_tag"`
+}
+
 type TiBuildTagMetadataResponse struct {
 	Author string `json:"author"`
 	Meta   struct {

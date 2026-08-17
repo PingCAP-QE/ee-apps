@@ -18,6 +18,7 @@ import (
 type Endpoints struct {
 	UpdateComponentVersionInCloudconfig goa.Endpoint
 	AddTidbxImageTagInTcms              goa.Endpoint
+	RequestSyncKernelImage              goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "tidbcloud" service with endpoints.
@@ -25,6 +26,7 @@ func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
 		UpdateComponentVersionInCloudconfig: NewUpdateComponentVersionInCloudconfigEndpoint(s),
 		AddTidbxImageTagInTcms:              NewAddTidbxImageTagInTcmsEndpoint(s),
+		RequestSyncKernelImage:              NewRequestSyncKernelImageEndpoint(s),
 	}
 }
 
@@ -32,6 +34,7 @@ func NewEndpoints(s Service) *Endpoints {
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.UpdateComponentVersionInCloudconfig = m(e.UpdateComponentVersionInCloudconfig)
 	e.AddTidbxImageTagInTcms = m(e.AddTidbxImageTagInTcms)
+	e.RequestSyncKernelImage = m(e.RequestSyncKernelImage)
 }
 
 // NewUpdateComponentVersionInCloudconfigEndpoint returns an endpoint function
@@ -50,5 +53,14 @@ func NewAddTidbxImageTagInTcmsEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*AddTidbxImageTagInTcmsPayload)
 		return s.AddTidbxImageTagInTcms(ctx, p)
+	}
+}
+
+// NewRequestSyncKernelImageEndpoint returns an endpoint function that calls
+// the method "request-sync-kernel-image" of service "tidbcloud".
+func NewRequestSyncKernelImageEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*RequestSyncKernelImagePayload)
+		return s.RequestSyncKernelImage(ctx, p)
 	}
 }

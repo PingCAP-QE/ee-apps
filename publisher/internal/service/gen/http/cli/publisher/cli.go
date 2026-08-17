@@ -30,7 +30,7 @@ func UsageCommands() []string {
 		"tiup (request-to-publish|delivery-by-rules|request-to-publish-single|query-publishing-status|reset-rate-limit)",
 		"fileserver (request-to-publish|query-publishing-status)",
 		"image (request-to-copy|query-copying-status|request-multiarch-collect|query-multiarch-collect-status)",
-		"tidbcloud (update-component-version-in-cloudconfig|add-tidbx-image-tag-in-tcms)",
+		"tidbcloud (update-component-version-in-cloudconfig|add-tidbx-image-tag-in-tcms|request-sync-kernel-image)",
 	}
 }
 
@@ -98,6 +98,9 @@ func ParseEndpoint(
 
 		tidbcloudAddTidbxImageTagInTcmsFlags    = flag.NewFlagSet("add-tidbx-image-tag-in-tcms", flag.ExitOnError)
 		tidbcloudAddTidbxImageTagInTcmsBodyFlag = tidbcloudAddTidbxImageTagInTcmsFlags.String("body", "REQUIRED", "")
+
+		tidbcloudRequestSyncKernelImageFlags    = flag.NewFlagSet("request-sync-kernel-image", flag.ExitOnError)
+		tidbcloudRequestSyncKernelImageBodyFlag = tidbcloudRequestSyncKernelImageFlags.String("body", "REQUIRED", "")
 	)
 	tiupFlags.Usage = tiupUsage
 	tiupRequestToPublishFlags.Usage = tiupRequestToPublishUsage
@@ -119,6 +122,7 @@ func ParseEndpoint(
 	tidbcloudFlags.Usage = tidbcloudUsage
 	tidbcloudUpdateComponentVersionInCloudconfigFlags.Usage = tidbcloudUpdateComponentVersionInCloudconfigUsage
 	tidbcloudAddTidbxImageTagInTcmsFlags.Usage = tidbcloudAddTidbxImageTagInTcmsUsage
+	tidbcloudRequestSyncKernelImageFlags.Usage = tidbcloudRequestSyncKernelImageUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -211,6 +215,9 @@ func ParseEndpoint(
 			case "add-tidbx-image-tag-in-tcms":
 				epf = tidbcloudAddTidbxImageTagInTcmsFlags
 
+			case "request-sync-kernel-image":
+				epf = tidbcloudRequestSyncKernelImageFlags
+
 			}
 
 		}
@@ -286,6 +293,9 @@ func ParseEndpoint(
 			case "add-tidbx-image-tag-in-tcms":
 				endpoint = c.AddTidbxImageTagInTcms()
 				data, err = tidbcloudc.BuildAddTidbxImageTagInTcmsPayload(*tidbcloudAddTidbxImageTagInTcmsBodyFlag)
+			case "request-sync-kernel-image":
+				endpoint = c.RequestSyncKernelImage()
+				data, err = tidbcloudc.BuildRequestSyncKernelImagePayload(*tidbcloudRequestSyncKernelImageBodyFlag)
 			}
 		}
 	}
@@ -539,6 +549,7 @@ func tidbcloudUsage() {
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    update-component-version-in-cloudconfig: UpdateComponentVersionInCloudconfig implements update-component-version-in-cloudconfig.`)
 	fmt.Fprintln(os.Stderr, `    add-tidbx-image-tag-in-tcms: AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.`)
+	fmt.Fprintln(os.Stderr, `    request-sync-kernel-image: Request to sync kernel image via ops platform kernel image build callback`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s tidbcloud COMMAND --help\n", os.Args[0])
@@ -577,4 +588,22 @@ func tidbcloudAddTidbxImageTagInTcmsUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud add-tidbx-image-tag-in-tcms --body '{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\"\n   }'")
+}
+
+func tidbcloudRequestSyncKernelImageUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud request-sync-kernel-image", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Request to sync kernel image via ops platform kernel image build callback`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"image\": \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n      \"stage\": \"dev\"\n   }'")
 }

@@ -39,6 +39,15 @@ type AddTidbxImageTagInTcmsRequestBody struct {
 	} `form:"github,omitempty" json:"github,omitempty" xml:"github,omitempty"`
 }
 
+// RequestSyncKernelImageRequestBody is the type of the "tidbcloud" service
+// "request-sync-kernel-image" endpoint HTTP request body.
+type RequestSyncKernelImageRequestBody struct {
+	// env stage
+	Stage string `form:"stage" json:"stage" xml:"stage"`
+	// the source container image with tag
+	Image string `form:"image" json:"image" xml:"image"`
+}
+
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
 // "tidbcloud" service "update-component-version-in-cloudconfig" endpoint HTTP
 // response body.
@@ -108,6 +117,17 @@ func NewAddTidbxImageTagInTcmsRequestBody(p *tidbcloud.AddTidbxImageTagInTcmsPay
 			Ref:       p.Github.Ref,
 			CommitSha: p.Github.CommitSha,
 		}
+	}
+	return body
+}
+
+// NewRequestSyncKernelImageRequestBody builds the HTTP request body from the
+// payload of the "request-sync-kernel-image" endpoint of the "tidbcloud"
+// service.
+func NewRequestSyncKernelImageRequestBody(p *tidbcloud.RequestSyncKernelImagePayload) *RequestSyncKernelImageRequestBody {
+	body := &RequestSyncKernelImageRequestBody{
+		Stage: p.Stage,
+		Image: p.Image,
 	}
 	return body
 }

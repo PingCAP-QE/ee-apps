@@ -26,6 +26,10 @@ type Client struct {
 	// add-tidbx-image-tag-in-tcms endpoint.
 	AddTidbxImageTagInTcmsDoer goahttp.Doer
 
+	// RequestSyncKernelImage Doer is the HTTP client used to make requests to the
+	// request-sync-kernel-image endpoint.
+	RequestSyncKernelImageDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -48,6 +52,7 @@ func NewClient(
 	return &Client{
 		UpdateComponentVersionInCloudconfigDoer: doer,
 		AddTidbxImageTagInTcmsDoer:              doer,
+		RequestSyncKernelImageDoer:              doer,
 		RestoreResponseBody:                     restoreBody,
 		scheme:                                  scheme,
 		host:                                    host,
@@ -100,6 +105,30 @@ func (c *Client) AddTidbxImageTagInTcms() goa.Endpoint {
 		resp, err := c.AddTidbxImageTagInTcmsDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// RequestSyncKernelImage returns an endpoint that makes HTTP requests to the
+// tidbcloud service request-sync-kernel-image server.
+func (c *Client) RequestSyncKernelImage() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeRequestSyncKernelImageRequest(c.encoder)
+		decodeResponse = DecodeRequestSyncKernelImageResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildRequestSyncKernelImageRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.RequestSyncKernelImageDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("tidbcloud", "request-sync-kernel-image", err)
 		}
 		return decodeResponse(resp)
 	}

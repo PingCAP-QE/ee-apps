@@ -78,3 +78,29 @@ func BuildAddTidbxImageTagInTcmsPayload(tidbcloudAddTidbxImageTagInTcmsBody stri
 
 	return v, nil
 }
+
+// BuildRequestSyncKernelImagePayload builds the payload for the tidbcloud
+// request-sync-kernel-image endpoint from CLI flags.
+func BuildRequestSyncKernelImagePayload(tidbcloudRequestSyncKernelImageBody string) (*tidbcloud.RequestSyncKernelImagePayload, error) {
+	var err error
+	var body RequestSyncKernelImageRequestBody
+	{
+		err = json.Unmarshal([]byte(tidbcloudRequestSyncKernelImageBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"image\": \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n      \"stage\": \"dev\"\n   }'")
+		}
+		if !(body.Stage == "dev" || body.Stage == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.stage", body.Stage, []any{"dev", "prod"}))
+		}
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.image", body.Image, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &tidbcloud.RequestSyncKernelImagePayload{
+		Stage: body.Stage,
+		Image: body.Image,
+	}
+
+	return v, nil
+}
