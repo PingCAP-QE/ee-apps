@@ -84,7 +84,7 @@ func transformBuildReport(report *schema.BuildReport) *devbuild.BuildReport {
 
 	// Transform binaries (OciArtifact → BinArtifact)
 	for _, oci := range report.Binaries {
-		binArtifacts := ociArtifactToBinArtifacts(oci.Repo, oci.Tag, oci.Files)
+		binArtifacts := ociArtifactToBinArtifacts(oci.Repo, oci.Tag, oci.Files, oci.Platform)
 		buildReport.Binaries = append(buildReport.Binaries, binArtifacts...)
 	}
 
@@ -158,7 +158,7 @@ func transformTektonStatus(status schema.TektonStatus) *devbuild.TektonStatus {
 
 // ociArtifactToBinArtifacts converts OCI artifact files to BinArtifact entries,
 // pairing each binary with its .sha256 checksum file.
-func ociArtifactToBinArtifacts(repo, tag string, files []string) []*devbuild.BinArtifact {
+func ociArtifactToBinArtifacts(repo, tag string, files []string, platform string) []*devbuild.BinArtifact {
 	var result []*devbuild.BinArtifact
 	sha256Map := make(map[string]*devbuild.OciFile)
 
@@ -167,7 +167,8 @@ func ociArtifactToBinArtifacts(repo, tag string, files []string) []*devbuild.Bin
 			sha256Map[origin] = &devbuild.OciFile{Repo: repo, Tag: tag, File: file}
 		} else {
 			result = append(result, &devbuild.BinArtifact{
-				OciFile: &devbuild.OciFile{Repo: repo, Tag: tag, File: file},
+				OciFile:  &devbuild.OciFile{Repo: repo, Tag: tag, File: file},
+				Platform: nonEmptyPtr(platform),
 			})
 		}
 	}
