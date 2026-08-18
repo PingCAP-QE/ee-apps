@@ -213,6 +213,11 @@ def normalized_identity_sql(expression: str) -> str:
     )
 
 
+def source_owner_email_sql(expression: str) -> str:
+    """Decode the source label email form before roster matching."""
+    return f"REPLACE({expression}, '_at_', '@')"
+
+
 _COUNT_RAW_DETAILS = text(
     """
     SELECT COUNT(*)
@@ -274,6 +279,7 @@ CASE LOWER(base.match_identity)
 END
 """.strip()
 _NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
+_SUMMARY_SOURCE_OWNER = source_owner_email_sql("summary.owner")
 
 
 def _json_tag_value_sql(expression: str, key: str) -> str:
@@ -1050,14 +1056,14 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               {_SUMMARY_CLUSTER} AS cluster,
               summary.author,
               CASE
-                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN summary.owner
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN {_SUMMARY_SOURCE_OWNER}
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
                 WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
                   THEN summary.author
                 ELSE NULL
               END AS owner,
               CASE
-                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN summary.owner
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN {_SUMMARY_SOURCE_OWNER}
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
                 WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
                   THEN summary.author
