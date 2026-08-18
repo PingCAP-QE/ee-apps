@@ -105,7 +105,7 @@ rounding threshold or a depleted shared cost pool.
 | canonical owner | source-schema capability; not surfaced by current legacy adapter | `resource_tags_user_icost_owner_email` |
 | org | `tag_tenant` | `resource_tags_user_tenant` |
 | project fallback | `tag_project` | `resource_tags_user_project` |
-| canonical project | `tag_icost_project` | `resource_tags_user_icost_project` |
+| canonical project | source-schema capability; not surfaced by current legacy adapter | `resource_tags_user_icost_project` |
 | canonical service | source-schema capability; not surfaced by current legacy adapter | `resource_tags_user_icost_service` |
 | canonical service execution | source-schema capability; not surfaced by current legacy adapter | `resource_tags_user_icost_service_exec_id` |
 | logical cluster | `tag_cluster` | `resource_tags_user_cluster` |
