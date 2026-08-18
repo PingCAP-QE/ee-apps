@@ -1091,7 +1091,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     INSERT INTO roster_employees (
                       id, email, github_id, en_name, group_id, manager_id
                     ) VALUES
-                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200)
+                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200),
+                      (3, 'tiworkload@pingcap.com', 'tiworkload', 'TiWorkload', 30, 300)
                     """
                 )
             )
@@ -1099,7 +1100,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                 text(
                     """
                     INSERT INTO roster_groups (id, is_active, manager_id)
-                    VALUES (20, 1, 200)
+                    VALUES (20, 1, 200), (30, 1, 300)
                     """
                 )
             )
@@ -1128,20 +1129,27 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     """
                     INSERT INTO cost_bq_export_summary_daily (
                       usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
-                      target_branch, vendor_tags_json, author, list_cost,
+                      target_branch, vendor_tags_json, author, source_schema_version, owner, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"cluster":"cluster-external"}',
-                        NULL, 10, 10, 0, 10
+                        NULL, NULL, NULL, 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
                         '{"cluster":"cluster-internal"}',
-                        NULL, 20, 20, 0, 20
+                        NULL, NULL, NULL, 20, 20, 0, 20
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'EncodedOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        NULL,
+                        NULL, 'aws_split_cost_v1', 'tiworkload_at_pingcap.com',
+                        30, 30, 0, 30
                       )
                     """
                 )
@@ -1155,7 +1163,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 2
+        assert summary.rows_inserted == 3
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -1181,6 +1189,9 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         internal_row = next(
             row for row in rows if row["sku_name"] == "InternalOwnerUsage"
         )
+        encoded_row = next(
+            row for row in rows if row["sku_name"] == "EncodedOwnerUsage"
+        )
 
         assert external_row["owner"] == "external@vendor.com"
         assert external_row["attribution_key"] == "owner_email:external@vendor.com"
@@ -1196,6 +1207,11 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         assert internal_row["employee_id"] == 2
         assert internal_row["group_id"] == 20
         assert internal_row["manager_id"] == 200
+        assert encoded_row["owner"] == "tiworkload@pingcap.com"
+        assert encoded_row["attribution_key"] == "employee:3"
+        assert encoded_row["attribution_source"] == "source_label"
+        assert encoded_row["attribution_status"] == "matched"
+        assert encoded_row["employee_id"] == 3
     finally:
         engine.dispose()
 
@@ -1281,6 +1297,7 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "allocation_raw.icost_owner_email AS owner_email" in logical_sql
     assert "allocation_raw.icost_service_exec_id AS service_exec_id" in logical_sql
     assert "allocate_method" in logical_sql
+    assert "REPLACE(summary.owner, '_at_', '@')" in logical_sql
     assert "summary.owner IS NOT NULL THEN 'direct_label'" in logical_sql
     assert "vendor_tag" in logical_sql
     assert "source_allocation_scope" in logical_sql
