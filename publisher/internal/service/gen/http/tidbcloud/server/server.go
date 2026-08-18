@@ -22,6 +22,7 @@ type Server struct {
 	Mounts                              []*MountPoint
 	UpdateComponentVersionInCloudconfig http.Handler
 	AddTidbxImageTagInTcms              http.Handler
+	RequestSyncKernelImage              http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -53,9 +54,11 @@ func New(
 		Mounts: []*MountPoint{
 			{"UpdateComponentVersionInCloudconfig", "POST", "/tidbcloud/devops/cloudconfig/versions/component"},
 			{"AddTidbxImageTagInTcms", "POST", "/tidbcloud/tidbx-component-image-builds"},
+			{"RequestSyncKernelImage", "POST", "/tidbcloud/devops/kernel-images/build-callback"},
 		},
 		UpdateComponentVersionInCloudconfig: NewUpdateComponentVersionInCloudconfigHandler(e.UpdateComponentVersionInCloudconfig, mux, decoder, encoder, errhandler, formatter),
 		AddTidbxImageTagInTcms:              NewAddTidbxImageTagInTcmsHandler(e.AddTidbxImageTagInTcms, mux, decoder, encoder, errhandler, formatter),
+		RequestSyncKernelImage:              NewRequestSyncKernelImageHandler(e.RequestSyncKernelImage, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -66,6 +69,7 @@ func (s *Server) Service() string { return "tidbcloud" }
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.UpdateComponentVersionInCloudconfig = m(s.UpdateComponentVersionInCloudconfig)
 	s.AddTidbxImageTagInTcms = m(s.AddTidbxImageTagInTcms)
+	s.RequestSyncKernelImage = m(s.RequestSyncKernelImage)
 }
 
 // MethodNames returns the methods served.
@@ -75,6 +79,7 @@ func (s *Server) MethodNames() []string { return tidbcloud.MethodNames[:] }
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountUpdateComponentVersionInCloudconfigHandler(mux, h.UpdateComponentVersionInCloudconfig)
 	MountAddTidbxImageTagInTcmsHandler(mux, h.AddTidbxImageTagInTcms)
+	MountRequestSyncKernelImageHandler(mux, h.RequestSyncKernelImage)
 }
 
 // Mount configures the mux to serve the tidbcloud endpoints.
@@ -167,6 +172,60 @@ func NewAddTidbxImageTagInTcmsHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "add-tidbx-image-tag-in-tcms")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "tidbcloud")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountRequestSyncKernelImageHandler configures the mux to serve the
+// "tidbcloud" service "request-sync-kernel-image" endpoint.
+func MountRequestSyncKernelImageHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/tidbcloud/devops/kernel-images/build-callback", f)
+}
+
+// NewRequestSyncKernelImageHandler creates a HTTP handler which loads the HTTP
+// request and calls the "tidbcloud" service "request-sync-kernel-image"
+// endpoint.
+func NewRequestSyncKernelImageHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeRequestSyncKernelImageRequest(mux, decoder)
+		encodeResponse = EncodeRequestSyncKernelImageResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "request-sync-kernel-image")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "tidbcloud")
 		payload, err := decodeRequest(r)
 		if err != nil {

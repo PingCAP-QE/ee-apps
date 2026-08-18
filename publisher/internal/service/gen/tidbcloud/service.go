@@ -19,6 +19,8 @@ type Service interface {
 	UpdateComponentVersionInCloudconfig(context.Context, *UpdateComponentVersionInCloudconfigPayload) (res *UpdateComponentVersionInCloudconfigResult, err error)
 	// AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.
 	AddTidbxImageTagInTcms(context.Context, *AddTidbxImageTagInTcmsPayload) (res *AddTidbxImageTagInTcmsResult, err error)
+	// Request to sync kernel image via ops platform kernel image build callback
+	RequestSyncKernelImage(context.Context, *RequestSyncKernelImagePayload) (res string, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -35,7 +37,7 @@ const ServiceName = "tidbcloud"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [2]string{"update-component-version-in-cloudconfig", "add-tidbx-image-tag-in-tcms"}
+var MethodNames = [3]string{"update-component-version-in-cloudconfig", "add-tidbx-image-tag-in-tcms", "request-sync-kernel-image"}
 
 // AddTidbxImageTagInTcmsPayload is the payload type of the tidbcloud service
 // add-tidbx-image-tag-in-tcms method.
@@ -64,6 +66,15 @@ type AddTidbxImageTagInTcmsResult struct {
 	Sha *string `json:"sha,omitempty"`
 	// image tag
 	ImageTag *string `json:"imageTag,omitempty"`
+}
+
+// RequestSyncKernelImagePayload is the payload type of the tidbcloud service
+// request-sync-kernel-image method.
+type RequestSyncKernelImagePayload struct {
+	// env stage
+	Stage string
+	// the source container image with tag
+	Image string
 }
 
 // Ops ticket details

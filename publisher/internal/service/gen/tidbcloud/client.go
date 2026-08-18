@@ -18,13 +18,15 @@ import (
 type Client struct {
 	UpdateComponentVersionInCloudconfigEndpoint goa.Endpoint
 	AddTidbxImageTagInTcmsEndpoint              goa.Endpoint
+	RequestSyncKernelImageEndpoint              goa.Endpoint
 }
 
 // NewClient initializes a "tidbcloud" service client given the endpoints.
-func NewClient(updateComponentVersionInCloudconfig, addTidbxImageTagInTcms goa.Endpoint) *Client {
+func NewClient(updateComponentVersionInCloudconfig, addTidbxImageTagInTcms, requestSyncKernelImage goa.Endpoint) *Client {
 	return &Client{
 		UpdateComponentVersionInCloudconfigEndpoint: updateComponentVersionInCloudconfig,
 		AddTidbxImageTagInTcmsEndpoint:              addTidbxImageTagInTcms,
+		RequestSyncKernelImageEndpoint:              requestSyncKernelImage,
 	}
 }
 
@@ -49,4 +51,15 @@ func (c *Client) AddTidbxImageTagInTcms(ctx context.Context, p *AddTidbxImageTag
 		return
 	}
 	return ires.(*AddTidbxImageTagInTcmsResult), nil
+}
+
+// RequestSyncKernelImage calls the "request-sync-kernel-image" endpoint of the
+// "tidbcloud" service.
+func (c *Client) RequestSyncKernelImage(ctx context.Context, p *RequestSyncKernelImagePayload) (res string, err error) {
+	var ires any
+	ires, err = c.RequestSyncKernelImageEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(string), nil
 }
