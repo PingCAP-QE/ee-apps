@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, timedelta
 
@@ -11,6 +12,12 @@ from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, g
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs.backfill_cost_refine_from_raw import run_backfill_cost_refine_from_raw
+from cost_insight.jobs.aws_split_cost_shadow import (
+    AWS_7266_ACCOUNT_ID,
+    SHADOW_WINDOW_ID,
+    run_aws_split_cost_shadow,
+    snapshot_aws_split_cost_shadow_legacy,
+)
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
@@ -20,12 +27,40 @@ from cost_insight.jobs.refresh_attribution_daily import (
     run_refresh_cost_attribution_from_summary,
 )
 from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
-from cost_insight.jobs.sync_aws_billing_summary import run_sync_aws_billing_summary
+from cost_insight.jobs.sync_aws_billing_summary import (
+    AWS_CUR_LEGACY_SCHEMA_VERSION,
+    AWS_SPLIT_COST_SCHEMA_VERSION,
+    AwsBillingSource,
+    run_sync_aws_billing_summary,
+)
+from cost_insight.jobs.sync_aws_parent_residual_allocations import (
+    run_sync_aws_parent_residual_allocations,
+)
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
+
+
+class _ConnectionBoundEngine:
+    """Expose one transaction through the Engine interface used by cutover jobs."""
+
+    def __init__(self, connection) -> None:
+        self._connection = connection
+
+    @contextmanager
+    def begin(self):
+        yield self._connection
+
+
+@contextmanager
+def _atomic_cutover_engine(engine, *, dry_run: bool):
+    if dry_run:
+        yield engine
+        return
+    with engine.begin() as connection:
+        yield _ConnectionBoundEngine(connection)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Delete existing AWS summary rows for the requested export partition range before importing.",
     )
+    sync_aws_summary.add_argument(
+        "--replace-existing-dates",
+        action="store_true",
+        help="Replace only the requested AWS split-cost usage dates.",
+    )
+    sync_aws_summary.add_argument("--usage-start-date", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--usage-end-date", type=_parse_date, default=None)
 
     sync_unmatched = subparsers.add_parser(
         "sync-gcp-unmatched-resources",
@@ -102,6 +144,36 @@ def build_parser() -> argparse.ArgumentParser:
     sync_aws_unmatched.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_aws_unmatched.add_argument("--dry-run", action="store_true")
     sync_aws_unmatched.add_argument("--limit", type=int, default=None)
+    sync_aws_unmatched.add_argument(
+        "--replace-existing-dates",
+        action="store_true",
+        help="Replace only the requested AWS split-cost usage dates.",
+    )
+
+    snapshot_aws_shadow = subparsers.add_parser(
+        "snapshot-aws-split-cost-shadow-legacy",
+        help="Create the fixed legacy snapshot for the AWS 7266 split-cost shadow window.",
+    )
+    snapshot_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    snapshot_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
+    snapshot_aws_shadow.add_argument("--dry-run", action="store_true")
+
+    sync_aws_shadow = subparsers.add_parser(
+        "sync-aws-split-cost-shadow",
+        help="Write the fixed AWS 7266 split-cost validation window to allowlisted shadow tables.",
+    )
+    sync_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    sync_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
+    sync_aws_shadow.add_argument("--dry-run", action="store_true")
+    sync_aws_shadow.add_argument("--limit", type=int, default=None)
+
+    cutover_aws_split = subparsers.add_parser(
+        "cutover-aws-split-cost",
+        help="Replace an approved AWS 7266 split-cost usage-date window and refresh attribution.",
+    )
+    cutover_aws_split.add_argument("--usage-start-date", type=_parse_date, required=True)
+    cutover_aws_split.add_argument("--usage-end-date", type=_parse_date, required=True)
+    cutover_aws_split.add_argument("--dry-run", action="store_true")
 
     backfill_refine = subparsers.add_parser(
         "backfill-gcp-cost-refine-from-raw",
@@ -233,6 +305,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if getattr(args, "limit", None) is not None and (
+        getattr(args, "replace_existing_dates", False)
+        or getattr(args, "replace_existing_partitions", False)
+    ):
+        raise ValueError("--limit cannot be used with destructive replacement")
     require_database = getattr(args, "require_database", True)
     settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
@@ -285,21 +362,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError(
                 "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
             )
+        if args.replace_existing_dates and (
+            args.usage_start_date is None or args.usage_end_date is None
+        ):
+            raise ValueError("--replace-existing-dates requires --usage-start-date and --usage-end-date")
         engine = build_engine(settings)
         try:
             summaries = []
-            for account_id in _resolve_aws_sources(engine, settings=settings.aws_billing):
+            sources = _resolve_aws_sources(engine, settings=settings.aws_billing)
+            if args.replace_existing_dates and any(
+                source.schema_version != AWS_SPLIT_COST_SCHEMA_VERSION for source in sources
+            ):
+                raise ValueError(
+                    "--replace-existing-dates only supports split-cost source profiles; "
+                    "use cutover-aws-split-cost for the approved 946646677266 cutover"
+                )
+            for source in sources:
                 summaries.append(
                     run_sync_aws_billing_summary(
                         engine,
                         settings=settings.aws_billing,
-                        account_id=account_id,
+                        account_id=source.account_id,
                         export_partition_start=args.export_partition_start,
                         export_partition_end=args.export_partition_end,
                         earliest_usage_date=args.earliest_usage_date,
                         dry_run=args.dry_run,
                         limit=args.limit,
                         replace_existing_partitions=args.replace_existing_partitions,
+                        replace_existing_usage_dates=args.replace_existing_dates,
+                        usage_start_date=args.usage_start_date,
+                        usage_end_date=args.usage_end_date,
+                        source=source,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
@@ -333,21 +426,132 @@ def main(argv: Sequence[str] | None = None) -> int:
         engine = build_engine(settings)
         try:
             summaries = []
-            for account_id in _resolve_aws_sources(engine, settings=settings.aws_billing):
+            sources = _resolve_aws_sources(engine, settings=settings.aws_billing)
+            if args.replace_existing_dates and any(
+                source.schema_version != AWS_SPLIT_COST_SCHEMA_VERSION for source in sources
+            ):
+                raise ValueError(
+                    "--replace-existing-dates only supports split-cost source profiles; "
+                    "use cutover-aws-split-cost for the approved 946646677266 cutover"
+                )
+            for source in sources:
                 summaries.append(
                     run_sync_aws_unmatched_resources(
                         engine,
                         settings=settings.aws_billing,
-                        account_id=account_id,
+                        account_id=source.account_id,
                         usage_start_date=args.usage_start_date,
                         usage_end_date=args.usage_end_date,
                         export_partition_start=args.export_partition_start,
                         export_partition_end=args.export_partition_end,
                         dry_run=args.dry_run,
                         limit=args.limit,
+                        replace_existing_usage_dates=args.replace_existing_dates,
+                        source=source,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "snapshot-aws-split-cost-shadow-legacy":
+        engine = build_engine(settings)
+        try:
+            target = snapshot_aws_split_cost_shadow_legacy(
+                engine,
+                window_id=args.window_id,
+                include_unmatched_resources=not args.skip_unmatched_resources,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(_summary_to_json(target), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-aws-split-cost-shadow":
+        engine = build_engine(settings)
+        try:
+            summary = run_aws_split_cost_shadow(
+                engine,
+                settings=settings.aws_billing,
+                window_id=args.window_id,
+                include_unmatched_resources=not args.skip_unmatched_resources,
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "cutover-aws-split-cost":
+        if args.usage_start_date.replace(day=1) != args.usage_end_date.replace(day=1):
+            raise ValueError(
+                "cutover-aws-split-cost only accepts one billing month; "
+                "promote cross-month windows separately"
+            )
+        engine = build_engine(settings)
+        try:
+            source = _resolve_aws_split_cutover_source(engine, settings=settings.aws_billing)
+            export_partition_start = args.usage_start_date.replace(day=1)
+            export_partition_end = args.usage_end_date.replace(day=1)
+            with _atomic_cutover_engine(engine, dry_run=args.dry_run) as cutover_engine:
+                summary = run_sync_aws_billing_summary(
+                    cutover_engine,
+                    settings=settings.aws_billing,
+                    account_id=source.account_id,
+                    export_partition_start=export_partition_start,
+                    export_partition_end=export_partition_end,
+                    earliest_usage_date=args.usage_start_date,
+                    dry_run=args.dry_run,
+                    limit=None,
+                    replace_existing_usage_dates=True,
+                    usage_start_date=args.usage_start_date,
+                    usage_end_date=args.usage_end_date,
+                    validate_guardrail=True,
+                    source=source,
+                )
+                unmatched = run_sync_aws_unmatched_resources(
+                    cutover_engine,
+                    settings=settings.aws_billing,
+                    account_id=source.account_id,
+                    usage_start_date=args.usage_start_date,
+                    usage_end_date=args.usage_end_date,
+                    export_partition_start=export_partition_start,
+                    export_partition_end=export_partition_end,
+                    dry_run=args.dry_run,
+                    limit=None,
+                    replace_existing_usage_dates=True,
+                    validate_guardrail=False,
+                    source=source,
+                )
+                residual_allocations = run_sync_aws_parent_residual_allocations(
+                    cutover_engine,
+                    source=source,
+                    usage_start_date=args.usage_start_date,
+                    usage_end_date=args.usage_end_date,
+                    export_partition_start=export_partition_start,
+                    export_partition_end=export_partition_end,
+                    page_size=settings.aws_billing.page_size,
+                    dry_run=args.dry_run,
+                    validate_guardrail=False,
+                )
+                attribution = run_refresh_cost_attribution_from_summary(
+                    cutover_engine,
+                    source=CostAttributionSource(vendor="aws", account_id=source.account_id),
+                    start_date=args.usage_start_date,
+                    end_date=args.usage_end_date,
+                    dry_run=args.dry_run,
+                    tcms_allocation_table=settings.tcms_allocation.allocation_table,
+                )
+            print(
+                json.dumps(
+                    _summaries_to_json([summary, unmatched, residual_allocations, attribution]),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
         finally:
             engine.dispose()
@@ -630,16 +834,58 @@ def _resolve_gcp_sources(engine, *, settings: GcpBillingSettings) -> tuple[GcpBi
     return tuple(replace(settings, account_id=source.account_id) for source in sources)
 
 
-def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[str, ...]:
+def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[AwsBillingSource, ...]:
     sources = _list_sources(engine, vendor="aws")
     if sources:
-        return tuple(source.account_id for source in sources)
+        resolved_sources = []
+        for source in sources:
+            schema_version = source.source_schema_version or AWS_CUR_LEGACY_SCHEMA_VERSION
+            if schema_version == AWS_SPLIT_COST_SCHEMA_VERSION and not source.source_table:
+                raise ValueError(
+                    f"AWS source profile {source.account_id} uses {AWS_SPLIT_COST_SCHEMA_VERSION} "
+                    "but has no source_table"
+                )
+            resolved_sources.append(
+                AwsBillingSource(
+                    account_id=source.account_id,
+                    billing_table=source.source_table or settings.billing_table,
+                    schema_version=schema_version,
+                    available_from=source.source_available_from,
+                )
+            )
+        return tuple(resolved_sources)
     if settings.account_id:
-        return (settings.account_id,)
+        return (
+            AwsBillingSource(
+                account_id=settings.account_id,
+                billing_table=settings.billing_table,
+            ),
+        )
     logging.getLogger(__name__).warning(
         "No active AWS cost sources found in cost_sources and COST_INSIGHT_AWS_ACCOUNT_ID is not set."
     )
     return ()
+
+
+def _resolve_aws_split_cutover_source(
+    engine,
+    *,
+    settings: AwsBillingSettings,
+) -> AwsBillingSource:
+    sources = _resolve_aws_sources(engine, settings=settings)
+    matches = [
+        source
+        for source in sources
+        if source.account_id == AWS_7266_ACCOUNT_ID
+        and source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION
+        and source.available_from is not None
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "cutover-aws-split-cost requires one active AWS 946646677266 "
+            "source profile with aws_split_cost_v1 and source_available_from"
+        )
+    return matches[0]
 
 
 def _resolve_attribution_sources(

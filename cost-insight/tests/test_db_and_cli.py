@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
@@ -21,11 +22,211 @@ from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
     RefreshAttributionSummary,
 )
+from cost_insight.jobs.sync_aws_billing_summary import (
+    AWS_SPLIT_COST_SCHEMA_VERSION,
+    AwsBillingSource,
+)
+from cost_insight.jobs.sync_aws_parent_residual_allocations import (
+    SyncAwsParentResidualAllocationsResult,
+)
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
 from cost_insight.jobs.sync_gcp_unmatched_resources import SyncGcpUnmatchedResourcesSummary
 from cost_insight.jobs.sync_gcs_cache_ac_references import SyncGcsCacheAcReferencesSummary
+
+
+def test_cli_cutover_does_not_accept_limit() -> None:
+    with pytest.raises(SystemExit):
+        cli.main(
+            [
+                "cutover-aws-split-cost",
+                "--usage-start-date",
+                "2026-05-01",
+                "--usage-end-date",
+                "2026-05-01",
+                "--limit",
+                "1",
+            ]
+        )
+
+
+def test_cli_rejects_cross_month_split_cost_cutover(monkeypatch) -> None:
+    settings = SimpleNamespace(log_level="INFO")
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
+    with pytest.raises(ValueError, match="only accepts one billing month"):
+        cli.main(
+            [
+                "cutover-aws-split-cost",
+                "--usage-start-date",
+                "2026-08-31",
+                "--usage-end-date",
+                "2026-09-01",
+            ]
+        )
+
+
+def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeypatch, capsys) -> None:
+    captured: dict[str, dict] = {}
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        tcms_allocation=TcmsAllocationSettings(),
+        log_level="INFO",
+    )
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 8, 2),
+    )
+
+    def fake_summary(_engine, **kwargs):
+        captured["summary"] = kwargs
+        return SyncGcpBillingSummaryResult(
+            account_id=source.account_id,
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            rows_seen=1,
+            rows_written=1,
+            dry_run=kwargs["dry_run"],
+            touched_usage_dates=(date(2026, 8, 2),),
+        )
+
+    def fake_unmatched(_engine, **kwargs):
+        captured["unmatched"] = kwargs
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=source.account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            rows_seen=1,
+            rows_written=1,
+            dry_run=kwargs["dry_run"],
+        )
+
+    def fake_residual(_engine, **kwargs):
+        captured["residual"] = kwargs
+        return SyncAwsParentResidualAllocationsResult(
+            account_id=source.account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            rows_seen=1,
+            rows_written=1,
+            parent_days=1,
+            dry_run=kwargs["dry_run"],
+        )
+
+    def fake_attribution(_engine, **kwargs):
+        captured["attribution"] = kwargs
+        return RefreshAttributionSummary(
+            vendor="aws",
+            account_id=source.account_id,
+            start_date=kwargs["start_date"],
+            end_date=kwargs["end_date"],
+            rows_deleted=1,
+            rows_inserted=1,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "_resolve_aws_split_cutover_source", lambda *_args, **_kwargs: source)
+    monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fake_unmatched)
+    monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
+    monkeypatch.setattr(cli, "run_refresh_cost_attribution_from_summary", fake_attribution)
+
+    assert (
+        cli.main(
+            [
+                "cutover-aws-split-cost",
+                "--usage-start-date",
+                "2026-08-02",
+                "--usage-end-date",
+                "2026-08-15",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    assert captured["summary"]["validate_guardrail"] is True
+    assert captured["unmatched"]["validate_guardrail"] is False
+    assert captured["residual"]["validate_guardrail"] is False
+    assert '"rows_written": 1' in capsys.readouterr().out
+
+
+def test_cli_cutover_uses_one_transaction_and_rolls_back_on_failure(monkeypatch) -> None:
+    captured: list[object] = []
+
+    class Engine:
+        def __init__(self) -> None:
+            self.transactions: list[str] = []
+
+        @contextmanager
+        def begin(self):
+            self.transactions.append("started")
+            try:
+                yield object()
+            except Exception:
+                self.transactions.append("rolled_back")
+                raise
+            else:
+                self.transactions.append("committed")
+
+        def dispose(self):
+            pass
+
+    engine = Engine()
+    settings = SimpleNamespace(
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        tcms_allocation=TcmsAllocationSettings(),
+        log_level="INFO",
+    )
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 8, 2),
+    )
+
+    def fake_summary(cutover_engine, **_kwargs):
+        captured.append(cutover_engine)
+        return object()
+
+    def fail_unmatched(cutover_engine, **_kwargs):
+        captured.append(cutover_engine)
+        raise RuntimeError("unmatched failed")
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: engine)
+    monkeypatch.setattr(cli, "_resolve_aws_split_cutover_source", lambda *_args, **_kwargs: source)
+    monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fail_unmatched)
+
+    with pytest.raises(RuntimeError, match="unmatched failed"):
+        cli.main(
+            [
+                "cutover-aws-split-cost",
+                "--usage-start-date",
+                "2026-08-02",
+                "--usage-end-date",
+                "2026-08-15",
+            ]
+        )
+
+    assert engine.transactions == ["started", "rolled_back"]
+    assert len(captured) == 2
+    assert captured[0] is captured[1]
 
 
 def _sqlite_source_engine():
@@ -40,6 +241,9 @@ def _sqlite_source_engine():
                   account_id TEXT NOT NULL,
                   billing_account_id TEXT,
                   display_name TEXT,
+                  source_table TEXT,
+                  source_schema_version TEXT,
+                  source_available_from TEXT,
                   is_active INTEGER NOT NULL DEFAULT 1,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -158,12 +362,10 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
             "sync-gcp-billing-export",
             "--start-date",
             "2026-05-17",
-            "--end-date",
-            "2026-05-18",
-            "--limit",
-            "10",
-            "--dry-run",
-            "--replace-existing-dates",
+                "--end-date",
+                "2026-05-18",
+                "--dry-run",
+                "--replace-existing-dates",
         ]
     )
 
@@ -173,7 +375,7 @@ def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
     assert captured["start_date"] == date(2026, 5, 17)
     assert captured["end_date"] == date(2026, 5, 18)
     assert captured["dry_run"] is True
-    assert captured["limit"] == 10
+    assert captured["limit"] is None
     assert captured["replace_existing_dates"] is True
     assert '"rows_seen": 1' in output
 
@@ -578,12 +780,10 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
             "2026-05-17",
             "--export-partition-end",
             "2026-05-18",
-            "--earliest-usage-date",
-            "2026-01-01",
-            "--limit",
-            "10",
-            "--dry-run",
-            "--replace-existing-partitions",
+                "--earliest-usage-date",
+                "2026-01-01",
+                "--dry-run",
+                "--replace-existing-partitions",
         ]
     )
 
@@ -593,7 +793,7 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
     assert captured["export_partition_start"] == date(2026, 5, 17)
     assert captured["export_partition_end"] == date(2026, 5, 18)
     assert captured["earliest_usage_date"] == date(2026, 1, 1)
-    assert captured["limit"] == 10
+    assert captured["limit"] is None
     assert captured["replace_existing_partitions"] is True
     assert '"touched_usage_dates": [' in output
 
@@ -1054,12 +1254,33 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
             "pingcap-testing-account",
             "qa-infra-dev",
         ]
-        assert aws_sources == ("946646677266",)
+        assert [source.account_id for source in aws_sources] == ["946646677266"]
         assert [(source.vendor, source.account_id) for source in attribution_sources] == [
             ("aws", "946646677266"),
             ("gcp", "pingcap-testing-account"),
             ("gcp", "qa-infra-dev"),
         ]
+    finally:
+        engine.dispose()
+
+
+def test_cli_aws_source_resolution_rejects_split_schema_without_source_table() -> None:
+    engine = _sqlite_source_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_sources
+                    SET source_schema_version = :schema_version
+                    WHERE vendor = 'aws' AND account_id = '946646677266'
+                    """
+                ),
+                {"schema_version": AWS_SPLIT_COST_SCHEMA_VERSION},
+            )
+
+        with pytest.raises(ValueError, match="aws_split_cost_v1.*no source_table"):
+            cli._resolve_aws_sources(engine, settings=AwsBillingSettings())
     finally:
         engine.dispose()
 
@@ -1080,7 +1301,7 @@ def test_cli_source_resolution_falls_back_when_registry_missing() -> None:
     )
 
     assert [settings.account_id for settings in gcp_sources] == ["fallback-project"]
-    assert aws_sources == ("946646677266",)
+    assert [source.account_id for source in aws_sources] == ["946646677266"]
     assert [(source.vendor, source.account_id) for source in attribution_sources] == [
         ("gcp", "fallback-project"),
         ("aws", "946646677266"),
