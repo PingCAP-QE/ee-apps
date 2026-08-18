@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -47,6 +48,18 @@ HASH_FIELDS = (
     "vendor_tags_json",
     "resource_name",
 )
+SPLIT_HASH_FIELDS = HASH_FIELDS + (
+    "source_allocation_scope",
+    "parent_resource_name",
+    "workload_name",
+    "workload_type",
+    "owner",
+    "service",
+    "project",
+    "service_exec_id",
+)
+UNMATCHED_RESOURCE_TABLE = "cost_unmatched_resource_daily"
+_SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
 
@@ -184,6 +197,7 @@ def _watermark(
 
 
 def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
+    is_split_source = "source_allocation_scope" in row
     normalized = {
         "vendor": nullable_text(row.get("vendor")) or "gcp",
         "account_id": nullable_text(row.get("account_id")),
@@ -199,6 +213,14 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         "target_branch": nullable_text(row.get("target_branch")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
         "resource_name": nullable_text(row.get("resource_name")),
+        "parent_resource_name": nullable_text(row.get("parent_resource_name")),
+        "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
+        "workload_name": nullable_text(row.get("workload_name")),
+        "workload_type": nullable_text(row.get("workload_type")),
+        "owner": nullable_text(row.get("owner")),
+        "service": nullable_text(row.get("service")),
+        "project": nullable_text(row.get("project")),
+        "service_exec_id": nullable_text(row.get("service_exec_id")),
         "usage_seconds": decimal_or_none(row.get("usage_seconds")),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
@@ -214,14 +236,15 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Missing usage_date in unmatched resource row: {row!r}")
     if normalized["resource_name"] is None:
         raise ValueError(f"Missing resource_name in unmatched resource row: {row!r}")
+    normalized["is_split_source"] = is_split_source
     normalized["source_row_hash"] = build_unmatched_resource_row_hash(normalized)
     return normalized
 
 
 def build_unmatched_resource_row_hash(row: dict[str, Any]) -> str:
-    hash_fields = HASH_FIELDS
+    hash_fields = SPLIT_HASH_FIELDS if row.get("is_split_source") else HASH_FIELDS
     if row.get("vendor_tags_json") is None:
-        hash_fields = tuple(field for field in HASH_FIELDS if field != "vendor_tags_json")
+        hash_fields = tuple(field for field in hash_fields if field != "vendor_tags_json")
     payload = {field: hash_value(row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -232,16 +255,102 @@ def write_unmatched_resource_rows(
     rows: Sequence[dict[str, Any]],
     *,
     dry_run: bool,
+    target_table: str = UNMATCHED_RESOURCE_TABLE,
 ) -> int:
     if not rows:
         return 0
     if dry_run:
-        LOG.info("dry-run skipped cost_unmatched_resource_daily upsert", extra={"row_count": len(rows)})
+        LOG.info(
+            "dry-run skipped unmatched-resource upsert",
+            extra={"row_count": len(rows), "target_table": target_table},
+        )
         return 0
     with engine.begin() as connection:
-        _delete_superseded_unlabeled_resource_rows(connection, rows)
-        connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _delete_superseded_unlabeled_resource_rows(connection, rows)
+        connection.execute(
+            _build_upsert_statement(connection, target_table=target_table),
+            _bind_rows(connection, rows),
+        )
     return len(rows)
+
+
+def replace_unmatched_resource_usage_dates(
+    engine: Engine,
+    rows: Iterable[dict[str, Any]],
+    *,
+    row_count: int,
+    vendor: str,
+    account_id: str,
+    usage_start_date: date,
+    usage_end_date: date,
+    dry_run: bool,
+    batch_size: int,
+    target_table: str = UNMATCHED_RESOURCE_TABLE,
+) -> int:
+    """Replace a bounded usage-date range without deleting other month rows."""
+    if usage_start_date > usage_end_date:
+        raise ValueError("usage_start_date must be before or equal to usage_end_date")
+    if row_count <= 0:
+        LOG.warning(
+            "skipped unmatched-resource usage-date replacement for empty source",
+            extra={
+                "row_count": row_count,
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+                "target_table": target_table,
+            },
+        )
+        return 0
+    if dry_run:
+        LOG.info(
+            "dry-run skipped unmatched-resource usage-date replacement",
+            extra={
+                "row_count": row_count,
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+                "target_table": target_table,
+            },
+        )
+        return 0
+    rows_written = 0
+    batch: list[dict[str, Any]] = []
+    with engine.begin() as connection:
+        connection.execute(
+            _delete_unmatched_resource_usage_dates_statement(target_table),
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+            },
+        )
+        for row in rows:
+            batch.append(row)
+            if len(batch) >= batch_size:
+                _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+                rows_written += len(batch)
+                batch.clear()
+        if batch:
+            _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+            rows_written += len(batch)
+    return rows_written
+
+
+def _write_unmatched_resource_rows(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+    *,
+    target_table: str,
+) -> None:
+    connection.execute(
+        _build_upsert_statement(connection, target_table=target_table),
+        _bind_rows(connection, rows),
+    )
 
 
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -281,11 +390,16 @@ def _delete_superseded_unlabeled_resource_rows(
         connection.execute(_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS, params)
 
 
-def _build_upsert_statement(connection: Connection):
+def _build_upsert_statement(
+    connection: Connection,
+    *,
+    target_table: str = UNMATCHED_RESOURCE_TABLE,
+):
+    table = _quote_sql_table(target_table)
     if connection.dialect.name == "sqlite":
         return text(
-            """
-            INSERT INTO cost_unmatched_resource_daily (
+            f"""
+            INSERT INTO {table} (
               vendor,
               account_id,
               billing_account_id,
@@ -300,6 +414,14 @@ def _build_upsert_statement(connection: Connection):
               vendor_tags_json,
               author,
               resource_name,
+              parent_resource_name,
+              source_allocation_scope,
+              workload_name,
+              workload_type,
+              owner,
+              service,
+              project,
+              service_exec_id,
               usage_seconds,
               list_cost,
               effective_cost,
@@ -322,6 +444,14 @@ def _build_upsert_statement(connection: Connection):
               :vendor_tags_json,
               :author,
               :resource_name,
+              :parent_resource_name,
+              :source_allocation_scope,
+              :workload_name,
+              :workload_type,
+              :owner,
+              :service,
+              :project,
+              :service_exec_id,
               :usage_seconds,
               :list_cost,
               :effective_cost,
@@ -338,13 +468,21 @@ def _build_upsert_statement(connection: Connection):
               effective_cost = excluded.effective_cost,
               credit_amount = excluded.credit_amount,
               net_cost = excluded.net_cost,
+              parent_resource_name = excluded.parent_resource_name,
+              source_allocation_scope = excluded.source_allocation_scope,
+              workload_name = excluded.workload_name,
+              workload_type = excluded.workload_type,
+              owner = excluded.owner,
+              service = excluded.service,
+              project = excluded.project,
+              service_exec_id = excluded.service_exec_id,
               source_export_time = excluded.source_export_time,
               updated_at = CURRENT_TIMESTAMP
             """
         )
     return text(
-        """
-        INSERT INTO cost_unmatched_resource_daily (
+        f"""
+        INSERT INTO {table} (
           vendor,
           account_id,
           billing_account_id,
@@ -359,6 +497,14 @@ def _build_upsert_statement(connection: Connection):
           vendor_tags_json,
           author,
           resource_name,
+          parent_resource_name,
+          source_allocation_scope,
+          workload_name,
+          workload_type,
+          owner,
+          service,
+          project,
+          service_exec_id,
           usage_seconds,
           list_cost,
           effective_cost,
@@ -381,6 +527,14 @@ def _build_upsert_statement(connection: Connection):
           :vendor_tags_json,
           :author,
           :resource_name,
+          :parent_resource_name,
+          :source_allocation_scope,
+          :workload_name,
+          :workload_type,
+          :owner,
+          :service,
+          :project,
+          :service_exec_id,
           :usage_seconds,
           :list_cost,
           :effective_cost,
@@ -397,8 +551,33 @@ def _build_upsert_statement(connection: Connection):
           effective_cost = VALUES(effective_cost),
           credit_amount = VALUES(credit_amount),
           net_cost = VALUES(net_cost),
+          parent_resource_name = VALUES(parent_resource_name),
+          source_allocation_scope = VALUES(source_allocation_scope),
+          workload_name = VALUES(workload_name),
+          workload_type = VALUES(workload_type),
+          owner = VALUES(owner),
+          service = VALUES(service),
+          project = VALUES(project),
+          service_exec_id = VALUES(service_exec_id),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
+        """
+    )
+
+
+def _quote_sql_table(table: str) -> str:
+    if not _SQL_TABLE_RE.fullmatch(table):
+        raise ValueError(f"Invalid SQL table identifier: {table!r}")
+    return f"`{table}`"
+
+
+def _delete_unmatched_resource_usage_dates_statement(target_table: str):
+    return text(
+        f"""
+        DELETE FROM {_quote_sql_table(target_table)}
+        WHERE vendor = :vendor
+          AND account_id = :account_id
+          AND usage_date BETWEEN :usage_start_date AND :usage_end_date
         """
     )
 

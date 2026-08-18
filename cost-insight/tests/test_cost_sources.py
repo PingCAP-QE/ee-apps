@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine, text
@@ -23,6 +24,9 @@ def _sqlite_engine():
                   account_id TEXT NOT NULL,
                   billing_account_id TEXT,
                   display_name TEXT,
+                  source_table TEXT,
+                  source_schema_version TEXT,
+                  source_available_from TEXT,
                   is_active INTEGER NOT NULL DEFAULT 1,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -48,6 +52,18 @@ def test_upsert_and_list_active_cost_sources() -> None:
             connection.execute(
                 text(
                     """
+                    UPDATE cost_sources
+                    SET
+                      source_table = 'project.dataset.split_cost',
+                      source_schema_version = 'aws_split_cost_v1',
+                      source_available_from = '2026-08-02'
+                    WHERE vendor = 'gcp' AND account_id = 'qa-infra-dev'
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
                     INSERT INTO cost_sources (vendor, account_id, display_name, is_active)
                     VALUES ('aws', 'inactive-account', 'Inactive', 0)
                     """
@@ -60,6 +76,9 @@ def test_upsert_and_list_active_cost_sources() -> None:
 
         assert source is not None
         assert source.billing_account_id == "01D088-8F9CF2-8AF1C6"
+        assert source.source_table == "project.dataset.split_cost"
+        assert source.source_schema_version == "aws_split_cost_v1"
+        assert source.source_available_from == date(2026, 8, 2)
         assert [(item.vendor, item.account_id) for item in active_sources] == [
             ("gcp", "qa-infra-dev"),
         ]

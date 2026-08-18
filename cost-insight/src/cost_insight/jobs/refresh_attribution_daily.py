@@ -302,6 +302,7 @@ END
 
 _SUMMARY_SHARED_POOL = _json_tag_value_sql("summary.vendor_tags_json", "shared_pool")
 _SUMMARY_CLUSTER = _json_tag_value_sql("summary.vendor_tags_json", "cluster")
+_SUMMARY_IS_SPLIT_SOURCE = "summary.source_schema_version = 'aws_split_cost_v1'"
 _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
     "allocation.match_tags_json", "cluster"
 )
@@ -334,7 +335,7 @@ COALESCE(
 """.strip()
 _TCMS_OWNER = f"""
 CASE
-  WHEN base.identity_kind = 'owner_email' THEN base.match_identity
+  WHEN base.identity_kind IN ('owner_email', 'source_label') THEN base.match_identity
   ELSE {_MATCHED_OWNER}
 END
 """.strip()
@@ -802,6 +803,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           target_branch,
           resource_name,
           vendor_tags_json,
+          source_allocation_scope,
+          namespace,
+          workload_name,
+          workload_type,
           author,
           owner,
           service,
@@ -836,6 +841,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.target_branch,
           NULL AS resource_name,
           attributed.vendor_tags_json,
+          attributed.source_allocation_scope,
+          attributed.namespace,
+          attributed.workload_name,
+          attributed.workload_type,
           attributed.author,
           attributed.owner,
           attributed.service,
@@ -854,8 +863,44 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           SUM(attributed.credit_amount) AS credit_amount,
           SUM(attributed.net_cost) AS net_cost,
           COUNT(*) AS source_rows,
-          SHA2(
-            CONCAT_WS(
+          CASE
+            WHEN attributed.source_allocation_scope <> 'direct'
+              OR attributed.namespace IS NOT NULL
+              OR attributed.workload_name IS NOT NULL
+              OR attributed.workload_type IS NOT NULL
+              THEN SHA2(CONCAT_WS(
+              '|',
+              DATE_FORMAT(attributed.usage_date, '%Y-%m-%d'),
+              COALESCE(attributed.vendor, ''),
+              COALESCE(attributed.account_id, ''),
+              COALESCE(attributed.service_name, ''),
+              COALESCE(attributed.sku_name, ''),
+              COALESCE(attributed.usage_type, ''),
+              COALESCE(attributed.cost_driver_key, ''),
+              COALESCE(attributed.region, ''),
+              COALESCE(attributed.org, ''),
+              COALESCE(attributed.repo, ''),
+              COALESCE(attributed.target_branch, ''),
+              '',
+              COALESCE(attributed.vendor_tags_json, ''),
+              COALESCE(attributed.source_allocation_scope, 'direct'),
+              COALESCE(attributed.namespace, ''),
+              COALESCE(attributed.workload_name, ''),
+              COALESCE(attributed.workload_type, ''),
+              COALESCE(attributed.author, ''),
+              COALESCE(attributed.owner, ''),
+              COALESCE(attributed.service, ''),
+              COALESCE(attributed.project, ''),
+              COALESCE(attributed.service_exec_id, ''),
+              COALESCE(attributed.attribution_key, ''),
+              COALESCE(attributed.attribution_source, ''),
+              COALESCE(attributed.attribution_status, ''),
+              COALESCE(attributed.allocate_method, ''),
+              COALESCE(CAST(attributed.employee_id AS CHAR), ''),
+              COALESCE(CAST(attributed.group_id AS CHAR), ''),
+              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+            ), 256)
+            ELSE SHA2(CONCAT_WS(
               '|',
               DATE_FORMAT(attributed.usage_date, '%Y-%m-%d'),
               COALESCE(attributed.vendor, ''),
@@ -882,9 +927,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
               COALESCE(CAST(attributed.manager_id AS CHAR), '')
-            ),
-            256
-          ) AS dimension_hash
+            ), 256)
+          END AS dimension_hash
         FROM (
           SELECT
             base.usage_date,
@@ -899,6 +943,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.repo,
             base.target_branch,
             base.vendor_tags_json,
+            base.source_allocation_scope,
+            base.namespace,
+            base.workload_name,
+            base.workload_type,
             base.author,
             {_TCMS_OWNER} AS owner,
             base.service,
@@ -921,13 +969,15 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                   normalized_employee.id
                 ) AS CHAR)
               )
-              WHEN base.identity_kind = 'owner_email' AND base.match_identity IS NOT NULL
+              WHEN base.identity_kind IN ('owner_email', 'source_label')
+                AND base.match_identity IS NOT NULL
                 THEN CONCAT('owner_email:', LOWER(base.match_identity))
               WHEN base.identity_kind = 'author' AND base.match_identity IS NOT NULL
                 THEN CONCAT('author:', LOWER(base.match_identity))
               ELSE 'unattributed'
             END AS attribution_key,
             CASE
+              WHEN base.identity_kind = 'source_label' THEN 'source_label'
               WHEN base.identity_kind = 'owner_email' THEN 'owner_email'
               WHEN override_employee.id IS NOT NULL THEN 'author_override'
               WHEN github_employee.id IS NOT NULL THEN 'author_github'
@@ -988,6 +1038,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.org,
               summary.repo,
               summary.target_branch,
+              COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
+              summary.namespace,
+              summary.workload_name,
+              summary.workload_type,
               CASE
                 WHEN allocation.id IS NOT NULL OR summary.author IS NULL
                   THEN summary.vendor_tags_json
@@ -996,27 +1050,39 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               {_SUMMARY_CLUSTER} AS cluster,
               summary.author,
               CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN summary.owner
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
                 WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
                   THEN summary.author
                 ELSE NULL
               END AS owner,
               CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN summary.owner
                 WHEN allocation.id IS NOT NULL THEN allocation.owner_email
                 WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL
                   THEN summary.author
                 ELSE NULL
               END AS match_identity,
               CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN 'source_label'
                 WHEN allocation.id IS NOT NULL THEN 'owner_email'
                 WHEN account_allocation.summary_id IS NULL AND summary.author IS NOT NULL THEN 'author'
                 ELSE NULL
               END AS identity_kind,
-              CASE WHEN allocation.id IS NOT NULL THEN allocation.service ELSE NULL END AS service,
-              CASE WHEN allocation.id IS NOT NULL THEN allocation.project ELSE NULL END AS project,
-              CASE WHEN allocation.id IS NOT NULL THEN allocation.service_exec_id ELSE NULL END
-                AS service_exec_id,
               CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.service, allocation.service)
+                ELSE allocation.service
+              END AS service,
+              CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.project, allocation.project)
+                ELSE allocation.project
+              END AS project,
+              CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.service_exec_id, allocation.service_exec_id)
+                ELSE allocation.service_exec_id
+              END AS service_exec_id,
+              CASE
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE} AND summary.owner IS NOT NULL THEN 'direct_label'
                 WHEN allocation.id IS NULL THEN NULL
                 WHEN {_ALLOCATION_MATCH_CLUSTER} IS NOT NULL THEN 'logical'
                 ELSE 'vendor_tag'
@@ -1092,7 +1158,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               )
           ) base
           LEFT JOIN roster_employees owner_email_employee
-            ON base.identity_kind = 'owner_email'
+            ON base.identity_kind IN ('owner_email', 'source_label')
            AND base.match_identity IS NOT NULL
            AND owner_email_employee.email IS NOT NULL
            AND LOWER(owner_email_employee.email) = LOWER(base.match_identity)
@@ -1154,6 +1220,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.repo,
           attributed.target_branch,
           attributed.vendor_tags_json,
+          attributed.source_allocation_scope,
+          attributed.namespace,
+          attributed.workload_name,
+          attributed.workload_type,
           attributed.author,
           attributed.owner,
           attributed.service,
@@ -1187,6 +1257,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
           target_branch,
           resource_name,
           vendor_tags_json,
+          source_allocation_scope,
+          namespace,
+          workload_name,
+          workload_type,
           author,
           owner,
           service,
@@ -1291,6 +1365,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             summary.cost_driver_key,
             summary.region,
             summary.vendor_tags_json,
+            COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
+            summary.namespace,
+            summary.workload_name,
+            summary.workload_type,
             {_SUMMARY_SHARED_POOL} AS shared_pool,
             SUM(summary.list_cost) AS list_cost,
             SUM(summary.effective_cost) AS effective_cost,
@@ -1317,6 +1395,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             summary.cost_driver_key,
             summary.region,
             summary.vendor_tags_json,
+            source_allocation_scope,
+            summary.namespace,
+            summary.workload_name,
+            summary.workload_type,
             shared_pool
         )
         SELECT
@@ -1333,6 +1415,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
           NULL AS target_branch,
           NULL AS resource_name,
           allocated.vendor_tags_json,
+          allocated.source_allocation_scope,
+          allocated.namespace,
+          allocated.workload_name,
+          allocated.workload_type,
           NULL AS author,
           NULL AS owner,
           allocated.service,
@@ -1351,8 +1437,12 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
           allocated.credit_amount,
           allocated.net_cost,
           allocated.source_rows,
-          SHA2(
-            CONCAT_WS(
+          CASE
+            WHEN allocated.source_allocation_scope <> 'direct'
+              OR allocated.namespace IS NOT NULL
+              OR allocated.workload_name IS NOT NULL
+              OR allocated.workload_type IS NOT NULL
+              THEN SHA2(CONCAT_WS(
               '|',
               DATE_FORMAT(allocated.usage_date, '%Y-%m-%d'),
               COALESCE(allocated.vendor, ''),
@@ -1367,6 +1457,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
               '',
               '',
               COALESCE(allocated.vendor_tags_json, ''),
+              COALESCE(allocated.source_allocation_scope, 'direct'),
+              COALESCE(allocated.namespace, ''),
+              COALESCE(allocated.workload_name, ''),
+              COALESCE(allocated.workload_type, ''),
               '',
               '',
               COALESCE(allocated.service, ''),
@@ -1379,9 +1473,30 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
               '',
               '',
               ''
-            ),
-            256
-          ) AS dimension_hash
+            ), 256)
+            ELSE SHA2(CONCAT_WS(
+              '|',
+              DATE_FORMAT(allocated.usage_date, '%Y-%m-%d'),
+              COALESCE(allocated.vendor, ''),
+              COALESCE(allocated.account_id, ''),
+              COALESCE(allocated.service_name, ''),
+              COALESCE(allocated.sku_name, ''),
+              COALESCE(allocated.usage_type, ''),
+              COALESCE(allocated.cost_driver_key, ''),
+              COALESCE(allocated.region, ''),
+              '', '', '', '',
+              COALESCE(allocated.vendor_tags_json, ''),
+              '', '',
+              COALESCE(allocated.service, ''),
+              COALESCE(allocated.project, ''),
+              '',
+              COALESCE(allocated.attribution_key, ''),
+              COALESCE(allocated.attribution_source, ''),
+              COALESCE(allocated.attribution_status, ''),
+              COALESCE(allocated.allocate_method, ''),
+              '', '', ''
+            ), 256)
+          END AS dimension_hash
         FROM (
           SELECT
             shared_cost.usage_date,
@@ -1393,6 +1508,10 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             shared_cost.cost_driver_key,
             shared_cost.region,
             shared_cost.vendor_tags_json,
+            shared_cost.source_allocation_scope,
+            shared_cost.namespace,
+            shared_cost.workload_name,
+            shared_cost.workload_type,
             shared_cost.shared_pool,
             logical.service,
             logical.project,
@@ -1422,46 +1541,34 @@ def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
             CASE
               WHEN pool_total.allocation_count IS NULL THEN shared_cost.list_cost
               WHEN pool_total.pool_logical_cost > 0
-                THEN ROUND(
-                  shared_cost.list_cost
+                THEN shared_cost.list_cost
                   * logical.project_logical_cost
-                  / pool_total.pool_logical_cost,
-                  2
-                )
-              ELSE ROUND(shared_cost.list_cost / pool_total.allocation_count, 2)
+                  / pool_total.pool_logical_cost
+              ELSE shared_cost.list_cost / pool_total.allocation_count
             END AS list_cost,
             CASE
               WHEN pool_total.allocation_count IS NULL THEN shared_cost.effective_cost
               WHEN pool_total.pool_logical_cost > 0
-                THEN ROUND(
-                  shared_cost.effective_cost
+                THEN shared_cost.effective_cost
                   * logical.project_logical_cost
-                  / pool_total.pool_logical_cost,
-                  2
-                )
-              ELSE ROUND(shared_cost.effective_cost / pool_total.allocation_count, 2)
+                  / pool_total.pool_logical_cost
+              ELSE shared_cost.effective_cost / pool_total.allocation_count
             END AS effective_cost,
             CASE
               WHEN pool_total.allocation_count IS NULL THEN shared_cost.credit_amount
               WHEN pool_total.pool_logical_cost > 0
-                THEN ROUND(
-                  shared_cost.credit_amount
+                THEN shared_cost.credit_amount
                   * logical.project_logical_cost
-                  / pool_total.pool_logical_cost,
-                  2
-                )
-              ELSE ROUND(shared_cost.credit_amount / pool_total.allocation_count, 2)
+                  / pool_total.pool_logical_cost
+              ELSE shared_cost.credit_amount / pool_total.allocation_count
             END AS credit_amount,
             CASE
               WHEN pool_total.allocation_count IS NULL THEN shared_cost.net_cost
               WHEN pool_total.pool_logical_cost > 0
-                THEN ROUND(
-                  shared_cost.net_cost
+                THEN shared_cost.net_cost
                   * logical.project_logical_cost
-                  / pool_total.pool_logical_cost,
-                  2
-                )
-              ELSE ROUND(shared_cost.net_cost / pool_total.allocation_count, 2)
+                  / pool_total.pool_logical_cost
+              ELSE shared_cost.net_cost / pool_total.allocation_count
             END AS net_cost,
             shared_cost.source_rows
           FROM shared_cost

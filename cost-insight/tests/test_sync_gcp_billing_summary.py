@@ -15,6 +15,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     _select_billing_account_id,
     _start_partition_from_state,
     build_summary_row_hash,
+    replace_summary_usage_dates,
     run_sync_gcp_billing_summary,
 )
 
@@ -31,6 +32,9 @@ def _sqlite_engine():
                   account_id TEXT NOT NULL,
                   billing_account_id TEXT,
                   display_name TEXT,
+                  source_table TEXT,
+                  source_schema_version TEXT,
+                  source_available_from TEXT,
                   is_active INTEGER NOT NULL DEFAULT 1,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -74,6 +78,15 @@ def _sqlite_engine():
                   target_branch TEXT,
                   vendor_tags_json TEXT,
                   author TEXT,
+                  source_schema_version TEXT,
+                  source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                  namespace TEXT,
+                  workload_name TEXT,
+                  workload_type TEXT,
+                  owner TEXT,
+                  service TEXT,
+                  project TEXT,
+                  service_exec_id TEXT,
                   list_cost REAL,
                   effective_cost REAL,
                   credit_amount REAL,
@@ -172,6 +185,36 @@ def _insert_summary_row(connection, row: dict[str, object]) -> None:
         ),
         _sqlite_summary_row(row),
     )
+
+
+def test_replace_summary_usage_dates_keeps_existing_rows_for_empty_source() -> None:
+    engine = _sqlite_engine()
+    row = _normalize_summary_row(_summary_row())
+
+    try:
+        with engine.begin() as connection:
+            _insert_summary_row(connection, row)
+
+        rows_written = replace_summary_usage_dates(
+            engine,
+            [],
+            row_count=0,
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            dry_run=False,
+            batch_size=100,
+        )
+
+        with engine.begin() as connection:
+            remaining_rows = connection.execute(
+                text("SELECT COUNT(*) FROM cost_bq_export_summary_daily")
+            ).scalar_one()
+        assert rows_written == 0
+        assert remaining_rows == 1
+    finally:
+        engine.dispose()
 
 
 def _legacy_summary_row_hash(row: dict[str, object]) -> str:

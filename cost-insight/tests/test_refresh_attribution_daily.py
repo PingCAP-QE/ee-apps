@@ -456,7 +456,16 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       repo TEXT,
                       target_branch TEXT,
                       vendor_tags_json TEXT,
+                      source_schema_version TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
                       author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
@@ -482,6 +491,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       target_branch TEXT,
                       resource_name TEXT,
                       vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
                       author TEXT,
                       owner TEXT,
                       service TEXT,
@@ -585,6 +598,11 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                         2, 'aws', '946646677266',
                         '{"cluster":"cluster-2","shared_pool":"pool-1"}', 'carol@pingcap.com',
                         'TestInfra', 'project-y', 'exec-2', NULL, NULL
+                      ),
+                      (
+                        4, 'aws', '946646677266',
+                        '{"cluster":"cluster-source-label"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-x', 'exec-1', NULL, NULL
                       )
                     """
                 )
@@ -594,49 +612,66 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                     """
                     INSERT INTO cost_bq_export_summary_daily (
                       usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
-                      usage_type, cost_driver_key, target_branch, vendor_tags_json, author, list_cost,
+                      usage_type, cost_driver_key, target_branch, vendor_tags_json, author,
+                      source_schema_version, owner, service, project, service_exec_id, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'BoxUsage', 'us-east-1', 'pingcap', 'tidb',
                         'USE1-BoxUsage:m6i.large', 'compute', 'master', NULL,
-                        'alice', 10, 10, 0, 10
+                        'alice', NULL, NULL, NULL, NULL, NULL, 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'ClusterUsage', 'us-east-1', NULL, NULL,
                         'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
-                        NULL, 20, 20, 0, 20
+                        NULL, NULL, NULL, NULL, NULL, NULL, 20, 20, 0, 20
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'AuthClusterUsage', 'us-east-1', NULL, NULL,
                         'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-1","shared_pool":"pool-1"}',
-                        'alice', 7, 7, 0, 7
+                        'alice', NULL, NULL, NULL, NULL, NULL, 7, 7, 0, 7
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'FakeAuthorClusterUsage', 'us-east-1', NULL, NULL,
                         'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-no-allocation","shared_pool":"pool-1"}',
-                        'alice', 11, 11, 0, 11
+                        'alice', NULL, NULL, NULL, NULL, NULL, 11, 11, 0, 11
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'ClusterUsage', 'us-east-1', NULL, NULL,
                         'USE1-BoxUsage:m6i.large', 'compute', NULL,
                         '{"cluster":"cluster-2","shared_pool":"pool-1"}',
-                        NULL, 30, 30, 0, 30
+                        NULL, NULL, NULL, NULL, NULL, NULL, 30, 30, 0, 30
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
                         'SharedUsage', 'us-east-1', NULL, NULL,
                         'USE1-DataTransfer-Out-Bytes', 'data_transfer', NULL,
                         '{"shared_pool":"pool-1"}',
-                        NULL, 5, 5, 0, 5
+                        NULL, NULL, NULL, NULL, NULL, NULL, 5, 5, 0, 5
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'SplitLabelUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"cluster":"cluster-source-label"}',
+                        NULL, 'aws_split_cost_v1', 'dave@pingcap.com', 'direct-service',
+                        'direct-project', 'direct-exec', 13, 13, 0, 13
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'LegacyLabelUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"cluster":"cluster-source-label"}',
+                        NULL, NULL, 'dave@pingcap.com', 'direct-service',
+                        'direct-project', 'direct-exec', 17, 17, 0, 17
                       )
                     """
                 )
@@ -650,7 +685,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 7
+        assert summary.rows_inserted == 9
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -708,10 +743,16 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         shared_y_row = find_row(
             sku_name="SharedUsage", project="project-y", allocate_method="shared_weighted"
         )
+        split_label_row = find_row(
+            sku_name="SplitLabelUsage", project="direct-project", allocate_method="direct_label"
+        )
+        legacy_label_row = find_row(
+            sku_name="LegacyLabelUsage", project="project-x", allocate_method="logical"
+        )
 
         fake_author_row = find_row(sku_name="FakeAuthorClusterUsage", author="alice")
 
-        assert total_net_cost == 83.0
+        assert total_net_cost == 113.0
         assert {row["region"] for row in rows} == {"us-east-1"}
         assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
         assert cluster_x_row["cost_driver_key"] == "compute"
@@ -726,6 +767,13 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fake_author_row["attribution_status"] == "unattributed"
         assert fake_author_row["employee_id"] is None
         assert cluster_x_row["owner"] == "bob@pingcap.com"
+        assert split_label_row["owner"] == "dave@pingcap.com"
+        assert split_label_row["service"] == "direct-service"
+        assert split_label_row["attribution_source"] == "source_label"
+        assert split_label_row["employee_id"] == 4
+        assert legacy_label_row["owner"] == "bob@pingcap.com"
+        assert legacy_label_row["service"] == "TestInfra"
+        assert legacy_label_row["attribution_source"] == "owner_email"
         assert cluster_x_row["service"] == "TestInfra"
         assert cluster_x_row["attribution_source"] == "owner_email"
         assert cluster_x_row["attribution_status"] == "matched"
@@ -774,7 +822,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert subset_summary.rows_inserted == 6
+        assert subset_summary.rows_inserted == 8
         with engine.begin() as connection:
             subset_rows = connection.execute(
                 text(
@@ -797,7 +845,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert subset_total_net_cost == 83.0
+        assert subset_total_net_cost == 113.0
         subset_authored_cluster = next(
             row
             for row in subset_rows
@@ -858,7 +906,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert expired_tcms_summary.rows_inserted == 6
+        assert expired_tcms_summary.rows_inserted == 8
         with engine.begin() as connection:
             fallback_rows = connection.execute(
                 text(
@@ -887,7 +935,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert fallback_total_net_cost == 83.0
+        assert fallback_total_net_cost == 113.0
         fallback_auth = next(row for row in fallback_rows if row["sku_name"] == "BoxUsage")
         fallback_auth_cluster = next(
             row for row in fallback_rows if row["sku_name"] == "AuthClusterUsage"
@@ -932,7 +980,16 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       repo TEXT,
                       target_branch TEXT,
                       vendor_tags_json TEXT,
+                      source_schema_version TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
                       author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
@@ -958,6 +1015,10 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       target_branch TEXT,
                       resource_name TEXT,
                       vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
                       author TEXT,
                       owner TEXT,
                       service TEXT,
@@ -1220,7 +1281,12 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "allocation_raw.icost_owner_email AS owner_email" in logical_sql
     assert "allocation_raw.icost_service_exec_id AS service_exec_id" in logical_sql
     assert "allocate_method" in logical_sql
+    assert "summary.owner IS NOT NULL THEN 'direct_label'" in logical_sql
     assert "vendor_tag" in logical_sql
+    assert "source_allocation_scope" in logical_sql
+    assert "workload_name" in logical_sql
+    assert "workload_type" in logical_sql
+    assert "summary.owner IS NOT NULL THEN 'source_label'" in logical_sql
 
     assert "WITH allocation_match AS" in shared_sql
     assert "ROW_NUMBER() OVER" in shared_sql
@@ -1230,6 +1296,8 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "allocation_count IS NULL" in shared_sql
     assert "logical.service" in shared_sql
     assert "summary.sku_name" in shared_sql
+    assert "source_allocation_scope" in shared_sql
+    assert "ROUND(" not in shared_sql
 
 
 def test_non_aws_summary_insert_uses_existing_statement() -> None:

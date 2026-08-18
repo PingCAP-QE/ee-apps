@@ -13,6 +13,7 @@ from cost_insight.jobs.sync_gcp_unmatched_resources import (
     JOB_NAME,
     _normalize_resource_row,
     build_unmatched_resource_row_hash,
+    replace_unmatched_resource_usage_dates,
     run_sync_gcp_unmatched_resources,
 )
 
@@ -29,6 +30,9 @@ def _sqlite_engine():
                   account_id TEXT NOT NULL,
                   billing_account_id TEXT,
                   display_name TEXT,
+                  source_table TEXT,
+                  source_schema_version TEXT,
+                  source_available_from TEXT,
                   is_active INTEGER NOT NULL DEFAULT 1,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -71,6 +75,14 @@ def _sqlite_engine():
                   vendor_tags_json TEXT,
                   author TEXT,
                   resource_name TEXT NOT NULL,
+                  parent_resource_name TEXT,
+                  source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                  workload_name TEXT,
+                  workload_type TEXT,
+                  owner TEXT,
+                  service TEXT,
+                  project TEXT,
+                  service_exec_id TEXT,
                   usage_seconds REAL,
                   list_cost REAL,
                   effective_cost REAL,
@@ -132,6 +144,42 @@ def _legacy_unmatched_resource_row_hash(row: dict[str, object]) -> str:
     payload = {field: hash_value(row.get(field)) for field in legacy_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def test_replace_unmatched_resource_usage_dates_keeps_existing_rows_for_empty_source() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+
+    try:
+        run_sync_gcp_unmatched_resources(
+            engine,
+            settings=settings,
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            dry_run=False,
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+
+        rows_written = replace_unmatched_resource_usage_dates(
+            engine,
+            [],
+            row_count=0,
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            dry_run=False,
+            batch_size=100,
+        )
+
+        with engine.begin() as connection:
+            remaining_rows = connection.execute(
+                text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
+            ).scalar_one()
+        assert rows_written == 0
+        assert remaining_rows == 1
+    finally:
+        engine.dispose()
 
 
 def test_unmatched_resource_hash_ignores_amount_changes() -> None:

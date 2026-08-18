@@ -7,6 +7,8 @@ from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_aws_billing_summary import (
+    AWS_SPLIT_COST_SCHEMA_VERSION,
+    AwsBillingSource,
     JOB_NAME as SUMMARY_JOB_NAME,
     _add_months,
     _month_floor,
@@ -32,6 +34,9 @@ def _sqlite_engine():
               account_id TEXT NOT NULL,
               billing_account_id TEXT,
               display_name TEXT,
+              source_table TEXT,
+              source_schema_version TEXT,
+              source_available_from TEXT,
               is_active INTEGER NOT NULL DEFAULT 1,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -67,6 +72,15 @@ def _sqlite_engine():
               target_branch TEXT,
               vendor_tags_json TEXT,
               author TEXT,
+              source_schema_version TEXT,
+              source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+              namespace TEXT,
+              workload_name TEXT,
+              workload_type TEXT,
+              owner TEXT,
+              service TEXT,
+              project TEXT,
+              service_exec_id TEXT,
               list_cost REAL,
               effective_cost REAL,
               credit_amount REAL,
@@ -95,6 +109,14 @@ def _sqlite_engine():
               vendor_tags_json TEXT,
               author TEXT,
               resource_name TEXT NOT NULL,
+              parent_resource_name TEXT,
+              source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+              workload_name TEXT,
+              workload_type TEXT,
+              owner TEXT,
+              service TEXT,
+              project TEXT,
+              service_exec_id TEXT,
               usage_seconds REAL,
               list_cost REAL,
               effective_cost REAL,
@@ -132,6 +154,38 @@ def _summary_row(day: str = "2026-05-01") -> dict[str, object]:
         "net_cost": "7.00",
         "source_export_time": "2026-05-02T01:02:03Z",
     }
+
+
+def test_split_source_profile_selects_its_table_and_available_date() -> None:
+    engine = _sqlite_engine()
+    seen: dict[str, object] = {}
+
+    def fetch_rows(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    try:
+        result = run_sync_aws_billing_summary(
+            engine,
+            settings=AwsBillingSettings(account_id="946646677266"),
+            account_id="946646677266",
+            export_partition_start=date(2026, 8, 1),
+            export_partition_end=date(2026, 8, 1),
+            dry_run=True,
+            source=AwsBillingSource(
+                account_id="946646677266",
+                billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost",
+                schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+                available_from=date(2026, 8, 2),
+            ),
+            fetch_rows=fetch_rows,
+        )
+    finally:
+        engine.dispose()
+
+    assert result.rows_seen == 0
+    assert seen["billing_table"] == "pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
+    assert seen["earliest_usage_date"] == date(2026, 8, 2)
 
 
 def _resource_row() -> dict[str, object]:
@@ -299,6 +353,103 @@ def test_run_sync_aws_billing_summary_can_replace_existing_partitions() -> None:
         engine.dispose()
 
 
+def test_split_summary_replacement_only_deletes_requested_usage_dates() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=2)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            source=source,
+            fetch_rows=lambda **_kwargs: [_summary_row("2026-05-01"), _summary_row("2026-05-02")],
+        )
+
+        replacement = _summary_row("2026-05-02")
+        replacement["list_cost"] = "12.34567891"
+        result = run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            source=source,
+            replace_existing_usage_dates=True,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            fetch_rows=lambda **_kwargs: [replacement],
+        )
+
+        assert result.touched_usage_dates == (date(2026, 5, 2),)
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, list_cost
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date
+                    """
+                )
+            ).all()
+        assert rows == [("2026-05-01", 10.0), ("2026-05-02", 12.34567891)]
+    finally:
+        engine.dispose()
+
+
+def test_split_summary_replacement_rejects_empty_source() -> None:
+    engine = _sqlite_engine()
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        with pytest.raises(ValueError, match="source returned no rows"):
+            run_sync_aws_billing_summary(
+                engine,
+                settings=AwsBillingSettings(account_id=source.account_id),
+                account_id=source.account_id,
+                export_partition_start=date(2026, 5, 1),
+                export_partition_end=date(2026, 5, 1),
+                source=source,
+                replace_existing_usage_dates=True,
+                usage_start_date=date(2026, 5, 2),
+                usage_end_date=date(2026, 5, 2),
+                fetch_rows=lambda **_kwargs: [],
+            )
+    finally:
+        engine.dispose()
+
+
+def test_split_summary_replacement_rejects_late_earliest_usage_date() -> None:
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(ValueError, match="earliest_usage_date"):
+        run_sync_aws_billing_summary(
+            object(),
+            settings=AwsBillingSettings(account_id=source.account_id),
+            account_id=source.account_id,
+            earliest_usage_date=date(2026, 5, 3),
+            replace_existing_usage_dates=True,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+        )
+
+
 def test_run_sync_aws_billing_summary_dry_run_and_failure() -> None:
     engine = _sqlite_engine()
     settings = AwsBillingSettings(account_id="946646677266")
@@ -371,6 +522,86 @@ def test_run_sync_aws_unmatched_resources_writes_rows() -> None:
         assert count == 1
         assert state is not None
         assert state.last_status == "succeeded"
+    finally:
+        engine.dispose()
+
+
+def test_split_unmatched_replacement_only_deletes_requested_usage_dates() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=2)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        first = _resource_row()
+        second = _resource_row()
+        second["usage_date"] = "2026-05-02"
+        second["resource_name"] = "i-0123456789abcdef1"
+        run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            fetch_rows=lambda **_kwargs: [first, second],
+        )
+
+        replacement = _resource_row()
+        replacement["usage_date"] = "2026-05-02"
+        replacement["resource_name"] = "i-0123456789abcdef2"
+        run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            replace_existing_usage_dates=True,
+            fetch_rows=lambda **_kwargs: [replacement],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, resource_name
+                    FROM cost_unmatched_resource_daily
+                    ORDER BY usage_date, resource_name
+                    """
+                )
+            ).all()
+        assert rows == [
+            ("2026-05-01", "i-0123456789abcdef0"),
+            ("2026-05-02", "i-0123456789abcdef2"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_split_unmatched_replacement_rejects_empty_source() -> None:
+    engine = _sqlite_engine()
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        with pytest.raises(ValueError, match="source returned no rows"):
+            run_sync_aws_unmatched_resources(
+                engine,
+                settings=AwsBillingSettings(account_id=source.account_id),
+                account_id=source.account_id,
+                usage_start_date=date(2026, 5, 2),
+                usage_end_date=date(2026, 5, 2),
+                source=source,
+                replace_existing_usage_dates=True,
+                fetch_rows=lambda **_kwargs: [],
+            )
     finally:
         engine.dispose()
 

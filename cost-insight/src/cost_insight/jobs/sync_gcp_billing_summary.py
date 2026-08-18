@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import pickle
+import re
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -51,6 +52,19 @@ HASH_FIELDS = (
     "target_branch",
     "vendor_tags_json",
 )
+SPLIT_HASH_FIELDS = HASH_FIELDS + (
+    "source_schema_version",
+    "source_allocation_scope",
+    "namespace",
+    "workload_name",
+    "workload_type",
+    "owner",
+    "service",
+    "project",
+    "service_exec_id",
+)
+SUMMARY_TABLE = "cost_bq_export_summary_daily"
+_SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -236,6 +250,7 @@ def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
 
 
 def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
+    is_split_source = "source_allocation_scope" in row
     normalized = {
         "vendor": nullable_text(row.get("vendor")) or "gcp",
         "account_id": nullable_text(row.get("account_id")),
@@ -251,6 +266,15 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
+        "source_schema_version": nullable_text(row.get("source_schema_version")),
+        "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
+        "namespace": nullable_text(row.get("namespace")),
+        "workload_name": nullable_text(row.get("workload_name")),
+        "workload_type": nullable_text(row.get("workload_type")),
+        "owner": nullable_text(row.get("owner")),
+        "service": nullable_text(row.get("service")),
+        "project": nullable_text(row.get("project")),
+        "service_exec_id": nullable_text(row.get("service_exec_id")),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
         "credit_amount": decimal_or_none(row.get("credit_amount")),
@@ -264,27 +288,34 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Missing export_partition_date in billing summary row: {row!r}")
     if normalized["usage_date"] is None:
         raise ValueError(f"Missing usage_date in billing summary row: {row!r}")
+    normalized["is_split_source"] = is_split_source
     normalized["source_row_hash"] = build_summary_row_hash(normalized)
     return normalized
 
 
 def build_summary_row_hash(row: dict[str, Any]) -> str:
-    hash_fields = HASH_FIELDS
+    hash_fields = SPLIT_HASH_FIELDS if row.get("is_split_source") else HASH_FIELDS
     if row.get("vendor_tags_json") is None:
-        hash_fields = tuple(field for field in HASH_FIELDS if field != "vendor_tags_json")
+        hash_fields = tuple(field for field in hash_fields if field != "vendor_tags_json")
     payload = {field: hash_value(row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def write_summary_rows(engine: Engine, rows: Sequence[dict[str, Any]], *, dry_run: bool) -> int:
+def write_summary_rows(
+    engine: Engine,
+    rows: Sequence[dict[str, Any]],
+    *,
+    dry_run: bool,
+    target_table: str = SUMMARY_TABLE,
+) -> int:
     if not rows:
         return 0
     if dry_run:
-        LOG.info("dry-run skipped cost_bq_export_summary_daily upsert", extra={"row_count": len(rows)})
+        LOG.info("dry-run skipped summary upsert", extra={"row_count": len(rows), "target_table": target_table})
         return 0
     with engine.begin() as connection:
-        _write_summary_rows(connection, rows)
+        _write_summary_rows(connection, rows, target_table=target_table)
     return len(rows)
 
 
@@ -299,16 +330,18 @@ def replace_summary_partitions(
     export_partition_end: date,
     dry_run: bool,
     batch_size: int,
+    target_table: str = SUMMARY_TABLE,
 ) -> int:
     if dry_run:
         LOG.info(
-            "dry-run skipped cost_bq_export_summary_daily partition replacement",
+            "dry-run skipped summary partition replacement",
             extra={
                 "row_count": row_count,
                 "vendor": vendor,
                 "account_id": account_id,
                 "export_partition_start": export_partition_start,
                 "export_partition_end": export_partition_end,
+                "target_table": target_table,
             },
         )
         return 0
@@ -321,15 +354,26 @@ def replace_summary_partitions(
             account_id=account_id,
             export_partition_start=export_partition_start,
             export_partition_end=export_partition_end,
+            target_table=target_table,
         )
         for row in rows:
             batch.append(row)
             if len(batch) >= batch_size:
-                _write_summary_rows(connection, batch, cleanup_superseded=False)
+                _write_summary_rows(
+                    connection,
+                    batch,
+                    cleanup_superseded=False,
+                    target_table=target_table,
+                )
                 rows_written += len(batch)
                 batch.clear()
         if batch:
-            _write_summary_rows(connection, batch, cleanup_superseded=False)
+            _write_summary_rows(
+                connection,
+                batch,
+                cleanup_superseded=False,
+                target_table=target_table,
+            )
             rows_written += len(batch)
     return rows_written
 
@@ -339,14 +383,94 @@ def _write_summary_rows(
     rows: Sequence[dict[str, Any]],
     *,
     cleanup_superseded: bool = True,
+    target_table: str = SUMMARY_TABLE,
 ) -> None:
     if not rows:
         return
-    if cleanup_superseded:
+    if cleanup_superseded and target_table == SUMMARY_TABLE:
         _delete_legacy_summary_rows(connection, rows)
         _delete_superseded_unlabeled_summary_rows(connection, rows)
         _delete_superseded_owner_override_rows(connection, rows)
-    connection.execute(_build_upsert_statement(connection), _bind_rows(connection, rows))
+    connection.execute(
+        _build_upsert_statement(connection, target_table=target_table),
+        _bind_rows(connection, rows),
+    )
+
+
+def replace_summary_usage_dates(
+    engine: Engine,
+    rows: Iterable[dict[str, Any]],
+    *,
+    row_count: int,
+    vendor: str,
+    account_id: str,
+    usage_start_date: date,
+    usage_end_date: date,
+    dry_run: bool,
+    batch_size: int,
+    target_table: str = SUMMARY_TABLE,
+) -> int:
+    """Replace a bounded usage-date range without touching sibling export dates."""
+    if usage_start_date > usage_end_date:
+        raise ValueError("usage_start_date must be before or equal to usage_end_date")
+    if row_count <= 0:
+        LOG.warning(
+            "skipped summary usage-date replacement for empty source",
+            extra={
+                "row_count": row_count,
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+                "target_table": target_table,
+            },
+        )
+        return 0
+    if dry_run:
+        LOG.info(
+            "dry-run skipped summary usage-date replacement",
+            extra={
+                "row_count": row_count,
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+                "target_table": target_table,
+            },
+        )
+        return 0
+    rows_written = 0
+    batch: list[dict[str, Any]] = []
+    with engine.begin() as connection:
+        connection.execute(
+            _delete_summary_usage_dates_statement(target_table),
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+            },
+        )
+        for row in rows:
+            batch.append(row)
+            if len(batch) >= batch_size:
+                _write_summary_rows(
+                    connection,
+                    batch,
+                    cleanup_superseded=False,
+                    target_table=target_table,
+                )
+                rows_written += len(batch)
+                batch.clear()
+        if batch:
+            _write_summary_rows(
+                connection,
+                batch,
+                cleanup_superseded=False,
+                target_table=target_table,
+            )
+            rows_written += len(batch)
+    return rows_written
 
 
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -475,9 +599,10 @@ def _delete_existing_summary_partitions(
     account_id: str,
     export_partition_start: date,
     export_partition_end: date,
+    target_table: str = SUMMARY_TABLE,
 ) -> None:
     connection.execute(
-        _DELETE_EXISTING_SUMMARY_PARTITIONS,
+        _delete_summary_partitions_statement(target_table),
         {
             "vendor": vendor,
             "account_id": account_id,
@@ -487,11 +612,12 @@ def _delete_existing_summary_partitions(
     )
 
 
-def _build_upsert_statement(connection: Connection):
+def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMARY_TABLE):
+    table = _quote_sql_table(target_table)
     if connection.dialect.name == "sqlite":
         return text(
-            """
-            INSERT INTO cost_bq_export_summary_daily (
+            f"""
+            INSERT INTO {table} (
               vendor,
               account_id,
               billing_account_id,
@@ -507,6 +633,15 @@ def _build_upsert_statement(connection: Connection):
               target_branch,
               vendor_tags_json,
               author,
+              source_schema_version,
+              source_allocation_scope,
+              namespace,
+              workload_name,
+              workload_type,
+              owner,
+              service,
+              project,
+              service_exec_id,
               list_cost,
               effective_cost,
               credit_amount,
@@ -529,6 +664,15 @@ def _build_upsert_statement(connection: Connection):
               :target_branch,
               :vendor_tags_json,
               :author,
+              :source_schema_version,
+              :source_allocation_scope,
+              :namespace,
+              :workload_name,
+              :workload_type,
+              :owner,
+              :service,
+              :project,
+              :service_exec_id,
               :list_cost,
               :effective_cost,
               :credit_amount,
@@ -548,13 +692,22 @@ def _build_upsert_statement(connection: Connection):
           usage_type = excluded.usage_type,
           cost_driver_key = excluded.cost_driver_key,
           region = excluded.region,
+          source_schema_version = excluded.source_schema_version,
+          source_allocation_scope = excluded.source_allocation_scope,
+          namespace = excluded.namespace,
+          workload_name = excluded.workload_name,
+          workload_type = excluded.workload_type,
+          owner = excluded.owner,
+          service = excluded.service,
+          project = excluded.project,
+          service_exec_id = excluded.service_exec_id,
           source_export_time = excluded.source_export_time,
           updated_at = CURRENT_TIMESTAMP
-            """
+        """
         )
     return text(
-        """
-        INSERT INTO cost_bq_export_summary_daily (
+        f"""
+        INSERT INTO {table} (
           vendor,
           account_id,
           billing_account_id,
@@ -570,6 +723,15 @@ def _build_upsert_statement(connection: Connection):
           target_branch,
           vendor_tags_json,
           author,
+          source_schema_version,
+          source_allocation_scope,
+          namespace,
+          workload_name,
+          workload_type,
+          owner,
+          service,
+          project,
+          service_exec_id,
           list_cost,
           effective_cost,
           credit_amount,
@@ -592,6 +754,15 @@ def _build_upsert_statement(connection: Connection):
           :target_branch,
           :vendor_tags_json,
           :author,
+          :source_schema_version,
+          :source_allocation_scope,
+          :namespace,
+          :workload_name,
+          :workload_type,
+          :owner,
+          :service,
+          :project,
+          :service_exec_id,
           :list_cost,
           :effective_cost,
           :credit_amount,
@@ -611,8 +782,45 @@ def _build_upsert_statement(connection: Connection):
           usage_type = VALUES(usage_type),
           cost_driver_key = VALUES(cost_driver_key),
           region = VALUES(region),
+          source_schema_version = VALUES(source_schema_version),
+          source_allocation_scope = VALUES(source_allocation_scope),
+          namespace = VALUES(namespace),
+          workload_name = VALUES(workload_name),
+          workload_type = VALUES(workload_type),
+          owner = VALUES(owner),
+          service = VALUES(service),
+          project = VALUES(project),
+          service_exec_id = VALUES(service_exec_id),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
+        """
+    )
+
+
+def _quote_sql_table(table: str) -> str:
+    if not _SQL_TABLE_RE.fullmatch(table):
+        raise ValueError(f"Invalid SQL table identifier: {table!r}")
+    return f"`{table}`"
+
+
+def _delete_summary_usage_dates_statement(target_table: str):
+    return text(
+        f"""
+        DELETE FROM {_quote_sql_table(target_table)}
+        WHERE vendor = :vendor
+          AND account_id = :account_id
+          AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+        """
+    )
+
+
+def _delete_summary_partitions_statement(target_table: str):
+    return text(
+        f"""
+        DELETE FROM {_quote_sql_table(target_table)}
+        WHERE vendor = :vendor
+          AND account_id = :account_id
+          AND export_partition_date BETWEEN :export_partition_start AND :export_partition_end
         """
     )
 

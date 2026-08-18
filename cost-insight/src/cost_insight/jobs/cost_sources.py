@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from sqlalchemy import text
@@ -14,11 +15,22 @@ class CostSource:
     billing_account_id: str | None
     display_name: str | None
     is_active: bool
+    source_table: str | None = None
+    source_schema_version: str | None = None
+    source_available_from: date | None = None
 
 
 _SELECT_COST_SOURCE = text(
     """
-    SELECT vendor, account_id, billing_account_id, display_name, is_active
+    SELECT
+      vendor,
+      account_id,
+      billing_account_id,
+      display_name,
+      is_active,
+      source_table,
+      source_schema_version,
+      source_available_from
     FROM cost_sources
     WHERE vendor = :vendor AND account_id = :account_id
     """
@@ -26,7 +38,15 @@ _SELECT_COST_SOURCE = text(
 
 _SELECT_ACTIVE_COST_SOURCES = text(
     """
-    SELECT vendor, account_id, billing_account_id, display_name, is_active
+    SELECT
+      vendor,
+      account_id,
+      billing_account_id,
+      display_name,
+      is_active,
+      source_table,
+      source_schema_version,
+      source_available_from
     FROM cost_sources
     WHERE is_active = 1
       AND (:vendor IS NULL OR vendor = :vendor)
@@ -109,7 +129,18 @@ def _coerce_cost_source(row: Any) -> CostSource:
         billing_account_id=row["billing_account_id"],
         display_name=row["display_name"],
         is_active=bool(int(row["is_active"])),
+        source_table=row.get("source_table"),
+        source_schema_version=row.get("source_schema_version"),
+        source_available_from=_coerce_date(row.get("source_available_from")),
     )
+
+
+def _coerce_date(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 def _build_upsert_cost_source_statement(connection: Connection):
