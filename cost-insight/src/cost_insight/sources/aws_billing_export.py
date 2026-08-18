@@ -106,10 +106,9 @@ WITH normalized AS (
     ) AS region,
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
-    -- ponytail: COALESCE fallback so pre-retag CUR rows (tag_project) keep
-    -- repo attribution; drop tag_project once retag is complete across all
-    -- retained partitions.
-    NULLIF(COALESCE(tag_icost_project, tag_project), '') AS repo,
+    -- The legacy CUR table exposes tag_project; icost_project is only present
+    -- in the split-cost source schema.
+    NULLIF(tag_project, '') AS repo,
     (
       SELECT NULLIF(kv.value, '')
       FROM UNNEST(resource_tags.key_value) AS kv
@@ -202,7 +201,7 @@ WITH normalized AS (
     NULL AS namespace,
     NULLIF(tag_used_by, '') AS author,
     NULLIF(tag_tenant, '') AS org,
-    NULLIF(COALESCE(tag_icost_project, tag_project), '') AS repo,
+    NULLIF(tag_project, '') AS repo,
     (
       SELECT NULLIF(kv.value, '')
       FROM UNNEST(resource_tags.key_value) AS kv
