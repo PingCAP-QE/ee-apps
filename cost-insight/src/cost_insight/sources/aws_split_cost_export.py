@@ -461,7 +461,7 @@ WITH raw AS (
     NULLIF(TRIM(resource_tags_aws_eks_workload_type), '') AS workload_type,
     LOWER(NULLIF(pricing_unit, '')) AS pricing_unit,
     COALESCE(line_item_usage_amount, 0) AS usage_amount,
-    COALESCE(split_usage, 0) AS split_usage_amount,
+    COALESCE(split_line_item_split_usage, 0) AS split_usage_amount,
     COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
     COALESCE(line_item_unblended_cost, 0) AS direct_effective_cost,
     COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost,
