@@ -659,8 +659,15 @@ or attribution. A production promotion uses the separate profile-gated command:
 ```bash
 python -m cost_insight.jobs.cli cutover-aws-split-cost \
   --usage-start-date <approved-cutover-date> \
-  --usage-end-date <approved-window-end>
+  --usage-end-date <approved-window-end> \
+  --skip-unmatched-resources
 ```
+
+Use `--skip-unmatched-resources` when the AWS unmatched-resource job is
+intentionally suspended. It leaves `cost_unmatched_resource_daily` unchanged
+while still replacing summary rows, refreshing the parent-residual allocation
+ledger, and refreshing attribution for the requested dates. Without the flag,
+cutover retains the original behavior and replaces unmatched-resource rows too.
 
 ### 7.2 Shadow Acceptance
 
@@ -700,6 +707,10 @@ replacement mode that atomically:
    `(vendor, account_id, usage_date)` window;
 3. writes the spooled split rows; and
 4. refreshes production attribution for exactly those dates.
+
+The normal `sync-aws-billing-summary` job also refreshes the parent-residual
+allocation ledger for each active split-cost source and its touched dates. This
+keeps the audit fact current after the initial cutover.
 
 The existing month-partition replacement stays unchanged for legacy sources.
 Do not run `--replace-existing-partitions` against an entire billing month for
