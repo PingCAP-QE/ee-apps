@@ -164,6 +164,65 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
     assert '"rows_written": 1' in capsys.readouterr().out
 
 
+def test_cli_cutover_can_skip_unmatched_resources(monkeypatch, capsys) -> None:
+    calls: list[str] = []
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        tcms_allocation=TcmsAllocationSettings(),
+        log_level="INFO",
+    )
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 8, 2),
+    )
+
+    def fake_result(name: str):
+        def run(*_args, **_kwargs):
+            calls.append(name)
+            return SimpleNamespace(step=name)
+
+        return run
+
+    def fail_unmatched(*_args, **_kwargs):
+        pytest.fail("unmatched sync should be skipped")
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "_resolve_aws_split_cutover_source", lambda *_args, **_kwargs: source)
+    monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_result("summary"))
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fail_unmatched)
+    monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_result("residual"))
+    monkeypatch.setattr(
+        cli, "run_refresh_cost_attribution_from_summary", fake_result("attribution")
+    )
+
+    assert (
+        cli.main(
+            [
+                "cutover-aws-split-cost",
+                "--usage-start-date",
+                "2026-08-02",
+                "--usage-end-date",
+                "2026-08-15",
+                "--skip-unmatched-resources",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    assert calls == ["summary", "residual", "attribution"]
+    assert '"step": "unmatched"' not in capsys.readouterr().out
+
+
 def test_cli_cutover_uses_one_transaction_and_rolls_back_on_failure(monkeypatch) -> None:
     captured: list[object] = []
 
@@ -574,7 +633,6 @@ def test_cli_surfaces_cleanup_gcs_cache_delete_requires_specific_execute_kind(mo
 
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-
     with pytest.raises(ValueError, match="requires --execute-kind cas"):
         cli.main(["cleanup-gcs-cache", "--mode", "delete"])
 
@@ -613,6 +671,7 @@ def test_cli_runs_sync_gcs_cache_ac_references_without_database(monkeypatch, cap
 
     monkeypatch.setattr(cli, "get_settings", fake_get_settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
     def fake_run_sync_gcs_cache_ac_references(**kwargs):
         run_kwargs.append(kwargs)
         return SyncGcsCacheAcReferencesSummary(
@@ -1106,6 +1165,74 @@ def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
     assert captured["replace_existing_partitions"] is True
     assert '"account_id": "946646677266"' in output
     assert '"rows_written": 4' in output
+
+
+def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        aws_billing=AwsBillingSettings(account_id="946646677266", page_size=123),
+        log_level="INFO",
+    )
+    legacy_source = AwsBillingSource(
+        account_id="111111111111",
+        billing_table="project.dataset.legacy",
+    )
+    split_source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 8, 2),
+    )
+
+    def fake_summary(_engine, **kwargs):
+        if kwargs["account_id"] == legacy_source.account_id:
+            touched_usage_dates = (date(2026, 8, 1),)
+        else:
+            touched_usage_dates = (date(2026, 8, 1), date(2026, 8, 2), date(2026, 8, 3))
+        return SyncGcpBillingSummaryResult(
+            account_id=kwargs["account_id"],
+            export_partition_start=date(2026, 8, 1),
+            export_partition_end=date(2026, 8, 1),
+            rows_seen=1,
+            rows_written=1,
+            dry_run=False,
+            touched_usage_dates=touched_usage_dates,
+        )
+
+    def fake_residual(_engine, **kwargs):
+        captured.update(kwargs)
+        return SyncAwsParentResidualAllocationsResult(
+            account_id=kwargs["source"].account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            rows_seen=1,
+            rows_written=1,
+            parent_days=1,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(
+        cli, "_resolve_aws_sources", lambda *_args, **_kwargs: (legacy_source, split_source)
+    )
+    monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
+    monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
+
+    assert cli.main(["sync-aws-billing-summary"]) == 0
+
+    assert captured["source"] == split_source
+    assert captured["usage_start_date"] == date(2026, 8, 2)
+    assert captured["usage_end_date"] == date(2026, 8, 3)
+    assert captured["page_size"] == 123
+    assert captured["validate_guardrail"] is False
+    assert '"parent_days": 1' in capsys.readouterr().out
 
 
 def test_cli_runs_sync_aws_unmatched_resources_command(monkeypatch, capsys) -> None:

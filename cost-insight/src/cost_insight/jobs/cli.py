@@ -173,6 +173,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cutover_aws_split.add_argument("--usage-start-date", type=_parse_date, required=True)
     cutover_aws_split.add_argument("--usage-end-date", type=_parse_date, required=True)
+    cutover_aws_split.add_argument(
+        "--skip-unmatched-resources",
+        action="store_true",
+        help="Do not sync resource-level unmatched rows for this cutover.",
+    )
     cutover_aws_split.add_argument("--dry-run", action="store_true")
 
     backfill_refine = subparsers.add_parser(
@@ -378,23 +383,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "use cutover-aws-split-cost for the approved 946646677266 cutover"
                 )
             for source in sources:
-                summaries.append(
-                    run_sync_aws_billing_summary(
-                        engine,
-                        settings=settings.aws_billing,
-                        account_id=source.account_id,
-                        export_partition_start=args.export_partition_start,
-                        export_partition_end=args.export_partition_end,
-                        earliest_usage_date=args.earliest_usage_date,
-                        dry_run=args.dry_run,
-                        limit=args.limit,
-                        replace_existing_partitions=args.replace_existing_partitions,
-                        replace_existing_usage_dates=args.replace_existing_dates,
-                        usage_start_date=args.usage_start_date,
-                        usage_end_date=args.usage_end_date,
-                        source=source,
-                    )
+                summary = run_sync_aws_billing_summary(
+                    engine,
+                    settings=settings.aws_billing,
+                    account_id=source.account_id,
+                    export_partition_start=args.export_partition_start,
+                    export_partition_end=args.export_partition_end,
+                    earliest_usage_date=args.earliest_usage_date,
+                    dry_run=args.dry_run,
+                    limit=args.limit,
+                    replace_existing_partitions=args.replace_existing_partitions,
+                    replace_existing_usage_dates=args.replace_existing_dates,
+                    usage_start_date=args.usage_start_date,
+                    usage_end_date=args.usage_end_date,
+                    source=source,
                 )
+                summaries.append(summary)
+                split_usage_dates = tuple(
+                    usage_date
+                    for usage_date in summary.touched_usage_dates
+                    if source.available_from is None or usage_date >= source.available_from
+                )
+                if source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION and split_usage_dates:
+                    summaries.append(
+                        run_sync_aws_parent_residual_allocations(
+                            engine,
+                            source=source,
+                            usage_start_date=min(split_usage_dates),
+                            usage_end_date=max(split_usage_dates),
+                            export_partition_start=summary.export_partition_start,
+                            export_partition_end=summary.export_partition_end,
+                            page_size=settings.aws_billing.page_size,
+                            dry_run=args.dry_run,
+                            validate_guardrail=False,
+                        )
+                    )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
@@ -512,20 +535,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                     validate_guardrail=True,
                     source=source,
                 )
-                unmatched = run_sync_aws_unmatched_resources(
-                    cutover_engine,
-                    settings=settings.aws_billing,
-                    account_id=source.account_id,
-                    usage_start_date=args.usage_start_date,
-                    usage_end_date=args.usage_end_date,
-                    export_partition_start=export_partition_start,
-                    export_partition_end=export_partition_end,
-                    dry_run=args.dry_run,
-                    limit=None,
-                    replace_existing_usage_dates=True,
-                    validate_guardrail=False,
-                    source=source,
-                )
+                cutover_summaries = [summary]
+                if not args.skip_unmatched_resources:
+                    cutover_summaries.append(
+                        run_sync_aws_unmatched_resources(
+                            cutover_engine,
+                            settings=settings.aws_billing,
+                            account_id=source.account_id,
+                            usage_start_date=args.usage_start_date,
+                            usage_end_date=args.usage_end_date,
+                            export_partition_start=export_partition_start,
+                            export_partition_end=export_partition_end,
+                            dry_run=args.dry_run,
+                            limit=None,
+                            replace_existing_usage_dates=True,
+                            validate_guardrail=False,
+                            source=source,
+                        )
+                    )
                 residual_allocations = run_sync_aws_parent_residual_allocations(
                     cutover_engine,
                     source=source,
@@ -545,9 +572,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     tcms_allocation_table=settings.tcms_allocation.allocation_table,
                 )
+                cutover_summaries.extend((residual_allocations, attribution))
             print(
                 json.dumps(
-                    _summaries_to_json([summary, unmatched, residual_allocations, attribution]),
+                    _summaries_to_json(cutover_summaries),
                     indent=2,
                     sort_keys=True,
                 )
