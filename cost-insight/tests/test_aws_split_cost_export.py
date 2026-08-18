@@ -49,8 +49,8 @@ def test_split_guardrail_uses_all_parent_line_items_before_import() -> None:
         billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
     )
 
-    assert "child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.00000001" in query
-    assert "child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.00000001" in query
+    assert "child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.01" in query
+    assert "child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.01" in query
     assert "line_item_line_item_type = 'Usage'" not in query
 
 

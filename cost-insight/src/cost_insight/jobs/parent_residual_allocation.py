@@ -10,8 +10,8 @@ from typing import Iterable
 ALLOCATION_ORIGIN = "cost_insight_derived"
 ALLOCATION_METHOD = "proportional_source_split_list_v1"
 ALLOCATION_VERSION = "v1"
-_CURRENCY_SCALE = Decimal("0.00000001")
-_WEIGHT_SCALE = Decimal("0.000000000000000000000001")
+_CURRENCY_SCALE = Decimal("0.01")
+_WEIGHT_SCALE = Decimal("0.0000000000000001")
 
 
 @dataclass(frozen=True)

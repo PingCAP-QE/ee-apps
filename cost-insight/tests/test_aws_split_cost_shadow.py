@@ -73,10 +73,10 @@ def _summary_row():
         "author": "owner@pingcap.com",
         "org": "tenant",
         "repo": "project",
-        "list_cost": "0.00000001",
-        "effective_cost": "0.00000001",
+        "list_cost": "0.01",
+        "effective_cost": "0.01",
         "credit_amount": "0",
-        "net_cost": "0.00000001",
+        "net_cost": "0.01",
         "source_export_time": "2026-08-11T00:00:00Z",
     }
 

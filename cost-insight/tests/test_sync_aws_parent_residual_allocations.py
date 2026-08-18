@@ -64,8 +64,8 @@ def _ledger_row(pod_resource_id: str, split_cost: str) -> dict[str, str]:
         "project": "project",
         "service_exec_id": "exec",
         "source_pod_split_list_cost": split_cost,
-        "parent_direct_list_cost": "10.00000000",
-        "parent_residual_list_cost": "4.00000000",
+        "parent_direct_list_cost": "10.00",
+        "parent_residual_list_cost": "4.00",
     }
 
 
@@ -109,8 +109,8 @@ def test_residual_ledger_excludes_zero_split_pods_and_replaces_usage_dates(caplo
                 )
             ).all()
         assert persisted == [
-            (":pod/a", 2.0, 1.33333333, "cost_insight_derived", "proportional_source_split_list_v1"),
-            (":pod/b", 4.0, 2.66666667, "cost_insight_derived", "proportional_source_split_list_v1"),
+            (":pod/a", 2.0, 1.33, "cost_insight_derived", "proportional_source_split_list_v1"),
+            (":pod/b", 4.0, 2.67, "cost_insight_derived", "proportional_source_split_list_v1"),
         ]
 
         with caplog.at_level("INFO"):
