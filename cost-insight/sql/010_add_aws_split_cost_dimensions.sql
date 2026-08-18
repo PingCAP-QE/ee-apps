@@ -30,24 +30,6 @@ ALTER TABLE cost_attribution_daily
   ADD COLUMN IF NOT EXISTS workload_name VARCHAR(512) NULL,
   ADD COLUMN IF NOT EXISTS workload_type VARCHAR(128) NULL;
 
-ALTER TABLE cost_bq_export_summary_daily
-  MODIFY COLUMN list_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN effective_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN credit_amount DECIMAL(24,8) NULL,
-  MODIFY COLUMN net_cost DECIMAL(24,8) NULL;
-
-ALTER TABLE cost_unmatched_resource_daily
-  MODIFY COLUMN list_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN effective_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN credit_amount DECIMAL(24,8) NULL,
-  MODIFY COLUMN net_cost DECIMAL(24,8) NULL;
-
-ALTER TABLE cost_attribution_daily
-  MODIFY COLUMN list_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN effective_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN credit_amount DECIMAL(24,8) NULL,
-  MODIFY COLUMN net_cost DECIMAL(24,8) NULL;
-
 CREATE INDEX IF NOT EXISTS idx_cost_attribution_source_scope_date
   ON cost_attribution_daily (vendor, account_id, source_allocation_scope, usage_date);
 
@@ -65,11 +47,11 @@ CREATE TABLE IF NOT EXISTS cost_aws_parent_residual_allocation_daily (
   service VARCHAR(255) NULL,
   project VARCHAR(255) NULL,
   service_exec_id VARCHAR(255) NULL,
-  source_pod_split_list_cost DECIMAL(24,8) NOT NULL,
-  parent_direct_list_cost DECIMAL(24,8) NOT NULL,
-  parent_residual_list_cost DECIMAL(24,8) NOT NULL,
-  allocation_weight DECIMAL(32,24) NOT NULL,
-  derived_parent_residual_list_cost DECIMAL(24,8) NOT NULL,
+  source_pod_split_list_cost DECIMAL(16,2) NOT NULL,
+  parent_direct_list_cost DECIMAL(16,2) NOT NULL,
+  parent_residual_list_cost DECIMAL(16,2) NOT NULL,
+  allocation_weight DECIMAL(32,16) NOT NULL,
+  derived_parent_residual_list_cost DECIMAL(16,2) NOT NULL,
   allocation_origin VARCHAR(64) NOT NULL,
   allocation_method VARCHAR(128) NOT NULL,
   allocation_version VARCHAR(64) NOT NULL,

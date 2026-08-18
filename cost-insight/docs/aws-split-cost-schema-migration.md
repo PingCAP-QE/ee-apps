@@ -136,8 +136,8 @@ an unexpected change beyond this documented effect.
 
 1. Use the split-cost table for all new `946646677266` imports from the
    approved production cutover date onward.
-2. Preserve account/day/list/effective cost totals exactly, within an `1e-8`
-   currency tolerance before TiDB storage.
+2. Preserve account/day/list/effective cost totals within a one-cent currency
+   tolerance before TiDB storage.
 3. Attribute EKS pod split cost to its workload and direct canonical business
    dimensions.
 4. Preserve the unallocated portion of an EKS node as a parent residual rather
@@ -277,37 +277,22 @@ attribution mechanism. It must not be overloaded with source allocation scope.
 
 ### 4.4 Currency Precision
 
-Pod costs can be much less than one cent. The existing `DECIMAL(16,2)` storage
-would turn valid split allocations into zero after grouping by workload.
+Cost Insight keeps the existing money contract: persisted monetary fields use
+`DECIMAL(16,2)`, and all dashboard/reporting values are expressed in cents.
+The split adapter may use BigQuery `NUMERIC` internally while it reconciles
+parent and child rows, but values written to Cost Insight follow the existing
+two-decimal storage policy. No monetary-column widening or table rebuild is
+required for this migration.
 
-In the same migration, change all four monetary columns in the summary,
-unmatched-resource, and attribution tables to `DECIMAL(24,8)`. This preserves
-at least the original 14 integer digits while adding eight fractional digits:
+Residual allocations use the same two-decimal currency scale. The final
+participating pod receives the deterministic cent-level remainder so the
+derived residual equals the parent residual after rounding. `allocation_weight`
+is kept separately at `DECIMAL(32,16)` for auditability; it does not change the
+currency precision of any cost column.
 
-```sql
-ALTER TABLE cost_bq_export_summary_daily
-  MODIFY COLUMN list_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN effective_cost DECIMAL(24,8) NULL,
-  MODIFY COLUMN credit_amount DECIMAL(24,8) NULL,
-  MODIFY COLUMN net_cost DECIMAL(24,8) NULL;
--- Apply the same four MODIFY COLUMN operations to cost_unmatched_resource_daily
--- and cost_attribution_daily.
-```
-
-Widening `DECIMAL(16,2)` to `DECIMAL(24,8)` can require a copy-style table
-rebuild and block writers. Run this migration in a maintenance window, or use
-an approved online-DDL tool such as `gh-ost` or `pt-online-schema-change` for
-the continuously written tables, especially `cost_attribution_daily`.
-
-BigQuery must aggregate with full `NUMERIC` precision and return at most eight
-decimal places. Do not use `ROUND(SUM(...), 2)` in the split-cost queries.
-Dashboard display can round to cents; persisted facts must not. This also
-applies to the existing TCMS shared-pool allocation path in
-`src/cost_insight/jobs/refresh_attribution_daily.py`: replace its
-`ROUND(..., 2)` calls for weighted and equal shared-pool allocations with
-full-precision expressions before writing the attribution rows. Rows routed
-through shared-pool allocation are included in the eight-decimal precision
-guarantee.
+Comparisons and guardrails use a one-cent tolerance. Display code may still
+apply its usual formatting, but the source adapter must not use binary floating
+point for monetary calculations.
 
 ## 5. Split-Cost Query Semantics
 
@@ -404,9 +389,9 @@ split rows.
    ```
 
    Run the child-over-parent guardrail before emitting this row. If a residual
-   is negative but no less than `-1e-8`, clamp that money field to zero to avoid
-   persisting floating-point reconciliation drift as negative cost. A residual
-   below `-1e-8` is a guardrail failure and must not be clamped or written.
+   is negative but no less than `-0.01`, clamp that money field to zero to avoid
+   persisting a cent-level reconciliation drift as negative cost. A residual
+   below `-0.01` is a guardrail failure and must not be clamped or written.
 
    Use the parent service and region. Give this synthetic row a stable
    `usage_type`/SKU marker such as `EKS:ParentResidual`; the existing driver
@@ -451,8 +436,8 @@ direct cost is the all-line-item-type aggregate defined in the parent-residual
 branch:
 
 ```text
-sum(child list split cost) - parent direct list cost > 1e-8
-sum(child effective split cost) - parent direct effective cost > 1e-8
+sum(child list split cost) - parent direct list cost > 0.01
+sum(child effective split cost) - parent direct effective cost > 0.01
 ```
 
 Do not use `GREATEST(parent - child, 0)` to hide a violation. Emit the parent
@@ -558,11 +543,11 @@ allocation_method = proportional_source_split_list_v1
 allocation_version, parent_input_hash, calculated_at
 ```
 
-`allocation_weight` is stored as `DECIMAL(32,24)` and quantized to that scale
+`allocation_weight` is stored as `DECIMAL(32,16)` and quantized to that scale
 before calculating a derived amount. The final pod keeps the deterministic
-eight-decimal rounding remainder so every parent/day conserves its residual;
-the stored derived amount, rather than a recomputation from the weight alone,
-is therefore the authoritative audit value for that final row.
+cent-level rounding remainder so every parent/day conserves its residual; the
+stored derived amount, rather than a recomputation from the weight alone, is
+therefore the authoritative audit value for that final row.
 
 `parent_input_hash` identifies the parent/day direct total and the complete set
 of source pod split inputs. It makes a correction in BigQuery detectable and
@@ -594,7 +579,7 @@ derived cost. A negative residual, if one occurs, uses the same positive-pod
 weights so the parent/day still conserves; a zero denominator is never replaced
 with equal weights.
 
-Calculate at high precision, round to the persisted eight-decimal currency
+Calculate at high precision, round to the persisted two-decimal currency
 scale only at the end, and assign the final rounding remainder to the
 lexicographically last `pod_resource_id` for that parent/day. The required
 post-rounding invariant is:
@@ -695,7 +680,7 @@ phase. Record and approve all of the following before promotion:
    legacy source by day for list cost. An EKS node is checked as parent residual
    plus all source pod split rows.
 5. The shadow summary preserves the canonical owner/service/project/
-   service-execution, namespace, workload, scope, and eight-decimal split-cost
+   service-execution, namespace, workload, scope, and cent-precision split-cost
    dimensions. Net/effective/credit differences are
    reported separately as the documented source-semantic change, not silently
    treated as a list-cost mismatch.
@@ -738,7 +723,7 @@ refresh attribution. Do not mix both source schemas for the same account/date.
 For each stable usage date and for the full cutover window, verify:
 
 1. `SUM(normalized effective_cost) = SUM(raw line_item_unblended_cost)` within
-   `1e-8` under the same-source BigQuery `NUMERIC` calculation, with the raw
+   `$0.01` under the same-source BigQuery `NUMERIC` calculation, with the raw
    aggregate including every direct/parent line-item type and excluding
    split-child rows (`split_line_item_parent_resource_id IS NULL`). This
    aggregate contains ordinary direct and parent direct rows only; child costs
@@ -753,7 +738,8 @@ For each stable usage date and for the full cutover window, verify:
 5. At least five stable direct resources across EC2, S3, and EBS match the
    legacy source's list cost for the same day. For EKS nodes, compare parent
    residual plus pod split, not the parent row alone.
-6. Small nonzero pod split costs survive at eight decimal places.
+6. Pod split and residual values follow the existing two-decimal currency
+   policy, with no unexplained cent-level drift.
 7. Across the approved cutover, reconcile `net_cost` and `credit_amount`
    separately from list cost, confirm the documented source-semantic change,
    and alert on deviations that cannot be explained by the split source's
@@ -787,7 +773,7 @@ Add coverage for:
 | query builder | split schema uses flat tags and `bill_billing_period_start_date`; legacy SQL is unchanged |
 | normalization | ordinary direct, pod child, parent residual, and non-pod child branches |
 | guardrails | over-allocated parent raises and writes nothing |
-| precision | a cost below `$0.01` survives summary normalization and TiDB binding |
+| precision | split and residual amounts use the existing two-decimal currency policy |
 | hashing | different workload/label/allocation-scope dimensions produce different hashes |
 | attribution | split-source direct business dimensions override TCMS; legacy/GCP values preserve TCMS/author behavior |
 | shadow target | fixed snapshot/shadow targets are selected from an allowlist; snapshot retry publishes only a completed table and no production table, job state, or profile is changed |

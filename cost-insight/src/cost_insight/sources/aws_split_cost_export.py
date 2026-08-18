@@ -265,8 +265,8 @@ LEFT JOIN parent_direct AS parent
   ON parent.account_id = child.account_id
  AND parent.usage_date = child.usage_date
  AND parent.parent_resource_name = child.parent_resource_name
-WHERE child.child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.00000001
-   OR child.child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.00000001
+WHERE child.child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.01
+   OR child.child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.01
 ORDER BY child.usage_date, child.parent_resource_name
 LIMIT 100
 """.strip()
@@ -373,7 +373,7 @@ SELECT
   pod.source_pod_split_list_cost,
   parent.parent_direct_list_cost,
   CASE
-    WHEN parent.parent_direct_list_cost - all_child.all_child_split_list_cost BETWEEN -0.00000001 AND 0
+    WHEN parent.parent_direct_list_cost - all_child.all_child_split_list_cost BETWEEN -0.01 AND 0
       THEN CAST(0 AS NUMERIC)
     ELSE parent.parent_direct_list_cost - all_child.all_child_split_list_cost
   END AS parent_residual_list_cost
@@ -615,17 +615,17 @@ branch_rows AS (
     parent.shared_pool,
     'eks_parent_residual' AS source_allocation_scope,
     CASE
-      WHEN parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0) BETWEEN -0.00000001 AND 0
+      WHEN parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0) BETWEEN -0.01 AND 0
         THEN CAST(0 AS NUMERIC)
       ELSE parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0)
     END AS list_cost,
     CASE
-      WHEN parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0) BETWEEN -0.00000001 AND 0
+      WHEN parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0) BETWEEN -0.01 AND 0
         THEN CAST(0 AS NUMERIC)
       ELSE parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0)
     END AS effective_cost,
     CASE
-      WHEN parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0) BETWEEN -0.00000001 AND 0
+      WHEN parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0) BETWEEN -0.01 AND 0
         THEN CAST(0 AS NUMERIC)
       ELSE parent.direct_effective_cost - COALESCE(SUM(child.split_effective_cost), 0)
     END AS net_cost,
