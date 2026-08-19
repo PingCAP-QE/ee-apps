@@ -121,12 +121,14 @@ export function StatCard({
     <article className={`stat-card stat-card--${tone}`}>
       <span className="stat-card__label">{label}</span>
       <strong className="stat-card__value">{value}</strong>
-      <div className="stat-card__meta">
-        <span>{detail}</span>
-        {delta ? (
-          <span className={deltaClassName}>{delta}</span>
-        ) : null}
-      </div>
+      {detail || delta ? (
+        <div className="stat-card__meta">
+          {detail ? <span>{detail}</span> : null}
+          {delta ? (
+            <span className={deltaClassName}>{delta}</span>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

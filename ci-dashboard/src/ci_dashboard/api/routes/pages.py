@@ -9,6 +9,7 @@ from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT
 from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
+    get_cost_allocation_overview_page,
     get_cost_engineering_group_share_page,
     get_cost_insight_page,
     get_cost_unattached_block_volumes_page,
@@ -119,6 +120,14 @@ def cost_weekly_overview_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_weekly_overview_page(engine, filters)
+
+
+@router.get("/cost-allocation-overview")
+def cost_allocation_overview_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_allocation_overview_page(engine, filters)
 
 
 @router.get("/cost-weekly-account-summaries")

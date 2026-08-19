@@ -34,6 +34,7 @@ Useful GCP settings:
 | Env | Default |
 | --- | --- |
 | `COST_INSIGHT_GCP_BILLING_TABLE` | `gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
+| `COST_INSIGHT_GCP_GKE_USAGE_TABLE` | `pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
 | `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
 | `COST_INSIGHT_SYNC_OVERLAP_DAYS` | `3` |
@@ -144,6 +145,19 @@ week:
 
 ```bash
 cost-insight sync-gcp-unmatched-resources \
+  --usage-start-date 2026-05-17 \
+  --usage-end-date 2026-05-23
+```
+
+For the Kubernetes cost card, synchronize the GKE node-cost allocation fact
+after the detailed billing export has settled. It recognizes only Compute
+Engine resources carrying a GKE cluster label and a `gke-*` instance name.
+Core and RAM node costs are distributed within the same cluster/day by GKE
+metering CPU and memory usage; all other recognized node cost and missing
+metering balances remain unallocated.
+
+```bash
+cost-insight sync-gcp-kubernetes-workload-allocations \
   --usage-start-date 2026-05-17 \
   --usage-end-date 2026-05-23
 ```

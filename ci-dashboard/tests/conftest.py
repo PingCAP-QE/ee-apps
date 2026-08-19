@@ -365,6 +365,8 @@ def _create_test_schema(engine: Engine) -> None:
           target_branch TEXT NULL,
           resource_name TEXT NULL,
           vendor_tags_json TEXT NULL,
+          source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+          namespace TEXT NULL,
           author TEXT NULL,
           owner TEXT NULL,
           service TEXT NULL,
@@ -385,6 +387,34 @@ def _create_test_schema(engine: Engine) -> None:
           source_rows INTEGER NOT NULL DEFAULT 0,
           dimension_hash TEXT NOT NULL,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE cost_kubernetes_workload_allocation_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          usage_date TEXT NOT NULL,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          cluster_name TEXT NULL,
+          cluster_location TEXT NULL,
+          allocation_scope TEXT NOT NULL,
+          cost_component TEXT NOT NULL,
+          namespace TEXT NULL,
+          workload_name TEXT NULL,
+          workload_type TEXT NULL,
+          author TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          target_branch TEXT NULL,
+          allocation_weight REAL NOT NULL,
+          source_node_list_cost REAL NOT NULL,
+          list_cost REAL NOT NULL,
+          allocation_method TEXT NOT NULL,
+          allocation_version TEXT NOT NULL,
+          dimension_hash TEXT NOT NULL,
+          calculated_at TEXT NULL,
+          updated_at TEXT NULL,
+          UNIQUE(usage_date, dimension_hash)
         )
         """,
         """

@@ -39,6 +39,9 @@ from cost_insight.jobs.sync_aws_parent_residual_allocations import (
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
+from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
+    run_sync_gcp_kubernetes_workload_allocations,
+)
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
 
@@ -133,6 +136,16 @@ def build_parser() -> argparse.ArgumentParser:
     sync_unmatched.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_unmatched.add_argument("--dry-run", action="store_true")
     sync_unmatched.add_argument("--limit", type=int, default=None)
+
+    sync_gke_allocations = subparsers.add_parser(
+        "sync-gcp-kubernetes-workload-allocations",
+        help="Allocate recognizable GKE node list cost to workloads using GKE metering",
+    )
+    sync_gke_allocations.add_argument("--usage-start-date", type=_parse_date, required=True)
+    sync_gke_allocations.add_argument("--usage-end-date", type=_parse_date, required=True)
+    sync_gke_allocations.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_gke_allocations.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_gke_allocations.add_argument("--dry-run", action="store_true")
 
     sync_aws_unmatched = subparsers.add_parser(
         "sync-aws-unmatched-resources",
@@ -438,6 +451,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                         export_partition_end=args.export_partition_end,
                         dry_run=args.dry_run,
                         limit=args.limit,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-gcp-kubernetes-workload-allocations":
+        engine = build_engine(settings)
+        try:
+            summaries = []
+            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+                summaries.append(
+                    run_sync_gcp_kubernetes_workload_allocations(
+                        engine,
+                        settings=gcp_settings,
+                        usage_start_date=args.usage_start_date,
+                        usage_end_date=args.usage_end_date,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        dry_run=args.dry_run,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
