@@ -3,6 +3,9 @@ package impl
 import (
 	"testing"
 
+	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/stretchr/testify/require"
 )
@@ -56,4 +59,68 @@ func TestOciArtifactToBinArtifacts_Platform(t *testing.T) {
 		[]string{"pd-linux-amd64.tar.gz"}, "")
 	require.Len(t, bins, 1)
 	require.Nil(t, bins[0].Platform)
+}
+
+func TestExtractArtifactsFromResults_MultiArch(t *testing.T) {
+	results := []tknv1.PipelineRunResult{
+		{
+			Name: "pushed-images",
+			Value: tknv1.ParamValue{
+				Type:      tknv1.ParamTypeString,
+				StringVal: "images:\n  - repo: us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server\n    tag: v8.5.7-20260819-5bc0f93_linux_amd64\n    multi_arch_tags:\n      - v8.5.7-20260819-5bc0f93\n  - repo: us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/br\n    tag: v8.5.7-20260819-5bc0f93_linux_amd64\n    multi_arch_tags:\n      - v8.5.7-20260819-5bc0f93\n",
+			},
+		},
+	}
+	params := tknv1.Params{
+		{Name: "os", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: "linux"}},
+		{Name: "arch", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: "amd64"}},
+	}
+
+	ociArtifacts, images := extractArtifactsFromResults(results, params)
+	require.Empty(t, ociArtifacts)
+	require.Len(t, images, 4)
+
+	require.Equal(t, "linux/amd64", images[0].Platform)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93_linux_amd64", images[0].URL)
+
+	require.Equal(t, "multi-arch", images[1].Platform)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93", images[1].URL)
+
+	require.Equal(t, "linux/amd64", images[2].Platform)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/br:v8.5.7-20260819-5bc0f93_linux_amd64", images[2].URL)
+
+	require.Equal(t, "multi-arch", images[3].Platform)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/br:v8.5.7-20260819-5bc0f93", images[3].URL)
+}
+
+func TestBuildBuildReport_MultiArch(t *testing.T) {
+	pr := tknv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "bp-tidb-release-linux-amd64-4hkrr"},
+		Spec: tknv1.PipelineRunSpec{
+			Params: tknv1.Params{
+				{Name: "os", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: "linux"}},
+				{Name: "arch", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: "amd64"}},
+			},
+		},
+		Status: tknv1.PipelineRunStatus{
+			PipelineRunStatusFields: tknv1.PipelineRunStatusFields{
+				Results: []tknv1.PipelineRunResult{
+					{
+						Name: "pushed-images",
+						Value: tknv1.ParamValue{
+							Type:      tknv1.ParamTypeString,
+							StringVal: "images:\n  - repo: us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server\n    tag: v8.5.7-20260819-5bc0f93_linux_amd64\n    multi_arch_tags:\n      - v8.5.7-20260819-5bc0f93\n",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	report := buildBuildReport([]tknv1.PipelineRun{pr})
+	require.NotNil(t, report)
+	require.Len(t, report.Images, 2)
+	require.Equal(t, "linux/amd64", report.Images[0].Platform)
+	require.Equal(t, "multi-arch", report.Images[1].Platform)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93", report.Images[1].URL)
 }

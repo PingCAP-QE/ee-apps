@@ -98,7 +98,7 @@ func (DevBuildSpec) Fields() []ent.Field {
 
 		field.String("gitRef").
 			Optional().
-			MaxLen(64).
+			MaxLen(128).
 			Comment("Git reference of the build"),
 
 		field.String("gitHash").
@@ -108,7 +108,7 @@ func (DevBuildSpec) Fields() []ent.Field {
 
 		field.String("pluginGitRef").
 			Optional().
-			MaxLen(64).
+			MaxLen(128).
 			Comment("Git reference of the plugin"),
 
 		// Publish configuration fields
