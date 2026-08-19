@@ -21,6 +21,7 @@ const (
 	ceTypeFakeGHCreateHotfixBuild = "net.pingcap.tibuild.hotfix.create"
 
 	// Platforms
+	MultiArch   = "multi-arch"
 	LinuxAmd64  = "linux/amd64"
 	LinuxArm64  = "linux/arm64"
 	DarwinAmd64 = "darwin/amd64"

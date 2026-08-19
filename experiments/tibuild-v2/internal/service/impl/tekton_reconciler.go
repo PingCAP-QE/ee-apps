@@ -42,8 +42,9 @@ type (
 		Images []imageEntryYAML `yaml:"images"`
 	}
 	imageEntryYAML struct {
-		Repo string `yaml:"repo"`
-		Tag  string `yaml:"tag"`
+		Repo          string   `yaml:"repo"`
+		Tag           string   `yaml:"tag"`
+		MultiArchTags []string `yaml:"multi_arch_tags"`
 	}
 )
 
@@ -322,6 +323,14 @@ func extractArtifactsFromResults(results []tknv1.PipelineRunResult, params tknv1
 						Platform: platform,
 						URL:      img.Repo + ":" + img.Tag,
 					})
+					// If the image has multi-arch tags, append the multi-arch image
+					// with the first tag (manifest list, no platform suffix).
+					if len(img.MultiArchTags) > 0 {
+						images = append(images, schema.ImageArtifact{
+							Platform: MultiArch,
+							URL:      img.Repo + ":" + img.MultiArchTags[0],
+						})
+					}
 				}
 			}
 		}
@@ -358,6 +367,14 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 							URL:      img.Repo + ":" + img.Tag,
 						})
 						hasData = true
+						// If the image has multi-arch tags, append the multi-arch image
+						// with the first tag (manifest list, no platform suffix).
+						if len(img.MultiArchTags) > 0 {
+							report.Images = append(report.Images, schema.ImageArtifact{
+								Platform: MultiArch,
+								URL:      img.Repo + ":" + img.MultiArchTags[0],
+							})
+						}
 					}
 				}
 			case "pushed-binaries":
