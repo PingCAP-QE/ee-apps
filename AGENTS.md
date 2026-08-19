@@ -108,6 +108,11 @@ type(scope): description
 - **Lowercase** description, no trailing period
 - English preferred; Chinese acceptable for clarity
 
+## Pull Request Convention
+
+- PR titles and descriptions **MUST be written in English**
+- Follow the same Conventional Commits prefix for PR titles as commit messages
+
 Examples:
 ```
 feat(notifier): show all PipelineRuns instead of only the first one
