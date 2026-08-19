@@ -1,0 +1,107 @@
+# GKE Workload Cost Allocation Design
+
+## Context
+
+GKE node costs in the billing export identify a cluster but not the workload
+that consumed the node's CPU or memory. The GKE metering table contains those
+workload dimensions. This job writes an auditable allocation fact table instead
+of changing the source billing rows or inventing ownership for shared cost.
+
+## Scope
+
+The job writes `cost_kubernetes_workload_allocation_daily` for one GCP account
+and a bounded usage-date range. A fact has one of two scopes:
+
+| Scope | Meaning |
+| --- | --- |
+| `workload_split` | A recognized CPU or memory node cost allocated to a metered workload. |
+| `unallocated` | A recognized Kubernetes cost deliberately retained outside workload allocation. |
+
+The job does not allocate ordinary Compute Engine cost, infer Kubernetes
+requests, or turn missing labels into an owner.
+
+## Source Recognition
+
+### Node and control-plane cost
+
+The billing-export query only recognizes:
+
+- Compute Engine rows with a nonempty `goog-k8s-cluster-name` label and a
+  `resource.name` that identifies a `gke-` instance.
+- Kubernetes Engine rows, retained as control-plane cost.
+
+Recognized Compute Engine SKUs are classified as `cpu`, `memory`, or `other`.
+Compute flexible committed-use discount adjustments are excluded so the source
+list-cost basis matches the dashboard's list-cost calculation.
+
+### Workload metering
+
+`pingcap_ee_data.gke_cluster_resource_usage` is ingestion-time partitioned.
+For a requested usage range the query applies both:
+
+- `DATE(start_time)` between the requested dates, which defines the usage
+  interval.
+- `_PARTITIONDATE` from `usage_start_date` through one day after
+  `usage_end_date`, which prunes the table while covering the observed
+  next-partition arrival of usage rows.
+
+Only positive `cpu` and `memory` usage participates. Metering is grouped by
+usage date, cluster name, cluster location, namespace, workload identity, and
+available Prow labels. Workload identity prefers `job-name`, then
+`jenkins/label`, `prow.k8s.io/job`, application label, and finally namespace.
+
+## Allocation
+
+CPU and memory node components are allocated separately within the same
+`(usage_date, cluster_name, cluster_location)` group. The component weight is
+the workload's metered CPU seconds or memory byte-seconds divided by the group
+total.
+
+Persisted weights use 16 decimal places. Costs use cents: each participant
+except the deterministic final participant is rounded normally, and the final
+participant receives the remaining cent value. The final persisted weight is
+the remainder after the preceding quantized weights, so stored weights sum to
+exactly one. `allocation_weight` is the normalized metering share, not an
+assertion that `list_cost / source_node_list_cost` is exact after cent rounding.
+
+## Unallocated Cost
+
+The following stay visible as `unallocated` facts:
+
+- `other` recognized GKE node components.
+- CPU or memory components with no positive matching metering rows.
+- Kubernetes Engine control-plane cost.
+
+This is an explicit accounting outcome, not a diagnosis of why metering is
+missing. In particular, the job does not have Pod request data and must not
+claim that an unallocated workload lacks requests.
+
+## Idempotency And Dashboard Read Path
+
+Rows are keyed by `(usage_date, dimension_hash)`. A successful non-dry-run
+replace deletes and rewrites only the requested account and usage-date window;
+an empty recognized-node source is a no-op to avoid erasing a previous result.
+
+For each vendor/account/usage date with allocation facts, dashboard allocation
+queries use the facts as authoritative and exclude the equivalent legacy
+attribution rows. This prevents node or control-plane cost from being counted
+twice during the migration.
+
+`target_branch` is a workload dimension. Unallocated facts have no workload
+identity and therefore no branch. A branch-filtered view intentionally includes
+only matching workload allocations and reports zero unallocated fact cost; an
+unfiltered view is the place to inspect total retained Kubernetes cost.
+
+## Operations
+
+Run the job after billing and metering data for the usage dates are stable:
+
+```bash
+cost-insight sync-gcp-kubernetes-workload-allocations \
+  --usage-start-date 2026-08-10 \
+  --usage-end-date 2026-08-10
+```
+
+`--export-partition-start` and `--export-partition-end` control the billing
+export scan for node and control-plane cost. The metering query uses its own
+ingestion partition pruning derived from the usage-date window.

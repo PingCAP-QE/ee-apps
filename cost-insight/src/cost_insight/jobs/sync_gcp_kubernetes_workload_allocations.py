@@ -299,12 +299,14 @@ def _allocate_component_to_workloads(
         Decimal(),
     )
     remaining_cost = node_cost.list_cost
+    remaining_weight = Decimal(1)
     rows = []
     for workload in participants[:-1]:
         weight = (workload.weight_for(node_cost.cost_component) / denominator).quantize(
             _WEIGHT_SCALE,
             rounding=ROUND_HALF_UP,
         )
+        remaining_weight -= weight
         allocated_cost = (node_cost.list_cost * weight).quantize(
             _CURRENCY_SCALE,
             rounding=ROUND_HALF_UP,
@@ -325,9 +327,7 @@ def _allocate_component_to_workloads(
             account_id=account_id,
             node_cost=node_cost,
             workload=final_workload,
-            allocation_weight=(
-                final_workload.weight_for(node_cost.cost_component) / denominator
-            ).quantize(_WEIGHT_SCALE, rounding=ROUND_HALF_UP),
+            allocation_weight=remaining_weight,
             list_cost=remaining_cost.quantize(_CURRENCY_SCALE, rounding=ROUND_HALF_UP),
         )
     )

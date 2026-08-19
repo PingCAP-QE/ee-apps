@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import create_engine, text
 
@@ -7,6 +8,9 @@ from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     JOB_NAME,
+    GkeNodeCost,
+    GkeWorkloadUsage,
+    build_gke_workload_allocation_rows,
     run_sync_gcp_kubernetes_workload_allocations,
 )
 from cost_insight.sources.gcp_gke_allocation import (
@@ -233,6 +237,46 @@ def test_gke_allocation_keeps_recognized_compute_cost_unallocated_without_meteri
         engine.dispose()
 
 
+def test_gke_allocation_weights_reconcile_after_quantization() -> None:
+    node_cost = GkeNodeCost(
+        usage_date=date(2026, 8, 10),
+        cluster_name="prow",
+        cluster_location="us-central1-c",
+        cost_component="cpu",
+        list_cost=Decimal("1.00"),
+    )
+    workloads = tuple(
+        GkeWorkloadUsage(
+            usage_date=node_cost.usage_date,
+            cluster_name="prow",
+            cluster_location="us-central1-c",
+            namespace="jenkins",
+            workload_name=f"job-{index}",
+            workload_type="Job",
+            author=None,
+            org=None,
+            repo=None,
+            target_branch=None,
+            cpu_seconds=Decimal(1),
+            memory_byte_seconds=Decimal(),
+        )
+        for index in range(3)
+    )
+
+    rows = build_gke_workload_allocation_rows(
+        account_id="pingcap-testing-account",
+        node_costs=(node_cost,),
+        workload_usage=workloads,
+    )
+
+    assert [row["list_cost"] for row in rows] == [
+        Decimal("0.33"),
+        Decimal("0.33"),
+        Decimal("0.34"),
+    ]
+    assert sum((row["allocation_weight"] for row in rows), Decimal()) == Decimal(1)
+
+
 def test_gke_allocation_queries_use_strict_gke_node_and_metering_dimensions() -> None:
     node_query = build_gcp_gke_node_cost_query(billing_table="project.dataset.billing")
     usage_query = build_gcp_gke_workload_usage_query(gke_usage_table="project.dataset.gke_usage")
@@ -243,6 +287,7 @@ def test_gke_allocation_queries_use_strict_gke_node_and_metering_dimensions() ->
     assert "service_name = 'Kubernetes Engine'" in node_query
     assert "Compute Flexible Committed Use Discounts" in node_query
     assert "project.id = @account_id" in usage_query
+    assert "_PARTITIONDATE BETWEEN @usage_start_date AND DATE_ADD(@usage_end_date, INTERVAL 1 DAY)" in usage_query
     assert "resource_name IN ('cpu', 'memory')" in usage_query
     assert "CASE label.key WHEN 'author' THEN 0" in usage_query
     assert "ARRAY_POSITION" not in usage_query

@@ -157,7 +157,10 @@ WITH metering_rows AS (
     resource_name,
     usage.amount AS usage_amount
   FROM `{gke_usage_table}`
-  WHERE project.id = @account_id
+  WHERE _PARTITIONDATE BETWEEN @usage_start_date AND DATE_ADD(@usage_end_date, INTERVAL 1 DAY)
+    -- The metering table is ingestion-time partitioned. Rows for a usage day
+    -- arrive in that day's partition and the following partition.
+    AND project.id = @account_id
     AND DATE(start_time) BETWEEN @usage_start_date AND @usage_end_date
     AND resource_name IN ('cpu', 'memory')
 ), workloads AS (
