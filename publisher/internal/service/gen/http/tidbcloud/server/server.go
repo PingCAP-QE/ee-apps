@@ -54,7 +54,7 @@ func New(
 		Mounts: []*MountPoint{
 			{"UpdateComponentVersionInCloudconfig", "POST", "/tidbcloud/devops/cloudconfig/versions/component"},
 			{"AddTidbxImageTagInTcms", "POST", "/tidbcloud/tidbx-component-image-builds"},
-			{"RequestSyncKernelImage", "POST", "/tidbcloud/devops/kernel-images/build-callback"},
+			{"RequestSyncKernelImage", "POST", "/tidbcloud/sync-kernel-images"},
 		},
 		UpdateComponentVersionInCloudconfig: NewUpdateComponentVersionInCloudconfigHandler(e.UpdateComponentVersionInCloudconfig, mux, decoder, encoder, errhandler, formatter),
 		AddTidbxImageTagInTcms:              NewAddTidbxImageTagInTcmsHandler(e.AddTidbxImageTagInTcms, mux, decoder, encoder, errhandler, formatter),
@@ -204,7 +204,7 @@ func MountRequestSyncKernelImageHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/tidbcloud/devops/kernel-images/build-callback", f)
+	mux.Handle("POST", "/tidbcloud/sync-kernel-images", f)
 }
 
 // NewRequestSyncKernelImageHandler creates a HTTP handler which loads the HTTP

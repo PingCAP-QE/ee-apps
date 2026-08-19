@@ -192,7 +192,7 @@ paths:
                             - tickets
             schemes:
                 - http
-    /tidbcloud/devops/kernel-images/build-callback:
+    /tidbcloud/sync-kernel-images:
         post:
             tags:
                 - tidbcloud
