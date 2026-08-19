@@ -37,6 +37,10 @@ export default function CostPage({ filters }) {
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
     selectedCostSource === ALL_COST_SOURCES ? "" : selectedCostSource;
+  const isAws7266SplitCostSource = selectedCostSource === "aws:946646677266";
+  const netCostLabel = isAws7266SplitCostSource
+    ? "Net cost (excluding credits)"
+    : "Net cost";
 
   const weeklyOverviewFilters = {
     ...weeklyOverviewRange,
@@ -82,6 +86,7 @@ export default function CostPage({ filters }) {
     sort_by: unmatchedSortBy,
   };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
+  const allocationOverview = useApiData("/api/v1/pages/cost-allocation-overview", costFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
@@ -95,9 +100,14 @@ export default function CostPage({ filters }) {
     costFilters,
   );
   const summary = trend.data?.meta?.summary || {};
-  const configuredAnnualBudget = Number(weeklyOverview.data?.budget_health?.annual_budget || 0);
-  const weeklyBudget = Number(weeklyOverview.data?.budget_health?.weekly_budget || 0);
+  const budgetHealth = weeklyOverview.data?.budget_health;
+  const configuredAnnualBudget = Number(budgetHealth?.annual_budget || 0);
+  const weeklyBudget = Number(budgetHealth?.weekly_budget || 0);
   const hasConfiguredBudget = configuredAnnualBudget > 0;
+  const budgetPeriodLabel =
+    budgetHealth?.budget_start_date && budgetHealth?.budget_end_date
+      ? `${budgetHealth.budget_start_date}～${budgetHealth.budget_end_date}`
+      : "Budget period unavailable";
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
     (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
@@ -185,7 +195,7 @@ export default function CostPage({ filters }) {
               tone="teal"
             />
             <StatCard
-              label="Net cost"
+              label={netCostLabel}
               value={formatCurrency(weeklyOverview.data?.summary?.net_cost)}
               detail={
                 hasConfiguredBudget
@@ -241,11 +251,19 @@ export default function CostPage({ filters }) {
         </div>
       </Panel>
 
-      <section className="stats-grid">
+      <section
+        className={`stats-grid cost-summary-grid${
+          allocationOverview.data?.is_available ? " cost-summary-grid--with-allocation" : ""
+        }`}
+      >
         <StatCard
-          label="Net cost"
+          label={netCostLabel}
           value={formatCurrency(summary.net_cost)}
-          detail="After credits in the selected window"
+          detail={
+            isAws7266SplitCostSource
+              ? null
+              : "After credits in the selected window"
+          }
         />
         <StatCard
           label="List cost"
@@ -264,11 +282,27 @@ export default function CostPage({ filters }) {
           value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
           detail={
             hasConfiguredBudget
-              ? "Configured budget for the selected fiscal period"
+              ? budgetPeriodLabel
               : "Budget not configured for the selected source"
           }
           tone="rose"
         />
+        {allocationOverview.data?.is_available ? (
+          <div className="cost-allocation-slot">
+            <section className="cost-allocation-overview stat-card stat-card--teal">
+              <span className="stat-card__label">K8S Workload split cost</span>
+              <strong className="stat-card__value">
+                {formatCurrency(allocationOverview.data.workload_split_cost)}
+              </strong>
+              <div className="stat-card__meta">
+                <span className="cost-allocation-overview__detail">
+                  <span>K8S unallocated cost</span>
+                  <strong>{formatCurrency(allocationOverview.data.kubernetes_unallocated_cost)}</strong>
+                </span>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </section>
 
       <Panel

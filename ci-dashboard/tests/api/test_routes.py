@@ -581,6 +581,9 @@ def _insert_cost_attribution(
     usage_type: str | None = None,
     cost_driver_key: str | None = None,
     target_branch: str | None = None,
+    vendor_tags_json: str | None = None,
+    source_allocation_scope: str = "direct",
+    namespace: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -589,6 +592,7 @@ def _insert_cost_attribution(
                 INSERT INTO cost_attribution_daily (
                   usage_date, vendor, account_id, service_name, sku_name, org, repo,
                   usage_type, cost_driver_key, region, target_branch, resource_name, author,
+                  vendor_tags_json, source_allocation_scope, namespace,
                   owner, service, project, service_exec_id,
                   attribution_key, attribution_source, attribution_status, allocate_method,
                   employee_id, group_id, manager_id, usage_seconds,
@@ -596,8 +600,9 @@ def _insert_cost_attribution(
                 ) VALUES (
                   :usage_date, :vendor, :account_id, :service_name, :sku_name,
                   'pingcap', :repo, :usage_type, :cost_driver_key, :region, :target_branch,
-                  :resource_name, :author, :owner,
-                  :service, :project, :service_exec_id, :attribution_key, :attribution_source,
+                  :resource_name, :author, :vendor_tags_json, :source_allocation_scope,
+                  :namespace,
+                  :owner, :service, :project, :service_exec_id, :attribution_key, :attribution_source,
                   :attribution_status, :allocate_method, :employee_id, :group_id, NULL,
                   :usage_seconds, :list_cost, :effective_cost,
                   0, :net_cost, 1, :dimension_hash
@@ -611,6 +616,9 @@ def _insert_cost_attribution(
                 "repo": repo,
                 "region": region,
                 "target_branch": target_branch,
+                "vendor_tags_json": vendor_tags_json,
+                "source_allocation_scope": source_allocation_scope,
+                "namespace": namespace,
                 "group_id": group_id,
                 "resource_name": resource_name,
                 "author": author,
@@ -3896,6 +3904,226 @@ def test_cost_routes_use_billing_report_list_cost(sqlite_engine, api_client: Tes
     assert overview_body["summary"]["list_cost"] == 10.0
     assert overview_body["summary"]["net_cost"] == 8.0
     assert overview_body["service_share"]["meta"]["total_list_cost"] == 10.0
+
+
+def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    common = {
+        "usage_date": "2026-05-02",
+        "repo": "tidb",
+        "group_id": 1,
+        "vendor": "aws",
+        "account_id": "946646677266",
+    }
+    for index, values in enumerate(
+        [
+            {
+                "net_cost": 100,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "eks_pod",
+            },
+            {
+                "net_cost": 30,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "split_child",
+                "namespace": "qa",
+            },
+            {
+                "net_cost": 25,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "split_child",
+            },
+            {
+                "net_cost": 40,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "eks_parent_residual",
+            },
+            {
+                "net_cost": 20,
+                "source_allocation_scope": "direct",
+                "service_name": "AmazonEKS",
+            },
+            {
+                "net_cost": 10,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "direct",
+                "vendor_tags_json": '{"cluster":"qa-eks"}',
+            },
+            {
+                "net_cost": 15,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "direct",
+            },
+            {"net_cost": 60, "source_allocation_scope": "direct", "service_name": "AmazonS3"},
+        ]
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            **common,
+            **values,
+            dimension_hash=f"allocation-{index}",
+        )
+    gcp_common = {
+        "usage_date": "2026-05-02",
+        "repo": "tidb",
+        "group_id": 1,
+        "vendor": "gcp",
+        "account_id": "pingcap-testing-account",
+    }
+    for index, values in enumerate(
+        [
+            {"net_cost": 90, "source_allocation_scope": "gke_pod"},
+            {"net_cost": 40, "source_allocation_scope": "gke_parent_residual"},
+            {
+                "net_cost": 20,
+                "service_name": "Kubernetes Engine",
+                "source_allocation_scope": "direct",
+            },
+            {
+                "net_cost": 10,
+                "source_allocation_scope": "direct",
+                "vendor_tags_json": '{"cluster":"qa-gke"}',
+            },
+            {"net_cost": 15, "source_allocation_scope": "direct"},
+        ]
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            **gcp_common,
+            **values,
+            dimension_hash=f"gcp-allocation-{index}",
+        )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        repo="tidb",
+        group_id=1,
+        net_cost=80,
+        vendor="tencent",
+        account_id="qa-infra-dev",
+        source_allocation_scope="kubernetes_pod",
+        dimension_hash="tencent-workload",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        repo="tidb",
+        group_id=1,
+        net_cost=50,
+        vendor="tencent",
+        account_id="qa-infra-dev",
+        source_allocation_scope="kubernetes_parent_residual",
+        dimension_hash="tencent-residual",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "scope": {
+            "repo": None,
+            "branch": None,
+            "job_name": None,
+            "job_names": [],
+            "cloud_phase": None,
+            "issue_status": None,
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "granularity": "week",
+            "cost_vendor": "aws",
+            "cost_account_id": "946646677266",
+            "cost_source": "aws:946646677266",
+        },
+        "is_available": True,
+        "workload_split_cost": 130.0,
+        "kubernetes_unallocated_cost": 70.0,
+    }
+
+    gcp_response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "gcp:pingcap-testing-account",
+        },
+    )
+
+    assert gcp_response.status_code == 200
+    assert gcp_response.json()["is_available"] is True
+    assert gcp_response.json()["workload_split_cost"] == 90.0
+    assert gcp_response.json()["kubernetes_unallocated_cost"] == 70.0
+
+    tencent_response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "tencent:qa-infra-dev",
+        },
+    )
+
+    assert tencent_response.status_code == 200
+    assert tencent_response.json()["is_available"] is True
+    assert tencent_response.json()["workload_split_cost"] == 80.0
+    assert tencent_response.json()["kubernetes_unallocated_cost"] == 50.0
+
+
+def test_cost_allocation_overview_prefers_allocation_facts_over_legacy_rows(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="tidb",
+        group_id=1,
+        net_cost=999,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        source_allocation_scope="gke_pod",
+        dimension_hash="legacy-gke-row-that-must-not-double-count",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, allocation_weight, source_node_list_cost,
+                  list_cost, allocation_method, allocation_version, dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'workload_split', 'cpu', 1, 150, 150, 'gke_cpu_metering_weight_v1',
+                   'gke_metering_v1', 'gke-workload-fact'),
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'other', 0, 20, 20, 'gke_unsupported_node_cost_unallocated_v1',
+                   'gke_metering_v1', 'gke-unallocated-fact')
+                """
+            )
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "cost_source": "gcp:pingcap-testing-account",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_available"] is True
+    assert response.json()["workload_split_cost"] == 150.0
+    assert response.json()["kubernetes_unallocated_cost"] == 20.0
 
 
 def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestClient) -> None:

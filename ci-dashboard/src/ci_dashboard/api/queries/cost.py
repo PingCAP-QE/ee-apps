@@ -215,6 +215,143 @@ def get_cost_trend(
     }
 
 
+def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    """Return Kubernetes allocation metrics shown alongside cost breakdowns."""
+    with engine.begin() as connection:
+        where_clause, params = _build_cost_where(filters, table_alias="c")
+        list_cost_expr = _billing_report_list_cost_expr("c")
+        cluster_tag = _json_tag_text_expr(connection, "c.vendor_tags_json", "cluster")
+        workload_split_condition = """
+            (
+              c.source_allocation_scope IN (
+                'kubernetes_pod',
+                'eks_pod',
+                'gke_pod',
+                'tke_pod'
+              )
+              OR (
+                c.source_allocation_scope = 'split_child'
+                AND NULLIF(c.namespace, '') IS NOT NULL
+              )
+            )
+        """
+        kubernetes_unallocated_condition = f"""
+            (
+              c.source_allocation_scope IN (
+                'kubernetes_parent_residual',
+                'eks_parent_residual',
+                'gke_parent_residual',
+                'tke_parent_residual'
+              )
+              OR (
+                c.source_allocation_scope = 'direct'
+                AND (
+                  c.service_name = 'AmazonEKS'
+                  OR LOWER(COALESCE(c.service_name, '')) LIKE '%kubernetes%'
+                  OR LOWER(COALESCE(c.service_name, '')) LIKE '%container engine%'
+                  OR NULLIF({cluster_tag}, '') IS NOT NULL
+                )
+              )
+            )
+        """
+        if _cost_kubernetes_allocation_table_exists(connection):
+            allocation_where_clause, allocation_params = _build_cost_where(filters, table_alias="a")
+            allocation_date_filters = replace(filters, branch=None)
+            allocation_date_where_clause, allocation_date_params = _build_cost_where(
+                allocation_date_filters,
+                table_alias="a",
+            )
+            allocation_rows_cte = f"""
+                WITH allocation_fact AS (
+                  SELECT
+                    a.allocation_scope,
+                    a.list_cost
+                  FROM cost_kubernetes_workload_allocation_daily a
+                  WHERE {allocation_where_clause}
+                ), allocation_fact_dates AS (
+                  SELECT DISTINCT
+                    a.vendor,
+                    a.account_id,
+                    a.usage_date
+                  FROM cost_kubernetes_workload_allocation_daily a
+                  WHERE {allocation_date_where_clause}
+                ), legacy_rows AS (
+                  SELECT
+                    CASE
+                      WHEN {workload_split_condition} THEN 'workload_split'
+                      ELSE 'unallocated'
+                    END AS allocation_scope,
+                    {list_cost_expr} AS list_cost
+                  FROM cost_attribution_daily c
+                  WHERE {where_clause}
+                    AND ({workload_split_condition} OR {kubernetes_unallocated_condition})
+                    -- An allocation fact is authoritative for its source/date. This
+                    -- prevents node or control-plane costs from being counted twice.
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM allocation_fact_dates a
+                      WHERE a.vendor = c.vendor
+                        AND a.account_id = c.account_id
+                        AND a.usage_date = c.usage_date
+                    )
+                ), allocation_rows AS (
+                  SELECT allocation_scope, list_cost FROM allocation_fact
+                  UNION ALL
+                  SELECT allocation_scope, list_cost FROM legacy_rows
+                )
+            """
+            query_params = {**params, **allocation_params, **allocation_date_params}
+        else:
+            # Keep the page available while the schema migration is rolled out.
+            allocation_rows_cte = f"""
+                WITH allocation_rows AS (
+                  SELECT
+                    CASE
+                      WHEN {workload_split_condition} THEN 'workload_split'
+                      ELSE 'unallocated'
+                    END AS allocation_scope,
+                    {list_cost_expr} AS list_cost
+                  FROM cost_attribution_daily c
+                  WHERE {where_clause}
+                    AND ({workload_split_condition} OR {kubernetes_unallocated_condition})
+                )
+            """
+            query_params = params
+        row = connection.execute(
+            text(
+                f"""
+                {allocation_rows_cte}
+                SELECT
+                  SUM(
+                    CASE WHEN allocation_scope = 'workload_split'
+                      THEN list_cost
+                      ELSE 0
+                    END
+                  ) AS workload_split_cost,
+                  SUM(
+                    CASE WHEN allocation_scope = 'unallocated'
+                      THEN list_cost
+                      ELSE 0
+                    END
+                  ) AS kubernetes_unallocated_cost,
+                  COUNT(*) AS allocation_cost_row_count
+                FROM allocation_rows
+                """
+            ),
+            query_params,
+        ).mappings().first()
+
+    workload_split_cost = _money(row["workload_split_cost"]) if row else 0.0
+    kubernetes_unallocated_cost = _money(row["kubernetes_unallocated_cost"]) if row else 0.0
+    allocation_cost_row_count = int(row["allocation_cost_row_count"] or 0) if row else 0
+    return {
+        "scope": filters.meta(),
+        "is_available": allocation_cost_row_count > 0,
+        "workload_split_cost": workload_split_cost,
+        "kubernetes_unallocated_cost": kubernetes_unallocated_cost,
+    }
+
+
 def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     cost_filters = _cost_filters(filters)
     previous_start, previous_end = _previous_window(cost_filters)
@@ -1619,6 +1756,39 @@ def _billing_report_list_cost_expr(table_alias: str) -> str:
         f"ELSE {prefix}list_cost "
         "END"
     )
+
+
+def _cost_kubernetes_allocation_table_exists(connection: Connection) -> bool:
+    if connection.dialect.name == "sqlite":
+        row = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name = 'cost_kubernetes_workload_allocation_daily'
+                """
+            )
+        ).first()
+    else:
+        row = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'cost_kubernetes_workload_allocation_daily'
+                """
+            )
+        ).first()
+    return row is not None
+
+
+def _json_tag_text_expr(connection: Connection, column_expr: str, tag_name: str) -> str:
+    json_path = f"$.{tag_name}"
+    if connection.dialect.name == "sqlite":
+        return f"json_extract({column_expr}, '{json_path}')"
+    return f"JSON_UNQUOTE(JSON_EXTRACT({column_expr}, '{json_path}'))"
 
 
 def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str) -> str:

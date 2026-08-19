@@ -22,6 +22,7 @@ from ci_dashboard.api.queries.builds import (
 )
 from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
+    get_cost_allocation_overview,
     get_cost_page,
     get_cost_share,
     get_weekly_account_summaries,
@@ -303,6 +304,13 @@ def get_cost_weekly_overview_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_weekly_overview(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_allocation_overview_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_cost_allocation_overview(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_weekly_account_summaries_page(

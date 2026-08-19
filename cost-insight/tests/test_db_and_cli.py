@@ -32,6 +32,9 @@ from cost_insight.jobs.sync_aws_parent_residual_allocations import (
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
+from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
+    SyncGcpKubernetesWorkloadAllocationsSummary,
+)
 from cost_insight.jobs.sync_gcp_unmatched_resources import SyncGcpUnmatchedResourcesSummary
 from cost_insight.jobs.sync_gcs_cache_ac_references import SyncGcsCacheAcReferencesSummary
 
@@ -906,6 +909,65 @@ def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
     assert captured["usage_start_date"] == date(2026, 5, 17)
     assert captured["usage_end_date"] == date(2026, 5, 18)
     assert '"rows_seen": 3' in output
+
+
+def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:
+    disposed = []
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            disposed.append(True)
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
+        log_level="INFO",
+    )
+
+    def fake_run(engine, **kwargs):
+        captured.update(kwargs)
+        return SyncGcpKubernetesWorkloadAllocationsSummary(
+            account_id=kwargs["settings"].account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            node_cost_rows_seen=4,
+            metering_rows_seen=6,
+            rows_written=8,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_sync_gcp_kubernetes_workload_allocations", fake_run)
+
+    exit_code = cli.main(
+        [
+            "sync-gcp-kubernetes-workload-allocations",
+            "--usage-start-date",
+            "2026-05-17",
+            "--usage-end-date",
+            "2026-05-18",
+            "--export-partition-start",
+            "2026-05-20",
+            "--export-partition-end",
+            "2026-05-24",
+            "--dry-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert disposed == [True]
+    assert captured["usage_start_date"] == date(2026, 5, 17)
+    assert captured["usage_end_date"] == date(2026, 5, 18)
+    assert captured["export_partition_start"] == date(2026, 5, 20)
+    assert captured["export_partition_end"] == date(2026, 5, 24)
+    assert captured["dry_run"] is True
+    assert '"node_cost_rows_seen": 4' in output
 
 
 def test_cli_runs_backfill_cost_refine_from_raw_command(monkeypatch, capsys) -> None:

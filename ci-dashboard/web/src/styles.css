@@ -418,6 +418,43 @@ select {
   gap: 0.9rem;
 }
 
+.cost-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cost-summary-grid--with-allocation {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.cost-allocation-slot {
+  min-width: 0;
+}
+
+.cost-allocation-slot > .cost-allocation-overview {
+  height: 100%;
+}
+
+.cost-allocation-overview__detail {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.cost-allocation-overview__detail strong {
+  color: var(--ink);
+}
+
+@media (max-width: 1600px) {
+  .cost-summary-grid--with-allocation {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .cost-summary-grid--with-allocation .cost-allocation-slot {
+    grid-column: span 2;
+  }
+}
+
 .progress-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2409,6 +2446,10 @@ select {
   .freshness-chip {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .cost-summary-grid--with-allocation .cost-allocation-slot {
+    grid-column: span 1;
   }
 
   .migration-rate-card__metrics {
