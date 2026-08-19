@@ -362,15 +362,16 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 				if err := yaml.Unmarshal([]byte(r.Value.StringVal), &imgs); err == nil {
 					platform := parsePlatformFromParams(pr.Spec.Params)
 					for _, img := range imgs.Images {
-						report.Images = append(report.Images, schema.ImageArtifact{
+						report.Images = appendUniqueImage(report.Images, schema.ImageArtifact{
 							Platform: platform,
 							URL:      img.Repo + ":" + img.Tag,
 						})
 						hasData = true
 						// If the image has multi-arch tags, append the multi-arch image
 						// with the first tag (manifest list, no platform suffix).
+						// Both pipelines may report the same multi-arch tags, so dedupe.
 						if len(img.MultiArchTags) > 0 {
-							report.Images = append(report.Images, schema.ImageArtifact{
+							report.Images = appendUniqueImage(report.Images, schema.ImageArtifact{
 								Platform: MultiArch,
 								URL:      img.Repo + ":" + img.MultiArchTags[0],
 							})
@@ -406,6 +407,18 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 		return nil
 	}
 	return report
+}
+
+// appendUniqueImage appends img to images unless an entry with the same
+// platform and URL already exists (e.g. both pipelines reporting the same
+// multi-arch tags).
+func appendUniqueImage(images []schema.ImageArtifact, img schema.ImageArtifact) []schema.ImageArtifact {
+	for _, existing := range images {
+		if existing.Platform == img.Platform && existing.URL == img.URL {
+			return images
+		}
+	}
+	return append(images, img)
 }
 
 // getEarliestStartTime gets the earliest start time from PipelineRuns.
