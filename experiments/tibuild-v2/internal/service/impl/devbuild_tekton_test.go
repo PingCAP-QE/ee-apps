@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,4 +124,49 @@ func TestBuildBuildReport_MultiArch(t *testing.T) {
 	require.Equal(t, "linux/amd64", report.Images[0].Platform)
 	require.Equal(t, "multi-arch", report.Images[1].Platform)
 	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93", report.Images[1].URL)
+}
+
+func TestBuildBuildReport_MultiArchDedup(t *testing.T) {
+	// Both pipelines report the same multi-arch tags -> deduped in the report.
+	makePR := func(name, arch string) tknv1.PipelineRun {
+		return tknv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: tknv1.PipelineRunSpec{
+				Params: tknv1.Params{
+					{Name: "os", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: "linux"}},
+					{Name: "arch", Value: tknv1.ParamValue{Type: tknv1.ParamTypeString, StringVal: arch}},
+				},
+			},
+			Status: tknv1.PipelineRunStatus{
+				PipelineRunStatusFields: tknv1.PipelineRunStatusFields{
+					Results: []tknv1.PipelineRunResult{
+						{
+							Name: "pushed-images",
+							Value: tknv1.ParamValue{
+								Type:      tknv1.ParamTypeString,
+								StringVal: "images:\n  - repo: us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server\n    tag: v8.5.7-20260819-5bc0f93_linux_" + arch + "\n    multi_arch_tags:\n      - v8.5.7-20260819-5bc0f93\n",
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	report := buildBuildReport([]tknv1.PipelineRun{makePR("bp-tidb-release-linux-amd64-aaa", "amd64"), makePR("bp-tidb-release-linux-arm64-bbb", "arm64")})
+	require.NotNil(t, report)
+	require.Len(t, report.Images, 3) // amd64 + arm64 + one multi-arch (deduped)
+	platforms := []string{}
+	for _, img := range report.Images {
+		platforms = append(platforms, img.Platform)
+	}
+	require.ElementsMatch(t, []string{"linux/amd64", "linux/arm64", "multi-arch"}, platforms)
+	var multiArch []schema.ImageArtifact
+	for _, img := range report.Images {
+		if img.Platform == "multi-arch" {
+			multiArch = append(multiArch, img)
+		}
+	}
+	require.Len(t, multiArch, 1)
+	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93", multiArch[0].URL)
 }
