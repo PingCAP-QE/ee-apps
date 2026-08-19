@@ -429,7 +429,7 @@ var _ = Service("tidbcloud", func() {
 		})
 		Result(String, "request sync result message")
 		HTTP(func() {
-			POST("/devops/kernel-images/build-callback")
+			POST("/sync-kernel-images")
 			Response(StatusOK)
 		})
 	})

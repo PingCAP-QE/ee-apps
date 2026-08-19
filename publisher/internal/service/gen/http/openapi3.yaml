@@ -238,7 +238,7 @@ paths:
                                       id: Omnis iste ratione doloremque.
                                       release_id: Saepe necessitatibus veritatis ipsa qui unde.
                                       url: http://glover.biz/corine
-    /tidbcloud/devops/kernel-images/build-callback:
+    /tidbcloud/sync-kernel-images:
         post:
             tags:
                 - tidbcloud
