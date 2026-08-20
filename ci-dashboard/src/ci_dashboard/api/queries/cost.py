@@ -13,6 +13,7 @@ from sqlalchemy.engine import Connection, Engine
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
 
 COST_STACK_LIMIT = 8
+COST_STACK_OTHERS_DIMENSION = "__cost_stack_others__"
 VALID_COST_STACK_GROUPS = frozenset(
     {
         "repo",
@@ -40,6 +41,7 @@ LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 UNMATCHED_RESOURCE_LIMIT = 20
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
+KUBERNETES_UNALLOCATED_RECORD_LIMIT = 100
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
@@ -216,11 +218,10 @@ def get_cost_trend(
 
 
 def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
-    """Return Kubernetes allocation metrics shown alongside cost breakdowns."""
+    """Return Kubernetes allocated and unallocated metrics alongside cost breakdowns."""
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         list_cost_expr = _billing_report_list_cost_expr("c")
-        cluster_tag = _json_tag_text_expr(connection, "c.vendor_tags_json", "cluster")
         workload_split_condition = """
             (
               c.source_allocation_scope IN (
@@ -235,26 +236,9 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
               )
             )
         """
-        kubernetes_unallocated_condition = f"""
-            (
-              c.source_allocation_scope IN (
-                'kubernetes_parent_residual',
-                'eks_parent_residual',
-                'eks_unallocated',
-                'gke_parent_residual',
-                'tke_parent_residual'
-              )
-              OR (
-                c.source_allocation_scope = 'direct'
-                AND (
-                  c.service_name = 'AmazonEKS'
-                  OR LOWER(COALESCE(c.service_name, '')) LIKE '%kubernetes%'
-                  OR LOWER(COALESCE(c.service_name, '')) LIKE '%container engine%'
-                  OR NULLIF({cluster_tag}, '') IS NOT NULL
-                )
-              )
-            )
-        """
+        kubernetes_unallocated_condition = _kubernetes_unallocated_condition(connection, "c")
+        kubernetes_parent_residual_condition = _kubernetes_parent_residual_condition("c")
+        legacy_person_attribution_condition = _has_valid_legacy_person_attribution("c")
         if _cost_kubernetes_allocation_table_exists(connection):
             allocation_where_clause, allocation_params = _build_cost_where(filters, table_alias="a")
             allocation_date_filters = replace(filters, branch=None)
@@ -263,12 +247,22 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
                 table_alias="a",
             )
             allocation_rows_cte = f"""
-                WITH allocation_fact AS (
+                WITH {_kubernetes_allocation_fact_active_roster_cte()},
+                allocation_fact AS (
                   SELECT
-                    a.allocation_scope,
+                    CASE
+                      WHEN {_kubernetes_allocation_fact_allocated_condition('a', 'roster')}
+                        THEN 'workload_split'
+                      ELSE 'unallocated'
+                    END AS allocation_scope,
                     a.list_cost
                   FROM cost_kubernetes_workload_allocation_daily a
+                  {_kubernetes_allocation_fact_roster_join('a', 'roster')}
                   WHERE {allocation_where_clause}
+                    AND (
+                      {_kubernetes_allocation_fact_allocated_condition('a', 'roster')}
+                      OR {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
+                    )
                 ), allocation_fact_dates AS (
                   SELECT DISTINCT
                     a.vendor,
@@ -279,13 +273,26 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
                 ), legacy_rows AS (
                   SELECT
                     CASE
-                      WHEN {workload_split_condition} THEN 'workload_split'
+                      WHEN (
+                        {workload_split_condition}
+                        OR (
+                          {kubernetes_parent_residual_condition}
+                          AND {legacy_person_attribution_condition}
+                        )
+                      ) THEN 'workload_split'
                       ELSE 'unallocated'
                     END AS allocation_scope,
                     {list_cost_expr} AS list_cost
                   FROM cost_attribution_daily c
                   WHERE {where_clause}
-                    AND ({workload_split_condition} OR {kubernetes_unallocated_condition})
+                    AND (
+                      {workload_split_condition}
+                      OR (
+                        {kubernetes_parent_residual_condition}
+                        AND {legacy_person_attribution_condition}
+                      )
+                      OR {kubernetes_unallocated_condition}
+                    )
                     -- An allocation fact is authoritative for its source/date. This
                     -- prevents node or control-plane costs from being counted twice.
                     AND NOT EXISTS (
@@ -308,13 +315,26 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
                 WITH allocation_rows AS (
                   SELECT
                     CASE
-                      WHEN {workload_split_condition} THEN 'workload_split'
+                      WHEN (
+                        {workload_split_condition}
+                        OR (
+                          {kubernetes_parent_residual_condition}
+                          AND {legacy_person_attribution_condition}
+                        )
+                      ) THEN 'workload_split'
                       ELSE 'unallocated'
                     END AS allocation_scope,
                     {list_cost_expr} AS list_cost
                   FROM cost_attribution_daily c
                   WHERE {where_clause}
-                    AND ({workload_split_condition} OR {kubernetes_unallocated_condition})
+                    AND (
+                      {workload_split_condition}
+                      OR (
+                        {kubernetes_parent_residual_condition}
+                        AND {legacy_person_attribution_condition}
+                      )
+                      OR {kubernetes_unallocated_condition}
+                    )
                 )
             """
             query_params = params
@@ -350,6 +370,313 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
         "is_available": allocation_cost_row_count > 0,
         "workload_split_cost": workload_split_cost,
         "kubernetes_unallocated_cost": kubernetes_unallocated_cost,
+    }
+
+
+def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    """Return Kubernetes costs without a valid person allocation by service and region."""
+    with engine.begin() as connection:
+        where_clause, params = _build_cost_where(filters, table_alias="c")
+        list_cost_expr = _billing_report_list_cost_expr("c")
+        kubernetes_unallocated_condition = _kubernetes_unallocated_condition(
+            connection,
+            "c",
+        )
+        if _cost_kubernetes_allocation_table_exists(connection):
+            fact_where_clause, fact_params = _build_cost_where(filters, table_alias="a")
+            date_filters = replace(filters, branch=None)
+            fact_date_where_clause, fact_date_params = _build_cost_where(
+                date_filters,
+                table_alias="a",
+            )
+            fact_service_expr = _kubernetes_allocation_fact_service_expr("a")
+            allocation_fact_cte = f"""
+                WITH {_kubernetes_allocation_fact_active_roster_cte()},
+                allocation_fact_dates AS (
+                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
+                  FROM cost_kubernetes_workload_allocation_daily a
+                  WHERE {fact_date_where_clause}
+                ), allocation_fact_rows AS (
+                  SELECT
+                    -- Use the provider's billing-service name when an allocation
+                    -- fact writer defines one; unknown vendors remain generic.
+                    {fact_service_expr} AS service_name,
+                    COALESCE(NULLIF(a.cluster_location, ''), '(no region)') AS region,
+                    SUM(a.list_cost) AS list_cost,
+                    CAST(NULL AS DECIMAL(16, 2)) AS effective_cost,
+                    CAST(NULL AS DECIMAL(16, 2)) AS net_cost,
+                    COUNT(*) AS cost_record_count
+                  FROM cost_kubernetes_workload_allocation_daily a
+                  {_kubernetes_allocation_fact_roster_join('a', 'roster')}
+                  WHERE {fact_where_clause}
+                    AND {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
+                  GROUP BY service_name, region
+                ),
+            """
+            legacy_exclusion = """
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM allocation_fact_dates a
+                      WHERE a.vendor = c.vendor
+                        AND a.account_id = c.account_id
+                        AND a.usage_date = c.usage_date
+                    )
+            """
+            query_params = {**params, **fact_params, **fact_date_params}
+            all_rows_prefix = "SELECT * FROM allocation_fact_rows UNION ALL"
+        else:
+            allocation_fact_cte = "WITH"
+            legacy_exclusion = ""
+            query_params = params
+            all_rows_prefix = ""
+        rows = connection.execute(
+            text(
+                f"""
+                {allocation_fact_cte} legacy_rows AS (
+                  SELECT
+                    COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
+                    COALESCE(NULLIF(c.region, ''), '(no region)') AS region,
+                    SUM({list_cost_expr}) AS list_cost,
+                    SUM(c.effective_cost) AS effective_cost,
+                    SUM(c.net_cost) AS net_cost,
+                    COUNT(*) AS cost_record_count
+                  FROM cost_attribution_daily c
+                  WHERE {where_clause}
+                    AND {kubernetes_unallocated_condition}
+                    {legacy_exclusion}
+                  GROUP BY service_name, region
+                ), all_rows AS (
+                  {all_rows_prefix}
+                  SELECT * FROM legacy_rows
+                )
+                SELECT
+                  service_name,
+                  region,
+                  SUM(list_cost) AS list_cost,
+                  SUM(effective_cost) AS effective_cost,
+                  SUM(net_cost) AS net_cost,
+                  SUM(cost_record_count) AS cost_record_count
+                FROM all_rows
+                GROUP BY service_name, region
+                ORDER BY list_cost DESC, effective_cost DESC, service_name, region
+                """
+            ),
+            query_params,
+        ).mappings()
+
+    items = [
+        {
+            "service_name": str(row["service_name"]),
+            "region": str(row["region"]),
+            "list_cost": _money(row["list_cost"]),
+            "effective_cost": (
+                None if row["effective_cost"] is None else _money(row["effective_cost"])
+            ),
+            "net_cost": None if row["net_cost"] is None else _money(row["net_cost"]),
+            "cost_record_count": int(row["cost_record_count"] or 0),
+        }
+        for row in rows
+    ]
+    return {
+        "scope": filters.meta(),
+        "is_available": bool(items),
+        "items": items,
+    }
+
+
+def get_kubernetes_unallocated_records(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    service_name: str,
+    region: str,
+    limit: int = KUBERNETES_UNALLOCATED_RECORD_LIMIT,
+) -> dict[str, Any]:
+    """Return user-facing cost groups behind one Kubernetes service/region summary."""
+    service_name = service_name.strip()
+    region = region.strip()
+    limit = max(1, min(limit, KUBERNETES_UNALLOCATED_RECORD_LIMIT))
+
+    with engine.begin() as connection:
+        legacy_where_clause, legacy_params = _build_cost_where(filters, table_alias="c")
+        record_params = {
+            **legacy_params,
+            "record_service_name": service_name,
+            "record_region": region,
+        }
+        record_selects: list[str] = []
+        cte_prefix = ""
+        legacy_exclusion = ""
+
+        if _cost_kubernetes_allocation_table_exists(connection):
+            fact_where_clause, fact_params = _build_cost_where(filters, table_alias="a")
+            date_filters = replace(filters, branch=None)
+            fact_date_where_clause, fact_date_params = _build_cost_where(
+                date_filters,
+                table_alias="a",
+            )
+            fact_service_expr = _kubernetes_allocation_fact_service_expr("a")
+            fact_region_expr = "COALESCE(NULLIF(a.cluster_location, ''), '(no region)')"
+            record_selects.append(
+                f"""
+                SELECT
+                  {fact_service_expr} AS service_name,
+                  {fact_region_expr} AS region,
+                  NULLIF(a.author, '') AS owner,
+                  NULLIF(a.org, '') AS project,
+                  NULLIF(a.repo, '') AS repo,
+                  COALESCE(NULLIF(a.workload_name, ''), '') AS resource_name,
+                  NULLIF(a.namespace, '') AS namespace,
+                  '' AS labels,
+                  a.list_cost AS list_cost
+                FROM cost_kubernetes_workload_allocation_daily a
+                {_kubernetes_allocation_fact_roster_join('a', 'roster')}
+                WHERE {fact_where_clause}
+                  AND {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
+                  AND {fact_service_expr} = :record_service_name
+                  AND {fact_region_expr} = :record_region
+                """
+            )
+            cte_prefix = f"""
+                WITH {_kubernetes_allocation_fact_active_roster_cte()},
+                allocation_fact_dates AS (
+                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
+                  FROM cost_kubernetes_workload_allocation_daily a
+                  WHERE {fact_date_where_clause}
+                ), records AS (
+            """
+            legacy_exclusion = """
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM allocation_fact_dates a
+                    WHERE a.vendor = c.vendor
+                      AND a.account_id = c.account_id
+                      AND a.usage_date = c.usage_date
+                  )
+            """
+            record_params.update(fact_params)
+            record_params.update(fact_date_params)
+
+        legacy_service_expr = "COALESCE(NULLIF(c.service_name, ''), '(no service)')"
+        legacy_region_expr = "COALESCE(NULLIF(c.region, ''), '(no region)')"
+        record_selects.append(
+            f"""
+            SELECT
+              {legacy_service_expr} AS service_name,
+              {legacy_region_expr} AS region,
+              NULLIF(c.owner, '') AS owner,
+              NULLIF(c.project, '') AS project,
+              NULLIF(c.repo, '') AS repo,
+              NULLIF(c.resource_name, '') AS resource_name,
+              NULLIF(c.namespace, '') AS namespace,
+              {_json_text_expr(connection, 'c.vendor_tags_json')} AS labels,
+              {_billing_report_list_cost_expr('c')} AS list_cost
+            FROM cost_attribution_daily c
+            WHERE {legacy_where_clause}
+              AND {_kubernetes_unallocated_condition(connection, 'c')}
+              AND {legacy_service_expr} = :record_service_name
+              AND {legacy_region_expr} = :record_region
+              {legacy_exclusion}
+            """
+        )
+
+        if cte_prefix:
+            records_sql = f"{cte_prefix}{' UNION ALL '.join(record_selects)}),"
+        else:
+            records_sql = f"WITH records AS ({record_selects[0]}),"
+
+        rows = connection.execute(
+            text(
+                f"""
+                {records_sql}
+                grouped_records AS (
+                  SELECT
+                    COALESCE(owner, '') AS owner,
+                    COALESCE(project, '') AS project,
+                    COALESCE(repo, '') AS repo,
+                    COALESCE(resource_name, '') AS resource_name,
+                    COALESCE(namespace, '') AS namespace,
+                    COALESCE(labels, '') AS labels,
+                    COUNT(*) AS cost_record_count,
+                    SUM(list_cost) AS list_cost
+                  FROM records
+                  GROUP BY
+                    COALESCE(owner, ''),
+                    COALESCE(project, ''),
+                    COALESCE(repo, ''),
+                    COALESCE(resource_name, ''),
+                    COALESCE(namespace, ''),
+                    COALESCE(labels, '')
+                )
+                SELECT
+                  owner,
+                  project,
+                  repo,
+                  resource_name,
+                  namespace,
+                  labels,
+                  cost_record_count,
+                  list_cost
+                FROM grouped_records
+                """
+            ),
+            record_params,
+        ).mappings()
+
+    # Normalize JSON key ordering before grouping so equivalent vendor-label
+    # objects from different source rows remain a single visible cost group.
+    grouped_items: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        labels = _format_vendor_labels(row["labels"])
+        key = (
+            str(row["owner"] or ""),
+            str(row["project"] or ""),
+            str(row["repo"] or ""),
+            _user_facing_dimension(row["resource_name"]),
+            _user_facing_dimension(row["namespace"]),
+            labels,
+        )
+        item = grouped_items.setdefault(
+            key,
+            {
+                "owner": key[0],
+                "project": key[1],
+                "repo": key[2],
+                "resource_name": key[3],
+                "namespace": key[4],
+                "labels": key[5],
+                "cost_record_count": 0,
+                "list_cost": 0.0,
+            },
+        )
+        item["cost_record_count"] += int(row["cost_record_count"] or 0)
+        item["list_cost"] += _money(row["list_cost"])
+
+    all_items = sorted(
+        grouped_items.values(),
+        key=lambda item: (
+            -item["list_cost"],
+            item["owner"],
+            item["project"],
+            item["repo"],
+            item["resource_name"],
+            item["namespace"],
+            item["labels"],
+        ),
+    )
+    total_count = len(all_items)
+    items = [
+        {**item, "list_cost": _money(item["list_cost"])}
+        for item in all_items[:limit]
+    ]
+    return {
+        "scope": filters.meta(),
+        "service_name": service_name,
+        "region": region,
+        "total_count": total_count,
+        "returned_count": len(items),
+        "has_more": total_count > len(items),
+        "items": items,
     }
 
 
@@ -511,7 +838,13 @@ def get_repo_group_cost_stack(
                 LIMIT :limit
                 """
             ),
-            {**params, **dimension["params"], "limit": COST_STACK_LIMIT},
+            {
+                **params,
+                **dimension["params"],
+                # Fetch one additional dimension so we only create an Others series
+                # when more than COST_STACK_LIMIT dimensions actually exist.
+                "limit": COST_STACK_LIMIT + 1,
+            },
         ).mappings()
         top_dimensions = [str(row["dimension_name"] or dimension["empty_label"]) for row in top_rows]
         if not top_dimensions:
@@ -527,25 +860,36 @@ def get_repo_group_cost_stack(
                 ),
             }
 
+        has_others = len(top_dimensions) > COST_STACK_LIMIT
+        visible_dimensions = (
+            top_dimensions[: COST_STACK_LIMIT - 1] if has_others else top_dimensions
+        )
         dimension_conditions = []
         dimension_params: dict[str, Any] = {}
-        for index, dimension_name in enumerate(top_dimensions):
+        for index, dimension_name in enumerate(visible_dimensions):
             dimension_key = f"dimension_{index}"
             dimension_conditions.append(
                 f"{dimension['expr']} = :{dimension_key}"
             )
             dimension_params[dimension_key] = dimension_name
 
+        stack_dimension = dimension["expr"]
+        if has_others:
+            stack_dimension = (
+                f"CASE WHEN {' OR '.join(dimension_conditions)} "
+                f"THEN {dimension['expr']} ELSE :others_dimension END"
+            )
+            dimension_params["others_dimension"] = COST_STACK_OTHERS_DIMENSION
+
         rows = connection.execute(
             text(
                 f"""
                 SELECT
                   {bucket} AS bucket_start,
-                  {dimension["expr"]} AS dimension_name,
+                  {stack_dimension} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
                 FROM {dimension["from_clause"]}
                 WHERE {where_clause}
-                  AND ({" OR ".join(dimension_conditions)})
                 GROUP BY bucket_start, dimension_name
                 ORDER BY bucket_start, dimension_name
                 """
@@ -555,17 +899,28 @@ def get_repo_group_cost_stack(
         data_rows = [dict(row) for row in rows]
 
     buckets = _bucket_starts(filters, data_rows)
+    stack_dimensions = [
+        *visible_dimensions,
+        *([COST_STACK_OTHERS_DIMENSION] if has_others else []),
+    ]
+    others_key = (
+        _cost_stack_key(group_by, COST_STACK_OTHERS_DIMENSION, len(stack_dimensions) - 1)
+        if has_others
+        else None
+    )
     values_by_key = {
         _cost_stack_key(group_by, dimension_name, index): {bucket: 0.0 for bucket in buckets}
-        for index, dimension_name in enumerate(top_dimensions)
+        for index, dimension_name in enumerate(stack_dimensions)
     }
     labels_by_key = {
-        _cost_stack_key(group_by, dimension_name, index): dimension_name
-        for index, dimension_name in enumerate(top_dimensions)
+        _cost_stack_key(group_by, dimension_name, index): (
+            "Others" if dimension_name == COST_STACK_OTHERS_DIMENSION else dimension_name
+        )
+        for index, dimension_name in enumerate(stack_dimensions)
     }
     key_by_name = {
         dimension_name: _cost_stack_key(group_by, dimension_name, index)
-        for index, dimension_name in enumerate(top_dimensions)
+        for index, dimension_name in enumerate(stack_dimensions)
     }
     for row in data_rows:
         dimension_name = str(row["dimension_name"] or dimension["empty_label"])
@@ -586,6 +941,11 @@ def get_repo_group_cost_stack(
             {
                 "name": labels_by_key[key],
                 "value": round(sum(values_by_key[key].values()), 2),
+                **(
+                    {"interactive": False}
+                    if key == others_key
+                    else {}
+                ),
             }
             for key in values_by_key
         ],
@@ -1759,6 +2119,184 @@ def _billing_report_list_cost_expr(table_alias: str) -> str:
     )
 
 
+def _kubernetes_parent_residual_condition(table_alias: str) -> str:
+    return f"""
+        (
+          {table_alias}.source_allocation_scope IN (
+            'kubernetes_parent_residual',
+            'eks_parent_residual',
+            'eks_unallocated',
+            'gke_parent_residual',
+            'tke_parent_residual'
+          )
+          -- Older AWS refreshes emitted residuals as direct rows but retained
+          -- their parent-residual SKU or usage type.
+          OR (
+            {table_alias}.source_allocation_scope = 'direct'
+            AND (
+              LOWER(COALESCE({table_alias}.sku_name, '')) LIKE '%parentresidual'
+              OR LOWER(COALESCE({table_alias}.usage_type, '')) LIKE '%parentresidual'
+            )
+          )
+        )
+    """
+
+
+def _kubernetes_service_cost_condition(table_alias: str) -> str:
+    service_name = f"{table_alias}.service_name"
+    return f"""
+        (
+          {service_name} = 'AmazonEKS'
+          OR LOWER(COALESCE({service_name}, '')) LIKE '%kubernetes%'
+          OR LOWER(COALESCE({service_name}, '')) LIKE '%container engine%'
+        )
+    """
+
+
+def _kubernetes_allocation_fact_service_expr(table_alias: str) -> str:
+    return f"""
+        CASE
+          WHEN LOWER(COALESCE({table_alias}.cost_component, '')) = 'control_plane'
+            THEN CASE {table_alias}.vendor
+              WHEN 'aws' THEN 'AmazonEKS'
+              WHEN 'gcp' THEN 'Kubernetes Engine'
+              WHEN 'tencent' THEN 'Tencent Kubernetes Engine'
+              ELSE '(allocation fact)'
+            END
+          ELSE CASE {table_alias}.vendor
+            WHEN 'aws' THEN 'AmazonEC2'
+            WHEN 'gcp' THEN 'Compute Engine'
+            WHEN 'tencent' THEN 'Cloud Virtual Machine'
+            ELSE '(allocation fact)'
+          END
+        END
+    """
+
+
+def _has_valid_legacy_person_attribution(table_alias: str) -> str:
+    return f"""
+        (
+          {table_alias}.employee_id IS NOT NULL
+          AND LOWER(COALESCE({table_alias}.attribution_status, '')) = 'matched'
+        )
+    """
+
+
+def _has_valid_allocation_fact_person_attribution(
+    table_alias: str,
+    active_roster_alias: str | None = None,
+) -> str:
+    if active_roster_alias:
+        return f"{active_roster_alias}.identity IS NOT NULL"
+    return f"""
+        (
+          NULLIF({table_alias}.author, '') IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM roster_employees employee
+            WHERE employee.is_active = 1
+              AND (
+                LOWER(NULLIF(employee.email, '')) = LOWER(NULLIF({table_alias}.author, ''))
+                OR LOWER(NULLIF(employee.github_id, '')) = LOWER(NULLIF({table_alias}.author, ''))
+              )
+          )
+        )
+    """
+
+
+def _kubernetes_allocation_fact_control_plane_condition(table_alias: str) -> str:
+    return f"""
+        LOWER(COALESCE({table_alias}.cost_component, '')) = 'control_plane'
+    """
+
+
+def _kubernetes_allocation_fact_allocated_condition(
+    table_alias: str,
+    active_roster_alias: str | None = None,
+) -> str:
+    return f"""
+        (
+          {table_alias}.allocation_scope = 'workload_split'
+          OR (
+          {table_alias}.allocation_scope = 'unallocated'
+            AND {_has_valid_allocation_fact_person_attribution(table_alias, active_roster_alias)}
+            AND NOT {_kubernetes_allocation_fact_control_plane_condition(table_alias)}
+          )
+        )
+    """
+
+
+def _kubernetes_allocation_fact_unallocated_condition(
+    table_alias: str,
+    active_roster_alias: str | None = None,
+) -> str:
+    return f"""
+        (
+          {table_alias}.allocation_scope = 'unallocated'
+          AND NOT {_has_valid_allocation_fact_person_attribution(table_alias, active_roster_alias)}
+        )
+    """
+
+
+def _kubernetes_allocation_fact_active_roster_cte() -> str:
+    """Return active roster identities once for joins against allocation facts."""
+    return """
+        active_roster_identities AS (
+          SELECT LOWER(NULLIF(email, '')) AS identity
+          FROM roster_employees
+          WHERE is_active = 1
+            AND NULLIF(email, '') IS NOT NULL
+          UNION
+          SELECT LOWER(NULLIF(github_id, '')) AS identity
+          FROM roster_employees
+          WHERE is_active = 1
+            AND NULLIF(github_id, '') IS NOT NULL
+        )
+    """
+
+
+def _kubernetes_allocation_fact_roster_join(
+    table_alias: str,
+    active_roster_alias: str,
+) -> str:
+    return f"""
+        LEFT JOIN active_roster_identities {active_roster_alias}
+          ON {active_roster_alias}.identity = LOWER(NULLIF({table_alias}.author, ''))
+    """
+
+
+def _kubernetes_unallocated_condition(connection: Connection, table_alias: str) -> str:
+    return f"""
+        (
+          (
+            {_kubernetes_parent_residual_condition(table_alias)}
+            AND NOT {_has_valid_legacy_person_attribution(table_alias)}
+          )
+          OR {_kubernetes_direct_unallocated_condition(connection, table_alias)}
+        )
+    """
+
+
+def _kubernetes_direct_unallocated_condition(connection: Connection, table_alias: str) -> str:
+    cluster_tag = _json_tag_text_expr(connection, f"{table_alias}.vendor_tags_json", "cluster")
+    return f"""
+        (
+          {table_alias}.source_allocation_scope = 'direct'
+          AND NOT {_has_valid_legacy_person_attribution(table_alias)}
+          AND (
+            {_kubernetes_service_cost_condition(table_alias)}
+            -- A user-managed cluster tag is not proof that an AWS resource is
+            -- an EKS node. AWS unsplit nodes need a provider-native identity
+            -- before they can enter this view.
+            OR (
+              COALESCE({table_alias}.vendor, '') <> 'aws'
+              AND NULLIF({cluster_tag}, '') IS NOT NULL
+            )
+          )
+        )
+    """
+
+
 def _cost_kubernetes_allocation_table_exists(connection: Connection) -> bool:
     if connection.dialect.name == "sqlite":
         row = connection.execute(
@@ -1790,6 +2328,42 @@ def _json_tag_text_expr(connection: Connection, column_expr: str, tag_name: str)
     if connection.dialect.name == "sqlite":
         return f"json_extract({column_expr}, '{json_path}')"
     return f"JSON_UNQUOTE(JSON_EXTRACT({column_expr}, '{json_path}'))"
+
+
+def _json_text_expr(connection: Connection, column_expr: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"COALESCE({column_expr}, '')"
+    return f"COALESCE(CAST({column_expr} AS CHAR), '')"
+
+
+def _format_vendor_labels(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    if not isinstance(parsed, Mapping):
+        return raw
+
+    labels = []
+    for key, label_value in sorted(parsed.items()):
+        if label_value in (None, ""):
+            continue
+        text_value = (
+            json.dumps(label_value, sort_keys=True)
+            if isinstance(label_value, (dict, list))
+            else str(label_value)
+        )
+        labels.append(f"{key}={text_value}")
+    return ", ".join(labels)
+
+
+def _user_facing_dimension(value: Any) -> str:
+    """Hide opaque numeric identifiers while preserving recognizable names."""
+    dimension = str(value or "").strip()
+    return "" if not dimension or dimension.isdecimal() else dimension
 
 
 def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str) -> str:

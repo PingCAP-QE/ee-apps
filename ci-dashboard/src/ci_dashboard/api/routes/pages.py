@@ -11,6 +11,8 @@ from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_allocation_overview_page,
     get_cost_engineering_group_share_page,
+    get_cost_kubernetes_unallocated_page,
+    get_cost_kubernetes_unallocated_records_page,
     get_cost_insight_page,
     get_cost_unattached_block_volumes_page,
     get_cost_sources_page,
@@ -179,6 +181,29 @@ def cost_unmatched_resources_page(
         filters,
         service_name=service_name,
         sort_by=sort_by,
+    )
+
+
+@router.get("/cost-kubernetes-unallocated")
+def cost_kubernetes_unallocated_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_kubernetes_unallocated_page(engine, filters)
+
+
+@router.get("/cost-kubernetes-unallocated-records")
+def cost_kubernetes_unallocated_records_page(
+    service_name: str = Query(..., min_length=1, max_length=255),
+    region: str = Query(..., min_length=1, max_length=128),
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_kubernetes_unallocated_records_page(
+        engine,
+        filters,
+        service_name=service_name,
+        region=region,
     )
 
 

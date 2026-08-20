@@ -23,6 +23,8 @@ from ci_dashboard.api.queries.builds import (
 from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
     get_cost_allocation_overview,
+    get_kubernetes_unallocated_costs,
+    get_kubernetes_unallocated_records,
     get_cost_page,
     get_cost_share,
     get_weekly_account_summaries,
@@ -250,6 +252,28 @@ def get_cost_unmatched_resources_page(
         _normalize_cost_filters(filters),
         service_name=service_name,
         sort_by=sort_by,
+    )
+
+
+def get_cost_kubernetes_unallocated_page(
+    engine: Engine,
+    filters: CommonFilters,
+) -> dict[str, Any]:
+    return get_kubernetes_unallocated_costs(engine, _normalize_cost_filters(filters))
+
+
+def get_cost_kubernetes_unallocated_records_page(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    service_name: str,
+    region: str,
+) -> dict[str, Any]:
+    return get_kubernetes_unallocated_records(
+        engine,
+        _normalize_cost_filters(filters),
+        service_name=service_name,
+        region=region,
     )
 
 

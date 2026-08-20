@@ -3939,11 +3939,25 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
                 "net_cost": 40,
                 "service_name": "AmazonEC2",
                 "source_allocation_scope": "eks_parent_residual",
+                "employee_id": None,
+                "attribution_status": "unmatched",
+            },
+            {
+                "net_cost": 25,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "eks_parent_residual",
             },
             {
                 "net_cost": 20,
                 "source_allocation_scope": "direct",
                 "service_name": "AmazonEKS",
+            },
+            {
+                "net_cost": 12,
+                "source_allocation_scope": "direct",
+                "service_name": "AmazonEKS",
+                "employee_id": None,
+                "attribution_status": "unmatched",
             },
             {
                 "net_cost": 10,
@@ -3955,6 +3969,15 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
                 "net_cost": 12,
                 "service_name": "AmazonEC2",
                 "source_allocation_scope": "eks_unallocated",
+                "employee_id": None,
+                "attribution_status": "unmatched",
+            },
+            {
+                "net_cost": 11,
+                "service_name": "AWSELB",
+                "source_allocation_scope": "direct",
+                "vendor_tags_json": '{"cluster":"qa-eks"}',
+                "owner": "owner@pingcap.com",
             },
             {
                 "net_cost": 15,
@@ -3980,9 +4003,22 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
     for index, values in enumerate(
         [
             {"net_cost": 90, "source_allocation_scope": "gke_pod"},
-            {"net_cost": 40, "source_allocation_scope": "gke_parent_residual"},
             {
-                "net_cost": 20,
+                "net_cost": 40,
+                "source_allocation_scope": "gke_parent_residual",
+                "employee_id": None,
+                "attribution_status": "unmatched",
+            },
+            {"net_cost": 25, "source_allocation_scope": "gke_parent_residual"},
+            {
+                "net_cost": 8,
+                "service_name": "Kubernetes Engine",
+                "source_allocation_scope": "direct",
+                "employee_id": None,
+                "attribution_status": "unmatched",
+            },
+            {
+                "net_cost": 12,
                 "service_name": "Kubernetes Engine",
                 "source_allocation_scope": "direct",
             },
@@ -4020,9 +4056,10 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
         vendor="tencent",
         account_id="qa-infra-dev",
         source_allocation_scope="kubernetes_parent_residual",
+        employee_id=None,
+        attribution_status="unmatched",
         dimension_hash="tencent-residual",
     )
-
     response = api_client.get(
         "/api/v1/pages/cost-allocation-overview",
         params={
@@ -4049,8 +4086,8 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
             "cost_source": "aws:946646677266",
         },
         "is_available": True,
-        "workload_split_cost": 130.0,
-        "kubernetes_unallocated_cost": 82.0,
+        "workload_split_cost": 155.0,
+        "kubernetes_unallocated_cost": 64.0,
     }
 
     gcp_response = api_client.get(
@@ -4064,8 +4101,8 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
 
     assert gcp_response.status_code == 200
     assert gcp_response.json()["is_available"] is True
-    assert gcp_response.json()["workload_split_cost"] == 90.0
-    assert gcp_response.json()["kubernetes_unallocated_cost"] == 70.0
+    assert gcp_response.json()["workload_split_cost"] == 115.0
+    assert gcp_response.json()["kubernetes_unallocated_cost"] == 48.0
 
     tencent_response = api_client.get(
         "/api/v1/pages/cost-allocation-overview",
@@ -4080,6 +4117,281 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
     assert tencent_response.json()["is_available"] is True
     assert tencent_response.json()["workload_split_cost"] == 80.0
     assert tencent_response.json()["kubernetes_unallocated_cost"] == 50.0
+
+    aws_unallocated = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+        },
+    )
+    assert aws_unallocated.status_code == 200
+    assert aws_unallocated.json()["items"] == [
+        {
+            "service_name": "AmazonEC2",
+            "region": "(no region)",
+            "list_cost": 52.0,
+            "effective_cost": 52.0,
+            "net_cost": 52.0,
+            "cost_record_count": 2,
+        },
+        {
+            "service_name": "AmazonEKS",
+            "region": "(no region)",
+            "list_cost": 12.0,
+            "effective_cost": 12.0,
+            "net_cost": 12.0,
+            "cost_record_count": 1,
+        },
+    ]
+    assert sum(item["list_cost"] for item in aws_unallocated.json()["items"]) == 64.0
+
+    gcp_unallocated = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "gcp:pingcap-testing-account",
+        },
+    )
+    assert gcp_unallocated.status_code == 200
+    assert [item["service_name"] for item in gcp_unallocated.json()["items"]] == [
+        "Compute Engine",
+        "Kubernetes Engine",
+    ]
+    assert [item["list_cost"] for item in gcp_unallocated.json()["items"]] == [40.0, 8.0]
+    assert [item["cost_record_count"] for item in gcp_unallocated.json()["items"]] == [1, 1]
+    assert sum(item["list_cost"] for item in gcp_unallocated.json()["items"]) == 48.0
+
+    gcp_records = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated-records",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "gcp:pingcap-testing-account",
+            "service_name": "Kubernetes Engine",
+            "region": "(no region)",
+        },
+    )
+    assert gcp_records.status_code == 200
+    gcp_record_body = gcp_records.json()
+    assert gcp_record_body["total_count"] == 1
+    assert gcp_record_body["returned_count"] == 1
+    assert gcp_record_body["has_more"] is False
+    assert gcp_record_body["items"] == [
+        {
+            "owner": "alice",
+            "project": "",
+            "repo": "tidb",
+            "resource_name": "",
+            "namespace": "",
+            "labels": "",
+            "cost_record_count": 1,
+            "list_cost": 8.0,
+        }
+    ]
+
+
+def test_kubernetes_unallocated_includes_synthetic_parent_residual_rows(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    common = {
+        "usage_date": "2026-05-02",
+        "repo": "tidb",
+        "vendor": "aws",
+        "account_id": "946646677266",
+        "region": "us-west-2",
+        "source_allocation_scope": "direct",
+        "vendor_tags_json": '{"cluster":"qa-eks"}',
+        "group_id": "qa-eks",
+    }
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        service_name="AmazonEKS",
+        list_cost=30,
+        effective_cost=30,
+        net_cost=30,
+        author=None,
+        owner=None,
+        employee_id=None,
+        attribution_status="unmatched",
+        dimension_hash="direct-node-cost",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        service_name="AmazonEKS",
+        sku_name="EKS:ParentResidual",
+        list_cost=20,
+        effective_cost=35,
+        net_cost=35,
+        author=None,
+        owner=None,
+        employee_id=None,
+        attribution_status="unmatched",
+        dimension_hash="misclassified-parent-residual",
+    )
+    # The fact table is not available during the schema rollout. The overview
+    # and audit paths must keep the same legacy classification in that window.
+    monkeypatch.setattr(
+        cost_queries,
+        "_cost_kubernetes_allocation_table_exists",
+        lambda _connection: False,
+    )
+
+    overview_response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+        },
+    )
+    assert overview_response.status_code == 200
+    assert overview_response.json()["workload_split_cost"] == 0.0
+    assert overview_response.json()["kubernetes_unallocated_cost"] == 50.0
+
+    response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"] == [
+        {
+            "service_name": "AmazonEKS",
+            "region": "us-west-2",
+            "list_cost": 50.0,
+            "effective_cost": 65.0,
+            "net_cost": 65.0,
+            "cost_record_count": 2,
+        }
+    ]
+
+    records_response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated-records",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+            "service_name": "AmazonEKS",
+            "region": "us-west-2",
+        },
+    )
+    assert records_response.status_code == 200
+    records_body = records_response.json()
+    assert records_body["total_count"] == 1
+    assert records_body["items"] == [
+        {
+            "owner": "",
+            "project": "",
+            "repo": "tidb",
+            "resource_name": "",
+            "namespace": "",
+            "labels": "cluster=qa-eks",
+            "cost_record_count": 2,
+            "list_cost": 50.0,
+        }
+    ]
+
+
+def test_kubernetes_unallocated_records_aggregate_visible_dimensions(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    common = {
+        "repo": "tidb",
+        "group_id": 1,
+        "vendor": "gcp",
+        "account_id": "pingcap-testing-account",
+        "service_name": "Google Kubernetes Engine",
+        "source_allocation_scope": "direct",
+        "project": "ci",
+        "resource_name": "prow-runner",
+        "namespace": "prow",
+    }
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        usage_date="2026-05-01",
+        owner="alice",
+        vendor_tags_json='{"team":"ci","cluster":"qa-gke"}',
+        net_cost=8,
+        list_cost=8,
+        employee_id=None,
+        attribution_status="unmatched",
+        dimension_hash="visible-group-day-one",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        usage_date="2026-05-02",
+        owner="alice",
+        vendor_tags_json='{"cluster":"qa-gke","team":"ci"}',
+        net_cost=12,
+        list_cost=12,
+        employee_id=None,
+        attribution_status="unmatched",
+        dimension_hash="visible-group-day-two",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        usage_date="2026-05-02",
+        owner="bob",
+        vendor_tags_json='{"cluster":"qa-gke"}',
+        net_cost=7,
+        list_cost=7,
+        employee_id=None,
+        attribution_status="unmatched",
+        dimension_hash="visible-group-other-owner",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated-records",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "gcp:pingcap-testing-account",
+            "service_name": "Google Kubernetes Engine",
+            "region": "(no region)",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_count"] == 2
+    assert body["returned_count"] == 2
+    assert body["items"] == [
+        {
+            "owner": "alice",
+            "project": "ci",
+            "repo": "tidb",
+            "resource_name": "prow-runner",
+            "namespace": "prow",
+            "labels": "cluster=qa-gke, team=ci",
+            "cost_record_count": 2,
+            "list_cost": 20.0,
+        },
+        {
+            "owner": "bob",
+            "project": "ci",
+            "repo": "tidb",
+            "resource_name": "prow-runner",
+            "namespace": "prow",
+            "labels": "cluster=qa-gke",
+            "cost_record_count": 1,
+            "list_cost": 7.0,
+        },
+    ]
 
 
 def test_cost_allocation_overview_prefers_allocation_facts_over_legacy_rows(
@@ -4110,8 +4422,14 @@ def test_cost_allocation_overview_prefers_allocation_facts_over_legacy_rows(
                    'workload_split', 'cpu', 1, 150, 150, 'gke_cpu_metering_weight_v1',
                    'gke_metering_v1', 'gke-workload-fact'),
                   ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
-                   'unallocated', 'other', 0, 20, 20, 'gke_unsupported_node_cost_unallocated_v1',
-                   'gke_metering_v1', 'gke-unallocated-fact')
+                   'unallocated', 'other', 0, 8, 8, 'gke_unsupported_node_cost_unallocated_v1',
+                   'gke_metering_v1', 'gke-unallocated-fact-1'),
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'cpu', 0, 12, 12, 'gke_cpu_unallocated_v1',
+                   'gke_metering_v1', 'gke-unallocated-fact-2'),
+                  ('2026-08-10', 'aws', '946646677266', 'eks', 'us-west-2',
+                   'unallocated', 'control_plane', 0, 25, 25, 'eks_control_plane_v1',
+                   'eks_metering_v1', 'eks-unallocated-fact')
                 """
             )
         )
@@ -4129,6 +4447,249 @@ def test_cost_allocation_overview_prefers_allocation_facts_over_legacy_rows(
     assert response.json()["is_available"] is True
     assert response.json()["workload_split_cost"] == 150.0
     assert response.json()["kubernetes_unallocated_cost"] == 20.0
+
+    unallocated_response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "cost_source": "gcp:pingcap-testing-account",
+        },
+    )
+    assert unallocated_response.status_code == 200
+    assert unallocated_response.json()["items"] == [
+        {
+            "service_name": "Compute Engine",
+            "region": "us-central1-c",
+            "list_cost": 20.0,
+            "effective_cost": None,
+            "net_cost": None,
+            "cost_record_count": 2,
+        }
+    ]
+
+    gcp_records_response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated-records",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "cost_source": "gcp:pingcap-testing-account",
+            "service_name": "Compute Engine",
+            "region": "us-central1-c",
+        },
+    )
+    assert gcp_records_response.status_code == 200
+    gcp_records_body = gcp_records_response.json()
+    assert gcp_records_body["total_count"] == 1
+    assert gcp_records_body["items"] == [
+        {
+            "owner": "",
+            "project": "",
+            "repo": "",
+            "resource_name": "",
+            "namespace": "",
+            "labels": "",
+            "cost_record_count": 2,
+            "list_cost": 20.0,
+        }
+    ]
+
+    aws_unallocated_response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "cost_source": "aws:946646677266",
+        },
+    )
+    assert aws_unallocated_response.status_code == 200
+    assert aws_unallocated_response.json()["items"] == [
+        {
+            "service_name": "AmazonEKS",
+            "region": "us-west-2",
+            "list_cost": 25.0,
+            "effective_cost": None,
+            "net_cost": None,
+            "cost_record_count": 1,
+        }
+    ]
+
+
+def test_kubernetes_unallocated_records_hide_opaque_fact_identifiers(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, namespace, author, org, repo,
+                  allocation_weight, source_node_list_cost, list_cost, allocation_method,
+                  allocation_version, dimension_hash
+                ) VALUES
+                  ('2026-08-11', 'gcp', 'pingcap-testing-account',
+                   '10394447915333154831', 'us-central1-c',
+                   'unallocated', 'cpu', '10394447915333154831', 'alice', 'pingcap', 'ci',
+                   0, 8, 8, 'gke_cpu_unallocated_v1', 'gke_metering_v1',
+                   'opaque-unallocated-fact-one'),
+                  ('2026-08-11', 'gcp', 'pingcap-testing-account',
+                   '10071781034292844044', 'us-central1-c',
+                   'unallocated', 'cpu', '10071781034292844044', 'alice', 'pingcap', 'ci',
+                   0, 12, 12, 'gke_cpu_unallocated_v1', 'gke_metering_v1',
+                   'opaque-unallocated-fact-two')
+                """
+            )
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-kubernetes-unallocated-records",
+        params={
+            "start_date": "2026-08-11",
+            "end_date": "2026-08-11",
+            "cost_source": "gcp:pingcap-testing-account",
+            "service_name": "Compute Engine",
+            "region": "us-central1-c",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_count"] == 1
+    assert body["items"] == [
+        {
+            "owner": "alice",
+            "project": "pingcap",
+            "repo": "ci",
+            "resource_name": "",
+            "namespace": "",
+            "labels": "",
+            "cost_record_count": 2,
+            "list_cost": 20.0,
+        }
+    ]
+
+
+def test_kubernetes_allocation_facts_classify_active_roster_matches(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=7,
+        name="Alice",
+        email="alice@pingcap.com",
+        github_id="alice-gh",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, author, allocation_weight,
+                  source_node_list_cost, list_cost, allocation_method, allocation_version,
+                  dimension_hash
+                ) VALUES
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'workload_split', 'cpu', NULL, 1, 100, 100,
+                   'gke_cpu_metering_weight_v1', 'gke_metering_v1', 'pod-split'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'cpu', 'ALICE@PINGCAP.COM', 0, 10, 10,
+                   'gke_missing_metering_unallocated_v1', 'gke_metering_v1', 'matched-cpu'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'memory', 'alice-gh', 0, 20, 20,
+                   'gke_missing_metering_unallocated_v1', 'gke_metering_v1', 'matched-memory'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'other', 'alice@pingcap.com', 0, 30, 30,
+                   'gke_unsupported_node_cost_unallocated_v1', 'gke_metering_v1', 'matched-other'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', NULL, NULL,
+                   'unallocated', 'control_plane', 'alice@pingcap.com', 0, 40, 40,
+                   'gke_control_plane_unallocated_v1', 'gke_metering_v1', 'matched-control-plane'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'cpu', 'contractor', 0, 5, 5,
+                   'gke_missing_metering_unallocated_v1', 'gke_metering_v1', 'unmatched-cpu'),
+                  ('2026-08-12', 'gcp', 'pingcap-testing-account', NULL, NULL,
+                   'unallocated', 'control_plane', 'contractor', 0, 6, 6,
+                   'gke_control_plane_unallocated_v1', 'gke_metering_v1', 'unmatched-control-plane')
+                """
+            )
+        )
+
+    params = {
+        "start_date": "2026-08-12",
+        "end_date": "2026-08-12",
+        "cost_source": "gcp:pingcap-testing-account",
+    }
+    overview = api_client.get("/api/v1/pages/cost-allocation-overview", params=params)
+
+    assert overview.status_code == 200
+    assert overview.json()["workload_split_cost"] == 160.0
+    assert overview.json()["kubernetes_unallocated_cost"] == 11.0
+
+    unallocated = api_client.get("/api/v1/pages/cost-kubernetes-unallocated", params=params)
+
+    assert unallocated.status_code == 200
+    assert unallocated.json()["items"] == [
+        {
+            "service_name": "Kubernetes Engine",
+            "region": "(no region)",
+            "list_cost": 6.0,
+            "effective_cost": None,
+            "net_cost": None,
+            "cost_record_count": 1,
+        },
+        {
+            "service_name": "Compute Engine",
+            "region": "us-central1-c",
+            "list_cost": 5.0,
+            "effective_cost": None,
+            "net_cost": None,
+            "cost_record_count": 1,
+        },
+    ]
+
+
+def test_cost_allocation_overview_branch_filter_excludes_unallocated_facts(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, target_branch, allocation_weight,
+                  source_node_list_cost, list_cost, allocation_method, allocation_version,
+                  dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'workload_split', 'cpu', 'master', 1, 150, 150,
+                   'gke_cpu_metering_weight_v1', 'gke_metering_v1', 'gke-master-fact'),
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'unallocated', 'other', NULL, 0, 20, 20,
+                   'gke_unsupported_node_cost_unallocated_v1', 'gke_metering_v1',
+                   'gke-unallocated-fact')
+                """
+            )
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "branch": "master",
+            "cost_source": "gcp:pingcap-testing-account",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["workload_split_cost"] == 150.0
+    # Unallocated facts have no workload identity and therefore no branch.
+    assert response.json()["kubernetes_unallocated_cost"] == 0.0
 
 
 def test_cost_allocation_overview_prefers_aws_allocation_facts_over_legacy_rows(
@@ -5559,6 +6120,67 @@ def test_cost_repo_group_stack_keeps_distinct_repo_keys_on_slug_collisions(sqlit
         ["2026-05-18", 0.0],
         ["2026-05-25", 0.0],
     ]
+
+
+def test_cost_repo_group_stack_aggregates_hidden_skus_into_others_by_bucket(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    for index in range(9):
+        first_week_cost = index + 1
+        second_week_cost = first_week_cost * 10
+        for usage_date, list_cost in (
+            ("2026-05-04", first_week_cost),
+            ("2026-05-11", second_week_cost),
+        ):
+            _insert_cost_attribution(
+                sqlite_engine,
+                usage_date=usage_date,
+                repo=f"repo-{index}",
+                group_id=110,
+                net_cost=list_cost,
+                list_cost=list_cost,
+                sku_name=f"sku-{index}",
+                dimension_hash=f"others-sku-{index}-{usage_date}",
+            )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={
+            "start_date": "2026-05-04",
+            "end_date": "2026-05-17",
+            "granularity": "week",
+            "group_by": "sku",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["name"] for item in body["items"]] == [
+        "sku-8",
+        "sku-7",
+        "sku-6",
+        "sku-5",
+        "sku-4",
+        "sku-3",
+        "sku-2",
+        "Others",
+    ]
+    assert body["items"][-1] == {
+        "name": "Others",
+        "value": 33.0,
+        "interactive": False,
+    }
+
+    series_by_label = {series["label"]: series["points"] for series in body["series"]}
+    assert series_by_label["Others"] == [
+        ["2026-05-04", 3.0],
+        ["2026-05-11", 30.0],
+    ]
+    assert [
+        sum(points[index][1] for points in series_by_label.values())
+        for index in range(2)
+    ] == [45.0, 450.0]
 
 
 def test_migration_fixed_window_comparison_rows(

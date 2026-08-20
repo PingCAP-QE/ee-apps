@@ -127,6 +127,20 @@ export default function CostPage({ filters }) {
     engineeringGroupShare.data?.level2?.items,
     isSelectedLevel2Shared,
   );
+  const allocationOverviewMatchesFilters =
+    allocationOverview.data?.scope?.cost_source ===
+      (selectedCostSourceValue || null) &&
+    allocationOverview.data?.scope?.start_date === costFilters.start_date &&
+    allocationOverview.data?.scope?.end_date === costFilters.end_date;
+  const hasCurrentAllocationOverview =
+    allocationOverviewMatchesFilters &&
+    allocationOverview.data?.is_available &&
+    !allocationOverview.loading &&
+    !allocationOverview.error;
+  const showKubernetesAllocation =
+    allocationOverview.loading ||
+    Boolean(allocationOverview.error) ||
+    hasCurrentAllocationOverview;
   const costShareItems = withCostBreakdownDrilldown(
     costShare.data?.items,
     canDrillDownCostBreakdown,
@@ -253,7 +267,7 @@ export default function CostPage({ filters }) {
 
       <section
         className={`stats-grid cost-summary-grid${
-          allocationOverview.data?.is_available ? " cost-summary-grid--with-allocation" : ""
+          showKubernetesAllocation ? " cost-summary-grid--with-allocation" : ""
         }`}
       >
         <StatCard
@@ -287,17 +301,30 @@ export default function CostPage({ filters }) {
           }
           tone="rose"
         />
-        {allocationOverview.data?.is_available ? (
+        {showKubernetesAllocation ? (
           <div className="cost-allocation-slot">
-            <section className="cost-allocation-overview stat-card stat-card--teal">
-              <span className="stat-card__label">K8S Workload split cost</span>
+            <section
+              className="cost-allocation-overview stat-card stat-card--teal"
+              title="K8S cards exclude control-plane costs with a matched owner; those costs remain in the standard owner cost view."
+            >
+              <span className="stat-card__label">K8S allocated cost</span>
               <strong className="stat-card__value">
-                {formatCurrency(allocationOverview.data.workload_split_cost)}
+                {allocationOverview.loading
+                  ? "Loading..."
+                  : allocationOverview.error
+                    ? "Unavailable"
+                    : formatCurrency(allocationOverview.data.workload_split_cost)}
               </strong>
               <div className="stat-card__meta">
                 <span className="cost-allocation-overview__detail">
-                  <span>K8S unallocated cost</span>
-                  <strong>{formatCurrency(allocationOverview.data.kubernetes_unallocated_cost)}</strong>
+                  {allocationOverview.loading
+                    ? "Loading Kubernetes allocation..."
+                    : allocationOverview.error
+                      ? `Could not load allocation: ${allocationOverview.error}`
+                      : <>
+                          <span>K8S unallocated cost</span>
+                          <strong>{formatCurrency(allocationOverview.data.kubernetes_unallocated_cost)}</strong>
+                        </>}
                 </span>
               </div>
             </section>
@@ -557,13 +584,18 @@ function CostStackTrend({
           const sharePct = totalValue
             ? (Number(item.value || 0) / totalValue) * 100
             : 0;
+          const interactive = item.interactive !== false;
           return (
             <button
               key={item.name}
               type="button"
               className={buildDimensionChipClassName(selectedName === item.name)}
               title={`${item.name}: ${formatCurrency(item.value)} (${formatPercent(sharePct)})`}
+              disabled={!interactive}
               onClick={() => {
+                if (!interactive) {
+                  return;
+                }
                 if (drilldownEnabled && typeof onDrilldown === "function") {
                   onDrilldown(item);
                   return;
