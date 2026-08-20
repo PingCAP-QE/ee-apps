@@ -21,7 +21,9 @@ type BinaryInfo struct {
 type NotificationInfo struct {
 	BuildID      int
 	Product      string
+	Edition      string
 	Version      string
+	IsHotfix     bool
 	Status       string
 	CreatedBy    string
 	CreatedAt    string // RFC3339 formatted build creation time
@@ -53,7 +55,9 @@ func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
 	info := &NotificationInfo{
 		BuildID:     build.ID,
 		Product:     build.Product,
+		Edition:     build.Edition,
 		Version:     build.Version,
+		IsHotfix:    build.IsHotfix,
 		Status:      build.Status,
 		CreatedBy:   build.CreatedBy,
 		CreatedAt:   build.CreatedAt.UTC().Format(time.RFC3339),
