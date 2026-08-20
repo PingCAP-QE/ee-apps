@@ -240,6 +240,7 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
               c.source_allocation_scope IN (
                 'kubernetes_parent_residual',
                 'eks_parent_residual',
+                'eks_unallocated',
                 'gke_parent_residual',
                 'tke_parent_residual'
               )

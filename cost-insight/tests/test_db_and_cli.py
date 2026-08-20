@@ -29,6 +29,9 @@ from cost_insight.jobs.sync_aws_billing_summary import (
 from cost_insight.jobs.sync_aws_parent_residual_allocations import (
     SyncAwsParentResidualAllocationsResult,
 )
+from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
+    SyncAwsKubernetesWorkloadAllocationsSummary,
+)
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
 from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
@@ -139,6 +142,18 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
             dry_run=kwargs["dry_run"],
         )
 
+    def fake_kubernetes_allocations(_engine, **kwargs):
+        captured["kubernetes"] = kwargs
+        return SyncAwsKubernetesWorkloadAllocationsSummary(
+            account_id=source.account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            summary_rows_seen=1,
+            residual_allocation_rows_seen=1,
+            rows_written=1,
+            dry_run=kwargs["dry_run"],
+        )
+
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
     monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
@@ -146,6 +161,7 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
     monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
     monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fake_unmatched)
     monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
+    monkeypatch.setattr(cli, "run_sync_aws_kubernetes_workload_allocations", fake_kubernetes_allocations)
     monkeypatch.setattr(cli, "run_refresh_cost_attribution_from_summary", fake_attribution)
 
     assert (
@@ -164,6 +180,7 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
     assert captured["summary"]["validate_guardrail"] is True
     assert captured["unmatched"]["validate_guardrail"] is False
     assert captured["residual"]["validate_guardrail"] is False
+    assert captured["kubernetes"]["batch_size"] == settings.aws_billing.page_size
     assert '"rows_written": 1' in capsys.readouterr().out
 
 
@@ -204,6 +221,9 @@ def test_cli_cutover_can_skip_unmatched_resources(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fail_unmatched)
     monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_result("residual"))
     monkeypatch.setattr(
+        cli, "run_sync_aws_kubernetes_workload_allocations", fake_result("kubernetes")
+    )
+    monkeypatch.setattr(
         cli, "run_refresh_cost_attribution_from_summary", fake_result("attribution")
     )
 
@@ -222,7 +242,7 @@ def test_cli_cutover_can_skip_unmatched_resources(monkeypatch, capsys) -> None:
         == 0
     )
 
-    assert calls == ["summary", "residual", "attribution"]
+    assert calls == ["summary", "residual", "kubernetes", "attribution"]
     assert '"step": "unmatched"' not in capsys.readouterr().out
 
 
@@ -1278,6 +1298,18 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
             dry_run=kwargs["dry_run"],
         )
 
+    def fake_kubernetes_allocations(_engine, **kwargs):
+        captured["kubernetes"] = kwargs
+        return SyncAwsKubernetesWorkloadAllocationsSummary(
+            account_id=kwargs["source"].account_id,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            summary_rows_seen=1,
+            residual_allocation_rows_seen=1,
+            rows_written=1,
+            dry_run=kwargs["dry_run"],
+        )
+
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
     monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
@@ -1286,6 +1318,7 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
     )
     monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
     monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
+    monkeypatch.setattr(cli, "run_sync_aws_kubernetes_workload_allocations", fake_kubernetes_allocations)
 
     assert cli.main(["sync-aws-billing-summary"]) == 0
 
@@ -1294,6 +1327,7 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
     assert captured["usage_end_date"] == date(2026, 8, 3)
     assert captured["page_size"] == 123
     assert captured["validate_guardrail"] is False
+    assert captured["kubernetes"]["batch_size"] == 123
     assert '"parent_days": 1' in capsys.readouterr().out
 
 

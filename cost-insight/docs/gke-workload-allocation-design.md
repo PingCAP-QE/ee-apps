@@ -24,10 +24,16 @@ requests, or turn missing labels into an owner.
 
 ### Node and control-plane cost
 
-The billing-export query only recognizes:
+The billing-export query recognizes positive GKE signals:
 
-- Compute Engine rows with a nonempty `goog-k8s-cluster-name` label and a
-  `resource.name` that identifies a `gke-` instance.
+- Compute Engine rows with a nonempty `goog-k8s-cluster-name` label. This
+  includes node-adjacent disks, network, and IP charges that carry the cluster
+  label but do not use a `gke-` instance resource name.
+- Compute Engine rows whose `resource.name` starts with `pvc-`, which is the
+  Kubernetes persistent-disk name emitted by GKE even when billing labels are
+  absent.
+- Compute Engine rows whose `resource.name` or `resource.global_name` identifies
+  a `gke-` instance, even if the cluster label is missing.
 - Kubernetes Engine rows, retained as control-plane cost.
 
 Recognized Compute Engine SKUs are classified as `cpu`, `memory`, or `other`.
@@ -68,7 +74,8 @@ assertion that `list_cost / source_node_list_cost` is exact after cent rounding.
 
 The following stay visible as `unallocated` facts:
 
-- `other` recognized GKE node components.
+- `other` recognized GKE node-adjacent components, including disks, network,
+  IP, and PVC resources.
 - CPU or memory components with no positive matching metering rows.
 - Kubernetes Engine control-plane cost.
 

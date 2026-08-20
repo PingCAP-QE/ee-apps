@@ -15,7 +15,7 @@ def fetch_gcp_gke_node_cost_rows(
     usage_end_date: date,
     page_size: int,
 ) -> Iterator[dict[str, Any]]:
-    """Fetch only billing rows that can be positively identified as GKE nodes."""
+    """Fetch billing rows that can be positively identified as GKE costs."""
     from google.cloud import bigquery
 
     client = bigquery.Client()
@@ -85,6 +85,7 @@ WITH billing_rows AS (
     service.description AS service_name,
     sku.description AS sku_name,
     resource.name AS resource_name,
+    resource.global_name AS global_name,
     cost_at_list
   FROM `{billing_table}`
   WHERE _PARTITIONDATE BETWEEN @export_partition_start AND @export_partition_end
@@ -107,9 +108,16 @@ WITH billing_rows AS (
     COUNT(*) AS source_row_count
   FROM billing_rows
   WHERE service_name = 'Compute Engine'
-    -- Requiring both signals keeps ordinary VM spending out of the GKE pool.
-    AND NULLIF(cluster_name, '') IS NOT NULL
-    AND REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'/instances/gke-')
+    -- A cluster label positively identifies all node-adjacent Compute Engine
+    -- resources, including disks, network, and IP charges.  Some GKE PD rows
+    -- arrive without labels but retain their Kubernetes PVC name, while a
+    -- resource/global name can still identify an unlabeled GKE instance.
+    AND (
+      NULLIF(cluster_name, '') IS NOT NULL
+      OR STARTS_WITH(LOWER(COALESCE(resource_name, '')), 'pvc-')
+      OR REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'/instances/gke-')
+      OR REGEXP_CONTAINS(LOWER(COALESCE(global_name, '')), r'/instances/gke-')
+    )
   GROUP BY usage_date, cluster_name, cluster_location, cost_component
 ), control_plane_costs AS (
   SELECT

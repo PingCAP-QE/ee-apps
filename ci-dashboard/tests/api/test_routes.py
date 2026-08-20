@@ -3952,6 +3952,11 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
                 "vendor_tags_json": '{"cluster":"qa-eks"}',
             },
             {
+                "net_cost": 12,
+                "service_name": "AmazonEC2",
+                "source_allocation_scope": "eks_unallocated",
+            },
+            {
                 "net_cost": 15,
                 "service_name": "AmazonEC2",
                 "source_allocation_scope": "direct",
@@ -4045,7 +4050,7 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
         },
         "is_available": True,
         "workload_split_cost": 130.0,
-        "kubernetes_unallocated_cost": 70.0,
+        "kubernetes_unallocated_cost": 82.0,
     }
 
     gcp_response = api_client.get(
@@ -4124,6 +4129,58 @@ def test_cost_allocation_overview_prefers_allocation_facts_over_legacy_rows(
     assert response.json()["is_available"] is True
     assert response.json()["workload_split_cost"] == 150.0
     assert response.json()["kubernetes_unallocated_cost"] == 20.0
+
+
+def test_cost_allocation_overview_prefers_aws_allocation_facts_over_legacy_rows(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="ee-apps",
+        group_id=1,
+        net_cost=999,
+        vendor="aws",
+        account_id="946646677266",
+        source_allocation_scope="eks_pod",
+        dimension_hash="legacy-eks-row-that-must-not-double-count",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, allocation_weight, source_node_list_cost,
+                  list_cost, allocation_method, allocation_version, dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'aws', '946646677266', 'prow', 'us-west-2',
+                   'workload_split', 'pod_split', 1, 5322.36, 5322.36,
+                   'eks_pod_split_cost_v1', 'eks_split_cost_v2', 'eks-workload-fact'),
+                  ('2026-08-10', 'aws', '946646677266', 'prow', 'us-west-2',
+                   'workload_split', 'parent_residual', 1, 3803.66, 3803.66,
+                   'eks_parent_residual_proportional_v1', 'eks_split_cost_v2', 'eks-residual-fact'),
+                  ('2026-08-10', 'aws', '946646677266', NULL, 'us-west-2',
+                   'unallocated', 'pvc', 0, 771, 771,
+                   'eks_pvc_unallocated_v1', 'eks_split_cost_v2', 'eks-pvc-fact')
+                """
+            )
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-10",
+            "cost_source": "aws:946646677266",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_available"] is True
+    assert response.json()["workload_split_cost"] == 9126.02
+    assert response.json()["kubernetes_unallocated_cost"] == 771.0
 
 
 def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestClient) -> None:

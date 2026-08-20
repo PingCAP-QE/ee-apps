@@ -1254,6 +1254,11 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "summary.cost_driver_key" in sql
     assert "NULL AS resource_name" in sql
     assert "NULL AS usage_seconds" in sql
+    assert "summary.vendor_tags_json" in sql
+    assert "COALESCE(summary.source_allocation_scope, 'direct')" in sql
+    assert "summary.namespace" in sql
+    assert "summary.workload_name" in sql
+    assert "summary.workload_type" in sql
     assert "target_branch" in sql
     assert "LEFT JOIN roster_employees github_employee" in sql
     assert "LEFT JOIN roster_employees override_employee" in sql

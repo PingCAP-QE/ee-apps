@@ -277,12 +277,16 @@ def test_gke_allocation_weights_reconcile_after_quantization() -> None:
     assert sum((row["allocation_weight"] for row in rows), Decimal()) == Decimal(1)
 
 
-def test_gke_allocation_queries_use_strict_gke_node_and_metering_dimensions() -> None:
+def test_gke_allocation_queries_use_positive_gke_cost_signals_and_metering_dimensions() -> None:
     node_query = build_gcp_gke_node_cost_query(billing_table="project.dataset.billing")
     usage_query = build_gcp_gke_workload_usage_query(gke_usage_table="project.dataset.gke_usage")
 
     assert "goog-k8s-cluster-name" in node_query
+    assert "resource.global_name AS global_name" in node_query
+    assert "NULLIF(cluster_name, '') IS NOT NULL" in node_query
+    assert "STARTS_WITH(LOWER(COALESCE(resource_name, '')), 'pvc-')" in node_query
     assert "REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'/instances/gke-')" in node_query
+    assert "REGEXP_CONTAINS(LOWER(COALESCE(global_name, '')), r'/instances/gke-')" in node_query
     assert "service_name = 'Compute Engine'" in node_query
     assert "service_name = 'Kubernetes Engine'" in node_query
     assert "Compute Flexible Committed Use Discounts" in node_query
