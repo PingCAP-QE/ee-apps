@@ -15,6 +15,8 @@ import (
 const (
 	nextgenCalendarTagThreshold = "v26.0.0"
 	v263FixedVersion            = "v26.3.99"
+
+	updateComponentVersionApiURL = "/devops/cloudconfig/versions/component/{component}"
 )
 
 var (
@@ -135,7 +137,7 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(ctx context.Context, stage string, co
 		SetBody(&payload).
 		SetResult(&out).
 		SetPathParam("component", component).
-		Post("/{component}")
+		Post(updateComponentVersionApiURL)
 	if err != nil {
 		err = fmt.Errorf("update ops config for component %s: %w", component, err)
 		s.Logger.Error().Err(err).Str("stage", stage).Str("component", component).Msg("callOpsPlatformAPI request failed")
