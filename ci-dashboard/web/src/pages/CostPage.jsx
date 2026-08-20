@@ -303,7 +303,10 @@ export default function CostPage({ filters }) {
         />
         {showKubernetesAllocation ? (
           <div className="cost-allocation-slot">
-            <section className="cost-allocation-overview stat-card stat-card--teal">
+            <section
+              className="cost-allocation-overview stat-card stat-card--teal"
+              title="K8S cards exclude control-plane costs with a matched owner; those costs remain in the standard owner cost view."
+            >
               <span className="stat-card__label">K8S allocated cost</span>
               <strong className="stat-card__value">
                 {allocationOverview.loading

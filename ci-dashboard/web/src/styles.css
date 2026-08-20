@@ -1143,6 +1143,11 @@ select {
   font-size: 0.84rem;
 }
 
+.dimension-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .dimension-chip span {
   min-width: 0;
   overflow: hidden;

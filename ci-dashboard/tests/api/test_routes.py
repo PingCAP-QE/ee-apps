@@ -4196,6 +4196,7 @@ def test_cost_allocation_overview_supports_cloud_kubernetes_cost_categories(
 def test_kubernetes_unallocated_includes_synthetic_parent_residual_rows(
     sqlite_engine,
     api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     common = {
         "usage_date": "2026-05-02",
@@ -4234,6 +4235,25 @@ def test_kubernetes_unallocated_includes_synthetic_parent_residual_rows(
         attribution_status="unmatched",
         dimension_hash="misclassified-parent-residual",
     )
+    # The fact table is not available during the schema rollout. The overview
+    # and audit paths must keep the same legacy classification in that window.
+    monkeypatch.setattr(
+        cost_queries,
+        "_cost_kubernetes_allocation_table_exists",
+        lambda _connection: False,
+    )
+
+    overview_response = api_client.get(
+        "/api/v1/pages/cost-allocation-overview",
+        params={
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-31",
+            "cost_source": "aws:946646677266",
+        },
+    )
+    assert overview_response.status_code == 200
+    assert overview_response.json()["workload_split_cost"] == 0.0
+    assert overview_response.json()["kubernetes_unallocated_cost"] == 50.0
 
     response = api_client.get(
         "/api/v1/pages/cost-kubernetes-unallocated",
