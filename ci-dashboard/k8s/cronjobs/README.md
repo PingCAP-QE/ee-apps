@@ -70,7 +70,7 @@ default and records Pod `metadata.creationTimestamp` as `pod_created_at`.
 Preconditions:
 
 - apply `017_alter_ci_l1_pod_lifecycle_add_pod_created_at.sql`
-- grant `apps/ci-dashboard` `get/list/watch` on `pods` and `events` in watched namespaces
+- grant `apps/ci-dashboard` `get/list/watch` on `pods`, `persistentvolumeclaims`, and `events` in watched namespaces
 
 ```bash
 cd ci-dashboard

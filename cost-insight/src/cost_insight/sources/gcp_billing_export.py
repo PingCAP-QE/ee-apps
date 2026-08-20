@@ -5,7 +5,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-
 DEFAULT_COST_OWNER_AUTHOR = "wei_zheng"
 _GCP_MULTI_REGION_LOCATIONS = ("us", "eu", "asia", "nam4", "eur4")
 _GCP_MULTI_REGION_SKU_PATTERN = r"\b(multi[- ]region|dual[- ]region)\b"
@@ -158,13 +157,13 @@ WITH normalized AS (
     {region_expr} AS region,
     {_label_expr(("k8s-namespace", "namespace"))} AS namespace,
     {author_expr} AS author,
-    {_label_expr(("k8s-label/org", "org"))} AS org,
-    {_label_expr(("k8s-label/repo", "repo"))} AS repo,
+    {_org_expr()} AS org,
+    {_repo_expr()} AS repo,
     {target_branch_expr} AS target_branch,
     COALESCE(
-      {_label_expr(("k8s-workload-name",))},
       NULLIF(resource.name, ''),
-      NULLIF(resource.global_name, '')
+      NULLIF(resource.global_name, ''),
+      {_label_expr(("k8s-workload-name",))}
     ) AS resource_name,
     LOWER(usage.pricing_unit) AS pricing_unit,
     usage.amount_in_pricing_units AS amount_in_pricing_units,
@@ -241,9 +240,14 @@ SELECT
   NULL AS usage_type,
   {region_expr} AS region,
   {author_expr} AS author,
-  {_label_expr(("k8s-label/org", "org"))} AS org,
-  {_label_expr(("k8s-label/repo", "repo"))} AS repo,
+  {_org_expr()} AS org,
+  {_repo_expr()} AS repo,
   {target_branch_expr} AS target_branch,
+  COALESCE(
+    NULLIF(resource.name, ''),
+    NULLIF(resource.global_name, ''),
+    {_label_expr(("k8s-workload-name",))}
+  ) AS resource_name,
   ROUND(SUM(cost_at_list), 2) AS list_cost,
   ROUND(SUM(cost), 2) AS effective_cost,
   ROUND(SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 2)
@@ -266,8 +270,9 @@ GROUP BY
   author,
   org,
   repo,
-  target_branch
-ORDER BY export_partition_date, usage_date, service_name, sku_name, region, author, org, repo, target_branch{limit_clause}
+  target_branch,
+  resource_name
+ORDER BY export_partition_date, usage_date, service_name, sku_name, region, author, org, repo, target_branch, resource_name{limit_clause}
 """.strip()
 
 
@@ -275,8 +280,8 @@ def build_gcp_unmatched_resource_query(*, billing_table: str, limit: int | None 
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     namespace_expr = _label_expr(("k8s-namespace", "namespace"))
     author_expr = _author_expr_with_overrides()
-    org_expr = _label_expr(("k8s-label/org", "org"))
-    repo_expr = _label_expr(("k8s-label/repo", "repo"))
+    org_expr = _org_expr()
+    repo_expr = _repo_expr()
     target_branch_expr = _target_branch_expr()
     workload_expr = _label_expr(("k8s-workload-name",))
     return f"""
@@ -294,10 +299,16 @@ WITH normalized AS (
     {repo_expr} AS repo,
     {target_branch_expr} AS target_branch,
     COALESCE(
-      {workload_expr},
       NULLIF(resource.name, ''),
-      NULLIF(resource.global_name, '')
+      NULLIF(resource.global_name, ''),
+      {workload_expr}
     ) AS resource_name,
+    TO_JSON_STRING(
+      JSON_OBJECT(
+        ARRAY(SELECT label.key FROM UNNEST(labels) AS label),
+        ARRAY(SELECT label.value FROM UNNEST(labels) AS label)
+      )
+    ) AS vendor_tags_json,
     LOWER(usage.pricing_unit) AS pricing_unit,
     usage.amount_in_pricing_units AS amount_in_pricing_units,
     cost_at_list,
@@ -323,6 +334,7 @@ SELECT
   repo,
   target_branch,
   resource_name,
+  vendor_tags_json,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0
       THEN NULL
@@ -354,25 +366,38 @@ GROUP BY
   org,
   repo,
   target_branch,
-  resource_name
+  resource_name,
+  vendor_tags_json
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()
 
 
 def _label_expr(keys: Iterable[str]) -> str:
-    key_list = ", ".join(repr(key) for key in keys)
+    ordered_keys = tuple(keys)
+    key_list = ", ".join(repr(key) for key in ordered_keys)
+    priority_cases = " ".join(
+        f"WHEN {key!r} THEN {index}" for index, key in enumerate(ordered_keys)
+    )
     return f"""
     ARRAY(
       SELECT label.value
       FROM UNNEST(labels) AS label
       WHERE label.key IN ({key_list})
+      ORDER BY CASE label.key {priority_cases} ELSE {len(ordered_keys)} END
       LIMIT 1
     )[SAFE_OFFSET(0)]
     """.strip()
 
 
 def _author_expr_with_overrides() -> str:
-    label_author = _label_expr(("k8s-label/author", "author"))
+    label_author = _label_expr(
+        (
+            "k8s-label/author",
+            "author",
+            "k8s-label/prow.k8s.io/refs.author",
+            "prow.k8s.io/refs.author",
+        )
+    )
     return f"""
     COALESCE(
       {label_author},
@@ -386,6 +411,28 @@ def _author_expr_with_overrides() -> str:
       END
     )
     """.strip()
+
+
+def _org_expr() -> str:
+    return _label_expr(
+        (
+            "k8s-label/org",
+            "org",
+            "k8s-label/prow.k8s.io/refs.org",
+            "prow.k8s.io/refs.org",
+        )
+    )
+
+
+def _repo_expr() -> str:
+    return _label_expr(
+        (
+            "k8s-label/repo",
+            "repo",
+            "k8s-label/prow.k8s.io/refs.repo",
+            "prow.k8s.io/refs.repo",
+        )
+    )
 
 
 def _target_branch_expr() -> str:

@@ -10,7 +10,7 @@ usage() {
   cat <<'EOF'
 Render Kubernetes RBAC for the CI Dashboard Pod watcher.
 
-The rendered RBAC grants get/list/watch on pods and events only in the target
+The rendered RBAC grants get/list/watch on pods, persistentvolumeclaims, and events only in the target
 namespaces by binding a shared ClusterRole with namespace-scoped RoleBindings.
 
 Usage:
@@ -82,7 +82,7 @@ metadata:
     app.kubernetes.io/part-of: ci-dashboard
 rules:
   - apiGroups: [""]
-    resources: ["pods", "events"]
+    resources: ["pods", "persistentvolumeclaims", "events"]
     verbs: ["get", "list", "watch"]
 EOF
 

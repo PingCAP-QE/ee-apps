@@ -7,13 +7,14 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import bind_decimal_rows, coerce_date, hash_value, nullable_text
 from cost_insight.jobs import state_store
 from cost_insight.jobs.cost_sources import ensure_cost_source_enabled
@@ -28,7 +29,7 @@ LOG = logging.getLogger(__name__)
 
 JOB_NAME = "sync_gcp_kubernetes_workload_allocations"
 ALLOCATION_TABLE = "cost_kubernetes_workload_allocation_daily"
-ALLOCATION_VERSION = "gke_metering_v2"
+ALLOCATION_VERSION = "gke_metering_v3"
 _CURRENCY_SCALE = Decimal("0.01")
 _WEIGHT_SCALE = Decimal("0.0000000000000001")
 
@@ -39,6 +40,7 @@ WorkloadUsageFetcher = Callable[..., Iterable[dict[str, Any]]]
 @dataclass(frozen=True)
 class GkeNodeCost:
     usage_date: date
+    source_summary_row_hash: str
     cluster_name: str | None
     cluster_location: str | None
     cost_component: str
@@ -346,6 +348,7 @@ def _workload_row(
         "usage_date": node_cost.usage_date,
         "vendor": "gcp",
         "account_id": account_id,
+        "source_summary_row_hash": node_cost.source_summary_row_hash,
         "cluster_name": node_cost.cluster_name,
         "cluster_location": node_cost.cluster_location,
         "allocation_scope": "workload_split",
@@ -378,6 +381,7 @@ def _unallocated_row(*, account_id: str, node_cost: GkeNodeCost) -> dict[str, An
         "usage_date": node_cost.usage_date,
         "vendor": "gcp",
         "account_id": account_id,
+        "source_summary_row_hash": node_cost.source_summary_row_hash,
         "cluster_name": node_cost.cluster_name,
         "cluster_location": node_cost.cluster_location,
         "allocation_scope": "unallocated",
@@ -403,12 +407,29 @@ def _normalize_node_cost(row: dict[str, Any]) -> GkeNodeCost:
     usage_date = coerce_date(row.get("usage_date"))
     cost_component = nullable_text(row.get("cost_component"))
     list_cost = decimal_or_none(row.get("list_cost"))
-    if usage_date is None or cost_component is None or list_cost is None:
+    account_id = nullable_text(row.get("account_id"))
+    export_partition_date = coerce_date(row.get("export_partition_date"))
+    if (
+        usage_date is None
+        or cost_component is None
+        or list_cost is None
+        or account_id is None
+        or export_partition_date is None
+    ):
         raise ValueError(f"Missing GKE node cost dimensions: {row!r}")
     if cost_component not in {"cpu", "memory", "other", "control_plane"}:
         raise ValueError(f"Unsupported GKE node cost component: {cost_component!r}")
     return GkeNodeCost(
         usage_date=usage_date,
+        source_summary_row_hash=build_gcp_summary_row_hash(
+            {
+                **row,
+                "vendor": "gcp",
+                "account_id": account_id,
+                "export_partition_date": export_partition_date,
+                "usage_date": usage_date,
+            }
+        ),
         cluster_name=nullable_text(row.get("cluster_name")),
         cluster_location=nullable_text(row.get("cluster_location")),
         cost_component=cost_component,
@@ -447,6 +468,7 @@ def _dimension_hash(row: dict[str, Any]) -> str:
         "usage_date",
         "vendor",
         "account_id",
+        "source_summary_row_hash",
         "cluster_name",
         "cluster_location",
         "allocation_scope",
@@ -478,18 +500,20 @@ def _build_upsert_statement(connection: Connection):
               usage_date, vendor, account_id, cluster_name, cluster_location,
               allocation_scope, cost_component, namespace, workload_name, workload_type,
               author, org, repo, target_branch, allocation_weight, source_node_list_cost,
-              list_cost, allocation_method, allocation_version, dimension_hash
+              list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash
             ) VALUES (
               :usage_date, :vendor, :account_id, :cluster_name, :cluster_location,
               :allocation_scope, :cost_component, :namespace, :workload_name, :workload_type,
               :author, :org, :repo, :target_branch, :allocation_weight, :source_node_list_cost,
-              :list_cost, :allocation_method, :allocation_version, :dimension_hash
+              :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash
             )
             ON CONFLICT(usage_date, dimension_hash) DO UPDATE SET
               allocation_weight = excluded.allocation_weight,
               source_node_list_cost = excluded.source_node_list_cost,
               list_cost = excluded.list_cost,
               allocation_method = excluded.allocation_method,
+              allocation_version = excluded.allocation_version,
+              source_summary_row_hash = excluded.source_summary_row_hash,
               calculated_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             """
@@ -500,18 +524,20 @@ def _build_upsert_statement(connection: Connection):
           usage_date, vendor, account_id, cluster_name, cluster_location,
           allocation_scope, cost_component, namespace, workload_name, workload_type,
           author, org, repo, target_branch, allocation_weight, source_node_list_cost,
-          list_cost, allocation_method, allocation_version, dimension_hash
+          list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash
         ) VALUES (
           :usage_date, :vendor, :account_id, :cluster_name, :cluster_location,
           :allocation_scope, :cost_component, :namespace, :workload_name, :workload_type,
           :author, :org, :repo, :target_branch, :allocation_weight, :source_node_list_cost,
-          :list_cost, :allocation_method, :allocation_version, :dimension_hash
+          :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash
         )
         ON DUPLICATE KEY UPDATE
           allocation_weight = VALUES(allocation_weight),
           source_node_list_cost = VALUES(source_node_list_cost),
           list_cost = VALUES(list_cost),
           allocation_method = VALUES(allocation_method),
+          allocation_version = VALUES(allocation_version),
+          source_summary_row_hash = VALUES(source_summary_row_hash),
           calculated_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         """

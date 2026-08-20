@@ -76,6 +76,7 @@ def _sqlite_engine():
                   org TEXT,
                   repo TEXT,
                   target_branch TEXT,
+                  resource_name TEXT,
                   vendor_tags_json TEXT,
                   author TEXT,
                   source_schema_version TEXT,
@@ -117,6 +118,7 @@ def _summary_row(day: str = "2026-05-18") -> dict[str, object]:
         "org": "pingcap",
         "repo": "tidb",
         "target_branch": "master",
+        "resource_name": "pvc-12345678-1234-1234-1234-123456789abc",
         "vendor_tags_json": None,
         "list_cost": "10.00",
         "effective_cost": "8.00",
@@ -152,6 +154,7 @@ def _insert_summary_row(connection, row: dict[str, object]) -> None:
               org,
               repo,
               target_branch,
+              resource_name,
               vendor_tags_json,
               author,
               list_cost,
@@ -172,6 +175,7 @@ def _insert_summary_row(connection, row: dict[str, object]) -> None:
               :org,
               :repo,
               :target_branch,
+              :resource_name,
               :vendor_tags_json,
               :author,
               :list_cost,
@@ -264,7 +268,7 @@ def test_summary_hash_ignores_amount_changes() -> None:
 
     assert row["usage_type"] is None
     assert row["cost_driver_key"] == "compute"
-    assert build_summary_row_hash(row) == _legacy_summary_row_hash(row)
+    assert build_summary_row_hash(row) != _legacy_summary_row_hash(row)
     assert build_summary_row_hash(row) == build_summary_row_hash(changed)
     assert build_summary_row_hash(row) == build_summary_row_hash(
         {**row, "usage_type": "duplicate-for-schema", "cost_driver_key": "other"}
@@ -274,6 +278,9 @@ def test_summary_hash_ignores_amount_changes() -> None:
     )
     assert build_summary_row_hash(row) != build_summary_row_hash(
         {**row, "target_branch": "release-8.5"}
+    )
+    assert build_summary_row_hash(row) != build_summary_row_hash(
+        {**row, "resource_name": "pvc-87654321-4321-4321-4321-cba987654321"}
     )
     assert build_summary_row_hash(row) != build_summary_row_hash({**row, "region": "europe-west1"})
     assert build_summary_row_hash(row) != build_summary_row_hash(
@@ -321,6 +328,9 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
                     """
                 )
             ).all()
+            resource_names = connection.execute(
+                text("SELECT DISTINCT resource_name FROM cost_bq_export_summary_daily")
+            ).scalars().all()
             state = state_store.get_job_state(
                 connection,
                 source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
@@ -328,6 +338,7 @@ def test_run_sync_gcp_billing_summary_writes_rows_and_touched_dates() -> None:
         assert count == 2
         assert service_names == ["Compute Engine"]
         assert driver_rows == [(None, "compute")]
+        assert resource_names == ["pvc-12345678-1234-1234-1234-123456789abc"]
         assert state is not None
         assert state.last_status == "succeeded"
     finally:

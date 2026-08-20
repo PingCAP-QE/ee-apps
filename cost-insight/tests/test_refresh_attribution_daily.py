@@ -9,16 +9,16 @@ from sqlalchemy.engine import Connection
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.refresh_attribution_daily import (
-    CostAttributionSource,
-    JOB_NAME,
-    SUMMARY_JOB_NAME,
     _INSERT_ATTRIBUTION_DAILY,
     _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,
+    JOB_NAME,
+    SUMMARY_JOB_NAME,
+    CostAttributionSource,
+    _positive_rowcount,
     _quote_table_identifier,
     _summary_insert_statements,
-    normalized_identity_sql,
-    _positive_rowcount,
     _watermark,
+    normalized_identity_sql,
     run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
@@ -41,6 +41,23 @@ def _sqlite_engine():
                   last_status TEXT,
                   last_error TEXT,
                   updated_at TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_kubernetes_pvc_pod_mapping (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  vendor TEXT NOT NULL,
+                  account_id TEXT NOT NULL,
+                  persistent_volume_name TEXT NOT NULL,
+                  pod_uid TEXT NOT NULL,
+                  author TEXT,
+                  org TEXT,
+                  repo TEXT,
+                  UNIQUE(vendor, account_id, persistent_volume_name, pod_uid)
                 )
                 """
             )
@@ -434,6 +451,247 @@ def test_run_refresh_attribution_rejects_invalid_range() -> None:
         engine.dispose()
 
 
+def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_bq_export_summary_daily (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      source_row_hash TEXT,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_attribution_daily (
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      attribution_key TEXT,
+                      attribution_source TEXT,
+                      attribution_status TEXT,
+                      employee_id INTEGER,
+                      group_id INTEGER,
+                      manager_id INTEGER,
+                      usage_seconds REAL,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      source_rows INTEGER,
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_employees (
+                      id INTEGER PRIMARY KEY,
+                      email TEXT,
+                      github_id TEXT,
+                      en_name TEXT,
+                      group_id INTEGER,
+                      manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_groups (
+                      id INTEGER PRIMARY KEY,
+                      is_active INTEGER,
+                      manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO roster_employees (id, email, github_id, en_name, group_id, manager_id)
+                    VALUES
+                      (1, 'alice@pingcap.com', 'alice', 'Alice', 10, 100),
+                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO roster_groups (id, is_active, manager_id)
+                    VALUES (10, 1, 100), (20, 1, 200)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_kubernetes_pvc_pod_mapping (
+                      vendor, account_id, persistent_volume_name, pod_uid, author, org, repo
+                    ) VALUES
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-unique', 'uid-unique',
+                        'alice', 'pingcap', 'tidb'
+                      ),
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-shared', 'uid-shared-a',
+                        'alice', 'pingcap', 'tidb'
+                      ),
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-shared', 'uid-shared-b',
+                        'bob', 'pingcap', 'tidb'
+                      ),
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-direct-author', 'uid-direct',
+                        'alice', 'pingcap', 'tidb'
+                      )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                        INSERT INTO cost_bq_export_summary_daily (
+                          usage_date, vendor, account_id, service_name, sku_name,
+                          resource_name, author, list_cost, effective_cost, credit_amount, net_cost,
+                          source_row_hash
+                    ) VALUES
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'pvc-unique', NULL, 10, 10, 0, 10,
+                            'summary-pvc-unique'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'pvc-shared', NULL, 20, 20, 0, 20,
+                            'summary-pvc-shared'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'pvc-direct-author', 'bob', 30, 30, 0, 30,
+                            'summary-pvc-direct-author'
+                      )
+                    """
+                )
+            )
+
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=SOURCE,
+            start_date=date(2026, 8, 16),
+            end_date=date(2026, 8, 16),
+        )
+
+        assert summary.rows_inserted == 3
+        with engine.begin() as connection:
+            rows = {
+                row["resource_name"]: dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT resource_name, author, org, repo, owner, attribution_source,
+                               attribution_status, employee_id, net_cost, source_summary_row_hash
+                        FROM cost_attribution_daily
+                        """
+                    )
+                ).mappings()
+            }
+
+        assert rows["pvc-unique"] == {
+            "resource_name": "pvc-unique",
+            "author": "alice",
+            "org": "pingcap",
+            "repo": "tidb",
+            "owner": "alice@pingcap.com",
+            "attribution_source": "pvc_pod_github",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 10.0,
+            "source_summary_row_hash": "summary-pvc-unique",
+        }
+        assert rows["pvc-shared"] == {
+            "resource_name": "pvc-shared",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "missing_author",
+            "attribution_status": "unattributed",
+            "employee_id": None,
+            "net_cost": 20.0,
+            "source_summary_row_hash": "summary-pvc-shared",
+        }
+        assert rows["pvc-direct-author"] == {
+            "resource_name": "pvc-direct-author",
+            "author": "bob",
+            "org": None,
+            "repo": None,
+            "owner": "bob@pingcap.com",
+            "attribution_source": "author_github",
+            "attribution_status": "matched",
+            "employee_id": 2,
+            "net_cost": 30.0,
+            "source_summary_row_hash": "summary-pvc-direct-author",
+        }
+    finally:
+        engine.dispose()
+
+
 def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared() -> None:
     engine = _sqlite_engine()
     source = CostAttributionSource(vendor="aws", account_id="946646677266")
@@ -455,6 +713,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       org TEXT,
                       repo TEXT,
                       target_branch TEXT,
+                      resource_name TEXT,
                       vendor_tags_json TEXT,
                       source_schema_version TEXT,
                       source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
@@ -979,6 +1238,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       org TEXT,
                       repo TEXT,
                       target_branch TEXT,
+                      resource_name TEXT,
                       vendor_tags_json TEXT,
                       source_schema_version TEXT,
                       source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
@@ -1252,7 +1512,7 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "summary.sku_name" in sql
     assert "summary.usage_type" in sql
     assert "summary.cost_driver_key" in sql
-    assert "NULL AS resource_name" in sql
+    assert "summary.resource_name" in sql
     assert "NULL AS usage_seconds" in sql
     assert "summary.vendor_tags_json" in sql
     assert "COALESCE(summary.source_allocation_scope, 'direct')" in sql
@@ -1266,7 +1526,10 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "github_employee.is_active" not in sql
     assert "email_employee.is_active" not in sql
     assert "normalized_employee.is_active" not in sql
-    assert "LOWER(github_employee.github_id) = LOWER(summary.author)" in sql
+    assert "LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))" in sql
+    assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
+    assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
+    assert "pvc_pod_github" in sql
     assert "author_override" in sql
     assert "author_normalized" in sql
     assert "SHA2(" in sql

@@ -135,6 +135,7 @@ class PodMetadataSnapshot:
     creation_timestamp: datetime | None = None
     abnormal_reason: str | None = None
     abnormal_message: str | None = None
+    persistent_volume_names: tuple[str, ...] = ()
 
     def as_lifecycle_fields(self) -> dict[str, Any]:
         return {
@@ -144,9 +145,9 @@ class PodMetadataSnapshot:
             "pod_created_at": self.creation_timestamp,
             "abnormal_reason": self.abnormal_reason,
             "abnormal_message": self.abnormal_message,
-            "pod_author": _coerce_str(self.labels.get("author")),
-            "pod_org": _coerce_str(self.labels.get("org")),
-            "pod_repo": _coerce_str(self.labels.get("repo")),
+            "pod_author": _pod_label_value(self.labels, "author"),
+            "pod_org": _pod_label_value(self.labels, "org"),
+            "pod_repo": _pod_label_value(self.labels, "repo"),
             "jenkins_label": _coerce_str(self.labels.get("jenkins/label")),
             "ci_job": _coerce_str(self.annotations.get("ci_job")),
         }
@@ -317,6 +318,13 @@ def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
                     )
                     if lifecycle_rows:
                         _upsert_pod_lifecycle(connection, lifecycle_rows)
+                        _upsert_pvc_pod_mappings(
+                            connection,
+                            _build_pvc_pod_mapping_rows(
+                                lifecycle_rows,
+                                pod_metadata_by_identity=pod_metadata_by_identity,
+                            ),
+                        )
                         summary.lifecycle_rows_upserted += len(lifecycle_rows)
             summary.pods_touched = len(affected_pods)
 
@@ -636,6 +644,10 @@ def _coerce_str_mapping(value: Any) -> dict[str, str]:
             continue
         output[key] = val
     return output
+
+
+def _pod_label_value(labels: dict[str, str], name: str) -> str | None:
+    return _coerce_str(labels.get(name)) or _coerce_str(labels.get(f"prow.k8s.io/refs.{name}"))
 
 
 def _json_dumps_or_none(value: dict[str, str]) -> str | None:
@@ -1544,8 +1556,8 @@ def _load_pod_metadata_snapshots(
         defaultdict(list)
     )
     for identity in pods:
-        source_project, namespace_name, _, pod_name = identity
-        if _infer_pod_build_system(namespace_name) != "JENKINS":
+        _source_project, namespace_name, _, pod_name = identity
+        if _infer_pod_build_system(namespace_name) not in {"JENKINS", "PROW_NATIVE"}:
             continue
         if namespace_name is None or pod_name is None:
             continue
@@ -1626,11 +1638,12 @@ def _list_namespace_pod_metadata(
     if not requested_pod_names:
         return {}
 
-    snapshots: dict[str, PodMetadataSnapshot] = {}
+    pod_items: dict[str, dict[str, Any]] = {}
+    requested_claim_names: set[str] = set()
     continue_token: str | None = None
     while True:
         query = {
-            "labelSelector": "jenkins/jenkins-jenkins-agent=true",
+            "labelSelector": _pod_metadata_label_selector(namespace_name),
             "limit": "500",
         }
         if continue_token:
@@ -1651,21 +1664,115 @@ def _list_namespace_pod_metadata(
                 pod_name = _coerce_str(metadata.get("name"))
                 if pod_name is None or pod_name not in requested_pod_names:
                     continue
-                snapshots[pod_name] = PodMetadataSnapshot(
-                    pod_uid=_coerce_str(metadata.get("uid")),
-                    labels=_coerce_str_mapping(metadata.get("labels")),
-                    annotations=_coerce_str_mapping(metadata.get("annotations")),
-                    observed_at=observed_at,
-                    creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
-                    **_extract_pod_abnormal_summary(item, observed_at=observed_at),
-                )
+                pod_items[pod_name] = item
+                requested_claim_names.update(_persistent_volume_claim_names(item))
         metadata_obj = response.get("metadata")
         continue_token = None
         if isinstance(metadata_obj, dict):
             continue_token = _coerce_str(metadata_obj.get("continue"))
-        if continue_token is None or requested_pod_names.issubset(set(snapshots)):
+        if continue_token is None or requested_pod_names.issubset(set(pod_items)):
             break
+
+    persistent_volume_names = _list_namespace_persistent_volume_names(
+        namespace_name=namespace_name,
+        requested_claim_names=requested_claim_names,
+        base_url=base_url,
+        token=token,
+        ca_file=ca_file,
+    )
+    snapshots: dict[str, PodMetadataSnapshot] = {}
+    for pod_name, item in pod_items.items():
+        metadata = item.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        volume_names = [
+            persistent_volume_names[claim_name]
+            for claim_name in _persistent_volume_claim_names(item)
+            if persistent_volume_names.get(claim_name) is not None
+        ]
+        snapshots[pod_name] = PodMetadataSnapshot(
+            pod_uid=_coerce_str(metadata.get("uid")),
+            labels=_coerce_str_mapping(metadata.get("labels")),
+            annotations=_coerce_str_mapping(metadata.get("annotations")),
+            observed_at=observed_at,
+            creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
+            persistent_volume_names=tuple(volume_names),
+            **_extract_pod_abnormal_summary(item, observed_at=observed_at),
+        )
     return snapshots
+
+
+def _pod_metadata_label_selector(namespace_name: str) -> str:
+    if _infer_pod_build_system(namespace_name) == "PROW_NATIVE":
+        return "created-by-prow=true"
+    return "jenkins/jenkins-jenkins-agent=true"
+
+
+def _persistent_volume_claim_names(pod: dict[str, Any]) -> tuple[str, ...]:
+    spec = pod.get("spec")
+    if not isinstance(spec, dict):
+        return ()
+    volumes = spec.get("volumes")
+    if not isinstance(volumes, list):
+        return ()
+    claim_names: list[str] = []
+    for volume in volumes:
+        if not isinstance(volume, dict):
+            continue
+        claim = volume.get("persistentVolumeClaim")
+        if not isinstance(claim, dict):
+            continue
+        claim_name = _coerce_str(claim.get("claimName"))
+        if claim_name is not None and claim_name not in claim_names:
+            claim_names.append(claim_name)
+    return tuple(claim_names)
+
+
+def _list_namespace_persistent_volume_names(
+    *,
+    namespace_name: str,
+    requested_claim_names: set[str],
+    base_url: str,
+    token: str,
+    ca_file: str | None,
+) -> dict[str, str | None]:
+    if not requested_claim_names:
+        return {}
+
+    persistent_volume_names: dict[str, str | None] = {}
+    remaining_claim_names = set(requested_claim_names)
+    continue_token: str | None = None
+    while True:
+        query = {"limit": "500"}
+        if continue_token:
+            query["continue"] = continue_token
+        url = (
+            f"{base_url}/api/v1/namespaces/{urllib_parse.quote(namespace_name, safe='')}"
+            f"/persistentvolumeclaims?{urllib_parse.urlencode(query)}"
+        )
+        response = _get_json(url, headers={"Authorization": f"Bearer {token}"}, ca_file=ca_file)
+        items = response.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                metadata = item.get("metadata")
+                if not isinstance(metadata, dict):
+                    continue
+                claim_name = _coerce_str(metadata.get("name"))
+                if claim_name is None or claim_name not in remaining_claim_names:
+                    continue
+                spec = item.get("spec")
+                persistent_volume_names[claim_name] = (
+                    _coerce_str(spec.get("volumeName")) if isinstance(spec, dict) else None
+                )
+                remaining_claim_names.remove(claim_name)
+        metadata_obj = response.get("metadata")
+        continue_token = None
+        if isinstance(metadata_obj, dict):
+            continue_token = _coerce_str(metadata_obj.get("continue"))
+        if continue_token is None or not remaining_claim_names:
+            return persistent_volume_names
 
 
 def _get_json(url: str, *, headers: dict[str, str], ca_file: str | None) -> dict[str, Any]:
@@ -1741,6 +1848,81 @@ def _upsert_pod_lifecycle(connection: Connection, rows: list[dict[str, Any]]) ->
     if not rows:
         return
     statement = _build_pod_lifecycle_upsert_statement(connection)
+    connection.execute(statement, rows)
+
+
+def _build_pvc_pod_mapping_rows(
+    lifecycle_rows: list[dict[str, Any]],
+    *,
+    pod_metadata_by_identity: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for lifecycle in lifecycle_rows:
+        source_project = _coerce_str(lifecycle.get("source_project"))
+        namespace_name = _coerce_str(lifecycle.get("namespace_name"))
+        pod_uid = _coerce_str(lifecycle.get("pod_uid"))
+        pod_name = _coerce_str(lifecycle.get("pod_name"))
+        if source_project is None or namespace_name is None or pod_uid is None or pod_name is None:
+            continue
+        identity = _pod_identity_from_values(
+            source_project=source_project,
+            namespace_name=namespace_name,
+            pod_uid=pod_uid,
+            pod_name=pod_name,
+        )
+        metadata = pod_metadata_by_identity.get(identity)
+        if metadata is None:
+            continue
+        for volume_name in metadata.persistent_volume_names:
+            rows.append(
+                {
+                    "vendor": "gcp",
+                    "account_id": source_project,
+                    "persistent_volume_name": volume_name,
+                    "pod_uid": pod_uid,
+                    "author": _coerce_str(lifecycle.get("pod_author")),
+                    "org": _coerce_str(lifecycle.get("pod_org")),
+                    "repo": _coerce_str(lifecycle.get("pod_repo")),
+                }
+            )
+    return rows
+
+
+def _upsert_pvc_pod_mappings(connection: Connection, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    if connection.dialect.name == "sqlite":
+        statement = text(
+            """
+            INSERT INTO cost_kubernetes_pvc_pod_mapping (
+              vendor, account_id, persistent_volume_name, pod_uid, author, org, repo
+            ) VALUES (
+              :vendor, :account_id, :persistent_volume_name, :pod_uid, :author, :org, :repo
+            )
+            ON CONFLICT(
+              vendor, account_id, persistent_volume_name, pod_uid
+            ) DO UPDATE SET
+              author = excluded.author,
+              org = excluded.org,
+              repo = excluded.repo,
+              updated_at = CURRENT_TIMESTAMP
+            """
+        )
+    else:
+        statement = text(
+            """
+            INSERT INTO cost_kubernetes_pvc_pod_mapping (
+              vendor, account_id, persistent_volume_name, pod_uid, author, org, repo
+            ) VALUES (
+              :vendor, :account_id, :persistent_volume_name, :pod_uid, :author, :org, :repo
+            )
+            ON DUPLICATE KEY UPDATE
+              author = VALUES(author),
+              org = VALUES(org),
+              repo = VALUES(repo),
+              updated_at = CURRENT_TIMESTAMP
+            """
+        )
     connection.execute(statement, rows)
 
 

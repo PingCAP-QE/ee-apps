@@ -4,23 +4,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.engine import Engine
 
 from ci_dashboard.api.dependencies import get_engine
-from ci_dashboard.api.queries.base import CommonFilters
-from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT
+from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
 from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_allocation_overview_page,
     get_cost_engineering_group_share_page,
+    get_cost_insight_page,
     get_cost_kubernetes_unallocated_page,
     get_cost_kubernetes_unallocated_records_page,
-    get_cost_insight_page,
-    get_cost_unattached_block_volumes_page,
-    get_cost_sources_page,
-    get_cost_share_page,
     get_cost_repo_group_stack_page,
+    get_cost_share_page,
+    get_cost_sources_page,
     get_cost_trend_page,
-    get_cost_unmatched_resources_page,
+    get_cost_unattached_block_volumes_page,
     get_cost_unattached_ebs_volumes_page,
+    get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
     get_cost_weekly_overview_page,
     get_flaky_page,
@@ -84,6 +83,10 @@ def cost_sources_page(
 def cost_trend_page(
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
+    allocation_basis: str = Query(
+        "current_attribution",
+        pattern="^(current_attribution|residual_allocated)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -92,6 +95,7 @@ def cost_trend_page(
         filters,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
@@ -103,6 +107,10 @@ def cost_share_page(
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
+    allocation_basis: str = Query(
+        "current_attribution",
+        pattern="^(current_attribution|residual_allocated)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -113,6 +121,7 @@ def cost_share_page(
         dimension=dimension,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
@@ -148,6 +157,10 @@ def cost_repo_group_stack_page(
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
+    allocation_basis: str = Query(
+        "current_attribution",
+        pattern="^(current_attribution|residual_allocated)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -158,15 +171,24 @@ def cost_repo_group_stack_page(
         group_by=group_by,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
 @router.get("/cost-engineering-group-share")
 def cost_engineering_group_share_page(
+    allocation_basis: str = Query(
+        "current_attribution",
+        pattern="^(current_attribution|residual_allocated)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_engineering_group_share_page(engine, filters)
+    return get_cost_engineering_group_share_page(
+        engine,
+        filters,
+        allocation_basis=allocation_basis,
+    )
 
 
 @router.get("/cost-unmatched-resources")

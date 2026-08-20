@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.engine import Engine
 
@@ -15,25 +16,27 @@ from ci_dashboard.api.queries.builds import (
     get_cloud_repo_share,
     get_duration_trend,
     get_longest_avg_success_jobs,
+    get_lowest_success_rate_jobs,
     get_migration_fixed_window_comparison,
     get_migration_runtime_comparison,
-    get_lowest_success_rate_jobs,
     get_outcome_trend,
 )
 from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
+)
+from ci_dashboard.api.queries.cost import (
     get_cost_allocation_overview,
-    get_kubernetes_unallocated_costs,
-    get_kubernetes_unallocated_records,
     get_cost_page,
     get_cost_share,
-    get_weekly_account_summaries,
-    list_cost_sources,
     get_cost_trend,
     get_engineering_group_share,
+    get_kubernetes_unallocated_costs,
+    get_kubernetes_unallocated_records,
     get_repo_group_cost_stack,
     get_unmatched_resources,
+    get_weekly_account_summaries,
     get_weekly_overview,
+    list_cost_sources,
 )
 from ci_dashboard.api.queries.ebs import get_unattached_block_volumes
 from ci_dashboard.api.queries.failures import (
@@ -42,16 +45,16 @@ from ci_dashboard.api.queries.failures import (
 )
 from ci_dashboard.api.queries.filters import list_repos
 from ci_dashboard.api.queries.flaky import (
-    get_flaky_bucketed_rate_view,
     get_distinct_flaky_case_counts_by_branch,
+    get_flaky_bucketed_rate_view,
     get_flaky_composition,
-    get_issue_fix_progress_snapshot,
-    get_issue_lifecycle_snapshot,
-    get_issue_lifecycle_weekly,
     get_flaky_period_comparison,
     get_flaky_top_jobs,
     get_flaky_trend,
     get_issue_filtered_weekly_case_rates,
+    get_issue_fix_progress_snapshot,
+    get_issue_lifecycle_snapshot,
+    get_issue_lifecycle_weekly,
 )
 from ci_dashboard.api.queries.runtime import (
     get_classification_coverage,
@@ -297,12 +300,14 @@ def get_cost_trend_page(
     *,
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_cost_trend(
         engine,
         _normalize_cost_filters(filters),
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
@@ -313,6 +318,7 @@ def get_cost_share_page(
     dimension: str = "owner",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_cost_share(
         engine,
@@ -320,6 +326,7 @@ def get_cost_share_page(
         dimension=dimension,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
@@ -351,6 +358,7 @@ def get_cost_repo_group_stack_page(
     group_by: str = "repo",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_repo_group_cost_stack(
         engine,
@@ -358,14 +366,21 @@ def get_cost_repo_group_stack_page(
         group_by=group_by,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
+        allocation_basis=allocation_basis,
     )
 
 
 def get_cost_engineering_group_share_page(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
-    return get_engineering_group_share(engine, _normalize_cost_filters(filters))
+    return get_engineering_group_share(
+        engine,
+        _normalize_cost_filters(filters),
+        allocation_basis=allocation_basis,
+    )
 
 
 def _get_previous_date_range(filters: CommonFilters) -> tuple[date | None, date | None]:

@@ -1,15 +1,18 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     JOB_NAME,
     GkeNodeCost,
     GkeWorkloadUsage,
+    _build_upsert_statement,
     build_gke_workload_allocation_rows,
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -73,6 +76,7 @@ def _sqlite_engine():
               allocation_method TEXT NOT NULL,
               allocation_version TEXT NOT NULL,
               dimension_hash TEXT NOT NULL,
+              source_summary_row_hash TEXT,
               calculated_at TEXT,
               updated_at TEXT,
               UNIQUE(usage_date, dimension_hash)
@@ -83,31 +87,87 @@ def _sqlite_engine():
     return engine
 
 
+def test_gke_allocation_upsert_updates_allocation_version() -> None:
+    sqlite_statement = str(
+        _build_upsert_statement(SimpleNamespace(dialect=SimpleNamespace(name="sqlite")))
+    )
+    mysql_statement = str(
+        _build_upsert_statement(SimpleNamespace(dialect=SimpleNamespace(name="mysql")))
+    )
+
+    assert "allocation_version = excluded.allocation_version" in sqlite_statement
+    assert "allocation_version = VALUES(allocation_version)" in mysql_statement
+
+
 def _node_cost_rows() -> list[dict[str, str | None]]:
     return [
         {
+            "billing_account_id": "billing-1",
+            "account_id": "pingcap-testing-account",
+            "export_partition_date": "2026-08-10",
             "usage_date": "2026-08-10",
+            "service_name": "Compute Engine",
+            "sku_name": "N2 Instance Core running in Americas",
+            "region": "us-central1",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "target_branch": None,
+            "resource_name": "projects/p/instances/gke-prow-a",
             "cluster_name": "prow",
             "cluster_location": "us-central1-c",
             "cost_component": "cpu",
             "list_cost": "100.00",
         },
         {
+            "billing_account_id": "billing-1",
+            "account_id": "pingcap-testing-account",
+            "export_partition_date": "2026-08-10",
             "usage_date": "2026-08-10",
+            "service_name": "Compute Engine",
+            "sku_name": "N2 Instance Ram running in Americas",
+            "region": "us-central1",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "target_branch": None,
+            "resource_name": "projects/p/instances/gke-prow-a",
             "cluster_name": "prow",
             "cluster_location": "us-central1-c",
             "cost_component": "memory",
             "list_cost": "50.00",
         },
         {
+            "billing_account_id": "billing-1",
+            "account_id": "pingcap-testing-account",
+            "export_partition_date": "2026-08-10",
             "usage_date": "2026-08-10",
+            "service_name": "Compute Engine",
+            "sku_name": "Persistent Disk",
+            "region": "us-central1",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "target_branch": None,
+            "resource_name": "pvc-123",
             "cluster_name": "prow",
             "cluster_location": "us-central1-c",
             "cost_component": "other",
             "list_cost": "15.00",
         },
         {
+            "billing_account_id": "billing-1",
+            "account_id": "pingcap-testing-account",
+            "export_partition_date": "2026-08-10",
             "usage_date": "2026-08-10",
+            "service_name": "Kubernetes Engine",
+            "sku_name": "Kubernetes Engine Cluster Management Fee",
+            "region": "us-central1",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "target_branch": None,
+            "resource_name": None,
             "cluster_name": None,
             "cluster_location": None,
             "cost_component": "control_plane",
@@ -169,7 +229,7 @@ def test_gke_allocation_splits_cpu_and_memory_and_keeps_non_metered_cost_unalloc
             rows = connection.execute(
                 text(
                     """
-                    SELECT allocation_scope, cost_component, workload_name, list_cost
+                    SELECT allocation_scope, cost_component, workload_name, list_cost, source_summary_row_hash
                     FROM cost_kubernetes_workload_allocation_daily
                     ORDER BY allocation_scope, cost_component, workload_name
                     """
@@ -190,13 +250,18 @@ def test_gke_allocation_splits_cpu_and_memory_and_keeps_non_metered_cost_unalloc
                 source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id),
             )
         assert rows == [
-            ("unallocated", "control_plane", None, 5.0),
-            ("unallocated", "other", None, 15.0),
-            ("workload_split", "cpu", "ticdc-unit", 75.0),
-            ("workload_split", "cpu", "tidb-unit", 25.0),
-            ("workload_split", "memory", "ticdc-unit", 25.0),
-            ("workload_split", "memory", "tidb-unit", 25.0),
+            ("unallocated", "control_plane", None, 5.0, rows[0][4]),
+            ("unallocated", "other", None, 15.0, rows[1][4]),
+            ("workload_split", "cpu", "ticdc-unit", 75.0, rows[2][4]),
+            ("workload_split", "cpu", "tidb-unit", 25.0, rows[3][4]),
+            ("workload_split", "memory", "ticdc-unit", 25.0, rows[4][4]),
+            ("workload_split", "memory", "tidb-unit", 25.0, rows[5][4]),
         ]
+        expected_source_hashes = {
+            row["cost_component"]: build_gcp_summary_row_hash({"vendor": "gcp", **row})
+            for row in _node_cost_rows()
+        }
+        assert {row[1]: row[4] for row in rows} == expected_source_hashes
         assert totals == [("unallocated", 20.0), ("workload_split", 150.0)]
         assert state is not None
         assert state.last_status == "succeeded"
@@ -240,6 +305,7 @@ def test_gke_allocation_keeps_recognized_compute_cost_unallocated_without_meteri
 def test_gke_allocation_weights_reconcile_after_quantization() -> None:
     node_cost = GkeNodeCost(
         usage_date=date(2026, 8, 10),
+        source_summary_row_hash="source-cpu",
         cluster_name="prow",
         cluster_location="us-central1-c",
         cost_component="cpu",
@@ -282,11 +348,14 @@ def test_gke_allocation_queries_use_positive_gke_cost_signals_and_metering_dimen
     usage_query = build_gcp_gke_workload_usage_query(gke_usage_table="project.dataset.gke_usage")
 
     assert "goog-k8s-cluster-name" in node_query
-    assert "resource.global_name AS global_name" in node_query
+    assert "billing_account_id" in node_query
+    assert "export_partition_date" in node_query
+    assert "COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1" in node_query
+    assert "resource.global_name AS raw_global_name" in node_query
     assert "NULLIF(cluster_name, '') IS NOT NULL" in node_query
-    assert "STARTS_WITH(LOWER(COALESCE(resource_name, '')), 'pvc-')" in node_query
-    assert "REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'/instances/gke-')" in node_query
-    assert "REGEXP_CONTAINS(LOWER(COALESCE(global_name, '')), r'/instances/gke-')" in node_query
+    assert "STARTS_WITH(LOWER(COALESCE(raw_resource_name, '')), 'pvc-')" in node_query
+    assert "REGEXP_CONTAINS(LOWER(COALESCE(raw_resource_name, '')), r'/instances/gke-')" in node_query
+    assert "REGEXP_CONTAINS(LOWER(COALESCE(raw_global_name, '')), r'/instances/gke-')" in node_query
     assert "service_name = 'Compute Engine'" in node_query
     assert "service_name = 'Kubernetes Engine'" in node_query
     assert "Compute Flexible Committed Use Discounts" in node_query

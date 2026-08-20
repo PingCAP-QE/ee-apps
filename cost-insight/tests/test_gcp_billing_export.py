@@ -18,6 +18,15 @@ def _assert_target_branch_label_keys(query: str) -> None:
     assert "'prow.k8s.io/refs.base_ref'" in query
 
 
+def _assert_prow_ref_label_keys(query: str) -> None:
+    assert "'k8s-label/prow.k8s.io/refs.author'" in query
+    assert "'prow.k8s.io/refs.author'" in query
+    assert "'k8s-label/prow.k8s.io/refs.org'" in query
+    assert "'prow.k8s.io/refs.org'" in query
+    assert "'k8s-label/prow.k8s.io/refs.repo'" in query
+    assert "'prow.k8s.io/refs.repo'" in query
+
+
 def _assert_region_bucket_expr(query: str) -> None:
     region_expr = _region_expr()
 
@@ -60,6 +69,7 @@ def test_build_gcp_billing_query_keeps_expected_dimensions() -> None:
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
     _assert_target_branch_label_keys(query)
+    _assert_prow_ref_label_keys(query)
     assert "target_branch" in query
     assert "k8s-workload-name" in query
     assert "cost_at_list" in query
@@ -89,8 +99,12 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "k8s-label/author" in query
     assert "k8s-label/repo" in query
     _assert_target_branch_label_keys(query)
+    _assert_prow_ref_label_keys(query)
     assert "target_branch" in query
-    assert "resource_name" not in query
+    assert "resource_name" in query
+    assert "NULLIF(resource.name, '')" in query
+    assert "NULLIF(resource.global_name, '')" in query
+    assert query.index("NULLIF(resource.name, '')") < query.index("k8s-workload-name")
     assert "service.description AS service_name" in query
     assert "sku.description AS sku_name" in query
     _assert_region_bucket_expr(query)
@@ -100,6 +114,15 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "Compute Flexible Committed Use Discounts - 1 Year" in query
     assert "wei_zheng" in query
     assert "LIMIT 20" in query
+
+
+def test_build_gcp_unmatched_resource_query_preserves_native_resource_name_and_labels() -> None:
+    query = build_gcp_unmatched_resource_query(billing_table="project.dataset.billing")
+
+    assert "TO_JSON_STRING(" in query
+    assert "JSON_OBJECT(" in query
+    assert "AS vendor_tags_json" in query
+    assert query.index("NULLIF(resource.name, '')") < query.index("k8s-workload-name")
 
 
 def test_build_gcp_unmatched_resource_query_keeps_resource_context() -> None:
