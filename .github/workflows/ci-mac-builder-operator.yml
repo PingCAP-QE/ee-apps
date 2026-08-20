@@ -28,7 +28,7 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           working-directory: mac-builder-operator
-          version: v2.4.0
+          version: v2.5.0
   test:
     name: Unit-Test
     runs-on: ubuntu-latest
