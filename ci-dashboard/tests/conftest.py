@@ -386,6 +386,7 @@ def _create_test_schema(engine: Engine) -> None:
           net_cost REAL NULL,
           source_rows INTEGER NOT NULL DEFAULT 0,
           dimension_hash TEXT NOT NULL,
+          source_summary_row_hash TEXT NULL,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """,
@@ -412,9 +413,25 @@ def _create_test_schema(engine: Engine) -> None:
           allocation_method TEXT NOT NULL,
           allocation_version TEXT NOT NULL,
           dimension_hash TEXT NOT NULL,
+          source_summary_row_hash TEXT NULL,
           calculated_at TEXT NULL,
           updated_at TEXT NULL,
           UNIQUE(usage_date, dimension_hash)
+        )
+        """,
+        """
+        CREATE TABLE cost_kubernetes_pvc_pod_mapping (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          persistent_volume_name TEXT NOT NULL,
+          pod_uid TEXT NOT NULL,
+          author TEXT NULL,
+          org TEXT NULL,
+          repo TEXT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(vendor, account_id, persistent_volume_name, pod_uid)
         )
         """,
         """

@@ -66,7 +66,7 @@ Recommended first deployment:
 - replicas: `1`
 - service account: `ci-dashboard`
 - target namespaces: `prow-test-pods,jenkins-tidb,jenkins-tiflow`
-- RBAC: `get`, `list`, `watch` on `pods` and `events` in target namespaces
+- RBAC: `get`, `list`, `watch` on `pods`, `persistentvolumeclaims`, and `events` in target namespaces
 
 On startup, each namespace is listed once and then watched from the returned
 `resourceVersion`. If the stream disconnects or the resource version expires,

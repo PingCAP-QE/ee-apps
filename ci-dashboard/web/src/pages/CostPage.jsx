@@ -23,11 +23,21 @@ import {
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
 const SHARED_COST_GROUP = "Efficiency & Quality";
+const COST_ALLOCATION_BASIS_OPTIONS = [
+  { key: "current_attribution", label: "Current attribution" },
+  { key: "residual_allocated", label: "K8S residual allocated" },
+];
+const COST_ALLOCATION_BASIS_LABELS = {
+  current_attribution: "Current attribution",
+  residual_allocated: "K8S residual allocated",
+};
 
 export default function CostPage({ filters }) {
   const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
   const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
+  const [allocationBasis, setAllocationBasis] = useState("current_attribution");
+  const [allocationNotice, setAllocationNotice] = useState("");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
@@ -69,16 +79,23 @@ export default function CostPage({ filters }) {
   const costTrendFilters = {
     ...costFilters,
     ...costDrilldownFilters,
+    allocation_basis: allocationBasis,
   };
   const costStackFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     group_by: effectiveCostBreakdownGroupBy,
+    allocation_basis: allocationBasis,
   };
   const costShareFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     dimension: effectiveCostBreakdownGroupBy,
+    allocation_basis: allocationBasis,
+  };
+  const engineeringGroupFilters = {
+    ...costFilters,
+    allocation_basis: allocationBasis,
   };
   const unmatchedResourceFilters = {
     ...costFilters,
@@ -90,7 +107,10 @@ export default function CostPage({ filters }) {
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
-  const engineeringGroupShare = useApiData("/api/v1/pages/cost-engineering-group-share", costFilters);
+  const engineeringGroupShare = useApiData(
+    "/api/v1/pages/cost-engineering-group-share",
+    engineeringGroupFilters,
+  );
   const unmatchedResources = useApiData(
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
@@ -117,8 +137,8 @@ export default function CostPage({ filters }) {
   const canDrillDownCostBreakdown =
     Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
   const costBreakdownSubtitle = costBreakdownDrilldown
-    ? `${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
-    : `Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
+    ? `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: ${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
+    : `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
   const weeklyLevel2Items = withSharedCostAllocation(
     weeklyOverview.data?.level2_share?.items,
     isWeeklyLevel2Shared,
@@ -182,6 +202,28 @@ export default function CostPage({ filters }) {
       setUnmatchedServiceName("");
     }
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
+
+  useEffect(() => {
+    if (
+      allocationBasis === "residual_allocated" &&
+      !costShare.loading &&
+      !costShare.error &&
+      costShare.responseKey === JSON.stringify(costShareFilters) &&
+      costShare.data?.meta?.allocation_basis !== "residual_allocated"
+    ) {
+      setAllocationBasis("current_attribution");
+      setAllocationNotice(
+        "K8S residual allocation is unavailable for this scope; showing current attribution.",
+      );
+    }
+  }, [
+    allocationBasis,
+    costShare.data?.meta?.allocation_basis,
+    costShare.error,
+    costShare.loading,
+    costShare.responseKey,
+    JSON.stringify(costShareFilters),
+  ]);
 
   return (
     <div className="page-stack">
@@ -342,6 +384,14 @@ export default function CostPage({ filters }) {
         className="cost-breakdown-panel"
         actions={
           <>
+            <CostAllocationBasisSelector
+              value={allocationBasis}
+              onChange={(nextBasis) => {
+                setAllocationBasis(nextBasis);
+                setAllocationNotice("");
+                setSelectedCostStackName("");
+              }}
+            />
             {costBreakdownDrilldown ? (
               <button
                 type="button"
@@ -362,6 +412,7 @@ export default function CostPage({ filters }) {
           </>
         }
       >
+        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
         <div className="cost-breakdown-grid">
           <DonutShareChart
             className="cost-share-donut"
@@ -394,10 +445,21 @@ export default function CostPage({ filters }) {
 
       <Panel
         title="Engineering Group allocation"
-        subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
+        subtitle={`${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: list cost share under Engineering Group, split once by direct child groups and once by second-level groups.`}
         loading={engineeringGroupShare.loading}
         error={engineeringGroupShare.error}
+        actions={
+          <CostAllocationBasisSelector
+            value={allocationBasis}
+            onChange={(nextBasis) => {
+              setAllocationBasis(nextBasis);
+              setAllocationNotice("");
+              setSelectedCostStackName("");
+            }}
+          />
+        }
       >
+        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
         <div className="donut-grid">
           <DonutShareChart
             title="Level 1 groups"
@@ -437,8 +499,8 @@ export default function CostPage({ filters }) {
       </Panel>
 
       <Panel
-        title="Top unmatched resources"
-        subtitle="Top 20 named resources without an employee match and without GKE workload allocation."
+        title="No-owner resource breakdown"
+        subtitle="Top 10 billable resources in the no-owner bucket. Labels are shown separately."
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
         actions={
@@ -491,6 +553,17 @@ function CostBreakdownGroupSelector({ value, onChange }) {
     <SegmentedControl
       ariaLabel="Cost breakdown grouping"
       options={COST_BREAKDOWN_GROUPS}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function CostAllocationBasisSelector({ value, onChange }) {
+  return (
+    <SegmentedControl
+      ariaLabel="Cost allocation basis"
+      options={COST_ALLOCATION_BASIS_OPTIONS}
       value={value}
       onChange={onChange}
     />

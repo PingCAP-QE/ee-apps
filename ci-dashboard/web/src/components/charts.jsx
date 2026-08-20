@@ -1683,7 +1683,7 @@ export function BucketFlakyRateTable({
 
 export function UnmatchedResourceTable({ items }) {
   if (!items?.length) {
-    return <EmptyState message="No unmatched unallocated named resources for the current filters." />;
+    return <EmptyState message="No named resources in the no-owner bucket for the current filters." />;
   }
 
   return (
@@ -1691,7 +1691,7 @@ export function UnmatchedResourceTable({ items }) {
       <table className="data-table data-table--compact">
         <thead>
           <tr>
-            <th>Resource name</th>
+            <th>Resource</th>
             <th>List cost</th>
             <th>Duration</th>
             <th>Service</th>

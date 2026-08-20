@@ -68,6 +68,7 @@ def _sqlite_engine():
               org TEXT,
               repo TEXT,
               target_branch TEXT,
+              resource_name TEXT,
               vendor_tags_json TEXT,
               author TEXT,
               source_schema_version TEXT,

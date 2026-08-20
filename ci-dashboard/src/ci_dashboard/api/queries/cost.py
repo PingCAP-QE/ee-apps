@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import calendar
+import json
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import date, timedelta
-import json
-from typing import Any, Mapping
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -38,7 +39,7 @@ COST_DRILLDOWN_CHILD_GROUPS = {
     "cost_driver": "sku",
 }
 LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
-UNMATCHED_RESOURCE_LIMIT = 20
+UNMATCHED_RESOURCE_LIMIT = 10
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
 KUBERNETES_UNALLOCATED_RECORD_LIMIT = 100
@@ -46,6 +47,11 @@ ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
 BUDGET_FALLBACK_MAX_DAYS = 31
+CURRENT_ATTRIBUTION_BASIS = "current_attribution"
+RESIDUAL_ALLOCATED_BASIS = "residual_allocated"
+VALID_COST_ALLOCATION_BASES = frozenset(
+    {CURRENT_ATTRIBUTION_BASIS, RESIDUAL_ALLOCATED_BASIS}
+)
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
 UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
@@ -74,6 +80,15 @@ class BudgetPeriod:
     @property
     def days(self) -> int:
         return max((self.end_date - self.start_date).days + 1, 1)
+
+
+@dataclass(frozen=True)
+class CostAllocationBasis:
+    """The cost rows and effective allocation basis for a dashboard request."""
+
+    name: str
+    from_clause: str = "cost_attribution_daily c"
+    cte: str = ""
 
 
 def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -113,10 +128,12 @@ def get_cost_trend(
     *,
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
-        from_clause = "cost_attribution_daily c"
+        basis = _cost_allocation_basis(connection, filters, allocation_basis)
+        from_clause = basis.from_clause
         drilldown = _cost_drilldown_filter(
             connection,
             child_group=None,
@@ -124,7 +141,7 @@ def get_cost_trend(
             drilldown_value=drilldown_value,
         )
         if drilldown:
-            from_clause = drilldown["from_clause"]
+            from_clause = _cost_basis_from_clause(basis, drilldown["from_clause"])
             where_clause = f"{where_clause} AND {drilldown['condition']}"
             params = {**params, **drilldown["params"]}
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
@@ -132,6 +149,7 @@ def get_cost_trend(
         rows = connection.execute(
             text(
                 f"""
+                {basis.cte}
                 SELECT
                   {bucket} AS bucket_start,
                   SUM(c.net_cost) AS net_cost,
@@ -155,6 +173,7 @@ def get_cost_trend(
         coverage_row = connection.execute(
             text(
                 f"""
+                {basis.cte}
                 SELECT
                   SUM({list_cost_expr}) AS total_resource_cost,
                   SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
@@ -205,6 +224,7 @@ def get_cost_trend(
                 else {}
             ),
             "budget_targets": budget_targets,
+            "allocation_basis": basis.name,
             "summary": {
                 "net_cost": round(summary_net_cost, 2),
                 "effective_cost": round(summary_effective_cost, 2),
@@ -803,12 +823,14 @@ def get_repo_group_cost_stack(
     group_by: str = "repo",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     if group_by not in VALID_COST_STACK_GROUPS:
         group_by = "repo"
 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        basis = _cost_allocation_basis(connection, filters, allocation_basis)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
         drilldown = _cost_drilldown_filter(
@@ -824,10 +846,12 @@ def get_repo_group_cost_stack(
                 "params": {**dimension["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
+        dimension = _cost_basis_dimension(basis, dimension)
         list_cost_expr = _billing_report_list_cost_expr("c")
         top_rows = connection.execute(
             text(
                 f"""
+                {basis.cte}
                 SELECT
                   {dimension["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
@@ -857,6 +881,7 @@ def get_repo_group_cost_stack(
                     dimension_key="group_by",
                     dimension=group_by,
                     drilldown=drilldown,
+                    allocation_basis=basis.name,
                 ),
             }
 
@@ -884,6 +909,7 @@ def get_repo_group_cost_stack(
         rows = connection.execute(
             text(
                 f"""
+                {basis.cte}
                 SELECT
                   {bucket} AS bucket_start,
                   {stack_dimension} AS dimension_name,
@@ -955,6 +981,7 @@ def get_repo_group_cost_stack(
             dimension_key="group_by",
             dimension=group_by,
             drilldown=drilldown,
+            allocation_basis=basis.name,
         ),
     }
 
@@ -966,12 +993,14 @@ def get_cost_share(
     dimension: str = "owner",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
+    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     if dimension not in VALID_COST_SHARE_DIMENSIONS:
         dimension = "owner"
 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        basis = _cost_allocation_basis(connection, filters, allocation_basis)
         dimension_config = _cost_share_dimension(connection, dimension)
         drilldown = _cost_drilldown_filter(
             connection,
@@ -986,10 +1015,12 @@ def get_cost_share(
                 "params": {**dimension_config["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
+        dimension_config = _cost_basis_dimension(basis, dimension_config)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
                 f"""
+                {basis.cte}
                 SELECT
                   {dimension_config["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
@@ -1028,6 +1059,7 @@ def get_cost_share(
         dimension=dimension,
         drilldown=drilldown,
         total_list_cost=round(total, 2),
+        allocation_basis=basis.name,
     )
     if dimension == "region":
         meta["highlight_threshold_pct"] = LOW_REGION_SHARE_THRESHOLD_PCT
@@ -1042,8 +1074,14 @@ def get_cost_share(
     }
 
 
-def get_engineering_group_share(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_engineering_group_share(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
+) -> dict[str, Any]:
     with engine.begin() as connection:
+        basis = _cost_allocation_basis(connection, filters, allocation_basis)
         root = connection.execute(
             text(
                 """
@@ -1059,12 +1097,26 @@ def get_engineering_group_share(engine: Engine, filters: CommonFilters) -> dict[
         ).mappings().first()
         if root is None:
             return {
-                "level1": {"items": [], "meta": {**filters.meta(), "group_name": ENGINEERING_GROUP_NAME}},
-                "level2": {"items": [], "meta": {**filters.meta(), "group_name": ENGINEERING_GROUP_NAME}},
+                "level1": {
+                    "items": [],
+                    "meta": {
+                        **filters.meta(),
+                        "group_name": ENGINEERING_GROUP_NAME,
+                        "allocation_basis": basis.name,
+                    },
+                },
+                "level2": {
+                    "items": [],
+                    "meta": {
+                        **filters.meta(),
+                        "group_name": ENGINEERING_GROUP_NAME,
+                        "allocation_basis": basis.name,
+                    },
+                },
             }
 
-        level1 = _engineering_share_by_level(connection, filters, root, level=1)
-        level2 = _engineering_share_by_level(connection, filters, root, level=2)
+        level1 = _engineering_share_by_level(connection, filters, root, level=1, basis=basis)
+        level2 = _engineering_share_by_level(connection, filters, root, level=2, basis=basis)
 
     return {
         "level1": level1,
@@ -1271,7 +1323,7 @@ def get_unmatched_resources(
                 MAX(c.attribution_status) AS attribution_status
               FROM cost_attribution_daily c
               WHERE {attr_where_clause}
-                AND c.employee_id IS NULL
+                AND NULLIF(c.owner, '') IS NULL
               GROUP BY
                 c.usage_date,
                 c.vendor,
@@ -1347,8 +1399,8 @@ def get_unmatched_resources(
                 unallocated_resources AS (
                   SELECT
                     resource_name,
-                    MAX(service_name) AS service_name,
-                    MAX(sku_name) AS sku_name,
+                    GROUP_CONCAT(DISTINCT service_name) AS service_name,
+                    GROUP_CONCAT(DISTINCT sku_name) AS sku_name,
                     MAX(org_name) AS org_name,
                     MAX(repo_name) AS repo_name,
                     MAX(target_branch) AS target_branch,
@@ -1439,7 +1491,9 @@ def _engineering_share_by_level(
     root: Any,
     *,
     level: int,
+    basis: CostAllocationBasis | None = None,
 ) -> dict[str, Any]:
+    basis = basis or CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
     where_clause, params = _build_cost_where(filters, table_alias="c")
     like_expr = _like_prefix_expr(connection, "c_group.path", "target_group.path")
     list_cost_expr = _billing_report_list_cost_expr("c")
@@ -1463,10 +1517,11 @@ def _engineering_share_by_level(
     rows = connection.execute(
         text(
             f"""
+            {basis.cte}
             SELECT
               target_group.name AS group_name,
               SUM({list_cost_expr}) AS list_cost
-            FROM cost_attribution_daily c
+            FROM {basis.from_clause}
             JOIN roster_groups c_group ON c_group.id = c.group_id
             {hierarchy_joins}
             WHERE {where_clause}
@@ -1501,6 +1556,7 @@ def _engineering_share_by_level(
             "group_name": ENGINEERING_GROUP_NAME,
             "level": level,
             "total_list_cost": round(total, 2),
+            "allocation_basis": basis.name,
         },
     }
 
@@ -1800,11 +1856,13 @@ def _cost_dimension_meta(
     dimension: str,
     drilldown: dict[str, Any] | None,
     total_list_cost: float | None = None,
+    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     meta: dict[str, Any] = {
         **filters.meta(),
         dimension_key: dimension,
         "limit": limit,
+        "allocation_basis": allocation_basis,
     }
     if total_list_cost is not None:
         meta["total_list_cost"] = total_list_cost
@@ -2037,6 +2095,289 @@ def _cost_filters(filters: CommonFilters) -> CommonFilters:
         cost_vendor=filters.cost_vendor,
         cost_account_id=filters.cost_account_id,
     )
+
+
+def _cost_allocation_basis(
+    connection: Connection,
+    filters: CommonFilters,
+    requested_basis: str,
+) -> CostAllocationBasis:
+    """Return replacement rows only when Kubernetes source lineage is complete."""
+    if requested_basis not in VALID_COST_ALLOCATION_BASES:
+        requested_basis = CURRENT_ATTRIBUTION_BASIS
+    if requested_basis != RESIDUAL_ALLOCATED_BASIS:
+        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
+    if not _cost_kubernetes_allocation_table_exists(connection):
+        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
+    if not all(
+        _table_has_column(connection, table_name, "source_summary_row_hash")
+        for table_name in (
+            "cost_attribution_daily",
+            "cost_kubernetes_workload_allocation_daily",
+        )
+    ):
+        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
+
+    cte, params = _residual_allocation_basis_cte(connection, filters)
+    has_replacement = connection.execute(
+        text(
+            f"""
+            {cte}
+            SELECT 1
+            FROM fully_allocated_sources
+            LIMIT 1
+            """
+        ),
+        params,
+    ).first()
+    if has_replacement is None:
+        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
+    return CostAllocationBasis(
+        RESIDUAL_ALLOCATED_BASIS,
+        from_clause="cost_basis c",
+        cte=cte,
+    )
+
+
+def _residual_allocation_basis_cte(
+    connection: Connection,
+    filters: CommonFilters,
+) -> tuple[str, dict[str, Any]]:
+    # Source rows usually have no branch. Apply a branch filter only after a
+    # workload allocation has supplied its workload branch dimension.
+    source_where_clause, params = _build_cost_where(
+        _cost_allocation_source_filters(filters),
+        table_alias="source",
+    )
+    source_match = _allocation_source_match("allocation", "source")
+    source_columns = """
+        id, usage_date, vendor, account_id, service_name, sku_name, usage_type,
+        cost_driver_key, region, org, repo, target_branch, resource_name,
+        vendor_tags_json, source_allocation_scope, namespace, author, owner,
+        service, project, service_exec_id, attribution_key, attribution_source,
+        attribution_status, allocate_method, employee_id, group_id, manager_id,
+        usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
+        source_rows, dimension_hash, source_summary_row_hash
+    """
+    allocated_cost_ratio = (
+        "CASE WHEN COALESCE(source.list_cost, 0) = 0 THEN 0 "
+        "ELSE allocation.allocated_list_cost / source.list_cost END"
+    )
+    employee_attribution_key = (
+        "'employee:' || allocation.allocation_employee_id"
+        if connection.dialect.name == "sqlite"
+        else "CONCAT('employee:', allocation.allocation_employee_id)"
+    )
+    cte = f"""
+        WITH candidate_allocation_facts AS (
+          SELECT allocation.id AS allocation_fact_id, source.id AS attribution_id
+          FROM cost_kubernetes_workload_allocation_daily allocation
+          JOIN cost_attribution_daily source
+            ON {source_match}
+          WHERE allocation.allocation_scope IN ('workload_split', 'unallocated')
+            AND NULLIF(allocation.source_summary_row_hash, '') IS NOT NULL
+            AND NULLIF(source.source_summary_row_hash, '') IS NOT NULL
+            AND {source_where_clause}
+        ), single_source_facts AS (
+          SELECT allocation_fact_id, MAX(attribution_id) AS attribution_id
+          FROM candidate_allocation_facts
+          GROUP BY allocation_fact_id
+          HAVING COUNT(*) = 1
+        ), matched_allocation_facts AS (
+          SELECT allocation_fact_id, attribution_id
+          FROM single_source_facts
+        ), fully_allocated_sources AS (
+          SELECT matched.attribution_id
+          FROM matched_allocation_facts matched
+          JOIN cost_kubernetes_workload_allocation_daily allocation
+            ON allocation.id = matched.allocation_fact_id
+          JOIN cost_attribution_daily source
+            ON source.id = matched.attribution_id
+          GROUP BY matched.attribution_id
+          HAVING ABS(
+            SUM(COALESCE(allocation.list_cost, 0))
+            - MAX(COALESCE(source.list_cost, 0))
+          ) <= 0.005
+        ), active_roster_identities AS (
+          SELECT
+            id AS employee_id,
+            email,
+            github_id,
+            group_id,
+            manager_id,
+            LOWER(NULLIF(email, '')) AS identity,
+            0 AS identity_priority
+          FROM roster_employees
+          WHERE is_active = 1
+            AND NULLIF(email, '') IS NOT NULL
+          UNION ALL
+          SELECT
+            id AS employee_id,
+            email,
+            github_id,
+            group_id,
+            manager_id,
+            LOWER(NULLIF(github_id, '')) AS identity,
+            1 AS identity_priority
+          FROM roster_employees
+          WHERE is_active = 1
+            AND NULLIF(github_id, '') IS NOT NULL
+        ), ranked_allocations AS (
+          SELECT
+            allocation.id AS allocation_fact_id,
+            source.id AS attribution_id,
+            allocation.cluster_location,
+            allocation.allocation_scope,
+            allocation.namespace AS allocation_namespace,
+            allocation.workload_name,
+            allocation.author AS allocation_author,
+            allocation.org AS allocation_org,
+            allocation.repo AS allocation_repo,
+            allocation.target_branch AS allocation_target_branch,
+            allocation.list_cost AS allocated_list_cost,
+            allocation.allocation_method,
+            allocation.dimension_hash AS allocation_dimension_hash,
+            roster.employee_id AS allocation_employee_id,
+            roster.email AS allocation_employee_email,
+            roster.github_id AS allocation_employee_github_id,
+            roster.group_id AS allocation_group_id,
+            roster.manager_id AS allocation_manager_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY allocation.id
+              ORDER BY COALESCE(roster.identity_priority, 2), roster.employee_id
+            ) AS roster_match_rank
+          FROM matched_allocation_facts matched
+          JOIN fully_allocated_sources full_source
+            ON full_source.attribution_id = matched.attribution_id
+          JOIN cost_kubernetes_workload_allocation_daily allocation
+            ON allocation.id = matched.allocation_fact_id
+          JOIN cost_attribution_daily source
+            ON source.id = matched.attribution_id
+          LEFT JOIN active_roster_identities roster
+            ON roster.identity = LOWER(NULLIF(allocation.author, ''))
+        ), allocated_rows AS (
+          SELECT {source_columns}
+          FROM cost_attribution_daily source
+          WHERE {source_where_clause}
+            AND id NOT IN (SELECT attribution_id FROM fully_allocated_sources)
+          UNION ALL
+          SELECT
+            source.id,
+            source.usage_date,
+            source.vendor,
+            source.account_id,
+            source.service_name,
+            source.sku_name,
+            source.usage_type,
+            source.cost_driver_key,
+            COALESCE(NULLIF(allocation.cluster_location, ''), source.region),
+            COALESCE(NULLIF(allocation.allocation_org, ''), source.org),
+            COALESCE(NULLIF(allocation.allocation_repo, ''), source.repo),
+            COALESCE(NULLIF(allocation.allocation_target_branch, ''), source.target_branch),
+            COALESCE(NULLIF(allocation.workload_name, ''), source.resource_name),
+            source.vendor_tags_json,
+            allocation.allocation_scope,
+            COALESCE(NULLIF(allocation.allocation_namespace, ''), source.namespace),
+            COALESCE(
+              NULLIF(allocation.allocation_employee_email, ''),
+              NULLIF(allocation.allocation_employee_github_id, ''),
+              NULLIF(allocation.allocation_author, '')
+            ),
+            COALESCE(
+              NULLIF(allocation.allocation_employee_email, ''),
+              NULLIF(allocation.allocation_employee_github_id, '')
+            ),
+            source.service,
+            source.project,
+            source.service_exec_id,
+            CASE
+              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_key
+              ELSE {employee_attribution_key}
+            END,
+            CASE
+              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_source
+              ELSE 'kubernetes_residual_allocation'
+            END,
+            CASE
+              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_status
+              ELSE 'matched'
+            END,
+            allocation.allocation_method,
+            allocation.allocation_employee_id,
+            allocation.allocation_group_id,
+            allocation.allocation_manager_id,
+            source.usage_seconds,
+            allocation.allocated_list_cost,
+            source.effective_cost * ({allocated_cost_ratio}),
+            source.credit_amount * ({allocated_cost_ratio}),
+            source.net_cost * ({allocated_cost_ratio}),
+            source.source_rows,
+            allocation.allocation_dimension_hash,
+            source.source_summary_row_hash
+          FROM ranked_allocations allocation
+          JOIN cost_attribution_daily source
+            ON source.id = allocation.attribution_id
+          WHERE allocation.roster_match_rank = 1
+        ), cost_basis AS (
+          SELECT {source_columns}
+          FROM allocated_rows
+        )
+    """
+    return cte, params
+
+
+def _cost_allocation_source_filters(filters: CommonFilters) -> CommonFilters:
+    return CommonFilters(
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        granularity=filters.granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
+    )
+
+
+def _allocation_source_match(allocation_alias: str, attribution_alias: str) -> str:
+    return f"""
+        {allocation_alias}.vendor = {attribution_alias}.vendor
+        AND {allocation_alias}.account_id = {attribution_alias}.account_id
+        AND {allocation_alias}.usage_date = {attribution_alias}.usage_date
+        AND {allocation_alias}.source_summary_row_hash
+            = {attribution_alias}.source_summary_row_hash
+    """
+
+
+def _cost_basis_from_clause(basis: CostAllocationBasis, from_clause: str) -> str:
+    return from_clause.replace("cost_attribution_daily c", basis.from_clause, 1)
+
+
+def _cost_basis_dimension(
+    basis: CostAllocationBasis,
+    dimension: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **dimension,
+        "from_clause": _cost_basis_from_clause(basis, dimension["from_clause"]),
+    }
+
+
+def _table_has_column(connection: Connection, table_name: str, column_name: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        rows = connection.execute(text(f"PRAGMA table_info({table_name})")).mappings()
+        return any(row["name"] == column_name for row in rows)
+    row = connection.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = :table_name
+              AND column_name = :column_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).first()
+    return row is not None
 
 
 def _build_cost_where(
@@ -2744,7 +3085,7 @@ def _money(value: Any) -> float:
 
 
 def _today() -> date:
-    return date.today()
+    return datetime.now(UTC).date()
 
 
 def _date_text(value: Any) -> str | None:

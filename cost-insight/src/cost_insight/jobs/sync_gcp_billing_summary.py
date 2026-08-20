@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import pickle
 import re
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, BinaryIO
 
 from sqlalchemy import text
@@ -16,11 +14,11 @@ from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.cost_drivers import classify_cost_driver
+from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
     bind_decimal_rows,
     coerce_date,
     coerce_datetime,
-    hash_value,
     normalize_vendor_tags_json,
     nullable_text,
 )
@@ -37,32 +35,6 @@ LOG = logging.getLogger(__name__)
 
 JOB_NAME = "sync_gcp_billing_summary"
 OWNER_OVERRIDE_DELETE_CHUNK_SIZE = 1000
-HASH_FIELDS = (
-    "vendor",
-    "account_id",
-    "billing_account_id",
-    "export_partition_date",
-    "usage_date",
-    "service_name",
-    "sku_name",
-    "region",
-    "author",
-    "org",
-    "repo",
-    "target_branch",
-    "vendor_tags_json",
-)
-SPLIT_HASH_FIELDS = HASH_FIELDS + (
-    "source_schema_version",
-    "source_allocation_scope",
-    "namespace",
-    "workload_name",
-    "workload_type",
-    "owner",
-    "service",
-    "project",
-    "service_exec_id",
-)
 SUMMARY_TABLE = "cost_bq_export_summary_daily"
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
@@ -94,7 +66,7 @@ def run_sync_gcp_billing_summary(
     fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
 ) -> SyncGcpBillingSummaryResult:
     resolved_end = export_partition_end or (
-        datetime.now(timezone.utc).date() - timedelta(days=settings.sync_lag_days)
+        datetime.now(UTC).date() - timedelta(days=settings.sync_lag_days)
     )
     job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
     with engine.begin() as connection:
@@ -246,7 +218,7 @@ def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
             "multiple billing account ids observed for cost source; keeping the first sorted id",
             extra={"billing_account_ids": sorted(billing_account_ids)},
         )
-    return sorted(billing_account_ids)[0]
+    return min(billing_account_ids)
 
 
 def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -265,6 +237,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "org": nullable_text(row.get("org")),
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
+        "resource_name": nullable_text(row.get("resource_name")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
         "source_schema_version": nullable_text(row.get("source_schema_version")),
         "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
@@ -294,12 +267,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_summary_row_hash(row: dict[str, Any]) -> str:
-    hash_fields = SPLIT_HASH_FIELDS if row.get("is_split_source") else HASH_FIELDS
-    if row.get("vendor_tags_json") is None:
-        hash_fields = tuple(field for field in hash_fields if field != "vendor_tags_json")
-    payload = {field: hash_value(row.get(field)) for field in hash_fields}
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return build_gcp_summary_row_hash(row)
 
 
 def write_summary_rows(
@@ -550,6 +518,7 @@ def _delete_superseded_unlabeled_summary_rows(
             "org": row.get("org") or "",
             "repo": row.get("repo") or "",
             "target_branch": row.get("target_branch") or "",
+            "resource_name": row.get("resource_name") or "",
         }
         for row in rows
         if row.get("vendor_tags_json") is not None
@@ -631,6 +600,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               org,
               repo,
               target_branch,
+              resource_name,
               vendor_tags_json,
               author,
               source_schema_version,
@@ -662,6 +632,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               :org,
               :repo,
               :target_branch,
+              :resource_name,
               :vendor_tags_json,
               :author,
               :source_schema_version,
@@ -692,6 +663,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = excluded.usage_type,
           cost_driver_key = excluded.cost_driver_key,
           region = excluded.region,
+          resource_name = excluded.resource_name,
           source_schema_version = excluded.source_schema_version,
           source_allocation_scope = excluded.source_allocation_scope,
           namespace = excluded.namespace,
@@ -721,6 +693,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           org,
           repo,
           target_branch,
+          resource_name,
           vendor_tags_json,
           author,
           source_schema_version,
@@ -752,6 +725,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           :org,
           :repo,
           :target_branch,
+          :resource_name,
           :vendor_tags_json,
           :author,
           :source_schema_version,
@@ -782,6 +756,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = VALUES(usage_type),
           cost_driver_key = VALUES(cost_driver_key),
           region = VALUES(region),
+          resource_name = VALUES(resource_name),
           source_schema_version = VALUES(source_schema_version),
           source_allocation_scope = VALUES(source_allocation_scope),
           namespace = VALUES(namespace),
@@ -894,6 +869,7 @@ _DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
       AND COALESCE(org, '') = :org
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
+      AND COALESCE(resource_name, '') = :resource_name
       AND vendor_tags_json IS NULL
     """
 )

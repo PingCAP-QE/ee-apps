@@ -4,6 +4,14 @@ from collections.abc import Iterator
 from datetime import date
 from typing import Any
 
+from cost_insight.sources.gcp_billing_export import (
+    _author_expr_with_overrides,
+    _org_expr,
+    _region_expr,
+    _repo_expr,
+    _target_branch_expr,
+)
+
 
 def fetch_gcp_gke_node_cost_rows(
     *,
@@ -76,65 +84,142 @@ def fetch_gcp_gke_workload_usage_rows(
 def build_gcp_gke_node_cost_query(*, billing_table: str) -> str:
     cluster_name_expr = _billing_label_expr("goog-k8s-cluster-name")
     cluster_location_expr = _billing_label_expr("goog-k8s-cluster-location")
+    author_expr = _author_expr_with_overrides()
+    org_expr = _org_expr()
+    repo_expr = _repo_expr()
+    target_branch_expr = _target_branch_expr()
+    region_expr = _region_expr()
+    resource_name_expr = f"""
+COALESCE(
+  NULLIF(resource.name, ''),
+  NULLIF(resource.global_name, ''),
+  {_billing_label_expr("k8s-workload-name")}
+)
+""".strip()
     return f"""
 WITH billing_rows AS (
   SELECT
+    billing_account_id,
+    project.id AS account_id,
+    _PARTITIONDATE AS export_partition_date,
     DATE(usage_start_time) AS usage_date,
-    {cluster_name_expr} AS cluster_name,
-    {cluster_location_expr} AS cluster_location,
     service.description AS service_name,
     sku.description AS sku_name,
-    resource.name AS resource_name,
-    resource.global_name AS global_name,
+    {region_expr} AS region,
+    {author_expr} AS author,
+    {org_expr} AS org,
+    {repo_expr} AS repo,
+    {target_branch_expr} AS target_branch,
+    {resource_name_expr} AS resource_name,
+    {cluster_name_expr} AS cluster_name,
+    {cluster_location_expr} AS cluster_location,
+    resource.name AS raw_resource_name,
+    resource.global_name AS raw_global_name,
     cost_at_list
   FROM `{billing_table}`
   WHERE _PARTITIONDATE BETWEEN @export_partition_start AND @export_partition_end
     AND project.id = @account_id
     AND DATE(usage_start_time) BETWEEN @usage_start_date AND @usage_end_date
-    -- CUD adjustments are not a node resource cost and are excluded from the
-    -- dashboard's list-cost calculation as well.
-    AND NOT STARTS_WITH(COALESCE(sku.description, ''), 'Compute Flexible Committed Use Discounts')
-), gke_node_costs AS (
+), gke_summary_sources AS (
   SELECT
+    billing_account_id,
+    account_id,
+    export_partition_date,
     usage_date,
-    cluster_name,
-    cluster_location,
+    service_name,
+    sku_name,
+    region,
+    author,
+    org,
+    repo,
+    target_branch,
+    resource_name,
+    CASE
+      WHEN COUNTIF(
+        NULLIF(cluster_name, '') IS NOT NULL
+        AND NULLIF(cluster_location, '') IS NOT NULL
+      ) = COUNT(*)
+      AND COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1
+        THEN MAX(cluster_name)
+      ELSE NULL
+    END AS cluster_name,
+    CASE
+      WHEN COUNTIF(
+        NULLIF(cluster_name, '') IS NOT NULL
+        AND NULLIF(cluster_location, '') IS NOT NULL
+      ) = COUNT(*)
+      AND COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1
+        THEN MAX(cluster_location)
+      ELSE NULL
+    END AS cluster_location,
     CASE
       WHEN REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(core|cpu|vcpu)\\b') THEN 'cpu'
       WHEN REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(ram|memory)\\b') THEN 'memory'
       ELSE 'other'
     END AS cost_component,
-    SUM(cost_at_list) AS list_cost,
+    ROUND(SUM(cost_at_list), 2) AS list_cost,
     COUNT(*) AS source_row_count
   FROM billing_rows
   WHERE service_name = 'Compute Engine'
-    -- A cluster label positively identifies all node-adjacent Compute Engine
-    -- resources, including disks, network, and IP charges.  Some GKE PD rows
-    -- arrive without labels but retain their Kubernetes PVC name, while a
-    -- resource/global name can still identify an unlabeled GKE instance.
-    AND (
-      NULLIF(cluster_name, '') IS NOT NULL
-      OR STARTS_WITH(LOWER(COALESCE(resource_name, '')), 'pvc-')
-      OR REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'/instances/gke-')
-      OR REGEXP_CONTAINS(LOWER(COALESCE(global_name, '')), r'/instances/gke-')
-    )
-  GROUP BY usage_date, cluster_name, cluster_location, cost_component
-), control_plane_costs AS (
-  SELECT
+    AND NOT STARTS_WITH(COALESCE(sku_name, ''), 'Compute Flexible Committed Use Discounts')
+  GROUP BY
+    billing_account_id,
+    account_id,
+    export_partition_date,
     usage_date,
+    service_name,
+    sku_name,
+    region,
+    author,
+    org,
+    repo,
+    target_branch,
+    resource_name
+  HAVING COUNTIF(
+    NULLIF(cluster_name, '') IS NOT NULL
+    OR STARTS_WITH(LOWER(COALESCE(raw_resource_name, '')), 'pvc-')
+    OR REGEXP_CONTAINS(LOWER(COALESCE(raw_resource_name, '')), r'/instances/gke-')
+    OR REGEXP_CONTAINS(LOWER(COALESCE(raw_global_name, '')), r'/instances/gke-')
+  ) = COUNT(*)
+), control_plane_summary_sources AS (
+  SELECT
+    billing_account_id,
+    account_id,
+    export_partition_date,
+    usage_date,
+    service_name,
+    sku_name,
+    region,
+    author,
+    org,
+    repo,
+    target_branch,
+    resource_name,
     CAST(NULL AS STRING) AS cluster_name,
     CAST(NULL AS STRING) AS cluster_location,
     'control_plane' AS cost_component,
-    SUM(cost_at_list) AS list_cost,
+    ROUND(SUM(cost_at_list), 2) AS list_cost,
     COUNT(*) AS source_row_count
   FROM billing_rows
   WHERE service_name = 'Kubernetes Engine'
-  GROUP BY usage_date
+  GROUP BY
+    billing_account_id,
+    account_id,
+    export_partition_date,
+    usage_date,
+    service_name,
+    sku_name,
+    region,
+    author,
+    org,
+    repo,
+    target_branch,
+    resource_name
 )
-SELECT * FROM gke_node_costs
+SELECT * FROM gke_summary_sources
 UNION ALL
-SELECT * FROM control_plane_costs
-ORDER BY usage_date, cluster_name, cluster_location, cost_component
+SELECT * FROM control_plane_summary_sources
+ORDER BY usage_date, service_name, sku_name, resource_name, cluster_name, cluster_location, cost_component
 """.strip()
 
 

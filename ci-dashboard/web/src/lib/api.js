@@ -149,10 +149,12 @@ export async function fetchJson(path, params = {}, signal) {
 }
 
 export function useApiData(path, params = {}, enabled = true) {
+  const requestKey = JSON.stringify(params);
   const [state, setState] = useState({
     data: null,
     loading: enabled,
     error: null,
+    responseKey: null,
   });
 
   useEffect(() => {
@@ -161,6 +163,7 @@ export function useApiData(path, params = {}, enabled = true) {
         data: null,
         loading: false,
         error: null,
+        responseKey: null,
       });
       return undefined;
     }
@@ -170,6 +173,7 @@ export function useApiData(path, params = {}, enabled = true) {
       data: current.data,
       loading: true,
       error: null,
+      responseKey: current.responseKey,
     }));
 
     fetchJson(path, params, controller.signal)
@@ -178,6 +182,7 @@ export function useApiData(path, params = {}, enabled = true) {
           data,
           loading: false,
           error: null,
+          responseKey: requestKey,
         });
       })
       .catch((error) => {
@@ -188,11 +193,12 @@ export function useApiData(path, params = {}, enabled = true) {
           data: null,
           loading: false,
           error: error instanceof Error ? error.message : "Unknown error",
+          responseKey: requestKey,
         });
       });
 
     return () => controller.abort();
-  }, [enabled, path, JSON.stringify(params)]);
+  }, [enabled, path, requestKey]);
 
   return state;
 }

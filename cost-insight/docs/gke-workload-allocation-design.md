@@ -89,10 +89,12 @@ Rows are keyed by `(usage_date, dimension_hash)`. A successful non-dry-run
 replace deletes and rewrites only the requested account and usage-date window;
 an empty recognized-node source is a no-op to avoid erasing a previous result.
 
-For each vendor/account/usage date with allocation facts, dashboard allocation
-queries use the facts as authoritative and exclude the equivalent legacy
-attribution rows. This prevents node or control-plane cost from being counted
-twice during the migration.
+Each allocation fact carries the exact GCP billing-summary row hash that it
+represents. Dashboard allocation queries replace a source attribution row only
+when that lineage is one-to-one and the allocation facts reconcile to the
+source list cost. Unmatched or ambiguous rows remain as current attribution.
+This prevents both double counting and the allocation of ordinary Compute
+Engine cost that happened to share a date or cluster.
 
 `target_branch` is a workload dimension. Unallocated facts have no workload
 identity and therefore no branch. A branch-filtered view intentionally includes
@@ -112,3 +114,27 @@ cost-insight sync-gcp-kubernetes-workload-allocations \
 `--export-partition-start` and `--export-partition-end` control the billing
 export scan for node and control-plane cost. The metering query uses its own
 ingestion partition pruning derived from the usage-date window.
+
+When enabling the dashboard's `K8S residual allocated` basis for historical
+data, apply the source-lineage migration first. Then re-import the billing
+summary, write the allocation facts, and refresh attribution in that order.
+All commands must use the same billing-export partition window so the hashes
+match:
+
+```bash
+cost-insight sync-gcp-billing-summary \
+  --export-partition-start 2026-08-10 \
+  --export-partition-end 2026-08-20 \
+  --replace-existing-partitions
+
+cost-insight sync-gcp-kubernetes-workload-allocations \
+  --usage-start-date 2026-08-10 \
+  --usage-end-date 2026-08-16 \
+  --export-partition-start 2026-08-10 \
+  --export-partition-end 2026-08-20
+
+cost-insight refresh-cost-attribution-from-summary \
+  --start-date 2026-08-10 \
+  --end-date 2026-08-16 \
+  --split-by-day
+```

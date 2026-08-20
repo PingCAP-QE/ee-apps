@@ -8,8 +8,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs import state_store
+from cost_insight.jobs.job_keys import source_job_name
 
 LOG = logging.getLogger(__name__)
 
@@ -603,7 +603,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       credit_amount,
       net_cost,
       source_rows,
-      dimension_hash
+      dimension_hash,
+      source_summary_row_hash
     )
     SELECT
       attributed.usage_date,
@@ -617,7 +618,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.org,
       attributed.repo,
       attributed.target_branch,
-      NULL AS resource_name,
+      attributed.resource_name,
       attributed.vendor_tags_json,
       attributed.source_allocation_scope,
       attributed.namespace,
@@ -654,7 +655,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           COALESCE(attributed.org, ''),
           COALESCE(attributed.repo, ''),
           COALESCE(attributed.target_branch, ''),
-          '',
+          COALESCE(attributed.resource_name, ''),
           COALESCE(attributed.vendor_tags_json, ''),
           COALESCE(attributed.source_allocation_scope, 'direct'),
           COALESCE(attributed.namespace, ''),
@@ -670,10 +671,12 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           COALESCE(attributed.attribution_status, ''),
           COALESCE(CAST(attributed.employee_id AS CHAR), ''),
           COALESCE(CAST(attributed.group_id AS CHAR), ''),
-          COALESCE(CAST(attributed.manager_id AS CHAR), '')
+          COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+          COALESCE(attributed.source_summary_row_hash, '')
         ),
         256
-      ) AS dimension_hash
+      ) AS dimension_hash,
+      attributed.source_summary_row_hash
     FROM (
       SELECT
         summary.usage_date,
@@ -684,19 +687,21 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.usage_type,
         summary.cost_driver_key,
         summary.region,
-        summary.org,
-        summary.repo,
+        COALESCE(summary.org, pvc_mapping.org) AS org,
+        COALESCE(summary.repo, pvc_mapping.repo) AS repo,
         summary.target_branch,
+        summary.resource_name,
         summary.vendor_tags_json,
         COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
         summary.namespace,
         summary.workload_name,
         summary.workload_type,
-        summary.author,
+        COALESCE(summary.author, pvc_mapping.author) AS author,
         {_MATCHED_OWNER} AS owner,
         summary.service,
         summary.project,
         summary.service_exec_id,
+        summary.source_row_hash AS source_summary_row_hash,
         CASE
           WHEN COALESCE(
             override_employee.id,
@@ -712,15 +717,21 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
               normalized_employee.id
             ) AS CHAR)
           )
-          WHEN summary.author IS NOT NULL THEN CONCAT('author:', LOWER(summary.author))
+          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+            THEN CONCAT('author:', LOWER(COALESCE(summary.author, pvc_mapping.author)))
           ELSE 'unattributed'
         END AS attribution_key,
         CASE
+          WHEN override_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_override'
+          WHEN github_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_github'
+          WHEN email_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_email'
+          WHEN normalized_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_normalized'
           WHEN override_employee.id IS NOT NULL THEN 'author_override'
           WHEN github_employee.id IS NOT NULL THEN 'author_github'
           WHEN email_employee.id IS NOT NULL THEN 'author_email'
           WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
           WHEN summary.author IS NOT NULL THEN 'author_label'
+          WHEN pvc_mapping.author IS NOT NULL THEN 'pvc_pod_author'
           ELSE 'missing_author'
         END AS attribution_source,
         CASE
@@ -730,7 +741,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
             email_employee.id,
             normalized_employee.id
           ) IS NOT NULL THEN 'matched'
-          WHEN summary.author IS NOT NULL THEN 'unmatched'
+          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL THEN 'unmatched'
           ELSE 'unattributed'
         END AS attribution_status,
         COALESCE(
@@ -757,27 +768,48 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.credit_amount,
         summary.net_cost
       FROM cost_bq_export_summary_daily summary
+      LEFT JOIN (
+        SELECT
+          vendor,
+          account_id,
+          persistent_volume_name,
+          MAX(author) AS author,
+          MAX(org) AS org,
+          MAX(repo) AS repo
+        FROM cost_kubernetes_pvc_pod_mapping
+        GROUP BY vendor, account_id, persistent_volume_name
+        HAVING COUNT(DISTINCT pod_uid) = 1
+           AND MAX(author) IS NOT NULL
+           AND MAX(author) <> ''
+      ) pvc_mapping
+        ON summary.vendor = 'gcp'
+       AND summary.author IS NULL
+       AND summary.resource_name IS NOT NULL
+       AND LOWER(summary.resource_name) LIKE 'pvc-%'
+       AND pvc_mapping.vendor = summary.vendor
+       AND pvc_mapping.account_id = summary.account_id
+       AND pvc_mapping.persistent_volume_name = summary.resource_name
       LEFT JOIN roster_employees override_employee
-        ON summary.author IS NOT NULL
+        ON COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
        AND override_employee.email IS NOT NULL
        AND LOWER(override_employee.email) = LOWER({_SUMMARY_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
         ON override_employee.id IS NULL
-       AND summary.author IS NOT NULL
+       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
        AND github_employee.github_id IS NOT NULL
-       AND LOWER(github_employee.github_id) = LOWER(summary.author)
+       AND LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))
       LEFT JOIN roster_employees email_employee
         ON github_employee.id IS NULL
-       AND summary.author IS NOT NULL
+       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
        AND email_employee.email IS NOT NULL
        AND (
-         LOWER(email_employee.email) = LOWER(summary.author)
-         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(summary.author)
+         LOWER(email_employee.email) = LOWER(COALESCE(summary.author, pvc_mapping.author))
+         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(COALESCE(summary.author, pvc_mapping.author))
        )
       LEFT JOIN roster_employees normalized_employee
         ON github_employee.id IS NULL
        AND email_employee.id IS NULL
-       AND summary.author IS NOT NULL
+       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
        AND (
          normalized_employee.github_id IS NOT NULL
          OR normalized_employee.email IS NOT NULL
@@ -812,6 +844,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.org,
       attributed.repo,
       attributed.target_branch,
+      attributed.resource_name,
       attributed.vendor_tags_json,
       attributed.source_allocation_scope,
       attributed.namespace,
@@ -827,7 +860,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.attribution_status,
       attributed.employee_id,
       attributed.group_id,
-      attributed.manager_id
+      attributed.manager_id,
+      attributed.source_summary_row_hash
     """
 )
 

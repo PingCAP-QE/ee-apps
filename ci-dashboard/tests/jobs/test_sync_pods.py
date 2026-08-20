@@ -39,6 +39,7 @@ from ci_dashboard.jobs.sync_pods import (
     _normalize_jenkins_runtime_url,
     _null_safe_equals_sql,
     _parse_jenkins_pod_name_build_ref,
+    _pod_metadata_label_selector,
     _pod_events_table_expr,
     _post_json,
     _read_int_env,
@@ -77,6 +78,7 @@ def _pod_metadata(
     annotations: dict[str, str] | None = None,
     pod_uid: str | None = None,
     creation_timestamp: datetime | None = None,
+    persistent_volume_names: tuple[str, ...] = (),
     **status_fields: object,
 ) -> PodMetadataSnapshot:
     return PodMetadataSnapshot(
@@ -85,6 +87,7 @@ def _pod_metadata(
         annotations=annotations or {},
         observed_at=datetime(2026, 4, 21, 9, 45, 0),
         creation_timestamp=creation_timestamp,
+        persistent_volume_names=persistent_volume_names,
         **status_fields,
     )
 
@@ -507,6 +510,71 @@ def test_sync_pods_metadata_fetch_and_logging_entry_normalization(monkeypatch: p
     assert snapshots["pod-a"].creation_timestamp == datetime(2026, 4, 20, 12, 49, 30)
 
 
+def test_sync_pods_metadata_fetches_prow_refs_and_persistent_volume_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_at = datetime(2026, 4, 20, 13, 0, 0)
+    calls: list[str] = []
+
+    def fake_get_json(url, **_kwargs):
+        calls.append(url)
+        if "/persistentvolumeclaims/claim-a" in url:
+            return {"spec": {"volumeName": "pvc-12345678-1234-1234-1234-123456789abc"}}
+        return {
+            "items": [
+                {
+                    "metadata": {
+                        "name": "pod-a",
+                        "uid": "uid-a",
+                        "creationTimestamp": "2026-04-20T12:49:30Z",
+                        "labels": {
+                            "prow.k8s.io/refs.author": "alice",
+                            "prow.k8s.io/refs.org": "pingcap",
+                            "prow.k8s.io/refs.repo": "tidb",
+                            "prow.k8s.io/job": "pull_unit_test",
+                        },
+                        "annotations": {},
+                    },
+                    "spec": {
+                        "volumes": [
+                            {"name": "workspace", "persistentVolumeClaim": {"claimName": "claim-a"}},
+                            {"name": "tmp", "emptyDir": {}},
+                        ]
+                    },
+                }
+            ],
+            "metadata": {},
+        }
+
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._get_json", fake_get_json)
+    snapshots = _list_namespace_pod_metadata(
+        namespace_name="prow-test-pods",
+        requested_pod_names={"pod-a"},
+        base_url="https://k8s.internal",
+        token="token",
+        ca_file=None,
+        observed_at=observed_at,
+    )
+
+    snapshot = snapshots["pod-a"]
+    assert _pod_metadata_label_selector("prow-test-pods") == "created-by-prow=true"
+    assert _pod_metadata_label_selector("jenkins-tidb") == "jenkins/jenkins-jenkins-agent=true"
+    assert snapshot.as_lifecycle_fields() == {
+        "pod_labels_json": '{"prow.k8s.io/job":"pull_unit_test","prow.k8s.io/refs.author":"alice","prow.k8s.io/refs.org":"pingcap","prow.k8s.io/refs.repo":"tidb"}',
+        "pod_annotations_json": None,
+        "metadata_observed_at": observed_at,
+        "pod_created_at": datetime(2026, 4, 20, 12, 49, 30),
+        "abnormal_reason": None,
+        "abnormal_message": None,
+        "pod_author": "alice",
+        "pod_org": "pingcap",
+        "pod_repo": "tidb",
+        "jenkins_label": None,
+        "ci_job": None,
+    }
+    assert snapshot.persistent_volume_names == ("pvc-12345678-1234-1234-1234-123456789abc",)
+    assert any("labelSelector=created-by-prow%3Dtrue" in url for url in calls)
+    assert any("/persistentvolumeclaims/claim-a" in url for url in calls)
+
+
 def test_sync_pods_metadata_fetch_extracts_status_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     observed_at = datetime(2026, 4, 20, 13, 0, 0)
     pages = iter(
@@ -743,6 +811,76 @@ def test_sync_pods_end_to_end_records_abnormal_summary(sqlite_engine, monkeypatc
     assert lifecycle["abnormal_message"] == "Container was OOM killed"
 
 
+def test_sync_pods_persists_prow_pvc_pod_mapping(sqlite_engine, monkeypatch) -> None:
+    entries = [
+        {
+            "insertId": "pvc-ins-1",
+            "logName": "projects/pingcap-testing-account/logs/events",
+            "timestamp": "2026-04-20T12:53:49Z",
+            "receiveTimestamp": "2026-04-20T12:53:54Z",
+            "resource": {
+                "labels": {
+                    "cluster_name": "prow",
+                    "location": "us-central1-c",
+                    "namespace_name": "prow-test-pods",
+                    "pod_name": "pod-pvc",
+                }
+            },
+            "jsonPayload": {
+                "reason": "Started",
+                "type": "Normal",
+                "message": "Started container test",
+                "reportingComponent": "kubelet",
+                "reportingInstance": "gke-node-1",
+                "involvedObject": {"uid": "uid-pvc"},
+                "firstTimestamp": "2026-04-20T12:53:49Z",
+                "lastTimestamp": "2026-04-20T12:53:49Z",
+            },
+        }
+    ]
+    monkeypatch.setattr("ci_dashboard.jobs.sync_pods._fetch_pod_event_entries", lambda **_: entries)
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_pod_metadata_snapshots",
+        lambda _pods: {
+            _pod_identity("prow-test-pods", "uid-pvc", "pod-pvc"): _pod_metadata(
+                pod_uid="uid-pvc",
+                creation_timestamp=datetime(2026, 4, 20, 12, 49, 30),
+                labels={
+                    "prow.k8s.io/refs.author": "alice",
+                    "prow.k8s.io/refs.org": "pingcap",
+                    "prow.k8s.io/refs.repo": "tidb",
+                    "prow.k8s.io/job": "pull_unit_test",
+                },
+                persistent_volume_names=("pvc-12345678-1234-1234-1234-123456789abc",),
+            )
+        },
+    )
+
+    summary = run_sync_pods(sqlite_engine, _settings(batch_size=10))
+
+    assert summary.lifecycle_rows_upserted == 1
+    with sqlite_engine.begin() as connection:
+        mapping = connection.execute(
+            text(
+                """
+                SELECT
+                  vendor, account_id, persistent_volume_name, pod_uid, author, org, repo
+                FROM cost_kubernetes_pvc_pod_mapping
+                """
+            )
+        ).mappings().one()
+
+    assert dict(mapping) == {
+        "vendor": "gcp",
+        "account_id": "pingcap-testing-account",
+        "persistent_volume_name": "pvc-12345678-1234-1234-1234-123456789abc",
+        "pod_uid": "uid-pvc",
+        "author": "alice",
+        "org": "pingcap",
+        "repo": "tidb",
+    }
+
+
 def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -841,6 +979,10 @@ def test_sync_pods_end_to_end_and_idempotent(sqlite_engine, monkeypatch) -> None
     monkeypatch.setattr(
         "ci_dashboard.jobs.sync_pods._fetch_pod_event_entries",
         lambda **_: entries,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_pods._load_pod_metadata_snapshots",
+        lambda _pods: {},
     )
 
     first = run_sync_pods(sqlite_engine, _settings(batch_size=2))
