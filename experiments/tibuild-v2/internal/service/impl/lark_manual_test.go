@@ -26,7 +26,9 @@ func TestSendLarkCard_Manual(t *testing.T) {
 	info := &NotificationInfo{
 		BuildID:   9999,
 		Product:   "pd",
+		Edition:   "enterprise",
 		Version:   "v9.0.0-test-card",
+		IsHotfix:  true,
 		Status:    "PROCESSING",
 		CreatedBy: receiver,
 		CreatedAt: "2026-07-02T10:00:00Z",
@@ -90,6 +92,7 @@ func TestSendLarkCard_Success_Manual(t *testing.T) {
 	info := &NotificationInfo{
 		BuildID:   9998,
 		Product:   "tikv",
+		Edition:   "community",
 		Version:   "v8.5.0",
 		Status:    "SUCCESS",
 		CreatedBy: receiver,

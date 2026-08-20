@@ -145,6 +145,19 @@ func TestNewLarkCardJSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "hotfix status",
+			info: &NotificationInfo{
+				BuildID:  1011,
+				Product:  "tidb",
+				Edition:  "enterprise",
+				Version:  "v8.5.0",
+				IsHotfix: true,
+				Status:   "SUCCESS",
+				Platform: "linux/amd64",
+				GitRef:   "abc123",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -172,6 +185,21 @@ func TestNewLarkCardJSON(t *testing.T) {
 			wantColor := StatusColor(tt.info.Status)
 			if got := header["template"]; got != wantColor {
 				t.Errorf("header.template = %v, want %v", got, wantColor)
+			}
+
+			title, ok := header["title"].(map[string]any)
+			if !ok {
+				t.Fatal("missing 'title' key in header")
+			}
+			titleContent, _ := title["content"].(string)
+			if tt.info.Edition != "" && !strings.Contains(titleContent, tt.info.Edition) {
+				t.Errorf("title.content %q missing edition %q", titleContent, tt.info.Edition)
+			}
+			if strings.Contains(titleContent, tt.info.Version) {
+				t.Errorf("title.content %q should not contain version %q", titleContent, tt.info.Version)
+			}
+			if tt.info.IsHotfix && !strings.Contains(titleContent, "HOTFIX") {
+				t.Errorf("title.content %q missing hotfix marker", titleContent)
 			}
 
 			// Verify elements exist
@@ -205,6 +233,7 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 	info := &NotificationInfo{
 		BuildID:  2001,
 		Product:  "tidb",
+		Edition:  "community",
 		Version:  "v8.5.0",
 		Status:   "SUCCESS",
 		Platform: "linux/amd64",
@@ -230,7 +259,7 @@ func TestNewLarkCardWithGoTemplate(t *testing.T) {
 		t.Fatal("missing 'title' key in header")
 	}
 
-	wantTitle := "✅ DevBuild #2001 - tidb v8.5.0"
+	wantTitle := "✅ DevBuild #2001 - tidb community"
 	if got := title["content"]; got != wantTitle {
 		t.Errorf("title.content = %v, want %v", got, wantTitle)
 	}

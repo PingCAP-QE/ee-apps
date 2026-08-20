@@ -3,7 +3,7 @@ config:
 header:
   template: {{ StatusColor .Status }}
   title:
-    content: "{{ StatusEmoji .Status }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Version }}"
+    content: "{{ StatusEmoji .Status }}{{ if .IsHotfix }} 🔥HOTFIX{{ end }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Edition }}"
     tag: plain_text
 elements:
   - tag: div
@@ -37,7 +37,11 @@ elements:
     content: |-
       **Request:**
       - **Product:** {{ .Product }}
+      - **Edition:** {{ .Edition }}
       - **Version:** {{ .Version }}
+      {{- if .IsHotfix }}
+      - **Hotfix:** 🔥 Yes
+      {{- end }}
       - **Platform:** {{ .Platform }}
       {{- with .GithubRepo }}
       - **Repository:** [{{ . }}](https://github.com/{{ . }})
