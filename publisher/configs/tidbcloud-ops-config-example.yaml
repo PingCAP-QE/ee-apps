@@ -8,7 +8,7 @@ tibuild_v2:
 
 stages:
   prod:
-    api_base_url: "https://ops-api.example.com"
+    api_base_url: "https://ops-api.example.com/api/v1"
     api_key: "replace-with-real-api-key"
     components:
       tidb:
