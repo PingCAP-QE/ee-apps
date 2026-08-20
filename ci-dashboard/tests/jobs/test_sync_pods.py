@@ -516,8 +516,20 @@ def test_sync_pods_metadata_fetches_prow_refs_and_persistent_volume_claim(monkey
 
     def fake_get_json(url, **_kwargs):
         calls.append(url)
-        if "/persistentvolumeclaims/claim-a" in url:
-            return {"spec": {"volumeName": "pvc-12345678-1234-1234-1234-123456789abc"}}
+        if "/persistentvolumeclaims?" in url:
+            return {
+                "items": [
+                    {
+                        "metadata": {"name": "claim-a"},
+                        "spec": {"volumeName": "pvc-12345678-1234-1234-1234-123456789abc"},
+                    },
+                    {
+                        "metadata": {"name": "claim-b"},
+                        "spec": {"volumeName": "pvc-abcdefab-cdef-cdef-cdef-abcdefabcdef"},
+                    },
+                ],
+                "metadata": {},
+            }
         return {
             "items": [
                 {
@@ -536,6 +548,7 @@ def test_sync_pods_metadata_fetches_prow_refs_and_persistent_volume_claim(monkey
                     "spec": {
                         "volumes": [
                             {"name": "workspace", "persistentVolumeClaim": {"claimName": "claim-a"}},
+                            {"name": "data", "persistentVolumeClaim": {"claimName": "claim-b"}},
                             {"name": "tmp", "emptyDir": {}},
                         ]
                     },
@@ -570,9 +583,12 @@ def test_sync_pods_metadata_fetches_prow_refs_and_persistent_volume_claim(monkey
         "jenkins_label": None,
         "ci_job": None,
     }
-    assert snapshot.persistent_volume_names == ("pvc-12345678-1234-1234-1234-123456789abc",)
+    assert snapshot.persistent_volume_names == (
+        "pvc-12345678-1234-1234-1234-123456789abc",
+        "pvc-abcdefab-cdef-cdef-cdef-abcdefabcdef",
+    )
     assert any("labelSelector=created-by-prow%3Dtrue" in url for url in calls)
-    assert any("/persistentvolumeclaims/claim-a" in url for url in calls)
+    assert sum("/persistentvolumeclaims?" in url for url in calls) == 1
 
 
 def test_sync_pods_metadata_fetch_extracts_status_fields(monkeypatch: pytest.MonkeyPatch) -> None:

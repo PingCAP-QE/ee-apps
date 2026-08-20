@@ -1638,8 +1638,8 @@ def _list_namespace_pod_metadata(
     if not requested_pod_names:
         return {}
 
-    snapshots: dict[str, PodMetadataSnapshot] = {}
-    persistent_volume_names: dict[str, str | None] = {}
+    pod_items: dict[str, dict[str, Any]] = {}
+    requested_claim_names: set[str] = set()
     continue_token: str | None = None
     while True:
         query = {
@@ -1664,34 +1664,41 @@ def _list_namespace_pod_metadata(
                 pod_name = _coerce_str(metadata.get("name"))
                 if pod_name is None or pod_name not in requested_pod_names:
                     continue
-                volume_names = []
-                for claim_name in _persistent_volume_claim_names(item):
-                    if claim_name not in persistent_volume_names:
-                        persistent_volume_names[claim_name] = _get_persistent_volume_name(
-                            namespace_name=namespace_name,
-                            claim_name=claim_name,
-                            base_url=base_url,
-                            token=token,
-                            ca_file=ca_file,
-                        )
-                    volume_name = persistent_volume_names[claim_name]
-                    if volume_name is not None:
-                        volume_names.append(volume_name)
-                snapshots[pod_name] = PodMetadataSnapshot(
-                    pod_uid=_coerce_str(metadata.get("uid")),
-                    labels=_coerce_str_mapping(metadata.get("labels")),
-                    annotations=_coerce_str_mapping(metadata.get("annotations")),
-                    observed_at=observed_at,
-                    creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
-                    persistent_volume_names=tuple(volume_names),
-                    **_extract_pod_abnormal_summary(item, observed_at=observed_at),
-                )
+                pod_items[pod_name] = item
+                requested_claim_names.update(_persistent_volume_claim_names(item))
         metadata_obj = response.get("metadata")
         continue_token = None
         if isinstance(metadata_obj, dict):
             continue_token = _coerce_str(metadata_obj.get("continue"))
-        if continue_token is None or requested_pod_names.issubset(set(snapshots)):
+        if continue_token is None or requested_pod_names.issubset(set(pod_items)):
             break
+
+    persistent_volume_names = _list_namespace_persistent_volume_names(
+        namespace_name=namespace_name,
+        requested_claim_names=requested_claim_names,
+        base_url=base_url,
+        token=token,
+        ca_file=ca_file,
+    )
+    snapshots: dict[str, PodMetadataSnapshot] = {}
+    for pod_name, item in pod_items.items():
+        metadata = item.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        volume_names = [
+            persistent_volume_names[claim_name]
+            for claim_name in _persistent_volume_claim_names(item)
+            if persistent_volume_names.get(claim_name) is not None
+        ]
+        snapshots[pod_name] = PodMetadataSnapshot(
+            pod_uid=_coerce_str(metadata.get("uid")),
+            labels=_coerce_str_mapping(metadata.get("labels")),
+            annotations=_coerce_str_mapping(metadata.get("annotations")),
+            observed_at=observed_at,
+            creation_timestamp=_parse_datetime(metadata.get("creationTimestamp")),
+            persistent_volume_names=tuple(volume_names),
+            **_extract_pod_abnormal_summary(item, observed_at=observed_at),
+        )
     return snapshots
 
 
@@ -1721,26 +1728,51 @@ def _persistent_volume_claim_names(pod: dict[str, Any]) -> tuple[str, ...]:
     return tuple(claim_names)
 
 
-def _get_persistent_volume_name(
+def _list_namespace_persistent_volume_names(
     *,
     namespace_name: str,
-    claim_name: str,
+    requested_claim_names: set[str],
     base_url: str,
     token: str,
     ca_file: str | None,
-) -> str | None:
-    url = (
-        f"{base_url}/api/v1/namespaces/{urllib_parse.quote(namespace_name, safe='')}"
-        f"/persistentvolumeclaims/{urllib_parse.quote(claim_name, safe='')}"
-    )
-    try:
-        claim = _get_json(url, headers={"Authorization": f"Bearer {token}"}, ca_file=ca_file)
-    except RuntimeError as exc:
-        if "HTTP 404" not in str(exc):
-            raise
-        return None
-    spec = claim.get("spec")
-    return _coerce_str(spec.get("volumeName")) if isinstance(spec, dict) else None
+) -> dict[str, str | None]:
+    if not requested_claim_names:
+        return {}
+
+    persistent_volume_names: dict[str, str | None] = {}
+    remaining_claim_names = set(requested_claim_names)
+    continue_token: str | None = None
+    while True:
+        query = {"limit": "500"}
+        if continue_token:
+            query["continue"] = continue_token
+        url = (
+            f"{base_url}/api/v1/namespaces/{urllib_parse.quote(namespace_name, safe='')}"
+            f"/persistentvolumeclaims?{urllib_parse.urlencode(query)}"
+        )
+        response = _get_json(url, headers={"Authorization": f"Bearer {token}"}, ca_file=ca_file)
+        items = response.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                metadata = item.get("metadata")
+                if not isinstance(metadata, dict):
+                    continue
+                claim_name = _coerce_str(metadata.get("name"))
+                if claim_name is None or claim_name not in remaining_claim_names:
+                    continue
+                spec = item.get("spec")
+                persistent_volume_names[claim_name] = (
+                    _coerce_str(spec.get("volumeName")) if isinstance(spec, dict) else None
+                )
+                remaining_claim_names.remove(claim_name)
+        metadata_obj = response.get("metadata")
+        continue_token = None
+        if isinstance(metadata_obj, dict):
+            continue_token = _coerce_str(metadata_obj.get("continue"))
+        if continue_token is None or not remaining_claim_names:
+            return persistent_volume_names
 
 
 def _get_json(url: str, *, headers: dict[str, str], ca_file: str | None) -> dict[str, Any]:

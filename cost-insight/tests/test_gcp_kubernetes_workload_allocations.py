@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine, text
 
@@ -11,6 +12,7 @@ from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     JOB_NAME,
     GkeNodeCost,
     GkeWorkloadUsage,
+    _build_upsert_statement,
     build_gke_workload_allocation_rows,
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -83,6 +85,18 @@ def _sqlite_engine():
         ):
             connection.execute(text(statement))
     return engine
+
+
+def test_gke_allocation_upsert_updates_allocation_version() -> None:
+    sqlite_statement = str(
+        _build_upsert_statement(SimpleNamespace(dialect=SimpleNamespace(name="sqlite")))
+    )
+    mysql_statement = str(
+        _build_upsert_statement(SimpleNamespace(dialect=SimpleNamespace(name="mysql")))
+    )
+
+    assert "allocation_version = excluded.allocation_version" in sqlite_statement
+    assert "allocation_version = VALUES(allocation_version)" in mysql_statement
 
 
 def _node_cost_rows() -> list[dict[str, str | None]]:

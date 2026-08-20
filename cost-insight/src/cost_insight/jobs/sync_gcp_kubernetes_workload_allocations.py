@@ -512,6 +512,7 @@ def _build_upsert_statement(connection: Connection):
               source_node_list_cost = excluded.source_node_list_cost,
               list_cost = excluded.list_cost,
               allocation_method = excluded.allocation_method,
+              allocation_version = excluded.allocation_version,
               source_summary_row_hash = excluded.source_summary_row_hash,
               calculated_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
@@ -535,6 +536,7 @@ def _build_upsert_statement(connection: Connection):
           source_node_list_cost = VALUES(source_node_list_cost),
           list_cost = VALUES(list_cost),
           allocation_method = VALUES(allocation_method),
+          allocation_version = VALUES(allocation_version),
           source_summary_row_hash = VALUES(source_summary_row_hash),
           calculated_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
