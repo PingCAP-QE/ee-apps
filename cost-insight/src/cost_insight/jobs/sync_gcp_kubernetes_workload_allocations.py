@@ -28,7 +28,7 @@ LOG = logging.getLogger(__name__)
 
 JOB_NAME = "sync_gcp_kubernetes_workload_allocations"
 ALLOCATION_TABLE = "cost_kubernetes_workload_allocation_daily"
-ALLOCATION_VERSION = "gke_metering_v1"
+ALLOCATION_VERSION = "gke_metering_v2"
 _CURRENCY_SCALE = Decimal("0.01")
 _WEIGHT_SCALE = Decimal("0.0000000000000001")
 

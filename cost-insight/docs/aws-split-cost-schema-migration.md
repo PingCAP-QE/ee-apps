@@ -270,6 +270,7 @@ from TCMS, or from a fallback.
 | `direct` | normal source line with no split child relationship |
 | `eks_pod` | cost emitted by the EKS pod split record |
 | `eks_parent_residual` | direct parent cost remaining after pod split cost |
+| `eks_unallocated` | EKS-associated EBS/PVC cost retained outside workload allocation |
 | `split_child` | future non-pod split child; retained instead of silently discarding it |
 
 `allocate_method` in `cost_attribution_daily` remains the Cost Insight/TCMS

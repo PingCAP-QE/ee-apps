@@ -25,7 +25,10 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "SavingsPlanCoveredUsage" not in query
     assert "line_item_line_item_type = 'Usage'" not in query
     assert "'eks_parent_residual' AS source_allocation_scope" in query
-    assert "STARTS_WITH(COALESCE(child.resource_name, ''), ':pod/')" in query
+    assert "eks_parent_tags AS" in query
+    assert "REGEXP_CONTAINS(LOWER(COALESCE(child.resource_name, '')), r'(^|:)pod/')" in query
+    assert "OR child.namespace IS NOT NULL" in query
+    assert "THEN 'eks_unallocated'" in query
     assert "resource_tags_user_icost_owner_email" in query
     assert "COALESCE(split_line_item_split_usage, 0) AS split_usage_amount" in query
     assert "source_allocation_scope" in query
@@ -141,6 +144,9 @@ def test_split_residual_ledger_query_keeps_parent_pod_grain() -> None:
     assert "pod_resource_id" in query
     assert "source_pod_split_list_cost" in query
     assert "parent_residual_list_cost" in query
+    assert "'eks-tag:'" in query
+    assert "REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'(^|:)pod/')" in query
+    assert "OR namespace IS NOT NULL" in query
 
 
 @pytest.mark.parametrize(

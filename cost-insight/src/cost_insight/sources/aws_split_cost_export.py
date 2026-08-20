@@ -339,7 +339,15 @@ pod_split AS (
     account_id,
     usage_date,
     parent_resource_name,
-    resource_name AS pod_resource_id,
+    COALESCE(
+      resource_name,
+      CONCAT(
+        'eks-tag:',
+        COALESCE(namespace, ''), ':',
+        COALESCE(workload_name, ''), ':',
+        COALESCE(workload_type, '')
+      )
+    ) AS pod_resource_id,
     ANY_VALUE(namespace) AS namespace,
     ANY_VALUE(workload_name) AS workload_name,
     ANY_VALUE(workload_type) AS workload_type,
@@ -350,12 +358,23 @@ pod_split AS (
     SUM(split_list_cost) AS source_pod_split_list_cost
   FROM raw
   WHERE parent_resource_name IS NOT NULL
-    AND STARTS_WITH(COALESCE(resource_name, ''), ':pod/')
+    AND (
+      REGEXP_CONTAINS(LOWER(COALESCE(resource_name, '')), r'(^|:)pod/')
+      OR namespace IS NOT NULL
+    )
   GROUP BY
     account_id,
     usage_date,
     parent_resource_name,
-    resource_name
+    COALESCE(
+      resource_name,
+      CONCAT(
+        'eks-tag:',
+        COALESCE(namespace, ''), ':',
+        COALESCE(workload_name, ''), ':',
+        COALESCE(workload_type, '')
+      )
+    )
 )
 SELECT
   'aws' AS vendor,
@@ -477,6 +496,18 @@ parent_keys AS (
   FROM raw
   WHERE parent_resource_name IS NOT NULL
 ),
+eks_parent_tags AS (
+  SELECT DISTINCT
+    parent.shared_pool,
+    parent.cluster
+  FROM raw AS parent
+  JOIN parent_keys
+    ON parent_keys.account_id = parent.account_id
+   AND parent_keys.usage_date = parent.usage_date
+   AND parent_keys.parent_resource_name = parent.resource_name
+  WHERE parent.parent_resource_name IS NULL
+    AND (parent.shared_pool IS NOT NULL OR parent.cluster IS NOT NULL)
+),
 parent_direct AS (
   SELECT
     raw.account_id,
@@ -574,7 +605,24 @@ branch_rows AS (
     raw.usage_amount AS usage_amount,
     raw.cluster,
     raw.shared_pool,
-    'direct' AS source_allocation_scope,
+    CASE
+      -- EBS volumes are the billing representation of EKS PVCs. Only retain
+      -- volumes with an explicit cluster/shared-pool signal as Kubernetes;
+      -- untagged volumes remain ordinary direct cost.
+      WHEN raw.service_name = 'AmazonEC2'
+        AND STARTS_WITH(LOWER(COALESCE(raw.resource_name, '')), 'vol-')
+        AND (
+          raw.cluster IS NOT NULL
+          OR EXISTS (
+            SELECT 1
+            FROM eks_parent_tags
+            WHERE eks_parent_tags.shared_pool IS NOT NULL
+              AND eks_parent_tags.shared_pool = raw.shared_pool
+          )
+        )
+        THEN 'eks_unallocated'
+      ELSE 'direct'
+    END AS source_allocation_scope,
     raw.direct_list_cost AS list_cost,
     raw.direct_effective_cost AS effective_cost,
     raw.direct_effective_cost AS net_cost,
@@ -687,7 +735,11 @@ branch_rows AS (
     child.cluster,
     child.shared_pool,
     CASE
-      WHEN STARTS_WITH(COALESCE(child.resource_name, ''), ':pod/') THEN 'eks_pod'
+      -- Some split-cost exports identify a workload through the EKS namespace
+      -- allocation tag rather than a pod ARN. Both are direct EKS evidence.
+      WHEN REGEXP_CONTAINS(LOWER(COALESCE(child.resource_name, '')), r'(^|:)pod/')
+        OR child.namespace IS NOT NULL
+        THEN 'eks_pod'
       ELSE 'split_child'
     END AS source_allocation_scope,
     child.split_list_cost AS list_cost,

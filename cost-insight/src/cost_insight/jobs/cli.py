@@ -36,6 +36,9 @@ from cost_insight.jobs.sync_aws_billing_summary import (
 from cost_insight.jobs.sync_aws_parent_residual_allocations import (
     run_sync_aws_parent_residual_allocations,
 )
+from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
+    run_sync_aws_kubernetes_workload_allocations,
+)
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
@@ -146,6 +149,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync_gke_allocations.add_argument("--export-partition-start", type=_parse_date, default=None)
     sync_gke_allocations.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_gke_allocations.add_argument("--dry-run", action="store_true")
+
+    sync_eks_allocations = subparsers.add_parser(
+        "sync-aws-kubernetes-workload-allocations",
+        help="Publish conservative EKS workload and unallocated cost facts from split-cost data",
+    )
+    sync_eks_allocations.add_argument("--usage-start-date", type=_parse_date, required=True)
+    sync_eks_allocations.add_argument("--usage-end-date", type=_parse_date, required=True)
+    sync_eks_allocations.add_argument("--dry-run", action="store_true")
 
     sync_aws_unmatched = subparsers.add_parser(
         "sync-aws-unmatched-resources",
@@ -431,6 +442,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                             validate_guardrail=False,
                         )
                     )
+                    summaries.append(
+                        run_sync_aws_kubernetes_workload_allocations(
+                            engine,
+                            source=source,
+                            usage_start_date=min(split_usage_dates),
+                            usage_end_date=max(split_usage_dates),
+                            dry_run=args.dry_run,
+                            batch_size=settings.aws_billing.page_size,
+                        )
+                    )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:
@@ -472,6 +493,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                         export_partition_start=args.export_partition_start,
                         export_partition_end=args.export_partition_end,
                         dry_run=args.dry_run,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-aws-kubernetes-workload-allocations":
+        engine = build_engine(settings)
+        try:
+            summaries = []
+            for source in _resolve_aws_sources(engine, settings=settings.aws_billing):
+                if source.schema_version != AWS_SPLIT_COST_SCHEMA_VERSION:
+                    continue
+                summaries.append(
+                    run_sync_aws_kubernetes_workload_allocations(
+                        engine,
+                        source=source,
+                        usage_start_date=args.usage_start_date,
+                        usage_end_date=args.usage_end_date,
+                        dry_run=args.dry_run,
+                        batch_size=settings.aws_billing.page_size,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
@@ -598,6 +641,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     validate_guardrail=False,
                 )
+                kubernetes_allocations = run_sync_aws_kubernetes_workload_allocations(
+                    cutover_engine,
+                    source=source,
+                    usage_start_date=args.usage_start_date,
+                    usage_end_date=args.usage_end_date,
+                    dry_run=args.dry_run,
+                    batch_size=settings.aws_billing.page_size,
+                )
                 attribution = run_refresh_cost_attribution_from_summary(
                     cutover_engine,
                     source=CostAttributionSource(vendor="aws", account_id=source.account_id),
@@ -606,7 +657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     tcms_allocation_table=settings.tcms_allocation.allocation_table,
                 )
-                cutover_summaries.extend((residual_allocations, attribution))
+                cutover_summaries.extend((residual_allocations, kubernetes_allocations, attribution))
             print(
                 json.dumps(
                     _summaries_to_json(cutover_summaries),
