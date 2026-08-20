@@ -131,12 +131,16 @@ func TestRequestSyncKernelImageWithTag(t *testing.T) {
 
 func TestRequestSyncKernelImageWithBranch(t *testing.T) {
 	var got OpsKernelImageSyncRequest
+	tibuildCalled := false
 	s := newKernelImageTestSvc(t, testKernelImageMeta(false), func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &got)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	}, tibuildMetadataHandler(t, "release-nextgen-20251015", "xieyujie@pingcap.com", "", ""))
+	}, func(w http.ResponseWriter, r *http.Request) {
+		tibuildCalled = true
+		http.Error(w, "tibuild should not be called", http.StatusInternalServerError)
+	})
 
 	p := &tidbcloud.RequestSyncKernelImagePayload{
 		Stage: "dev",
@@ -145,11 +149,34 @@ func TestRequestSyncKernelImageWithBranch(t *testing.T) {
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err != nil {
 		t.Fatalf("RequestSyncKernelImage() error = %v", err)
 	}
+	if tibuildCalled {
+		t.Fatal("tibuild tag metadata query should be skipped for non-git-tag image tags")
+	}
 	if got.GitTag != "" || got.Branch != "release-nextgen-20251015" {
 		t.Fatalf("request body = %+v, want branch set and git_tag empty", got)
 	}
-	if got.SourceReleaseID != "" || got.SourceChangeID != "" {
-		t.Fatalf("request body = %+v, want optional ids omitted", got)
+	if got.SourceApplicant != "" || got.SourceReleaseID != "" || got.SourceChangeID != "" {
+		t.Fatalf("request body = %+v, want applicant fields omitted for non-git-tag image tags", got)
+	}
+}
+
+func TestRequestSyncKernelImageMetadataUnavailable(t *testing.T) {
+	var got OpsKernelImageSyncRequest
+	s := newKernelImageTestSvc(t, testKernelImageMeta(true), func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "tag not found", http.StatusNotFound)
+	})
+
+	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Image: testImage}
+	if _, err := s.RequestSyncKernelImage(context.Background(), p); err != nil {
+		t.Fatalf("RequestSyncKernelImage() error = %v, want success with empty applicant", err)
+	}
+	if got.SourceApplicant != "" || got.SourceReleaseID != "" || got.SourceChangeID != "" {
+		t.Fatalf("request body = %+v, want applicant fields empty when tibuild metadata is unavailable", got)
 	}
 }
 
@@ -224,6 +251,6 @@ func TestRequestSyncKernelImageErrors(t *testing.T) {
 
 	s.opsCfg = &OpsConfig{Stages: map[string]OpsStageConfig{"dev": {APIBaseURL: "http://127.0.0.1:1", APIKey: "test-key"}}}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err == nil {
-		t.Fatal("expected error when tibuild metadata unavailable and applicant unresolvable")
+		t.Fatal("expected error when ops callback fails")
 	}
 }

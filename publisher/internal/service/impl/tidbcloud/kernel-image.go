@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -11,6 +12,10 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/PingCAP-QE/ee-apps/publisher/internal/service/gen/tidbcloud"
+)
+
+const (
+	syncKernelImageApiURL = "/devops/kernel-images/build-callback"
 )
 
 // kernelImageMeta holds source code metadata read from the source image labels.
@@ -73,20 +78,24 @@ func (s *tidbcloudsrvc) RequestSyncKernelImage(ctx context.Context, p *tidbcloud
 		return "", err
 	}
 
-	// Read applicant/release/change from tibuild tag metadata.
+	// Resolve applicant/release/change from tibuild tag metadata. Only real
+	// tidbx git tags (vX.Y.Z, vX.Y.Z-nextgen or legacy vX.Y.Z-nextgen.YYYYMM.N)
+	// carry this metadata; other image tags (e.g. <branch>-<commit> daily
+	// builds) have no git tag to query, so skip the tibuild-v2 call. The fields
+	// are optional: when the metadata is unavailable they are left empty instead
+	// of failing the request.
 	var sourceApplicant, sourceReleaseID, sourceChangeID string
-	md, mdErr := s.getTiBuildTagMetadata(ctx, meta.Repo, sourceTag)
-	if mdErr != nil {
-		s.Logger.Warn().Err(mdErr).Str("repo", meta.Repo).Str("tag", sourceTag).Msg("failed to get tibuild tag metadata for kernel image")
-	} else if md != nil {
-		sourceApplicant = md.Author
-		sourceReleaseID = md.Meta.OpsReq.ReleaseID
-		sourceChangeID = md.Meta.OpsReq.ChangeID
-	}
-	if sourceApplicant == "" {
-		err = fmt.Errorf("source_applicant is empty: unresolvable from tibuild tag metadata")
-		s.Logger.Error().Err(err).Str("repo", meta.Repo).Str("tag", sourceTag).Msg("tidbcloud.request-sync-kernel-image failed")
-		return "", err
+	if isSupportedKernelImageTag(sourceTag) {
+		md, mdErr := s.getTiBuildTagMetadata(ctx, meta.Repo, sourceTag)
+		if mdErr != nil {
+			s.Logger.Warn().Err(mdErr).Str("repo", meta.Repo).Str("tag", sourceTag).Msg("failed to get tibuild tag metadata for kernel image")
+		} else if md != nil {
+			sourceApplicant = md.Author
+			sourceReleaseID = md.Meta.OpsReq.ReleaseID
+			sourceChangeID = md.Meta.OpsReq.ChangeID
+		}
+	} else {
+		s.Logger.Info().Str("repo", meta.Repo).Str("tag", sourceTag).Msg("skip tibuild tag metadata query: source tag is not a supported tidbx git tag")
 	}
 
 	payload := OpsKernelImageSyncRequest{
@@ -114,7 +123,7 @@ func (s *tidbcloudsrvc) RequestSyncKernelImage(ctx context.Context, p *tidbcloud
 	resp, err := client.R().
 		SetContext(ctx).
 		SetBody(&payload).
-		Post("/devops/kernel-images/build-callback")
+		Post(syncKernelImageApiURL)
 	if err != nil {
 		err = fmt.Errorf("call ops kernel image build callback: %w", err)
 		s.Logger.Error().
@@ -189,4 +198,13 @@ func classifyKernelImageRef(ref string) (gitTag, branch string) {
 		return ref, ""
 	}
 	return "", ref
+}
+
+var supportedKernelImageTagRegexp = regexp.MustCompile(`^v\d+\.\d+\.\d+(-nextgen(\.\d{6}\.\d+)?)?$`)
+
+// isSupportedKernelImageTag reports whether the image tag can be resolved to a
+// real tidbx git tag (vX.Y.Z, vX.Y.Z-nextgen or legacy vX.Y.Z-nextgen.YYYYMM.N),
+// and thus whether tibuild-v2 may hold tag metadata for it.
+func isSupportedKernelImageTag(tag string) bool {
+	return supportedKernelImageTagRegexp.MatchString(tag)
 }
