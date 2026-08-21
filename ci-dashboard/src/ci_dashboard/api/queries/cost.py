@@ -45,6 +45,7 @@ LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 UNMATCHED_RESOURCE_LIMIT = 10
 UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
+NO_OWNER_LABEL = "(no owner)"
 KUBERNETES_UNALLOCATED_RECORD_LIMIT = 100
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
@@ -57,12 +58,6 @@ VALID_COST_ALLOCATION_BASES = frozenset(
 )
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
-UNALLOCATED_GKE_NAMESPACE_BUCKETS = (
-    "kube:unallocated",
-    "kube:system-overhead",
-    "goog-k8s-unsupported-sku",
-    "goog-k8s-unknown",
-)
 COST_DRIVER_LABELS = {
     "compute": "Compute",
     "block_storage": "Block storage",
@@ -1285,6 +1280,7 @@ def get_unmatched_resources(
     engine: Engine,
     filters: CommonFilters,
     *,
+    owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
 ) -> dict[str, Any]:
@@ -1301,6 +1297,12 @@ def get_unmatched_resources(
 
     if sort_by not in UNMATCHED_RESOURCE_SORTS:
         sort_by = "list_cost"
+    selected_owner = owner or NO_OWNER_LABEL
+    owner_where_clause = (
+        "NULLIF(c.owner, '') IS NULL"
+        if selected_owner == NO_OWNER_LABEL
+        else "c.owner = :selected_owner"
+    )
     service_filter_name = service_name or None
     order_by = (
         "u.usage_seconds DESC, u.list_cost DESC, u.resource_name"
@@ -1313,13 +1315,12 @@ def get_unmatched_resources(
         resource_where_clause, resource_params = _build_cost_where(filters, table_alias="r")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
         resource_index_hint = _cost_unmatched_resource_index_hint(connection, filters)
-        namespace_clause, namespace_params = _build_unallocated_namespace_where("r.namespace")
         org_match = _null_safe_eq(connection, "m.org", "r.org")
         repo_match = _null_safe_eq(connection, "m.repo", "r.repo")
         author_match = _null_safe_eq(connection, "m.author", "r.author")
         resource_list_cost_expr = _billing_report_list_cost_expr("r")
-        base_cte = f"""
-            WITH unmatched_dimensions AS (
+        dimension_cte = f"""
+            WITH selected_owner_dimensions AS (
               SELECT {attr_index_hint}
                 c.usage_date AS usage_date,
                 c.vendor AS vendor,
@@ -1327,21 +1328,28 @@ def get_unmatched_resources(
                 c.org AS org,
                 c.repo AS repo,
                 c.author AS author,
+                c.owner AS owner_mail,
+                CAST(c.vendor_tags_json AS CHAR) AS vendor_tags_json,
                 MAX(c.attribution_key) AS attribution_key,
                 MAX(c.attribution_source) AS attribution_source,
                 MAX(c.attribution_status) AS attribution_status
               FROM cost_attribution_daily c
               WHERE {attr_where_clause}
-                AND NULLIF(c.owner, '') IS NULL
+                AND {owner_where_clause}
               GROUP BY
                 c.usage_date,
                 c.vendor,
                 c.account_id,
                 c.org,
                 c.repo,
-                c.author
-            ),
-            unallocated_resource_rows AS (
+                c.author,
+                c.owner,
+                c.vendor_tags_json
+            )
+        """
+        resource_rows_cte = f"""
+            {dimension_cte},
+            selected_owner_resource_rows AS (
               SELECT {resource_index_hint}
                 r.resource_name AS resource_name,
                 COALESCE(NULLIF(r.service_name, ''), '(no service)') AS service_name,
@@ -1350,6 +1358,7 @@ def get_unmatched_resources(
                 r.repo AS repo_name,
                 r.target_branch AS target_branch,
                 r.author AS author_name,
+                m.owner_mail AS owner_mail,
                 CAST(r.vendor_tags_json AS CHAR) AS vendor_tags_json,
                 r.usage_date AS usage_date,
                 r.namespace AS namespace,
@@ -1360,31 +1369,101 @@ def get_unmatched_resources(
                 m.attribution_status AS attribution_status
               FROM cost_unmatched_resource_daily r
               -- Keep attribution as the source of truth; resource rows alone are not roster-filtered.
-              JOIN unmatched_dimensions m
+              JOIN selected_owner_dimensions m
                 ON m.usage_date = r.usage_date
                AND m.vendor = r.vendor
                AND m.account_id = r.account_id
                AND {org_match}
                AND {repo_match}
                AND {author_match}
+               -- A labeled attribution row identifies one specific resource slice.
+               -- Older unlabeled rows may still cover all matching resource rows.
+               AND (
+                 m.vendor_tags_json IS NULL
+                 OR m.vendor_tags_json = CAST(r.vendor_tags_json AS CHAR)
+               )
               WHERE {resource_where_clause}
                 AND r.resource_name IS NOT NULL
                 AND r.resource_name <> ''
-                AND ({namespace_clause})
             )
         """
         query_params = {
             **attr_params,
             **resource_params,
-            **namespace_params,
+            "selected_owner": selected_owner,
             "service_name": service_filter_name,
         }
+        has_resource_rows = (
+            connection.execute(
+                text(
+                    f"""
+                    {resource_rows_cte}
+                    SELECT 1
+                    FROM selected_owner_resource_rows
+                    LIMIT 1
+                    """
+                ),
+                query_params,
+            ).first()
+            is not None
+        )
+        if has_resource_rows:
+            base_cte = resource_rows_cte
+            resource_data_source = "cost_unmatched_resource_daily"
+            resource_group_by = "resource_name"
+        else:
+            # Attribution is the same owner-level fact table behind the donut. It is
+            # the reliable fallback when the optional named-resource feed is delayed.
+            resource_list_cost_expr = _billing_report_list_cost_expr("c")
+            base_cte = f"""
+                WITH selected_owner_resource_rows AS (
+                  SELECT {attr_index_hint}
+                    c.resource_name AS resource_name,
+                    COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
+                    c.sku_name AS sku_name,
+                    c.org AS org_name,
+                    c.repo AS repo_name,
+                    c.target_branch AS target_branch,
+                    c.author AS author_name,
+                    c.owner AS owner_mail,
+                    CAST(c.vendor_tags_json AS CHAR) AS vendor_tags_json,
+                    c.usage_date AS usage_date,
+                    c.namespace AS namespace,
+                    c.usage_seconds AS usage_seconds,
+                    {resource_list_cost_expr} AS list_cost,
+                    c.attribution_key AS attribution_key,
+                    c.attribution_source AS attribution_source,
+                    c.attribution_status AS attribution_status
+                  FROM cost_attribution_daily c
+                  WHERE {attr_where_clause}
+                    AND {owner_where_clause}
+                )
+            """
+            resource_data_source = "cost_attribution_daily"
+            # Billing exports do not always include a provider resource name. Keep
+            # those rows distinct by their available resource-identifying context,
+            # while still combining the same line across dates.
+            resource_group_by = """
+                resource_name,
+                service_name,
+                sku_name,
+                org_name,
+                repo_name,
+                target_branch,
+                author_name,
+                owner_mail,
+                vendor_tags_json,
+                namespace,
+                attribution_key,
+                attribution_source,
+                attribution_status
+            """
         service_rows = connection.execute(
             text(
                 f"""
                 {base_cte}
                 SELECT DISTINCT service_name
-                FROM unallocated_resource_rows
+                FROM selected_owner_resource_rows
                 ORDER BY service_name
                 """
             ),
@@ -1400,12 +1479,12 @@ def get_unmatched_resources(
             text(
                 f"""
                 {base_cte},
-                filtered_unallocated_resource_rows AS (
+                filtered_selected_owner_resource_rows AS (
                   SELECT *
-                  FROM unallocated_resource_rows
+                  FROM selected_owner_resource_rows
                   WHERE (:service_name IS NULL OR service_name = :service_name)
                 ),
-                unallocated_resources AS (
+                selected_owner_resources AS (
                   SELECT
                     resource_name,
                     GROUP_CONCAT(DISTINCT service_name) AS service_name,
@@ -1414,6 +1493,7 @@ def get_unmatched_resources(
                     MAX(repo_name) AS repo_name,
                     MAX(target_branch) AS target_branch,
                     MAX(author_name) AS author_name,
+                    MAX(owner_mail) AS owner_mail,
                     MAX(vendor_tags_json) AS vendor_tags_json,
                     MIN(usage_date) AS first_seen_date,
                     MAX(usage_date) AS last_seen_date,
@@ -1423,8 +1503,8 @@ def get_unmatched_resources(
                     MAX(attribution_key) AS attribution_key,
                     MAX(attribution_source) AS attribution_source,
                     MAX(attribution_status) AS attribution_status
-                  FROM filtered_unallocated_resource_rows
-                  GROUP BY resource_name
+                  FROM filtered_selected_owner_resource_rows
+                  GROUP BY {resource_group_by}
                 )
                 SELECT
                   u.resource_name AS resource_name,
@@ -1434,6 +1514,7 @@ def get_unmatched_resources(
                   u.repo_name AS repo_name,
                   u.target_branch AS target_branch,
                   u.author_name AS author_name,
+                  u.owner_mail AS owner_mail,
                   u.vendor_tags_json AS vendor_tags_json,
                   u.first_seen_date AS first_seen_date,
                   u.last_seen_date AS last_seen_date,
@@ -1443,7 +1524,7 @@ def get_unmatched_resources(
                   u.allocation_buckets AS allocation_buckets,
                   u.usage_seconds AS usage_seconds,
                   u.list_cost AS list_cost
-                FROM unallocated_resources u
+                FROM selected_owner_resources u
                 ORDER BY {order_by}
                 LIMIT :limit
                 """
@@ -1455,7 +1536,7 @@ def get_unmatched_resources(
         ).mappings()
         items = [
             {
-                "resource_name": str(row["resource_name"]),
+                "resource_name": str(row["resource_name"] or "(no resource name)"),
                 "service_name": str(row["service_name"] or ""),
                 "sku_name": str(row["sku_name"] or ""),
                 "repo_name": str(row["repo_name"] or ""),
@@ -1487,8 +1568,10 @@ def get_unmatched_resources(
             "window_limited": filters.start_date != requested_filters.start_date,
             "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
             "limit": UNMATCHED_RESOURCE_LIMIT,
+            "owner": selected_owner,
             "service_name": service_filter_name,
             "sort_by": sort_by,
+            "resource_data_source": resource_data_source,
             "services": services,
         },
     }
@@ -3309,6 +3392,7 @@ def _resource_labels(row: Mapping[str, Any]) -> str:
         ("repo_name", "repo"),
         ("target_branch", "branch"),
         ("author_name", "author"),
+        ("owner_mail", "owner_mail"),
     ):
         value = str(row[key] or "").strip()
         if value and label not in seen_keys:
@@ -3351,16 +3435,6 @@ def _resource_vendor_tag_pairs(value: Any) -> list[tuple[str, str]]:
         if label_value:
             pairs.append((key, label_value))
     return pairs
-
-
-def _build_unallocated_namespace_where(column: str) -> tuple[str, dict[str, Any]]:
-    conditions = [f"{column} IS NULL"]
-    params: dict[str, Any] = {}
-    for index, bucket in enumerate(UNALLOCATED_GKE_NAMESPACE_BUCKETS):
-        key = f"namespace_bucket_{index}"
-        conditions.append(f"{column} = :{key}")
-        params[key] = bucket
-    return " OR ".join(conditions), params
 
 
 def _money(value: Any) -> float:

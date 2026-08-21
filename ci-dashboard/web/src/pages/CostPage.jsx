@@ -31,6 +31,7 @@ const COST_ALLOCATION_BASIS_LABELS = {
   current_attribution: "Current attribution",
   residual_allocated: "K8S residual allocated",
 };
+const NO_OWNER_LABEL = "(no owner)";
 
 export default function CostPage({ filters }) {
   const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
@@ -40,6 +41,7 @@ export default function CostPage({ filters }) {
   const [allocationNotice, setAllocationNotice] = useState("");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
+  const [selectedResourceOwner, setSelectedResourceOwner] = useState(NO_OWNER_LABEL);
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const weeklyOverviewRange = getLaggedTrailingDateRange();
@@ -99,6 +101,7 @@ export default function CostPage({ filters }) {
   };
   const unmatchedResourceFilters = {
     ...costFilters,
+    owner: selectedResourceOwner,
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
   };
@@ -136,6 +139,7 @@ export default function CostPage({ filters }) {
   );
   const canDrillDownCostBreakdown =
     Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
+  const isOwnerResourceDrilldown = effectiveCostBreakdownGroupBy === "owner";
   const costBreakdownSubtitle = costBreakdownDrilldown
     ? `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: ${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
     : `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
@@ -163,8 +167,13 @@ export default function CostPage({ filters }) {
     hasCurrentAllocationOverview;
   const costShareItems = withCostBreakdownDrilldown(
     costShare.data?.items,
-    canDrillDownCostBreakdown,
+    canDrillDownCostBreakdown || isOwnerResourceDrilldown,
   );
+
+  const selectResourceOwner = (item) => {
+    setSelectedResourceOwner(item.name);
+    setUnmatchedServiceName("");
+  };
 
   const startCostBreakdownDrilldown = (item) => {
     if (!costBreakdownDrilldownTargetGroup) {
@@ -181,6 +190,11 @@ export default function CostPage({ filters }) {
   const resetCostBreakdownDrilldown = () => {
     setCostBreakdownDrilldown(null);
     setSelectedCostStackName("");
+  };
+
+  const resetResourceOwner = () => {
+    setSelectedResourceOwner(NO_OWNER_LABEL);
+    setUnmatchedServiceName("");
   };
 
   useEffect(() => {
@@ -211,9 +225,8 @@ export default function CostPage({ filters }) {
       costShare.responseKey === JSON.stringify(costShareFilters) &&
       costShare.data?.meta?.allocation_basis !== "residual_allocated"
     ) {
-      setAllocationBasis("current_attribution");
       setAllocationNotice(
-        "K8S residual allocation is unavailable for this scope; showing current attribution.",
+        "K8S residual allocation is unavailable for this scope; the API is showing current attribution.",
       );
     }
   }, [
@@ -421,7 +434,13 @@ export default function CostPage({ filters }) {
             totalValue={costShare.data?.meta?.total_list_cost}
             totalLabel="list cost"
             emptyMessage="No cost share data for the current filters."
-            onItemSelect={canDrillDownCostBreakdown ? startCostBreakdownDrilldown : undefined}
+            onItemSelect={
+              isOwnerResourceDrilldown
+                ? selectResourceOwner
+                : canDrillDownCostBreakdown
+                  ? startCostBreakdownDrilldown
+                  : undefined
+            }
           />
           <article className="cost-stack-card">
             <header className="donut-card__header">
@@ -441,6 +460,35 @@ export default function CostPage({ filters }) {
             />
           </article>
         </div>
+      </Panel>
+
+      <Panel
+        title={`Resource breakdown: ${selectedResourceOwner}`}
+        subtitle="Top 10 billable resource rows for the selected Owner share segment, with their available labels."
+        loading={unmatchedResources.loading}
+        error={unmatchedResources.error}
+        actions={
+          <>
+            <UnmatchedResourcesControls
+              serviceName={unmatchedServiceName}
+              serviceOptions={unmatchedResources.data?.meta?.services}
+              sortBy={unmatchedSortBy}
+              onServiceChange={setUnmatchedServiceName}
+              onSortChange={setUnmatchedSortBy}
+            />
+            {selectedResourceOwner !== NO_OWNER_LABEL ? (
+              <button
+                type="button"
+                className="donut-card__action"
+                onClick={resetResourceOwner}
+              >
+                Reset owner
+              </button>
+            ) : null}
+          </>
+        }
+      >
+        <UnmatchedResourceTable items={unmatchedResources.data?.items} />
       </Panel>
 
       <Panel
@@ -496,24 +544,6 @@ export default function CostPage({ filters }) {
             }
           />
         </div>
-      </Panel>
-
-      <Panel
-        title="No-owner resource breakdown"
-        subtitle="Top 10 billable resources in the no-owner bucket. Labels are shown separately."
-        loading={unmatchedResources.loading}
-        error={unmatchedResources.error}
-        actions={
-          <UnmatchedResourcesControls
-            serviceName={unmatchedServiceName}
-            serviceOptions={unmatchedResources.data?.meta?.services}
-            sortBy={unmatchedSortBy}
-            onServiceChange={setUnmatchedServiceName}
-            onSortChange={setUnmatchedSortBy}
-          />
-        }
-      >
-        <UnmatchedResourceTable items={unmatchedResources.data?.items} />
       </Panel>
 
       <Panel
@@ -737,7 +767,7 @@ function withCostBreakdownDrilldown(items, enabled) {
 
   return items.map((item) => ({
     ...item,
-    interactive: true,
+    interactive: item.name !== "Others",
   }));
 }
 
