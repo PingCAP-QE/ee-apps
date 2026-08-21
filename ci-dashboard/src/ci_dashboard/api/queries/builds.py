@@ -9,11 +9,12 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.api.queries.base import (
     CommonFilters,
     branch_expr,
-    builds_table_expr,
     bucket_expr,
     build_common_where,
-    filter_complete_week_rows,
+    build_multi_value_clause,
+    builds_table_expr,
     failure_like_expr,
+    filter_complete_week_rows,
     isoformat_utc,
     rate_pct,
     success_expr,
@@ -33,6 +34,16 @@ MIGRATION_FIXED_COMPARISON_SCOPES = (
     ("all_repos", "All repos", None),
     ("tidb", "TiDB", "pingcap/tidb"),
     ("ticdc", "TiCDC", "pingcap/ticdc"),
+)
+REPO_PERFORMANCE_RANKING_REPOS = (
+    "pingcap/docs",
+    "pingcap/ticdc",
+    "pingcap/tidb",
+    "pingcap/tiflash",
+    "pingcap/tiflow",
+    "tidbcloud/cloud-storage-engine",
+    "tikv/pd",
+    "tikv/tikv",
 )
 
 
@@ -385,6 +396,96 @@ def get_build_count_breakdown_trend(engine: Engine, filters: CommonFilters) -> d
         "meta": {
             **filters.meta(),
             "limit": BUILD_COUNT_BREAKDOWN_LIMIT,
+        },
+    }
+
+
+def get_repo_performance_rankings(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    with engine.begin() as connection:
+        where_clause, params = build_common_where(filters, table_alias="b")
+        repo_clause, repo_params = build_multi_value_clause(
+            "b.repo_full_name",
+            REPO_PERFORMANCE_RANKING_REPOS,
+            bind_prefix="ranking_repo",
+        )
+        assert repo_clause is not None
+        where_clause = f"{where_clause} AND {repo_clause}"
+        params.update(repo_params)
+        builds_table = builds_table_expr(connection, filters, alias="b")
+        success_where = success_expr("b")
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT
+                  COALESCE(NULLIF(b.repo_full_name, ''), '(unknown repo)') AS repo_name,
+                  COUNT(*) AS total_build_count,
+                  SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_build_count,
+                  AVG(CASE WHEN {success_where} THEN b.run_seconds END) AS success_avg_run_s
+                FROM {builds_table}
+                WHERE {where_clause}
+                GROUP BY COALESCE(NULLIF(b.repo_full_name, ''), '(unknown repo)')
+                """
+            ),
+            params,
+        ).mappings()
+
+        items = []
+        for row in rows:
+            total_build_count = int(row["total_build_count"] or 0)
+            success_build_count = int(row["success_build_count"] or 0)
+            success_avg_run_s = row["success_avg_run_s"]
+            items.append(
+                {
+                    "name": str(row["repo_name"]),
+                    "total_build_count": total_build_count,
+                    "success_build_count": success_build_count,
+                    "success_rate_pct": rate_pct(success_build_count, total_build_count),
+                    "success_avg_run_s": (
+                        round(float(success_avg_run_s))
+                        if success_avg_run_s is not None
+                        else None
+                    ),
+                }
+            )
+
+    slowest_repos = sorted(
+        (item for item in items if item["success_avg_run_s"] is not None),
+        key=lambda item: (-int(item["success_avg_run_s"]), -item["success_build_count"], item["name"]),
+    )
+    lowest_success_rate_repos = sorted(
+        items,
+        key=lambda item: (item["success_rate_pct"], -item["total_build_count"], item["name"]),
+    )
+
+    return {
+        "avg_success_duration": {
+            "items": [
+                {
+                    **item,
+                    "value": item["success_avg_run_s"],
+                }
+                for item in slowest_repos
+            ],
+            "meta": {
+                **filters.meta(),
+                "repo_count": len(slowest_repos),
+                "metric": "success_avg_run_s",
+                "success_only": True,
+            },
+        },
+        "success_rate": {
+            "items": [
+                {
+                    **item,
+                    "value": item["success_rate_pct"],
+                }
+                for item in lowest_success_rate_repos
+            ],
+            "meta": {
+                **filters.meta(),
+                "repo_count": len(lowest_success_rate_repos),
+                "metric": "success_rate_pct",
+            },
         },
     }
 
