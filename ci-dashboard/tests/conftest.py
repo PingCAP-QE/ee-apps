@@ -527,6 +527,17 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
+        CREATE TABLE cost_bq_export_summary_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          export_partition_date TEXT NOT NULL,
+          usage_date TEXT NOT NULL,
+          source_row_hash TEXT NOT NULL,
+          UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
+        )
+        """,
+        """
         CREATE TABLE cost_unattached_block_volume_daily (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           snapshot_date TEXT NOT NULL,

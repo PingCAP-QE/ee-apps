@@ -596,6 +596,7 @@ def _insert_cost_attribution(
     source_allocation_scope: str = "direct",
     namespace: str | None = None,
     source_summary_row_hash: str | None = None,
+    source_export_partition_date: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -656,6 +657,26 @@ def _insert_cost_attribution(
                 "source_summary_row_hash": source_summary_row_hash,
             },
         )
+        if source_summary_row_hash:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      vendor, account_id, export_partition_date, usage_date, source_row_hash
+                    ) VALUES (
+                      :vendor, :account_id, :export_partition_date, :usage_date,
+                      :source_summary_row_hash
+                    )
+                    """
+                ),
+                {
+                    "vendor": vendor,
+                    "account_id": account_id,
+                    "export_partition_date": source_export_partition_date or usage_date,
+                    "usage_date": usage_date,
+                    "source_summary_row_hash": source_summary_row_hash,
+                },
+            )
 
 
 def _insert_cost_raw_detail(
@@ -726,6 +747,7 @@ def _insert_cost_unmatched_resource(
     service_name: str = "Compute Engine",
     sku_name: str = "runner",
     source_row_hash: str | None = None,
+    export_partition_date: str | None = None,
     target_branch: str | None = None,
     vendor_tags_json: dict | list | str | None = None,
 ) -> None:
@@ -740,7 +762,7 @@ def _insert_cost_unmatched_resource(
                   usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
                   source_export_time, source_row_hash
                 ) VALUES (
-                  :vendor, :account_id, :billing_account_id, :usage_date, :usage_date,
+                  :vendor, :account_id, :billing_account_id, :export_partition_date, :usage_date,
                   :service_name, :sku_name, :namespace, :author, 'pingcap', :repo, :target_branch,
                   :vendor_tags_json, :resource_name,
                   :usage_seconds, :list_cost, :effective_cost, 0, :net_cost,
@@ -750,6 +772,7 @@ def _insert_cost_unmatched_resource(
             ),
             {
                 "usage_date": usage_date,
+                "export_partition_date": export_partition_date or usage_date,
                 "vendor": vendor,
                 "account_id": account_id,
                 "billing_account_id": billing_account_id,
@@ -3993,6 +4016,68 @@ def test_cost_unmatched_resources_does_not_cross_join_named_resources(
     assert [(item["resource_name"], item["list_cost"]) for item in body["items"]] == [
         (first_resource, 50.0),
         (second_resource, 50.0),
+    ]
+    assert sum(item["list_cost"] for item in body["items"]) == 100.0
+
+
+def test_cost_unmatched_resources_matches_source_export_partition(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    resource_name = "projects/pingcap-testing/zones/us-central1-a/instances/tidb-runner"
+    common = {
+        "usage_date": "2026-05-12",
+        "repo": "tidb",
+        "group_id": 110,
+        "net_cost": 0,
+        "list_cost": 50,
+        "resource_name": resource_name,
+        "author": "ci-robot",
+        "owner": "alice@pingcap.com",
+        "service_name": "Compute Engine",
+        "sku_name": "N1 Core",
+    }
+    for index, (partition_date, source_summary_row_hash) in enumerate(
+        (
+            ("2026-05-13", "summary-partition-a"),
+            ("2026-05-14", "summary-partition-b"),
+        )
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            **common,
+            dimension_hash=f"partitioned-source-{index}",
+            source_summary_row_hash=source_summary_row_hash,
+            source_export_partition_date=partition_date,
+        )
+        _insert_cost_unmatched_resource(
+            sqlite_engine,
+            usage_date="2026-05-12",
+            repo="tidb",
+            resource_name=resource_name,
+            namespace=None,
+            author="ci-robot",
+            list_cost=50,
+            service_name="Compute Engine",
+            sku_name="N1 Core",
+            export_partition_date=partition_date,
+            source_row_hash=f"resource-partition-{index}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-05-12",
+            "end_date": "2026-05-12",
+            "owner": "alice@pingcap.com",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["resource_data_source"] == "cost_unmatched_resource_daily"
+    assert [(item["resource_name"], item["list_cost"]) for item in body["items"]] == [
+        (resource_name, 100.0),
     ]
     assert sum(item["list_cost"] for item in body["items"]) == 100.0
 

@@ -1351,6 +1351,22 @@ def get_unmatched_resources(
             "(NULLIF(m.source_resource_name, '') IS NULL OR "
             f"{_null_safe_eq(connection, 'm.source_resource_name', 'r.resource_name')})"
         )
+        summary_lineage_available = _cost_billing_summary_table_exists(connection)
+        source_export_partition_expr = (
+            "summary.export_partition_date" if summary_lineage_available else "NULL"
+        )
+        summary_lineage_join = (
+            """
+              LEFT JOIN cost_bq_export_summary_daily summary
+                ON summary.vendor = source_cost.vendor
+               AND summary.account_id = source_cost.account_id
+               AND summary.usage_date = source_cost.usage_date
+               AND NULLIF(source_cost.source_summary_row_hash, '') IS NOT NULL
+               AND summary.source_row_hash = source_cost.source_summary_row_hash
+            """
+            if summary_lineage_available
+            else ""
+        )
         resource_list_cost_expr = _billing_report_list_cost_expr("r")
         basis_prefix = f"{basis.cte}," if basis.cte else "WITH"
         group_lineage_available = (
@@ -1422,6 +1438,7 @@ def get_unmatched_resources(
                 source.namespace AS source_namespace,
                 CAST(source.vendor_tags_json AS CHAR) AS source_vendor_tags_json,
                 source.resource_name AS source_resource_name,
+                source.source_summary_row_hash AS source_summary_row_hash,
                 c.owner AS owner_mail,
                 c.attribution_key AS attribution_key,
                 c.attribution_source AS attribution_source,
@@ -1492,6 +1509,8 @@ def get_unmatched_resources(
                 ) AS source_vendor_tags_json,
                 CASE WHEN source.id IS NULL THEN c.resource_name ELSE source.resource_name END
                   AS source_resource_name,
+                CASE WHEN source.id IS NULL THEN c.source_summary_row_hash
+                  ELSE source.source_summary_row_hash END AS source_summary_row_hash,
                 c.owner AS owner_mail,
                 c.attribution_key AS attribution_key,
                 c.attribution_source AS attribution_source,
@@ -1514,6 +1533,12 @@ def get_unmatched_resources(
               SELECT *
               FROM selected_owner_direct_cost_rows
               {group_cost_rows_union}
+            ), selected_owner_cost_rows_with_partition AS (
+              SELECT
+                source_cost.*,
+                {source_export_partition_expr} AS source_export_partition_date
+              FROM selected_owner_cost_rows source_cost
+              {summary_lineage_join}
             ), selected_owner_resource_detail_rows AS (
               SELECT {resource_index_hint}
                 m.cost_dimension_hash AS cost_dimension_hash,
@@ -1544,7 +1569,7 @@ def get_unmatched_resources(
               -- Attribution remains the owner source of truth. Under residual
               -- allocation, m carries the workload owner while source_* preserves
               -- the original billing dimensions used to identify r.
-              JOIN selected_owner_cost_rows m
+              JOIN selected_owner_cost_rows_with_partition m
                 ON m.usage_date = r.usage_date
                AND m.vendor = r.vendor
                AND m.account_id = r.account_id
@@ -1556,6 +1581,13 @@ def get_unmatched_resources(
                AND {source_service_match}
                AND {source_sku_match}
                AND {source_resource_match}
+               -- Source hashes include the export partition. Resolve that lineage
+               -- before joining resource rows so identical billing dimensions from
+               -- separate export partitions cannot cross-multiply their costs.
+               AND (
+                 NULLIF(m.source_summary_row_hash, '') IS NULL
+                 OR m.source_export_partition_date = r.export_partition_date
+               )
                -- A labeled attribution row identifies one specific resource slice.
                -- Older unlabeled rows may still cover all matching resource rows.
                AND (
@@ -1630,7 +1662,7 @@ def get_unmatched_resources(
                 m.attribution_status AS attribution_status,
                 m.cost_dimension_hash AS resource_group_key,
                 'attribution_fallback' AS resource_row_source
-              FROM selected_owner_cost_rows m
+              FROM selected_owner_cost_rows_with_partition m
               LEFT JOIN selected_owner_resource_coverage coverage
                 ON coverage.cost_dimension_hash = m.cost_dimension_hash
                AND coverage.source_attribution_id = m.source_attribution_id
@@ -3217,6 +3249,32 @@ def _cost_kubernetes_allocation_table_exists(connection: Connection) -> bool:
                 FROM information_schema.tables
                 WHERE table_schema = DATABASE()
                   AND table_name = 'cost_kubernetes_workload_allocation_daily'
+                """
+            )
+        ).first()
+    return row is not None
+
+
+def _cost_billing_summary_table_exists(connection: Connection) -> bool:
+    if connection.dialect.name == "sqlite":
+        row = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name = 'cost_bq_export_summary_daily'
+                """
+            )
+        ).first()
+    else:
+        row = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'cost_bq_export_summary_daily'
                 """
             )
         ).first()
