@@ -414,9 +414,25 @@ def _create_test_schema(engine: Engine) -> None:
           allocation_version TEXT NOT NULL,
           dimension_hash TEXT NOT NULL,
           source_summary_row_hash TEXT NULL,
+          allocation_group_hash TEXT NULL,
           calculated_at TEXT NULL,
           updated_at TEXT NULL,
           UNIQUE(usage_date, dimension_hash)
+        )
+        """,
+        """
+        CREATE TABLE cost_kubernetes_workload_allocation_source_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          usage_date TEXT NOT NULL,
+          vendor TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          source_summary_row_hash TEXT NOT NULL,
+          allocation_group_hash TEXT NOT NULL,
+          source_list_cost REAL NOT NULL,
+          allocation_version TEXT NOT NULL,
+          calculated_at TEXT NULL,
+          updated_at TEXT NULL,
+          UNIQUE(vendor, account_id, usage_date, source_summary_row_hash)
         )
         """,
         """

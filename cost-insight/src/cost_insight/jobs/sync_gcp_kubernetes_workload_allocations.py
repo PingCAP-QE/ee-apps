@@ -29,7 +29,8 @@ LOG = logging.getLogger(__name__)
 
 JOB_NAME = "sync_gcp_kubernetes_workload_allocations"
 ALLOCATION_TABLE = "cost_kubernetes_workload_allocation_daily"
-ALLOCATION_VERSION = "gke_metering_v3"
+ALLOCATION_SOURCE_TABLE = "cost_kubernetes_workload_allocation_source_daily"
+ALLOCATION_VERSION = "gke_metering_v4"
 _CURRENCY_SCALE = Decimal("0.01")
 _WEIGHT_SCALE = Decimal("0.0000000000000001")
 
@@ -45,6 +46,16 @@ class GkeNodeCost:
     cluster_location: str | None
     cost_component: str
     list_cost: Decimal
+
+    def allocation_group_key(self) -> tuple[date, str, str, str]:
+        if self.cluster_name is None or self.cluster_location is None:
+            raise ValueError("GKE allocation group requires cluster dimensions")
+        return (
+            self.usage_date,
+            self.cluster_name,
+            self.cluster_location,
+            self.cost_component,
+        )
 
 
 @dataclass(frozen=True)
@@ -135,8 +146,9 @@ def run_sync_gcp_kubernetes_workload_allocations(
             state_store.mark_job_started(connection, job_name, watermark)
 
     try:
-        source_node_costs = list(
-            node_cost_fetcher(
+        node_costs = tuple(
+            _normalize_node_cost(row)
+            for row in node_cost_fetcher(
                 billing_table=settings.billing_table,
                 account_id=settings.account_id,
                 export_partition_start=resolved_export_start,
@@ -146,8 +158,9 @@ def run_sync_gcp_kubernetes_workload_allocations(
                 page_size=settings.page_size,
             )
         )
-        source_workload_usage = list(
-            workload_usage_fetcher(
+        workload_usage = tuple(
+            _normalize_workload_usage(row)
+            for row in workload_usage_fetcher(
                 gke_usage_table=settings.gke_usage_table,
                 account_id=settings.account_id,
                 usage_start_date=usage_start_date,
@@ -155,9 +168,7 @@ def run_sync_gcp_kubernetes_workload_allocations(
                 page_size=settings.page_size,
             )
         )
-        node_costs = tuple(_normalize_node_cost(row) for row in source_node_costs)
-        workload_usage = tuple(_normalize_workload_usage(row) for row in source_workload_usage)
-        rows = build_gke_workload_allocation_rows(
+        rows, source_rows = build_gke_workload_allocation_rows(
             account_id=settings.account_id,
             node_costs=node_costs,
             workload_usage=workload_usage,
@@ -165,6 +176,7 @@ def run_sync_gcp_kubernetes_workload_allocations(
         rows_written = replace_gke_workload_allocations(
             engine,
             rows,
+            source_rows=source_rows,
             node_cost_row_count=len(node_costs),
             account_id=settings.account_id,
             usage_start_date=usage_start_date,
@@ -199,12 +211,21 @@ def build_gke_workload_allocation_rows(
     account_id: str,
     node_costs: Iterable[GkeNodeCost],
     workload_usage: Iterable[GkeWorkloadUsage],
-) -> tuple[dict[str, Any], ...]:
+) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, Any], ...]]:
+    """Build workload facts and source lineage without source-by-workload expansion.
+
+    A billing export can have tens of thousands of rows for one cluster and day.
+    Each source cost keeps a lineage row, while the allocation facts operate at the
+    cluster/day/component group. The dashboard may replace the original sources
+    only after every source in the group has reconciled to its allocation total.
+    """
     usage_by_cluster: dict[tuple[date, str, str], list[GkeWorkloadUsage]] = defaultdict(list)
     for usage in workload_usage:
         usage_by_cluster[(usage.usage_date, usage.cluster_name, usage.cluster_location)].append(usage)
 
     rows: list[dict[str, Any]] = []
+    source_rows: list[dict[str, Any]] = []
+    node_costs_by_group: dict[tuple[date, str, str, str], list[GkeNodeCost]] = defaultdict(list)
     for node_cost in sorted(
         node_costs,
         key=lambda item: (
@@ -214,39 +235,62 @@ def build_gke_workload_allocation_rows(
             item.cost_component,
         ),
     ):
-        participants = (
-            usage_by_cluster.get(
-                (node_cost.usage_date, node_cost.cluster_name or "", node_cost.cluster_location or ""),
-                [],
-            )
-            if node_cost.cluster_name and node_cost.cluster_location
-            else []
-        )
-        weighted_participants = sorted(
+        if (
+            node_cost.cost_component in {"cpu", "memory"}
+            and node_cost.cluster_name is not None
+            and node_cost.cluster_location is not None
+        ):
+            node_costs_by_group[node_cost.allocation_group_key()].append(node_cost)
+
+    for group_key in sorted(node_costs_by_group):
+        group_node_costs = node_costs_by_group[group_key]
+        usage_date, cluster_name, cluster_location, cost_component = group_key
+        participants = sorted(
             (
                 workload
-                for workload in participants
-                if workload.weight_for(node_cost.cost_component) > 0
+                for workload in usage_by_cluster.get((usage_date, cluster_name, cluster_location), [])
+                if workload.weight_for(cost_component) > 0
             ),
             key=GkeWorkloadUsage.identity,
         )
-        if node_cost.cost_component in {"cpu", "memory"} and weighted_participants:
-            rows.extend(
-                _allocate_component_to_workloads(
-                    account_id=account_id,
-                    node_cost=node_cost,
-                    participants=weighted_participants,
-                )
-            )
+        if not participants:
             continue
-        rows.append(_unallocated_row(account_id=account_id, node_cost=node_cost))
-    return tuple(rows)
+        group_list_cost = sum((node_cost.list_cost for node_cost in group_node_costs), Decimal())
+        allocation_group_hash = _allocation_group_hash(
+            usage_date=usage_date,
+            account_id=account_id,
+            cluster_name=cluster_name,
+            cluster_location=cluster_location,
+            cost_component=cost_component,
+        )
+        rows.extend(
+            _allocate_group_component_to_workloads(
+                account_id=account_id,
+                allocation_group_hash=allocation_group_hash,
+                usage_date=usage_date,
+                cluster_name=cluster_name,
+                cluster_location=cluster_location,
+                cost_component=cost_component,
+                source_node_list_cost=group_list_cost,
+                participants=participants,
+            )
+        )
+        source_rows.extend(
+            _allocation_source_row(
+                account_id=account_id,
+                allocation_group_hash=allocation_group_hash,
+                node_cost=node_cost,
+            )
+            for node_cost in group_node_costs
+        )
+    return tuple(rows), tuple(source_rows)
 
 
 def replace_gke_workload_allocations(
     engine: Engine,
     rows: Iterable[dict[str, Any]],
     *,
+    source_rows: Iterable[dict[str, Any]],
     node_cost_row_count: int,
     account_id: str,
     usage_start_date: date,
@@ -256,7 +300,7 @@ def replace_gke_workload_allocations(
 ) -> int:
     if node_cost_row_count <= 0:
         LOG.warning(
-            "skipped GKE allocation replacement because no recognized node or control-plane costs were fetched",
+            "skipped GKE allocation replacement because no eligible GKE CPU or memory costs were fetched",
             extra={
                 "account_id": account_id,
                 "usage_start_date": usage_start_date,
@@ -269,9 +313,18 @@ def replace_gke_workload_allocations(
 
     rows_written = 0
     batch: list[dict[str, Any]] = []
+    source_batch: list[dict[str, Any]] = []
     with engine.begin() as connection:
         connection.execute(
             _DELETE_ALLOCATIONS_FOR_USAGE_DATES,
+            {
+                "account_id": account_id,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+            },
+        )
+        connection.execute(
+            _DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES,
             {
                 "account_id": account_id,
                 "usage_start_date": usage_start_date,
@@ -287,29 +340,41 @@ def replace_gke_workload_allocations(
         if batch:
             _write_rows(connection, batch)
             rows_written += len(batch)
+        for source_row in source_rows:
+            source_batch.append(source_row)
+            if len(source_batch) >= batch_size:
+                _write_source_rows(connection, source_batch)
+                source_batch.clear()
+        if source_batch:
+            _write_source_rows(connection, source_batch)
     return rows_written
 
 
-def _allocate_component_to_workloads(
+def _allocate_group_component_to_workloads(
     *,
     account_id: str,
-    node_cost: GkeNodeCost,
+    allocation_group_hash: str,
+    usage_date: date,
+    cluster_name: str,
+    cluster_location: str,
+    cost_component: str,
+    source_node_list_cost: Decimal,
     participants: Sequence[GkeWorkloadUsage],
 ) -> list[dict[str, Any]]:
     denominator = sum(
-        (workload.weight_for(node_cost.cost_component) for workload in participants),
+        (workload.weight_for(cost_component) for workload in participants),
         Decimal(),
     )
-    remaining_cost = node_cost.list_cost
+    remaining_cost = source_node_list_cost
     remaining_weight = Decimal(1)
     rows = []
     for workload in participants[:-1]:
-        weight = (workload.weight_for(node_cost.cost_component) / denominator).quantize(
+        weight = (workload.weight_for(cost_component) / denominator).quantize(
             _WEIGHT_SCALE,
             rounding=ROUND_HALF_UP,
         )
         remaining_weight -= weight
-        allocated_cost = (node_cost.list_cost * weight).quantize(
+        allocated_cost = (source_node_list_cost * weight).quantize(
             _CURRENCY_SCALE,
             rounding=ROUND_HALF_UP,
         )
@@ -317,7 +382,12 @@ def _allocate_component_to_workloads(
         rows.append(
             _workload_row(
                 account_id=account_id,
-                node_cost=node_cost,
+                allocation_group_hash=allocation_group_hash,
+                usage_date=usage_date,
+                cluster_name=cluster_name,
+                cluster_location=cluster_location,
+                cost_component=cost_component,
+                source_node_list_cost=source_node_list_cost,
                 workload=workload,
                 allocation_weight=weight,
                 list_cost=allocated_cost,
@@ -327,7 +397,12 @@ def _allocate_component_to_workloads(
     rows.append(
         _workload_row(
             account_id=account_id,
-            node_cost=node_cost,
+            allocation_group_hash=allocation_group_hash,
+            usage_date=usage_date,
+            cluster_name=cluster_name,
+            cluster_location=cluster_location,
+            cost_component=cost_component,
+            source_node_list_cost=source_node_list_cost,
             workload=final_workload,
             allocation_weight=remaining_weight,
             list_cost=remaining_cost.quantize(_CURRENCY_SCALE, rounding=ROUND_HALF_UP),
@@ -339,20 +414,26 @@ def _allocate_component_to_workloads(
 def _workload_row(
     *,
     account_id: str,
-    node_cost: GkeNodeCost,
+    allocation_group_hash: str,
+    usage_date: date,
+    cluster_name: str,
+    cluster_location: str,
+    cost_component: str,
+    source_node_list_cost: Decimal,
     workload: GkeWorkloadUsage,
     allocation_weight: Decimal,
     list_cost: Decimal,
 ) -> dict[str, Any]:
     row = {
-        "usage_date": node_cost.usage_date,
+        "usage_date": usage_date,
         "vendor": "gcp",
         "account_id": account_id,
-        "source_summary_row_hash": node_cost.source_summary_row_hash,
-        "cluster_name": node_cost.cluster_name,
-        "cluster_location": node_cost.cluster_location,
+        "source_summary_row_hash": None,
+        "allocation_group_hash": allocation_group_hash,
+        "cluster_name": cluster_name,
+        "cluster_location": cluster_location,
         "allocation_scope": "workload_split",
-        "cost_component": node_cost.cost_component,
+        "cost_component": cost_component,
         "namespace": workload.namespace,
         "workload_name": workload.workload_name,
         "workload_type": workload.workload_type,
@@ -361,46 +442,51 @@ def _workload_row(
         "repo": workload.repo,
         "target_branch": workload.target_branch,
         "allocation_weight": allocation_weight,
-        "source_node_list_cost": node_cost.list_cost,
+        "source_node_list_cost": source_node_list_cost,
         "list_cost": list_cost,
-        "allocation_method": f"gke_{node_cost.cost_component}_metering_weight_v1",
+        "allocation_method": f"gke_{cost_component}_metering_weight_v2",
         "allocation_version": ALLOCATION_VERSION,
     }
     row["dimension_hash"] = _dimension_hash(row)
     return row
 
 
-def _unallocated_row(*, account_id: str, node_cost: GkeNodeCost) -> dict[str, Any]:
-    if node_cost.cost_component == "control_plane":
-        allocation_method = "gke_control_plane_unallocated_v1"
-    elif node_cost.cost_component in {"cpu", "memory"}:
-        allocation_method = "gke_missing_metering_unallocated_v1"
-    else:
-        allocation_method = "gke_unsupported_node_cost_unallocated_v1"
-    row = {
+def _allocation_source_row(
+    *,
+    account_id: str,
+    allocation_group_hash: str,
+    node_cost: GkeNodeCost,
+) -> dict[str, Any]:
+    return {
         "usage_date": node_cost.usage_date,
         "vendor": "gcp",
         "account_id": account_id,
         "source_summary_row_hash": node_cost.source_summary_row_hash,
-        "cluster_name": node_cost.cluster_name,
-        "cluster_location": node_cost.cluster_location,
-        "allocation_scope": "unallocated",
-        "cost_component": node_cost.cost_component,
-        "namespace": None,
-        "workload_name": None,
-        "workload_type": None,
-        "author": None,
-        "org": None,
-        "repo": None,
-        "target_branch": None,
-        "allocation_weight": Decimal(),
-        "source_node_list_cost": node_cost.list_cost,
-        "list_cost": node_cost.list_cost,
-        "allocation_method": allocation_method,
+        "allocation_group_hash": allocation_group_hash,
+        "source_list_cost": node_cost.list_cost,
         "allocation_version": ALLOCATION_VERSION,
     }
-    row["dimension_hash"] = _dimension_hash(row)
-    return row
+
+
+def _allocation_group_hash(
+    *,
+    usage_date: date,
+    account_id: str,
+    cluster_name: str,
+    cluster_location: str,
+    cost_component: str,
+) -> str:
+    payload = {
+        "usage_date": usage_date.isoformat(),
+        "vendor": "gcp",
+        "account_id": account_id,
+        "cluster_name": cluster_name,
+        "cluster_location": cluster_location,
+        "cost_component": cost_component,
+        "allocation_version": ALLOCATION_VERSION,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _normalize_node_cost(row: dict[str, Any]) -> GkeNodeCost:
@@ -469,6 +555,7 @@ def _dimension_hash(row: dict[str, Any]) -> str:
         "vendor",
         "account_id",
         "source_summary_row_hash",
+        "allocation_group_hash",
         "cluster_name",
         "cluster_location",
         "allocation_scope",
@@ -492,6 +579,11 @@ def _write_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> None:
     connection.execute(_build_upsert_statement(connection), bound_rows)
 
 
+def _write_source_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> None:
+    bound_rows = bind_decimal_rows(rows) if connection.dialect.name == "sqlite" else rows
+    connection.execute(_build_source_upsert_statement(connection), bound_rows)
+
+
 def _build_upsert_statement(connection: Connection):
     if connection.dialect.name == "sqlite":
         return text(
@@ -500,12 +592,14 @@ def _build_upsert_statement(connection: Connection):
               usage_date, vendor, account_id, cluster_name, cluster_location,
               allocation_scope, cost_component, namespace, workload_name, workload_type,
               author, org, repo, target_branch, allocation_weight, source_node_list_cost,
-              list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash
+              list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash,
+              allocation_group_hash
             ) VALUES (
               :usage_date, :vendor, :account_id, :cluster_name, :cluster_location,
               :allocation_scope, :cost_component, :namespace, :workload_name, :workload_type,
               :author, :org, :repo, :target_branch, :allocation_weight, :source_node_list_cost,
-              :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash
+              :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash,
+              :allocation_group_hash
             )
             ON CONFLICT(usage_date, dimension_hash) DO UPDATE SET
               allocation_weight = excluded.allocation_weight,
@@ -514,6 +608,7 @@ def _build_upsert_statement(connection: Connection):
               allocation_method = excluded.allocation_method,
               allocation_version = excluded.allocation_version,
               source_summary_row_hash = excluded.source_summary_row_hash,
+              allocation_group_hash = excluded.allocation_group_hash,
               calculated_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             """
@@ -524,12 +619,14 @@ def _build_upsert_statement(connection: Connection):
           usage_date, vendor, account_id, cluster_name, cluster_location,
           allocation_scope, cost_component, namespace, workload_name, workload_type,
           author, org, repo, target_branch, allocation_weight, source_node_list_cost,
-          list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash
+          list_cost, allocation_method, allocation_version, dimension_hash, source_summary_row_hash,
+          allocation_group_hash
         ) VALUES (
           :usage_date, :vendor, :account_id, :cluster_name, :cluster_location,
           :allocation_scope, :cost_component, :namespace, :workload_name, :workload_type,
           :author, :org, :repo, :target_branch, :allocation_weight, :source_node_list_cost,
-          :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash
+          :list_cost, :allocation_method, :allocation_version, :dimension_hash, :source_summary_row_hash,
+          :allocation_group_hash
         )
         ON DUPLICATE KEY UPDATE
           allocation_weight = VALUES(allocation_weight),
@@ -538,6 +635,7 @@ def _build_upsert_statement(connection: Connection):
           allocation_method = VALUES(allocation_method),
           allocation_version = VALUES(allocation_version),
           source_summary_row_hash = VALUES(source_summary_row_hash),
+          allocation_group_hash = VALUES(allocation_group_hash),
           calculated_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         """
@@ -552,3 +650,49 @@ _DELETE_ALLOCATIONS_FOR_USAGE_DATES = text(
       AND usage_date BETWEEN :usage_start_date AND :usage_end_date
     """
 )
+
+
+_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES = text(
+    f"""
+    DELETE FROM {ALLOCATION_SOURCE_TABLE}
+    WHERE vendor = 'gcp'
+      AND account_id = :account_id
+      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    """
+)
+
+
+def _build_source_upsert_statement(connection: Connection):
+    if connection.dialect.name == "sqlite":
+        return text(
+            f"""
+            INSERT INTO {ALLOCATION_SOURCE_TABLE} (
+              usage_date, vendor, account_id, source_summary_row_hash,
+              allocation_group_hash, source_list_cost, allocation_version
+            ) VALUES (
+              :usage_date, :vendor, :account_id, :source_summary_row_hash,
+              :allocation_group_hash, :source_list_cost, :allocation_version
+            )
+            ON CONFLICT(vendor, account_id, usage_date, source_summary_row_hash) DO UPDATE SET
+              allocation_group_hash = excluded.allocation_group_hash,
+              source_list_cost = excluded.source_list_cost,
+              allocation_version = excluded.allocation_version,
+              updated_at = CURRENT_TIMESTAMP
+            """
+        )
+    return text(
+        f"""
+        INSERT INTO {ALLOCATION_SOURCE_TABLE} (
+          usage_date, vendor, account_id, source_summary_row_hash,
+          allocation_group_hash, source_list_cost, allocation_version
+        ) VALUES (
+          :usage_date, :vendor, :account_id, :source_summary_row_hash,
+          :allocation_group_hash, :source_list_cost, :allocation_version
+        )
+        ON DUPLICATE KEY UPDATE
+          allocation_group_hash = VALUES(allocation_group_hash),
+          source_list_cost = VALUES(source_list_cost),
+          allocation_version = VALUES(allocation_version),
+          updated_at = CURRENT_TIMESTAMP
+        """
+    )

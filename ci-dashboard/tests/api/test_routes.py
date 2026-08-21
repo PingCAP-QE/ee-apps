@@ -7138,3 +7138,170 @@ def test_cost_breakdowns_replace_lineaged_residual_with_workload_allocations(
         "alice@example.com": 60.0,
         "bob@example.com": 40.0,
     }
+
+
+def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=100,
+        lark_group_id="engineering-group",
+        name="Engineering Group",
+        path="/100",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=110,
+        lark_group_id="database",
+        name="Database",
+        parent_id=100,
+        path="/100/110",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=120,
+        lark_group_id="data",
+        name="Data",
+        parent_id=100,
+        path="/100/120",
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=11,
+        name="Alice",
+        email="alice@example.com",
+        group_id=110,
+    )
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=12,
+        name="Bob",
+        email="bob@example.com",
+        group_id=120,
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="(no repo)",
+        group_id=0,
+        net_cost=60,
+        author=None,
+        owner=None,
+        employee_id=None,
+        attribution_key="unattributed",
+        attribution_source="gcp_billing",
+        attribution_status="unattributed",
+        dimension_hash="gke-source-a",
+        source_summary_row_hash="gke-source-a",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="(no repo)",
+        group_id=0,
+        net_cost=40,
+        author=None,
+        owner=None,
+        employee_id=None,
+        attribution_key="unattributed",
+        attribution_source="gcp_billing",
+        attribution_status="unattributed",
+        dimension_hash="gke-source-b",
+        source_summary_row_hash="gke-source-b",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, namespace, workload_name, workload_type,
+                  author, org, repo, target_branch, allocation_weight, source_node_list_cost,
+                  list_cost, allocation_method, allocation_version, dimension_hash,
+                  source_summary_row_hash, allocation_group_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'workload_split', 'cpu', 'prow', 'tidb', 'deployment',
+                   'alice@example.com', 'pingcap', 'tidb', 'release-8.5', .6, 100, 60,
+                   'gke_cpu_metering_weight_v2', 'gke_metering_v4', 'grouped-gke-tidb', NULL,
+                   'gke-group'),
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                   'workload_split', 'cpu', 'prow', 'ticdc', 'deployment',
+                   'bob@example.com', 'pingcap', 'ticdc', 'release-8.5', .4, 100, 40,
+                   'gke_cpu_metering_weight_v2', 'gke_metering_v4', 'grouped-gke-ticdc', NULL,
+                   'gke-group')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_source_daily (
+                  usage_date, vendor, account_id, source_summary_row_hash,
+                  allocation_group_hash, source_list_cost, allocation_version
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'gke-source-a',
+                   'gke-group', 60, 'gke_metering_v4'),
+                  ('2026-08-10', 'gcp', 'pingcap-testing-account', 'gke-source-b',
+                   'gke-group', 40, 'gke_metering_v4')
+                """
+            )
+        )
+
+    scope = {
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-10",
+        "cost_source": "gcp:pingcap-testing-account",
+    }
+    allocated = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "owner", "allocation_basis": "residual_allocated"},
+    )
+    stack = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**scope, "group_by": "repo", "allocation_basis": "residual_allocated"},
+    )
+    engineering = api_client.get(
+        "/api/v1/pages/cost-engineering-group-share",
+        params={**scope, "allocation_basis": "residual_allocated"},
+    )
+
+    assert allocated.status_code == 200
+    assert allocated.json()["meta"]["allocation_basis"] == "residual_allocated"
+    assert {item["name"]: item["value"] for item in allocated.json()["items"]} == {
+        "alice@example.com": 60.0,
+        "bob@example.com": 40.0,
+    }
+    assert stack.status_code == 200
+    assert {item["name"]: item["value"] for item in stack.json()["items"]} == {
+        "tidb": 60.0,
+        "ticdc": 40.0,
+    }
+    assert engineering.status_code == 200
+    assert {
+        item["name"]: item["value"] for item in engineering.json()["level1"]["items"]
+    } == {"Database": 60.0, "Data": 40.0}
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE cost_kubernetes_workload_allocation_source_daily
+                SET source_list_cost = 41
+                WHERE source_summary_row_hash = 'gke-source-b'
+                """
+            )
+        )
+
+    unreconciled = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "owner", "allocation_basis": "residual_allocated"},
+    )
+
+    assert unreconciled.status_code == 200
+    assert unreconciled.json()["meta"]["allocation_basis"] == "current_attribution"
+    assert {item["name"]: item["value"] for item in unreconciled.json()["items"]} == {
+        "(no owner)": 100.0,
+    }

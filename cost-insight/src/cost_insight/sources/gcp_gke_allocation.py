@@ -166,6 +166,10 @@ WITH billing_rows AS (
   FROM billing_rows
   WHERE service_name = 'Compute Engine'
     AND NOT STARTS_WITH(COALESCE(sku_name, ''), 'Compute Flexible Committed Use Discounts')
+    AND (
+      REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(core|cpu|vcpu)\\b')
+      OR REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(ram|memory)\\b')
+    )
   GROUP BY
     billing_account_id,
     account_id,
@@ -185,44 +189,8 @@ WITH billing_rows AS (
     OR REGEXP_CONTAINS(LOWER(COALESCE(raw_resource_name, '')), r'/instances/gke-')
     OR REGEXP_CONTAINS(LOWER(COALESCE(raw_global_name, '')), r'/instances/gke-')
   ) = COUNT(*)
-), control_plane_summary_sources AS (
-  SELECT
-    billing_account_id,
-    account_id,
-    export_partition_date,
-    usage_date,
-    service_name,
-    sku_name,
-    region,
-    author,
-    org,
-    repo,
-    target_branch,
-    resource_name,
-    CAST(NULL AS STRING) AS cluster_name,
-    CAST(NULL AS STRING) AS cluster_location,
-    'control_plane' AS cost_component,
-    ROUND(SUM(cost_at_list), 2) AS list_cost,
-    COUNT(*) AS source_row_count
-  FROM billing_rows
-  WHERE service_name = 'Kubernetes Engine'
-  GROUP BY
-    billing_account_id,
-    account_id,
-    export_partition_date,
-    usage_date,
-    service_name,
-    sku_name,
-    region,
-    author,
-    org,
-    repo,
-    target_branch,
-    resource_name
 )
 SELECT * FROM gke_summary_sources
-UNION ALL
-SELECT * FROM control_plane_summary_sources
 ORDER BY usage_date, service_name, sku_name, resource_name, cluster_name, cluster_location, cost_component
 """.strip()
 
