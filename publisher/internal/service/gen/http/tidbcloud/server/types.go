@@ -46,8 +46,8 @@ type AddTidbxImageTagInTcmsRequestBody struct {
 type RequestSyncKernelImageRequestBody struct {
 	// env stage
 	Stage *string `form:"stage,omitempty" json:"stage,omitempty" xml:"stage,omitempty"`
-	// the source container image with tag
-	Image *string `form:"image,omitempty" json:"image,omitempty" xml:"image,omitempty"`
+	// the source container images with tag, built from the same repo commit
+	Images []string `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
 }
 
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
@@ -163,7 +163,10 @@ func NewAddTidbxImageTagInTcmsPayload(body *AddTidbxImageTagInTcmsRequestBody) *
 func NewRequestSyncKernelImagePayload(body *RequestSyncKernelImageRequestBody) *tidbcloud.RequestSyncKernelImagePayload {
 	v := &tidbcloud.RequestSyncKernelImagePayload{
 		Stage: *body.Stage,
-		Image: *body.Image,
+	}
+	v.Images = make([]string, len(body.Images))
+	for i, val := range body.Images {
+		v.Images[i] = val
 	}
 
 	return v
@@ -214,16 +217,16 @@ func ValidateRequestSyncKernelImageRequestBody(body *RequestSyncKernelImageReque
 	if body.Stage == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("stage", "body"))
 	}
-	if body.Image == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("image", "body"))
+	if body.Images == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("images", "body"))
 	}
 	if body.Stage != nil {
 		if !(*body.Stage == "dev" || *body.Stage == "prod") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.stage", *body.Stage, []any{"dev", "prod"}))
 		}
 	}
-	if body.Image != nil {
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.image", *body.Image, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
+	for _, e := range body.Images {
+		err = goa.MergeErrors(err, goa.ValidatePattern("body.images[*]", e, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
 	}
 	return
 }

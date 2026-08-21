@@ -14,12 +14,12 @@ HTTP 400
 POST {{publisher_url}}/tidbcloud/sync-kernel-images
 Content-Type: application/json
 {
-  "image": "us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31"
+  "images": ["us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31"]
 }
 
 HTTP 400
 
-# Missing image.
+# Missing images.
 POST {{publisher_url}}/tidbcloud/sync-kernel-images
 Content-Type: application/json
 {
@@ -33,7 +33,7 @@ POST {{publisher_url}}/tidbcloud/sync-kernel-images
 Content-Type: application/json
 {
   "stage": "staging",
-  "image": "us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31"
+  "images": ["us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31"]
 }
 
 HTTP 400
@@ -43,7 +43,7 @@ POST {{publisher_url}}/tidbcloud/sync-kernel-images
 Content-Type: application/json
 {
   "stage": "dev",
-  "image": "not an image"
+  "images": ["not an image"]
 }
 
 HTTP 400

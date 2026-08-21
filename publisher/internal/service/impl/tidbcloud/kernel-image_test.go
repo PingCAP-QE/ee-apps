@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -19,6 +20,7 @@ const (
 	testCommitSHA = "ff685313539da0046e0951a02f8de2f0e2791602"
 	testImage     = "us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31"
 	testGitTag    = "v8.5.4-nextgen.202510.31"
+	testImage2    = "us.gcr.io/pingcap-public/tidbx/tikv-multistore:v8.5.4-nextgen.202510.31"
 )
 
 func testKernelImageMeta(tag bool) kernelImageMeta {
@@ -105,7 +107,7 @@ func TestRequestSyncKernelImageWithTag(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	}, tibuildMetadataHandler(t, testGitTag, "xieyujie@pingcap.com", "123", "456"))
 
-	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Image: testImage}
+	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Images: []string{testImage}}
 	res, err := s.RequestSyncKernelImage(context.Background(), p)
 	if err != nil {
 		t.Fatalf("RequestSyncKernelImage() error = %v", err)
@@ -115,16 +117,63 @@ func TestRequestSyncKernelImageWithTag(t *testing.T) {
 	}
 
 	want := OpsKernelImageSyncRequest{
-		SourceApplicant:  "xieyujie@pingcap.com",
-		SourceReleaseID:  "123",
-		SourceChangeID:   "456",
-		Repo:             testRepo,
-		CommitSHA:        testCommitSHA,
-		GitTag:           testGitTag,
-		SourceRepository: "us.gcr.io/pingcap-public/tidbx/tikv",
-		SourceTag:        testGitTag,
+		SourceApplicant: "xieyujie@pingcap.com",
+		SourceReleaseID: "123",
+		SourceChangeID:  "456",
+		Repo:            testRepo,
+		CommitSHA:       testCommitSHA,
+		GitTag:          testGitTag,
+		Images: []OpsKernelImageSyncRequestImage{
+			{SourceRepository: "us.gcr.io/pingcap-public/tidbx/tikv", SourceTag: testGitTag},
+		},
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("request body = %+v, want %+v", got, want)
+	}
+}
+
+func TestRequestSyncKernelImageMultipleImages(t *testing.T) {
+	var got OpsKernelImageSyncRequest
+	s := newKernelImageTestSvc(t, testKernelImageMeta(true), func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "test-key" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/devops/kernel-images/build-callback" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}, tibuildMetadataHandler(t, testGitTag, "xieyujie@pingcap.com", "30082", "62440"))
+
+	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Images: []string{testImage, testImage2}}
+	res, err := s.RequestSyncKernelImage(context.Background(), p)
+	if err != nil {
+		t.Fatalf("RequestSyncKernelImage() error = %v", err)
+	}
+	if res != "ok" {
+		t.Fatalf("RequestSyncKernelImage() res = %q, want %q", res, "ok")
+	}
+
+	want := OpsKernelImageSyncRequest{
+		SourceApplicant: "xieyujie@pingcap.com",
+		SourceReleaseID: "30082",
+		SourceChangeID:  "62440",
+		Repo:            testRepo,
+		CommitSHA:       testCommitSHA,
+		GitTag:          testGitTag,
+		Images: []OpsKernelImageSyncRequestImage{
+			{SourceRepository: "us.gcr.io/pingcap-public/tidbx/tikv", SourceTag: testGitTag},
+			{SourceRepository: "us.gcr.io/pingcap-public/tidbx/tikv-multistore", SourceTag: testGitTag},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("request body = %+v, want %+v", got, want)
 	}
 }
@@ -143,8 +192,8 @@ func TestRequestSyncKernelImageWithBranch(t *testing.T) {
 	})
 
 	p := &tidbcloud.RequestSyncKernelImagePayload{
-		Stage: "dev",
-		Image: "us.gcr.io/pingcap-public/tidbx/tikv:release-nextgen-20251015",
+		Stage:  "dev",
+		Images: []string{"us.gcr.io/pingcap-public/tidbx/tikv:release-nextgen-20251015"},
 	}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err != nil {
 		t.Fatalf("RequestSyncKernelImage() error = %v", err)
@@ -171,7 +220,7 @@ func TestRequestSyncKernelImageMetadataUnavailable(t *testing.T) {
 		http.Error(w, "tag not found", http.StatusNotFound)
 	})
 
-	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Image: testImage}
+	p := &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Images: []string{testImage}}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err != nil {
 		t.Fatalf("RequestSyncKernelImage() error = %v, want success with empty applicant", err)
 	}
@@ -218,10 +267,10 @@ func TestRequestSyncKernelImageErrors(t *testing.T) {
 
 	p = &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev"}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err == nil {
-		t.Fatal("expected error for empty image")
+		t.Fatal("expected error for empty images")
 	}
 
-	p = &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Image: testImage}
+	p = &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Images: []string{testImage}}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err == nil {
 		t.Fatal("expected error when ops config is not configured")
 	}
@@ -252,5 +301,16 @@ func TestRequestSyncKernelImageErrors(t *testing.T) {
 	s.opsCfg = &OpsConfig{Stages: map[string]OpsStageConfig{"dev": {APIBaseURL: "http://127.0.0.1:1", APIKey: "test-key"}}}
 	if _, err := s.RequestSyncKernelImage(context.Background(), p); err == nil {
 		t.Fatal("expected error when ops callback fails")
+	}
+
+	p = &tidbcloud.RequestSyncKernelImagePayload{Stage: "dev", Images: []string{testImage, testImage2}}
+	s.kernelImageMetaReader = func(_ context.Context, image string) kernelImageMeta {
+		if image == testImage2 {
+			return kernelImageMeta{Repo: "different/repo", CommitSHA: testCommitSHA, GitTag: testGitTag}
+		}
+		return testKernelImageMeta(true)
+	}
+	if _, err := s.RequestSyncKernelImage(context.Background(), p); err == nil {
+		t.Fatal("expected error when source images have mismatched metadata")
 	}
 }

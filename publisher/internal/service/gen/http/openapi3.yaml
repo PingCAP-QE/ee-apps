@@ -243,7 +243,7 @@ paths:
             tags:
                 - tidbcloud
             summary: request-sync-kernel-image tidbcloud
-            description: Request to sync kernel image via ops platform kernel image build callback
+            description: Request to sync kernel images via ops platform kernel image build callback
             operationId: tidbcloud#request-sync-kernel-image
             requestBody:
                 required: true
@@ -252,7 +252,8 @@ paths:
                         schema:
                             $ref: '#/components/schemas/RequestSyncKernelImageRequestBody'
                         example:
-                            image: us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
+                            images:
+                                - us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
                             stage: dev
             responses:
                 "200":
@@ -699,11 +700,15 @@ components:
         RequestSyncKernelImageRequestBody:
             type: object
             properties:
-                image:
-                    type: string
-                    description: the source container image with tag
-                    example: us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
-                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$
+                images:
+                    type: array
+                    items:
+                        type: string
+                        example: us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
+                        pattern: ^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$
+                    description: the source container images with tag, built from the same repo commit
+                    example:
+                        - us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
                 stage:
                     type: string
                     description: env stage
@@ -712,11 +717,12 @@ components:
                         - dev
                         - prod
             example:
-                image: us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
+                images:
+                    - us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31
                 stage: dev
             required:
                 - stage
-                - image
+                - images
         RequestToCopyRequestBody:
             type: object
             properties:

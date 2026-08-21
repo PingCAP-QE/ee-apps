@@ -39,13 +39,17 @@ type OpsUpdateComponentResponse struct {
 }
 
 type OpsKernelImageSyncRequest struct {
-	SourceApplicant  string `json:"source_applicant"`
-	SourceReleaseID  string `json:"source_release_id,omitempty"`
-	SourceChangeID   string `json:"source_change_id,omitempty"`
-	Repo             string `json:"repo"`
-	Branch           string `json:"branch,omitempty"`
-	CommitSHA        string `json:"commit_sha"`
-	GitTag           string `json:"git_tag,omitempty"`
+	SourceApplicant string                           `json:"source_applicant"`
+	SourceReleaseID string                           `json:"source_release_id,omitempty"`
+	SourceChangeID  string                           `json:"source_change_id,omitempty"`
+	Repo            string                           `json:"repo"`
+	Branch          string                           `json:"branch,omitempty"`
+	CommitSHA       string                           `json:"commit_sha"`
+	GitTag          string                           `json:"git_tag,omitempty"`
+	Images          []OpsKernelImageSyncRequestImage `json:"images"`
+}
+
+type OpsKernelImageSyncRequestImage struct {
 	SourceRepository string `json:"source_repository"`
 	SourceTag        string `json:"source_tag"`
 }
