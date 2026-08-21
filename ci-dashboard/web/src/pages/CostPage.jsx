@@ -104,6 +104,7 @@ export default function CostPage({ filters }) {
     owner: selectedResourceOwner,
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
+    allocation_basis: allocationBasis,
   };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
   const allocationOverview = useApiData("/api/v1/pages/cost-allocation-overview", costFilters);
