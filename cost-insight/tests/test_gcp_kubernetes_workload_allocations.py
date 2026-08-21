@@ -350,9 +350,12 @@ def test_gke_allocation_queries_use_positive_gke_cost_signals_and_metering_dimen
     assert "goog-k8s-cluster-name" in node_query
     assert "billing_account_id" in node_query
     assert "export_partition_date" in node_query
-    assert "COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1" in node_query
+    assert "AS billing_cluster_name" in node_query
+    assert "AS billing_cluster_location" in node_query
+    assert "NULLIF(billing_cluster_name, '') IS NOT NULL" in node_query
+    assert "STRUCT(billing_cluster_name, billing_cluster_location)" in node_query
     assert "resource.global_name AS raw_global_name" in node_query
-    assert "NULLIF(cluster_name, '') IS NOT NULL" in node_query
+    assert "NULLIF(billing_cluster_name, '') IS NOT NULL" in node_query
     assert "STARTS_WITH(LOWER(COALESCE(raw_resource_name, '')), 'pvc-')" in node_query
     assert "REGEXP_CONTAINS(LOWER(COALESCE(raw_resource_name, '')), r'/instances/gke-')" in node_query
     assert "REGEXP_CONTAINS(LOWER(COALESCE(raw_global_name, '')), r'/instances/gke-')" in node_query
