@@ -214,6 +214,46 @@ export default function BuildTrendPage({ filters }) {
         </Panel>
 
         <Panel
+          title="Avg success duration by repo"
+          subtitle="Configured dashboard repos only. Successful build run time, ranked from slowest to fastest."
+          loading={page.loading}
+          error={page.error}
+        >
+          <RankingList
+            items={page.data?.repo_performance_rankings?.avg_success_duration?.items}
+            valueFormatter={formatSeconds}
+            renderMeta={(item) => [
+              <span key={`${item.name}-counts`}>
+                {formatCompact(item.success_build_count)} success / {formatCompact(item.total_build_count)} total
+              </span>,
+              <span key={`${item.name}-rate`}>Success rate {formatPercent(item.success_rate_pct)}</span>,
+            ]}
+          />
+        </Panel>
+
+        <Panel
+          title="Success rate by repo"
+          subtitle="Configured dashboard repos only. Successful builds divided by all builds, ranked from lowest to highest."
+          loading={page.loading}
+          error={page.error}
+        >
+          <RankingList
+            items={page.data?.repo_performance_rankings?.success_rate?.items}
+            valueFormatter={formatPercent}
+            renderMeta={(item) => [
+              <span key={`${item.name}-ratio`}>
+                {formatCompact(item.success_build_count)} / {formatCompact(item.total_build_count)} succeeded
+              </span>,
+              <span key={`${item.name}-avg`}>
+                {item.success_avg_run_s == null
+                  ? "No successful run duration"
+                  : `Avg success ${formatSeconds(item.success_avg_run_s)}`}
+              </span>,
+            ]}
+          />
+        </Panel>
+
+        <Panel
           title={`Build count by ${activeBuildCountDimension.label.toLowerCase()}`}
           subtitle={`Bucketed build-count trend split by ${activeBuildCountDimension.description} in the current CI scope.`}
           loading={page.loading}

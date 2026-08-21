@@ -2094,6 +2094,26 @@ def test_page_routes(api_client: TestClient) -> None:
     }
     assert build_trend_body["cloud_posture_trend"]["meta"]["bucket_granularity"] == "week"
     assert build_trend_body["cloud_posture_trend"]["series"] == []
+    assert build_trend_body["repo_performance_rankings"]["avg_success_duration"]["items"] == [
+        {
+            "name": "pingcap/tidb",
+            "total_build_count": 5,
+            "success_build_count": 1,
+            "success_rate_pct": 20.0,
+            "success_avg_run_s": 600,
+            "value": 600,
+        }
+    ]
+    assert build_trend_body["repo_performance_rankings"]["success_rate"]["items"] == [
+        {
+            "name": "pingcap/tidb",
+            "total_build_count": 5,
+            "success_build_count": 1,
+            "success_rate_pct": 20.0,
+            "success_avg_run_s": 600,
+            "value": 20.0,
+        }
+    ]
     assert build_trend_body["longest_avg_success_jobs"]["items"] == [
         {
             "name": "job-b",
@@ -2140,6 +2160,73 @@ def test_page_routes(api_client: TestClient) -> None:
     )
     assert build_trend_all.status_code == 200
     build_trend_all_body = build_trend_all.json()
+    assert build_trend_all_body["repo_performance_rankings"] == {
+        "avg_success_duration": {
+            "items": [
+                {
+                    "name": "pingcap/tidb",
+                    "total_build_count": 6,
+                    "success_build_count": 2,
+                    "success_rate_pct": 33.33,
+                    "success_avg_run_s": 525,
+                    "value": 525,
+                }
+            ],
+            "meta": {
+                "repo": None,
+                "branch": None,
+                "job_name": None,
+                "job_names": [],
+                "cloud_phase": None,
+                "issue_status": None,
+                "start_date": "2026-04-10",
+                "end_date": "2026-04-11",
+                "granularity": "day",
+                "cost_vendor": None,
+                "cost_account_id": None,
+                "cost_source": None,
+                "repo_count": 1,
+                "metric": "success_avg_run_s",
+                "success_only": True,
+            },
+        },
+        "success_rate": {
+            "items": [
+                {
+                    "name": "pingcap/tiflash",
+                    "total_build_count": 1,
+                    "success_build_count": 0,
+                    "success_rate_pct": 0.0,
+                    "success_avg_run_s": None,
+                    "value": 0.0,
+                },
+                {
+                    "name": "pingcap/tidb",
+                    "total_build_count": 6,
+                    "success_build_count": 2,
+                    "success_rate_pct": 33.33,
+                    "success_avg_run_s": 525,
+                    "value": 33.33,
+                },
+            ],
+            "meta": {
+                "repo": None,
+                "branch": None,
+                "job_name": None,
+                "job_names": [],
+                "cloud_phase": None,
+                "issue_status": None,
+                "start_date": "2026-04-10",
+                "end_date": "2026-04-11",
+                "granularity": "day",
+                "cost_vendor": None,
+                "cost_account_id": None,
+                "cost_source": None,
+                "repo_count": 2,
+                "metric": "success_rate_pct",
+            },
+        },
+    }
     build_count_breakdown = build_trend_all_body["build_count_breakdown_trend"]
     assert build_count_breakdown["repo"]["items"] == [
         {"name": "pingcap/tidb", "value": 6, "share_pct": 85.71},
@@ -2324,6 +2411,53 @@ def test_page_routes(api_client: TestClient) -> None:
     assert flaky_with_open_issues_body["failure_category_share"] == flaky_body["failure_category_share"]
     assert flaky_with_open_issues_body["failure_category_trend"] == flaky_body["failure_category_trend"]
     assert flaky_with_open_issues_body["period_comparison"] == flaky_body["period_comparison"]
+
+
+def test_repo_performance_rankings_only_include_configured_repos(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=9_999,
+        source_prow_job_id="unlisted-repo-job",
+        repo_full_name="pingcap/other",
+        target_branch="master",
+        base_ref="master",
+        job_name="unlisted-job",
+        state="success",
+        cloud_phase="GCP",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-04-11 12:00:00",
+        run_seconds=99_999,
+        total_seconds=99_999,
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/ci-status",
+        params={"start_date": "2026-04-10", "end_date": "2026-04-11"},
+    )
+    assert response.status_code == 200
+    rankings = response.json()["repo_performance_rankings"]
+    ranking_repos = {
+        item["name"]
+        for ranking in rankings.values()
+        for item in ranking["items"]
+    }
+
+    assert "pingcap/other" not in ranking_repos
+    assert ranking_repos <= {
+        "pingcap/docs",
+        "pingcap/ticdc",
+        "pingcap/tidb",
+        "pingcap/tiflash",
+        "pingcap/tiflow",
+        "tidbcloud/cloud-storage-engine",
+        "tikv/pd",
+        "tikv/tikv",
+    }
 
 
 def test_cost_page_route(sqlite_engine, api_client: TestClient) -> None:

@@ -20,6 +20,7 @@ from ci_dashboard.api.queries.builds import (
     get_migration_fixed_window_comparison,
     get_migration_runtime_comparison,
     get_outcome_trend,
+    get_repo_performance_rankings,
 )
 from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
@@ -126,6 +127,7 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
                 engine,
                 filters,
             ),
+            "repo_performance_rankings": lambda: get_repo_performance_rankings(engine, filters),
             "cloud_posture_trend": lambda: get_cloud_posture_trend(engine, filters),
             "longest_avg_success_jobs": lambda: get_longest_avg_success_jobs(engine, filters),
             "lowest_success_rate_jobs": lambda: get_lowest_success_rate_jobs(engine, filters),
