@@ -1,6 +1,6 @@
 # Cost Schema Retirement Design
 
-Status: Implemented in code; pending staged production rollout  
+Status: Implemented in code; pending staged production rollout
 Date: 2026-08-21
 
 ## Summary
