@@ -301,7 +301,8 @@ WITH normalized AS (
     COALESCE(
       NULLIF(resource.name, ''),
       NULLIF(resource.global_name, ''),
-      {workload_expr}
+      {workload_expr},
+      '(no GCP resource ID)'
     ) AS resource_name,
     TO_JSON_STRING(
       JSON_OBJECT(
@@ -352,8 +353,6 @@ SELECT
   ROUND(SUM(cost + credit_amount), 2) AS net_cost,
   MAX(export_time) AS source_export_time
 FROM normalized
-WHERE resource_name IS NOT NULL
-  AND resource_name <> ''
 GROUP BY
   account_id,
   billing_account_id,

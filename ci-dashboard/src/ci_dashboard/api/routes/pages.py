@@ -193,16 +193,23 @@ def cost_engineering_group_share_page(
 
 @router.get("/cost-unmatched-resources")
 def cost_unmatched_resources_page(
+    owner: str | None = Query(default=None, max_length=255),
     service_name: str | None = None,
     sort_by: str = Query("list_cost", pattern="^(list_cost|duration)$"),
+    allocation_basis: str = Query(
+        "current_attribution",
+        pattern="^(current_attribution|residual_allocated)$",
+    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_unmatched_resources_page(
         engine,
         filters,
+        owner=owner,
         service_name=service_name,
         sort_by=sort_by,
+        allocation_basis=allocation_basis,
     )
 
 

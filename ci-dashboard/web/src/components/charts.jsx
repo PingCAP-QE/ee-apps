@@ -1683,7 +1683,7 @@ export function BucketFlakyRateTable({
 
 export function UnmatchedResourceTable({ items }) {
   if (!items?.length) {
-    return <EmptyState message="No named resources in the no-owner bucket for the current filters." />;
+    return <EmptyState message="No resource rows for the selected owner and filters." />;
   }
 
   return (
@@ -1691,18 +1691,16 @@ export function UnmatchedResourceTable({ items }) {
       <table className="data-table data-table--compact">
         <thead>
           <tr>
-            <th>Resource</th>
+            <th>Resource ID or name</th>
             <th>List cost</th>
             <th>Duration</th>
             <th>Service</th>
-            <th>SKU</th>
             <th>Labels</th>
-            <th>Allocation</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr key={item.resource_name}>
+          {items.map((item, index) => (
+            <tr key={`${item.resource_name}:${item.service_name}:${item.sku_name}:${index}`}>
               <th scope="row">
                 <div className="resource-table__name">{item.resource_name}</div>
                 {item.repo_name ? (
@@ -1712,13 +1710,7 @@ export function UnmatchedResourceTable({ items }) {
               <td>{formatCurrency(item.list_cost)}</td>
               <td>{formatResourceDuration(item.usage_seconds)}</td>
               <td>{item.service_name || "--"}</td>
-              <td>{item.sku_name || "--"}</td>
               <td className="resource-table__labels">{item.labels || "--"}</td>
-              <td>
-                <div className="resource-table__meta">{item.allocation_buckets || "--"}</div>
-                <div className="resource-table__meta">{item.attribution_status || "--"}</div>
-                <div className="resource-table__meta">{item.attribution_source || "--"}</div>
-              </td>
             </tr>
           ))}
         </tbody>

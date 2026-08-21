@@ -111,8 +111,8 @@ WITH billing_rows AS (
     {repo_expr} AS repo,
     {target_branch_expr} AS target_branch,
     {resource_name_expr} AS resource_name,
-    {cluster_name_expr} AS cluster_name,
-    {cluster_location_expr} AS cluster_location,
+    {cluster_name_expr} AS billing_cluster_name,
+    {cluster_location_expr} AS billing_cluster_location,
     resource.name AS raw_resource_name,
     resource.global_name AS raw_global_name,
     cost_at_list
@@ -136,20 +136,24 @@ WITH billing_rows AS (
     resource_name,
     CASE
       WHEN COUNTIF(
-        NULLIF(cluster_name, '') IS NOT NULL
-        AND NULLIF(cluster_location, '') IS NOT NULL
+        NULLIF(billing_cluster_name, '') IS NOT NULL
+        AND NULLIF(billing_cluster_location, '') IS NOT NULL
       ) = COUNT(*)
-      AND COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1
-        THEN MAX(cluster_name)
+      AND COUNT(DISTINCT TO_JSON_STRING(
+        STRUCT(billing_cluster_name, billing_cluster_location)
+      )) = 1
+        THEN MAX(billing_cluster_name)
       ELSE NULL
     END AS cluster_name,
     CASE
       WHEN COUNTIF(
-        NULLIF(cluster_name, '') IS NOT NULL
-        AND NULLIF(cluster_location, '') IS NOT NULL
+        NULLIF(billing_cluster_name, '') IS NOT NULL
+        AND NULLIF(billing_cluster_location, '') IS NOT NULL
       ) = COUNT(*)
-      AND COUNT(DISTINCT TO_JSON_STRING(STRUCT(cluster_name, cluster_location))) = 1
-        THEN MAX(cluster_location)
+      AND COUNT(DISTINCT TO_JSON_STRING(
+        STRUCT(billing_cluster_name, billing_cluster_location)
+      )) = 1
+        THEN MAX(billing_cluster_location)
       ELSE NULL
     END AS cluster_location,
     CASE
@@ -162,6 +166,10 @@ WITH billing_rows AS (
   FROM billing_rows
   WHERE service_name = 'Compute Engine'
     AND NOT STARTS_WITH(COALESCE(sku_name, ''), 'Compute Flexible Committed Use Discounts')
+    AND (
+      REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(core|cpu|vcpu)\\b')
+      OR REGEXP_CONTAINS(LOWER(COALESCE(sku_name, '')), r'\\b(ram|memory)\\b')
+    )
   GROUP BY
     billing_account_id,
     account_id,
@@ -176,49 +184,13 @@ WITH billing_rows AS (
     target_branch,
     resource_name
   HAVING COUNTIF(
-    NULLIF(cluster_name, '') IS NOT NULL
+    NULLIF(billing_cluster_name, '') IS NOT NULL
     OR STARTS_WITH(LOWER(COALESCE(raw_resource_name, '')), 'pvc-')
     OR REGEXP_CONTAINS(LOWER(COALESCE(raw_resource_name, '')), r'/instances/gke-')
     OR REGEXP_CONTAINS(LOWER(COALESCE(raw_global_name, '')), r'/instances/gke-')
   ) = COUNT(*)
-), control_plane_summary_sources AS (
-  SELECT
-    billing_account_id,
-    account_id,
-    export_partition_date,
-    usage_date,
-    service_name,
-    sku_name,
-    region,
-    author,
-    org,
-    repo,
-    target_branch,
-    resource_name,
-    CAST(NULL AS STRING) AS cluster_name,
-    CAST(NULL AS STRING) AS cluster_location,
-    'control_plane' AS cost_component,
-    ROUND(SUM(cost_at_list), 2) AS list_cost,
-    COUNT(*) AS source_row_count
-  FROM billing_rows
-  WHERE service_name = 'Kubernetes Engine'
-  GROUP BY
-    billing_account_id,
-    account_id,
-    export_partition_date,
-    usage_date,
-    service_name,
-    sku_name,
-    region,
-    author,
-    org,
-    repo,
-    target_branch,
-    resource_name
 )
 SELECT * FROM gke_summary_sources
-UNION ALL
-SELECT * FROM control_plane_summary_sources
 ORDER BY usage_date, service_name, sku_name, resource_name, cluster_name, cluster_location, cost_component
 """.strip()
 

@@ -249,14 +249,18 @@ def get_cost_unmatched_resources_page(
     engine: Engine,
     filters: CommonFilters,
     *,
+    owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
+    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_unmatched_resources(
         engine,
         _normalize_cost_filters(filters),
+        owner=owner,
         service_name=service_name,
         sort_by=sort_by,
+        allocation_basis=allocation_basis,
     )
 
 
