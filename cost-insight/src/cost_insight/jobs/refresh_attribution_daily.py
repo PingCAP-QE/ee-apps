@@ -13,7 +13,6 @@ from cost_insight.jobs.job_keys import source_job_name
 
 LOG = logging.getLogger(__name__)
 
-JOB_NAME = "refresh_cost_attribution_daily"
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
 
 
@@ -32,67 +31,7 @@ class RefreshAttributionSummary:
     rows_deleted: int
     rows_inserted: int
     dry_run: bool
-    raw_rows: int | None = None
     summary_rows: int | None = None
-
-
-def run_refresh_cost_attribution_daily(
-    engine: Engine,
-    *,
-    source: CostAttributionSource,
-    start_date: date,
-    end_date: date,
-    dry_run: bool = False,
-) -> RefreshAttributionSummary:
-    if start_date > end_date:
-        raise ValueError("start_date must be before or equal to end_date")
-
-    params = {
-        "vendor": source.vendor,
-        "account_id": source.account_id,
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-    watermark = _watermark(vendor=source.vendor, account_id=source.account_id, start_date=start_date, end_date=end_date)
-    job_name = source_job_name(JOB_NAME, vendor=source.vendor, account_id=source.account_id)
-
-    if dry_run:
-        with engine.begin() as connection:
-            raw_rows = connection.execute(_COUNT_RAW_DETAILS, params).scalar_one()
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=0,
-            rows_inserted=0,
-            dry_run=True,
-            raw_rows=int(raw_rows),
-        )
-
-    try:
-        with engine.begin() as connection:
-            state_store.mark_job_started(connection, job_name, watermark)
-
-        with engine.begin() as connection:
-            delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
-            insert_result = connection.execute(_INSERT_ATTRIBUTION_DAILY, params)
-            state_store.mark_job_succeeded(connection, job_name, watermark)
-
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=_positive_rowcount(delete_result.rowcount),
-            rows_inserted=_positive_rowcount(insert_result.rowcount),
-            dry_run=False,
-        )
-    except Exception as exc:
-        LOG.exception("refresh_cost_attribution_daily failed")
-        with engine.begin() as connection:
-            state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
-        raise
 
 
 def run_refresh_cost_attribution_from_summary(
@@ -218,17 +157,6 @@ def source_owner_email_sql(expression: str) -> str:
     return f"REPLACE({expression}, '_at_', '@')"
 
 
-_COUNT_RAW_DETAILS = text(
-    """
-    SELECT COUNT(*)
-    FROM cost_raw_details
-    WHERE usage_date BETWEEN :start_date AND :end_date
-      AND vendor = :vendor
-      AND account_id = :account_id
-    """
-)
-
-
 _COUNT_SUMMARY_DETAILS = text(
     """
     SELECT COUNT(*)
@@ -250,20 +178,12 @@ _DELETE_ATTRIBUTION_DAILY = text(
 )
 
 
-_NORMALIZED_RAW_AUTHOR = normalized_identity_sql("raw.author")
 _NORMALIZED_SUMMARY_AUTHOR = normalized_identity_sql("summary.author")
 _NORMALIZED_GITHUB_ID = normalized_identity_sql("normalized_employee.github_id")
 _NORMALIZED_EMAIL_LOCAL = normalized_identity_sql(
     "SUBSTRING_INDEX(normalized_employee.email, '@', 1)"
 )
 _NORMALIZED_EN_NAME = normalized_identity_sql("normalized_employee.en_name")
-_RAW_AUTHOR_OVERRIDE_EMAIL = """
-CASE LOWER(raw.author)
-  WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
-  WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
-  ELSE NULL
-END
-""".strip()
 _SUMMARY_AUTHOR_OVERRIDE_EMAIL = """
 CASE LOWER(summary.author)
   WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
@@ -345,225 +265,6 @@ CASE
   ELSE {_MATCHED_OWNER}
 END
 """.strip()
-
-
-_INSERT_ATTRIBUTION_DAILY = text(
-    f"""
-    INSERT INTO cost_attribution_daily (
-      usage_date,
-      vendor,
-      account_id,
-      service_name,
-      sku_name,
-      region,
-      org,
-      repo,
-      target_branch,
-      resource_name,
-      author,
-      owner,
-      attribution_key,
-      attribution_source,
-      attribution_status,
-      employee_id,
-      group_id,
-      manager_id,
-      usage_seconds,
-      list_cost,
-      effective_cost,
-      credit_amount,
-      net_cost,
-      source_rows,
-      dimension_hash
-    )
-    SELECT
-      attributed.usage_date,
-      attributed.vendor,
-      attributed.account_id,
-      attributed.service_name,
-      attributed.sku_name,
-      attributed.region,
-      attributed.org,
-      attributed.repo,
-      attributed.target_branch,
-      attributed.resource_name,
-      attributed.author,
-      attributed.owner,
-      attributed.attribution_key,
-      attributed.attribution_source,
-      attributed.attribution_status,
-      attributed.employee_id,
-      attributed.group_id,
-      attributed.manager_id,
-      SUM(attributed.usage_seconds) AS usage_seconds,
-      SUM(attributed.list_cost) AS list_cost,
-      SUM(attributed.effective_cost) AS effective_cost,
-      SUM(attributed.credit_amount) AS credit_amount,
-      SUM(attributed.net_cost) AS net_cost,
-      COUNT(*) AS source_rows,
-      SHA2(
-        CONCAT_WS(
-          '|',
-          DATE_FORMAT(attributed.usage_date, '%Y-%m-%d'),
-          COALESCE(attributed.vendor, ''),
-          COALESCE(attributed.account_id, ''),
-          COALESCE(attributed.service_name, ''),
-          COALESCE(attributed.sku_name, ''),
-          COALESCE(attributed.region, ''),
-          COALESCE(attributed.org, ''),
-          COALESCE(attributed.repo, ''),
-          COALESCE(attributed.target_branch, ''),
-          COALESCE(attributed.resource_name, ''),
-          COALESCE(attributed.author, ''),
-          COALESCE(attributed.owner, ''),
-          COALESCE(attributed.attribution_key, ''),
-          COALESCE(attributed.attribution_source, ''),
-          COALESCE(attributed.attribution_status, ''),
-          COALESCE(CAST(attributed.employee_id AS CHAR), ''),
-          COALESCE(CAST(attributed.group_id AS CHAR), ''),
-          COALESCE(CAST(attributed.manager_id AS CHAR), '')
-        ),
-        256
-      ) AS dimension_hash
-    FROM (
-      SELECT
-        raw.usage_date,
-        raw.vendor,
-        raw.account_id,
-        raw.service_name,
-        raw.sku_name,
-        raw.region,
-        raw.org,
-        raw.repo,
-        raw.target_branch,
-        raw.resource_name,
-        raw.author,
-        {_MATCHED_OWNER} AS owner,
-        CASE
-          WHEN COALESCE(
-            override_employee.id,
-            github_employee.id,
-            email_employee.id,
-            normalized_employee.id
-          ) IS NOT NULL THEN CONCAT(
-            'employee:',
-            CAST(COALESCE(
-              override_employee.id,
-              github_employee.id,
-              email_employee.id,
-              normalized_employee.id
-            ) AS CHAR)
-          )
-          WHEN raw.author IS NOT NULL THEN CONCAT('author:', LOWER(raw.author))
-          ELSE 'unattributed'
-        END AS attribution_key,
-        CASE
-          WHEN override_employee.id IS NOT NULL THEN 'author_override'
-          WHEN github_employee.id IS NOT NULL THEN 'author_github'
-          WHEN email_employee.id IS NOT NULL THEN 'author_email'
-          WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
-          WHEN raw.author IS NOT NULL THEN 'author_label'
-          ELSE 'missing_author'
-        END AS attribution_source,
-        CASE
-          WHEN COALESCE(
-            override_employee.id,
-            github_employee.id,
-            email_employee.id,
-            normalized_employee.id
-          ) IS NOT NULL THEN 'matched'
-          WHEN raw.author IS NOT NULL THEN 'unmatched'
-          ELSE 'unattributed'
-        END AS attribution_status,
-        COALESCE(
-          override_employee.id,
-          github_employee.id,
-          email_employee.id,
-          normalized_employee.id
-        ) AS employee_id,
-        COALESCE(
-          override_employee.group_id,
-          github_employee.group_id,
-          email_employee.group_id,
-          normalized_employee.group_id
-        ) AS group_id,
-        COALESCE(
-          override_employee.manager_id,
-          github_employee.manager_id,
-          email_employee.manager_id,
-          normalized_employee.manager_id,
-          matched_group.manager_id
-        ) AS manager_id,
-        raw.usage_seconds,
-        raw.list_cost,
-        raw.effective_cost,
-        raw.credit_amount,
-        raw.net_cost
-      FROM cost_raw_details raw
-      LEFT JOIN roster_employees override_employee
-        ON raw.author IS NOT NULL
-       AND override_employee.email IS NOT NULL
-       AND LOWER(override_employee.email) = LOWER({_RAW_AUTHOR_OVERRIDE_EMAIL})
-      LEFT JOIN roster_employees github_employee
-        ON override_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND github_employee.github_id IS NOT NULL
-       AND LOWER(github_employee.github_id) = LOWER(raw.author)
-      LEFT JOIN roster_employees email_employee
-        ON github_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND email_employee.email IS NOT NULL
-       AND (
-         LOWER(email_employee.email) = LOWER(raw.author)
-         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(raw.author)
-       )
-      LEFT JOIN roster_employees normalized_employee
-        ON github_employee.id IS NULL
-       AND email_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND (
-         normalized_employee.github_id IS NOT NULL
-         OR normalized_employee.email IS NOT NULL
-         OR normalized_employee.en_name IS NOT NULL
-       )
-       AND (
-         {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_GITHUB_ID}
-         OR {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_EMAIL_LOCAL}
-         OR {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_EN_NAME}
-       )
-      LEFT JOIN roster_groups matched_group
-        ON matched_group.is_active = 1
-       AND matched_group.id = COALESCE(
-         override_employee.group_id,
-         github_employee.group_id,
-         email_employee.group_id,
-         normalized_employee.group_id
-       )
-      WHERE raw.usage_date BETWEEN :start_date AND :end_date
-        AND raw.vendor = :vendor
-        AND raw.account_id = :account_id
-    ) attributed
-    GROUP BY
-      attributed.usage_date,
-      attributed.vendor,
-      attributed.account_id,
-      attributed.service_name,
-      attributed.sku_name,
-      attributed.region,
-      attributed.org,
-      attributed.repo,
-      attributed.target_branch,
-      attributed.resource_name,
-      attributed.author,
-      attributed.owner,
-      attributed.attribution_key,
-      attributed.attribution_source,
-      attributed.attribution_status,
-      attributed.employee_id,
-      attributed.group_id,
-      attributed.manager_id
-    """
-)
 
 
 _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(

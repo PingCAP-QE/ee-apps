@@ -17,6 +17,7 @@ Current design:
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
+- [Cost schema retirement design](docs/cost-schema-retirement-design.md)
 
 ## Local Setup
 
@@ -37,7 +38,6 @@ Useful GCP settings:
 | `COST_INSIGHT_GCP_GKE_USAGE_TABLE` | `pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
 | `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
-| `COST_INSIGHT_SYNC_OVERLAP_DAYS` | `3` |
 | `COST_INSIGHT_SYNC_LAG_DAYS` | `5` |
 | `COST_INSIGHT_EXPORT_OVERLAP_DAYS` | `0` |
 | `COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
@@ -75,44 +75,7 @@ All recurring summary, unmatched-resource, and attribution jobs discover active
 sources from `cost_sources`. The env account IDs are now fallback values for
 local validation when the registry table is empty.
 
-## GCP Raw Backfill
-
-```bash
-cost-insight sync-gcp-billing-export --start-date 2026-01-01 --end-date 2026-05-17 --split-by-day
-```
-
-For a small validation run:
-
-```bash
-cost-insight sync-gcp-billing-export --start-date 2026-05-17 --end-date 2026-05-17 --limit 100 --dry-run
-```
-
-`--dry-run` reads BigQuery and normalizes rows but does not write
-`cost_raw_details` or advance `cost_job_state`.
-
-## Attribution Refresh
-
-After raw details are imported, rebuild the daily attribution table for the
-affected date range:
-
-```bash
-cost-insight refresh-cost-attribution-daily --start-date 2026-05-09 --end-date 2026-05-17 --split-by-day
-```
-
-For a safe validation first:
-
-```bash
-cost-insight refresh-cost-attribution-daily --start-date 2026-05-09 --end-date 2026-05-17 --split-by-day --dry-run
-```
-
-This job reads `cost_raw_details`, joins current `roster_employees` and
-`roster_groups`, then rebuilds `cost_attribution_daily` for the requested
-`vendor/account/date` range. It is intentionally rerunnable so late billing
-corrections and roster fixes can be reflected by refreshing the same dates.
-Use `--split-by-day` for multi-day ranges to stay under TiDB single-query
-memory limits.
-
-## BigQuery Cost-Optimized Pipeline
+## Billing Summary Pipeline
 
 The refined pipeline avoids scanning resource-level billing export columns for
 regular dashboard summaries:
@@ -169,21 +132,6 @@ cost-insight sync-aws-unmatched-resources \
   --usage-start-date 2026-05-17 \
   --usage-end-date 2026-05-23
 ```
-
-To avoid a BigQuery backfill during migration, seed the new tables from the
-existing `cost_raw_details` table:
-
-```bash
-cost-insight backfill-gcp-cost-refine-from-raw \
-  --start-date 2026-01-01 \
-  --end-date 2026-05-20 \
-  --mark-summary-watermark
-```
-
-The backfill synthesizes `export_partition_date` from
-`DATE(source_export_time)`, falling back to `usage_date` when
-`source_export_time` is missing. `--mark-summary-watermark` prevents the new
-summary importer from scanning already-backfilled historical export partitions.
 
 See [docs/bigquery-cost-optimization-design.md](docs/bigquery-cost-optimization-design.md)
 for the detailed table design, query shapes, and cost estimates.

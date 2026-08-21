@@ -48,7 +48,6 @@ class GcpBillingSettings:
     gke_usage_table: str = DEFAULT_GCP_GKE_USAGE_TABLE
     account_id: str = DEFAULT_GCP_ACCOUNT_ID
     earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
-    sync_overlap_days: int = 3
     sync_lag_days: int = 5
     export_overlap_days: int = 0
     sync_initial_lookback_days: int | None = None
@@ -156,11 +155,6 @@ def load_settings(
                 env,
                 ("COST_INSIGHT_EARLIEST_USAGE_DATE", "COST_EARLIEST_USAGE_DATE"),
                 DEFAULT_EARLIEST_USAGE_DATE,
-            ),
-            sync_overlap_days=_read_int_any(
-                env,
-                ("COST_INSIGHT_SYNC_OVERLAP_DAYS", "COST_SYNC_OVERLAP_DAYS"),
-                3,
             ),
             sync_lag_days=_read_int_any(
                 env,

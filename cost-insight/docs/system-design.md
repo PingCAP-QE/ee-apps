@@ -165,138 +165,27 @@ Notes:
 - No generic `metadata_json` for now. If a concrete source attribute becomes
   necessary, add a named column or a separate mapping table then.
 
-### `cost_raw_details`
+### `cost_bq_export_summary_daily`
 
-Daily cost fact table. Keep this intentionally small: enough to show cost by
-day, source account, service, billing item, region, and the current CI
-dimensions. Do not mirror the full cloud billing export schema in TiDB. When
-deep invoice reconciliation is needed, query the original BigQuery billing
-export directly.
+Durable daily billing-import ledger for GCP and AWS. A row is scoped by export
+partition, usage date, source account, and the normalized billing dimensions in
+the source row hash. Late corrections can be imported without scanning or
+rebuilding a deprecated TiDB raw-detail layer.
 
-```sql
-CREATE TABLE cost_raw_details (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  vendor VARCHAR(32) NOT NULL,
-  account_id VARCHAR(128) NOT NULL,
-  billing_account_id VARCHAR(128) NULL,
-  usage_date DATE NOT NULL,
+Regular collectors write this table, and attribution refreshes read it. The
+source BigQuery billing exports remain authoritative for invoice-level or
+one-off raw investigation. See
+[BigQuery cost optimization design](bigquery-cost-optimization-design.md) for
+the import and correction model.
 
-  service_name VARCHAR(255) NULL,
-  sku_name VARCHAR(255) NULL,
-  region VARCHAR(128) NULL,
-  namespace VARCHAR(255) NULL,
-  author VARCHAR(255) NULL,
-  org VARCHAR(255) NULL,
-  repo VARCHAR(255) NULL,
-  resource_name VARCHAR(512) NULL,
+### `cost_unmatched_resource_daily`
 
-  usage_seconds DECIMAL(20, 2) NULL,
+Weekly resource-level investigation data. It is separate from the regular
+summary ledger because resource names, labels, and usage duration have much
+higher cardinality and are not needed by normal dashboard summaries.
 
-  list_cost DECIMAL(16, 2) NULL,
-  effective_cost DECIMAL(16, 2) NULL,
-  credit_amount DECIMAL(16, 2) NULL,
-  net_cost DECIMAL(16, 2) NULL,
-
-  source_export_time DATETIME NULL,
-  source_row_hash CHAR(64) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_cost_raw_details_source_row (vendor, account_id, source_row_hash),
-  KEY idx_cost_raw_details_date_account (usage_date, vendor, account_id),
-  KEY idx_cost_raw_details_service (usage_date, service_name),
-  KEY idx_cost_raw_details_sku (usage_date, service_name, sku_name),
-  KEY idx_cost_raw_details_author (usage_date, author),
-  KEY idx_cost_raw_details_repo (usage_date, org, repo),
-  KEY idx_cost_raw_details_resource_name (resource_name(255)),
-  KEY idx_cost_raw_details_export_time (source_export_time)
-);
-```
-
-Sample GCP billing row:
-
-| field | value |
-| --- | --- |
-| `vendor` | `gcp` |
-| `account_id` | `pingcap-testing-account` |
-| `billing_account_id` | `01ABCD-234EFG-567HIJ` |
-| `usage_date` | `2026-05-18` |
-| `service_name` | `Compute Engine` |
-| `sku_name` | `N1 Predefined Instance Core running in Americas` |
-| `region` | `us-central1` |
-| `namespace` | `prow-test-pods` |
-| `author` | `hawkingrei` |
-| `org` | `pingcap` |
-| `repo` | `tidb` |
-| `resource_name` | `cap-ticdc-pull-cdc-storage-integration-light-next-gen-318-qh26q` |
-| `usage_seconds` | `45000.00` |
-| `list_cost` | `0.85` |
-| `effective_cost` | `0.68` |
-| `credit_amount` | `-0.12` |
-| `net_cost` | `0.56` |
-
-Sample AWS CUR row later:
-
-| field | value |
-| --- | --- |
-| `vendor` | `aws` |
-| `account_id` | `123456789012` |
-| `service_name` | `Amazon Elastic Compute Cloud` |
-| `sku_name` | `EBS:VolumeUsage.gp3` |
-| `usage_date` | `2026-05-18` |
-| `author` | `hawkingrei` |
-| `repo` | `tidb` |
-| `resource_name` | `gke-prow-nap-e2-standard-32-l1evms3o-44832b66-bhbs` |
-| `usage_seconds` | `86400.00` |
-| `list_cost` | `2.40` |
-| `effective_cost` | `1.92` |
-| `credit_amount` | `0.00` |
-| `net_cost` | `1.92` |
-
-Notes:
-
-- `invoice_month` is intentionally omitted. Monthly queries can use
-  `usage_date`; invoice-specific reconciliation can stay in BigQuery export.
-- `usage_start_time` and `usage_end_time` are intentionally omitted because the
-  product view is daily. If hourly analysis becomes necessary, add an hourly
-  summary table instead of widening this one.
-- `sku_name` is stored because `service_name` is too coarse for "where did the
-  money go" analysis. For example, GCP `Compute Engine` can include VM core,
-  memory, disk, and network SKUs; AWS `EC2` can include instance, EBS, and data
-  transfer style costs.
-- `sku_id`, resource id, resource type, and zone are intentionally omitted for
-  now. They are not needed for the initial product questions and make the table
-  look more precise than our planned usage.
-- `author`, `org`, `repo`, `namespace`, and `resource_name` are promoted because
-  they are current product dimensions or investigation keys. Other labels stay
-  in the source BigQuery export until a real query needs them.
-- `usage_seconds` is the only promoted usage measure in this table. Convert
-  pure time units such as `hour`, `minute`, and `second` to seconds in ETL. For
-  compound or non-time units such as `gibibyte hour`, `gibibyte month`, `count`,
-  or `gibibyte`, leave it `NULL` and use cost fields.
-- Do not store raw source JSON. BigQuery remains the source of truth for
-  source-specific fields and invoice-level debugging.
-- `resource_name` should prefer `k8s-workload-name` when present because it is
-  usually the CI pod/workload name. Fall back to `resource.name`, then
-  `resource.global_name` for VM, disk, load balancer, storage, or other cloud
-  resources.
-- `source_row_hash` should be deterministic from stable dimension columns. For
-  GCP, include billing account, project, date, service, SKU, region, normalized
-  label columns, and resource name. Do not include cost amounts or export time;
-  late corrections should update the same aggregate row instead of creating a
-  duplicate.
-- `source_row_hash` is for idempotent upsert. The collector can safely re-read a
-  date range without creating duplicate rows.
-- `source_export_time` is for incremental sync and late correction detection.
-  Billing export data can arrive late or be corrected after the original usage
-  date, so the job should read with overlap and advance this watermark only
-  after a successful import.
-- Amount columns are USD. Do not store a `currency` column until a non-USD
-  source becomes real.
-- Cost and budget amounts use `DECIMAL(16,2)`. We do not need more than cents
-  for product reporting, and one project daily cost will not approach this
-  range.
+The Dashboard combines these rows with current attribution to show unmatched
+resources. Historical invoice reconciliation remains in BigQuery.
 
 ### `cost_attribution_daily`
 
@@ -441,78 +330,38 @@ Sample watermarks:
 
 | job_name | watermark_json |
 | --- | --- |
-| `sync_gcp_billing_export:gcp:pingcap-testing-account` | `{"account_id":"pingcap-testing-account","start_date":"2026-05-15","end_date":"2026-05-18"}` |
+| `sync_gcp_billing_summary:gcp:pingcap-testing-account` | `{"account_id":"pingcap-testing-account","export_partition_start":"2026-05-15","export_partition_end":"2026-05-18"}` |
 | `refresh_cost_attribution_from_summary:aws:946646677266` | `{"vendor":"aws","account_id":"946646677266","start_date":"2026-05-01","end_date":"2026-05-31"}` |
 
 ## ETL Flow
 
-### Flow 1: GCP Detailed Billing Export
-
-Purpose: import daily cost facts from billing export.
+### Flow 1: Billing Summary Import
 
 ```mermaid
 flowchart LR
-  BQ["BigQuery detailed billing export"] --> Extract["sync-gcp-billing-export"]
-  Extract --> Normalize["Normalize vendor-neutral columns"]
-  Normalize --> RawDetails["cost_raw_details"]
+  Export["GCP/AWS billing export"] --> Summary["cost_bq_export_summary_daily"]
+  Summary --> Attribution["summary attribution refresh"]
 ```
 
 Steps:
 
-1. Discover active sources from `cost_sources` for the current vendor and
-   ensure each source is active before import starts.
-2. Read a usage-date range. On scheduled runs, re-read the last successful
-   `end_date - overlap_days` window because billing export can receive late
-   corrections.
-3. Aggregate billing rows by day, project/account, service, SKU, region, author,
-   org, repo, namespace, and resource name.
-4. Normalize the aggregate into `cost_raw_details`.
-5. Convert time-based usage to `usage_seconds`; leave non-time usage as `NULL`.
-6. Upsert by `(vendor, account_id, source_row_hash)`.
-7. Advance watermark only after all rows are committed.
+1. Discover active sources from `cost_sources`.
+2. Read bounded export partitions so BigQuery can prune source data.
+3. Normalize provider fields and upsert by the stable source-row hash.
+4. Refresh attribution for usage dates touched by imported partitions.
+5. Advance the source watermark only after writes and attribution succeed.
 
-Important behavior:
-
-- Always use overlap because billing export can receive late corrections.
-- Preserve adjustment rows. Do not drop tax, rounding, or correction rows unless
-  a concrete product question needs a regular-usage-only view later.
-- If a correction changes old cost, upsert the affected aggregate row and let
-  the daily total move to the corrected value.
-
-### Flow 2: Label Enrichment
-
-Purpose: fill missing `author`, `org`, `repo`, `namespace`, and `resource_name`
-dimensions when billing export rows do not have enough labels.
+### Flow 2: Resource Investigation Import
 
 ```mermaid
 flowchart LR
-  RawDetails["cost_raw_details with missing labels"] --> Enrich["label enrichment"]
-  BQ["BigQuery GKE metering or billing export"] --> Enrich
-  Enrich --> Costs
+  Export["GCP/AWS billing export"] --> Resource["cost_unmatched_resource_daily"]
+  Resource --> Dashboard["unmatched resource investigation"]
 ```
 
-Steps:
-
-1. Find recent `cost_raw_details` rows where attribution dimensions are missing.
-2. Try to enrich from billing export labels first.
-3. If billing export labels are insufficient, use GKE metering tables as an
-   auxiliary lookup source.
-4. If enrichment still fails, keep the row unallocated. Do not create another
-   usage table just for missing-label cases.
-5. For manual investigation, use source fields such as resource id or resource
-   name in BigQuery or the cloud console. Do not store those fields in TiDB
-   until product queries need them.
-
-Useful current labels:
-
-| label | Usage |
-| --- | --- |
-| `author` | primary CI author attribution |
-| `repo` | repository aggregation |
-| `org` | GitHub organization |
-| `resource_name` | pod or VM name for manual investigation |
-| `jenkins/label` | Jenkins pod label |
-| `namespace` | system vs CI classification |
+Resource-level rows are imported separately on a bounded weekly window. This
+keeps resource names, raw labels, and usage duration out of the normal billing
+summary path.
 
 ### Flow 3: Attribution Refresh
 
@@ -520,7 +369,7 @@ Purpose: map cost and usage to author, repo, group, and manager.
 
 ```mermaid
 flowchart LR
-  RawDetails["cost_raw_details"] --> Rules
+  Summary["cost_bq_export_summary_daily"] --> Rules
   Roster["roster_employees / roster_groups"] --> Rules
   Rules --> Daily["cost_attribution_daily"]
 ```
@@ -528,8 +377,7 @@ flowchart LR
 Rules:
 
 1. Build a working set for affected dates.
-2. Read normalized columns: `author`, `repo`, `org`, `resource_name`, and
-   `namespace`.
+2. Read normalized billing and allocation columns from the summary ledger.
 3. Use `author` first for CI attribution.
 4. Join `author` to `roster_employees.github_id`.
 5. If GitHub ID does not match, try employee email and email local-part.
@@ -611,16 +459,14 @@ allocations unless the Lark source later provides a custom allocation curve.
 
 Budget sync can wait until the cost and usage pipeline is stable.
 
-## Initial Implementation Order
+## Current Implementation
 
-1. Create SQL migration `001_create_cost_tables.sql`.
-2. Confirm runtime access to the GCP Detailed Billing Export table and validate
-   label coverage for `pingcap-testing-account`.
-3. Implement `sync-gcp-billing-export`.
-4. Backfill from `2026-01-01`, then schedule a daily overlapping sync.
-5. Implement label enrichment only if billing export labels are not enough.
-6. Implement `refresh-attribution-daily`.
-7. Add budget Lark sync later.
+1. Apply SQL migrations through the latest file under `sql/`.
+2. Import GCP and AWS billing partitions with the summary commands.
+3. Refresh `cost_attribution_daily` from the summary ledger.
+4. Import weekly resource investigation data separately.
+5. Publish Kubernetes workload allocation facts after billing data settles.
+6. Add budget sync when a source of truth replaces the current manual rows.
 
 ## Open Questions
 

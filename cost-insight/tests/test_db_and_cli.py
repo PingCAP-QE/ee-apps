@@ -15,7 +15,6 @@ from cost_insight.common.config import (
 )
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
-from cost_insight.jobs.backfill_cost_refine_from_raw import BackfillCostRefineFromRawSummary
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import BootstrapGcsCacheLastSeenResult
 from cost_insight.jobs.cleanup_gcs_cache import CleanupGcsCacheSummary
 from cost_insight.jobs.refresh_attribution_daily import (
@@ -34,7 +33,6 @@ from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_gcs_cache_last_seen import SyncGcsCacheLastSeenResult
 from cost_insight.jobs.sync_gcp_billing_summary import SyncGcpBillingSummaryResult
-from cost_insight.jobs.sync_gcp_billing_export import SyncGcpBillingSummary
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     SyncGcpKubernetesWorkloadAllocationsSummary,
 )
@@ -403,116 +401,6 @@ def test_configure_logging_accepts_unknown_level() -> None:
     configure_logging("not-a-level")
 
 
-def test_cli_runs_sync_command(monkeypatch, capsys) -> None:
-    disposed = []
-    captured = {}
-
-    class Engine:
-        def dispose(self):
-            disposed.append(True)
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
-        log_level="INFO",
-    )
-
-    def fake_run(engine, *, settings, start_date, end_date, dry_run, limit, replace_existing_dates):
-        captured["engine"] = engine
-        captured["settings"] = settings
-        captured["start_date"] = start_date
-        captured["end_date"] = end_date
-        captured["dry_run"] = dry_run
-        captured["limit"] = limit
-        captured["replace_existing_dates"] = replace_existing_dates
-        return SyncGcpBillingSummary(
-            account_id=settings.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_seen=1,
-            rows_written=0,
-            dry_run=dry_run,
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_sync_gcp_billing_export", fake_run)
-
-    exit_code = cli.main(
-        [
-            "sync-gcp-billing-export",
-            "--start-date",
-            "2026-05-17",
-                "--end-date",
-                "2026-05-18",
-                "--dry-run",
-                "--replace-existing-dates",
-        ]
-    )
-
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert disposed == [True]
-    assert captured["start_date"] == date(2026, 5, 17)
-    assert captured["end_date"] == date(2026, 5, 18)
-    assert captured["dry_run"] is True
-    assert captured["limit"] is None
-    assert captured["replace_existing_dates"] is True
-    assert '"rows_seen": 1' in output
-
-
-def test_cli_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
-    calls = []
-
-    class Engine:
-        def dispose(self):
-            pass
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
-        log_level="INFO",
-    )
-
-    def fake_run(_engine, *, settings, start_date, end_date, dry_run, limit, replace_existing_dates):
-        calls.append((start_date, end_date, dry_run, limit, replace_existing_dates))
-        return SyncGcpBillingSummary(
-            account_id=settings.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_seen=1,
-            rows_written=1,
-            dry_run=dry_run,
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_sync_gcp_billing_export", fake_run)
-
-    assert (
-        cli.main(
-            [
-                "sync-gcp-billing-export",
-                "--start-date",
-                "2026-05-10",
-                "--end-date",
-                "2026-05-12",
-                "--split-by-day",
-            ]
-        )
-        == 0
-    )
-
-    assert calls == [
-        (date(2026, 5, 10), date(2026, 5, 10), False, None, False),
-        (date(2026, 5, 11), date(2026, 5, 11), False, None, False),
-        (date(2026, 5, 12), date(2026, 5, 12), False, None, False),
-    ]
-    assert '"start_date": "2026-05-10"' in capsys.readouterr().out
-
-
 def test_cli_runs_sync_gcs_cache_last_seen_without_database(monkeypatch, capsys) -> None:
     calls = []
     settings = SimpleNamespace(
@@ -753,77 +641,6 @@ def test_cli_rejects_negative_cleanup_shard_start(capsys) -> None:
     assert "expected a non-negative integer" in capsys.readouterr().err
 
 
-def test_cli_runs_refresh_attribution_command(monkeypatch, capsys) -> None:
-    disposed = []
-    captured = {}
-
-    class Engine:
-        def dispose(self):
-            disposed.append(True)
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
-        tcms_allocation=TcmsAllocationSettings(),
-        log_level="INFO",
-    )
-
-    def fake_refresh(
-        engine,
-        *,
-        source,
-        start_date,
-        end_date,
-        dry_run,
-        tcms_allocation_table=None,
-    ):
-        captured["engine"] = engine
-        captured["source"] = source
-        captured["start_date"] = start_date
-        captured["end_date"] = end_date
-        captured["dry_run"] = dry_run
-        captured["tcms_allocation_table"] = tcms_allocation_table
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=2,
-            rows_inserted=3,
-            dry_run=dry_run,
-            raw_rows=10 if dry_run else None,
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_refresh_cost_attribution_daily", fake_refresh)
-
-    exit_code = cli.main(
-        [
-            "refresh-cost-attribution-daily",
-            "--start-date",
-            "2026-05-09",
-            "--end-date",
-            "2026-05-17",
-            "--dry-run",
-        ]
-    )
-
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert disposed == [True]
-    assert captured["start_date"] == date(2026, 5, 9)
-    assert captured["end_date"] == date(2026, 5, 17)
-    assert captured["dry_run"] is True
-    assert captured["source"] == CostAttributionSource(
-        vendor="gcp",
-        account_id="pingcap-testing-account",
-    )
-    assert '"rows_inserted": 3' in output
-    assert '"raw_rows": 10' in output
-
-
 def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
@@ -990,65 +807,6 @@ def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, 
     assert '"node_cost_rows_seen": 4' in output
 
 
-def test_cli_runs_backfill_cost_refine_from_raw_command(monkeypatch, capsys) -> None:
-    disposed = []
-    captured = {}
-
-    class Engine:
-        def dispose(self):
-            disposed.append(True)
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
-        log_level="INFO",
-    )
-
-    def fake_run(engine, **kwargs):
-        captured.update(kwargs)
-        return BackfillCostRefineFromRawSummary(
-            account_id=kwargs["settings"].account_id,
-            start_date=kwargs["start_date"],
-            end_date=kwargs["end_date"],
-            summary_rows_seen=2,
-            summary_rows_written=2,
-            unmatched_rows_seen=1,
-            unmatched_rows_written=1,
-            export_partition_start=date(2026, 5, 17),
-            export_partition_end=date(2026, 5, 20),
-            dry_run=kwargs["dry_run"],
-            marked_summary_watermark=kwargs["mark_summary_watermark"],
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_backfill_cost_refine_from_raw", fake_run)
-
-    exit_code = cli.main(
-        [
-            "backfill-gcp-cost-refine-from-raw",
-            "--start-date",
-            "2026-01-01",
-            "--end-date",
-            "2026-05-20",
-            "--mark-summary-watermark",
-            "--dry-run",
-        ]
-    )
-
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert disposed == [True]
-    assert captured["start_date"] == date(2026, 1, 1)
-    assert captured["end_date"] == date(2026, 5, 20)
-    assert captured["include_unmatched_resources"] is True
-    assert captured["mark_summary_watermark"] is True
-    assert captured["dry_run"] is True
-    assert '"summary_rows_seen": 2' in output
-    assert '"marked_summary_watermark": true' in output
-
-
 def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
@@ -1119,80 +877,11 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
     assert '"summary_rows": 10' in output
 
 
-def test_cli_refresh_attribution_split_by_day_runs_each_date(monkeypatch, capsys) -> None:
-    calls = []
-
-    class Engine:
-        def dispose(self):
-            pass
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
-        log_level="INFO",
-    )
-
-    def fake_refresh(_engine, *, source, start_date, end_date, dry_run):
-        calls.append((start_date, end_date, dry_run))
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=0,
-            rows_inserted=1,
-            dry_run=dry_run,
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_refresh_cost_attribution_daily", fake_refresh)
-
-    assert (
-        cli.main(
-            [
-                "refresh-cost-attribution-daily",
-                "--start-date",
-                "2026-05-09",
-                "--end-date",
-                "2026-05-11",
-                "--split-by-day",
-            ]
-        )
-        == 0
-    )
-
-    assert calls == [
-        (date(2026, 5, 9), date(2026, 5, 9), False),
-        (date(2026, 5, 10), date(2026, 5, 10), False),
-        (date(2026, 5, 11), date(2026, 5, 11), False),
-    ]
-    assert '"start_date": "2026-05-09"' in capsys.readouterr().out
-
-
 def test_date_range_rejects_invalid_range() -> None:
     try:
         list(cli._date_range(date(2026, 5, 12), date(2026, 5, 10)))
     except ValueError as exc:
         assert "--start-date" in str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("expected ValueError")
-
-
-def test_run_sync_gcp_command_split_by_day_requires_dates() -> None:
-    args = SimpleNamespace(
-        split_by_day=True,
-        start_date=None,
-        end_date=None,
-        dry_run=False,
-        limit=None,
-    )
-
-    try:
-        cli._run_sync_gcp_command(object(), settings=GcpBillingSettings(), args=args)
-    except ValueError as exc:
-        assert "--split-by-day" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected ValueError")
 

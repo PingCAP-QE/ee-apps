@@ -6,7 +6,7 @@
 
 ## 检查范围
 
-跳过 raw 表（如 `cost_raw_details`、`ci_l1_pod_events`），只检查汇总层和直接消费的表。上游外部表（`prow_jobs`、`github_tickets`）作为独立检查项纳入，因为它们的数据新鲜度直接影响下游所有表。
+跳过 raw 表（如 `ci_l1_pod_events`），只检查汇总层和直接消费的表。上游外部表（`prow_jobs`、`github_tickets`）作为独立检查项纳入，因为它们的数据新鲜度直接影响下游所有表。
 
 ## 检查项总览
 
@@ -22,7 +22,7 @@
 | 8 | `problem_case_runs` | cloudevents-server CloudEvents | `MAX(report_time)` vs NOW | **4 小时** | MEDIUM |
 | 9 | `ci_l1_builds` 派生列 | refresh-build-derived | `ci_job_state` 中 `ci-refresh-build-derived` 的 `last_succeeded_at` | **4 小时** | MEDIUM |
 | 10 | `cost_bq_export_summary_daily` | GCP/AWS Billing Export（daily） | `MAX(usage_date)` vs NOW（GCP 源） | **4 天** | MEDIUM |
-| 11 | `cost_attribution_daily` | cost_raw_details + roster（daily） | `MAX(usage_date)` vs NOW | **4 天** | MEDIUM |
+| 11 | `cost_attribution_daily` | cost_bq_export_summary_daily + roster（daily） | `MAX(usage_date)` vs NOW | **4 天** | MEDIUM |
 | 12 | `cost_unmatched_resource_daily` | GCP/AWS Unmatched Detection（weekly） | `MAX(usage_date)` vs NOW | **10 天** | LOW |
 | 13 | `sync-gcs-cache-last-seen` | BigQuery GCS Audit Logs → BigQuery last-seen 表 | `cost_job_state` 中 `sync-gcs-cache-last-seen` 的 `last_succeeded_at` | **30 小时** | LOW |
 | 14 | `roster_employees` | Lark 飞书通讯录 API（daily） | `MAX(updated_at)` vs NOW | **30 小时** | MEDIUM |
@@ -153,7 +153,7 @@ FROM cost_attribution_daily;
 
 如果 `latest_usage_date < CURDATE() - INTERVAL 4 DAY` → 告警。
 
-> 依赖链路：GCP billing export → `cost_raw_details` → `cost_bq_export_summary_daily` → `cost_attribution_daily`。只要 `cost_bq_export_summary_daily` 是新鲜的，`cost_attribution_daily` 也应该新鲜。此项作为确认检查。
+> 依赖链路：GCP/AWS billing export → `cost_bq_export_summary_daily` → `cost_attribution_daily`。只要 `cost_bq_export_summary_daily` 是新鲜的，`cost_attribution_daily` 也应该新鲜。此项作为确认检查。
 
 ### 12. `cost_unmatched_resource_daily` — 未匹配资源最新日期
 
