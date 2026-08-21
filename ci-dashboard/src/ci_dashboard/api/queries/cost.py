@@ -34,6 +34,9 @@ COST_SHARE_LIMIT = 8
 VALID_COST_SHARE_DIMENSIONS = frozenset(
     {"owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
+SOURCE_COST_DIMENSIONS = frozenset(
+    {"service", "sku", "cost_driver", "project", "service_exec_id", "region"}
+)
 COST_DRILLDOWN_CHILD_GROUPS = {
     "team": "owner",
     "cost_driver": "sku",
@@ -133,15 +136,19 @@ def get_cost_trend(
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         basis = _cost_allocation_basis(connection, filters, allocation_basis)
-        from_clause = basis.from_clause
         drilldown = _cost_drilldown_filter(
             connection,
             child_group=None,
             drilldown_group=drilldown_group,
             drilldown_value=drilldown_value,
         )
+        query_basis = _cost_basis_for_dimension(
+            basis,
+            drilldown["group"] if drilldown else None,
+        )
+        from_clause = query_basis.from_clause
         if drilldown:
-            from_clause = _cost_basis_from_clause(basis, drilldown["from_clause"])
+            from_clause = _cost_basis_from_clause(query_basis, drilldown["from_clause"])
             where_clause = f"{where_clause} AND {drilldown['condition']}"
             params = {**params, **drilldown["params"]}
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
@@ -149,7 +156,7 @@ def get_cost_trend(
         rows = connection.execute(
             text(
                 f"""
-                {basis.cte}
+                {query_basis.cte}
                 SELECT
                   {bucket} AS bucket_start,
                   SUM(c.net_cost) AS net_cost,
@@ -173,7 +180,7 @@ def get_cost_trend(
         coverage_row = connection.execute(
             text(
                 f"""
-                {basis.cte}
+                {query_basis.cte}
                 SELECT
                   SUM({list_cost_expr}) AS total_resource_cost,
                   SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
@@ -831,6 +838,7 @@ def get_repo_group_cost_stack(
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         basis = _cost_allocation_basis(connection, filters, allocation_basis)
+        query_basis = _cost_basis_for_dimension(basis, group_by)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
         drilldown = _cost_drilldown_filter(
@@ -846,12 +854,12 @@ def get_repo_group_cost_stack(
                 "params": {**dimension["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
-        dimension = _cost_basis_dimension(basis, dimension)
+        dimension = _cost_basis_dimension(query_basis, dimension)
         list_cost_expr = _billing_report_list_cost_expr("c")
         top_rows = connection.execute(
             text(
                 f"""
-                {basis.cte}
+                {query_basis.cte}
                 SELECT
                   {dimension["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
@@ -909,7 +917,7 @@ def get_repo_group_cost_stack(
         rows = connection.execute(
             text(
                 f"""
-                {basis.cte}
+                {query_basis.cte}
                 SELECT
                   {bucket} AS bucket_start,
                   {stack_dimension} AS dimension_name,
@@ -1001,6 +1009,7 @@ def get_cost_share(
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         basis = _cost_allocation_basis(connection, filters, allocation_basis)
+        query_basis = _cost_basis_for_dimension(basis, dimension)
         dimension_config = _cost_share_dimension(connection, dimension)
         drilldown = _cost_drilldown_filter(
             connection,
@@ -1015,12 +1024,12 @@ def get_cost_share(
                 "params": {**dimension_config["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
-        dimension_config = _cost_basis_dimension(basis, dimension_config)
+        dimension_config = _cost_basis_dimension(query_basis, dimension_config)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
                 f"""
-                {basis.cte}
+                {query_basis.cte}
                 SELECT
                   {dimension_config["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
@@ -2229,16 +2238,6 @@ def _residual_allocation_basis_cte(
         ), group_source_totals AS (
           SELECT
             matched.allocation_group_hash,
-            MIN(source.id) AS source_attribution_id,
-            MIN(source.service_name) AS source_service_name,
-            MIN(source.sku_name) AS source_sku_name,
-            MIN(source.usage_type) AS source_usage_type,
-            MIN(source.cost_driver_key) AS source_cost_driver_key,
-            MIN(source.region) AS source_region,
-            MIN(source.vendor_tags_json) AS source_vendor_tags_json,
-            MIN(source.service) AS source_service,
-            MIN(source.project) AS source_project,
-            MIN(source.service_exec_id) AS source_service_exec_id,
             SUM(COALESCE(source.list_cost, 0)) AS source_list_cost,
             SUM(COALESCE(source.effective_cost, 0)) AS source_effective_cost,
             SUM(COALESCE(source.credit_amount, 0)) AS source_credit_amount,
@@ -2286,16 +2285,16 @@ def _residual_allocation_basis_cte(
             allocation.usage_date,
             allocation.vendor,
             allocation.account_id,
-            source.source_service_name,
-            source.source_sku_name,
-            source.source_usage_type,
-            source.source_cost_driver_key,
-            COALESCE(NULLIF(allocation.cluster_location, ''), source.source_region),
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
             COALESCE(NULLIF(allocation.allocation_org, ''), NULL),
             COALESCE(NULLIF(allocation.allocation_repo, ''), NULL),
             allocation.allocation_target_branch,
             allocation.workload_name,
-            source.source_vendor_tags_json,
+            NULL,
             allocation.allocation_scope,
             allocation.allocation_namespace,
             COALESCE(
@@ -2307,9 +2306,9 @@ def _residual_allocation_basis_cte(
               NULLIF(allocation.allocation_employee_email, ''),
               NULLIF(allocation.allocation_employee_github_id, '')
             ),
-            source.source_service,
-            source.source_project,
-            source.source_service_exec_id,
+            NULL,
+            NULL,
+            NULL,
             CASE
               WHEN allocation.allocation_employee_id IS NULL THEN 'unattributed'
               ELSE __EMPLOYEE_ATTRIBUTION_KEY__
@@ -2588,6 +2587,21 @@ def _allocation_source_match(allocation_alias: str, attribution_alias: str) -> s
 
 def _cost_basis_from_clause(basis: CostAllocationBasis, from_clause: str) -> str:
     return from_clause.replace("cost_attribution_daily c", basis.from_clause, 1)
+
+
+def _cost_basis_for_dimension(
+    basis: CostAllocationBasis,
+    dimension: str | None,
+) -> CostAllocationBasis:
+    """Keep billing-source dimensions on their original attribution rows.
+
+    Kubernetes allocation changes who owns a cost, not its provider service,
+    SKU, billing project, execution id, or billing region. Grouped allocation
+    facts intentionally do not carry those source attributes.
+    """
+    if dimension in SOURCE_COST_DIMENSIONS:
+        return CostAllocationBasis(basis.name)
+    return basis
 
 
 def _cost_basis_dimension(

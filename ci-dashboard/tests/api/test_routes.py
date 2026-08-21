@@ -7187,6 +7187,12 @@ def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
         repo="(no repo)",
         group_id=0,
         net_cost=60,
+        service_name="Compute Engine",
+        sku_name="N1 Predefined Instance Core",
+        cost_driver_key="compute",
+        project="billing-project-a",
+        service_exec_id="source-exec-a",
+        region="us-central1",
         author=None,
         owner=None,
         employee_id=None,
@@ -7202,6 +7208,12 @@ def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
         repo="(no repo)",
         group_id=0,
         net_cost=40,
+        service_name="Compute Engine",
+        sku_name="N1 Predefined Instance Ram",
+        cost_driver_key="block_storage",
+        project="billing-project-b",
+        service_exec_id="source-exec-b",
+        region="us-east1",
         author=None,
         owner=None,
         employee_id=None,
@@ -7267,6 +7279,31 @@ def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
         "/api/v1/pages/cost-engineering-group-share",
         params={**scope, "allocation_basis": "residual_allocated"},
     )
+    source_sku = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "sku", "allocation_basis": "residual_allocated"},
+    )
+    source_region = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "region", "allocation_basis": "residual_allocated"},
+    )
+    source_cost_driver = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "cost_driver", "allocation_basis": "residual_allocated"},
+    )
+    source_sku_stack = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**scope, "group_by": "sku", "allocation_basis": "residual_allocated"},
+    )
+    source_cost_driver_trend = api_client.get(
+        "/api/v1/pages/cost-trend",
+        params={
+            **scope,
+            "drilldown_group": "cost_driver",
+            "drilldown_value": "Block storage",
+            "allocation_basis": "residual_allocated",
+        },
+    )
 
     assert allocated.status_code == 200
     assert allocated.json()["meta"]["allocation_basis"] == "residual_allocated"
@@ -7283,6 +7320,29 @@ def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
     assert {
         item["name"]: item["value"] for item in engineering.json()["level1"]["items"]
     } == {"Database": 60.0, "Data": 40.0}
+    assert source_sku.status_code == 200
+    assert source_sku.json()["meta"]["allocation_basis"] == "residual_allocated"
+    assert {item["name"]: item["value"] for item in source_sku.json()["items"]} == {
+        "N1 Predefined Instance Core": 60.0,
+        "N1 Predefined Instance Ram": 40.0,
+    }
+    assert source_region.status_code == 200
+    assert {item["name"]: item["value"] for item in source_region.json()["items"]} == {
+        "us-central1": 60.0,
+        "us-east1": 40.0,
+    }
+    assert source_cost_driver.status_code == 200
+    assert {item["name"]: item["value"] for item in source_cost_driver.json()["items"]} == {
+        "Compute": 60.0,
+        "Block storage": 40.0,
+    }
+    assert source_sku_stack.status_code == 200
+    assert {item["name"]: item["value"] for item in source_sku_stack.json()["items"]} == {
+        "N1 Predefined Instance Core": 60.0,
+        "N1 Predefined Instance Ram": 40.0,
+    }
+    assert source_cost_driver_trend.status_code == 200
+    assert source_cost_driver_trend.json()["meta"]["summary"]["list_cost"] == 40.0
 
     with sqlite_engine.begin() as connection:
         connection.execute(
