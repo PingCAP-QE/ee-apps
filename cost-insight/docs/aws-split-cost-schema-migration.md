@@ -471,6 +471,10 @@ dimensions, and
 unchanged. Thus rows that differ in split allocation scope or parent cannot
 collide during an unmatched-resource upsert.
 
+> The raw attribution compatibility path mentioned below was retired after this
+> migration. It is retained here only to explain why the split-cost cutover was
+> designed exclusively around summary attribution.
+
 ## 6. Attribution Rules
 
 ### 6.1 Source Attribution
@@ -482,9 +486,9 @@ Update the split-aware TCMS summary attribution builders,
 final grouping and `dimension_hash` for split-source rows. Do not add those
 fields to `_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY`: it is the non-TCMS GCP
 path, where the new fields are always `direct`/`NULL`, and changing it would
-unnecessarily churn persisted GCP `dimension_hash` values. `_INSERT_ATTRIBUTION_DAILY`
-is the raw-based insert used by `run_refresh_cost_attribution_daily`, not the
-TCMS summary path, and the split source does not populate that raw path.
+unnecessarily churn persisted GCP `dimension_hash` values. At migration time,
+`_INSERT_ATTRIBUTION_DAILY` was the raw-based insert; the split source never
+populated that compatibility path, which has since been removed.
 
 For a summary row, resolve labels in this order:
 

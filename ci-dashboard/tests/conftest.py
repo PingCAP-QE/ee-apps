@@ -471,33 +471,6 @@ def _create_test_schema(engine: Engine) -> None:
         )
         """,
         """
-        CREATE TABLE cost_raw_details (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          vendor TEXT NOT NULL,
-          account_id TEXT NOT NULL,
-          billing_account_id TEXT NULL,
-          usage_date TEXT NOT NULL,
-          service_name TEXT NULL,
-          sku_name TEXT NULL,
-          region TEXT NULL,
-          namespace TEXT NULL,
-          author TEXT NULL,
-          org TEXT NULL,
-          repo TEXT NULL,
-          target_branch TEXT NULL,
-          resource_name TEXT NULL,
-          usage_seconds REAL NULL,
-          list_cost REAL NULL,
-          effective_cost REAL NULL,
-          credit_amount REAL NULL,
-          net_cost REAL NULL,
-          source_export_time TEXT NULL,
-          source_row_hash TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-        """
         CREATE TABLE cost_unmatched_resource_daily (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           vendor TEXT NOT NULL,
