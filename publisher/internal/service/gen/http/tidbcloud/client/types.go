@@ -44,8 +44,8 @@ type AddTidbxImageTagInTcmsRequestBody struct {
 type RequestSyncKernelImageRequestBody struct {
 	// env stage
 	Stage string `form:"stage" json:"stage" xml:"stage"`
-	// the source container image with tag
-	Image string `form:"image" json:"image" xml:"image"`
+	// the source container images with tag, built from the same repo commit
+	Images []string `form:"images" json:"images" xml:"images"`
 }
 
 // UpdateComponentVersionInCloudconfigResponseBody is the type of the
@@ -127,7 +127,14 @@ func NewAddTidbxImageTagInTcmsRequestBody(p *tidbcloud.AddTidbxImageTagInTcmsPay
 func NewRequestSyncKernelImageRequestBody(p *tidbcloud.RequestSyncKernelImagePayload) *RequestSyncKernelImageRequestBody {
 	body := &RequestSyncKernelImageRequestBody{
 		Stage: p.Stage,
-		Image: p.Image,
+	}
+	if p.Images != nil {
+		body.Images = make([]string, len(p.Images))
+		for i, val := range p.Images {
+			body.Images[i] = val
+		}
+	} else {
+		body.Images = []string{}
 	}
 	return body
 }

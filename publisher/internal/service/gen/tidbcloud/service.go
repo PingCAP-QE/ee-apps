@@ -19,7 +19,7 @@ type Service interface {
 	UpdateComponentVersionInCloudconfig(context.Context, *UpdateComponentVersionInCloudconfigPayload) (res *UpdateComponentVersionInCloudconfigResult, err error)
 	// AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.
 	AddTidbxImageTagInTcms(context.Context, *AddTidbxImageTagInTcmsPayload) (res *AddTidbxImageTagInTcmsResult, err error)
-	// Request to sync kernel image via ops platform kernel image build callback
+	// Request to sync kernel images via ops platform kernel image build callback
 	RequestSyncKernelImage(context.Context, *RequestSyncKernelImagePayload) (res string, err error)
 }
 
@@ -73,8 +73,8 @@ type AddTidbxImageTagInTcmsResult struct {
 type RequestSyncKernelImagePayload struct {
 	// env stage
 	Stage string
-	// the source container image with tag
-	Image string
+	// the source container images with tag, built from the same repo commit
+	Images []string
 }
 
 // Ops ticket details

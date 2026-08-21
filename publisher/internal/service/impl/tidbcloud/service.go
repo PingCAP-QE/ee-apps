@@ -1,7 +1,6 @@
 package tidbcloud
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -19,7 +18,7 @@ type tidbcloudsrvc struct {
 	opsCfg *OpsConfig
 	tpsCfg *TestPlatformsConfig
 	// kernelImageMetaReader overrides the default source image metadata reader (used in tests).
-	kernelImageMetaReader func(ctx context.Context, image string) kernelImageMeta
+	kernelImageMetaReader kernelImageMetaReader
 }
 
 // NewService returns the tidbcloud service implementation.

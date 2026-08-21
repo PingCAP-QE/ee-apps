@@ -87,19 +87,31 @@ func BuildRequestSyncKernelImagePayload(tidbcloudRequestSyncKernelImageBody stri
 	{
 		err = json.Unmarshal([]byte(tidbcloudRequestSyncKernelImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"image\": \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n      \"stage\": \"dev\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
+		}
+		if body.Images == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("images", "body"))
 		}
 		if !(body.Stage == "dev" || body.Stage == "prod") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.stage", body.Stage, []any{"dev", "prod"}))
 		}
-		err = goa.MergeErrors(err, goa.ValidatePattern("body.image", body.Image, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
+		for _, e := range body.Images {
+			err = goa.MergeErrors(err, goa.ValidatePattern("body.images[*]", e, "^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$"))
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
 	v := &tidbcloud.RequestSyncKernelImagePayload{
 		Stage: body.Stage,
-		Image: body.Image,
+	}
+	if body.Images != nil {
+		v.Images = make([]string, len(body.Images))
+		for i, val := range body.Images {
+			v.Images[i] = val
+		}
+	} else {
+		v.Images = []string{}
 	}
 
 	return v, nil

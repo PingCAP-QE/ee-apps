@@ -1,6 +1,6 @@
 # POST /tidbcloud/sync-kernel-images
 #
-# Request to sync kernel image via ops platform kernel image build callback.
+# Request to sync kernel images via ops platform kernel image build callback.
 #
 # Variables:
 #   publisher_url  base URL of the publisher server (required)
@@ -19,7 +19,7 @@ POST {{publisher_url}}/tidbcloud/sync-kernel-images
 Content-Type: application/json
 {
   "stage": "{{stage}}",
-  "image": "{{image}}"
+  "images": ["{{image}}"]
 }
 
 HTTP 200

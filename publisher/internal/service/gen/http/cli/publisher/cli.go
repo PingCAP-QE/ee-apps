@@ -549,7 +549,7 @@ func tidbcloudUsage() {
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    update-component-version-in-cloudconfig: UpdateComponentVersionInCloudconfig implements update-component-version-in-cloudconfig.`)
 	fmt.Fprintln(os.Stderr, `    add-tidbx-image-tag-in-tcms: AddTidbxImageTagInTcms implements add-tidbx-image-tag-in-tcms.`)
-	fmt.Fprintln(os.Stderr, `    request-sync-kernel-image: Request to sync kernel image via ops platform kernel image build callback`)
+	fmt.Fprintln(os.Stderr, `    request-sync-kernel-image: Request to sync kernel images via ops platform kernel image build callback`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s tidbcloud COMMAND --help\n", os.Args[0])
@@ -598,12 +598,12 @@ func tidbcloudRequestSyncKernelImageUsage() {
 
 	// Description
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, `Request to sync kernel image via ops platform kernel image build callback`)
+	fmt.Fprintln(os.Stderr, `Request to sync kernel images via ops platform kernel image build callback`)
 
 	// Flags list
 	fmt.Fprintln(os.Stderr, `    -body JSON: `)
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"image\": \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n      \"stage\": \"dev\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
 }
