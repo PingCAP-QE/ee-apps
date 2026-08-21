@@ -1347,6 +1347,10 @@ def get_unmatched_resources(
             "(m.source_sku_name IS NULL OR "
             f"{_null_safe_eq(connection, 'm.source_sku_name', 'r.sku_name')})"
         )
+        source_resource_match = (
+            "(NULLIF(m.source_resource_name, '') IS NULL OR "
+            f"{_null_safe_eq(connection, 'm.source_resource_name', 'r.resource_name')})"
+        )
         resource_list_cost_expr = _billing_report_list_cost_expr("r")
         basis_prefix = f"{basis.cte}," if basis.cte else "WITH"
         group_lineage_available = (
@@ -1372,7 +1376,10 @@ def get_unmatched_resources(
                   AND EXISTS (
                     SELECT 1
                     FROM cost_kubernetes_workload_allocation_daily allocation
-                    WHERE allocation.id = c.id
+                    WHERE allocation.vendor = c.vendor
+                      AND allocation.account_id = c.account_id
+                      AND allocation.usage_date = c.usage_date
+                      AND allocation.dimension_hash = c.dimension_hash
                       AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
                   )
                 )
@@ -1380,11 +1387,17 @@ def get_unmatched_resources(
             group_cost_rows_cte = """
             , selected_owner_group_source_totals AS (
               SELECT
-                c.id AS allocation_fact_id,
+                c.usage_date AS allocation_usage_date,
+                c.vendor AS allocation_vendor,
+                c.account_id AS allocation_account_id,
+                c.dimension_hash AS allocation_dimension_hash,
                 SUM(COALESCE(mapping.source_list_cost, 0)) AS source_list_cost
               FROM selected_owner_basis_rows c
               JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.id = c.id
+                ON allocation.vendor = c.vendor
+               AND allocation.account_id = c.account_id
+               AND allocation.usage_date = c.usage_date
+               AND allocation.dimension_hash = c.dimension_hash
               JOIN cost_kubernetes_workload_allocation_source_daily mapping
                 ON mapping.vendor = allocation.vendor
                AND mapping.account_id = allocation.account_id
@@ -1392,7 +1405,7 @@ def get_unmatched_resources(
                AND mapping.allocation_group_hash = allocation.allocation_group_hash
               WHERE NULLIF(c.source_summary_row_hash, '') IS NULL
                 AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-              GROUP BY c.id
+              GROUP BY c.usage_date, c.vendor, c.account_id, c.dimension_hash
             ), selected_owner_group_cost_rows AS (
               SELECT
                 c.dimension_hash AS cost_dimension_hash,
@@ -1408,7 +1421,7 @@ def get_unmatched_resources(
                 source.author AS source_author,
                 source.namespace AS source_namespace,
                 CAST(source.vendor_tags_json AS CHAR) AS source_vendor_tags_json,
-                source.resource_name AS resource_name,
+                source.resource_name AS source_resource_name,
                 c.owner AS owner_mail,
                 c.attribution_key AS attribution_key,
                 c.attribution_source AS attribution_source,
@@ -1419,9 +1432,15 @@ def get_unmatched_resources(
                 source.list_cost AS source_list_cost
               FROM selected_owner_basis_rows c
               JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.id = c.id
+                ON allocation.vendor = c.vendor
+               AND allocation.account_id = c.account_id
+               AND allocation.usage_date = c.usage_date
+               AND allocation.dimension_hash = c.dimension_hash
               JOIN selected_owner_group_source_totals totals
-                ON totals.allocation_fact_id = c.id
+                ON totals.allocation_usage_date = c.usage_date
+               AND totals.allocation_vendor = c.vendor
+               AND totals.allocation_account_id = c.account_id
+               AND totals.allocation_dimension_hash = c.dimension_hash
               JOIN cost_kubernetes_workload_allocation_source_daily mapping
                 ON mapping.vendor = allocation.vendor
                AND mapping.account_id = allocation.account_id
@@ -1472,7 +1491,7 @@ def get_unmatched_resources(
                   AS CHAR
                 ) AS source_vendor_tags_json,
                 CASE WHEN source.id IS NULL THEN c.resource_name ELSE source.resource_name END
-                  AS resource_name,
+                  AS source_resource_name,
                 c.owner AS owner_mail,
                 c.attribution_key AS attribution_key,
                 c.attribution_source AS attribution_source,
@@ -1536,6 +1555,7 @@ def get_unmatched_resources(
                AND {source_namespace_match}
                AND {source_service_match}
                AND {source_sku_match}
+               AND {source_resource_match}
                -- A labeled attribution row identifies one specific resource slice.
                -- Older unlabeled rows may still cover all matching resource rows.
                AND (
@@ -1545,6 +1565,14 @@ def get_unmatched_resources(
               WHERE {resource_where_clause}
                 AND r.resource_name IS NOT NULL
                 AND r.resource_name <> ''
+            ), selected_owner_resource_coverage AS (
+              SELECT
+                cost_dimension_hash,
+                source_attribution_id,
+                SUM(COALESCE(usage_seconds, 0)) AS detailed_usage_seconds,
+                SUM(COALESCE(list_cost, 0)) AS detailed_list_cost
+              FROM selected_owner_resource_detail_rows
+              GROUP BY cost_dimension_hash, source_attribution_id
             ), selected_owner_resource_rows AS (
               SELECT
                 resource_name,
@@ -1567,11 +1595,10 @@ def get_unmatched_resources(
                 'resource_detail' AS resource_row_source
               FROM selected_owner_resource_detail_rows
               UNION ALL
-              -- Detail sync is optional and can lag. Preserve every selected owner
-              -- cost dimension that has no named resource instead of making one
-              -- detail row suppress the remaining attribution-only costs.
+              -- Detail sync is optional and can lag. Retain any source amount not
+              -- yet covered by named resource details.
               SELECT
-                m.resource_name AS resource_name,
+                m.source_resource_name AS resource_name,
                 COALESCE(NULLIF(m.source_service_name, ''), '(no service)') AS service_name,
                 m.source_sku_name AS sku_name,
                 m.source_org AS org_name,
@@ -1583,22 +1610,31 @@ def get_unmatched_resources(
                 m.usage_date AS usage_date,
                 m.source_namespace AS namespace,
                 CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN COALESCE(m.usage_seconds, 0)
-                  ELSE COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
+                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN
+                    CASE
+                      WHEN COALESCE(m.usage_seconds, 0)
+                        > COALESCE(coverage.detailed_usage_seconds, 0)
+                      THEN COALESCE(m.usage_seconds, 0)
+                        - COALESCE(coverage.detailed_usage_seconds, 0)
+                      ELSE 0
+                    END
+                  WHEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
+                    > COALESCE(coverage.detailed_usage_seconds, 0)
+                  THEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
+                    - COALESCE(coverage.detailed_usage_seconds, 0)
+                  ELSE 0
                 END AS usage_seconds,
-                m.list_cost AS list_cost,
+                m.list_cost - COALESCE(coverage.detailed_list_cost, 0) AS list_cost,
                 m.attribution_key AS attribution_key,
                 m.attribution_source AS attribution_source,
                 m.attribution_status AS attribution_status,
                 m.cost_dimension_hash AS resource_group_key,
                 'attribution_fallback' AS resource_row_source
               FROM selected_owner_cost_rows m
-              WHERE NOT EXISTS (
-                SELECT 1
-                FROM selected_owner_resource_detail_rows detail
-                WHERE detail.cost_dimension_hash = m.cost_dimension_hash
-                  AND detail.source_attribution_id = m.source_attribution_id
-              )
+              LEFT JOIN selected_owner_resource_coverage coverage
+                ON coverage.cost_dimension_hash = m.cost_dimension_hash
+               AND coverage.source_attribution_id = m.source_attribution_id
+              WHERE m.list_cost - COALESCE(coverage.detailed_list_cost, 0) > 0.005
             )
         """
         query_params = {

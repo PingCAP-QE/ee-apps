@@ -3936,6 +3936,118 @@ def test_cost_unmatched_resources_keeps_fallback_rows_when_details_are_partial(
     ]
 
 
+def test_cost_unmatched_resources_does_not_cross_join_named_resources(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    common = {
+        "usage_date": "2026-05-10",
+        "repo": "tidb",
+        "group_id": 110,
+        "net_cost": 0,
+        "list_cost": 50,
+        "author": "ci-robot",
+        "owner": "alice@pingcap.com",
+        "service_name": "Compute Engine",
+        "sku_name": "N1 Core",
+    }
+    first_resource = "projects/pingcap-testing/zones/us-central1-a/instances/tidb-runner-a"
+    second_resource = "projects/pingcap-testing/zones/us-central1-a/instances/tidb-runner-b"
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        resource_name=first_resource,
+        dimension_hash="named-resource-a",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        **common,
+        resource_name=second_resource,
+        dimension_hash="named-resource-b",
+    )
+    for resource_name in (first_resource, second_resource):
+        _insert_cost_unmatched_resource(
+            sqlite_engine,
+            usage_date="2026-05-10",
+            repo="tidb",
+            resource_name=resource_name,
+            namespace=None,
+            author="ci-robot",
+            list_cost=50,
+            service_name="Compute Engine",
+            sku_name="N1 Core",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-05-10",
+            "end_date": "2026-05-10",
+            "owner": "alice@pingcap.com",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["resource_data_source"] == "cost_unmatched_resource_daily"
+    assert [(item["resource_name"], item["list_cost"]) for item in body["items"]] == [
+        (first_resource, 50.0),
+        (second_resource, 50.0),
+    ]
+    assert sum(item["list_cost"] for item in body["items"]) == 100.0
+
+
+def test_cost_unmatched_resources_keeps_uncovered_amount_from_partial_source_detail(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-10",
+        repo="tidb",
+        group_id=110,
+        net_cost=0,
+        list_cost=100,
+        resource_name=None,
+        author="alice",
+        owner="alice@pingcap.com",
+        usage_seconds=1000,
+        service_name="Compute Engine",
+        sku_name="N1 Core",
+        dimension_hash="partially-synced-source",
+    )
+    _insert_cost_unmatched_resource(
+        sqlite_engine,
+        usage_date="2026-05-10",
+        repo="tidb",
+        resource_name="projects/pingcap-testing/zones/us-central1-a/instances/tidb-runner",
+        namespace=None,
+        author="alice",
+        usage_seconds=400,
+        list_cost=40,
+        service_name="Compute Engine",
+        sku_name="N1 Core",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={
+            "start_date": "2026-05-10",
+            "end_date": "2026-05-10",
+            "owner": "alice@pingcap.com",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["resource_data_source"] == "mixed"
+    assert [(item["resource_name"], item["usage_seconds"], item["list_cost"]) for item in body["items"]] == [
+        ("(no resource name)", 600.0, 60.0),
+        ("projects/pingcap-testing/zones/us-central1-a/instances/tidb-runner", 400.0, 40.0),
+    ]
+    assert sum(item["list_cost"] for item in body["items"]) == 100.0
+
+
 def test_cost_unattached_block_volumes_route(
     sqlite_engine,
     api_client: TestClient,
@@ -7782,3 +7894,127 @@ def test_cost_breakdowns_replace_grouped_gke_sources_only_when_reconciled(
     assert {item["name"]: item["value"] for item in unreconciled.json()["items"]} == {
         "(no owner)": 100.0,
     }
+
+
+def test_cost_unmatched_resources_keeps_direct_cost_when_group_allocation_ids_collide(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_roster_employee(
+        sqlite_engine,
+        employee_id=11,
+        name="Alice",
+        email="alice@example.com",
+        group_id=110,
+    )
+    # This insert deliberately receives the same independent table ID as the
+    # allocation fact below. They must be related only by billing dimensions.
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="ordinary-direct",
+        group_id=110,
+        net_cost=40,
+        list_cost=40,
+        resource_name=None,
+        author="bob@example.com",
+        owner="bob@example.com",
+        service_name="Cloud Storage",
+        sku_name="Ordinary direct storage",
+        dimension_hash="ordinary-direct-dimension",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-08-10",
+        repo="(no repo)",
+        group_id=0,
+        net_cost=100,
+        list_cost=100,
+        resource_name="projects/pingcap-testing/instances/grouped-source",
+        author=None,
+        owner=None,
+        employee_id=None,
+        service_name="Compute Engine",
+        sku_name="Grouped GKE source",
+        attribution_key="unattributed",
+        attribution_source="gcp_billing",
+        attribution_status="unattributed",
+        dimension_hash="grouped-source-dimension",
+        source_summary_row_hash="grouped-source-row",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_daily (
+                  usage_date, vendor, account_id, cluster_name, cluster_location,
+                  allocation_scope, cost_component, namespace, workload_name, workload_type,
+                  author, org, repo, target_branch, allocation_weight, source_node_list_cost,
+                  list_cost, allocation_method, allocation_version, dimension_hash,
+                  source_summary_row_hash, allocation_group_hash
+                ) VALUES (
+                  '2026-08-10', 'gcp', 'pingcap-testing-account', 'prow', 'us-central1-c',
+                  'workload_split', 'cpu', 'prow', 'tidb', 'deployment',
+                  'alice@example.com', 'pingcap', 'tidb', 'release-8.5', 1, 100, 100,
+                  'gke_cpu_metering_weight_v2', 'gke_metering_v4', 'grouped-allocation-dimension',
+                  NULL, 'grouped-allocation'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_kubernetes_workload_allocation_source_daily (
+                  usage_date, vendor, account_id, source_summary_row_hash,
+                  allocation_group_hash, source_list_cost, allocation_version
+                ) VALUES (
+                  '2026-08-10', 'gcp', 'pingcap-testing-account', 'grouped-source-row',
+                  'grouped-allocation', 100, 'gke_metering_v4'
+                )
+                """
+            )
+        )
+
+    scope = {
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-10",
+        "cost_source": "gcp:pingcap-testing-account",
+        "allocation_basis": "residual_allocated",
+    }
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**scope, "dimension": "owner"},
+    )
+    resource_response = api_client.get(
+        "/api/v1/pages/cost-unmatched-resources",
+        params={**scope, "owner": "bob@example.com"},
+    )
+
+    assert share_response.status_code == 200
+    assert share_response.json()["meta"]["allocation_basis"] == "residual_allocated"
+    assert {item["name"]: item["value"] for item in share_response.json()["items"]} == {
+        "alice@example.com": 100.0,
+        "bob@example.com": 40.0,
+    }
+    assert resource_response.status_code == 200
+    resource_body = resource_response.json()
+    assert resource_body["meta"]["allocation_basis"] == "residual_allocated"
+    assert resource_body["items"] == [
+        {
+            "resource_name": "(no resource name)",
+            "service_name": "Cloud Storage",
+            "sku_name": "Ordinary direct storage",
+            "repo_name": "ordinary-direct",
+            "labels": "org=pingcap, repo=ordinary-direct, author=bob@example.com, "
+            "owner_mail=bob@example.com",
+            "allocation_buckets": "<null>",
+            "first_seen_date": "2026-08-10",
+            "last_seen_date": "2026-08-10",
+            "observed_days": None,
+            "attribution_source": "author_github",
+            "attribution_status": "matched",
+            "usage_seconds": 3600.0,
+            "list_cost": 40.0,
+        }
+    ]
