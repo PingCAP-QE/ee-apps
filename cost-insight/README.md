@@ -18,6 +18,7 @@ Current design:
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
+- [Unified cost allocation design](docs/cost-allocation-unification-design.md)
 
 ## Local Setup
 
@@ -35,7 +36,6 @@ Useful GCP settings:
 | Env | Default |
 | --- | --- |
 | `COST_INSIGHT_GCP_BILLING_TABLE` | `gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
-| `COST_INSIGHT_GCP_GKE_USAGE_TABLE` | `pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
 | `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
 | `COST_INSIGHT_SYNC_LAG_DAYS` | `5` |
@@ -43,6 +43,13 @@ Useful GCP settings:
 | `COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
 | `COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS` | `5` |
 | `COST_INSIGHT_SYNC_PAGE_SIZE` | `5000` |
+
+Allocation publication settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_ALLOCATION_EARLIEST_DATE` | required |
+| `COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID` | required unless passed by CLI |
 
 Useful AWS settings:
 
@@ -112,18 +119,39 @@ cost-insight sync-gcp-unmatched-resources \
   --usage-end-date 2026-05-23
 ```
 
-For the Kubernetes cost card, synchronize the GKE node-cost allocation fact
-after the detailed billing export has settled. It recognizes only Compute
-Engine resources carrying a GKE cluster label and a `gke-*` instance name.
-Core and RAM node costs are distributed within the same cluster/day by GKE
-metering CPU and memory usage; all other recognized node cost and missing
-metering balances remain unallocated.
+At first native GKE cutover, re-import each affected export partition with
+`sync-gcp-billing-summary --replace-existing-partitions`; Kubernetes dimensions
+change GKE source hashes, so ordinary upsert is not sufficient. After the
+detailed billing export has settled, synchronize native GKE Cost Allocation
+residuals. Provider-assigned workload costs pass through unchanged;
+idle and system-overhead residuals use direct workload list-cost shares within
+the same day, project, cluster, SKU, and component. Unsupported or unknown
+residuals remain visible and unallocated.
 
 ```bash
 cost-insight sync-gcp-kubernetes-workload-allocations \
   --usage-start-date 2026-05-17 \
   --usage-end-date 2026-05-23
 ```
+
+Build the three derived Dashboard perspectives after Kubernetes facts and
+attribution are current. The command keeps the existing active version visible
+until the full requested range has conserved successfully.
+
+```bash
+cost-insight materialize-cost-allocations \
+  --start-date 2026-01-01 \
+  --end-date 2026-05-23 \
+  --eq-root-lark-group-id <lark-department-id>
+```
+
+`COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID` may supply the final argument. The command
+requires `--start-date` to equal `COST_ALLOCATION_EARLIEST_DATE` and requires
+`--end-date` to cover the latest native cost date. This prevents a partial
+version from replacing the global publication pointer. A native-empty date is
+intentionally represented by no facts (zero cost); rows are never inherited
+from an older version. Rebuild the complete configured history after roster
+changes because historical chargeback uses the current organization.
 
 AWS unmatched resources use the same investigation table:
 

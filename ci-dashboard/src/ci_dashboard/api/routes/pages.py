@@ -85,7 +85,7 @@ def cost_trend_page(
     drilldown_value: str | None = None,
     allocation_basis: str = Query(
         "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
+        pattern="^(current_attribution|residual_allocated|eq_allocated|residual_eq_allocated)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
@@ -109,7 +109,7 @@ def cost_share_page(
     drilldown_value: str | None = None,
     allocation_basis: str = Query(
         "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
+        pattern="^(current_attribution|residual_allocated|eq_allocated|residual_eq_allocated)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
@@ -159,7 +159,7 @@ def cost_repo_group_stack_page(
     drilldown_value: str | None = None,
     allocation_basis: str = Query(
         "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
+        pattern="^(current_attribution|residual_allocated|eq_allocated|residual_eq_allocated)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
@@ -179,7 +179,7 @@ def cost_repo_group_stack_page(
 def cost_engineering_group_share_page(
     allocation_basis: str = Query(
         "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
+        pattern="^(current_attribution|residual_allocated|eq_allocated|residual_eq_allocated)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
@@ -198,7 +198,7 @@ def cost_unmatched_resources_page(
     sort_by: str = Query("list_cost", pattern="^(list_cost|duration)$"),
     allocation_basis: str = Query(
         "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
+        pattern="^(current_attribution|residual_allocated|eq_allocated|residual_eq_allocated)$",
     ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),

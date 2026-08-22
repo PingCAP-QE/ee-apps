@@ -28,6 +28,11 @@ GCP_SUMMARY_HASH_FIELDS = (
 GCP_SPLIT_SUMMARY_HASH_FIELDS = GCP_SUMMARY_HASH_FIELDS + (
     "source_schema_version",
     "source_allocation_scope",
+    "cluster_name",
+    "cluster_location",
+    "kubernetes_cost_class",
+    "kubernetes_residual_type",
+    "kubernetes_cost_component",
     "namespace",
     "workload_name",
     "workload_type",

@@ -1,6 +1,7 @@
 # tcms 资源逻辑分账设计
 
-> 状态：实现中。tcms 手动建库/建表/grant SQL 见 `docs/tcms-resource-allocation-setup.sql`。
+> 状态：部分被替代。owner/tag matching 继续使用；`shared_weighted` pool 分摊已由 `docs/cost-allocation-unification-design.md` 替代并从 attribution refresh 移除。
+> tcms 手动建库/建表/grant SQL 见 `docs/tcms-resource-allocation-setup.sql`。
 > 关联：`docs/system-design.md`（现有 cost 数据系统设计）、飞书 [WIP] Cost Dashboard 分账体系设计 3.3 节。
 
 ## 1. 背景与目标

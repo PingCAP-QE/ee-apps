@@ -10,9 +10,6 @@ DEFAULT_GCP_BILLING_TABLE = (
     "gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
-DEFAULT_GCP_GKE_USAGE_TABLE = (
-    "pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage"
-)
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 DEFAULT_GCS_CACHE_BUCKET = "pingcap-ci-bazel-remote-cache-us-central1"
@@ -45,7 +42,6 @@ class DatabaseSettings:
 @dataclass(frozen=True)
 class GcpBillingSettings:
     billing_table: str = DEFAULT_GCP_BILLING_TABLE
-    gke_usage_table: str = DEFAULT_GCP_GKE_USAGE_TABLE
     account_id: str = DEFAULT_GCP_ACCOUNT_ID
     earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
     sync_lag_days: int = 5
@@ -138,12 +134,6 @@ def load_settings(
                 DEFAULT_GCP_BILLING_TABLE,
                 "COST_INSIGHT_GCP_BILLING_TABLE",
                 "COST_GCP_BILLING_TABLE",
-            ),
-            gke_usage_table=_read_any(
-                env,
-                DEFAULT_GCP_GKE_USAGE_TABLE,
-                "COST_INSIGHT_GCP_GKE_USAGE_TABLE",
-                "COST_GCP_GKE_USAGE_TABLE",
             ),
             account_id=_read_any(
                 env,

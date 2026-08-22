@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import replace
@@ -20,8 +21,8 @@ from cost_insight.jobs.aws_split_cost_shadow import (
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
-from cost_insight.jobs.refresh_attribution_daily import (
-    CostAttributionSource,
+from cost_insight.jobs.materialize_cost_allocations import run_materialize_cost_allocations
+from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
 from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
@@ -120,7 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_gke_allocations = subparsers.add_parser(
         "sync-gcp-kubernetes-workload-allocations",
-        help="Allocate recognizable GKE node list cost to workloads using GKE metering",
+        help="Allocate native GKE residual cost using provider direct list-cost shares",
     )
     sync_gke_allocations.add_argument("--usage-start-date", type=_parse_date, required=True)
     sync_gke_allocations.add_argument("--usage-end-date", type=_parse_date, required=True)
@@ -194,6 +195,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Refresh one usage date at a time; recommended for larger ranges.",
     )
+
+    materialize_allocations = subparsers.add_parser(
+        "materialize-cost-allocations",
+        help="Build daily Kubernetes and Efficiency & Quality cost perspectives",
+    )
+    materialize_allocations.add_argument("--start-date", type=_parse_date, required=True)
+    materialize_allocations.add_argument("--end-date", type=_parse_date, required=True)
+    materialize_allocations.add_argument(
+        "--eq-root-lark-group-id",
+        default=os.getenv("COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID"),
+    )
+    materialize_allocations.add_argument("--dry-run", action="store_true")
 
     sync_gcs_cache = subparsers.add_parser(
         "sync-gcs-cache-last-seen",
@@ -621,6 +634,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "materialize-cost-allocations":
+        if not args.eq_root_lark_group_id:
+            raise ValueError(
+                "--eq-root-lark-group-id or COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID is required"
+            )
+        earliest_date_value = os.getenv("COST_ALLOCATION_EARLIEST_DATE")
+        if not earliest_date_value:
+            raise ValueError("COST_ALLOCATION_EARLIEST_DATE is required")
+        earliest_date = _parse_date(earliest_date_value)
+        engine = build_engine(settings)
+        try:
+            summary = run_materialize_cost_allocations(
+                engine,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                earliest_date=earliest_date,
+                eq_root_lark_group_id=args.eq_root_lark_group_id,
+                dry_run=args.dry_run,
+                batch_size=settings.gcp_billing.page_size,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()

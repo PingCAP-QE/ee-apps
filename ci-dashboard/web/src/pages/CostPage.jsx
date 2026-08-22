@@ -22,20 +22,18 @@ import {
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
-const SHARED_COST_GROUP = "Efficiency & Quality";
 const COST_ALLOCATION_BASIS_OPTIONS = [
-  { key: "current_attribution", label: "Current attribution" },
-  { key: "residual_allocated", label: "K8S residual allocated" },
+  { key: "current_attribution", label: "Native" },
+  { key: "residual_allocated", label: "K8S allocated" },
+  { key: "eq_allocated", label: "EQ allocated" },
+  { key: "residual_eq_allocated", label: "K8S + EQ allocated" },
 ];
-const COST_ALLOCATION_BASIS_LABELS = {
-  current_attribution: "Current attribution",
-  residual_allocated: "K8S residual allocated",
-};
+const COST_ALLOCATION_BASIS_LABELS = Object.fromEntries(
+  COST_ALLOCATION_BASIS_OPTIONS.map(({ key, label }) => [key, label]),
+);
 const NO_OWNER_LABEL = "(no owner)";
 
 export default function CostPage({ filters }) {
-  const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
-  const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const [allocationBasis, setAllocationBasis] = useState("current_attribution");
   const [allocationNotice, setAllocationNotice] = useState("");
@@ -144,14 +142,6 @@ export default function CostPage({ filters }) {
   const costBreakdownSubtitle = costBreakdownDrilldown
     ? `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: ${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
     : `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
-  const weeklyLevel2Items = withSharedCostAllocation(
-    weeklyOverview.data?.level2_share?.items,
-    isWeeklyLevel2Shared,
-  );
-  const selectedLevel2Items = withSharedCostAllocation(
-    engineeringGroupShare.data?.level2?.items,
-    isSelectedLevel2Shared,
-  );
   const allocationOverviewMatchesFilters =
     allocationOverview.data?.scope?.cost_source ===
       (selectedCostSourceValue || null) &&
@@ -219,17 +209,15 @@ export default function CostPage({ filters }) {
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
 
   useEffect(() => {
-    if (
-      allocationBasis === "residual_allocated" &&
-      !costShare.loading &&
-      !costShare.error &&
-      costShare.responseKey === JSON.stringify(costShareFilters) &&
-      costShare.data?.meta?.allocation_basis !== "residual_allocated"
-    ) {
-      setAllocationNotice(
-        "K8S residual allocation is unavailable for this scope; the API is showing current attribution.",
-      );
+    if (costShare.loading || costShare.error || costShare.responseKey !== JSON.stringify(costShareFilters)) {
+      return;
     }
+    setAllocationNotice(
+      allocationBasis !== "current_attribution" &&
+        costShare.data?.meta?.allocation_basis !== allocationBasis
+        ? "This allocation is unavailable for the selected scope; showing native attribution."
+        : "",
+    );
   }, [
     allocationBasis,
     costShare.data?.meta?.allocation_basis,
@@ -278,31 +266,11 @@ export default function CostPage({ filters }) {
           </div>
           <DonutShareChart
             title="Level 2 groups"
-            subtitle={
-              isWeeklyLevel2Shared
-                ? `${SHARED_COST_GROUP} cost redistributed proportionally.`
-                : "Groups above 1% of list cost."
-            }
-            items={weeklyLevel2Items}
+            subtitle="Groups above 1% of list cost."
+            items={weeklyOverview.data?.level2_share?.items}
             totalValue={weeklyOverview.data?.level2_share?.meta?.total_list_cost}
             totalLabel="list cost"
             emptyMessage="No Level 2 group above 1% for the previous complete week."
-            onItemSelect={(item) => {
-              if (item.name === SHARED_COST_GROUP) {
-                setIsWeeklyLevel2Shared(true);
-              }
-            }}
-            headerAction={
-              isWeeklyLevel2Shared ? (
-                <button
-                  type="button"
-                  className="donut-card__action"
-                  onClick={() => setIsWeeklyLevel2Shared(false)}
-                >
-                  Reset
-                </button>
-              ) : null
-            }
           />
           <DonutShareChart
             title="services rate"
@@ -519,30 +487,10 @@ export default function CostPage({ filters }) {
           />
           <DonutShareChart
             title="Level 2 groups"
-            subtitle={
-              isSelectedLevel2Shared
-                ? `${SHARED_COST_GROUP} cost redistributed proportionally.`
-                : "Second-level teams under Engineering Group."
-            }
-            items={selectedLevel2Items}
+            subtitle="Second-level teams under Engineering Group."
+            items={engineeringGroupShare.data?.level2?.items}
             totalLabel="list cost"
             emptyMessage="No Engineering Group level-2 cost share data yet."
-            onItemSelect={(item) => {
-              if (item.name === SHARED_COST_GROUP) {
-                setIsSelectedLevel2Shared(true);
-              }
-            }}
-            headerAction={
-              isSelectedLevel2Shared ? (
-                <button
-                  type="button"
-                  className="donut-card__action"
-                  onClick={() => setIsSelectedLevel2Shared(false)}
-                >
-                  Reset
-                </button>
-              ) : null
-            }
           />
         </div>
       </Panel>
@@ -729,36 +677,6 @@ function formatMonthAxisLabel(value) {
     return text;
   }
   return match[1];
-}
-
-function withSharedCostAllocation(items, enabled) {
-  if (!items?.length) {
-    return items;
-  }
-
-  const originalTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const sharedItem = items.find((item) => item.name === SHARED_COST_GROUP);
-  const sharedValue = Number(sharedItem?.value || 0);
-  const recipients = items.filter((item) => item.name !== SHARED_COST_GROUP);
-  const recipientTotal = recipients.reduce((sum, item) => sum + Number(item.value || 0), 0);
-
-  if (!enabled || !sharedItem || !sharedValue || !recipientTotal || !originalTotal) {
-    return items.map((item) => ({
-      ...item,
-      interactive: item.name === SHARED_COST_GROUP,
-    }));
-  }
-
-  return recipients.map((item) => {
-    const originalValue = Number(item.value || 0);
-    const value = originalValue + sharedValue * (originalValue / recipientTotal);
-    return {
-      ...item,
-      value,
-      share_pct: (value / originalTotal) * 100,
-      interactive: false,
-    };
-  });
 }
 
 function withCostBreakdownDrilldown(items, enabled) {
