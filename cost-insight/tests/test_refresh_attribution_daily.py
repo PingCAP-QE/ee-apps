@@ -796,7 +796,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 9
+        assert summary.rows_inserted == 8
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -848,12 +848,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         cluster_y_row = find_row(
             sku_name="ClusterUsage", project="project-y", allocate_method="logical"
         )
-        shared_x_row = find_row(
-            sku_name="SharedUsage", project="project-x", allocate_method="shared_weighted"
-        )
-        shared_y_row = find_row(
-            sku_name="SharedUsage", project="project-y", allocate_method="shared_weighted"
-        )
+        shared_row = find_row(sku_name="SharedUsage")
         split_label_row = find_row(
             sku_name="SplitLabelUsage", project="direct-project", allocate_method="direct_label"
         )
@@ -867,8 +862,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert {row["region"] for row in rows} == {"us-east-1"}
         assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
         assert cluster_x_row["cost_driver_key"] == "compute"
-        assert shared_x_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
-        assert shared_x_row["cost_driver_key"] == "data_transfer"
+        assert shared_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
+        assert shared_row["cost_driver_key"] == "data_transfer"
         assert author_row["owner"] is None
         assert author_row["attribution_source"] == "missing_author"
         assert author_row["attribution_status"] == "unattributed"
@@ -899,14 +894,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert cluster_y_row["attribution_source"] == "owner_email"
         assert cluster_y_row["attribution_status"] == "matched"
         assert cluster_y_row["employee_id"] == 3
-        assert shared_x_row["service"] == "TestInfra"
-        assert shared_x_row["attribution_source"] == "label_shared"
-        assert shared_x_row["attribution_status"] == "shared"
-        assert shared_x_row["net_cost"] == 2.37
-        assert shared_y_row["service"] == "TestInfra"
-        assert shared_y_row["attribution_source"] == "label_shared"
-        assert shared_y_row["attribution_status"] == "shared"
-        assert shared_y_row["net_cost"] == 2.63
+        assert shared_row["service"] is None
+        assert shared_row["attribution_source"] == "missing_author"
+        assert shared_row["attribution_status"] == "unattributed"
+        assert shared_row["net_cost"] == 5.0
 
         with engine.begin() as connection:
             connection.execute(
@@ -1061,7 +1052,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fallback_cluster["service"] is None
         assert fallback_cluster["project"] is None
         assert fallback_cluster["net_cost"] == 50.0
-        assert fallback_shared["attribution_source"] == "missing_label_allocation"
+        assert fallback_shared["attribution_source"] == "missing_author"
         assert fallback_shared["attribution_status"] == "unattributed"
         assert fallback_shared["allocate_method"] is None
         assert fallback_shared["net_cost"] == 5.0
@@ -1369,20 +1360,17 @@ def test_tcms_table_identifier_is_quoted_and_validated() -> None:
         _quote_table_identifier("tcms-cost.resource_allocation")
 
 
-def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
+def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting() -> None:
     statements = _summary_insert_statements(
         source=CostAttributionSource(vendor="aws", account_id="946646677266"),
         tcms_allocation_table="tcms_cost.resource_allocation",
     )
 
-    assert len(statements) == 2
+    assert len(statements) == 1
     logical_sql = str(statements[0])
-    shared_sql = str(statements[1])
 
     assert "`tcms_cost`.`resource_allocation` allocation_raw" in logical_sql
     assert "summary.vendor_tags_json" in logical_sql
-    assert "JSON_EXTRACT(summary.vendor_tags_json, '$.shared_pool')" in logical_sql
-    assert "JSON_EXTRACT(summary.vendor_tags_json, '$.cluster')" in logical_sql
     assert "match_tags_json" in logical_sql
     assert "JSON_REMOVE" in logical_sql
     assert "missing_label_allocation" in logical_sql
@@ -1396,17 +1384,8 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "workload_name" in logical_sql
     assert "workload_type" in logical_sql
     assert "summary.owner IS NOT NULL THEN 'source_label'" in logical_sql
-
-    assert "WITH allocation_match AS" in shared_sql
-    assert "ROW_NUMBER() OVER" in shared_sql
-    assert "JSON_REMOVE" in shared_sql
-    assert "label_shared" in shared_sql
-    assert "shared_weighted" in shared_sql
-    assert "allocation_count IS NULL" in shared_sql
-    assert "logical.service" in shared_sql
-    assert "summary.sku_name" in shared_sql
-    assert "source_allocation_scope" in shared_sql
-    assert "ROUND(" not in shared_sql
+    assert "shared_weighted" not in logical_sql
+    assert "label_shared" not in logical_sql
 
 
 def test_non_aws_summary_insert_uses_existing_statement() -> None:

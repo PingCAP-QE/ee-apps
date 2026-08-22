@@ -66,16 +66,11 @@ Use APIs only as auxiliary sources:
 - Billing Account API: account and project metadata
 - Budget API or Lark: budget metadata later
 
-For the current GCP project, we also have GKE metering tables:
-
-```text
-pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage
-pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_consumption
-```
-
-These are useful for CI attribution because they expose Kubernetes labels such
-as `author`, `repo`, pod/resource names, CPU seconds, and memory byte-seconds.
-They are usage sources, not invoice/cost sources.
+Native GKE Cost Allocation is enabled for the current GCP project. Cloud
+Billing Detailed Export is therefore both the invoice source and the
+Kubernetes allocation source: it carries cluster, namespace, workload,
+author/repo labels, direct workload list cost, and explicit residual classes.
+The cost pipeline does not query GKE usage-metering tables.
 
 Known useful labels in current GCP billing and usage exports:
 
@@ -401,31 +396,23 @@ Current V1 attribution statuses:
 | `unmatched` | `author_label` | `author` exists but no active roster employee matched |
 | `unattributed` | `missing_author` | no author label exists |
 
-Cost attribution with billing export:
+Cost allocation with billing export:
 
-- If billing export has useful labels, attribute directly from billing rows.
-- If billing rows only identify cluster/node resources, allocate cluster-level
-  cost to CI authors/repos using GKE usage share for the same day and resource
-  type.
-- Shared/system cost is not allocated in V1. Keep it visible as shared or
-  unallocated, and decide allocation rules in the presentation layer later.
-- Some shared cost is known to belong to the EQ team; other shared-looking cost
-  is caused by incomplete labels. Prioritize label enrichment before inventing
-  allocation rules.
-- Start with CPU and memory allocation only if we later need explicit
-  proportional allocation. Add storage/network later when source labels are
-  clear enough.
+1. Preserve provider-native GKE direct workload costs.
+2. Allocate GKE idle and system-overhead residuals using positive native direct
+   list-cost share inside the same day/project/cluster/SKU/component.
+3. Preserve unsupported, unknown, control-plane, and no-participant residuals.
+4. Refresh native owner/group attribution from the current roster.
+5. Materialize three daily perspectives: Kubernetes allocated, EQ allocated,
+   and Kubernetes then EQ allocated.
+6. EQ chargeback uses same-day/vendor/account non-EQ native direct list-cost
+   share. A zero denominator leaves the cost under EQ.
+7. TCMS `shared_pool` remains visible metadata; it is not weighted or
+   redistributed.
 
-Allocation example:
-
-```text
-day = 2026-05-18
-sku = VM core
-cluster net_cost = 100 USD
-ticdc author usage = 72,000 seconds
-cluster total attributed usage = 720,000 seconds
-ticdc allocated net_cost = 100 * 72,000 / 720,000 = 10 USD
-```
+The Dashboard selects native or one published materialized perspective and
+only aggregates it by week or month. Full rules and conservation contracts are
+in [Unified cost allocation design](cost-allocation-unification-design.md).
 
 ### Flow 4: Budget Sync Later
 
@@ -465,8 +452,9 @@ Budget sync can wait until the cost and usage pipeline is stable.
 2. Import GCP and AWS billing partitions with the summary commands.
 3. Refresh `cost_attribution_daily` from the summary ledger.
 4. Import weekly resource investigation data separately.
-5. Publish Kubernetes workload allocation facts after billing data settles.
-6. Add budget sync when a source of truth replaces the current manual rows.
+5. Publish Kubernetes residual allocation facts after billing data settles.
+6. Materialize and publish the three derived cost perspectives.
+7. Add budget sync when a source of truth replaces the current manual rows.
 
 ## Open Questions
 
@@ -477,8 +465,9 @@ Budget sync can wait until the cost and usage pipeline is stable.
 
 Resolved decisions:
 
-- Shared/system cost is kept as shared or unallocated in V1. Presentation can
-  decide how to display or allocate it later.
+- Kubernetes residual allocation runs before EQ chargeback.
+- All current-EQ-owned costs are chargeback eligible; anonymous costs are not
+  inferred to be EQ-owned.
 - Label enrichment is preferred over blindly allocating costs with incomplete
   labels.
 - Repo budgets use `label_filters` and match repo first. TiCDC starts as

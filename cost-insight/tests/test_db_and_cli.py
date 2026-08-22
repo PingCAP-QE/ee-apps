@@ -17,8 +17,8 @@ from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import BootstrapGcsCacheLastSeenResult
 from cost_insight.jobs.cleanup_gcs_cache import CleanupGcsCacheSummary
-from cost_insight.jobs.refresh_attribution_daily import (
-    CostAttributionSource,
+from cost_insight.jobs.materialize_cost_allocations import MaterializeCostAllocationsSummary
+from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
     RefreshAttributionSummary,
 )
 from cost_insight.jobs.sync_aws_billing_summary import (
@@ -748,6 +748,49 @@ def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
     assert '"rows_seen": 3' in output
 
 
+def test_cli_runs_materialize_cost_allocations(monkeypatch, capsys) -> None:
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(page_size=123),
+        log_level="INFO",
+    )
+
+    def fake_run(_engine, **kwargs):
+        captured.update(kwargs)
+        return MaterializeCostAllocationsSummary(
+            start_date=kwargs["start_date"],
+            end_date=kwargs["end_date"],
+            allocation_version="v1",
+            windows_seen=1,
+            rows_written=3,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(cli, "run_materialize_cost_allocations", fake_run)
+    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
+
+    assert cli.main(
+        [
+            "materialize-cost-allocations",
+            "--start-date", "2026-08-10",
+            "--end-date", "2026-08-10",
+            "--eq-root-lark-group-id", "eq",
+        ]
+    ) == 0
+    assert captured["eq_root_lark_group_id"] == "eq"
+    assert captured["earliest_date"] == date(2026, 8, 10)
+    assert captured["batch_size"] == 123
+    assert '"allocation_version": "v1"' in capsys.readouterr().out
+
+
 def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
@@ -770,8 +813,8 @@ def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, 
             usage_end_date=kwargs["usage_end_date"],
             export_partition_start=kwargs["export_partition_start"],
             export_partition_end=kwargs["export_partition_end"],
-            node_cost_rows_seen=4,
-            metering_rows_seen=6,
+            billing_rows_seen=4,
+            direct_rows_seen=6,
             rows_written=8,
             dry_run=kwargs["dry_run"],
         )
@@ -804,7 +847,7 @@ def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, 
     assert captured["export_partition_start"] == date(2026, 5, 20)
     assert captured["export_partition_end"] == date(2026, 5, 24)
     assert captured["dry_run"] is True
-    assert '"node_cost_rows_seen": 4' in output
+    assert '"billing_rows_seen": 4' in output
 
 
 def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) -> None:

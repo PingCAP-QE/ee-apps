@@ -53,8 +53,15 @@ FORECAST_WINDOW_DAYS = 14
 BUDGET_FALLBACK_MAX_DAYS = 31
 CURRENT_ATTRIBUTION_BASIS = "current_attribution"
 RESIDUAL_ALLOCATED_BASIS = "residual_allocated"
+EQ_ALLOCATED_BASIS = "eq_allocated"
+RESIDUAL_EQ_ALLOCATED_BASIS = "residual_eq_allocated"
+MATERIALIZED_BASIS_KEYS = {
+    RESIDUAL_ALLOCATED_BASIS: "kubernetes_allocated",
+    EQ_ALLOCATED_BASIS: "eq_allocated",
+    RESIDUAL_EQ_ALLOCATED_BASIS: "kubernetes_eq_allocated",
+}
 VALID_COST_ALLOCATION_BASES = frozenset(
-    {CURRENT_ATTRIBUTION_BASIS, RESIDUAL_ALLOCATED_BASIS}
+    {CURRENT_ATTRIBUTION_BASIS, *MATERIALIZED_BASIS_KEYS}
 )
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
@@ -87,6 +94,7 @@ class CostAllocationBasis:
     name: str
     from_clause: str = "cost_attribution_daily c"
     cte: str = ""
+    preserves_source_dimensions: bool = False
 
 
 def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -250,6 +258,7 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
                 'kubernetes_pod',
                 'eks_pod',
                 'gke_pod',
+                'gke_direct',
                 'tke_pod'
               )
               OR (
@@ -2451,6 +2460,15 @@ def _cost_allocation_basis(
     """Return replacement rows only when Kubernetes source lineage is complete."""
     if requested_basis not in VALID_COST_ALLOCATION_BASES:
         requested_basis = CURRENT_ATTRIBUTION_BASIS
+    if requested_basis == CURRENT_ATTRIBUTION_BASIS or filters.granularity not in {
+        "week",
+        "month",
+    }:
+        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
+
+    materialized = _materialized_cost_basis(connection, filters, requested_basis)
+    if materialized is not None:
+        return materialized
     if requested_basis != RESIDUAL_ALLOCATED_BASIS:
         return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
     if not _cost_kubernetes_allocation_table_exists(connection):
@@ -2501,6 +2519,52 @@ def _cost_allocation_basis(
         RESIDUAL_ALLOCATED_BASIS,
         from_clause="cost_basis c",
         cte=cte,
+    )
+
+
+def _materialized_cost_basis(
+    connection: Connection,
+    filters: CommonFilters,
+    requested_basis: str,
+) -> CostAllocationBasis | None:
+    basis_key = MATERIALIZED_BASIS_KEYS.get(requested_basis)
+    if basis_key is None or not all(
+        _table_exists(connection, table_name)
+        for table_name in ("cost_allocation_daily", "cost_allocation_publication")
+    ):
+        return None
+    availability_filters = _cost_allocation_source_filters(filters)
+    where_clause, params = _build_cost_where(availability_filters, table_alias="a")
+    available = connection.execute(
+        text(
+            f"""
+            SELECT 1
+            FROM cost_allocation_daily a
+            JOIN cost_allocation_publication p
+              ON p.publication_name = 'dashboard'
+             AND p.active_allocation_version = a.allocation_version
+            WHERE a.basis_key = '{basis_key}' AND {where_clause}
+            LIMIT 1
+            """
+        ),
+        params,
+    ).first()
+    if available is None:
+        return None
+    return CostAllocationBasis(
+        requested_basis,
+        from_clause="cost_basis c",
+        cte=f"""
+            WITH cost_basis AS (
+              SELECT a.*
+              FROM cost_allocation_daily a
+              JOIN cost_allocation_publication p
+                ON p.publication_name = 'dashboard'
+               AND p.active_allocation_version = a.allocation_version
+              WHERE a.basis_key = '{basis_key}'
+            )
+        """,
+        preserves_source_dimensions=True,
     )
 
 
@@ -2936,7 +3000,7 @@ def _cost_basis_for_dimension(
     SKU, billing project, execution id, or billing region. Grouped allocation
     facts intentionally do not carry those source attributes.
     """
-    if dimension in SOURCE_COST_DIMENSIONS:
+    if dimension in SOURCE_COST_DIMENSIONS and not basis.preserves_source_dimensions:
         return CostAllocationBasis(basis.name)
     return basis
 
@@ -2949,6 +3013,28 @@ def _cost_basis_dimension(
         **dimension,
         "from_clause": _cost_basis_from_clause(basis, dimension["from_clause"]),
     }
+
+
+def _table_exists(connection: Connection, table_name: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return connection.execute(
+            text(
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = :table_name
+                """
+            ),
+            {"table_name": table_name},
+        ).first() is not None
+    return connection.execute(
+        text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).first() is not None
 
 
 def _table_has_column(connection: Connection, table_name: str, column_name: str) -> bool:
@@ -3059,6 +3145,7 @@ def _kubernetes_parent_residual_condition(table_alias: str) -> str:
             'eks_parent_residual',
             'eks_unallocated',
             'gke_parent_residual',
+            'gke_residual',
             'tke_parent_residual'
           )
           -- Older AWS refreshes emitted residuals as direct rows but retained
@@ -3213,7 +3300,7 @@ def _kubernetes_direct_unallocated_condition(connection: Connection, table_alias
     cluster_tag = _json_tag_text_expr(connection, f"{table_alias}.vendor_tags_json", "cluster")
     return f"""
         (
-          {table_alias}.source_allocation_scope = 'direct'
+          {table_alias}.source_allocation_scope IN ('direct', 'gke_direct')
           AND NOT {_has_valid_legacy_person_attribution(table_alias)}
           AND (
             {_kubernetes_service_cost_condition(table_alias)}

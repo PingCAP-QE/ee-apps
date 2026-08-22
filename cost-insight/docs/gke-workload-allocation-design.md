@@ -1,5 +1,7 @@
 # GKE Workload Cost Allocation Design
 
+> Superseded by [Unified Cost Allocation and EQ Chargeback Design](cost-allocation-unification-design.md). The metering implementation described here is retained only as historical context.
+
 ## Context
 
 GKE node costs in the billing export identify a cluster but not the workload
