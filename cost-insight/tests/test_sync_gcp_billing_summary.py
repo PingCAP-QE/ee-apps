@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import hash_value
-from cost_insight.jobs import state_store
+from cost_insight.jobs import state_store, sync_gcp_billing_summary
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_summary import (
     JOB_NAME,
@@ -481,6 +481,32 @@ def test_run_sync_gcp_billing_summary_can_replace_existing_partitions() -> None:
         assert rows == [("master", 10.0)]
     finally:
         engine.dispose()
+
+
+def test_replace_dry_run_counts_rows_without_spooling_them(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    monkeypatch.setattr(
+        sync_gcp_billing_summary,
+        "_dump_spooled_row",
+        lambda *_args: pytest.fail("dry-run must not spool rows"),
+    )
+
+    try:
+        result = run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=True,
+            replace_existing_partitions=True,
+            fetch_rows=lambda **_kwargs: [_summary_row(), _summary_row()],
+        )
+    finally:
+        engine.dispose()
+
+    assert result.rows_seen == 2
+    assert result.rows_written == 0
 
 
 def test_run_sync_gcp_billing_summary_replace_keeps_old_rows_when_fetch_fails() -> None:

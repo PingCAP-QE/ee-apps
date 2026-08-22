@@ -112,7 +112,8 @@ def run_sync_gcp_billing_summary(
                     normalized = _normalize_summary_row(source_row)
                     if normalized["billing_account_id"]:
                         source_billing_account_ids.add(normalized["billing_account_id"])
-                    _dump_spooled_row(row_spool, normalized)
+                    if not dry_run:
+                        _dump_spooled_row(row_spool, normalized)
                 rows_written += replace_summary_partitions(
                     engine,
                     _iter_spooled_rows(row_spool),

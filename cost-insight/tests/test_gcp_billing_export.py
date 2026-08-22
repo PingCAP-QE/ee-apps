@@ -71,7 +71,7 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "resource_name" in query
     assert "NULLIF(resource.name, '')" in query
     assert "NULLIF(resource.global_name, '')" in query
-    assert query.index("NULLIF(resource.name, '')") < query.index("k8s-workload-name")
+    assert query.index("k8s-workload-name") < query.index("NULLIF(resource.name, '')")
     assert "service.description AS service_name" in query
     assert "sku.description AS sku_name" in query
     _assert_region_bucket_expr(query)
@@ -81,6 +81,17 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "Compute Flexible Committed Use Discounts - 1 Year" in query
     assert "wei_zheng" in query
     assert "LIMIT 20" in query
+
+
+def test_gcp_summary_uses_workload_identity_instead_of_gke_resource_ids() -> None:
+    query = build_gcp_billing_summary_query(billing_table="project.dataset.table")
+
+    resource_case = query[
+        query.index("AS target_branch,") + len("AS target_branch,") : query.index("AS resource_name")
+    ]
+    assert "THEN NULL" in resource_case
+    assert resource_case.index("k8s-workload-name") < resource_case.index("THEN NULL")
+    assert resource_case.index("THEN NULL") < resource_case.index("NULLIF(resource.name, '')")
 
 
 def test_build_gcp_unmatched_resource_query_preserves_native_resource_name_and_labels() -> None:
