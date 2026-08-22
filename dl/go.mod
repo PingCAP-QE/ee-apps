@@ -2,7 +2,7 @@ module github.com/PingCAP-QE/ee-apps/dl
 
 go 1.25.8
 
-toolchain go1.26.4
+toolchain go1.27.0
 
 require (
 	cloud.google.com/go/storage v1.63.0
