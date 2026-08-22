@@ -145,6 +145,16 @@ def test_native_gke_residual_uses_provider_direct_list_cost_and_retains_unsuppor
     assert all(row["allocation_version"] == ALLOCATION_VERSION for row in allocations)
 
 
+def test_native_gke_pass_through_hash_preserves_distinct_summary_facts() -> None:
+    direct = _rows()[0]
+    allocations, _ = build_gke_workload_allocation_rows(
+        account_id="project-1",
+        summary_rows=[direct, {**direct, "source_row_hash": "direct-a-late"}],
+    )
+
+    assert len({row["dimension_hash"] for row in allocations}) == 2
+
+
 def test_native_gke_sync_replaces_one_day_from_summary_without_metering() -> None:
     engine = _sqlite_engine()
     try:

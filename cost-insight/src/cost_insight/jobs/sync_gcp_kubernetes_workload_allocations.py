@@ -414,6 +414,7 @@ def _dimension_hash(row: dict[str, Any]) -> str:
         "usage_date",
         "vendor",
         "account_id",
+        "source_summary_row_hash",
         "allocation_group_hash",
         "cluster_name",
         "cluster_location",
