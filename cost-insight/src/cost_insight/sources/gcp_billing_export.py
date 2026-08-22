@@ -139,6 +139,13 @@ CASE
   ELSE NULL
 END
 """.strip()
+    resource_name = f"""
+CASE
+  WHEN {is_direct} THEN {workload_name}
+  WHEN {is_gke} THEN NULL
+  ELSE COALESCE(NULLIF(resource.name, ''), NULLIF(resource.global_name, ''))
+END
+""".strip()
     cost_component = """
 CASE
   WHEN service.description = 'Kubernetes Engine' THEN 'control_plane'
@@ -165,7 +172,7 @@ SELECT
   {_org_expr()} AS org,
   {_repo_expr()} AS repo,
   {target_branch_expr} AS target_branch,
-  COALESCE(NULLIF(resource.name, ''), NULLIF(resource.global_name, ''), {workload_name}) AS resource_name,
+  {resource_name} AS resource_name,
   CASE WHEN {is_gke} THEN 'gke_cost_allocation_v1' ELSE NULL END AS source_schema_version,
   CASE WHEN {is_direct} THEN 'gke_direct' WHEN {is_gke} THEN 'gke_residual' ELSE 'direct' END AS source_allocation_scope,
   {cluster_name} AS cluster_name,

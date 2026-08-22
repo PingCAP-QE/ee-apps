@@ -397,6 +397,12 @@ network
 other
 ```
 
+The billing summary uses the workload name as `resource_name` for GKE direct
+facts and leaves it null for GKE residual facts. Underlying node, disk, and
+other provider resource IDs stay in the unmatched-resource investigation feed;
+they must not multiply one workload or residual summary fact into thousands of
+resource-level rows.
+
 The initial GCP allocation group is:
 
 ```text
