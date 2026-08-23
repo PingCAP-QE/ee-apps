@@ -1,162 +1,172 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="drawio" version="30.3.14">
-  <diagram name="Cost Data Flow">
-    <mxGraphModel dx="2400" dy="1700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1700" math="0" shadow="0">
+<mxfile host="drawio" modified="2026-08-21T00:00:00.000Z" agent="pi" version="30.3.14" type="device">
+  <diagram id="cost-data-flow-current" name="Cost Data Flow">
+    <mxGraphModel dx="2300" dy="1750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2300" pageHeight="1750" math="0" shadow="0">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
-
-        <mxCell id="title" value="&lt;b&gt;Cost 数据流：云账单 → 日汇总 → 归因 → 日级物化分摊 → Dashboard&lt;/b&gt;&#xa;当前实现（cost-insight + ci-dashboard）；虚线为控制/辅助关联" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontColor=#1f2937;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="360" y="20" width="1660" height="60" as="geometry"/>
+        <mxCell id="lane_sources" value="① 数据源与控制" style="swimlane;startSize=38;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=16;align=center;verticalAlign=middle;fillColor=#ffffff;swimlaneFillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="20" y="100" width="320" height="1510" as="geometry"/>
         </mxCell>
-
-        <mxCell id="lane_sources" value="① 外部数据源" style="swimlane;startSize=40;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=15;fillColor=#f5f5f5;strokeColor=#666666;pointerEvents=0;" vertex="1" parent="1">
-          <mxGeometry x="20" y="90" width="340" height="1560" as="geometry"/>
+        <mxCell id="lane_import" value="② 导入与 Provider 适配" style="swimlane;startSize=38;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=16;align=center;verticalAlign=middle;fillColor=#ffffff;swimlaneFillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="360" y="100" width="430" height="1510" as="geometry"/>
         </mxCell>
-        <mxCell id="lane_extract" value="② 选数 / 预聚合 / 分摊" style="swimlane;startSize=40;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;pointerEvents=0;" vertex="1" parent="1">
-          <mxGeometry x="380" y="90" width="530" height="1560" as="geometry"/>
+        <mxCell id="lane_ledger" value="③ TiDB 日级账本" style="swimlane;startSize=38;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=16;align=center;verticalAlign=middle;fillColor=#ffffff;swimlaneFillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="810" y="100" width="410" height="1510" as="geometry"/>
         </mxCell>
-        <mxCell id="lane_ledger" value="③ TiDB 事实表 / 台账" style="swimlane;startSize=40;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=15;fillColor=#d5e8d4;strokeColor=#82b366;pointerEvents=0;" vertex="1" parent="1">
-          <mxGeometry x="930" y="90" width="440" height="1560" as="geometry"/>
+        <mxCell id="lane_semantic" value="④ 归因与物化分摊" style="swimlane;startSize=38;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=16;align=center;verticalAlign=middle;fillColor=#ffffff;swimlaneFillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="100" width="450" height="1510" as="geometry"/>
         </mxCell>
-        <mxCell id="lane_semantic" value="④ 语义计算 / 归因" style="swimlane;startSize=40;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=15;fillColor=#e1d5e7;strokeColor=#9673a6;pointerEvents=0;" vertex="1" parent="1">
-          <mxGeometry x="1390" y="90" width="500" height="1560" as="geometry"/>
+        <mxCell id="lane_serve" value="⑤ 发布与消费" style="swimlane;startSize=38;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=16;align=center;verticalAlign=middle;fillColor=#ffffff;swimlaneFillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1710" y="100" width="510" height="1510" as="geometry"/>
         </mxCell>
-        <mxCell id="lane_serve" value="⑤ 汇总结果 / 消费" style="swimlane;startSize=40;horizontal=0;collapsible=0;rounded=1;html=1;fontStyle=1;fontSize=15;fillColor=#ffe6cc;strokeColor=#d79b00;pointerEvents=0;" vertex="1" parent="1">
-          <mxGeometry x="1910" y="90" width="450" height="1560" as="geometry"/>
+        <mxCell id="title" value="&lt;b&gt;Cost 数据流（当前实现）&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;账单日汇总 → 当前 roster 归因 → 每日预计算 Kubernetes / EQ 口径 → Dashboard 周/月聚合&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1f2937;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="300" y="15" width="1660" height="65" as="geometry"/>
         </mxCell>
-
-        <mxCell id="gcp_bq" value="&lt;b&gt;GCP BigQuery&lt;/b&gt;&#xa;Cloud Billing Detailed Export&#xa;约 33 万原始行/天&#xa;权威明细与发票追溯源" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_sources">
-          <mxGeometry x="30" y="80" width="270" height="130" as="geometry"/>
+        <mxCell id="note" value="&lt;font color=&quot;#b85450&quot;&gt;&lt;b&gt;已简化：&lt;/b&gt;&lt;/font&gt;不再查询 GKE usage metering；不在 TiDB 保存 raw-detail 中间层；API 不动态计算分摊。原始发票 / 资源排查回 BigQuery。" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1630" width="1660" height="55" as="geometry"/>
         </mxCell>
-        <mxCell id="aws_bq" value="&lt;b&gt;AWS CUR / Split Cost in BigQuery&lt;/b&gt;&#xa;Legacy CUR + EKS split-cost&#xa;按 billing_month 分区" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_sources">
-          <mxGeometry x="30" y="250" width="270" height="120" as="geometry"/>
+        <mxCell id="gcp" value="&lt;b&gt;GCP Detailed Billing Export&lt;/b&gt;&lt;br&gt;Cloud Billing Detailed Export&lt;br&gt;权威账单明细、GKE native allocation" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" vertex="1" parent="lane_sources">
+          <mxGeometry x="25" y="80" width="270" height="145" as="geometry"/>
         </mxCell>
-        <mxCell id="roster_source" value="&lt;b&gt;Roster + TCMS&lt;/b&gt;&#xa;roster_employees / roster_groups&#xa;员工 GitHub、邮箱、组、经理&#xa;TCMS allocation 生效区间" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_sources">
-          <mxGeometry x="30" y="520" width="270" height="130" as="geometry"/>
+        <mxCell id="aws" value="&lt;b&gt;AWS CUR / Split Cost Export&lt;/b&gt;&lt;br&gt;Legacy CUR + EKS split-cost&lt;br&gt;按 billing month 分区" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" vertex="1" parent="lane_sources">
+          <mxGeometry x="25" y="270" width="270" height="135" as="geometry"/>
         </mxCell>
-        <mxCell id="cloud_api" value="&lt;b&gt;AWS / GCP Cloud APIs&lt;/b&gt;&#xa;未挂载 EBS / Persistent Disk&#xa;volume 状态、大小、标签" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_sources">
-          <mxGeometry x="30" y="1190" width="270" height="120" as="geometry"/>
+        <mxCell id="roster" value="&lt;b&gt;Roster + TCMS&lt;/b&gt;&lt;br&gt;员工 GitHub / email、组、经理&lt;br&gt;当前业务 owner / tag 映射" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" vertex="1" parent="lane_sources">
+          <mxGeometry x="25" y="450" width="270" height="130" as="geometry"/>
         </mxCell>
-        <mxCell id="k8s_events" value="&lt;b&gt;Kubernetes Pod / PVC&lt;/b&gt;&#xa;Pod watcher / sync-pods&#xa;PV 名称 ↔ Pod 与 CI labels" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_sources">
-          <mxGeometry x="30" y="1350" width="270" height="110" as="geometry"/>
+        <mxCell id="control" value="&lt;b&gt;采集控制&lt;/b&gt;&lt;br&gt;cost_sources：active vendor/account&lt;br&gt;cost_job_state：watermark、状态、错误" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_sources">
+          <mxGeometry x="25" y="1240" width="270" height="125" as="geometry"/>
         </mxCell>
-
-        <mxCell id="billing_aggregate" value="&lt;b&gt;Billing Summary Import&lt;/b&gt;&#xa;&lt;font color=&quot;#374151&quot;&gt;选数&lt;/font&gt;：active vendor/account；有界 export partition；usage_date ≥ 起始日&#xa;&lt;font color=&quot;#374151&quot;&gt;标准化&lt;/font&gt;：vendor/account、service/SKU、region、CI labels、resource/workload、allocation scope&#xa;&lt;font color=&quot;#374151&quot;&gt;GCP Native Cost Allocation&lt;/font&gt;：cluster/location + direct/residual + residual type + component + namespace/workload&#xa;&lt;font color=&quot;#374151&quot;&gt;AWS Split Cost&lt;/font&gt;：保留 workload/scope 与 parent residual identity&#xa;&lt;font color=&quot;#374151&quot;&gt;指标&lt;/font&gt;：SUM(list/effective/credit/net cost)，MAX(export_time)&#xa;生成稳定 source_row_hash，按分区幂等 upsert" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="70" width="470" height="360" as="geometry"/>
+        <mxCell id="bigquery_note" value="&lt;b&gt;BigQuery 保留的职责&lt;/b&gt;&lt;br&gt;发票级原始明细追溯&lt;br&gt;高基数资源调查" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=10;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" vertex="1" parent="lane_sources">
+          <mxGeometry x="25" y="650" width="270" height="105" as="geometry"/>
         </mxCell>
-        <mxCell id="resource_aggregate" value="&lt;b&gt;Weekly Resource Investigation Import&lt;/b&gt;&#xa;有界 export + usage window；只保留 resource_name 非空&#xa;高基数维度：resource、namespace、workload、vendor tags、author/org/repo/branch&#xa;按 export partition + usage day + resource 维度聚合&#xa;计算 usage_seconds（仅时间类单位）及四类 cost" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="470" width="470" height="200" as="geometry"/>
+        <mxCell id="summary_import" value="&lt;b&gt;Billing Summary Import&lt;/b&gt;&lt;br&gt;• 按 export partition 有界读取&lt;br&gt;• 规范化 vendor/account、服务/SKU、region、CI labels、workload / allocation 字段&lt;br&gt;• 日级聚合四类金额；稳定 row hash 幂等 upsert&lt;br&gt;• 导入完成后才推进 watermark" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="lane_import">
+          <mxGeometry x="25" y="70" width="380" height="260" as="geometry"/>
         </mxCell>
-        <mxCell id="gcp_allocate" value="&lt;b&gt;GCP Native GKE Residual Allocation&lt;/b&gt;&#xa;直接保留 Billing Export 已分配的 Pod / workload / PD cost&#xa;idle + system overhead 按同日/project/cluster/SKU/component 的 positive direct list cost 占比分摊&#xa;unsupported / unknown / control plane / 无参与组保持未分摊&#xa;不读取 GKE Metering" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="760" width="470" height="190" as="geometry"/>
+        <mxCell id="gcp_adapter" value="&lt;b&gt;GCP native K8s adapter&lt;/b&gt;&lt;br&gt;从 summary 读取 GKE direct / residual；按 cluster + SKU + component 建组&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;direct 保留；仅 idle / system overhead 以正 direct list-cost 分摊&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="lane_import">
+          <mxGeometry x="25" y="470" width="380" height="165" as="geometry"/>
         </mxCell>
-        <mxCell id="aws_allocate" value="&lt;b&gt;AWS EKS Split / Parent Residual&lt;/b&gt;&#xa;从 split-cost BQ 识别 pod child、parent direct、parent residual&#xa;先按 day + parent + pod 计算 residual allocation_weight&#xa;再与 normalized summary 合并，发布 workload 级 list cost&#xa;保留 source_allocation_scope 与 allocation_version" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="980" width="470" height="190" as="geometry"/>
+        <mxCell id="aws_adapter" value="&lt;b&gt;AWS EKS split-cost adapter&lt;/b&gt;&lt;br&gt;从 summary / split-cost 发布 workload 事实；parent residual 审计保留&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;保守处理无 workload / 不可分摊成本&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="lane_import">
+          <mxGeometry x="25" y="680" width="380" height="150" as="geometry"/>
         </mxCell>
-        <mxCell id="block_scan" value="&lt;b&gt;Unattached Block Scanner&lt;/b&gt;&#xa;枚举 AWS/GCP volume；筛选 available/unattached&#xa;归一 vendor/account/region/volume；保留首次发现时间与 owner tags" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="1200" width="470" height="130" as="geometry"/>
+        <mxCell id="resource_import" value="&lt;b&gt;Resource Investigation Import（按周）&lt;/b&gt;&lt;br&gt;有界 usage/export window；资源、namespace、workload、tags 等高基数维度仅进调查表" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="lane_import">
+          <mxGeometry x="25" y="970" width="380" height="135" as="geometry"/>
         </mxCell>
-        <mxCell id="source_control" value="&lt;b&gt;采集控制&lt;/b&gt;&#xa;cost_sources：允许采集的 vendor/account、source table/schema&#xa;cost_job_state：每个 source/job 的 watermark、状态、错误" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="lane_extract">
-          <mxGeometry x="30" y="1380" width="470" height="110" as="geometry"/>
+        <mxCell id="summary" value="&lt;b&gt;cost_bq_export_summary_daily&lt;/b&gt;&lt;br&gt;常规账单日汇总账本&lt;br&gt;export partition + usage day + 标准业务维度&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;晚到修订可覆盖同一 source row&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_ledger">
+          <mxGeometry x="20" y="70" width="370" height="200" as="geometry"/>
         </mxCell>
-
-        <mxCell id="summary_table" value="&lt;b&gt;cost_bq_export_summary_daily&lt;/b&gt;&#xa;常规账单日汇总台账&#xa;&lt;b&gt;粒度&lt;/b&gt;：vendor/account + export partition + usage day + 标准账单/业务/资源维度&#xa;&lt;b&gt;指标&lt;/b&gt;：list/effective/credit/net cost&#xa;同一 source_row_hash 可被晚到修订覆盖" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="100" width="380" height="210" as="geometry"/>
+        <mxCell id="k8s_source" value="&lt;b&gt;Kubernetes source / final ledgers&lt;/b&gt;&lt;br&gt;cost_kubernetes_workload_allocation_source_daily&lt;br&gt;cost_kubernetes_workload_allocation_daily&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;direct、residual_redistributed、residual_unallocated&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_ledger">
+          <mxGeometry x="20" y="400" width="370" height="170" as="geometry"/>
         </mxCell>
-        <mxCell id="roster_tables" value="&lt;b&gt;roster_* + TCMS allocation&lt;/b&gt;&#xa;当前员工、组、经理与业务映射" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="350" width="380" height="90" as="geometry"/>
+        <mxCell id="aws_audit" value="&lt;b&gt;cost_aws_parent_residual_allocation_daily&lt;/b&gt;&lt;br&gt;AWS parent residual 分摊审计台账" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_ledger">
+          <mxGeometry x="20" y="620" width="370" height="105" as="geometry"/>
         </mxCell>
-        <mxCell id="unmatched_table" value="&lt;b&gt;cost_unmatched_resource_daily&lt;/b&gt;&#xa;资源调查日表（周窗口刷新）&#xa;&lt;b&gt;粒度&lt;/b&gt;：vendor/account + export partition + usage day + service/SKU + resource/workload/labels&#xa;故意保留高基数，不进入常规 summary" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="490" width="380" height="170" as="geometry"/>
+        <mxCell id="resource" value="&lt;b&gt;cost_unmatched_resource_daily&lt;/b&gt;&lt;br&gt;资源级调查日表（高基数，不进入常规 summary）" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_ledger">
+          <mxGeometry x="20" y="930" width="370" height="110" as="geometry"/>
         </mxCell>
-        <mxCell id="workload_table" value="&lt;b&gt;cost_kubernetes_workload_allocation_daily&lt;/b&gt;&#xa;&lt;b&gt;粒度&lt;/b&gt;：usage day + vendor/account + cluster + scope/component + namespace/workload + CI labels&#xa;&lt;b&gt;指标&lt;/b&gt;：weight、source node list cost、allocated list cost" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="790" width="380" height="180" as="geometry"/>
+        <mxCell id="attribution" value="&lt;b&gt;Summary Attribution Refresh&lt;/b&gt;&lt;br&gt;summary + 当前 roster / TCMS 映射&lt;br&gt;author → GitHub ID → email / local-part → unmatched&lt;br&gt;补齐 employee / group / manager；按 vendor/account/date 删除重建&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;TCMS shared_pool 仅保留元数据，不参与加权&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;" vertex="1" parent="lane_semantic">
+          <mxGeometry x="25" y="70" width="400" height="230" as="geometry"/>
         </mxCell>
-        <mxCell id="residual_table" value="&lt;b&gt;cost_aws_parent_residual_allocation_daily&lt;/b&gt;&#xa;&lt;b&gt;粒度&lt;/b&gt;：usage day + parent resource + pod resource + allocation version&#xa;AWS EKS residual 分摊审计台账" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="1010" width="380" height="140" as="geometry"/>
+        <mxCell id="attribution_table" value="&lt;b&gt;cost_attribution_daily（native）&lt;/b&gt;&lt;br&gt;Dashboard 原生归因事实；保留 matched / unmatched / unattributed" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_semantic">
+          <mxGeometry x="25" y="350" width="400" height="110" as="geometry"/>
         </mxCell>
-        <mxCell id="block_table" value="&lt;b&gt;cost_unattached_block_volume_daily&lt;/b&gt;&#xa;&lt;b&gt;粒度&lt;/b&gt;：snapshot day + vendor/account + region + volume&#xa;状态、GiB、owner、first seen" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="1210" width="380" height="130" as="geometry"/>
+        <mxCell id="materialize" value="&lt;b&gt;Materialize Cost Allocations&lt;/b&gt;&lt;br&gt;&lt;b&gt;Stage 1&lt;/b&gt;：Kubernetes residual（先执行）&lt;br&gt;&lt;b&gt;Stage 2&lt;/b&gt;：当前 EQ-owned cost → 同日 / vendor / account 的非 EQ 正 native direct list-cost share&lt;br&gt;四类金额守恒；全窗口 staging 验证后原子发布" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;" vertex="1" parent="lane_semantic">
+          <mxGeometry x="25" y="550" width="400" height="245" as="geometry"/>
         </mxCell>
-        <mxCell id="pvc_table" value="&lt;b&gt;cost_kubernetes_pvc_pod_mapping&lt;/b&gt;&#xa;PV name ↔ pod UID + author/org/repo&#xa;供 GCP 存储账单归因" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="lane_ledger">
-          <mxGeometry x="30" y="1380" width="380" height="110" as="geometry"/>
+        <mxCell id="allocation" value="&lt;b&gt;cost_allocation_daily + publication&lt;/b&gt;&lt;br&gt;三个完整派生视图：&lt;br&gt;• kubernetes_allocated&lt;br&gt;• eq_allocated&lt;br&gt;• kubernetes_eq_allocated&lt;br&gt;&lt;font color=&quot;#374151&quot;&gt;publication pointer 只指向完整 active version&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="70" width="450" height="190" as="geometry"/>
         </mxCell>
-
-        <mxCell id="attribution" value="&lt;b&gt;Summary Attribution Refresh&lt;/b&gt;&#xa;&lt;b&gt;输入&lt;/b&gt;：summary + roster/TCMS + PVC mapping&#xa;&lt;b&gt;身份解析&lt;/b&gt;：source owner / author override → GitHub ID → email / local-part → unmatched&#xa;&lt;b&gt;补充&lt;/b&gt;：employee_id、group_id、manager_id、attribution status/source；组经理作为 fallback&#xa;&lt;b&gt;再次汇总（去掉 export partition）&lt;/b&gt;：&#xa;usage day + vendor/account + service/SKU/driver/region + org/repo/branch/resource + allocation/workload + attribution identity&#xa;&lt;b&gt;指标&lt;/b&gt;：SUM 四类 cost，COUNT source rows&#xa;按 vendor/account/date 删除后重建，可吸收晚到修订和 roster 修复" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="lane_semantic">
-          <mxGeometry x="30" y="90" width="440" height="350" as="geometry"/>
+        <mxCell id="dashboard_query" value="&lt;b&gt;Dashboard 查询&lt;/b&gt;&lt;br&gt;basis selector 选择 native 或一个 active materialized perspective&lt;br&gt;仅周 / 月 GROUP BY；不在 API 计算参与者、权重或舍入" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="355" width="450" height="160" as="geometry"/>
         </mxCell>
-        <mxCell id="dashboard_aggregate" value="&lt;b&gt;Dashboard 查询时聚合&lt;/b&gt;&#xa;两个开关选择 native / K8s / EQ / K8s+EQ 完整口径&#xa;只读取 active allocation_version，不在 API 计算参与组、权重、舍入或守恒&#xa;按周/月与请求维度 GROUP BY&#xa;指标：SUM(list/effective/credit/net cost)、allocated/unallocated、占比与趋势" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="lane_semantic">
-          <mxGeometry x="30" y="500" width="440" height="230" as="geometry"/>
+        <mxCell id="dashboard" value="&lt;b&gt;CI Dashboard Cost API / 页面&lt;/b&gt;&lt;br&gt;成本 / 趋势 / service / SKU / driver / region&lt;br&gt;repo / branch / author / group / manager&lt;br&gt;原生、K8s、EQ、K8s+EQ 口径对比" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="565" width="450" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="allocation_compare" value="&lt;b&gt;日级 Materialized Allocation&lt;/b&gt;&#xa;Stage 1：先替换完全对账的 Kubernetes residual&#xa;Stage 2：剩余当前 EQ-owned cost 按同日/vendor/account 的 non-EQ positive native direct list cost 分摊&#xa;无 denominator 则保留 EQ；四类金额逐项守恒&#xa;按日分块 staging，完整后原子切换 active version" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="lane_semantic">
-          <mxGeometry x="30" y="790" width="440" height="180" as="geometry"/>
+        <mxCell id="resource_consume" value="&lt;b&gt;Unmatched Resource Investigation&lt;/b&gt;&lt;br&gt;Dashboard 资源调查直接读取资源日表；需要 invoice/raw detail 时跳回 BigQuery" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="930" width="450" height="120" as="geometry"/>
         </mxCell>
-        <mxCell id="budget_calc" value="&lt;b&gt;Budget vs Actual&lt;/b&gt;&#xa;cost_budgets 的期间预算 / label_filters&#xa;对 attribution actual 做同范围汇总&#xa;年度预算可派生为月度额度" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="lane_semantic">
-          <mxGeometry x="30" y="1200" width="440" height="140" as="geometry"/>
+        <mxCell id="budget" value="&lt;b&gt;Budget（独立、尚未自动同步）&lt;/b&gt;&lt;br&gt;cost_budgets 可按 period / label_filters 与 attribution actual 对比" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=10;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="1170" width="450" height="105" as="geometry"/>
         </mxCell>
-        <mxCell id="retirement_note" value="&lt;b&gt;已退役路径（015 手动迁移后）&lt;/b&gt;&#xa;cost_raw_details 不再作为 TiDB 中间层&#xa;invoice/raw 明细调查直接回 BigQuery" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="lane_semantic">
-          <mxGeometry x="30" y="1380" width="440" height="110" as="geometry"/>
+        <mxCell id="legend" value="&lt;b&gt;图例&lt;/b&gt;　灰：外部 / BigQuery　蓝：导入任务　绿：TiDB 账本　紫：语义计算　橙：消费　红：已退役 / 不再走的路径" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=8;fillColor=#ffffff;strokeColor=#666666;fontSize=13;" vertex="1" parent="lane_serve">
+          <mxGeometry x="30" y="1370" width="450" height="80" as="geometry"/>
         </mxCell>
-
-        <mxCell id="attribution_table" value="&lt;b&gt;cost_attribution_daily&lt;/b&gt;&#xa;Dashboard 主事实汇总表&#xa;&lt;b&gt;粒度&lt;/b&gt;：usage day + 云/账单/业务/资源/workload + 归因身份&#xa;不再包含 export partition&#xa;保留 matched / unmatched / unattributed" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="100" width="390" height="200" as="geometry"/>
+        <mxCell id="e1" value="bounded partitions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gcp" target="summary_import">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="allocation_table" value="&lt;b&gt;cost_allocation_daily + publication&lt;/b&gt;&#xa;三个派生日级完整口径&#xa;kubernetes_allocated / eq_allocated / kubernetes_eq_allocated&#xa;source/target group + manager + weight + method + version" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="330" width="390" height="130" as="geometry"/>
+        <mxCell id="e2" value="bounded partitions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="aws" target="summary_import">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="cost_api" value="&lt;b&gt;CI Dashboard Cost API / 页面&lt;/b&gt;&#xa;Native / K8s / EQ / K8s+EQ 口径切换&#xa;周/月总成本与趋势&#xa;service / SKU / driver / region&#xa;repo / branch / author / group / manager&#xa;unmatched resource investigation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="480" width="390" height="240" as="geometry"/>
+        <mxCell id="e3" value="source + watermark" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="control" target="summary_import">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="block_api" value="&lt;b&gt;Unattached Block Volume API&lt;/b&gt;&#xa;/cost-unattached-block-volumes&#xa;兼容 /cost-unattached-ebs-volumes&#xa;可关联 attribution owner/context" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="850" width="390" height="140" as="geometry"/>
+        <mxCell id="e4" value="upsert daily ledger" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="summary_import" target="summary">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="budget_table" value="&lt;b&gt;cost_budgets&lt;/b&gt;&#xa;当前手工 / 未来 Lark 同步&#xa;&lt;b&gt;粒度&lt;/b&gt;：vendor/account + period + canonical label_filters&#xa;可按 repo/group/manager 过滤" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="1200" width="390" height="150" as="geometry"/>
+        <mxCell id="e5" value="native billing facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="summary" target="attribution">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="legend" value="&lt;b&gt;颜色&lt;/b&gt;&#xa;灰：外部源　蓝：ETL/分摊　绿：TiDB 台账&#xa;紫：语义计算　橙：消费/汇总　红：退役" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=10;fillColor=#ffffff;strokeColor=#9ca3af;fontSize=12;" vertex="1" parent="lane_serve">
-          <mxGeometry x="30" y="1400" width="390" height="90" as="geometry"/>
+        <mxCell id="e6" value="identity / owner mapping" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="roster" target="attribution">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-
-        <mxCell id="e1" value="分区裁剪后聚合" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.25;" edge="1" parent="1" source="gcp_bq" target="billing_aggregate"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e2" value="分区裁剪后聚合" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.75;" edge="1" parent="1" source="aws_bq" target="billing_aggregate"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e3" value="日级 + 业务维度 upsert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.35;entryX=0;entryY=0.35;" edge="1" parent="1" source="billing_aggregate" target="summary_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e4" value="账单事实" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.35;entryX=0;entryY=0.3;" edge="1" parent="1" source="summary_table" target="attribution"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e5" value="身份 / 组织映射" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.75;" edge="1" parent="1" source="roster_tables" target="attribution"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e6" value="同步" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="roster_source" target="roster_tables"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e7" value="去掉 export partition，再按归因维度汇总" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.35;entryX=0;entryY=0.35;" edge="1" parent="1" source="attribution" target="attribution_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e8" value="按请求维度 GROUP BY" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=0.5;exitY=1;entryX=1;entryY=0.2;" edge="1" parent="1" source="attribution_table" target="dashboard_aggregate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2300" y="450"/><mxPoint x="1860" y="450"/></Array></mxGeometry></mxCell>
-        <mxCell id="e9" value="API 结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="dashboard_aggregate" target="cost_api"><mxGeometry relative="1" as="geometry"/></mxCell>
-
-        <mxCell id="e10" value="高基数资源选数" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.25;" edge="1" parent="1" source="gcp_bq" target="resource_aggregate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="370" y="330"/><mxPoint x="370" y="610"/></Array></mxGeometry></mxCell>
-        <mxCell id="e11" value="高基数资源选数" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.75;" edge="1" parent="1" source="aws_bq" target="resource_aggregate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="370" y="480"/><mxPoint x="370" y="700"/></Array></mxGeometry></mxCell>
-        <mxCell id="e12" value="资源日粒度" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="resource_aggregate" target="unmatched_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e13" value="调查维度" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.55;" edge="1" parent="1" source="unmatched_table" target="dashboard_aggregate"><mxGeometry relative="1" as="geometry"/></mxCell>
-
-        <mxCell id="e15" value="native direct + residual facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.2;" edge="1" parent="1" source="gcp_bq" target="gcp_allocate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="370" y="340"/><mxPoint x="370" y="900"/></Array></mxGeometry></mxCell>
-        <mxCell id="e16" value="按 direct list cost share 分摊" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.35;" edge="1" parent="1" source="gcp_allocate" target="workload_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e17" value="split-cost rows" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="aws_bq" target="aws_allocate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="370" y="490"/><mxPoint x="370" y="1160"/></Array></mxGeometry></mxCell>
-        <mxCell id="e18" value="residual 审计" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.7;entryX=0;entryY=0.5;" edge="1" parent="1" source="aws_allocate" target="residual_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e19" value="EKS workload facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.25;entryX=0;entryY=0.8;" edge="1" parent="1" source="aws_allocate" target="workload_table"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="920" y="1110"/><mxPoint x="920" y="1020"/></Array></mxGeometry></mxCell>
-        <mxCell id="e20" value="已分摊 workload cost" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="workload_table" target="allocation_compare"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e21" value="native attributed facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;dashed=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.2;" edge="1" parent="1" source="attribution_table" target="allocation_compare"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1380" y="430"/><mxPoint x="1380" y="930"/></Array></mxGeometry></mxCell>
-        <mxCell id="e22" value="三个守恒口径" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.75;" edge="1" parent="1" source="allocation_compare" target="allocation_table"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1900" y="970"/><mxPoint x="1900" y="750"/></Array></mxGeometry></mxCell>
-
-        <mxCell id="e23" value="扫描" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="cloud_api" target="block_scan"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e24" value="每日快照" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="block_scan" target="block_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e25" value="volume 视图" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="block_table" target="block_api"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1380" y="1365"/><mxPoint x="1380" y="1100"/><mxPoint x="1900" y="1100"/><mxPoint x="1900" y="1010"/></Array></mxGeometry></mxCell>
-        <mxCell id="e26" value="PV ↔ Pod labels" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="k8s_events" target="pvc_table"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e27" value="存储资源归因辅助" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;dashed=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.95;" edge="1" parent="1" source="pvc_table" target="attribution"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1380" y="1560"/><mxPoint x="1380" y="500"/></Array></mxGeometry></mxCell>
-
-        <mxCell id="e28" value="actual" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;dashed=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=0.5;exitY=1;entryX=1;entryY=0.25;" edge="1" parent="1" source="attribution_table" target="budget_calc"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2330" y="460"/><mxPoint x="2330" y="1180"/><mxPoint x="1880" y="1180"/></Array></mxGeometry></mxCell>
-        <mxCell id="e29" value="period + filters" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=0;exitY=0.5;entryX=1;entryY=0.75;" edge="1" parent="1" source="budget_table" target="budget_calc"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e30" value="预算执行" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.2;entryX=1;entryY=0.5;" edge="1" parent="1" source="budget_calc" target="cost_api"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1890" y="1320"/><mxPoint x="1890" y="1640"/><mxPoint x="2390" y="1640"/><mxPoint x="2390" y="690"/></Array></mxGeometry></mxCell>
-
-        <mxCell id="e31" value="active sources / watermark" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;dashed=1;endArrow=open;endFill=0;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="source_control" target="billing_aggregate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="920" y="1525"/><mxPoint x="920" y="340"/><mxPoint x="910" y="340"/></Array></mxGeometry></mxCell>
-        <mxCell id="e33" value="当前组织 / EQ root" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;dashed=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;" edge="1" parent="1" source="roster_tables" target="allocation_compare"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e34" value="active perspective" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=11;" edge="1" parent="1" source="allocation_table" target="dashboard_aggregate"><mxGeometry relative="1" as="geometry"/></mxCell>
-
-        <mxCell id="e32" value="raw 调查" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;dashed=1;endArrow=open;endFill=0;labelBackgroundColor=#ffffff;fontSize=11;exitX=1;exitY=0.2;entryX=0;entryY=0.5;" edge="1" parent="1" source="gcp_bq" target="retirement_note"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="370" y="200"/><mxPoint x="370" y="1600"/><mxPoint x="1380" y="1600"/></Array></mxGeometry></mxCell>
+        <mxCell id="e7" value="replace date range" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="attribution" target="attribution_table">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="GCP K8s rows" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="summary" target="gcp_adapter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="AWS K8s rows" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="summary" target="aws_adapter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="native source / final facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gcp_adapter" target="k8s_source">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" value="EKS source / final facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="aws_adapter" target="k8s_source">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" value="parent residual lineage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="aws_adapter" target="aws_audit">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" value="native input" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="attribution_table" target="materialize">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="K8s source / final lineage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="k8s_source" target="materialize">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" value="current EQ membership" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="roster" target="materialize">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" value="three staged perspectives" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="materialize" target="allocation">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="native basis" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="attribution_table" target="dashboard_query">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="active derived basis" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="allocation" target="dashboard_query">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e19" value="week / month aggregates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="dashboard_query" target="dashboard">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e20" value="weekly resource slice" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="gcp" target="resource_import">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e21" value="weekly resource slice" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="aws" target="resource_import">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e22" value="resource-day rows" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="resource_import" target="resource">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e23" value="investigation" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="resource" target="resource_consume">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e24" value="actuals" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="attribution_table" target="budget">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e25" value="raw detail drill-down" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#4b5563;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;dashPattern=6 6;strokeColor=#9673a6;" edge="1" parent="1" source="bigquery_note" target="resource_consume">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
