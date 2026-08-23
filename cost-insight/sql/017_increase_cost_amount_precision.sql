@@ -2,7 +2,8 @@
 -- BigQuery detailed export contains high-cardinality resource facts whose
 -- individual costs are often below one cent.
 -- DECIMAL(16,9) retains the existing eight-byte storage footprint while
--- supporting amounts below $10,000,000 per fact.
+-- supporting amounts below $10,000,000 per fact. If that bound is exceeded,
+-- use DECIMAL(24,9) instead; the ALTER will fail rather than truncate a value.
 
 ALTER TABLE cost_bq_export_summary_daily
   MODIFY COLUMN list_cost DECIMAL(16, 9) NULL,

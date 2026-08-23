@@ -839,6 +839,30 @@ def test_cli_publishes_a_staged_materialization_version(monkeypatch, capsys) -> 
     assert '"published": true' in capsys.readouterr().out
 
 
+def test_cli_rejects_publish_only_processing_dates(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "get_settings",
+        lambda require_database=True: SimpleNamespace(log_level="INFO"),
+    )
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
+
+    with pytest.raises(ValueError, match="publish-only cannot be combined with processing dates"):
+        cli.main(
+            [
+                "materialize-cost-allocations",
+                "--start-date", "2026-08-10",
+                "--end-date", "2026-08-11",
+                "--eq-root-lark-group-id", "eq",
+                "--allocation-version", "v1",
+                "--publish-only",
+                "--processing-start-date", "2026-08-10",
+                "--processing-end-date", "2026-08-10",
+            ]
+        )
+
+
 def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}

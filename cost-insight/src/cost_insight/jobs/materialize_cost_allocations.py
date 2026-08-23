@@ -214,7 +214,9 @@ def run_materialize_cost_allocations(
             )
         current += timedelta(days=1)
 
-    if publish and windows_seen and not dry_run:
+    if publish and not dry_run:
+        if windows_seen == 0:
+            raise ValueError("Cannot publish an empty materialization version")
         publish_materialized_cost_allocations(
             engine,
             start_date=start_date,

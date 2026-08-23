@@ -352,6 +352,101 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
         )
 
 
+def test_staged_materialization_is_idempotent_and_publishable_after_chunks() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _MATERIALIZE_SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                """
+                INSERT INTO roster_groups (id, lark_group_id, path, manager_id, is_active)
+                VALUES (1, 'eq', '/1/', 10, 1), (2, 'database', '/2/', 20, 1)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_attribution_daily (
+                  usage_date, vendor, account_id, source_allocation_scope,
+                  attribution_source, attribution_status, group_id, manager_id,
+                  list_cost, effective_cost, credit_amount, net_cost, source_rows,
+                  dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'project-1', 'direct', 'author', 'matched',
+                   2, 20, 10, 10, 0, 10, 1, 'day-one'),
+                  ('2026-08-11', 'gcp', 'project-1', 'direct', 'author', 'matched',
+                   2, 20, 20, 20, 0, 20, 1, 'day-two')
+                """
+            )
+        )
+
+    common = {
+        "engine": engine,
+        "start_date": date(2026, 8, 10),
+        "end_date": date(2026, 8, 11),
+        "earliest_date": date(2026, 8, 10),
+        "eq_root_lark_group_id": "eq",
+        "allocation_version": "v1",
+        "publish": False,
+        "now": datetime(2026, 8, 21),
+    }
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 10),
+        processing_end_date=date(2026, 8, 10),
+    )
+    # Retrying an already staged chunk replaces its rows instead of appending them.
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 10),
+        processing_end_date=date(2026, 8, 10),
+    )
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 11),
+        processing_end_date=date(2026, 8, 11),
+    )
+
+    publish_materialized_cost_allocations(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 11),
+        earliest_date=date(2026, 8, 10),
+        allocation_version="v1",
+    )
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT COUNT(*) FROM cost_allocation_daily WHERE allocation_version = 'v1'")
+        ).scalar_one() == 6
+        assert connection.execute(
+            text("SELECT active_allocation_version FROM cost_allocation_publication")
+        ).scalar_one() == "v1"
+
+
+def test_materialization_rejects_an_empty_publish() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _MATERIALIZE_SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                "INSERT INTO roster_groups (id, lark_group_id, path, manager_id, is_active) "
+                "VALUES (1, 'eq', '/1/', 10, 1)"
+            )
+        )
+
+    with pytest.raises(ValueError, match="Cannot publish an empty materialization version"):
+        run_materialize_cost_allocations(
+            engine,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            earliest_date=date(2026, 8, 10),
+            eq_root_lark_group_id="eq",
+        )
+
+
 def test_failed_conservation_does_not_replace_the_active_publication(monkeypatch) -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     with engine.begin() as connection:

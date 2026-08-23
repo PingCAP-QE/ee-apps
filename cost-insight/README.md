@@ -169,9 +169,9 @@ cost-insight materialize-cost-allocations \
   --allocation-version "$version" --publish-only
 ```
 
-Each materialization window and GKE write batch logs its percentage and
-progress. GKE replacements commit bounded batches so TiDB does not accumulate
-a high-cardinality day in one memory-heavy transaction.
+Each materialization window and GKE date replacement logs its percentage and
+progress. A GKE replacement commits one usage date atomically: a failure rolls
+back that date's delete and writes, while completed dates are safely rerunnable.
 
 AWS unmatched resources use the same investigation table:
 

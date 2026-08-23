@@ -249,75 +249,40 @@ def replace_gke_workload_allocations(
     if dry_run:
         return 0
 
-    materialized_rows = tuple(rows)
-    materialized_sources = tuple(source_rows)
-    params = {
-        "account_id": account_id,
-        "usage_start_date": usage_start_date,
-        "usage_end_date": usage_end_date,
-    }
-    _delete_gke_rows_in_batches(
-        engine,
-        statement=_DELETE_ALLOCATIONS_FOR_USAGE_DATES,
-        limited_statement=_DELETE_ALLOCATIONS_FOR_USAGE_DATES_LIMITED,
-        params=params,
-        batch_size=batch_size,
-    )
-    _delete_gke_rows_in_batches(
-        engine,
-        statement=_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES,
-        limited_statement=_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES_LIMITED,
-        params=params,
-        batch_size=batch_size,
-    )
-    total_batches = (
-        (len(materialized_rows) + batch_size - 1) // batch_size
-        + (len(materialized_sources) + batch_size - 1) // batch_size
-    )
-    completed_batches = 0
-    for start in range(0, len(materialized_rows), batch_size):
-        with engine.begin() as connection:
-            _write_rows(connection, materialized_rows[start : start + batch_size])
-        completed_batches += 1
-        _log_gke_write_progress(account_id, completed_batches, total_batches)
-    for start in range(0, len(materialized_sources), batch_size):
-        with engine.begin() as connection:
-            _write_source_rows(connection, materialized_sources[start : start + batch_size])
-        completed_batches += 1
-        _log_gke_write_progress(account_id, completed_batches, total_batches)
-    return len(materialized_rows)
+    rows_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    sources_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        rows_by_date[row["usage_date"]].append(row)
+    for row in source_rows:
+        sources_by_date[row["usage_date"]].append(row)
 
-
-def _delete_gke_rows_in_batches(
-    engine: Engine,
-    *,
-    statement,
-    limited_statement,
-    params: dict[str, Any],
-    batch_size: int,
-) -> None:
-    if engine.dialect.name == "sqlite":
+    day_count = (usage_end_date - usage_start_date).days + 1
+    for offset in range(day_count):
+        usage_date = usage_start_date + timedelta(days=offset)
+        params = {
+            "account_id": account_id,
+            "usage_start_date": usage_date,
+            "usage_end_date": usage_date,
+        }
+        # A date is the replacement unit: a failure rolls back its deletion and
+        # writes, while previous fully committed dates are safely rerunnable.
         with engine.begin() as connection:
-            connection.execute(statement, params)
-        return
-    while True:
-        with engine.begin() as connection:
-            deleted = connection.execute(
-                limited_statement,
-                {**params, "delete_batch_size": batch_size},
-            ).rowcount
-        if deleted < batch_size:
-            return
-
-
-def _log_gke_write_progress(account_id: str, completed: int, total: int) -> None:
-    LOG.info(
-        "GKE allocation write progress: account=%s batches=%d/%d percent=%.1f",
-        account_id,
-        completed,
-        total,
-        completed * 100 / total if total else 100,
-    )
+            connection.execute(_DELETE_ALLOCATIONS_FOR_USAGE_DATES, params)
+            connection.execute(_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES, params)
+            for start in range(0, len(rows_by_date[usage_date]), batch_size):
+                _write_rows(connection, rows_by_date[usage_date][start : start + batch_size])
+            for start in range(0, len(sources_by_date[usage_date]), batch_size):
+                _write_source_rows(
+                    connection, sources_by_date[usage_date][start : start + batch_size]
+                )
+        LOG.info(
+            "GKE allocation replacement progress: account=%s dates=%d/%d percent=%.1f",
+            account_id,
+            offset + 1,
+            day_count,
+            (offset + 1) * 100 / day_count,
+        )
+    return sum(len(day_rows) for day_rows in rows_by_date.values())
 
 
 def _normalize_summary_row(source: dict[str, Any]) -> dict[str, Any]:
@@ -585,21 +550,5 @@ _DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES = text(
     DELETE FROM {ALLOCATION_SOURCE_TABLE}
     WHERE vendor = 'gcp' AND account_id = :account_id
       AND usage_date BETWEEN :usage_start_date AND :usage_end_date
-    """
-)
-_DELETE_ALLOCATIONS_FOR_USAGE_DATES_LIMITED = text(
-    f"""
-    DELETE FROM {ALLOCATION_TABLE}
-    WHERE vendor = 'gcp' AND account_id = :account_id
-      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
-    LIMIT :delete_batch_size
-    """
-)
-_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES_LIMITED = text(
-    f"""
-    DELETE FROM {ALLOCATION_SOURCE_TABLE}
-    WHERE vendor = 'gcp' AND account_id = :account_id
-      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
-    LIMIT :delete_batch_size
     """
 )

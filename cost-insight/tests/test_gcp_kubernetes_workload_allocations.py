@@ -2,9 +2,11 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.jobs import sync_gcp_kubernetes_workload_allocations as gke_sync
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     ALLOCATION_VERSION,
     build_gke_workload_allocation_rows,
@@ -205,6 +207,51 @@ def test_native_gke_sync_replaces_one_day_from_summary_without_metering() -> Non
         assert result.billing_rows_seen == 4
         assert result.rows_written == 5
         assert total == 220
+    finally:
+        engine.dispose()
+
+
+def test_gke_day_replacement_rolls_back_on_write_failure(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_kubernetes_workload_allocation_daily (
+                      usage_date, vendor, account_id, allocation_scope, cost_component,
+                      allocation_weight, source_node_list_cost, list_cost,
+                      allocation_method, allocation_version, dimension_hash
+                    ) VALUES ('2026-08-10', 'gcp', 'project-1', 'workload_split', 'cpu',
+                              1, 99, 99, 'old', 'v1', 'old-row')
+                    """
+                )
+            )
+        rows, source_rows = build_gke_workload_allocation_rows(
+            account_id="project-1", summary_rows=[_rows()[0]]
+        )
+
+        def fail_write(*_args) -> None:
+            raise RuntimeError("write failed")
+
+        monkeypatch.setattr(gke_sync, "_write_rows", fail_write)
+        with pytest.raises(RuntimeError, match="write failed"):
+            gke_sync.replace_gke_workload_allocations(
+                engine,
+                rows,
+                source_rows=source_rows,
+                billing_row_count=1,
+                account_id="project-1",
+                usage_start_date=date(2026, 8, 10),
+                usage_end_date=date(2026, 8, 10),
+                dry_run=False,
+                batch_size=1,
+            )
+
+        with engine.begin() as connection:
+            assert connection.execute(
+                text("SELECT list_cost FROM cost_kubernetes_workload_allocation_daily")
+            ).scalar_one() == 99
     finally:
         engine.dispose()
 

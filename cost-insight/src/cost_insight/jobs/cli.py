@@ -661,6 +661,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("--allocation-version is required for staged materialization")
         if args.publish_only and (args.dry_run or args.no_publish):
             raise ValueError("--publish-only cannot be combined with --dry-run or --no-publish")
+        if args.publish_only and args.processing_start_date is not None:
+            raise ValueError("--publish-only cannot be combined with processing dates")
         engine = build_engine(settings)
         try:
             if args.publish_only:
