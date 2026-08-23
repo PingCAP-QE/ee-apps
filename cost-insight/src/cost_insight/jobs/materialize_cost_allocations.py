@@ -166,7 +166,8 @@ def run_materialize_cost_allocations(
                         _DELETE_STAGED_WINDOW,
                         {**params, "allocation_version": version},
                     )
-                    for offset in range(0, len(perspectives), batch_size):
+                for offset in range(0, len(perspectives), batch_size):
+                    with engine.begin() as connection:
                         _write_materialized_rows(
                             connection, perspectives[offset : offset + batch_size]
                         )
