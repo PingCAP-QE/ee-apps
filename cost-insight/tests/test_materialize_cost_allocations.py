@@ -8,6 +8,7 @@ from cost_insight.jobs import materialize_cost_allocations
 from cost_insight.jobs.materialize_cost_allocations import (
     build_eq_allocated_rows,
     build_kubernetes_allocated_rows,
+    publish_materialized_cost_allocations,
     run_materialize_cost_allocations,
 )
 
@@ -30,6 +31,24 @@ def _fact(*, group_id: int, list_cost: str, source_scope: str = "direct") -> dic
         "source_rows": 1,
         "dimension_hash": f"source-{group_id}-{list_cost}",
     }
+
+
+def test_eq_allocation_preserves_subcent_amounts() -> None:
+    rows = (
+        _fact(group_id=1, list_cost="0.001"),
+        _fact(group_id=2, list_cost="1"),
+    )
+
+    allocated = build_eq_allocated_rows(
+        input_rows=rows,
+        native_rows=rows,
+        eq_group_ids={1},
+        group_managers={1: 10, 2: 20},
+        allocation_version="v1",
+        roster_resolved_at=datetime(2026, 8, 23),
+    )
+
+    assert sum((row["list_cost"] for row in allocated), Decimal()) == Decimal("1.001")
 
 
 def test_materialization_requires_the_configured_full_history_start() -> None:
@@ -263,7 +282,18 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
         earliest_date=date(2026, 8, 10),
         eq_root_lark_group_id="eq",
         allocation_version="v1",
+        publish=False,
         now=datetime(2026, 8, 21),
+    )
+
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM cost_allocation_publication")).scalar_one() == 0
+    publish_materialized_cost_allocations(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        earliest_date=date(2026, 8, 10),
+        allocation_version="v1",
     )
 
     with engine.begin() as connection:
@@ -302,6 +332,14 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
                 """
             )
         )
+    with pytest.raises(ValueError, match="Incomplete materialization window"):
+        publish_materialized_cost_allocations(
+            engine,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 11),
+            earliest_date=date(2026, 8, 10),
+            allocation_version="v1",
+        )
     with pytest.raises(ValueError, match="latest native cost date 2026-08-11"):
         run_materialize_cost_allocations(
             engine,
@@ -311,6 +349,101 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
             eq_root_lark_group_id="eq",
             allocation_version="partial",
             now=datetime(2026, 8, 21),
+        )
+
+
+def test_staged_materialization_is_idempotent_and_publishable_after_chunks() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _MATERIALIZE_SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                """
+                INSERT INTO roster_groups (id, lark_group_id, path, manager_id, is_active)
+                VALUES (1, 'eq', '/1/', 10, 1), (2, 'database', '/2/', 20, 1)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_attribution_daily (
+                  usage_date, vendor, account_id, source_allocation_scope,
+                  attribution_source, attribution_status, group_id, manager_id,
+                  list_cost, effective_cost, credit_amount, net_cost, source_rows,
+                  dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'project-1', 'direct', 'author', 'matched',
+                   2, 20, 10, 10, 0, 10, 1, 'day-one'),
+                  ('2026-08-11', 'gcp', 'project-1', 'direct', 'author', 'matched',
+                   2, 20, 20, 20, 0, 20, 1, 'day-two')
+                """
+            )
+        )
+
+    common = {
+        "engine": engine,
+        "start_date": date(2026, 8, 10),
+        "end_date": date(2026, 8, 11),
+        "earliest_date": date(2026, 8, 10),
+        "eq_root_lark_group_id": "eq",
+        "allocation_version": "v1",
+        "publish": False,
+        "now": datetime(2026, 8, 21),
+    }
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 10),
+        processing_end_date=date(2026, 8, 10),
+    )
+    # Retrying an already staged chunk replaces its rows instead of appending them.
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 10),
+        processing_end_date=date(2026, 8, 10),
+    )
+    run_materialize_cost_allocations(
+        **common,
+        processing_start_date=date(2026, 8, 11),
+        processing_end_date=date(2026, 8, 11),
+    )
+
+    publish_materialized_cost_allocations(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 11),
+        earliest_date=date(2026, 8, 10),
+        allocation_version="v1",
+    )
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT COUNT(*) FROM cost_allocation_daily WHERE allocation_version = 'v1'")
+        ).scalar_one() == 6
+        assert connection.execute(
+            text("SELECT active_allocation_version FROM cost_allocation_publication")
+        ).scalar_one() == "v1"
+
+
+def test_materialization_rejects_an_empty_publish() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _MATERIALIZE_SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                "INSERT INTO roster_groups (id, lark_group_id, path, manager_id, is_active) "
+                "VALUES (1, 'eq', '/1/', 10, 1)"
+            )
+        )
+
+    with pytest.raises(ValueError, match="Cannot publish an empty materialization version"):
+        run_materialize_cost_allocations(
+            engine,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            earliest_date=date(2026, 8, 10),
+            eq_root_lark_group_id="eq",
         )
 
 

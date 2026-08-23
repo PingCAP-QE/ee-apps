@@ -83,6 +83,14 @@ def test_build_gcp_billing_summary_query_uses_partition_pruning() -> None:
     assert "LIMIT 20" in query
 
 
+def test_gcp_summary_preserves_subcent_cost_precision() -> None:
+    query = build_gcp_billing_summary_query(billing_table="project.dataset.table")
+
+    assert "ROUND(SUM(cost_at_list), 9) AS list_cost" in query
+    assert "ROUND(SUM(cost), 9) AS effective_cost" in query
+    assert "ROUND(SUM(cost_at_list), 2) AS list_cost" not in query
+
+
 def test_gcp_summary_uses_workload_identity_instead_of_gke_resource_ids() -> None:
     query = build_gcp_billing_summary_query(billing_table="project.dataset.table")
 

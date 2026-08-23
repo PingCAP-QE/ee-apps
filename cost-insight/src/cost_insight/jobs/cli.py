@@ -21,7 +21,10 @@ from cost_insight.jobs.aws_split_cost_shadow import (
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
-from cost_insight.jobs.materialize_cost_allocations import run_materialize_cost_allocations
+from cost_insight.jobs.materialize_cost_allocations import (
+    publish_materialized_cost_allocations,
+    run_materialize_cost_allocations,
+)
 from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
@@ -207,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.getenv("COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID"),
     )
     materialize_allocations.add_argument("--dry-run", action="store_true")
+    materialize_allocations.add_argument("--allocation-version")
+    materialize_allocations.add_argument("--processing-start-date", type=_parse_date)
+    materialize_allocations.add_argument("--processing-end-date", type=_parse_date)
+    materialize_allocations.add_argument("--no-publish", action="store_true")
+    materialize_allocations.add_argument("--publish-only", action="store_true")
 
     sync_gcs_cache = subparsers.add_parser(
         "sync-gcs-cache-last-seen",
@@ -647,8 +655,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not earliest_date_value:
             raise ValueError("COST_ALLOCATION_EARLIEST_DATE is required")
         earliest_date = _parse_date(earliest_date_value)
+        if (args.processing_start_date is None) != (args.processing_end_date is None):
+            raise ValueError("processing start and end dates must be provided together")
+        if (args.no_publish or args.publish_only) and not args.allocation_version:
+            raise ValueError("--allocation-version is required for staged materialization")
+        if args.publish_only and (args.dry_run or args.no_publish):
+            raise ValueError("--publish-only cannot be combined with --dry-run or --no-publish")
+        if args.publish_only and args.processing_start_date is not None:
+            raise ValueError("--publish-only cannot be combined with processing dates")
         engine = build_engine(settings)
         try:
+            if args.publish_only:
+                publish_materialized_cost_allocations(
+                    engine,
+                    start_date=args.start_date,
+                    end_date=args.end_date,
+                    earliest_date=earliest_date,
+                    allocation_version=args.allocation_version,
+                )
+                print(json.dumps({"allocation_version": args.allocation_version, "published": True}))
+                return 0
             summary = run_materialize_cost_allocations(
                 engine,
                 start_date=args.start_date,
@@ -657,6 +683,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 eq_root_lark_group_id=args.eq_root_lark_group_id,
                 dry_run=args.dry_run,
                 batch_size=settings.gcp_billing.page_size,
+                allocation_version=args.allocation_version,
+                processing_start_date=args.processing_start_date,
+                processing_end_date=args.processing_end_date,
+                publish=not args.no_publish,
             )
             print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0

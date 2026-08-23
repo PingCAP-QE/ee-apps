@@ -26,7 +26,7 @@ JOB_NAME = "sync_gcp_kubernetes_workload_allocations"
 ALLOCATION_TABLE = "cost_kubernetes_workload_allocation_daily"
 ALLOCATION_SOURCE_TABLE = "cost_kubernetes_workload_allocation_source_daily"
 ALLOCATION_VERSION = "gke_cost_allocation_v1"
-_CENT = Decimal("0.01")
+_AMOUNT_QUANTUM = Decimal("0.000000001")
 _WEIGHT = Decimal("0.0000000000000001")
 _ALLOCATABLE_RESIDUALS = {"idle", "system_overhead"}
 
@@ -184,7 +184,9 @@ def build_gke_workload_allocation_rows(
             weight = (participant["list_cost"] / denominator).quantize(
                 _WEIGHT, rounding=ROUND_HALF_UP
             )
-            allocated = (source_list_cost * weight).quantize(_CENT, rounding=ROUND_HALF_UP)
+            allocated = (source_list_cost * weight).quantize(
+                _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
+            )
             allocations.append(
                 _allocation_row(
                     account_id=account_id,
@@ -204,7 +206,7 @@ def build_gke_workload_allocation_rows(
                 source_list_cost=source_list_cost,
                 participant=participants[-1],
                 weight=remaining_weight,
-                list_cost=remaining_cost.quantize(_CENT, rounding=ROUND_HALF_UP),
+                list_cost=remaining_cost.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP),
             )
         )
         source_rows.extend(
@@ -247,21 +249,46 @@ def replace_gke_workload_allocations(
     if dry_run:
         return 0
 
-    materialized_rows = tuple(rows)
-    materialized_sources = tuple(source_rows)
-    with engine.begin() as connection:
+    rows = tuple(rows)
+    source_rows = tuple(source_rows)
+    rows_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    sources_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    for row in (*rows, *source_rows):
+        usage_date = row["usage_date"]
+        if not usage_start_date <= usage_date <= usage_end_date:
+            raise ValueError(f"GKE allocation row is outside the replacement range: {usage_date}")
+    for row in rows:
+        rows_by_date[row["usage_date"]].append(row)
+    for row in source_rows:
+        sources_by_date[row["usage_date"]].append(row)
+
+    day_count = (usage_end_date - usage_start_date).days + 1
+    for offset in range(day_count):
+        usage_date = usage_start_date + timedelta(days=offset)
         params = {
             "account_id": account_id,
-            "usage_start_date": usage_start_date,
-            "usage_end_date": usage_end_date,
+            "usage_start_date": usage_date,
+            "usage_end_date": usage_date,
         }
-        connection.execute(_DELETE_ALLOCATIONS_FOR_USAGE_DATES, params)
-        connection.execute(_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES, params)
-        for start in range(0, len(materialized_rows), batch_size):
-            _write_rows(connection, materialized_rows[start : start + batch_size])
-        for start in range(0, len(materialized_sources), batch_size):
-            _write_source_rows(connection, materialized_sources[start : start + batch_size])
-    return len(materialized_rows)
+        # A date is the replacement unit: a failure rolls back its deletion and
+        # writes, while previous fully committed dates are safely rerunnable.
+        with engine.begin() as connection:
+            connection.execute(_DELETE_ALLOCATIONS_FOR_USAGE_DATES, params)
+            connection.execute(_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES, params)
+            for start in range(0, len(rows_by_date[usage_date]), batch_size):
+                _write_rows(connection, rows_by_date[usage_date][start : start + batch_size])
+            for start in range(0, len(sources_by_date[usage_date]), batch_size):
+                _write_source_rows(
+                    connection, sources_by_date[usage_date][start : start + batch_size]
+                )
+        LOG.info(
+            "GKE allocation replacement progress: account=%s dates=%d/%d percent=%.1f",
+            account_id,
+            offset + 1,
+            day_count,
+            (offset + 1) * 100 / day_count,
+        )
+    return sum(len(day_rows) for day_rows in rows_by_date.values())
 
 
 def _normalize_summary_row(source: dict[str, Any]) -> dict[str, Any]:
@@ -293,7 +320,7 @@ def _normalize_summary_row(source: dict[str, Any]) -> dict[str, Any]:
         "org": nullable_text(source.get("org")),
         "repo": nullable_text(source.get("repo")),
         "target_branch": nullable_text(source.get("target_branch")),
-        "list_cost": list_cost.quantize(_CENT, rounding=ROUND_HALF_UP),
+        "list_cost": list_cost.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP),
     }
 
 

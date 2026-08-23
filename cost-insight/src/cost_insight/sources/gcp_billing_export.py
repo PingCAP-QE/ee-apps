@@ -183,10 +183,10 @@ SELECT
   {namespace} AS namespace,
   {workload_name} AS workload_name,
   {workload_type} AS workload_type,
-  ROUND(SUM(cost_at_list), 2) AS list_cost,
-  ROUND(SUM(cost), 2) AS effective_cost,
-  ROUND(SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 2) AS credit_amount,
-  ROUND(SUM(cost + IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 2) AS net_cost,
+  ROUND(SUM(cost_at_list), 9) AS list_cost,
+  ROUND(SUM(cost), 9) AS effective_cost,
+  ROUND(SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 9) AS credit_amount,
+  ROUND(SUM(cost + IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)), 9) AS net_cost,
   MAX(export_time) AS source_export_time
 FROM `{billing_table}`
 WHERE _PARTITIONDATE BETWEEN @export_partition_start AND @export_partition_end
