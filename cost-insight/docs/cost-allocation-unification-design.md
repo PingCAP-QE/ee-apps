@@ -771,9 +771,13 @@ A successful run builds all requested daily perspectives and conservation
 reports before publication. The calculation and persistence chunk is one
 `(vendor, account_id, usage_date)` window, not the entire historical range in
 one transaction. A full roster-triggered rebuild stages every daily chunk under
-one new `allocation_version`; the API continues reading the prior active
-version until all chunks pass conservation, then one metadata-pointer update
-activates the new version atomically. Old versions may be removed afterward.
+one new `allocation_version`; operators may run non-overlapping 4–5 day
+processing ranges as separate jobs and safely rerun a failed range. Each job
+replaces only its own staged `(vendor, account_id, usage_date)` windows and does
+not publish. A final publish-only command verifies that every native window has
+all three perspectives and that all four amounts conserve before updating the
+metadata pointer. The API continues reading the prior active version throughout
+staging. Old versions may be removed afterward.
 
 Publication always rebuilds the complete configured history: `start_date` must
 equal `COST_ALLOCATION_EARLIEST_DATE`, and `end_date` must cover the latest

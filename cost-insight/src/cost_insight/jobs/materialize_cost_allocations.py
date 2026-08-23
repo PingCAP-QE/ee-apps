@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -13,6 +15,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.row_utils import bind_decimal_rows
+
+LOG = logging.getLogger(__name__)
 
 _CENT = Decimal("0.01")
 _WEIGHT = Decimal("0.0000000000000001")
@@ -44,12 +48,21 @@ def run_materialize_cost_allocations(
     dry_run: bool = False,
     batch_size: int = 1_000,
     allocation_version: str | None = None,
+    processing_start_date: date | None = None,
+    processing_end_date: date | None = None,
+    publish: bool = True,
     now: datetime | None = None,
 ) -> MaterializeCostAllocationsSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
     if start_date != earliest_date:
         raise ValueError("start_date must equal the configured allocation earliest date")
+    processing_start = processing_start_date or start_date
+    processing_end = processing_end_date or end_date
+    if not (start_date <= processing_start <= processing_end <= end_date):
+        raise ValueError("processing dates must be within the complete history range")
+    if not publish and allocation_version is None:
+        raise ValueError("allocation_version is required when publication is disabled")
     resolved_at = (now or datetime.now(UTC)).replace(tzinfo=None)
     version = allocation_version or resolved_at.strftime("allocation_%Y%m%dT%H%M%S%f")
 
@@ -108,9 +121,14 @@ def run_materialize_cost_allocations(
 
     windows_seen = 0
     rows_written = 0
-    current = start_date
-    while current <= end_date:
+    candidates_seen = 0
+    candidate_count = ((processing_end - processing_start).days + 1) * len(sources)
+    started_at = time.monotonic()
+    current = processing_start
+    while current <= processing_end:
         for source in sources:
+            candidates_seen += 1
+            window_started_at = time.monotonic()
             params = {
                 "usage_date": current,
                 "vendor": source["vendor"],
@@ -121,6 +139,17 @@ def run_materialize_cost_allocations(
                     dict(row) for row in connection.execute(_SELECT_NATIVE, params).mappings()
                 )
                 if not native:
+                    _log_materialization_progress(
+                        version=version,
+                        usage_date=current,
+                        vendor=str(source["vendor"]),
+                        account_id=str(source["account_id"]),
+                        candidates_seen=candidates_seen,
+                        candidate_count=candidate_count,
+                        rows_written=rows_written,
+                        started_at=started_at,
+                        window_started_at=window_started_at,
+                    )
                     continue
                 allocations = tuple(
                     dict(row)
@@ -161,27 +190,38 @@ def run_materialize_cost_allocations(
             _assert_conserved(native, eq)
             _assert_conserved(kubernetes, kubernetes_eq)
             if not dry_run:
-                with engine.begin() as connection:
-                    connection.execute(
-                        _DELETE_STAGED_WINDOW,
-                        {**params, "allocation_version": version},
-                    )
+                _delete_staged_materialization_window(
+                    engine,
+                    params={**params, "allocation_version": version},
+                    batch_size=batch_size,
+                )
                 for offset in range(0, len(perspectives), batch_size):
                     with engine.begin() as connection:
                         _write_materialized_rows(
                             connection, perspectives[offset : offset + batch_size]
                         )
             rows_written += 0 if dry_run else len(perspectives)
+            _log_materialization_progress(
+                version=version,
+                usage_date=current,
+                vendor=str(source["vendor"]),
+                account_id=str(source["account_id"]),
+                candidates_seen=candidates_seen,
+                candidate_count=candidate_count,
+                rows_written=rows_written,
+                started_at=started_at,
+                window_started_at=window_started_at,
+            )
         current += timedelta(days=1)
 
-    if windows_seen and not dry_run:
-        with engine.begin() as connection:
-            statement = (
-                _UPSERT_PUBLICATION_SQLITE
-                if connection.dialect.name == "sqlite"
-                else _UPSERT_PUBLICATION_MYSQL
-            )
-            connection.execute(statement, {"allocation_version": version})
+    if publish and windows_seen and not dry_run:
+        publish_materialized_cost_allocations(
+            engine,
+            start_date=start_date,
+            end_date=end_date,
+            earliest_date=earliest_date,
+            allocation_version=version,
+        )
     return MaterializeCostAllocationsSummary(
         start_date=start_date,
         end_date=end_date,
@@ -189,6 +229,155 @@ def run_materialize_cost_allocations(
         windows_seen=windows_seen,
         rows_written=rows_written,
         dry_run=dry_run,
+    )
+
+
+def publish_materialized_cost_allocations(
+    engine: Engine,
+    *,
+    start_date: date,
+    end_date: date,
+    earliest_date: date,
+    allocation_version: str,
+) -> None:
+    if start_date != earliest_date:
+        raise ValueError("start_date must equal the configured allocation earliest date")
+    expected_windows = 0
+    with engine.begin() as connection:
+        latest_native_date = connection.execute(
+            text("SELECT MAX(usage_date) FROM cost_attribution_daily")
+        ).scalar_one_or_none()
+        if isinstance(latest_native_date, str):
+            latest_native_date = date.fromisoformat(latest_native_date)
+        if latest_native_date is not None and end_date < latest_native_date:
+            raise ValueError(f"end_date must cover the latest native cost date {latest_native_date}")
+        sources = tuple(
+            connection.execute(
+                text(
+                    """
+                    SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
+                    WHERE usage_date BETWEEN :start_date AND :end_date
+                    ORDER BY vendor, account_id
+                    """
+                ),
+                {"start_date": start_date, "end_date": end_date},
+            ).mappings()
+        )
+
+    current = start_date
+    while current <= end_date:
+        for source in sources:
+            params = {
+                "usage_date": current,
+                "vendor": source["vendor"],
+                "account_id": source["account_id"],
+                "allocation_version": allocation_version,
+            }
+            with engine.begin() as connection:
+                native = connection.execute(_SELECT_NATIVE_TOTALS, params).mappings().one()
+                if int(native["row_count"]) == 0:
+                    continue
+                expected_windows += 1
+                materialized = {
+                    basis_key: connection.execute(
+                        _SELECT_MATERIALIZED_TOTALS,
+                        {**params, "basis_key": basis_key},
+                    ).mappings().one()
+                    for basis_key in (
+                        "kubernetes_allocated",
+                        "eq_allocated",
+                        "kubernetes_eq_allocated",
+                    )
+                }
+            for basis_key, row in materialized.items():
+                if int(row["row_count"]) == 0:
+                    raise ValueError(
+                        f"Incomplete materialization window for {current} "
+                        f"{source['vendor']}/{source['account_id']} {basis_key}"
+                    )
+                for amount in _AMOUNTS:
+                    if abs(_decimal(row[amount]) - _decimal(native[amount])) > Decimal("0.005"):
+                        raise ValueError(
+                            f"Materialization conservation failed for {basis_key} "
+                            f"{current} {source['vendor']}/{source['account_id']} {amount}"
+                        )
+        current += timedelta(days=1)
+
+    if expected_windows == 0:
+        raise ValueError("Cannot publish an empty materialization version")
+    with engine.begin() as connection:
+        statement = (
+            _UPSERT_PUBLICATION_SQLITE
+            if connection.dialect.name == "sqlite"
+            else _UPSERT_PUBLICATION_MYSQL
+        )
+        connection.execute(statement, {"allocation_version": allocation_version})
+    LOG.info(
+        "materialization published: version=%s windows=%d range=%s..%s",
+        allocation_version,
+        expected_windows,
+        start_date,
+        end_date,
+    )
+
+
+def _delete_staged_materialization_window(
+    engine: Engine,
+    *,
+    params: dict[str, Any],
+    batch_size: int,
+) -> None:
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as connection:
+            connection.execute(_DELETE_STAGED_WINDOW, params)
+        return
+    for basis_key in (
+        "kubernetes_allocated",
+        "eq_allocated",
+        "kubernetes_eq_allocated",
+    ):
+        while True:
+            with engine.begin() as connection:
+                deleted = connection.execute(
+                    _DELETE_STAGED_WINDOW_LIMITED,
+                    {
+                        **params,
+                        "basis_key": basis_key,
+                        "delete_batch_size": batch_size,
+                    },
+                ).rowcount
+            if deleted < batch_size:
+                break
+
+
+def _log_materialization_progress(
+    *,
+    version: str,
+    usage_date: date,
+    vendor: str,
+    account_id: str,
+    candidates_seen: int,
+    candidate_count: int,
+    rows_written: int,
+    started_at: float,
+    window_started_at: float,
+) -> None:
+    elapsed = time.monotonic() - started_at
+    percent = candidates_seen * 100 / candidate_count if candidate_count else 100
+    eta = elapsed / candidates_seen * (candidate_count - candidates_seen) if candidates_seen else 0
+    LOG.info(
+        "materialization progress: version=%s date=%s source=%s/%s "
+        "windows=%d/%d percent=%.1f rows=%d window_seconds=%.1f eta_seconds=%.0f",
+        version,
+        usage_date,
+        vendor,
+        account_id,
+        candidates_seen,
+        candidate_count,
+        percent,
+        rows_written,
+        time.monotonic() - window_started_at,
+        eta,
     )
 
 
@@ -626,6 +815,30 @@ _SELECT_NATIVE = text(
     ORDER BY dimension_hash
     """
 )
+_SELECT_NATIVE_TOTALS = text(
+    """
+    SELECT COUNT(*) AS row_count,
+      COALESCE(SUM(list_cost), 0) AS list_cost,
+      COALESCE(SUM(effective_cost), 0) AS effective_cost,
+      COALESCE(SUM(credit_amount), 0) AS credit_amount,
+      COALESCE(SUM(net_cost), 0) AS net_cost
+    FROM cost_attribution_daily
+    WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
+    """
+)
+_SELECT_MATERIALIZED_TOTALS = text(
+    """
+    SELECT COUNT(*) AS row_count,
+      COALESCE(SUM(list_cost), 0) AS list_cost,
+      COALESCE(SUM(effective_cost), 0) AS effective_cost,
+      COALESCE(SUM(credit_amount), 0) AS credit_amount,
+      COALESCE(SUM(net_cost), 0) AS net_cost
+    FROM cost_allocation_daily
+    WHERE basis_key = :basis_key
+      AND allocation_version = :allocation_version
+      AND usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
+    """
+)
 _SELECT_KUBERNETES = text(
     """
     SELECT usage_date, vendor, account_id, cluster_location, allocation_scope,
@@ -654,6 +867,17 @@ _DELETE_STAGED_WINDOW = text(
       AND usage_date = :usage_date
       AND vendor = :vendor
       AND account_id = :account_id
+    """
+)
+_DELETE_STAGED_WINDOW_LIMITED = text(
+    """
+    DELETE FROM cost_allocation_daily
+    WHERE basis_key = :basis_key
+      AND allocation_version = :allocation_version
+      AND usage_date = :usage_date
+      AND vendor = :vendor
+      AND account_id = :account_id
+    LIMIT :delete_batch_size
     """
 )
 _INSERT_MATERIALIZED = text(

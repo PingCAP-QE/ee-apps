@@ -8,6 +8,7 @@ from cost_insight.jobs import materialize_cost_allocations
 from cost_insight.jobs.materialize_cost_allocations import (
     build_eq_allocated_rows,
     build_kubernetes_allocated_rows,
+    publish_materialized_cost_allocations,
     run_materialize_cost_allocations,
 )
 
@@ -263,7 +264,18 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
         earliest_date=date(2026, 8, 10),
         eq_root_lark_group_id="eq",
         allocation_version="v1",
+        publish=False,
         now=datetime(2026, 8, 21),
+    )
+
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM cost_allocation_publication")).scalar_one() == 0
+    publish_materialized_cost_allocations(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        earliest_date=date(2026, 8, 10),
+        allocation_version="v1",
     )
 
     with engine.begin() as connection:
@@ -301,6 +313,14 @@ def test_materialize_job_publishes_all_three_daily_perspectives() -> None:
                 )
                 """
             )
+        )
+    with pytest.raises(ValueError, match="Incomplete materialization window"):
+        publish_materialized_cost_allocations(
+            engine,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 11),
+            earliest_date=date(2026, 8, 10),
+            allocation_version="v1",
         )
     with pytest.raises(ValueError, match="latest native cost date 2026-08-11"):
         run_materialize_cost_allocations(

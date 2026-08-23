@@ -153,6 +153,26 @@ intentionally represented by no facts (zero cost); rows are never inherited
 from an older version. Rebuild the complete configured history after roster
 changes because historical chargeback uses the current organization.
 
+Large rebuilds can stage resumable 4–5 day chunks under one fixed version. A
+failed chunk is safe to rerun; only the final command validates every native
+window and updates the publication pointer.
+
+```bash
+version=allocation_20260823T120000
+cost-insight materialize-cost-allocations \
+  --start-date 2026-01-01 --end-date 2026-05-23 \
+  --processing-start-date 2026-01-01 --processing-end-date 2026-01-05 \
+  --allocation-version "$version" --no-publish
+# Repeat non-overlapping processing windows, then publish the complete version.
+cost-insight materialize-cost-allocations \
+  --start-date 2026-01-01 --end-date 2026-05-23 \
+  --allocation-version "$version" --publish-only
+```
+
+Each materialization window and GKE write batch logs its percentage and
+progress. GKE replacements commit bounded batches so TiDB does not accumulate
+a high-cardinality day in one memory-heavy transaction.
+
 AWS unmatched resources use the same investigation table:
 
 ```bash

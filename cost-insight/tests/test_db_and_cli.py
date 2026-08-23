@@ -783,12 +783,60 @@ def test_cli_runs_materialize_cost_allocations(monkeypatch, capsys) -> None:
             "--start-date", "2026-08-10",
             "--end-date", "2026-08-10",
             "--eq-root-lark-group-id", "eq",
+            "--allocation-version", "v1",
+            "--processing-start-date", "2026-08-10",
+            "--processing-end-date", "2026-08-10",
+            "--no-publish",
         ]
     ) == 0
     assert captured["eq_root_lark_group_id"] == "eq"
     assert captured["earliest_date"] == date(2026, 8, 10)
     assert captured["batch_size"] == 123
+    assert captured["allocation_version"] == "v1"
+    assert captured["processing_start_date"] == date(2026, 8, 10)
+    assert captured["processing_end_date"] == date(2026, 8, 10)
+    assert captured["publish"] is False
     assert '"allocation_version": "v1"' in capsys.readouterr().out
+
+
+def test_cli_publishes_a_staged_materialization_version(monkeypatch, capsys) -> None:
+    captured = {}
+
+    class Engine:
+        def dispose(self):
+            pass
+
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(page_size=123),
+        log_level="INFO",
+    )
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(
+        cli,
+        "publish_materialized_cost_allocations",
+        lambda _engine, **kwargs: captured.update(kwargs),
+    )
+    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
+
+    assert cli.main(
+        [
+            "materialize-cost-allocations",
+            "--start-date", "2026-08-10",
+            "--end-date", "2026-08-11",
+            "--eq-root-lark-group-id", "eq",
+            "--allocation-version", "v1",
+            "--publish-only",
+        ]
+    ) == 0
+    assert captured == {
+        "start_date": date(2026, 8, 10),
+        "end_date": date(2026, 8, 11),
+        "earliest_date": date(2026, 8, 10),
+        "allocation_version": "v1",
+    }
+    assert '"published": true' in capsys.readouterr().out
 
 
 def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:

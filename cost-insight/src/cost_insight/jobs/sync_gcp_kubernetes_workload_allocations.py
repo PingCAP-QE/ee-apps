@@ -249,19 +249,73 @@ def replace_gke_workload_allocations(
 
     materialized_rows = tuple(rows)
     materialized_sources = tuple(source_rows)
-    with engine.begin() as connection:
-        params = {
-            "account_id": account_id,
-            "usage_start_date": usage_start_date,
-            "usage_end_date": usage_end_date,
-        }
-        connection.execute(_DELETE_ALLOCATIONS_FOR_USAGE_DATES, params)
-        connection.execute(_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES, params)
-        for start in range(0, len(materialized_rows), batch_size):
+    params = {
+        "account_id": account_id,
+        "usage_start_date": usage_start_date,
+        "usage_end_date": usage_end_date,
+    }
+    _delete_gke_rows_in_batches(
+        engine,
+        statement=_DELETE_ALLOCATIONS_FOR_USAGE_DATES,
+        limited_statement=_DELETE_ALLOCATIONS_FOR_USAGE_DATES_LIMITED,
+        params=params,
+        batch_size=batch_size,
+    )
+    _delete_gke_rows_in_batches(
+        engine,
+        statement=_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES,
+        limited_statement=_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES_LIMITED,
+        params=params,
+        batch_size=batch_size,
+    )
+    total_batches = (
+        (len(materialized_rows) + batch_size - 1) // batch_size
+        + (len(materialized_sources) + batch_size - 1) // batch_size
+    )
+    completed_batches = 0
+    for start in range(0, len(materialized_rows), batch_size):
+        with engine.begin() as connection:
             _write_rows(connection, materialized_rows[start : start + batch_size])
-        for start in range(0, len(materialized_sources), batch_size):
+        completed_batches += 1
+        _log_gke_write_progress(account_id, completed_batches, total_batches)
+    for start in range(0, len(materialized_sources), batch_size):
+        with engine.begin() as connection:
             _write_source_rows(connection, materialized_sources[start : start + batch_size])
+        completed_batches += 1
+        _log_gke_write_progress(account_id, completed_batches, total_batches)
     return len(materialized_rows)
+
+
+def _delete_gke_rows_in_batches(
+    engine: Engine,
+    *,
+    statement,
+    limited_statement,
+    params: dict[str, Any],
+    batch_size: int,
+) -> None:
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as connection:
+            connection.execute(statement, params)
+        return
+    while True:
+        with engine.begin() as connection:
+            deleted = connection.execute(
+                limited_statement,
+                {**params, "delete_batch_size": batch_size},
+            ).rowcount
+        if deleted < batch_size:
+            return
+
+
+def _log_gke_write_progress(account_id: str, completed: int, total: int) -> None:
+    LOG.info(
+        "GKE allocation write progress: account=%s batches=%d/%d percent=%.1f",
+        account_id,
+        completed,
+        total,
+        completed * 100 / total if total else 100,
+    )
 
 
 def _normalize_summary_row(source: dict[str, Any]) -> dict[str, Any]:
@@ -529,5 +583,21 @@ _DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES = text(
     DELETE FROM {ALLOCATION_SOURCE_TABLE}
     WHERE vendor = 'gcp' AND account_id = :account_id
       AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    """
+)
+_DELETE_ALLOCATIONS_FOR_USAGE_DATES_LIMITED = text(
+    f"""
+    DELETE FROM {ALLOCATION_TABLE}
+    WHERE vendor = 'gcp' AND account_id = :account_id
+      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    LIMIT :delete_batch_size
+    """
+)
+_DELETE_ALLOCATION_SOURCES_FOR_USAGE_DATES_LIMITED = text(
+    f"""
+    DELETE FROM {ALLOCATION_SOURCE_TABLE}
+    WHERE vendor = 'gcp' AND account_id = :account_id
+      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    LIMIT :delete_batch_size
     """
 )
