@@ -249,8 +249,14 @@ def replace_gke_workload_allocations(
     if dry_run:
         return 0
 
+    rows = tuple(rows)
+    source_rows = tuple(source_rows)
     rows_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
     sources_by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    for row in (*rows, *source_rows):
+        usage_date = row["usage_date"]
+        if not usage_start_date <= usage_date <= usage_end_date:
+            raise ValueError(f"GKE allocation row is outside the replacement range: {usage_date}")
     for row in rows:
         rows_by_date[row["usage_date"]].append(row)
     for row in source_rows:

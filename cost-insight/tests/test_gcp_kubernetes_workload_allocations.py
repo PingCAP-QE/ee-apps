@@ -256,6 +256,30 @@ def test_gke_day_replacement_rolls_back_on_write_failure(monkeypatch) -> None:
         engine.dispose()
 
 
+def test_gke_replacement_rejects_out_of_range_rows() -> None:
+    engine = _sqlite_engine()
+    try:
+        rows, source_rows = build_gke_workload_allocation_rows(
+            account_id="project-1", summary_rows=[_rows()[0]]
+        )
+        out_of_range = {**rows[0], "usage_date": date(2026, 8, 11)}
+
+        with pytest.raises(ValueError, match="outside the replacement range"):
+            gke_sync.replace_gke_workload_allocations(
+                engine,
+                (out_of_range,),
+                source_rows=source_rows,
+                billing_row_count=1,
+                account_id="project-1",
+                usage_start_date=date(2026, 8, 10),
+                usage_end_date=date(2026, 8, 10),
+                dry_run=False,
+                batch_size=1,
+            )
+    finally:
+        engine.dispose()
+
+
 def test_cost_jobs_have_no_gke_metering_reference() -> None:
     source_root = Path(__file__).parents[1] / "src" / "cost_insight"
     source = "\n".join(
