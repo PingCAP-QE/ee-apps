@@ -26,7 +26,7 @@ JOB_NAME = "sync_gcp_kubernetes_workload_allocations"
 ALLOCATION_TABLE = "cost_kubernetes_workload_allocation_daily"
 ALLOCATION_SOURCE_TABLE = "cost_kubernetes_workload_allocation_source_daily"
 ALLOCATION_VERSION = "gke_cost_allocation_v1"
-_CENT = Decimal("0.01")
+_AMOUNT_QUANTUM = Decimal("0.000000001")
 _WEIGHT = Decimal("0.0000000000000001")
 _ALLOCATABLE_RESIDUALS = {"idle", "system_overhead"}
 
@@ -184,7 +184,9 @@ def build_gke_workload_allocation_rows(
             weight = (participant["list_cost"] / denominator).quantize(
                 _WEIGHT, rounding=ROUND_HALF_UP
             )
-            allocated = (source_list_cost * weight).quantize(_CENT, rounding=ROUND_HALF_UP)
+            allocated = (source_list_cost * weight).quantize(
+                _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
+            )
             allocations.append(
                 _allocation_row(
                     account_id=account_id,
@@ -204,7 +206,7 @@ def build_gke_workload_allocation_rows(
                 source_list_cost=source_list_cost,
                 participant=participants[-1],
                 weight=remaining_weight,
-                list_cost=remaining_cost.quantize(_CENT, rounding=ROUND_HALF_UP),
+                list_cost=remaining_cost.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP),
             )
         )
         source_rows.extend(
@@ -347,7 +349,7 @@ def _normalize_summary_row(source: dict[str, Any]) -> dict[str, Any]:
         "org": nullable_text(source.get("org")),
         "repo": nullable_text(source.get("repo")),
         "target_branch": nullable_text(source.get("target_branch")),
-        "list_cost": list_cost.quantize(_CENT, rounding=ROUND_HALF_UP),
+        "list_cost": list_cost.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP),
     }
 
 

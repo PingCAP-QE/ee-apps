@@ -18,7 +18,7 @@ from cost_insight.common.row_utils import bind_decimal_rows
 
 LOG = logging.getLogger(__name__)
 
-_CENT = Decimal("0.01")
+_AMOUNT_QUANTUM = Decimal("0.000000001")
 _WEIGHT = Decimal("0.0000000000000001")
 _AMOUNTS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
 _NATIVE_RESIDUAL_SOURCE_SCOPES = {
@@ -296,7 +296,7 @@ def publish_materialized_cost_allocations(
                         f"{source['vendor']}/{source['account_id']} {basis_key}"
                     )
                 for amount in _AMOUNTS:
-                    if abs(_decimal(row[amount]) - _decimal(native[amount])) > Decimal("0.005"):
+                    if abs(_decimal(row[amount]) - _decimal(native[amount])) > _AMOUNT_QUANTUM:
                         raise ValueError(
                             f"Materialization conservation failed for {basis_key} "
                             f"{current} {source['vendor']}/{source['account_id']} {amount}"
@@ -429,9 +429,9 @@ def build_kubernetes_allocated_rows(
         source_list = sum((_decimal(row.get("list_cost")) for row in sources), Decimal())
         mapped_list = sum((_decimal(row.get("source_list_cost")) for row in mappings), Decimal())
         allocated_list = sum((_decimal(row.get("list_cost")) for row in allocations), Decimal())
-        if source_list == 0 or abs(source_list - mapped_list) > Decimal("0.005") or abs(
+        if source_list == 0 or abs(source_list - mapped_list) > _AMOUNT_QUANTUM or abs(
             source_list - allocated_list
-        ) > Decimal("0.005"):
+        ) > _AMOUNT_QUANTUM:
             continue
 
         weights = _weights(
@@ -662,10 +662,10 @@ def _allocate_amount(amount: Decimal | None, weights: list[Decimal]) -> list[Dec
     remaining = amount
     result: list[Decimal] = []
     for weight in weights[:-1]:
-        allocated = (amount * weight).quantize(_CENT, rounding=ROUND_HALF_UP)
+        allocated = (amount * weight).quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
         result.append(allocated)
         remaining -= allocated
-    result.append(remaining.quantize(_CENT, rounding=ROUND_HALF_UP))
+    result.append(remaining.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP))
     return result
 
 
@@ -781,7 +781,7 @@ def _assert_conserved(
     for amount in _AMOUNTS:
         source_total = sum((_decimal(row.get(amount)) for row in source), Decimal())
         output_total = sum((_decimal(row.get(amount)) for row in output), Decimal())
-        if abs(source_total - output_total) > _CENT:
+        if abs(source_total - output_total) > _AMOUNT_QUANTUM:
             raise RuntimeError(
                 f"Cost allocation does not conserve {amount}: {source_total} != {output_total}"
             )

@@ -145,6 +145,17 @@ def test_native_gke_residual_uses_provider_direct_list_cost_and_retains_unsuppor
     assert all(row["allocation_version"] == ALLOCATION_VERSION for row in allocations)
 
 
+def test_native_gke_allocation_preserves_subcent_cost() -> None:
+    direct = {**_rows()[0], "list_cost": "0.001"}
+
+    allocations, _ = build_gke_workload_allocation_rows(
+        account_id="project-1",
+        summary_rows=[direct],
+    )
+
+    assert allocations[0]["list_cost"] == Decimal("0.001")
+
+
 def test_native_gke_pass_through_hash_preserves_distinct_summary_facts() -> None:
     direct = _rows()[0]
     allocations, _ = build_gke_workload_allocation_rows(

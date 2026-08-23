@@ -828,6 +828,11 @@ sum(input amount) = sum(output amount)
 
 ### Perspective completeness
 
+Billing and derived amount columns retain nine decimal places internally;
+rounding to cents happens only after Dashboard aggregation. This prevents
+high-cardinality sub-cent GCP resources such as Hyperdisk throughput/capacity
+from being rounded to zero once per resource fact.
+
 Before publication:
 
 - every replaced source fact resolves once;

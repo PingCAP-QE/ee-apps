@@ -33,6 +33,24 @@ def _fact(*, group_id: int, list_cost: str, source_scope: str = "direct") -> dic
     }
 
 
+def test_eq_allocation_preserves_subcent_amounts() -> None:
+    rows = (
+        _fact(group_id=1, list_cost="0.001"),
+        _fact(group_id=2, list_cost="1"),
+    )
+
+    allocated = build_eq_allocated_rows(
+        input_rows=rows,
+        native_rows=rows,
+        eq_group_ids={1},
+        group_managers={1: 10, 2: 20},
+        allocation_version="v1",
+        roster_resolved_at=datetime(2026, 8, 23),
+    )
+
+    assert sum((row["list_cost"] for row in allocated), Decimal()) == Decimal("1.001")
+
+
 def test_materialization_requires_the_configured_full_history_start() -> None:
     with pytest.raises(ValueError, match="configured allocation earliest date"):
         run_materialize_cost_allocations(
