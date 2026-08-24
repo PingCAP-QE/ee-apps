@@ -64,6 +64,12 @@ VALID_COST_ALLOCATION_BASES = frozenset(
     {CURRENT_ATTRIBUTION_BASIS, *MATERIALIZED_BASIS_KEYS}
 )
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
+TIFLASH_COST_SOURCES = frozenset(
+    {
+        ("gcp", "pingcap-testing-account"),
+        ("aws", "946646677266"),
+    }
+)
 COST_KUBERNETES_ALLOCATION_SOURCE_DATE_INDEX = "idx_cost_kubernetes_allocation_source_date"
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
 COST_DRIVER_LABELS = {
@@ -1975,7 +1981,7 @@ def _engineering_share_by_level_threshold(
 
 def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
-    index_hint = _cost_attribution_index_hint(connection, filters)
+    index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     row = connection.execute(
         text(
@@ -2002,7 +2008,7 @@ def _service_share_by_threshold(
     min_share_pct: float,
 ) -> dict[str, Any]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
-    index_hint = _cost_attribution_index_hint(connection, filters)
+    index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     rows = connection.execute(
         text(
@@ -3109,6 +3115,22 @@ def _cost_attribution_index_hint(
     )
 
 
+def _cost_aggregate_read_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    table_alias: str = "c",
+) -> str:
+    if (
+        connection.dialect.name != "sqlite"
+        and (filters.cost_vendor, filters.cost_account_id) in TIFLASH_COST_SOURCES
+        and filters.start_date
+        and filters.end_date
+    ):
+        return f"/*+ READ_FROM_STORAGE(TIFLASH[{table_alias}]) */"
+    return _cost_attribution_index_hint(connection, filters, table_alias)
+
+
 def _cost_basis_index_hint(
     connection: Connection,
     filters: CommonFilters,
@@ -3116,7 +3138,7 @@ def _cost_basis_index_hint(
 ) -> str:
     if basis.from_clause != "cost_attribution_daily c":
         return ""
-    return _cost_attribution_index_hint(connection, filters)
+    return _cost_aggregate_read_hint(connection, filters)
 
 
 def _cost_kubernetes_allocation_index_hint(

@@ -87,6 +87,45 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
     assert cost_queries._cost_attribution_index_hint(sqlite_connection, scoped) == ""
 
 
+def test_cost_aggregate_sources_read_from_tiflash() -> None:
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    filters = CommonFilters(
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 8, 15),
+        cost_vendor="gcp",
+        cost_account_id="pingcap-testing-account",
+    )
+
+    assert cost_queries._cost_aggregate_read_hint(mysql_connection, filters) == (
+        "/*+ READ_FROM_STORAGE(TIFLASH[c]) */"
+    )
+    assert cost_queries._cost_basis_index_hint(
+        mysql_connection,
+        filters,
+        cost_queries.CostAllocationBasis(cost_queries.CURRENT_ATTRIBUTION_BASIS),
+    ) == "/*+ READ_FROM_STORAGE(TIFLASH[c]) */"
+    assert cost_queries._cost_aggregate_read_hint(
+        mysql_connection,
+        CommonFilters(
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 8, 15),
+            cost_vendor="aws",
+            cost_account_id="946646677266",
+        ),
+    ) == "/*+ READ_FROM_STORAGE(TIFLASH[c]) */"
+    assert cost_queries._cost_aggregate_read_hint(
+        mysql_connection,
+        CommonFilters(
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 8, 15),
+            cost_vendor="gcp",
+            cost_account_id="some-other-account",
+        ),
+    ) == "/*+ USE_INDEX(c, idx_cost_attribution_source_date_employee) */"
+    assert cost_queries._cost_aggregate_read_hint(sqlite_connection, filters) == ""
+
+
 def test_scoped_cost_allocation_queries_render_kubernetes_index_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
