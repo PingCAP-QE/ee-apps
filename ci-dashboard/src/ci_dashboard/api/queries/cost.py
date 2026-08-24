@@ -413,6 +413,7 @@ def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         kubernetes_unallocated_condition = _kubernetes_unallocated_condition(
             connection,
@@ -429,11 +430,11 @@ def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> 
             allocation_fact_cte = f"""
                 WITH {_kubernetes_allocation_fact_active_roster_cte()},
                 allocation_fact_dates AS (
-                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
+                  SELECT {allocation_index_hint} DISTINCT a.vendor, a.account_id, a.usage_date
                   FROM cost_kubernetes_workload_allocation_daily a
                   WHERE {fact_date_where_clause}
                 ), allocation_fact_rows AS (
-                  SELECT
+                  SELECT {allocation_index_hint}
                     -- Use the provider's billing-service name when an allocation
                     -- fact writer defines one; unknown vendors remain generic.
                     {fact_service_expr} AS service_name,
@@ -536,6 +537,7 @@ def get_kubernetes_unallocated_records(
     with engine.begin() as connection:
         legacy_where_clause, legacy_params = _build_cost_where(filters, table_alias="c")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
         record_params = {
             **legacy_params,
             "record_service_name": service_name,
@@ -556,7 +558,7 @@ def get_kubernetes_unallocated_records(
             fact_region_expr = "COALESCE(NULLIF(a.cluster_location, ''), '(no region)')"
             record_selects.append(
                 f"""
-                SELECT
+                SELECT {allocation_index_hint}
                   {fact_service_expr} AS service_name,
                   {fact_region_expr} AS region,
                   NULLIF(a.author, '') AS owner,
@@ -577,7 +579,7 @@ def get_kubernetes_unallocated_records(
             cte_prefix = f"""
                 WITH {_kubernetes_allocation_fact_active_roster_cte()},
                 allocation_fact_dates AS (
-                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
+                  SELECT {allocation_index_hint} DISTINCT a.vendor, a.account_id, a.usage_date
                   FROM cost_kubernetes_workload_allocation_daily a
                   WHERE {fact_date_where_clause}
                 ), records AS (

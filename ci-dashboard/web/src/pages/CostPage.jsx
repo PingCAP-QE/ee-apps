@@ -436,7 +436,11 @@ export default function CostPage({ filters }) {
 
       <Panel
         title={`Resource breakdown: ${selectedResourceOwner}`}
-        subtitle="Top 10 billable resource rows for the selected Owner share segment, with their available labels."
+        subtitle={
+          resourceBreakdownRequested
+            ? "Top 10 billable resource rows for the selected Owner share segment, with their available labels."
+            : "Load resource details for the selected Owner share segment on demand."
+        }
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
         actions={
