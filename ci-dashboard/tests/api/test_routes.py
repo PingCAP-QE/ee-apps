@@ -76,6 +76,9 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
     assert cost_queries._cost_attribution_index_hint(mysql_connection, scoped) == (
         "/*+ USE_INDEX(c, idx_cost_attribution_source_date_employee) */"
     )
+    assert cost_queries._cost_kubernetes_allocation_index_hint(mysql_connection, scoped) == (
+        "/*+ USE_INDEX(a, idx_cost_kubernetes_allocation_source_date) */"
+    )
     assert cost_queries._cost_unmatched_resource_index_hint(mysql_connection, scoped) == (
         "/*+ USE_INDEX(r, idx_cost_unmatched_source_date_namespace) */"
     )

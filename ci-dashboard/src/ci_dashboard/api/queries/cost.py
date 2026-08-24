@@ -64,6 +64,7 @@ VALID_COST_ALLOCATION_BASES = frozenset(
     {CURRENT_ATTRIBUTION_BASIS, *MATERIALIZED_BASIS_KEYS}
 )
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
+COST_KUBERNETES_ALLOCATION_SOURCE_DATE_INDEX = "idx_cost_kubernetes_allocation_source_date"
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
 COST_DRIVER_LABELS = {
     "compute": "Compute",
@@ -150,6 +151,7 @@ def get_cost_trend(
             drilldown["group"] if drilldown else None,
         )
         from_clause = query_basis.from_clause
+        index_hint = _cost_basis_index_hint(connection, filters, query_basis)
         if drilldown:
             from_clause = _cost_basis_from_clause(query_basis, drilldown["from_clause"])
             where_clause = f"{where_clause} AND {drilldown['condition']}"
@@ -160,7 +162,7 @@ def get_cost_trend(
             text(
                 f"""
                 {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {bucket} AS bucket_start,
                   SUM(c.net_cost) AS net_cost,
                   SUM(c.effective_cost) AS effective_cost,
@@ -184,7 +186,7 @@ def get_cost_trend(
             text(
                 f"""
                 {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   SUM({list_cost_expr}) AS total_resource_cost,
                   SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
                 FROM {from_clause}
@@ -251,6 +253,8 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
     """Return Kubernetes allocated and unallocated metrics alongside cost breakdowns."""
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        attr_index_hint = _cost_attribution_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         workload_split_condition = """
             (
@@ -280,7 +284,7 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
             allocation_rows_cte = f"""
                 WITH {_kubernetes_allocation_fact_active_roster_cte()},
                 allocation_fact AS (
-                  SELECT
+                  SELECT {allocation_index_hint}
                     CASE
                       WHEN {_kubernetes_allocation_fact_allocated_condition('a', 'roster')}
                         THEN 'workload_split'
@@ -295,14 +299,14 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
                       OR {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
                     )
                 ), allocation_fact_dates AS (
-                  SELECT DISTINCT
+                  SELECT {allocation_index_hint} DISTINCT
                     a.vendor,
                     a.account_id,
                     a.usage_date
                   FROM cost_kubernetes_workload_allocation_daily a
                   WHERE {allocation_date_where_clause}
                 ), legacy_rows AS (
-                  SELECT
+                  SELECT {attr_index_hint}
                     CASE
                       WHEN (
                         {workload_split_condition}
@@ -344,7 +348,7 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
             # Keep the page available while the schema migration is rolled out.
             allocation_rows_cte = f"""
                 WITH allocation_rows AS (
-                  SELECT
+                  SELECT {attr_index_hint}
                     CASE
                       WHEN (
                         {workload_split_condition}
@@ -408,6 +412,7 @@ def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> 
     """Return Kubernetes costs without a valid person allocation by service and region."""
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        attr_index_hint = _cost_attribution_index_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         kubernetes_unallocated_condition = _kubernetes_unallocated_condition(
             connection,
@@ -464,7 +469,7 @@ def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> 
             text(
                 f"""
                 {allocation_fact_cte} legacy_rows AS (
-                  SELECT
+                  SELECT {attr_index_hint}
                     COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
                     COALESCE(NULLIF(c.region, ''), '(no region)') AS region,
                     SUM({list_cost_expr}) AS list_cost,
@@ -530,6 +535,7 @@ def get_kubernetes_unallocated_records(
 
     with engine.begin() as connection:
         legacy_where_clause, legacy_params = _build_cost_where(filters, table_alias="c")
+        attr_index_hint = _cost_attribution_index_hint(connection, filters)
         record_params = {
             **legacy_params,
             "record_service_name": service_name,
@@ -592,7 +598,7 @@ def get_kubernetes_unallocated_records(
         legacy_region_expr = "COALESCE(NULLIF(c.region, ''), '(no region)')"
         record_selects.append(
             f"""
-            SELECT
+            SELECT {attr_index_hint}
               {legacy_service_expr} AS service_name,
               {legacy_region_expr} AS region,
               NULLIF(c.owner, '') AS owner,
@@ -843,6 +849,7 @@ def get_repo_group_cost_stack(
         where_clause, params = _build_cost_where(filters, table_alias="c")
         basis = _cost_allocation_basis(connection, filters, allocation_basis)
         query_basis = _cost_basis_for_dimension(basis, group_by)
+        index_hint = _cost_basis_index_hint(connection, filters, query_basis)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
         drilldown = _cost_drilldown_filter(
@@ -864,7 +871,7 @@ def get_repo_group_cost_stack(
             text(
                 f"""
                 {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {dimension["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
                 FROM {dimension["from_clause"]}
@@ -922,7 +929,7 @@ def get_repo_group_cost_stack(
             text(
                 f"""
                 {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {bucket} AS bucket_start,
                   {stack_dimension} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
@@ -1014,6 +1021,7 @@ def get_cost_share(
         where_clause, params = _build_cost_where(filters, table_alias="c")
         basis = _cost_allocation_basis(connection, filters, allocation_basis)
         query_basis = _cost_basis_for_dimension(basis, dimension)
+        index_hint = _cost_basis_index_hint(connection, filters, query_basis)
         dimension_config = _cost_share_dimension(connection, dimension)
         drilldown = _cost_drilldown_filter(
             connection,
@@ -1034,7 +1042,7 @@ def get_cost_share(
             text(
                 f"""
                 {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {dimension_config["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
                 FROM {dimension_config["from_clause"]}
@@ -1850,6 +1858,7 @@ def _engineering_share_by_level(
 ) -> dict[str, Any]:
     basis = basis or CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    index_hint = _cost_basis_index_hint(connection, filters, basis)
     like_expr = _like_prefix_expr(connection, "c_group.path", "target_group.path")
     list_cost_expr = _billing_report_list_cost_expr("c")
     if level == 1:
@@ -1873,7 +1882,7 @@ def _engineering_share_by_level(
         text(
             f"""
             {basis.cte}
-            SELECT
+            SELECT {index_hint}
               target_group.name AS group_name,
               SUM({list_cost_expr}) AS list_cost
             FROM {basis.from_clause}
@@ -1964,11 +1973,12 @@ def _engineering_share_by_level_threshold(
 
 def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    index_hint = _cost_attribution_index_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     row = connection.execute(
         text(
             f"""
-            SELECT
+            SELECT {index_hint}
               SUM({list_cost_expr}) AS list_cost,
               SUM(c.net_cost) AS net_cost
             FROM cost_attribution_daily c
@@ -1990,11 +2000,12 @@ def _service_share_by_threshold(
     min_share_pct: float,
 ) -> dict[str, Any]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    index_hint = _cost_attribution_index_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     rows = connection.execute(
         text(
             f"""
-            SELECT
+            SELECT {index_hint}
               COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
               SUM({list_cost_expr}) AS list_cost
             FROM cost_attribution_daily c
@@ -3093,6 +3104,29 @@ def _cost_attribution_index_hint(
         filters,
         table_alias=table_alias,
         index_name=COST_ATTRIBUTION_SOURCE_DATE_INDEX,
+    )
+
+
+def _cost_basis_index_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    basis: CostAllocationBasis,
+) -> str:
+    if basis.from_clause != "cost_attribution_daily c":
+        return ""
+    return _cost_attribution_index_hint(connection, filters)
+
+
+def _cost_kubernetes_allocation_index_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    table_alias: str = "a",
+) -> str:
+    return _source_date_index_hint(
+        connection,
+        filters,
+        table_alias=table_alias,
+        index_name=COST_KUBERNETES_ALLOCATION_SOURCE_DATE_INDEX,
     )
 
 

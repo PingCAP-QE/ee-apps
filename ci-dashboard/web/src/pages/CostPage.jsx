@@ -40,6 +40,7 @@ export default function CostPage({ filters }) {
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const [selectedResourceOwner, setSelectedResourceOwner] = useState(NO_OWNER_LABEL);
+  const [resourceBreakdownRequested, setResourceBreakdownRequested] = useState(false);
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const weeklyOverviewRange = getLaggedTrailingDateRange();
@@ -116,6 +117,7 @@ export default function CostPage({ filters }) {
   const unmatchedResources = useApiData(
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
+    resourceBreakdownRequested,
   );
   const unattachedBlockVolumes = useApiData(
     "/api/v1/pages/cost-unattached-block-volumes",
@@ -163,6 +165,7 @@ export default function CostPage({ filters }) {
 
   const selectResourceOwner = (item) => {
     setSelectedResourceOwner(item.name);
+    setResourceBreakdownRequested(true);
     setUnmatchedServiceName("");
   };
 
@@ -437,27 +440,39 @@ export default function CostPage({ filters }) {
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
         actions={
-          <>
-            <UnmatchedResourcesControls
-              serviceName={unmatchedServiceName}
-              serviceOptions={unmatchedResources.data?.meta?.services}
-              sortBy={unmatchedSortBy}
-              onServiceChange={setUnmatchedServiceName}
-              onSortChange={setUnmatchedSortBy}
-            />
-            {selectedResourceOwner !== NO_OWNER_LABEL ? (
-              <button
-                type="button"
-                className="donut-card__action"
-                onClick={resetResourceOwner}
-              >
-                Reset owner
-              </button>
-            ) : null}
-          </>
+          resourceBreakdownRequested ? (
+            <>
+              <UnmatchedResourcesControls
+                serviceName={unmatchedServiceName}
+                serviceOptions={unmatchedResources.data?.meta?.services}
+                sortBy={unmatchedSortBy}
+                onServiceChange={setUnmatchedServiceName}
+                onSortChange={setUnmatchedSortBy}
+              />
+              {selectedResourceOwner !== NO_OWNER_LABEL ? (
+                <button
+                  type="button"
+                  className="donut-card__action"
+                  onClick={resetResourceOwner}
+                >
+                  Reset owner
+                </button>
+              ) : null}
+            </>
+          ) : null
         }
       >
-        <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+        {resourceBreakdownRequested ? (
+          <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+        ) : (
+          <button
+            type="button"
+            className="donut-card__action"
+            onClick={() => setResourceBreakdownRequested(true)}
+          >
+            Load resource breakdown
+          </button>
+        )}
       </Panel>
 
       <Panel
