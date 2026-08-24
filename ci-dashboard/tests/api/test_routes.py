@@ -87,6 +87,74 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
     assert cost_queries._cost_attribution_index_hint(sqlite_connection, scoped) == ""
 
 
+def test_scoped_cost_allocation_queries_render_kubernetes_index_hints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"workload_split_cost": 0, "kubernetes_unallocated_cost": 0,
+                    "allocation_cost_row_count": 0}
+
+        def __iter__(self):
+            return iter(())
+
+    class _Connection:
+        dialect = SimpleNamespace(name="mysql")
+
+        def __init__(self):
+            self.statements: list[str] = []
+
+        def execute(self, statement, _params=None):
+            self.statements.append(str(statement))
+            return _Result()
+
+    class _Transaction:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            return self.connection
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Engine:
+        dialect = SimpleNamespace(name="mysql")
+
+        def __init__(self):
+            self.connection = _Connection()
+
+        def begin(self):
+            return _Transaction(self.connection)
+
+    monkeypatch.setattr(cost_queries, "_cost_kubernetes_allocation_table_exists", lambda _: True)
+    filters = CommonFilters(
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 7),
+        cost_vendor="gcp",
+        cost_account_id="pingcap-testing-account",
+    )
+    calls = [
+        lambda engine: cost_queries.get_cost_allocation_overview(engine, filters),
+        lambda engine: cost_queries.get_kubernetes_unallocated_costs(engine, filters),
+        lambda engine: cost_queries.get_kubernetes_unallocated_records(
+            engine,
+            filters,
+            service_name="Kubernetes Engine",
+            region="us-central1",
+        ),
+    ]
+
+    for call in calls:
+        engine = _Engine()
+        call(engine)
+        sql = "\n".join(engine.connection.statements)
+        assert sql.count("USE_INDEX(a, idx_cost_kubernetes_allocation_source_date)") == 2
+
+
 def _insert_build(
     sqlite_engine,
     *,
