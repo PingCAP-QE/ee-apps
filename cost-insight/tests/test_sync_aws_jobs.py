@@ -359,6 +359,61 @@ def test_run_sync_aws_billing_summary_can_replace_existing_partitions() -> None:
         engine.dispose()
 
 
+def test_regular_split_summary_sync_replaces_changed_hashes() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=2)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            source=source,
+            fetch_rows=lambda **_kwargs: [_summary_row("2026-05-01"), _summary_row("2026-05-02")],
+        )
+
+        replacement = _summary_row("2026-05-02")
+        replacement["source_allocation_scope"] = "eks_pod"
+        replacement["namespace"] = "default"
+        replacement["list_cost"] = "12.00"
+        result = run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            fetch_rows=lambda **_kwargs: [replacement],
+        )
+
+        assert result.touched_usage_dates == (date(2026, 5, 2),)
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, source_allocation_scope, list_cost
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, source_allocation_scope
+                    """
+                )
+            ).all()
+        assert rows == [
+            ("2026-05-01", "direct", 10.0),
+            ("2026-05-02", "eks_pod", 12.0),
+        ]
+    finally:
+        engine.dispose()
+
+
 def test_split_summary_replacement_only_deletes_requested_usage_dates() -> None:
     engine = _sqlite_engine()
     settings = AwsBillingSettings(account_id="946646677266", page_size=2)
@@ -408,6 +463,26 @@ def test_split_summary_replacement_only_deletes_requested_usage_dates() -> None:
         assert rows == [("2026-05-01", 10.0), ("2026-05-02", 12.34567891)]
     finally:
         engine.dispose()
+
+
+def test_split_summary_replacement_rejects_limited_source() -> None:
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(ValueError, match="cannot be used with limit"):
+        run_sync_aws_billing_summary(
+            object(),
+            settings=AwsBillingSettings(account_id=source.account_id),
+            account_id=source.account_id,
+            limit=1,
+            replace_existing_usage_dates=True,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+        )
 
 
 def test_split_summary_replacement_rejects_empty_source() -> None:

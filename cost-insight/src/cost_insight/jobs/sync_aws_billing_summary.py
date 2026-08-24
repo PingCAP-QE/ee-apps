@@ -80,6 +80,8 @@ def run_sync_aws_billing_summary(
         raise ValueError(f"Unsupported AWS source schema: {resolved_source.schema_version!r}")
     resolved_fetch_rows = fetch_rows or _default_fetch_rows(resolved_source.schema_version)
     if replace_existing_usage_dates:
+        if limit is not None:
+            raise ValueError("usage-date replacement cannot be used with limit")
         if usage_start_date is None or usage_end_date is None:
             raise ValueError(
                 "replace_existing_usage_dates requires usage_start_date and usage_end_date"
@@ -97,6 +99,17 @@ def run_sync_aws_billing_summary(
             raise ValueError("usage_start_date is before the AWS source availability date")
     if replace_existing_partitions and replace_existing_usage_dates:
         raise ValueError("choose either partition replacement or usage-date replacement")
+    # Complete split-source fetches replace observed dates; partition and limited
+    # fetches retain their existing non-replacement behavior.
+    replace_split_usage_dates = (
+        replace_existing_usage_dates
+        or (
+            resolved_source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION
+            and not replace_existing_partitions
+            # A limited fetch is incomplete and cannot safely replace dates.
+            and limit is None
+        )
+    )
     resolved_earliest_usage_date = earliest_usage_date or settings.earliest_usage_date
     if resolved_source.available_from is not None:
         resolved_earliest_usage_date = max(resolved_earliest_usage_date, resolved_source.available_from)
@@ -131,8 +144,12 @@ def run_sync_aws_billing_summary(
         rows_seen = 0
         rows_written = 0
         source_billing_account_ids: set[str] = set()
+        replaced_usage_start: date | None = None
+        replaced_usage_end: date | None = None
         batch: list[dict[str, Any]] = []
-        if replace_existing_partitions or replace_existing_usage_dates:
+        if replace_existing_partitions or replace_split_usage_dates:
+            # Bounds the automatic replacement window; it is not a deduplication check.
+            usage_dates: set[date] = set()
             with tempfile.TemporaryFile("w+b") as row_spool:
                 for source_row in _fetch_source_rows(
                     fetch_rows=resolved_fetch_rows,
@@ -150,21 +167,30 @@ def run_sync_aws_billing_summary(
                     normalized = _normalize_aws_summary_row(source_row, source=resolved_source)
                     if normalized["billing_account_id"]:
                         source_billing_account_ids.add(str(normalized["billing_account_id"]))
+                    usage_dates.add(normalized["usage_date"])
                     _dump_spooled_row(row_spool, normalized)
-                if replace_existing_usage_dates:
+                if replace_split_usage_dates:
                     if rows_seen == 0:
-                        raise ValueError("usage-date replacement source returned no rows")
-                    rows_written += replace_summary_usage_dates(
-                        engine,
-                        _iter_spooled_rows(row_spool),
-                        row_count=rows_seen,
-                        vendor="aws",
-                        account_id=account_id,
-                        usage_start_date=usage_start_date,
-                        usage_end_date=usage_end_date,
-                        dry_run=dry_run,
-                        batch_size=settings.page_size,
-                    )
+                        if replace_existing_usage_dates:
+                            raise ValueError("usage-date replacement source returned no rows")
+                    else:
+                        if replace_existing_usage_dates:
+                            replaced_usage_start = usage_start_date
+                            replaced_usage_end = usage_end_date
+                        else:
+                            replaced_usage_start = min(usage_dates)
+                            replaced_usage_end = max(usage_dates)
+                        rows_written += replace_summary_usage_dates(
+                            engine,
+                            _iter_spooled_rows(row_spool),
+                            row_count=rows_seen,
+                            vendor="aws",
+                            account_id=account_id,
+                            usage_start_date=replaced_usage_start,
+                            usage_end_date=replaced_usage_end,
+                            dry_run=dry_run,
+                            batch_size=settings.page_size,
+                        )
                 else:
                     rows_written += replace_summary_partitions(
                         engine,
@@ -212,8 +238,8 @@ def run_sync_aws_billing_summary(
                         billing_account_id=source_billing_account_id,
                         display_name=account_id,
                     )
-                if replace_existing_usage_dates:
-                    touched_usage_dates = tuple(_date_range(usage_start_date, usage_end_date))
+                if replaced_usage_start is not None and replaced_usage_end is not None:
+                    touched_usage_dates = tuple(_date_range(replaced_usage_start, replaced_usage_end))
                 else:
                     touched_usage_dates = _get_touched_usage_dates(
                         engine,
