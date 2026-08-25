@@ -126,7 +126,41 @@ def test_cost_aggregate_sources_read_from_tiflash() -> None:
     assert cost_queries._cost_aggregate_read_hint(sqlite_connection, filters) == ""
 
 
-def test_scoped_cost_allocation_queries_render_kubernetes_index_hints(
+def test_cost_kubernetes_allocation_sources_read_from_tiflash() -> None:
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    filters = CommonFilters(
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 8, 15),
+        cost_vendor="gcp",
+        cost_account_id="pingcap-testing-account",
+    )
+
+    assert cost_queries._cost_kubernetes_allocation_read_hint(mysql_connection, filters) == (
+        "/*+ READ_FROM_STORAGE(TIFLASH[a]) */"
+    )
+    assert cost_queries._cost_kubernetes_allocation_read_hint(
+        mysql_connection,
+        CommonFilters(
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 8, 15),
+            cost_vendor="aws",
+            cost_account_id="946646677266",
+        ),
+    ) == "/*+ READ_FROM_STORAGE(TIFLASH[a]) */"
+    assert cost_queries._cost_kubernetes_allocation_read_hint(
+        mysql_connection,
+        CommonFilters(
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 8, 15),
+            cost_vendor="gcp",
+            cost_account_id="some-other-account",
+        ),
+    ) == "/*+ USE_INDEX(a, idx_cost_kubernetes_allocation_source_date) */"
+    assert cost_queries._cost_kubernetes_allocation_read_hint(sqlite_connection, filters) == ""
+
+
+def test_scoped_cost_allocation_queries_read_kubernetes_facts_from_tiflash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _Result:
@@ -191,7 +225,7 @@ def test_scoped_cost_allocation_queries_render_kubernetes_index_hints(
         engine = _Engine()
         call(engine)
         sql = "\n".join(engine.connection.statements)
-        assert sql.count("USE_INDEX(a, idx_cost_kubernetes_allocation_source_date)") == 2
+        assert sql.count("READ_FROM_STORAGE(TIFLASH[a])") == 2
 
 
 def _insert_build(

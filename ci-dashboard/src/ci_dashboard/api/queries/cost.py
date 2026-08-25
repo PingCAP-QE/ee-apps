@@ -260,7 +260,7 @@ def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
-        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_read_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         workload_split_condition = """
             (
@@ -419,7 +419,7 @@ def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
-        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_read_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         kubernetes_unallocated_condition = _kubernetes_unallocated_condition(
             connection,
@@ -543,7 +543,7 @@ def get_kubernetes_unallocated_records(
     with engine.begin() as connection:
         legacy_where_clause, legacy_params = _build_cost_where(filters, table_alias="c")
         attr_index_hint = _cost_attribution_index_hint(connection, filters)
-        allocation_index_hint = _cost_kubernetes_allocation_index_hint(connection, filters)
+        allocation_index_hint = _cost_kubernetes_allocation_read_hint(connection, filters)
         record_params = {
             **legacy_params,
             "record_service_name": service_name,
@@ -3139,6 +3139,22 @@ def _cost_basis_index_hint(
     if basis.from_clause != "cost_attribution_daily c":
         return ""
     return _cost_aggregate_read_hint(connection, filters)
+
+
+def _cost_kubernetes_allocation_read_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    table_alias: str = "a",
+) -> str:
+    if (
+        connection.dialect.name != "sqlite"
+        and (filters.cost_vendor, filters.cost_account_id) in TIFLASH_COST_SOURCES
+        and filters.start_date
+        and filters.end_date
+    ):
+        return f"/*+ READ_FROM_STORAGE(TIFLASH[{table_alias}]) */"
+    return _cost_kubernetes_allocation_index_hint(connection, filters, table_alias)
 
 
 def _cost_kubernetes_allocation_index_hint(
