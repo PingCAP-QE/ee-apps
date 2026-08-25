@@ -5,6 +5,9 @@ from datetime import date
 from typing import Any
 
 
+_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
+
+
 def fetch_aws_billing_summary_rows(
     *,
     billing_table: str,
@@ -118,7 +121,11 @@ WITH normalized AS (
     NULLIF(tag_cluster, '') AS `cluster`,
     pricing_unit,
     line_item_usage_amount,
-    COALESCE(pricing_public_on_demand_cost, 0) AS list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS list_cost,
     COALESCE(line_item_unblended_cost, line_item_blended_cost, 0) AS effective_cost,
     COALESCE(
       line_item_net_unblended_cost,
@@ -152,7 +159,7 @@ SELECT
     WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
     ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
   END AS vendor_tags_json,
-  ROUND(SUM(list_cost), 2) AS list_cost,
+  SUM(list_cost) AS list_cost,
   ROUND(SUM(effective_cost), 2) AS effective_cost,
   ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount,
   ROUND(SUM(net_cost), 2) AS net_cost,
@@ -216,7 +223,11 @@ WITH normalized AS (
     ) AS resource_name,
     LOWER(pricing_unit) AS pricing_unit,
     line_item_usage_amount,
-    COALESCE(pricing_public_on_demand_cost, 0) AS list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS list_cost,
     COALESCE(line_item_unblended_cost, line_item_blended_cost, 0) AS effective_cost,
     COALESCE(
       line_item_net_unblended_cost,
@@ -258,7 +269,7 @@ SELECT
       THEN ROUND(SUM(line_item_usage_amount), 2)
     ELSE NULL
   END AS usage_seconds,
-  ROUND(SUM(list_cost), 2) AS list_cost,
+  SUM(list_cost) AS list_cost,
   ROUND(SUM(effective_cost), 2) AS effective_cost,
   ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount,
   ROUND(SUM(net_cost), 2) AS net_cost,

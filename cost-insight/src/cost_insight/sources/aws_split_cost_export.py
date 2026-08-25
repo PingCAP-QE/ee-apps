@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
+_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
 
 
 def fetch_aws_split_cost_summary_rows(
@@ -212,9 +213,17 @@ WITH raw AS (
     DATE(line_item_usage_start_date) AS usage_date,
     NULLIF(line_item_resource_id, '') AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
     COALESCE(line_item_unblended_cost, 0) AS direct_effective_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost,
     COALESCE(split_line_item_split_cost, 0) AS split_effective_cost
   FROM {table}
   WHERE line_item_usage_account_id = @account_id
@@ -298,8 +307,16 @@ WITH raw AS (
     NULLIF(TRIM(resource_tags_user_icost_service), '') AS service,
     NULLIF(TRIM(COALESCE(resource_tags_user_icost_project, resource_tags_user_project)), '') AS project,
     NULLIF(TRIM(resource_tags_user_icost_service_exec_id), '') AS service_exec_id,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost
   FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
@@ -481,9 +498,17 @@ WITH raw AS (
     LOWER(NULLIF(pricing_unit, '')) AS pricing_unit,
     COALESCE(line_item_usage_amount, 0) AS usage_amount,
     COALESCE(split_line_item_split_usage, 0) AS split_usage_amount,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
     COALESCE(line_item_unblended_cost, 0) AS direct_effective_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost,
     COALESCE(split_line_item_split_cost, 0) AS split_effective_cost,
     line_item_usage_end_date AS source_export_time
   FROM {table}
