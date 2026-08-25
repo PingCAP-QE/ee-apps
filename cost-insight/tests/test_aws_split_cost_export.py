@@ -22,8 +22,9 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "raw.usage_date" in query
     assert "SUM(raw.direct_list_cost) AS direct_list_cost" in query
     assert "parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0)" in query
-    assert "SavingsPlanCoveredUsage" not in query
-    assert "line_item_line_item_type = 'Usage'" not in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "COALESCE(line_item_unblended_cost, 0)" in query
+    assert "COALESCE(split_line_item_split_cost, 0)" in query
     assert "'eks_parent_residual' AS source_allocation_scope" in query
     assert "eks_parent_tags AS" in query
     assert "REGEXP_CONTAINS(LOWER(COALESCE(child.resource_name, '')), r'(^|:)pod/')" in query
@@ -48,14 +49,14 @@ def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
     assert "AND resource_name IS NOT NULL" in query
 
 
-def test_split_guardrail_uses_all_parent_line_items_before_import() -> None:
+def test_split_guardrail_uses_ce_list_cost_before_import() -> None:
     query = build_aws_split_cost_guardrail_query(
         billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
     )
 
     assert "child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.01" in query
     assert "child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.01" in query
-    assert "line_item_line_item_type = 'Usage'" not in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
 
 
 def test_split_guardrail_can_bound_usage_date() -> None:
