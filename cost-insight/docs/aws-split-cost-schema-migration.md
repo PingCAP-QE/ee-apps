@@ -338,7 +338,10 @@ The EKS namespace/workload fields and canonical business dimensions are
 independent summary dimensions, not opaque JSON. `vendor_tags_json` stays
 limited to allocation routing tags (`cluster` and `shared_pool`) so existing
 TCMS JSON subset matching does not accidentally become dependent on pod
-metadata.
+metadata. A split child retains each of its own routing tags and inherits only
+missing tags from the matched parent. This allows an unlabeled or partially
+labeled child to retain its parent pool's TCMS attribution, while explicit
+child business labels still take precedence.
 
 ### 5.2 Three Output Branches
 

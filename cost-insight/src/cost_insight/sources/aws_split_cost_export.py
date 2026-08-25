@@ -757,8 +757,10 @@ branch_rows AS (
     child.org,
     parent.pricing_unit,
     child.split_usage_amount AS usage_amount,
-    child.cluster,
-    child.shared_pool,
+    -- AWS split children can omit either routing tag; retain their own value
+    -- and inherit only the missing tag from the matched parent for TCMS routing.
+    COALESCE(child.cluster, parent.cluster) AS cluster,
+    COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool,
     CASE
       -- Some split-cost exports identify a workload through the EKS namespace
       -- allocation tag rather than a pod ARN. Both are direct EKS evidence.
