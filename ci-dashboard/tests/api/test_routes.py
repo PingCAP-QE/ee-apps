@@ -160,7 +160,7 @@ def test_cost_kubernetes_allocation_sources_read_from_tiflash() -> None:
     assert cost_queries._cost_kubernetes_allocation_read_hint(sqlite_connection, filters) == ""
 
 
-def test_scoped_cost_allocation_queries_read_kubernetes_facts_from_tiflash(
+def test_cost_allocation_queries_only_read_scoped_kubernetes_facts_from_tiflash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _Result:
@@ -211,11 +211,15 @@ def test_scoped_cost_allocation_queries_read_kubernetes_facts_from_tiflash(
         cost_account_id="pingcap-testing-account",
     )
     calls = [
-        lambda engine: cost_queries.get_cost_allocation_overview(engine, filters),
-        lambda engine: cost_queries.get_kubernetes_unallocated_costs(engine, filters),
-        lambda engine: cost_queries.get_kubernetes_unallocated_records(
+        lambda engine, query_filters: cost_queries.get_cost_allocation_overview(
+            engine, query_filters
+        ),
+        lambda engine, query_filters: cost_queries.get_kubernetes_unallocated_costs(
+            engine, query_filters
+        ),
+        lambda engine, query_filters: cost_queries.get_kubernetes_unallocated_records(
             engine,
-            filters,
+            query_filters,
             service_name="Kubernetes Engine",
             region="us-central1",
         ),
@@ -223,9 +227,27 @@ def test_scoped_cost_allocation_queries_read_kubernetes_facts_from_tiflash(
 
     for call in calls:
         engine = _Engine()
-        call(engine)
+        call(engine, filters)
         sql = "\n".join(engine.connection.statements)
         assert sql.count("READ_FROM_STORAGE(TIFLASH[a])") == 2
+
+    for fallback_filters in (
+        CommonFilters(
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 7),
+            cost_vendor="gcp",
+        ),
+        CommonFilters(
+            cost_vendor="gcp",
+            cost_account_id="pingcap-testing-account",
+        ),
+    ):
+        for call in calls:
+            engine = _Engine()
+            call(engine, fallback_filters)
+            assert "READ_FROM_STORAGE(TIFLASH[a])" not in "\n".join(
+                engine.connection.statements
+            )
 
 
 def _insert_build(
