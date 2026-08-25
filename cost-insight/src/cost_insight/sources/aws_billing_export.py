@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 
-_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
+_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation'"
 
 
 def fetch_aws_billing_summary_rows(

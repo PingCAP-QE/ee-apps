@@ -65,7 +65,7 @@ def test_build_aws_billing_summary_query_contains_expected_filters() -> None:
     assert "TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))" in query
     assert "END AS vendor_tags_json" in query
     assert "ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount" in query
-    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation')" in query
     assert "SUM(list_cost) AS list_cost" in query
     assert "ROUND(SUM(list_cost), 2) AS list_cost" not in query
     assert "LIMIT 20" in query
@@ -85,7 +85,7 @@ def test_build_aws_unmatched_resource_query_contains_usage_seconds_logic() -> No
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
     assert "END AS vendor_tags_json" in query
     assert "ROUND(SUM(net_cost), 2) AS net_cost" in query
-    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation')" in query
     assert "SUM(list_cost) AS list_cost" in query
     assert "ROUND(SUM(list_cost), 2) AS list_cost" not in query
     assert "LIMIT 10" in query
