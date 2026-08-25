@@ -6,7 +6,7 @@ from datetime import date
 from typing import Any
 
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
-_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation'"
+_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
 
 
 def fetch_aws_split_cost_summary_rows(

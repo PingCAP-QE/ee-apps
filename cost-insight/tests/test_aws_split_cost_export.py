@@ -22,7 +22,8 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "raw.usage_date" in query
     assert "SUM(raw.direct_list_cost) AS direct_list_cost" in query
     assert "parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0)" in query
-    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation')" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "SavingsPlanNegation" not in query
     assert "COALESCE(line_item_unblended_cost, 0)" in query
     assert "COALESCE(split_line_item_split_cost, 0)" in query
     assert "'eks_parent_residual' AS source_allocation_scope" in query
@@ -56,7 +57,8 @@ def test_split_guardrail_uses_ce_list_cost_before_import() -> None:
 
     assert "child_split_list_cost - COALESCE(parent.parent_direct_list_cost, 0) > 0.01" in query
     assert "child_split_effective_cost - COALESCE(parent.parent_direct_effective_cost, 0) > 0.01" in query
-    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage', 'SavingsPlanNegation')" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "SavingsPlanNegation" not in query
 
 
 def test_split_guardrail_can_bound_usage_date() -> None:
