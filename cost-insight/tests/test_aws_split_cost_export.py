@@ -37,6 +37,15 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "ROUND(SUM" not in query
 
 
+def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
+    query = build_aws_split_cost_summary_query(
+        billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
+    )
+
+    assert "COALESCE(child.cluster, parent.cluster) AS cluster" in query
+    assert "COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool" in query
+
+
 def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
     query = build_aws_split_cost_unmatched_resource_query(
         billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
