@@ -134,6 +134,23 @@ cost-insight sync-gcp-kubernetes-workload-allocations \
   --usage-end-date 2026-05-23
 ```
 
+For a usage-date-bounded historical repair, replace one GCP export partition at
+one time. The scoped replacement preserves rows in that partition outside the
+requested usage range. BigQuery export partitions may contain late rows for
+older usage dates, so the usage range is intentionally independent from the
+export partition date:
+
+```bash
+cost-insight sync-gcp-billing-summary \
+  --account-id pingcap-testing-account \
+  --export-partition-start 2026-08-25 \
+  --export-partition-end 2026-08-25 \
+  --earliest-usage-date 2026-07-01 \
+  --replace-existing-partitions \
+  --replace-usage-start-date 2026-07-01 \
+  --replace-usage-end-date 2026-08-24
+```
+
 Build the three derived Dashboard perspectives after Kubernetes facts and
 attribution are current. The command keeps the existing active version visible
 until the full requested range has conserved successfully.
