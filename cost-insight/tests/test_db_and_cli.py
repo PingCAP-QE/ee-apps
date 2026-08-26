@@ -670,6 +670,11 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
     monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
+    monkeypatch.setattr(
+        cli,
+        "_list_sources",
+        lambda _engine, *, vendor: [SimpleNamespace(account_id="pingcap-testing-account")],
+    )
     monkeypatch.setattr(cli, "run_sync_gcp_billing_summary", fake_run)
 
     exit_code = cli.main(
@@ -678,11 +683,17 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
             "--export-partition-start",
             "2026-05-17",
             "--export-partition-end",
-            "2026-05-18",
-                "--earliest-usage-date",
-                "2026-01-01",
-                "--dry-run",
-                "--replace-existing-partitions",
+            "2026-05-17",
+            "--earliest-usage-date",
+            "2026-01-01",
+            "--account-id",
+            "pingcap-testing-account",
+            "--replace-usage-start-date",
+            "2026-05-01",
+            "--replace-usage-end-date",
+            "2026-05-17",
+            "--dry-run",
+            "--replace-existing-partitions",
         ]
     )
 
@@ -690,11 +701,46 @@ def test_cli_runs_sync_billing_summary_command(monkeypatch, capsys) -> None:
     assert exit_code == 0
     assert disposed == [True]
     assert captured["export_partition_start"] == date(2026, 5, 17)
-    assert captured["export_partition_end"] == date(2026, 5, 18)
+    assert captured["export_partition_end"] == date(2026, 5, 17)
     assert captured["earliest_usage_date"] == date(2026, 1, 1)
     assert captured["limit"] is None
     assert captured["replace_existing_partitions"] is True
+    assert captured["replacement_usage_start_date"] == date(2026, 5, 1)
+    assert captured["replacement_usage_end_date"] == date(2026, 5, 17)
     assert '"touched_usage_dates": [' in output
+
+
+def test_resolve_gcp_sources_rejects_unregistered_scoped_account(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_list_sources", lambda _engine, *, vendor: [])
+
+    with pytest.raises(ValueError, match="is not active"):
+        cli._resolve_gcp_sources(
+            object(),
+            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            account_id="typo-account",
+        )
+
+
+def test_cli_rejects_scoped_gcp_replacement_without_account_id(monkeypatch) -> None:
+    settings = SimpleNamespace(log_level="INFO")
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
+    with pytest.raises(ValueError, match="requires --account-id"):
+        cli.main(
+            [
+                "sync-gcp-billing-summary",
+                "--export-partition-start",
+                "2026-05-17",
+                "--export-partition-end",
+                "2026-05-17",
+                "--replace-existing-partitions",
+                "--replace-usage-start-date",
+                "2026-05-01",
+                "--replace-usage-end-date",
+                "2026-05-17",
+            ]
+        )
 
 
 def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:

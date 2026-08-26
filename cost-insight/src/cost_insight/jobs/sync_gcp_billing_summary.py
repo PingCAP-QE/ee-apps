@@ -63,8 +63,19 @@ def run_sync_gcp_billing_summary(
     dry_run: bool = False,
     limit: int | None = None,
     replace_existing_partitions: bool = False,
+    replacement_usage_start_date: date | None = None,
+    replacement_usage_end_date: date | None = None,
     fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
 ) -> SyncGcpBillingSummaryResult:
+    if (replacement_usage_start_date is None) != (replacement_usage_end_date is None):
+        raise ValueError(
+            "replacement_usage_start_date and replacement_usage_end_date must be set together"
+        )
+    if replacement_usage_start_date and replacement_usage_start_date > replacement_usage_end_date:
+        raise ValueError("replacement usage start date must be before or equal to end date")
+    if replacement_usage_start_date and not replace_existing_partitions:
+        raise ValueError("scoped usage-date replacement requires replace_existing_partitions")
+
     resolved_end = export_partition_end or (
         datetime.now(UTC).date() - timedelta(days=settings.sync_lag_days)
     )
@@ -84,6 +95,8 @@ def run_sync_gcp_billing_summary(
             overlap_days=settings.export_overlap_days,
             initial_lookback_days=settings.sync_initial_lookback_days,
         )
+        if replacement_usage_start_date and resolved_start != resolved_end:
+            raise ValueError("scoped usage-date replacement requires one export partition")
         watermark = _watermark(
             account_id=settings.account_id,
             export_partition_start=resolved_start,
@@ -110,21 +123,40 @@ def run_sync_gcp_billing_summary(
                 ):
                     rows_seen += 1
                     normalized = _normalize_summary_row(source_row)
+                    if replacement_usage_start_date and not (
+                        replacement_usage_start_date
+                        <= normalized["usage_date"]
+                        <= replacement_usage_end_date
+                    ):
+                        continue
                     if normalized["billing_account_id"]:
                         source_billing_account_ids.add(normalized["billing_account_id"])
                     if not dry_run:
                         _dump_spooled_row(row_spool, normalized)
-                rows_written += replace_summary_partitions(
-                    engine,
-                    _iter_spooled_rows(row_spool),
-                    row_count=rows_seen,
-                    vendor="gcp",
-                    account_id=settings.account_id,
-                    export_partition_start=resolved_start,
-                    export_partition_end=resolved_end,
-                    dry_run=dry_run,
-                    batch_size=settings.page_size,
-                )
+                if replacement_usage_start_date:
+                    rows_written += replace_summary_partition_usage_dates(
+                        engine,
+                        _iter_spooled_rows(row_spool),
+                        vendor="gcp",
+                        account_id=settings.account_id,
+                        export_partition_date=resolved_start,
+                        usage_start_date=replacement_usage_start_date,
+                        usage_end_date=replacement_usage_end_date,
+                        dry_run=dry_run,
+                        batch_size=settings.page_size,
+                    )
+                else:
+                    rows_written += replace_summary_partitions(
+                        engine,
+                        _iter_spooled_rows(row_spool),
+                        row_count=rows_seen,
+                        vendor="gcp",
+                        account_id=settings.account_id,
+                        export_partition_start=resolved_start,
+                        export_partition_end=resolved_end,
+                        dry_run=dry_run,
+                        batch_size=settings.page_size,
+                    )
         else:
             for source_row in fetch_rows(
                 billing_table=settings.billing_table,
@@ -157,11 +189,20 @@ def run_sync_gcp_billing_summary(
                         billing_account_id=source_billing_account_id,
                         display_name=settings.account_id,
                     )
-                touched_usage_dates = _get_touched_usage_dates(
-                    connection,
-                    account_id=settings.account_id,
-                    export_partition_start=resolved_start,
-                    export_partition_end=resolved_end,
+                touched_usage_dates = (
+                    tuple(
+                        replacement_usage_start_date + timedelta(days=offset)
+                        for offset in range(
+                            (replacement_usage_end_date - replacement_usage_start_date).days + 1
+                        )
+                    )
+                    if replacement_usage_start_date
+                    else _get_touched_usage_dates(
+                        connection,
+                        account_id=settings.account_id,
+                        export_partition_start=resolved_start,
+                        export_partition_end=resolved_end,
+                    )
                 )
                 state_store.mark_job_succeeded(connection, job_name, watermark)
 
@@ -371,6 +412,79 @@ def _write_summary_rows(
         _build_upsert_statement(connection, target_table=target_table),
         _bind_rows(connection, rows),
     )
+
+
+def replace_summary_partition_usage_dates(
+    engine: Engine,
+    rows: Iterable[dict[str, Any]],
+    *,
+    vendor: str,
+    account_id: str,
+    export_partition_date: date,
+    usage_start_date: date,
+    usage_end_date: date,
+    dry_run: bool,
+    batch_size: int,
+    target_table: str = SUMMARY_TABLE,
+) -> int:
+    """Replace one export partition within a bounded usage-date scope.
+
+    An empty source is authoritative and removes stale summary rows in the scope,
+    so callers must refresh every requested usage date downstream.
+    """
+    if usage_start_date > usage_end_date:
+        raise ValueError("usage_start_date must be before or equal to usage_end_date")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if dry_run:
+        return 0
+
+    rows_written = 0
+    batch: list[dict[str, Any]] = []
+    with engine.begin() as connection:
+        connection.execute(
+            _delete_summary_partition_usage_dates_statement(target_table),
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "export_partition_date": export_partition_date,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+            },
+        )
+        for row in rows:
+            row_export_partition_date = coerce_date(row.get("export_partition_date"))
+            row_usage_date = coerce_date(row.get("usage_date"))
+            if (
+                row.get("vendor") != vendor
+                or row.get("account_id") != account_id
+                or row_export_partition_date != export_partition_date
+                or row_usage_date is None
+                or not usage_start_date <= row_usage_date <= usage_end_date
+            ):
+                raise ValueError(
+                    "summary row is outside the partition usage-date replacement scope: "
+                    f"{row.get('source_row_hash')}"
+                )
+            batch.append(row)
+            if len(batch) >= batch_size:
+                _write_summary_rows(
+                    connection,
+                    batch,
+                    cleanup_superseded=False,
+                    target_table=target_table,
+                )
+                rows_written += len(batch)
+                batch.clear()
+        if batch:
+            _write_summary_rows(
+                connection,
+                batch,
+                cleanup_superseded=False,
+                target_table=target_table,
+            )
+            rows_written += len(batch)
+    return rows_written
 
 
 def replace_summary_usage_dates(
@@ -814,6 +928,18 @@ def _quote_sql_table(table: str) -> str:
     if not _SQL_TABLE_RE.fullmatch(table):
         raise ValueError(f"Invalid SQL table identifier: {table!r}")
     return f"`{table}`"
+
+
+def _delete_summary_partition_usage_dates_statement(target_table: str):
+    return text(
+        f"""
+        DELETE FROM {_quote_sql_table(target_table)}
+        WHERE vendor = :vendor
+          AND account_id = :account_id
+          AND export_partition_date = :export_partition_date
+          AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+        """
+    )
 
 
 def _delete_summary_usage_dates_statement(target_table: str):

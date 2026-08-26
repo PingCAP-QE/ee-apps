@@ -81,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
     sync_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_summary.add_argument("--account-id", default=None)
     sync_summary.add_argument("--dry-run", action="store_true")
     sync_summary.add_argument("--limit", type=int, default=None)
     sync_summary.add_argument(
@@ -88,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Delete existing GCP summary rows for the requested export partition range before importing.",
     )
+    sync_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -318,10 +321,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError(
                 "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
             )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError("--replace-usage-start-date and --replace-usage-end-date must be set together")
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        if args.replace_usage_start_date and not args.account_id:
+            raise ValueError("scoped usage-date replacement requires --account-id")
         engine = build_engine(settings)
         try:
             summaries = []
-            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+            for gcp_settings in _resolve_gcp_sources(
+                engine,
+                settings=settings.gcp_billing,
+                account_id=args.account_id,
+            ):
                 summaries.append(
                     run_sync_gcp_billing_summary(
                         engine,
@@ -332,6 +345,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         dry_run=args.dry_run,
                         limit=args.limit,
                         replace_existing_partitions=args.replace_existing_partitions,
+                        replacement_usage_start_date=args.replace_usage_start_date,
+                        replacement_usage_end_date=args.replace_usage_end_date,
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
@@ -825,8 +840,17 @@ def _date_range(start_date: date, end_date: date):
         current += timedelta(days=1)
 
 
-def _resolve_gcp_sources(engine, *, settings: GcpBillingSettings) -> tuple[GcpBillingSettings, ...]:
+def _resolve_gcp_sources(
+    engine,
+    *,
+    settings: GcpBillingSettings,
+    account_id: str | None = None,
+) -> tuple[GcpBillingSettings, ...]:
     sources = _list_sources(engine, vendor="gcp")
+    if account_id:
+        if not any(source.account_id == account_id for source in sources):
+            raise ValueError(f"GCP cost source is not active: {account_id}")
+        return (replace(settings, account_id=account_id),)
     if not sources:
         return (settings,)
     return tuple(replace(settings, account_id=source.account_id) for source in sources)

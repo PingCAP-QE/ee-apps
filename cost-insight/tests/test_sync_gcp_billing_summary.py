@@ -15,6 +15,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     _select_billing_account_id,
     _start_partition_from_state,
     build_summary_row_hash,
+    replace_summary_partition_usage_dates,
     replace_summary_usage_dates,
     run_sync_gcp_billing_summary,
 )
@@ -194,6 +195,174 @@ def _insert_summary_row(connection, row: dict[str, object]) -> None:
         ),
         _sqlite_summary_row(row),
     )
+
+
+def test_replace_summary_partition_usage_dates_preserves_other_usage_dates() -> None:
+    engine = _sqlite_engine()
+    export_partition_date = date(2026, 7, 1)
+    before_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-06-30"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "before-scope",
+        }
+    )
+    old_in_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-07-01"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "old-in-scope",
+        }
+    )
+    after_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-08-25"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "after-scope",
+        }
+    )
+    replacement = _normalize_summary_row(
+        {
+            **_summary_row("2026-07-01"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "replacement",
+        }
+    )
+
+    try:
+        with engine.begin() as connection:
+            for row in (before_scope, old_in_scope, after_scope):
+                _insert_summary_row(connection, row)
+
+        rows_written = replace_summary_partition_usage_dates(
+            engine,
+            [replacement],
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            export_partition_date=export_partition_date,
+            usage_start_date=date(2026, 7, 1),
+            usage_end_date=date(2026, 8, 24),
+            dry_run=False,
+            batch_size=1,
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, resource_name
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, resource_name
+                    """
+                )
+            ).all()
+        assert rows_written == 1
+        assert rows == [
+            ("2026-06-30", "before-scope"),
+            ("2026-07-01", "replacement"),
+            ("2026-08-25", "after-scope"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_scoped_replacement_preserves_other_usage_dates() -> None:
+    engine = _sqlite_engine()
+    before_scope = {
+        **_summary_row("2026-06-30"),
+        "billing_account_id": "billing-before-scope",
+        "export_partition_date": "2026-07-01",
+        "resource_name": "before-scope",
+    }
+    old_in_scope = {
+        **_summary_row("2026-07-02"),
+        "export_partition_date": "2026-07-01",
+        "resource_name": "old-in-scope",
+    }
+    after_scope = {
+        **_summary_row("2026-08-25"),
+        "billing_account_id": "billing-after-scope",
+        "export_partition_date": "2026-07-01",
+        "resource_name": "after-scope",
+    }
+    replacement = {
+        **_summary_row("2026-07-01"),
+        "export_partition_date": "2026-07-01",
+        "resource_name": "replacement",
+    }
+
+    try:
+        with engine.begin() as connection:
+            for row in (before_scope, old_in_scope, after_scope):
+                _insert_summary_row(connection, _normalize_summary_row(row))
+
+        result = run_sync_gcp_billing_summary(
+            engine,
+            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            export_partition_start=date(2026, 7, 1),
+            export_partition_end=date(2026, 7, 1),
+            earliest_usage_date=date(2026, 6, 1),
+            replace_existing_partitions=True,
+            replacement_usage_start_date=date(2026, 7, 1),
+            replacement_usage_end_date=date(2026, 7, 2),
+            fetch_rows=lambda **_kwargs: [before_scope, replacement, after_scope],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, resource_name
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, resource_name
+                    """
+                )
+            ).all()
+            billing_account_id = connection.execute(
+                text("SELECT billing_account_id FROM cost_sources")
+            ).scalar_one()
+        assert result.rows_seen == 3
+        assert result.rows_written == 1
+        assert result.touched_usage_dates == (date(2026, 7, 1), date(2026, 7, 2))
+        assert billing_account_id == "billing-1"
+        assert rows == [
+            ("2026-06-30", "before-scope"),
+            ("2026-07-01", "replacement"),
+            ("2026-08-25", "after-scope"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_rejects_invalid_scoped_replacement() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    try:
+        with pytest.raises(ValueError, match="must be set together"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                replacement_usage_start_date=date(2026, 7, 1),
+            )
+        with pytest.raises(ValueError, match="requires replace_existing_partitions"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                replacement_usage_start_date=date(2026, 7, 1),
+                replacement_usage_end_date=date(2026, 7, 1),
+            )
+        with pytest.raises(ValueError, match="requires one export partition"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                export_partition_start=date(2026, 7, 1),
+                export_partition_end=date(2026, 7, 2),
+                replace_existing_partitions=True,
+                replacement_usage_start_date=date(2026, 7, 1),
+                replacement_usage_end_date=date(2026, 7, 1),
+            )
+    finally:
+        engine.dispose()
 
 
 def test_replace_summary_usage_dates_keeps_existing_rows_for_empty_source() -> None:
