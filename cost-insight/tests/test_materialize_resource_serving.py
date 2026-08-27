@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -95,6 +96,48 @@ def test_resource_serving_expands_grouped_kubernetes_lineage() -> None:
     assert all(row["fallback_list_cost"] == 0 for row in rows)
 
 
+def test_materialize_resource_serving_publishes_a_refreshed_zero_cost_window() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_job_state (job_name, watermark_json, last_status)
+                VALUES (:job_name, :watermark_json, 'succeeded')
+                """
+            ),
+            {
+                "job_name": "refresh_cost_attribution_from_summary:gcp:project-1",
+                "watermark_json": json.dumps(
+                    {
+                        "vendor": "gcp",
+                        "account_id": "project-1",
+                        "start_date": "2026-08-10",
+                        "end_date": "2026-08-10",
+                    }
+                ),
+            },
+        )
+
+    summary = run_materialize_resource_serving(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        materialization_version="v1",
+        now=datetime(2026, 8, 11),
+    )
+
+    with engine.begin() as connection:
+        publication = connection.execute(
+            text("SELECT source_row_count, total_list_cost FROM cost_resource_serving_publication")
+        ).one()
+    assert summary.windows_published == 1
+    assert summary.rows_written == 0
+    assert publication == (0, 0)
+
+
 def test_materialize_resource_serving_stages_and_publishes_native_window() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     with engine.begin() as connection:
@@ -155,6 +198,11 @@ def test_materialize_resource_serving_stages_and_publishes_native_window() -> No
 
 
 _SCHEMA = (
+    """
+    CREATE TABLE cost_job_state (
+      job_name TEXT PRIMARY KEY, watermark_json TEXT, last_status TEXT
+    )
+    """,
     """
     CREATE TABLE cost_attribution_daily (
       usage_date TEXT, vendor TEXT, account_id TEXT, service_name TEXT, sku_name TEXT,

@@ -12,7 +12,7 @@ import json
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -399,7 +399,54 @@ def _source_windows(
             "start_date": start_date,
             "end_date": end_date,
         }
-    return tuple(dict(row) for row in connection.execute(statement, params).mappings())
+    windows = {
+        (_as_date(row["usage_date"]), str(row["vendor"]), str(row["account_id"]))
+        for row in connection.execute(statement, params).mappings()
+    }
+    # A successful attribution refresh proves a date was processed even if it
+    # produced zero cost rows. Retain that completion marker so the Dashboard
+    # receives a published zero window rather than permanent pending state.
+    windows.update(_refreshed_empty_windows(connection, start_date=start_date, end_date=end_date))
+    return tuple(
+        {
+            "usage_date": usage_date,
+            "vendor": vendor,
+            "account_id": account_id,
+        }
+        for usage_date, vendor, account_id in sorted(windows)
+    )
+
+
+def _as_date(value: Any) -> date:
+    return value if isinstance(value, date) else date.fromisoformat(str(value))
+
+
+def _refreshed_empty_windows(
+    connection: Connection, *, start_date: date, end_date: date
+) -> set[tuple[date, str, str]]:
+    try:
+        states = connection.execute(_REFRESHED_ATTRIBUTION_STATES).mappings()
+    except Exception:
+        return set()
+    windows: set[tuple[date, str, str]] = set()
+    for state in states:
+        try:
+            watermark = state["watermark_json"]
+            if isinstance(watermark, str):
+                watermark = json.loads(watermark)
+            if not isinstance(watermark, Mapping):
+                continue
+            refreshed_start = date.fromisoformat(str(watermark["start_date"]))
+            refreshed_end = date.fromisoformat(str(watermark["end_date"]))
+            vendor = str(watermark["vendor"])
+            account_id = str(watermark["account_id"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        current = max(start_date, refreshed_start)
+        while current <= min(end_date, refreshed_end):
+            windows.add((current, vendor, account_id))
+            current += timedelta(days=1)
+    return windows
 
 
 def _load_source_rows(
@@ -538,6 +585,12 @@ def _hash_identity(values: tuple[Any, ...]) -> str:
     return _sha256(json.dumps([str(value or "") for value in values], separators=(",", ":")))
 
 
+_REFRESHED_ATTRIBUTION_STATES = text("""
+SELECT watermark_json
+FROM cost_job_state
+WHERE job_name LIKE 'refresh_cost_attribution_from_summary:%'
+  AND last_status = 'succeeded'
+""")
 _NATIVE_WINDOWS = text("""
 SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
 WHERE usage_date BETWEEN :start_date AND :end_date ORDER BY usage_date, vendor, account_id

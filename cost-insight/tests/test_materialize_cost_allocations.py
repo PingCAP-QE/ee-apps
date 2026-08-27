@@ -90,6 +90,28 @@ def test_eq_chargeback_uses_native_direct_list_cost_and_keeps_daily_account_boun
     assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("170.00")
 
 
+def test_eq_chargeback_preserves_grouped_kubernetes_source_lineage() -> None:
+    grouped = {
+        **_fact(group_id=1, list_cost="100.00", source_scope="gke_residual"),
+        "source_summary_row_hash": None,
+        "source_fact_hash": "merged-native-source-hash",
+    }
+    direct = _fact(group_id=2, list_cost="100.00")
+
+    rows = build_eq_allocated_rows(
+        input_rows=(grouped, direct),
+        native_rows=(direct,),
+        eq_group_ids={1},
+        group_managers={2: 20},
+        allocation_version="v1",
+        roster_resolved_at=datetime(2026, 8, 21),
+        basis_key="kubernetes_eq_allocated",
+    )
+
+    redistributed = [row for row in rows if row["allocation_stage"] == "eq_chargeback"]
+    assert [row["source_fact_hash"] for row in redistributed] == ["merged-native-source-hash"]
+
+
 def test_eq_chargeback_keeps_signed_cost_when_the_daily_account_has_no_denominator() -> None:
     source = {
         **_fact(group_id=1, list_cost="0.00"),

@@ -688,7 +688,7 @@ def _serving_row(
         {
             "basis_key": basis_key,
             "allocation_stage": allocation_stage,
-            "source_fact_hash": source.get("dimension_hash"),
+            "source_fact_hash": source.get("source_fact_hash") or source.get("dimension_hash"),
             "source_owner": source.get("owner"),
             "source_group_id": source.get("group_id"),
             "source_manager_id": source.get("manager_id"),
