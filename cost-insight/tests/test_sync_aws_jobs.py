@@ -708,14 +708,23 @@ def test_split_unmatched_replacement_caps_database_write_batches(
         available_from=date(2026, 5, 1),
     )
     batch_sizes: list[int] = []
+    individual_invalidation_batch_sizes: list[int] = []
     original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+    original_invalidate = gcp_unmatched_resources._invalidate_resource_serving_publications
 
     def record_write(*args, **kwargs):
         batch_sizes.append(len(args[1]))
         return original_write(*args, **kwargs)
 
+    def record_invalidate(*args, **kwargs):
+        individual_invalidation_batch_sizes.append(len(args[1]))
+        return original_invalidate(*args, **kwargs)
+
     rows = [{**_resource_row(), "resource_name": f"i-{index:016x}"} for index in range(11)]
     monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    monkeypatch.setattr(
+        gcp_unmatched_resources, "_invalidate_resource_serving_publications", record_invalidate
+    )
     try:
         summary = run_sync_aws_unmatched_resources(
             engine,
@@ -730,6 +739,7 @@ def test_split_unmatched_replacement_caps_database_write_batches(
 
         assert summary.rows_written == 11
         assert batch_sizes == [10, 1]
+        assert individual_invalidation_batch_sizes == []
     finally:
         engine.dispose()
 

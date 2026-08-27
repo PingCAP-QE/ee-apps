@@ -300,6 +300,8 @@ def write_unmatched_resource_rows(
                 rows[start : start + RESOURCE_WRITE_BATCH_SIZE],
                 target_table=target_table,
             )
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _invalidate_resource_serving_publications(connection, rows)
     return len(rows)
 
 
@@ -383,8 +385,6 @@ def _write_unmatched_resource_rows(
         _build_upsert_statement(connection, target_table=target_table),
         _bind_rows(connection, rows),
     )
-    if target_table == UNMATCHED_RESOURCE_TABLE:
-        _invalidate_resource_serving_publications(connection, rows)
 
 
 def _invalidate_resource_serving_publication_range(

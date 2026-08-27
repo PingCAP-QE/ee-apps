@@ -326,14 +326,23 @@ def test_run_sync_gcp_unmatched_resources_caps_database_write_batches(
     engine = _sqlite_engine()
     settings = GcpBillingSettings(account_id="pingcap-testing-account", page_size=11)
     batch_sizes: list[int] = []
+    invalidation_batch_sizes: list[int] = []
     original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+    original_invalidate = gcp_unmatched_resources._invalidate_resource_serving_publications
 
     def record_write(*args, **kwargs):
         batch_sizes.append(len(args[1]))
         return original_write(*args, **kwargs)
 
+    def record_invalidate(*args, **kwargs):
+        invalidation_batch_sizes.append(len(args[1]))
+        return original_invalidate(*args, **kwargs)
+
     rows = [{**_resource_row(), "resource_name": f"tidb-test-pod-{index}"} for index in range(11)]
     monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    monkeypatch.setattr(
+        gcp_unmatched_resources, "_invalidate_resource_serving_publications", record_invalidate
+    )
     try:
         summary = run_sync_gcp_unmatched_resources(
             engine,
@@ -345,6 +354,7 @@ def test_run_sync_gcp_unmatched_resources_caps_database_write_batches(
 
         assert summary.rows_written == 11
         assert batch_sizes == [10, 1]
+        assert invalidation_batch_sizes == [11]
     finally:
         engine.dispose()
 
