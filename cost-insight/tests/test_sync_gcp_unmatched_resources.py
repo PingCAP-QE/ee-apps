@@ -9,6 +9,7 @@ from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import hash_value
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.sync_gcp_billing_summary import _normalize_summary_row
 from cost_insight.jobs.sync_gcp_unmatched_resources import (
     JOB_NAME,
     _normalize_resource_row,
@@ -59,6 +60,19 @@ def _sqlite_engine():
         connection.execute(
             text(
                 """
+                CREATE TABLE cost_resource_serving_publication (
+                  basis_key TEXT,
+                  vendor TEXT,
+                  account_id TEXT,
+                  usage_date TEXT,
+                  PRIMARY KEY (basis_key, vendor, account_id, usage_date)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cost_unmatched_resource_daily (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   vendor TEXT NOT NULL,
@@ -66,6 +80,7 @@ def _sqlite_engine():
                   billing_account_id TEXT,
                   export_partition_date TEXT NOT NULL,
                   usage_date TEXT NOT NULL,
+                  region TEXT,
                   service_name TEXT,
                   sku_name TEXT,
                   namespace TEXT,
@@ -90,6 +105,7 @@ def _sqlite_engine():
                   net_cost REAL,
                   source_export_time TEXT,
                   source_row_hash TEXT NOT NULL,
+                  source_summary_row_hash TEXT,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
@@ -107,6 +123,7 @@ def _resource_row() -> dict[str, object]:
         "billing_account_id": "billing-1",
         "export_partition_date": "2026-05-20",
         "usage_date": "2026-05-18",
+        "region": "us-central1",
         "service_name": "Compute Engine",
         "sku_name": "Core running",
         "namespace": "kube:unallocated",
@@ -116,6 +133,7 @@ def _resource_row() -> dict[str, object]:
         "target_branch": "master",
         "vendor_tags_json": None,
         "resource_name": "tidb-test-pod-1",
+        "summary_resource_name": "tidb-test-pod-1",
         "usage_seconds": "3600.00",
         "list_cost": "10.00",
         "effective_cost": "8.00",
@@ -182,11 +200,59 @@ def test_replace_unmatched_resource_usage_dates_keeps_existing_rows_for_empty_so
         engine.dispose()
 
 
+def test_resource_replacement_invalidates_the_full_serving_window() -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_resource_serving_publication
+                    VALUES ('native', 'gcp', 'pingcap-testing-account', '2026-05-18')
+                    """
+                )
+            )
+        replace_unmatched_resource_usage_dates(
+            engine,
+            [_normalize_resource_row(_resource_row())],
+            row_count=1,
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            dry_run=False,
+            batch_size=100,
+        )
+        with engine.begin() as connection:
+            publication_count = connection.execute(
+                text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+            ).scalar_one()
+        assert publication_count == 0
+    finally:
+        engine.dispose()
+
+
+def test_gcp_resource_lineage_matches_the_summary_identity() -> None:
+    resource = _normalize_resource_row(
+        {**_resource_row(), "vendor_tags_json": {"cluster": "prow"}}
+    )
+    summary = _normalize_summary_row(
+        {
+            **_resource_row(),
+            "usage_type": None,
+            "resource_name": resource["summary_resource_name"],
+            "vendor_tags_json": None,
+        }
+    )
+
+    assert resource["source_summary_row_hash"] == summary["source_row_hash"]
+
+
 def test_unmatched_resource_hash_ignores_amount_changes() -> None:
     row = _normalize_resource_row(_resource_row())
     changed = {**row, "net_cost": "99.00"}
 
-    assert build_unmatched_resource_row_hash(row) == _legacy_unmatched_resource_row_hash(row)
+    assert build_unmatched_resource_row_hash(row) != _legacy_unmatched_resource_row_hash(row)
     assert build_unmatched_resource_row_hash(row) == build_unmatched_resource_row_hash(changed)
     assert build_unmatched_resource_row_hash(row) != build_unmatched_resource_row_hash(
         {**row, "target_branch": "release-8.5"}
@@ -196,6 +262,20 @@ def test_unmatched_resource_hash_ignores_amount_changes() -> None:
             **row,
             "vendor_tags_json": '{"cluster":"10149878793099322221","shared_pool":"2076551309477019648"}',
         }
+    )
+    labeled = _normalize_resource_row(
+        {**_resource_row(), "vendor_tags_json": {"cluster": "prow"}}
+    )
+    # GCP summary intentionally rolls labels up, so labels only split detail rows.
+    assert row["source_summary_row_hash"] == labeled["source_summary_row_hash"]
+    assert row["source_row_hash"] != labeled["source_row_hash"]
+    changed_region = _normalize_resource_row({**_resource_row(), "region": "us-east1"})
+    assert row["source_summary_row_hash"] != changed_region["source_summary_row_hash"]
+    assert build_unmatched_resource_row_hash(row) != build_unmatched_resource_row_hash(
+        changed_region
+    )
+    assert build_unmatched_resource_row_hash(row) != build_unmatched_resource_row_hash(
+        {**row, "source_summary_row_hash": "replacement-lineage"}
     )
 
 

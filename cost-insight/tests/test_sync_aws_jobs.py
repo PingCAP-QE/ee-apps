@@ -106,6 +106,7 @@ def _sqlite_engine():
               billing_account_id TEXT,
               export_partition_date TEXT NOT NULL,
               usage_date TEXT NOT NULL,
+              region TEXT,
               service_name TEXT,
               sku_name TEXT,
               namespace TEXT,
@@ -130,6 +131,7 @@ def _sqlite_engine():
               net_cost REAL,
               source_export_time TEXT,
               source_row_hash TEXT NOT NULL,
+              source_summary_row_hash TEXT,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
               UNIQUE(vendor, account_id, export_partition_date, source_row_hash)

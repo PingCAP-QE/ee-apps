@@ -108,7 +108,12 @@ def test_build_gcp_unmatched_resource_query_preserves_native_resource_name_and_l
     assert "TO_JSON_STRING(" in query
     assert "JSON_OBJECT(" in query
     assert "AS vendor_tags_json" in query
-    assert query.index("NULLIF(resource.name, '')") < query.index("k8s-workload-name")
+    concrete_resource = query[
+        query.index("COALESCE(\n      NULLIF(resource.name, '')") : query.index("AS resource_name")
+    ]
+    assert concrete_resource.index("NULLIF(resource.name, '')") < concrete_resource.index(
+        "k8s-workload-name"
+    )
     assert "'(no GCP resource ID)'" in query
 
 

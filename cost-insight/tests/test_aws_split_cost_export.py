@@ -34,7 +34,8 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "resource_tags_user_icost_owner_email" in query
     assert "COALESCE(split_line_item_split_usage, 0) AS split_usage_amount" in query
     assert "source_allocation_scope" in query
-    assert "ROUND(SUM" not in query
+    assert "ROUND(SUM(list_cost), 9) AS list_cost" in query
+    assert "ROUND(SUM(effective_cost), 9) AS effective_cost" in query
 
 
 def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
@@ -57,6 +58,7 @@ def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
     assert "DATE(line_item_usage_start_date) <= @usage_end_date" in query
     assert "COALESCE(\n      NULLIF(line_item_resource_id, ''),\n      NULLIF(line_item_line_item_description, '')\n    ) AS resource_name" in query
     assert "AND resource_name IS NOT NULL" in query
+    assert "CAST(NULL AS STRING) AS summary_resource_name" in query
 
 
 def test_split_guardrail_uses_ce_list_cost_before_import() -> None:
