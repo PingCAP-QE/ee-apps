@@ -82,6 +82,7 @@ def run_refresh_cost_attribution_from_summary(
             ):
                 insert_result = connection.execute(insert_statement, params)
                 rows_inserted += _positive_rowcount(insert_result.rowcount)
+            _invalidate_native_resource_serving_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return RefreshAttributionSummary(
@@ -107,6 +108,34 @@ def _watermark(*, vendor: str, account_id: str, start_date: date, end_date: date
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
     }
+
+
+def _invalidate_native_resource_serving_publications(
+    connection,
+    params: dict[str, Any],
+) -> None:
+    if connection.dialect.name == "sqlite":
+        table_exists = connection.execute(
+            text(
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = 'cost_resource_serving_publication'
+                """
+            )
+        ).first()
+    else:
+        table_exists = connection.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'cost_resource_serving_publication'
+                LIMIT 1
+                """
+            )
+        ).first()
+    if table_exists is not None:
+        connection.execute(_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS, params)
 
 
 def _positive_rowcount(rowcount: int | None) -> int:
@@ -161,6 +190,16 @@ _COUNT_SUMMARY_DETAILS = text(
     WHERE usage_date BETWEEN :start_date AND :end_date
       AND vendor = :vendor
       AND account_id = :account_id
+    """
+)
+
+
+_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE basis_key = 'native'
+      AND vendor = :vendor AND account_id = :account_id
+      AND usage_date BETWEEN :start_date AND :end_date
     """
 )
 

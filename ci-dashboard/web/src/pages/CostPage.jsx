@@ -467,7 +467,13 @@ export default function CostPage({ filters }) {
         }
       >
         {resourceBreakdownRequested ? (
-          <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+          unmatchedResources.data?.meta?.pending_dates?.length ? (
+            <div className="empty-state">
+              Resource details are being materialized. Please retry on the next refresh.
+            </div>
+          ) : (
+            <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+          )
         ) : (
           <button
             type="button"

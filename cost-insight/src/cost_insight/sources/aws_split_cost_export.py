@@ -789,6 +789,7 @@ SELECT
   sku_name,
   MIN(usage_type) AS usage_type,
   region,
+  'aws_split_cost_v1' AS source_schema_version,
   source_allocation_scope,
   namespace,
   workload_name,
@@ -805,10 +806,11 @@ SELECT
     ELSE TO_JSON_STRING(STRUCT(cluster AS cluster, shared_pool AS shared_pool))
   END AS vendor_tags_json,
   {resource_columns}
-  SUM(list_cost) AS list_cost,
-  SUM(effective_cost) AS effective_cost,
+  {"CAST(NULL AS STRING) AS summary_resource_name," if resource_level else ""}
+  ROUND(SUM(list_cost), 9) AS list_cost,
+  ROUND(SUM(effective_cost), 9) AS effective_cost,
   CAST(0 AS NUMERIC) AS credit_amount,
-  SUM(net_cost) AS net_cost,
+  ROUND(SUM(net_cost), 9) AS net_cost,
   MAX(source_export_time) AS source_export_time
 FROM branch_rows
 WHERE (list_cost != 0 OR effective_cost != 0 OR net_cost != 0){resource_name_filter}

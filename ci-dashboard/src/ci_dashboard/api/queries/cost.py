@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import calendar
+import hashlib
 import json
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import text
@@ -59,6 +61,10 @@ MATERIALIZED_BASIS_KEYS = {
     RESIDUAL_ALLOCATED_BASIS: "kubernetes_allocated",
     EQ_ALLOCATED_BASIS: "eq_allocated",
     RESIDUAL_EQ_ALLOCATED_BASIS: "kubernetes_eq_allocated",
+}
+RESOURCE_SERVING_BASIS_KEYS = {
+    CURRENT_ATTRIBUTION_BASIS: "native",
+    **MATERIALIZED_BASIS_KEYS,
 }
 VALID_COST_ALLOCATION_BASES = frozenset(
     {CURRENT_ATTRIBUTION_BASIS, *MATERIALIZED_BASIS_KEYS}
@@ -1310,6 +1316,31 @@ def get_unmatched_resources(
     sort_by: str = "list_cost",
     allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
+    return _get_published_unmatched_resources(
+        engine,
+        filters,
+        owner=owner,
+        service_name=service_name,
+        sort_by=sort_by,
+        allocation_basis=allocation_basis,
+    )
+
+
+def _get_published_unmatched_resources(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    owner: str | None,
+    service_name: str | None,
+    sort_by: str,
+    allocation_basis: str,
+) -> dict[str, Any]:
+    """Read only complete resource-serving publications for this request.
+
+    Publication validity is checked before the Top-resource and service reads.
+    A partial post-allocation rebuild is consequently a harmless 200/pending
+    response rather than a partial result or the retired raw-ledger join.
+    """
     requested_filters = filters
     if (
         filters.start_date is not None
@@ -1320,522 +1351,334 @@ def get_unmatched_resources(
             filters,
             start_date=filters.end_date - timedelta(days=UNMATCHED_RESOURCE_MAX_WINDOW_DAYS - 1),
         )
-
     if sort_by not in UNMATCHED_RESOURCE_SORTS:
         sort_by = "list_cost"
+    requested_basis = (
+        allocation_basis if allocation_basis in RESOURCE_SERVING_BASIS_KEYS else CURRENT_ATTRIBUTION_BASIS
+    )
+    basis_key = RESOURCE_SERVING_BASIS_KEYS[requested_basis]
     selected_owner = owner or NO_OWNER_LABEL
-    owner_where_clause = (
-        "NULLIF(c.owner, '') IS NULL"
-        if selected_owner == NO_OWNER_LABEL
-        else "c.owner = :selected_owner"
-    )
+    owner_value = "" if selected_owner == NO_OWNER_LABEL else selected_owner
+    owner_key = hashlib.sha256(owner_value.encode("utf-8")).hexdigest()
     service_filter_name = service_name or None
-    order_by = (
-        "u.usage_seconds DESC, u.list_cost DESC, u.resource_name"
-        if sort_by == "duration"
-        else "u.list_cost DESC, u.usage_seconds DESC, u.resource_name"
-    )
+    expected_dates = _resource_serving_dates(filters.start_date, filters.end_date)
 
     with engine.begin() as connection:
-        attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
-        # Residual allocation can give a source cost a workload's owner and branch.
-        # Resource detail retains its original billing dimensions, so do not apply
-        # the allocated branch filter directly to that source feed.
-        resource_filters = (
-            _cost_allocation_source_filters(filters)
-            if basis.name == RESIDUAL_ALLOCATED_BASIS
-            else filters
+        source_available_column = (
+            "source_available_from"
+            if _table_has_column(connection, "cost_sources", "source_available_from")
+            else "NULL"
         )
-        resource_where_clause, resource_params = _build_cost_where(
-            resource_filters,
-            table_alias="r",
+        sources = tuple(
+            connection.execute(
+                text(
+                    f"""
+                    SELECT vendor, account_id, {source_available_column} AS source_available_from
+                    FROM cost_sources
+                    WHERE is_active = 1
+                      AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
+                      AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
+                    ORDER BY vendor, account_id
+                    """
+                ),
+                {
+                    "cost_vendor": filters.cost_vendor,
+                    "cost_account_id": filters.cost_account_id,
+                },
+            ).mappings()
         )
-        attr_index_hint = _cost_attribution_index_hint(connection, filters)
-        resource_index_hint = _cost_unmatched_resource_index_hint(connection, resource_filters)
-        source_org_match = _null_safe_eq(connection, "m.source_org", "r.org")
-        source_repo_match = _null_safe_eq(connection, "m.source_repo", "r.repo")
-        source_author_match = _null_safe_eq(connection, "m.source_author", "r.author")
-        source_branch_match = (
-            "(m.source_target_branch IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_target_branch', 'r.target_branch')})"
-        )
-        source_namespace_match = (
-            "(m.source_namespace IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_namespace', 'r.namespace')})"
-        )
-        source_service_match = (
-            "(m.source_service_name IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_service_name', 'r.service_name')})"
-        )
-        source_sku_match = (
-            "(m.source_sku_name IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_sku_name', 'r.sku_name')})"
-        )
-        source_resource_match = (
-            "(NULLIF(m.source_resource_name, '') IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_resource_name', 'r.resource_name')})"
-        )
-        summary_lineage_available = _cost_billing_summary_table_exists(connection)
-        source_export_partition_expr = (
-            "summary.export_partition_date" if summary_lineage_available else "NULL"
-        )
-        summary_lineage_join = (
-            """
-              LEFT JOIN cost_bq_export_summary_daily summary
-                ON summary.vendor = source_cost.vendor
-               AND summary.account_id = source_cost.account_id
-               AND summary.usage_date = source_cost.usage_date
-               AND NULLIF(source_cost.source_summary_row_hash, '') IS NOT NULL
-               AND summary.source_row_hash = source_cost.source_summary_row_hash
-            """
-            if summary_lineage_available
-            else ""
-        )
-        resource_list_cost_expr = _billing_report_list_cost_expr("r")
-        basis_prefix = f"{basis.cte}," if basis.cte else "WITH"
-        group_lineage_available = (
-            basis.name == RESIDUAL_ALLOCATED_BASIS
-            and _cost_kubernetes_allocation_source_table_exists(connection)
-            and _table_has_column(
-                connection,
-                "cost_kubernetes_workload_allocation_daily",
-                "allocation_group_hash",
+        expected_windows = {
+            (str(source["vendor"]), str(source["account_id"]), usage_date)
+            for source in sources
+            for usage_date in expected_dates
+            if (
+                _parse_date(source["source_available_from"]) is None
+                or _parse_date(source["source_available_from"]) <= usage_date
             )
+        }
+        has_serving_tables = _table_exists(connection, "cost_resource_serving_daily") and _table_exists(
+            connection, "cost_resource_serving_publication"
         )
-        group_row_exclusion = ""
-        group_cost_rows_cte = ""
-        group_cost_rows_union = ""
-        if group_lineage_available:
-            # Grouped GKE allocations do not carry one source row hash. Expand the
-            # selected allocation back through the reconciled group mapping so an
-            # owner can see the original billable resources, at the same ratio used
-            # by the owner donut.
-            group_row_exclusion = """
-                AND NOT (
-                  NULLIF(c.source_summary_row_hash, '') IS NULL
-                  AND EXISTS (
-                    SELECT 1
-                    FROM cost_kubernetes_workload_allocation_daily allocation
-                    WHERE allocation.vendor = c.vendor
-                      AND allocation.account_id = c.account_id
-                      AND allocation.usage_date = c.usage_date
-                      AND allocation.dimension_hash = c.dimension_hash
-                      AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-                  )
+        active_allocation_version = _resource_serving_active_allocation_version(connection)
+        publication_rows: dict[tuple[str, str, date], Mapping[str, Any]] = {}
+        if has_serving_tables and expected_dates:
+            rows = connection.execute(
+                text(
+                    """
+                    WITH scoped_sources AS (
+                      SELECT vendor, account_id
+                      FROM cost_sources
+                      WHERE is_active = 1
+                        AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
+                        AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
+                    )
+                    SELECT p.vendor, p.account_id, p.usage_date,
+                      p.source_allocation_version, p.source_row_count,
+                      COUNT(s.id) AS serving_row_count
+                    FROM cost_resource_serving_publication p
+                    JOIN scoped_sources scope
+                      ON scope.vendor = p.vendor AND scope.account_id = p.account_id
+                    LEFT JOIN cost_resource_serving_daily s
+                      ON s.basis_key = p.basis_key
+                     AND s.vendor = p.vendor AND s.account_id = p.account_id
+                     AND s.usage_date = p.usage_date
+                     AND s.materialization_version = p.active_materialization_version
+                    WHERE p.basis_key = :basis_key
+                      AND p.usage_date BETWEEN :start_date AND :end_date
+                    GROUP BY p.vendor, p.account_id, p.usage_date,
+                      p.source_allocation_version, p.source_row_count
+                    """
+                ),
+                {
+                    "basis_key": basis_key,
+                    "start_date": filters.start_date,
+                    "end_date": filters.end_date,
+                    "cost_vendor": filters.cost_vendor,
+                    "cost_account_id": filters.cost_account_id,
+                },
+            ).mappings()
+            publication_rows = {
+                (str(row["vendor"]), str(row["account_id"]), _parse_date(row["usage_date"])): row
+                for row in rows
+                if _parse_date(row["usage_date"]) is not None
+            }
+
+        pending_dates = sorted(
+            {
+                usage_date.isoformat()
+                for vendor, account_id, usage_date in expected_windows
+                if not _resource_serving_window_is_valid(
+                    publication_rows.get((vendor, account_id, usage_date)),
+                    basis_key=basis_key,
+                    active_allocation_version=active_allocation_version,
                 )
-            """
-            group_cost_rows_cte = """
-            , selected_owner_group_source_totals AS (
-              SELECT
-                c.usage_date AS allocation_usage_date,
-                c.vendor AS allocation_vendor,
-                c.account_id AS allocation_account_id,
-                c.dimension_hash AS allocation_dimension_hash,
-                SUM(COALESCE(mapping.source_list_cost, 0)) AS source_list_cost
-              FROM selected_owner_basis_rows c
-              JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.vendor = c.vendor
-               AND allocation.account_id = c.account_id
-               AND allocation.usage_date = c.usage_date
-               AND allocation.dimension_hash = c.dimension_hash
-              JOIN cost_kubernetes_workload_allocation_source_daily mapping
-                ON mapping.vendor = allocation.vendor
-               AND mapping.account_id = allocation.account_id
-               AND mapping.usage_date = allocation.usage_date
-               AND mapping.allocation_group_hash = allocation.allocation_group_hash
-              WHERE NULLIF(c.source_summary_row_hash, '') IS NULL
-                AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-              GROUP BY c.usage_date, c.vendor, c.account_id, c.dimension_hash
-            ), selected_owner_group_cost_rows AS (
-              SELECT
-                c.dimension_hash AS cost_dimension_hash,
-                source.id AS source_attribution_id,
-                source.usage_date AS usage_date,
-                source.vendor AS vendor,
-                source.account_id AS account_id,
-                source.service_name AS source_service_name,
-                source.sku_name AS source_sku_name,
-                source.org AS source_org,
-                source.repo AS source_repo,
-                source.target_branch AS source_target_branch,
-                source.author AS source_author,
-                source.namespace AS source_namespace,
-                CAST(source.vendor_tags_json AS CHAR) AS source_vendor_tags_json,
-                source.resource_name AS source_resource_name,
-                source.source_summary_row_hash AS source_summary_row_hash,
-                c.owner AS owner_mail,
-                c.attribution_key AS attribution_key,
-                c.attribution_source AS attribution_source,
-                c.attribution_status AS attribution_status,
-                c.usage_seconds AS usage_seconds,
-                c.list_cost * mapping.source_list_cost
-                  / NULLIF(totals.source_list_cost, 0) AS list_cost,
-                source.list_cost AS source_list_cost
-              FROM selected_owner_basis_rows c
-              JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.vendor = c.vendor
-               AND allocation.account_id = c.account_id
-               AND allocation.usage_date = c.usage_date
-               AND allocation.dimension_hash = c.dimension_hash
-              JOIN selected_owner_group_source_totals totals
-                ON totals.allocation_usage_date = c.usage_date
-               AND totals.allocation_vendor = c.vendor
-               AND totals.allocation_account_id = c.account_id
-               AND totals.allocation_dimension_hash = c.dimension_hash
-              JOIN cost_kubernetes_workload_allocation_source_daily mapping
-                ON mapping.vendor = allocation.vendor
-               AND mapping.account_id = allocation.account_id
-               AND mapping.usage_date = allocation.usage_date
-               AND mapping.allocation_group_hash = allocation.allocation_group_hash
-              JOIN cost_attribution_daily source
-                ON source.vendor = mapping.vendor
-               AND source.account_id = mapping.account_id
-               AND source.usage_date = mapping.usage_date
-               AND source.source_summary_row_hash = mapping.source_summary_row_hash
-              WHERE NULLIF(c.source_summary_row_hash, '') IS NULL
-                AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-                AND totals.source_list_cost <> 0
+            }
+        )
+        if pending_dates:
+            return _resource_serving_response(
+                items=[],
+                filters=filters,
+                requested_filters=requested_filters,
+                selected_owner=selected_owner,
+                service_name=service_filter_name,
+                sort_by=sort_by,
+                allocation_basis=requested_basis,
+                services=[],
+                pending_dates=pending_dates,
+                detail_list_cost=0.0,
+                total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
             )
-            """
-            group_cost_rows_union = """
-              UNION ALL
-              SELECT *
-              FROM selected_owner_group_cost_rows
-            """
-        base_cte = f"""
-            {basis_prefix}
-            selected_owner_basis_rows AS (
-              SELECT {attr_index_hint} c.*
-              FROM {basis.from_clause}
-              WHERE {attr_where_clause}
-                AND {owner_where_clause}
-            ), selected_owner_direct_cost_rows AS (
-              SELECT
-                c.dimension_hash AS cost_dimension_hash,
-                COALESCE(source.id, c.id) AS source_attribution_id,
-                c.usage_date AS usage_date,
-                c.vendor AS vendor,
-                c.account_id AS account_id,
-                CASE WHEN source.id IS NULL THEN c.service_name ELSE source.service_name END
-                  AS source_service_name,
-                CASE WHEN source.id IS NULL THEN c.sku_name ELSE source.sku_name END
-                  AS source_sku_name,
-                CASE WHEN source.id IS NULL THEN c.org ELSE source.org END AS source_org,
-                CASE WHEN source.id IS NULL THEN c.repo ELSE source.repo END AS source_repo,
-                CASE WHEN source.id IS NULL THEN c.target_branch ELSE source.target_branch END
-                  AS source_target_branch,
-                CASE WHEN source.id IS NULL THEN c.author ELSE source.author END AS source_author,
-                CASE WHEN source.id IS NULL THEN c.namespace ELSE source.namespace END
-                  AS source_namespace,
-                CAST(
-                  CASE WHEN source.id IS NULL THEN c.vendor_tags_json ELSE source.vendor_tags_json END
-                  AS CHAR
-                ) AS source_vendor_tags_json,
-                CASE WHEN source.id IS NULL THEN c.resource_name ELSE source.resource_name END
-                  AS source_resource_name,
-                CASE WHEN source.id IS NULL THEN c.source_summary_row_hash
-                  ELSE source.source_summary_row_hash END AS source_summary_row_hash,
-                c.owner AS owner_mail,
-                c.attribution_key AS attribution_key,
-                c.attribution_source AS attribution_source,
-                c.attribution_status AS attribution_status,
-                c.usage_seconds AS usage_seconds,
-                c.list_cost AS list_cost,
-                CASE WHEN source.id IS NULL THEN c.list_cost ELSE source.list_cost END
-                  AS source_list_cost
-              FROM selected_owner_basis_rows c
-              LEFT JOIN cost_attribution_daily source
-                ON source.vendor = c.vendor
-               AND source.account_id = c.account_id
-               AND source.usage_date = c.usage_date
-               AND NULLIF(c.source_summary_row_hash, '') IS NOT NULL
-               AND source.source_summary_row_hash = c.source_summary_row_hash
-              WHERE 1 = 1
-                {group_row_exclusion}
+        if not has_serving_tables:
+            # This only occurs before migration while no active source/date is
+            # expected. Never use the historical broad CTE as a compatibility path.
+            return _resource_serving_response(
+                items=[], filters=filters, requested_filters=requested_filters,
+                selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+                allocation_basis=requested_basis, services=[], pending_dates=[],
+                detail_list_cost=0.0, total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
             )
-            {group_cost_rows_cte}, selected_owner_cost_rows AS (
-              SELECT *
-              FROM selected_owner_direct_cost_rows
-              {group_cost_rows_union}
-            ), selected_owner_cost_rows_with_partition AS (
-              SELECT
-                source_cost.*,
-                {source_export_partition_expr} AS source_export_partition_date
-              FROM selected_owner_cost_rows source_cost
-              {summary_lineage_join}
-            ), selected_owner_resource_detail_rows AS (
-              SELECT {resource_index_hint}
-                m.cost_dimension_hash AS cost_dimension_hash,
-                m.source_attribution_id AS source_attribution_id,
-                r.resource_name AS resource_name,
-                COALESCE(NULLIF(r.service_name, ''), '(no service)') AS service_name,
-                r.sku_name AS sku_name,
-                r.org AS org_name,
-                r.repo AS repo_name,
-                r.target_branch AS target_branch,
-                r.author AS author_name,
-                m.owner_mail AS owner_mail,
-                CAST(r.vendor_tags_json AS CHAR) AS vendor_tags_json,
-                r.usage_date AS usage_date,
-                r.namespace AS namespace,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN 0
-                  ELSE COALESCE(r.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                END AS usage_seconds,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN 0
-                  ELSE {resource_list_cost_expr} * m.list_cost / m.source_list_cost
-                END AS list_cost,
-                m.attribution_key AS attribution_key,
-                m.attribution_source AS attribution_source,
-                m.attribution_status AS attribution_status
-              FROM cost_unmatched_resource_daily r
-              -- Attribution remains the owner source of truth. Under residual
-              -- allocation, m carries the workload owner while source_* preserves
-              -- the original billing dimensions used to identify r.
-              JOIN selected_owner_cost_rows_with_partition m
-                ON m.usage_date = r.usage_date
-               AND m.vendor = r.vendor
-               AND m.account_id = r.account_id
-               AND {source_org_match}
-               AND {source_repo_match}
-               AND {source_author_match}
-               AND {source_branch_match}
-               AND {source_namespace_match}
-               AND {source_service_match}
-               AND {source_sku_match}
-               AND {source_resource_match}
-               -- Source hashes include the export partition. Resolve that lineage
-               -- before joining resource rows so identical billing dimensions from
-               -- separate export partitions cannot cross-multiply their costs.
-               AND (
-                 NULLIF(m.source_summary_row_hash, '') IS NULL
-                 OR m.source_export_partition_date = r.export_partition_date
-               )
-               -- A labeled attribution row identifies one specific resource slice.
-               -- Older unlabeled rows may still cover all matching resource rows.
-               AND (
-                 m.source_vendor_tags_json IS NULL
-                 OR m.source_vendor_tags_json = CAST(r.vendor_tags_json AS CHAR)
-               )
-              WHERE {resource_where_clause}
-                AND r.resource_name IS NOT NULL
-                AND r.resource_name <> ''
-            ), selected_owner_resource_coverage AS (
-              SELECT
-                cost_dimension_hash,
-                source_attribution_id,
-                SUM(COALESCE(usage_seconds, 0)) AS detailed_usage_seconds,
-                SUM(COALESCE(list_cost, 0)) AS detailed_list_cost
-              FROM selected_owner_resource_detail_rows
-              GROUP BY cost_dimension_hash, source_attribution_id
-            ), selected_owner_resource_rows AS (
-              SELECT
-                resource_name,
-                service_name,
-                sku_name,
-                org_name,
-                repo_name,
-                target_branch,
-                author_name,
-                owner_mail,
-                vendor_tags_json,
-                usage_date,
-                namespace,
-                usage_seconds,
-                list_cost,
-                attribution_key,
-                attribution_source,
-                attribution_status,
-                resource_name AS resource_group_key,
-                'resource_detail' AS resource_row_source
-              FROM selected_owner_resource_detail_rows
-              UNION ALL
-              -- Detail sync is optional and can lag. Retain any source amount not
-              -- yet covered by named resource details.
-              SELECT
-                m.source_resource_name AS resource_name,
-                COALESCE(NULLIF(m.source_service_name, ''), '(no service)') AS service_name,
-                m.source_sku_name AS sku_name,
-                m.source_org AS org_name,
-                m.source_repo AS repo_name,
-                m.source_target_branch AS target_branch,
-                m.source_author AS author_name,
-                m.owner_mail AS owner_mail,
-                m.source_vendor_tags_json AS vendor_tags_json,
-                m.usage_date AS usage_date,
-                m.source_namespace AS namespace,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN
-                    CASE
-                      WHEN COALESCE(m.usage_seconds, 0)
-                        > COALESCE(coverage.detailed_usage_seconds, 0)
-                      THEN COALESCE(m.usage_seconds, 0)
-                        - COALESCE(coverage.detailed_usage_seconds, 0)
-                      ELSE 0
-                    END
-                  WHEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                    > COALESCE(coverage.detailed_usage_seconds, 0)
-                  THEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                    - COALESCE(coverage.detailed_usage_seconds, 0)
-                  ELSE 0
-                END AS usage_seconds,
-                m.list_cost - COALESCE(coverage.detailed_list_cost, 0) AS list_cost,
-                m.attribution_key AS attribution_key,
-                m.attribution_source AS attribution_source,
-                m.attribution_status AS attribution_status,
-                m.cost_dimension_hash AS resource_group_key,
-                'attribution_fallback' AS resource_row_source
-              FROM selected_owner_cost_rows_with_partition m
-              LEFT JOIN selected_owner_resource_coverage coverage
-                ON coverage.cost_dimension_hash = m.cost_dimension_hash
-               AND coverage.source_attribution_id = m.source_attribution_id
-              WHERE m.list_cost - COALESCE(coverage.detailed_list_cost, 0) > 0.005
+
+        branch_clause = "AND s.target_branch = :branch" if filters.branch else ""
+        params = {
+            "basis_key": basis_key,
+            "owner_key": owner_key,
+            "start_date": filters.start_date,
+            "end_date": filters.end_date,
+            "cost_vendor": filters.cost_vendor,
+            "cost_account_id": filters.cost_account_id,
+            "service_name": service_filter_name,
+            "active_allocation_version": active_allocation_version,
+        }
+        if filters.branch:
+            params["branch"] = filters.branch
+        validity_clause = "(s.basis_key = 'native' OR p.source_allocation_version = :active_allocation_version)"
+        scoped_prefix = """
+            WITH scoped_sources AS (
+              SELECT vendor, account_id
+              FROM cost_sources
+              WHERE is_active = 1
+                AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
+                AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
             )
         """
-        query_params = {
-            **attr_params,
-            **resource_params,
-            "selected_owner": selected_owner,
-            "service_name": service_filter_name,
-        }
-        source_counts = connection.execute(
-            text(
-                f"""
-                {base_cte}
-                SELECT
-                  SUM(CASE WHEN resource_row_source = 'resource_detail' THEN 1 ELSE 0 END)
-                    AS resource_detail_rows,
-                  SUM(CASE WHEN resource_row_source = 'attribution_fallback' THEN 1 ELSE 0 END)
-                    AS attribution_fallback_rows
-                FROM selected_owner_resource_rows
-                """
-            ),
-            query_params,
-        ).mappings().one()
-        has_resource_detail_rows = int(source_counts["resource_detail_rows"] or 0) > 0
-        has_attribution_fallback_rows = int(source_counts["attribution_fallback_rows"] or 0) > 0
-        if has_resource_detail_rows and has_attribution_fallback_rows:
-            resource_data_source = "mixed"
-        elif has_resource_detail_rows:
-            resource_data_source = "cost_unmatched_resource_daily"
-        else:
-            resource_data_source = "cost_attribution_daily"
         service_rows = connection.execute(
             text(
                 f"""
-                {base_cte}
-                SELECT DISTINCT service_name
-                FROM selected_owner_resource_rows
+                {scoped_prefix}
+                SELECT DISTINCT COALESCE(NULLIF(s.service_name, ''), '(no service)') AS service_name
+                FROM cost_resource_serving_daily s
+                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
+                JOIN cost_resource_serving_publication p
+                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
+                 AND p.usage_date = s.usage_date
+                 AND p.active_materialization_version = s.materialization_version
+                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                  AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND {validity_clause} {branch_clause}
                 ORDER BY service_name
                 """
             ),
-            query_params,
+            params,
         ).mappings()
         services = [
             {"value": str(row["service_name"]), "label": str(row["service_name"])}
             for row in service_rows
-            if str(row["service_name"] or "").strip()
         ]
-
+        order_by = (
+            "usage_seconds DESC, list_cost DESC, resource_name"
+            if sort_by == "duration"
+            else "list_cost DESC, usage_seconds DESC, resource_name"
+        )
         rows = connection.execute(
             text(
                 f"""
-                {base_cte},
-                filtered_selected_owner_resource_rows AS (
-                  SELECT *
-                  FROM selected_owner_resource_rows
-                  WHERE (:service_name IS NULL OR service_name = :service_name)
-                ),
-                selected_owner_resources AS (
-                  SELECT
-                    resource_name,
-                    GROUP_CONCAT(DISTINCT service_name) AS service_name,
-                    GROUP_CONCAT(DISTINCT sku_name) AS sku_name,
-                    MAX(org_name) AS org_name,
-                    MAX(repo_name) AS repo_name,
-                    MAX(target_branch) AS target_branch,
-                    MAX(author_name) AS author_name,
-                    MAX(owner_mail) AS owner_mail,
-                    MAX(vendor_tags_json) AS vendor_tags_json,
-                    MIN(usage_date) AS first_seen_date,
-                    MAX(usage_date) AS last_seen_date,
-                    GROUP_CONCAT(DISTINCT COALESCE(namespace, '<null>')) AS allocation_buckets,
-                    SUM(COALESCE(usage_seconds, 0)) AS usage_seconds,
-                    SUM(list_cost) AS list_cost,
-                    MAX(attribution_key) AS attribution_key,
-                    MAX(attribution_source) AS attribution_source,
-                    MAX(attribution_status) AS attribution_status
-                  FROM filtered_selected_owner_resource_rows
-                  GROUP BY
-                    resource_name,
-                    service_name,
-                    sku_name,
-                    org_name,
-                    repo_name,
-                    target_branch,
-                    author_name,
-                    owner_mail,
-                    vendor_tags_json,
-                    namespace,
-                    attribution_key,
-                    attribution_source,
-                    attribution_status,
-                    resource_row_source
-                )
+                {scoped_prefix}
                 SELECT
-                  u.resource_name AS resource_name,
-                  u.service_name AS service_name,
-                  u.sku_name AS sku_name,
-                  u.org_name AS org_name,
-                  u.repo_name AS repo_name,
-                  u.target_branch AS target_branch,
-                  u.author_name AS author_name,
-                  u.owner_mail AS owner_mail,
-                  u.vendor_tags_json AS vendor_tags_json,
-                  u.first_seen_date AS first_seen_date,
-                  u.last_seen_date AS last_seen_date,
-                  u.attribution_key AS attribution_key,
-                  u.attribution_source AS attribution_source,
-                  u.attribution_status AS attribution_status,
-                  u.allocation_buckets AS allocation_buckets,
-                  u.usage_seconds AS usage_seconds,
-                  u.list_cost AS list_cost
-                FROM selected_owner_resources u
+                  s.resource_group_key,
+                  MIN(s.resource_name) AS resource_name,
+                  GROUP_CONCAT(DISTINCT s.service_name) AS service_name,
+                  MIN(s.representative_labels_json) AS representative_labels_json,
+                  MIN(s.usage_date) AS first_seen_date,
+                  MAX(s.usage_date) AS last_seen_date,
+                  SUM(COALESCE(s.usage_seconds, 0)) AS usage_seconds,
+                  SUM(s.list_cost) AS list_cost,
+                  SUM(s.detail_list_cost) AS detail_list_cost,
+                  SUM(s.fallback_list_cost) AS fallback_list_cost
+                FROM cost_resource_serving_daily s
+                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
+                JOIN cost_resource_serving_publication p
+                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
+                 AND p.usage_date = s.usage_date
+                 AND p.active_materialization_version = s.materialization_version
+                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                  AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND (:service_name IS NULL OR s.service_name = :service_name)
+                  AND {validity_clause} {branch_clause}
+                GROUP BY s.resource_group_key
                 ORDER BY {order_by}
                 LIMIT :limit
                 """
             ),
-            {
-                **query_params,
-                "limit": UNMATCHED_RESOURCE_LIMIT,
-            },
+            {**params, "limit": UNMATCHED_RESOURCE_LIMIT},
         ).mappings()
-        items = [
-            {
-                "resource_name": str(row["resource_name"] or "(no resource name)"),
-                "service_name": str(row["service_name"] or ""),
-                "sku_name": str(row["sku_name"] or ""),
-                "repo_name": str(row["repo_name"] or ""),
-                "labels": _resource_labels(row),
-                "allocation_buckets": str(row["allocation_buckets"] or ""),
-                "first_seen_date": _date_text(row["first_seen_date"]),
-                "last_seen_date": _date_text(row["last_seen_date"]),
-                "observed_days": _observed_days(
-                    row["first_seen_date"],
-                    row["last_seen_date"],
-                    window_start=filters.start_date,
-                    window_end=filters.end_date,
-                ),
-                "attribution_source": str(row["attribution_source"] or ""),
-                "attribution_status": str(row["attribution_status"] or ""),
-                "usage_seconds": round(float(to_number(row["usage_seconds"]) or 0), 2),
-                "list_cost": _money(row["list_cost"]),
-            }
-            for row in rows
-        ]
+        coverage = connection.execute(
+            text(
+                f"""
+                {scoped_prefix}
+                SELECT
+                  COALESCE(SUM(s.detail_list_cost), 0) AS detail_list_cost,
+                  COALESCE(SUM(s.fallback_list_cost), 0) AS fallback_list_cost,
+                  COALESCE(SUM(s.list_cost), 0) AS total_list_cost
+                FROM cost_resource_serving_daily s
+                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
+                JOIN cost_resource_serving_publication p
+                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
+                 AND p.usage_date = s.usage_date
+                 AND p.active_materialization_version = s.materialization_version
+                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                  AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND (:service_name IS NULL OR s.service_name = :service_name)
+                  AND {validity_clause} {branch_clause}
+                """
+            ),
+            params,
+        ).mappings().one()
+        detail_list_cost = Decimal(str(to_number(coverage["detail_list_cost"]) or 0))
+        fallback_list_cost = Decimal(str(to_number(coverage["fallback_list_cost"]) or 0))
+        total_list_cost = Decimal(str(to_number(coverage["total_list_cost"]) or 0))
+        items = []
+        for row in rows:
+            detail = to_number(row["detail_list_cost"]) or 0
+            fallback = to_number(row["fallback_list_cost"]) or 0
+            items.append(
+                {
+                    "resource_name": str(row["resource_name"] or "(no resource name)"),
+                    "service_name": str(row["service_name"] or ""),
+                    "sku_name": "",
+                    "repo_name": "",
+                    "labels": _format_vendor_labels(row["representative_labels_json"]),
+                    "allocation_buckets": "",
+                    "first_seen_date": _date_text(row["first_seen_date"]),
+                    "last_seen_date": _date_text(row["last_seen_date"]),
+                    "observed_days": _observed_days(
+                        row["first_seen_date"], row["last_seen_date"],
+                        window_start=filters.start_date, window_end=filters.end_date,
+                    ),
+                    "attribution_source": "",
+                    "attribution_status": "",
+                    "usage_seconds": round(float(to_number(row["usage_seconds"]) or 0), 2),
+                    "list_cost": _money(row["list_cost"]),
+                    "resource_data_source": (
+                        "mixed" if detail != 0 and fallback != 0 else
+                        "resource_detail" if detail != 0 else "attribution_fallback"
+                    ),
+                    "resource_detail_cost": _money(detail),
+                }
+            )
+    resource_data_source = "mixed" if detail_list_cost != 0 and fallback_list_cost != 0 else (
+        "resource_detail" if detail_list_cost != 0 else "attribution_fallback"
+    )
+    return _resource_serving_response(
+        items=items, filters=filters, requested_filters=requested_filters,
+        selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+        allocation_basis=requested_basis, services=services, pending_dates=[],
+        detail_list_cost=float(detail_list_cost), total_list_cost=float(total_list_cost),
+        resource_data_source=resource_data_source,
+    )
 
+
+def _resource_serving_dates(start_date: date | None, end_date: date | None) -> tuple[date, ...]:
+    if start_date is None or end_date is None:
+        return ()
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current)
+        current += timedelta(days=1)
+    return tuple(dates)
+
+
+def _resource_serving_active_allocation_version(connection: Connection) -> str | None:
+    if not _table_exists(connection, "cost_allocation_publication"):
+        return None
+    return connection.execute(
+        text("SELECT active_allocation_version FROM cost_allocation_publication WHERE publication_name = 'dashboard'")
+    ).scalar_one_or_none()
+
+
+def _resource_serving_window_is_valid(
+    row: Mapping[str, Any] | None,
+    *,
+    basis_key: str,
+    active_allocation_version: str | None,
+) -> bool:
+    if row is None:
+        return False
+    if int(row["source_row_count"] or 0) > 0 and int(row["serving_row_count"] or 0) == 0:
+        return False
+    return basis_key == "native" or (
+        active_allocation_version is not None
+        and row["source_allocation_version"] == active_allocation_version
+    )
+
+
+def _resource_serving_response(
+    *,
+    items: list[dict[str, Any]],
+    filters: CommonFilters,
+    requested_filters: CommonFilters,
+    selected_owner: str,
+    service_name: str | None,
+    sort_by: str,
+    allocation_basis: str,
+    services: list[dict[str, str]],
+    pending_dates: list[str],
+    detail_list_cost: float,
+    total_list_cost: float,
+    resource_data_source: str,
+) -> dict[str, Any]:
     return {
         "items": items,
         "meta": {
@@ -1847,10 +1690,14 @@ def get_unmatched_resources(
             "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
             "limit": UNMATCHED_RESOURCE_LIMIT,
             "owner": selected_owner,
-            "service_name": service_filter_name,
+            "service_name": service_name,
             "sort_by": sort_by,
-            "allocation_basis": basis.name,
+            "allocation_basis": allocation_basis,
             "resource_data_source": resource_data_source,
+            "resource_detail_cost": _money(detail_list_cost),
+            "resource_detail_coverage_pct": rate_pct(detail_list_cost, total_list_cost),
+            "materialized": True,
+            "pending_dates": pending_dates,
             "services": services,
         },
     }

@@ -25,6 +25,7 @@ from cost_insight.jobs.materialize_cost_allocations import (
     publish_materialized_cost_allocations,
     run_materialize_cost_allocations,
 )
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
@@ -218,6 +219,21 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_allocations.add_argument("--processing-end-date", type=_parse_date)
     materialize_allocations.add_argument("--no-publish", action="store_true")
     materialize_allocations.add_argument("--publish-only", action="store_true")
+
+    materialize_resources = subparsers.add_parser(
+        "materialize-resource-serving",
+        help="Build and publish the bounded daily resource drilldown projection",
+    )
+    materialize_resources.add_argument("--start-date", type=_parse_date, required=True)
+    materialize_resources.add_argument("--end-date", type=_parse_date, required=True)
+    materialize_resources.add_argument(
+        "--basis",
+        choices=("native", "kubernetes_allocated", "eq_allocated", "kubernetes_eq_allocated"),
+    )
+    materialize_resources.add_argument("--processing-start-date", type=_parse_date)
+    materialize_resources.add_argument("--processing-end-date", type=_parse_date)
+    materialize_resources.add_argument("--materialization-version")
+    materialize_resources.add_argument("--dry-run", action="store_true")
 
     sync_gcs_cache = subparsers.add_parser(
         "sync-gcs-cache-last-seen",
@@ -702,6 +718,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 processing_start_date=args.processing_start_date,
                 processing_end_date=args.processing_end_date,
                 publish=not args.no_publish,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "materialize-resource-serving":
+        if (args.processing_start_date is None) != (args.processing_end_date is None):
+            raise ValueError("processing start and end dates must be provided together")
+        engine = build_engine(settings)
+        try:
+            summary = run_materialize_resource_serving(
+                engine,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                basis=args.basis,
+                processing_start_date=args.processing_start_date,
+                processing_end_date=args.processing_end_date,
+                materialization_version=args.materialization_version,
+                dry_run=args.dry_run,
+                batch_size=settings.gcp_billing.page_size,
             )
             print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0

@@ -34,4 +34,5 @@ go.work.sum
 
 .config
 ci-dashboard/.local/
+.review-loop/
 dl/server

@@ -19,6 +19,7 @@ Current design:
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
 - [Unified cost allocation design](docs/cost-allocation-unification-design.md)
+- [Resource serving materialization design (proposed)](docs/resource-serving-materialization-design.md)
 
 ## Local Setup
 

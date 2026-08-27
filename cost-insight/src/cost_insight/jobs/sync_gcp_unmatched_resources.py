@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
     bind_decimal_rows,
     coerce_date,
@@ -38,6 +39,7 @@ HASH_FIELDS = (
     "billing_account_id",
     "export_partition_date",
     "usage_date",
+    "region",
     "service_name",
     "sku_name",
     "namespace",
@@ -47,6 +49,7 @@ HASH_FIELDS = (
     "target_branch",
     "vendor_tags_json",
     "resource_name",
+    "source_summary_row_hash",
 )
 SPLIT_HASH_FIELDS = HASH_FIELDS + (
     "source_allocation_scope",
@@ -197,14 +200,16 @@ def _watermark(
 
 
 def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
-    is_split_source = "source_allocation_scope" in row
+    is_split_source = bool(row.get("source_schema_version"))
     normalized = {
         "vendor": nullable_text(row.get("vendor")) or "gcp",
         "account_id": nullable_text(row.get("account_id")),
         "billing_account_id": nullable_text(row.get("billing_account_id")),
         "export_partition_date": coerce_date(row.get("export_partition_date")),
         "usage_date": coerce_date(row.get("usage_date")),
+        "region": nullable_text(row.get("region")),
         "service_name": nullable_text(row.get("service_name")),
+
         "sku_name": nullable_text(row.get("sku_name")),
         "namespace": nullable_text(row.get("namespace")),
         "author": nullable_text(row.get("author")),
@@ -212,11 +217,21 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
+        # ``resource_name`` is concrete display identity. The source summary can
+        # intentionally use a workload name (or NULL), so keep it separately.
         "resource_name": nullable_text(row.get("resource_name")),
+        "summary_resource_name": nullable_text(row.get("summary_resource_name")),
         "parent_resource_name": nullable_text(row.get("parent_resource_name")),
+        "source_schema_version": nullable_text(row.get("source_schema_version")),
         "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
+        "cluster_name": nullable_text(row.get("cluster_name")),
+        "cluster_location": nullable_text(row.get("cluster_location")),
+        "kubernetes_cost_class": nullable_text(row.get("kubernetes_cost_class")),
+        "kubernetes_residual_type": nullable_text(row.get("kubernetes_residual_type")),
+        "kubernetes_cost_component": nullable_text(row.get("kubernetes_cost_component")),
         "workload_name": nullable_text(row.get("workload_name")),
         "workload_type": nullable_text(row.get("workload_type")),
+
         "owner": nullable_text(row.get("owner")),
         "service": nullable_text(row.get("service")),
         "project": nullable_text(row.get("project")),
@@ -237,6 +252,15 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["resource_name"] is None:
         raise ValueError(f"Missing resource_name in unmatched resource row: {row!r}")
     normalized["is_split_source"] = is_split_source
+    summary_identity = {
+        **normalized,
+        "resource_name": normalized["summary_resource_name"],
+    }
+    # GCP's summary query intentionally rolls all resource labels into one
+    # attribution fact; labels remain resource metadata, not summary identity.
+    if normalized["vendor"] == "gcp":
+        summary_identity["vendor_tags_json"] = None
+    normalized["source_summary_row_hash"] = build_gcp_summary_row_hash(summary_identity)
     normalized["source_row_hash"] = build_unmatched_resource_row_hash(normalized)
     return normalized
 
@@ -272,6 +296,8 @@ def write_unmatched_resource_rows(
             _build_upsert_statement(connection, target_table=target_table),
             _bind_rows(connection, rows),
         )
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _invalidate_resource_serving_publications(connection, rows)
     return len(rows)
 
 
@@ -320,15 +346,18 @@ def replace_unmatched_resource_usage_dates(
     rows_written = 0
     batch: list[dict[str, Any]] = []
     with engine.begin() as connection:
+        replacement_params = {
+            "vendor": vendor,
+            "account_id": account_id,
+            "usage_start_date": usage_start_date,
+            "usage_end_date": usage_end_date,
+        }
         connection.execute(
             _delete_unmatched_resource_usage_dates_statement(target_table),
-            {
-                "vendor": vendor,
-                "account_id": account_id,
-                "usage_start_date": usage_start_date,
-                "usage_end_date": usage_end_date,
-            },
+            replacement_params,
         )
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _invalidate_resource_serving_publication_range(connection, replacement_params)
         for row in rows:
             batch.append(row)
             if len(batch) >= batch_size:
@@ -351,6 +380,49 @@ def _write_unmatched_resource_rows(
         _build_upsert_statement(connection, target_table=target_table),
         _bind_rows(connection, rows),
     )
+    if target_table == UNMATCHED_RESOURCE_TABLE:
+        _invalidate_resource_serving_publications(connection, rows)
+
+
+def _invalidate_resource_serving_publication_range(
+    connection: Connection,
+    params: dict[str, Any],
+) -> None:
+    if _table_exists(connection, "cost_resource_serving_publication"):
+        connection.execute(_INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE, params)
+
+
+def _invalidate_resource_serving_publications(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    if not _table_exists(connection, "cost_resource_serving_publication"):
+        return
+    for vendor, account_id, usage_date in {
+        (row["vendor"], row["account_id"], row["usage_date"]) for row in rows
+    }:
+        connection.execute(
+            _INVALIDATE_RESOURCE_SERVING_PUBLICATION,
+            {"vendor": vendor, "account_id": account_id, "usage_date": usage_date},
+        )
+
+
+def _table_exists(connection: Connection, table_name: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return connection.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table_name"),
+            {"table_name": table_name},
+        ).first() is not None
+    return connection.execute(
+        text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name},
+    ).first() is not None
 
 
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -405,6 +477,7 @@ def _build_upsert_statement(
               billing_account_id,
               export_partition_date,
               usage_date,
+              region,
               service_name,
               sku_name,
               namespace,
@@ -428,13 +501,15 @@ def _build_upsert_statement(
               credit_amount,
               net_cost,
               source_export_time,
-              source_row_hash
+              source_row_hash,
+              source_summary_row_hash
             ) VALUES (
               :vendor,
               :account_id,
               :billing_account_id,
               :export_partition_date,
               :usage_date,
+              :region,
               :service_name,
               :sku_name,
               :namespace,
@@ -458,7 +533,8 @@ def _build_upsert_statement(
               :credit_amount,
               :net_cost,
               :source_export_time,
-              :source_row_hash
+              :source_row_hash,
+              :source_summary_row_hash
             )
             ON CONFLICT(vendor, account_id, export_partition_date, source_row_hash)
             DO UPDATE SET
@@ -477,6 +553,8 @@ def _build_upsert_statement(
               project = excluded.project,
               service_exec_id = excluded.service_exec_id,
               source_export_time = excluded.source_export_time,
+              source_summary_row_hash = excluded.source_summary_row_hash,
+              region = excluded.region,
               updated_at = CURRENT_TIMESTAMP
             """
         )
@@ -488,6 +566,7 @@ def _build_upsert_statement(
           billing_account_id,
           export_partition_date,
           usage_date,
+          region,
           service_name,
           sku_name,
           namespace,
@@ -511,13 +590,15 @@ def _build_upsert_statement(
           credit_amount,
           net_cost,
           source_export_time,
-          source_row_hash
+          source_row_hash,
+          source_summary_row_hash
         ) VALUES (
           :vendor,
           :account_id,
           :billing_account_id,
           :export_partition_date,
           :usage_date,
+          :region,
           :service_name,
           :sku_name,
           :namespace,
@@ -541,7 +622,8 @@ def _build_upsert_statement(
           :credit_amount,
           :net_cost,
           :source_export_time,
-          :source_row_hash
+          :source_row_hash,
+          :source_summary_row_hash
         )
         ON DUPLICATE KEY UPDATE
           -- Dimension columns are part of source_row_hash; same hash means same dimensions.
@@ -560,6 +642,8 @@ def _build_upsert_statement(
           project = VALUES(project),
           service_exec_id = VALUES(service_exec_id),
           source_export_time = VALUES(source_export_time),
+          source_summary_row_hash = VALUES(source_summary_row_hash),
+          region = VALUES(region),
           updated_at = CURRENT_TIMESTAMP
         """
     )
@@ -580,6 +664,21 @@ def _delete_unmatched_resource_usage_dates_statement(target_table: str):
           AND usage_date BETWEEN :usage_start_date AND :usage_end_date
         """
     )
+
+
+_INVALIDATE_RESOURCE_SERVING_PUBLICATION = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE vendor = :vendor AND account_id = :account_id AND usage_date = :usage_date
+    """
+)
+_INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE vendor = :vendor AND account_id = :account_id
+      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    """
+)
 
 
 _DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
