@@ -62,6 +62,8 @@ SPLIT_HASH_FIELDS = HASH_FIELDS + (
     "service_exec_id",
 )
 UNMATCHED_RESOURCE_TABLE = "cost_unmatched_resource_daily"
+# Larger batches with large resource labels exceed TiDB's per-query memory limit.
+RESOURCE_WRITE_BATCH_SIZE = 10
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -292,10 +294,12 @@ def write_unmatched_resource_rows(
     with engine.begin() as connection:
         if target_table == UNMATCHED_RESOURCE_TABLE:
             _delete_superseded_unlabeled_resource_rows(connection, rows)
-        connection.execute(
-            _build_upsert_statement(connection, target_table=target_table),
-            _bind_rows(connection, rows),
-        )
+        for start in range(0, len(rows), RESOURCE_WRITE_BATCH_SIZE):
+            _write_unmatched_resource_rows(
+                connection,
+                rows[start : start + RESOURCE_WRITE_BATCH_SIZE],
+                target_table=target_table,
+            )
         if target_table == UNMATCHED_RESOURCE_TABLE:
             _invalidate_resource_serving_publications(connection, rows)
     return len(rows)
@@ -344,6 +348,7 @@ def replace_unmatched_resource_usage_dates(
         )
         return 0
     rows_written = 0
+    batch_size = min(batch_size, RESOURCE_WRITE_BATCH_SIZE)
     batch: list[dict[str, Any]] = []
     with engine.begin() as connection:
         replacement_params = {
@@ -380,8 +385,6 @@ def _write_unmatched_resource_rows(
         _build_upsert_statement(connection, target_table=target_table),
         _bind_rows(connection, rows),
     )
-    if target_table == UNMATCHED_RESOURCE_TABLE:
-        _invalidate_resource_serving_publications(connection, rows)
 
 
 def _invalidate_resource_serving_publication_range(
