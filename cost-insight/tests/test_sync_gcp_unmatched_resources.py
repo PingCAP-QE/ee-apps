@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, text
 
+import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import hash_value
 from cost_insight.jobs import state_store
@@ -315,6 +316,35 @@ def test_run_sync_gcp_unmatched_resources_writes_rows() -> None:
         assert count == 1
         assert state is not None
         assert state.last_status == "succeeded"
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_unmatched_resources_caps_database_write_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account", page_size=11)
+    batch_sizes: list[int] = []
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+    def record_write(*args, **kwargs):
+        batch_sizes.append(len(args[1]))
+        return original_write(*args, **kwargs)
+
+    rows = [{**_resource_row(), "resource_name": f"tidb-test-pod-{index}"} for index in range(11)]
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    try:
+        summary = run_sync_gcp_unmatched_resources(
+            engine,
+            settings=settings,
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            fetch_rows=lambda **_kwargs: rows,
+        )
+
+        assert summary.rows_written == 11
+        assert batch_sizes == [10, 1]
     finally:
         engine.dispose()
 

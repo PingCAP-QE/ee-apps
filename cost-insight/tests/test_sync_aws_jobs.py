@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, text
 
+import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
 from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
@@ -609,6 +610,36 @@ def test_run_sync_aws_unmatched_resources_writes_rows() -> None:
         engine.dispose()
 
 
+def test_run_sync_aws_unmatched_resources_caps_database_write_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=11)
+    batch_sizes: list[int] = []
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+    def record_write(*args, **kwargs):
+        batch_sizes.append(len(args[1]))
+        return original_write(*args, **kwargs)
+
+    rows = [{**_resource_row(), "resource_name": f"i-{index:016x}"} for index in range(11)]
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    try:
+        summary = run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id="946646677266",
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 1),
+            fetch_rows=lambda **_kwargs: rows,
+        )
+
+        assert summary.rows_written == 11
+        assert batch_sizes == [10, 1]
+    finally:
+        engine.dispose()
+
+
 def test_split_unmatched_replacement_only_deletes_requested_usage_dates() -> None:
     engine = _sqlite_engine()
     settings = AwsBillingSettings(account_id="946646677266", page_size=2)
@@ -661,6 +692,44 @@ def test_split_unmatched_replacement_only_deletes_requested_usage_dates() -> Non
             ("2026-05-01", "i-0123456789abcdef0"),
             ("2026-05-02", "i-0123456789abcdef2"),
         ]
+    finally:
+        engine.dispose()
+
+
+def test_split_unmatched_replacement_caps_database_write_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=11)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    batch_sizes: list[int] = []
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+    def record_write(*args, **kwargs):
+        batch_sizes.append(len(args[1]))
+        return original_write(*args, **kwargs)
+
+    rows = [{**_resource_row(), "resource_name": f"i-{index:016x}"} for index in range(11)]
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    try:
+        summary = run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            replace_existing_usage_dates=True,
+            fetch_rows=lambda **_kwargs: rows,
+        )
+
+        assert summary.rows_written == 11
+        assert batch_sizes == [10, 1]
     finally:
         engine.dispose()
 
