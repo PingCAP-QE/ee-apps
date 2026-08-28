@@ -64,6 +64,8 @@ SPLIT_HASH_FIELDS = HASH_FIELDS + (
 UNMATCHED_RESOURCE_TABLE = "cost_unmatched_resource_daily"
 # Larger batches with large resource labels exceed TiDB's per-query memory limit.
 RESOURCE_WRITE_BATCH_SIZE = 10
+# A usage-date replacement must also bound its total transaction size.
+RESOURCE_REPLACEMENT_TRANSACTION_ROW_LIMIT = 1_000
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -317,6 +319,7 @@ def replace_unmatched_resource_usage_dates(
     dry_run: bool,
     batch_size: int,
     target_table: str = UNMATCHED_RESOURCE_TABLE,
+    transaction_row_limit: int | None = None,
 ) -> int:
     """Replace a bounded usage-date range without deleting other month rows."""
     if usage_start_date > usage_end_date:
@@ -347,32 +350,84 @@ def replace_unmatched_resource_usage_dates(
             },
         )
         return 0
-    rows_written = 0
+    if transaction_row_limit is not None and transaction_row_limit <= 0:
+        raise ValueError("transaction_row_limit must be positive")
     batch_size = min(batch_size, RESOURCE_WRITE_BATCH_SIZE)
-    batch: list[dict[str, Any]] = []
+    replacement_params = {
+        "vendor": vendor,
+        "account_id": account_id,
+        "usage_start_date": usage_start_date,
+        "usage_end_date": usage_end_date,
+    }
+    if transaction_row_limit is None:
+        rows_written = 0
+        batch: list[dict[str, Any]] = []
+        with engine.begin() as connection:
+            connection.execute(
+                _delete_unmatched_resource_usage_dates_statement(target_table),
+                replacement_params,
+            )
+            if target_table == UNMATCHED_RESOURCE_TABLE:
+                _invalidate_resource_serving_publication_range(connection, replacement_params)
+            for row in rows:
+                batch.append(row)
+                if len(batch) >= batch_size:
+                    _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+                    rows_written += len(batch)
+                    batch.clear()
+            if batch:
+                _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+                rows_written += len(batch)
+        return rows_written
+
+    # The historical baseline opts in to bounded transactions. Invalidate
+    # first, so a failed reimport cannot publish partial raw rows; a retry
+    # deletes and rebuilds the whole requested range.
     with engine.begin() as connection:
-        replacement_params = {
-            "vendor": vendor,
-            "account_id": account_id,
-            "usage_start_date": usage_start_date,
-            "usage_end_date": usage_end_date,
-        }
         connection.execute(
             _delete_unmatched_resource_usage_dates_statement(target_table),
             replacement_params,
         )
         if target_table == UNMATCHED_RESOURCE_TABLE:
             _invalidate_resource_serving_publication_range(connection, replacement_params)
-        for row in rows:
-            batch.append(row)
-            if len(batch) >= batch_size:
-                _write_unmatched_resource_rows(connection, batch, target_table=target_table)
-                rows_written += len(batch)
-                batch.clear()
-        if batch:
-            _write_unmatched_resource_rows(connection, batch, target_table=target_table)
-            rows_written += len(batch)
+
+    rows_written = 0
+    transaction_rows: list[dict[str, Any]] = []
+    for row in rows:
+        transaction_rows.append(row)
+        if len(transaction_rows) >= transaction_row_limit:
+            rows_written += _write_unmatched_resource_replacement_transaction(
+                engine,
+                transaction_rows,
+                batch_size=batch_size,
+                target_table=target_table,
+            )
+            transaction_rows.clear()
+    if transaction_rows:
+        rows_written += _write_unmatched_resource_replacement_transaction(
+            engine,
+            transaction_rows,
+            batch_size=batch_size,
+            target_table=target_table,
+        )
     return rows_written
+
+
+def _write_unmatched_resource_replacement_transaction(
+    engine: Engine,
+    rows: Sequence[dict[str, Any]],
+    *,
+    batch_size: int,
+    target_table: str,
+) -> int:
+    with engine.begin() as connection:
+        for start in range(0, len(rows), batch_size):
+            _write_unmatched_resource_rows(
+                connection,
+                rows[start : start + batch_size],
+                target_table=target_table,
+            )
+    return len(rows)
 
 
 def _write_unmatched_resource_rows(

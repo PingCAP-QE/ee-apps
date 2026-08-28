@@ -233,6 +233,138 @@ def test_resource_replacement_invalidates_the_full_serving_window() -> None:
         engine.dispose()
 
 
+def test_resource_replacement_keeps_partial_raw_rows_unpublished_and_retries_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    rows = [
+        _normalize_resource_row({**_resource_row(), "resource_name": f"tidb-test-pod-{index}"})
+        for index in range(5)
+    ]
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+    write_calls = 0
+
+    def fail_on_second_transaction(*args, **kwargs):
+        nonlocal write_calls
+        write_calls += 1
+        if write_calls == 2:
+            raise ConnectionError("simulated TiDB connection loss")
+        return original_write(*args, **kwargs)
+
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", fail_on_second_transaction)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_resource_serving_publication
+                    VALUES ('native', 'gcp', 'pingcap-testing-account', '2026-05-18')
+                    """
+                )
+            )
+
+        with pytest.raises(ConnectionError, match="simulated TiDB connection loss"):
+            replace_unmatched_resource_usage_dates(
+                engine,
+                rows,
+                row_count=len(rows),
+                vendor="gcp",
+                account_id="pingcap-testing-account",
+                usage_start_date=date(2026, 5, 18),
+                usage_end_date=date(2026, 5, 18),
+                dry_run=False,
+                batch_size=10,
+                transaction_row_limit=2,
+            )
+
+        with engine.begin() as connection:
+            partial_rows = connection.execute(
+                text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
+            ).scalar_one()
+            publication_count = connection.execute(
+                text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+            ).scalar_one()
+        assert partial_rows == 2
+        assert publication_count == 0
+
+        monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", original_write)
+        rows_written = replace_unmatched_resource_usage_dates(
+            engine,
+            rows,
+            row_count=len(rows),
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            dry_run=False,
+            batch_size=10,
+            transaction_row_limit=2,
+        )
+        with engine.begin() as connection:
+            row_count = connection.execute(
+                text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
+            ).scalar_one()
+        assert rows_written == len(rows)
+        assert row_count == len(rows)
+    finally:
+        engine.dispose()
+
+
+def test_resource_replacement_remains_atomic_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+    def fail_write(*args, **kwargs):
+        raise ConnectionError("simulated TiDB connection loss")
+
+    try:
+        run_sync_gcp_unmatched_resources(
+            engine,
+            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_resource_serving_publication
+                    VALUES ('native', 'gcp', 'pingcap-testing-account', '2026-05-18')
+                    """
+                )
+            )
+        monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", fail_write)
+
+        with pytest.raises(ConnectionError, match="simulated TiDB connection loss"):
+            replace_unmatched_resource_usage_dates(
+                engine,
+                [_normalize_resource_row({**_resource_row(), "resource_name": "replacement"})],
+                row_count=1,
+                vendor="gcp",
+                account_id="pingcap-testing-account",
+                usage_start_date=date(2026, 5, 18),
+                usage_end_date=date(2026, 5, 18),
+                dry_run=False,
+                batch_size=10,
+            )
+
+        with engine.begin() as connection:
+            row_count = connection.execute(
+                text("SELECT COUNT(*) FROM cost_unmatched_resource_daily")
+            ).scalar_one()
+            publication_count = connection.execute(
+                text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+            ).scalar_one()
+        assert row_count == 1
+        assert publication_count == 1
+    finally:
+        monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", original_write)
+        engine.dispose()
+
+
 def test_gcp_resource_lineage_matches_the_summary_identity() -> None:
     resource = _normalize_resource_row(
         {**_resource_row(), "vendor_tags_json": {"cluster": "prow"}}
