@@ -63,6 +63,62 @@ def test_resource_serving_retains_partial_detail_as_explicit_fallback() -> None:
     assert {row["owner"] for row in rows} == {""}
 
 
+def test_resource_serving_merges_different_roster_metadata_for_one_resource() -> None:
+    rows = build_resource_serving_rows(
+        source_rows=(
+            _source(
+                source_summary_row_hash="summary-a",
+                source_fact_hash="source-a",
+                group_id=None,
+                manager_id=None,
+                usage_seconds=Decimal("10"),
+                list_cost=Decimal("10"),
+                effective_cost=Decimal("10"),
+                credit_amount=Decimal(),
+                net_cost=Decimal("10"),
+            ),
+            _source(
+                source_summary_row_hash="summary-b",
+                source_fact_hash="source-b",
+                group_id=229,
+                manager_id=483,
+                usage_seconds=Decimal("20"),
+                list_cost=Decimal("20"),
+                effective_cost=Decimal("20"),
+                credit_amount=Decimal(),
+                net_cost=Decimal("20"),
+            ),
+        ),
+        detail_rows=(
+            {
+                "source_summary_row_hash": "summary-a",
+                "resource_name": "instance-1",
+                "parent_resource_name": None,
+                "service_name": "Compute Engine",
+                "vendor_tags_json": None,
+                "usage_seconds": Decimal("10"),
+                "list_cost": Decimal("10"),
+            },
+            {
+                "source_summary_row_hash": "summary-b",
+                "resource_name": "instance-1",
+                "parent_resource_name": None,
+                "service_name": "Compute Engine",
+                "vendor_tags_json": None,
+                "usage_seconds": Decimal("20"),
+                "list_cost": Decimal("20"),
+            },
+        ),
+        basis_key="native",
+        materialization_version="v1",
+        calculated_at=datetime(2026, 8, 11),
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["list_cost"] == Decimal("30")
+    assert rows[0]["source_row_count"] == 2
+
+
 def test_resource_serving_expands_grouped_kubernetes_lineage() -> None:
     rows = build_resource_serving_rows(
         source_rows=(_source(source_summary_row_hash=None, source_fact_hash="group-source"),),
@@ -227,7 +283,9 @@ _SCHEMA = (
       resource_key TEXT, resource_name TEXT, service_name TEXT, resource_identity_kind TEXT,
       representative_labels_json TEXT, metadata_variant_count INTEGER, detail_list_cost REAL,
       fallback_list_cost REAL, usage_seconds REAL, list_cost REAL, effective_cost REAL,
-      credit_amount REAL, net_cost REAL, source_row_count INTEGER, calculated_at TEXT
+      credit_amount REAL, net_cost REAL, source_row_count INTEGER, calculated_at TEXT,
+      UNIQUE (materialization_version, basis_key, vendor, account_id, usage_date,
+              owner_key, resource_key, target_branch)
     )
     """,
     """

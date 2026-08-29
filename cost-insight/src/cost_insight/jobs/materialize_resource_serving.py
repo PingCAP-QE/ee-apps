@@ -349,11 +349,18 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
     label_variants: dict[tuple[Any, ...], set[str]] = defaultdict(set)
     largest_label: dict[tuple[Any, ...], tuple[Decimal, str]] = {}
     for row in rows:
+        # Keep this exactly aligned with uk_resource_serving_versioned. Roster
+        # metadata can differ between source facts for one owner/resource, but
+        # it is display context rather than part of serving-row identity.
         key = (
-            row["materialization_version"], row["basis_key"], row["usage_date"], row["vendor"],
-            row["account_id"], row["owner_key"], row["owner"], row.get("group_id"),
-            row.get("manager_id"), row.get("target_branch"), row["resource_group_key"], row["resource_key"],
-            row["resource_name"], row.get("service_name"), row["resource_identity_kind"],
+            row["materialization_version"],
+            row["basis_key"],
+            row["vendor"],
+            row["account_id"],
+            row["usage_date"],
+            row["owner_key"],
+            row["resource_key"],
+            row.get("target_branch"),
         )
         current = grouped.get(key)
         if current is None:
