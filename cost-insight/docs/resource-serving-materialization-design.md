@@ -411,8 +411,11 @@ follow-on serving job together; the safe degraded state is an HTTP 200 pending
 panel, never old chargeback data or the legacy join.
 
 When attribution refresh replaces a date, it invalidates that date's native
-resource-serving publication. When resource detail is reimported, it invalidates
-the affected daily serving publication and reruns materialization.
+resource-serving publication and removes the global allocation publication,
+so derived views cannot serve a version built from stale native facts. A complete
+allocation rebuild must pass conservation checks before it republishes the global
+pointer. When resource detail is reimported, it invalidates the affected daily
+serving publication and reruns materialization.
 
 ### Daily incremental resource import
 
