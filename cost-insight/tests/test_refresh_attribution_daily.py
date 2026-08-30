@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
@@ -252,9 +253,104 @@ def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> N
         engine.dispose()
 
 
+def test_run_refresh_aws_attribution_requires_tcms_before_writing() -> None:
+    engine = _sqlite_engine()
+    source = CostAttributionSource(vendor="aws", account_id="946646677266")
+    try:
+        with pytest.raises(ValueError, match="tcms_allocation_table is required"):
+            run_refresh_cost_attribution_from_summary(
+                engine,
+                source=source,
+                start_date=date(2026, 8, 10),
+                end_date=date(2026, 8, 10),
+            )
+
+        with engine.begin() as connection:
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor=source.vendor,
+                        account_id=source.account_id,
+                    ),
+                )
+                is None
+            )
+    finally:
+        engine.dispose()
+
+
+def test_run_refresh_aws_attribution_requires_readable_tcms_before_writing() -> None:
+    engine = _sqlite_engine()
+    source = CostAttributionSource(vendor="aws", account_id="946646677266")
+    try:
+        with pytest.raises(OperationalError, match="no such table"):
+            run_refresh_cost_attribution_from_summary(
+                engine,
+                source=source,
+                start_date=date(2026, 8, 10),
+                end_date=date(2026, 8, 10),
+                tcms_allocation_table="missing_resource_allocation",
+            )
+
+        with engine.begin() as connection:
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor=source.vendor,
+                        account_id=source.account_id,
+                    ),
+                )
+                is None
+            )
+    finally:
+        engine.dispose()
+
+
 def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None:
     engine = _sqlite_engine()
     executed = []
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_allocation_publication (
+                  publication_name TEXT PRIMARY KEY,
+                  active_allocation_version TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("INSERT INTO cost_allocation_publication VALUES ('dashboard', 'stale-version')")
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_resource_serving_publication (
+                  basis_key TEXT,
+                  vendor TEXT,
+                  account_id TEXT,
+                  usage_date TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_resource_serving_publication VALUES
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-09'),
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-11'),
+                  ('eq_allocated', 'gcp', 'pingcap-testing-account', '2026-05-09'),
+                  ('native', 'aws', '946646677266', '2026-05-09')
+                """
+            )
+        )
 
     def fake_execute(self, statement, params=None, *args, **kwargs):
         sql = str(statement)
@@ -299,6 +395,87 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
             )
         assert state is not None
         assert state.last_status == "succeeded"
+        with engine.begin() as connection:
+            assert connection.execute(
+                text("SELECT COUNT(*) FROM cost_allocation_publication")
+            ).scalar_one() == 0
+            remaining_publications = connection.execute(
+                text(
+                    """
+                    SELECT basis_key, vendor, account_id, usage_date
+                    FROM cost_resource_serving_publication
+                    ORDER BY basis_key, vendor, usage_date
+                    """
+                )
+            ).all()
+        assert remaining_publications == [
+            ("eq_allocated", "gcp", "pingcap-testing-account", "2026-05-09"),
+            ("native", "aws", "946646677266", "2026-05-09"),
+            ("native", "gcp", "pingcap-testing-account", "2026-05-11"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_refresh_failure_rolls_back_publication_invalidation(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_allocation_publication (
+                  publication_name TEXT PRIMARY KEY,
+                  active_allocation_version TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("INSERT INTO cost_allocation_publication VALUES ('dashboard', 'active-version')")
+        )
+
+    original_execute = Connection.execute
+
+    def fake_execute(self, statement, params=None, *args, **kwargs):
+        sql = str(statement)
+        if "DELETE FROM cost_attribution_daily" in sql or (
+            "FROM cost_bq_export_summary_daily summary" in sql
+        ):
+            class Result:
+                rowcount = 1
+
+            return Result()
+        return original_execute(self, statement, params, *args, **kwargs)
+
+    def fail_after_invalidation(*args, **kwargs):
+        raise RuntimeError("failed after publication invalidation")
+
+    monkeypatch.setattr("sqlalchemy.engine.base.Connection.execute", fake_execute)
+    monkeypatch.setattr(state_store, "mark_job_succeeded", fail_after_invalidation)
+
+    try:
+        with pytest.raises(RuntimeError, match="failed after publication invalidation"):
+            run_refresh_cost_attribution_from_summary(
+                engine,
+                source=SOURCE,
+                start_date=date(2026, 5, 9),
+                end_date=date(2026, 5, 10),
+            )
+
+        with engine.begin() as connection:
+            assert connection.execute(
+                text("SELECT active_allocation_version FROM cost_allocation_publication")
+            ).scalar_one() == "active-version"
+            state = state_store.get_job_state(
+                connection,
+                source_job_name(
+                    SUMMARY_JOB_NAME,
+                    vendor=SOURCE.vendor,
+                    account_id=SOURCE.account_id,
+                ),
+            )
+        assert state is not None
+        assert state.last_status == "failed"
     finally:
         engine.dispose()
 

@@ -45,6 +45,10 @@ def run_refresh_cost_attribution_from_summary(
 ) -> RefreshAttributionSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
+    if source.vendor == "aws" and not dry_run:
+        if not tcms_allocation_table:
+            raise ValueError("tcms_allocation_table is required for AWS attribution refresh")
+        _validate_tcms_allocation_table(engine, tcms_allocation_table)
 
     params = {
         "vendor": source.vendor,
@@ -82,7 +86,7 @@ def run_refresh_cost_attribution_from_summary(
             ):
                 insert_result = connection.execute(insert_statement, params)
                 rows_inserted += _positive_rowcount(insert_result.rowcount)
-            _invalidate_native_resource_serving_publications(connection, params)
+            _invalidate_cost_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
 
         return RefreshAttributionSummary(
@@ -110,32 +114,41 @@ def _watermark(*, vendor: str, account_id: str, start_date: date, end_date: date
     }
 
 
-def _invalidate_native_resource_serving_publications(
+def _invalidate_cost_publications(
     connection,
     params: dict[str, Any],
 ) -> None:
-    if connection.dialect.name == "sqlite":
-        table_exists = connection.execute(
-            text(
-                """
-                SELECT 1 FROM sqlite_master
-                WHERE type = 'table' AND name = 'cost_resource_serving_publication'
-                """
-            )
-        ).first()
-    else:
-        table_exists = connection.execute(
-            text(
-                """
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = DATABASE()
-                  AND table_name = 'cost_resource_serving_publication'
-                LIMIT 1
-                """
-            )
-        ).first()
-    if table_exists is not None:
+    if _table_exists(connection, "cost_resource_serving_publication"):
         connection.execute(_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS, params)
+    if _table_exists(connection, "cost_allocation_publication"):
+        connection.execute(_INVALIDATE_COST_ALLOCATION_PUBLICATION)
+
+
+def _table_exists(connection, table_name: str) -> bool:
+    # Publication tables are optional during rolling schema upgrades; if absent,
+    # there is no published data to invalidate.
+    if connection.dialect.name == "sqlite":
+        statement = text(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = :table_name
+            """
+        )
+    else:
+        statement = text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            LIMIT 1
+            """
+        )
+    return connection.execute(statement, {"table_name": table_name}).first() is not None
+
+
+def _validate_tcms_allocation_table(engine: Engine, table_name: str) -> None:
+    quoted_table = _quote_table_identifier(table_name)
+    with engine.begin() as connection:
+        connection.execute(text(f"SELECT 1 FROM {quoted_table} LIMIT 1")).first()
 
 
 def _positive_rowcount(rowcount: int | None) -> int:
@@ -200,6 +213,12 @@ _INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS = text(
     WHERE basis_key = 'native'
       AND vendor = :vendor AND account_id = :account_id
       AND usage_date BETWEEN :start_date AND :end_date
+    """
+)
+_INVALIDATE_COST_ALLOCATION_PUBLICATION = text(
+    """
+    DELETE FROM cost_allocation_publication
+    WHERE publication_name = 'dashboard'
     """
 )
 

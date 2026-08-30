@@ -132,7 +132,8 @@ INSERT B（shared pool 固定成本）：
 
 - `resource_allocation` 可以为空：TCMS 未写入数据时，author 行仍归属，其他 JSON tag 行 fallback 到 unattributed，成本守恒。
 - AWS `refresh-cost-attribution-from-summary` 默认会引用 `tcms_cost.resource_allocation`，所以表需要先创建，并确认
-  Cost Insight 现有 SQL user 能 `SELECT * FROM tcms_cost.resource_allocation`。
+  Cost Insight 现有 SQL user 能 `SELECT * FROM tcms_cost.resource_allocation`。非 dry-run 的 AWS refresh 若未提供
+  TCMS 表，会在删除任何 attribution 数据前直接失败，禁止静默降级到无 TCMS 的重建。
 - GCP/pingcap-testing-account 不受影响：GCP query 不产出 `vendor_tags_json`，hash 在 JSON 为 NULL 时沿用旧字段集合。
 - summary/unmatched 的 hash：`vendor_tags_json IS NULL` 时按 legacy 字段计算；有 JSON 时纳入 hash。
 - 若 BigQuery 后补 tag，普通 upsert 写入前会删除同 legacy 维度下旧的 NULL JSON 行，避免双算。
