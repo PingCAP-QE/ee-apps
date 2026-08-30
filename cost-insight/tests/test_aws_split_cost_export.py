@@ -38,6 +38,35 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "ROUND(SUM(effective_cost), 9) AS effective_cost" in query
 
 
+def test_split_parent_identity_selection_is_deterministic() -> None:
+    query = build_aws_split_cost_summary_query(
+        billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
+    )
+    parent_direct = query.split("parent_direct AS (", maxsplit=1)[1].split(
+        "child_split AS (", maxsplit=1
+    )[0]
+
+    assert "ANY_VALUE" not in parent_direct
+    for column in (
+        "billing_account_id",
+        "export_partition_date",
+        "service_name",
+        "sku_name",
+        "usage_type",
+        "region",
+        "owner",
+        "service",
+        "project",
+        "service_exec_id",
+        "author_fallback",
+        "org",
+        "cluster",
+        "shared_pool",
+        "pricing_unit",
+    ):
+        assert f"MIN(raw.{column}) AS {column}" in parent_direct
+
+
 def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
     query = build_aws_split_cost_summary_query(
         billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
