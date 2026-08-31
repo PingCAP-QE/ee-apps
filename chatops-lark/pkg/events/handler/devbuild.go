@@ -15,13 +15,11 @@ const devBuildHelpText = `Usage: /devbuild <subcommand> [args...]
 
 Subcommands:
   trigger [options]  - Trigger a new dev build
-  poll <buildID>     - Poll the status of a build
 
 Examples:
   /devbuild trigger --product tidb --version v6.5.0 --gitRef branch/master -e enterprise
   /devbuild trigger --product tikv --version v6.5.0 --gitRef branch/master --features failpoint
-  /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master --pushGCR
-  /devbuild poll 12345
+  /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master
 
 Required options for trigger:
   --product string          Product to build (tidb, tikv, pd, etc.)
@@ -30,9 +28,8 @@ Required options for trigger:
 
 Optional options for trigger:
   -e, --edition string      Product edition (community or enterprise, default: community)
-  -p, --platform string     Build for platform (linux, darwin, linux/amd64, linux/arm64, darwin/amd64 or darwin/arm64, default: all), only support when the engine is tekton.
+  -p, --platform string     Build for platform (linux, darwin, linux/amd64, linux/arm64, darwin/amd64 or darwin/arm64, default: linux), only support when the engine is tekton.
   --pluginGitRef string     Git reference for plugins (only for enterprise tidb)
-  --pushGCR                 Whether to push to GCR (default: false)
   --githubRepo string       GitHub repository (for forked repos)
   --features string         Build features (e.g., failpoint)
   --dryrun                  Dry run without actual build (default: false)
@@ -55,8 +52,6 @@ func runCommandDevbuild(ctx context.Context, args []string) (string, error) {
 	switch subCmd {
 	case "trigger":
 		return runCommandDevbuildTrigger(ctx, args[1:])
-	case "poll":
-		return runCommandDevbuildPoll(ctx, args[1:])
 	case "-h", "--help":
 		return devBuildHelpText, NewInformationError("Requested command usage")
 	default:
