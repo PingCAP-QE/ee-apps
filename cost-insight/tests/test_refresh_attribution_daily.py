@@ -891,6 +891,22 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                         4, 'aws', '946646677266',
                         '{"cluster":"cluster-source-label"}', 'bob@pingcap.com',
                         'TestInfra', 'project-x', 'exec-1', NULL, NULL
+                      ),
+                      (
+                        5, 'aws', '946646677266',
+                        '{"tenant":"tenant-0858"}', 'dave@pingcap.com',
+                        'TestInfra', 'project-tenant', 'exec-tenant', NULL, NULL
+                      ),
+                      (
+                        6, 'aws', '946646677266',
+                        '{"tenant":"tenant-0858","shared_pool":"pool-tenant"}',
+                        'carol@pingcap.com', 'TestInfra', 'project-tenant-pool',
+                        'exec-tenant-pool', NULL, NULL
+                      ),
+                      (
+                        7, 'aws', NULL, '{"cluster":"cluster-tenant"}',
+                        'bob@pingcap.com', 'TestInfra', 'project-global-cluster',
+                        'exec-global-cluster', NULL, NULL
                       )
                     """
                 )
@@ -960,6 +976,33 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                         '{"cluster":"cluster-source-label"}',
                         NULL, NULL, 'dave@pingcap.com', 'direct-service',
                         'direct-project', 'direct-exec', 17, 17, 0, 17
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL, NULL,
+                        'alice', NULL, NULL, NULL, NULL, NULL, 19, 19, 0, 19
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantPoolUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"shared_pool":"pool-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        23, 23, 0, 23
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'MissingTenantPoolUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"shared_pool":"pool-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        29, 29, 0, 29
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantClusterUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"cluster":"cluster-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        31, 31, 0, 31
                       )
                     """
                 )
@@ -973,7 +1016,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 8
+        assert summary.rows_inserted == 12
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -1034,8 +1077,24 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         )
 
         fake_author_row = find_row(sku_name="FakeAuthorClusterUsage", author="alice")
+        tenant_row = find_row(
+            sku_name="TenantUsage", project="project-tenant", author="alice", allocate_method="vendor_tag"
+        )
+        tenant_pool_row = find_row(
+            sku_name="TenantPoolUsage",
+            project="project-tenant-pool",
+            author="alice",
+            allocate_method="vendor_tag",
+        )
+        missing_tenant_pool_row = find_row(sku_name="MissingTenantPoolUsage", author="alice")
+        tenant_cluster_row = find_row(
+            sku_name="TenantClusterUsage",
+            project="project-global-cluster",
+            author="alice",
+            allocate_method="logical",
+        )
 
-        assert total_net_cost == 113.0
+        assert total_net_cost == 215.0
         assert {row["region"] for row in rows} == {"us-east-1"}
         assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
         assert cluster_x_row["cost_driver_key"] == "compute"
@@ -1049,6 +1108,22 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fake_author_row["attribution_source"] == "missing_label_allocation"
         assert fake_author_row["attribution_status"] == "unattributed"
         assert fake_author_row["employee_id"] is None
+        assert tenant_row["owner"] == "dave@pingcap.com"
+        assert tenant_row["attribution_source"] == "owner_email"
+        assert tenant_row["attribution_status"] == "matched"
+        assert tenant_row["employee_id"] == 4
+        assert tenant_pool_row["owner"] == "carol@pingcap.com"
+        assert tenant_pool_row["attribution_source"] == "owner_email"
+        assert tenant_pool_row["attribution_status"] == "matched"
+        assert tenant_pool_row["employee_id"] == 3
+        assert missing_tenant_pool_row["owner"] is None
+        assert missing_tenant_pool_row["attribution_source"] == "missing_author"
+        assert missing_tenant_pool_row["attribution_status"] == "unattributed"
+        assert missing_tenant_pool_row["employee_id"] is None
+        assert tenant_cluster_row["owner"] == "bob@pingcap.com"
+        assert tenant_cluster_row["attribution_source"] == "owner_email"
+        assert tenant_cluster_row["attribution_status"] == "matched"
+        assert tenant_cluster_row["employee_id"] == 2
         assert cluster_x_row["owner"] == "bob@pingcap.com"
         assert split_label_row["owner"] == "dave@pingcap.com"
         assert split_label_row["service"] == "direct-service"
@@ -1101,7 +1176,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert subset_summary.rows_inserted == 8
+        assert subset_summary.rows_inserted == 12
         with engine.begin() as connection:
             subset_rows = connection.execute(
                 text(
@@ -1124,7 +1199,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert subset_total_net_cost == 113.0
+        assert subset_total_net_cost == 215.0
         subset_authored_cluster = next(
             row
             for row in subset_rows
@@ -1185,7 +1260,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert expired_tcms_summary.rows_inserted == 8
+        assert expired_tcms_summary.rows_inserted == 12
         with engine.begin() as connection:
             fallback_rows = connection.execute(
                 text(
@@ -1214,7 +1289,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert fallback_total_net_cost == 113.0
+        assert fallback_total_net_cost == 215.0
         fallback_auth = next(row for row in fallback_rows if row["sku_name"] == "BoxUsage")
         fallback_auth_cluster = next(
             row for row in fallback_rows if row["sku_name"] == "AuthClusterUsage"
