@@ -17,6 +17,7 @@ serviceAccount:
 
 podAnnotations: {}
 podLabels: {}
+topologySpreadConstraints: []
 
 podSecurityContext: {}
 
@@ -84,12 +85,18 @@ readinessProbe:
   timeoutSeconds: 6
   failureThreshold: 2
 
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
 autoscaling:
   enabled: false
   minReplicas: 1
   maxReplicas: 100
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage:
+
+strategy: {}
 
 nodeSelector: {}
 
