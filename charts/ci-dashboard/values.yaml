@@ -17,6 +17,11 @@ serviceAccount:
 
 podAnnotations: {}
 podLabels: {}
+# Each constraint must select this release's pods. For the default release, use:
+# labelSelector:
+#   matchLabels:
+#     app.kubernetes.io/name: ci-dashboard
+#     app.kubernetes.io/instance: ci-dashboard
 topologySpreadConstraints: []
 
 podSecurityContext: {}
@@ -85,6 +90,9 @@ readinessProbe:
   timeoutSeconds: 6
   failureThreshold: 2
 
+# With minAvailable: 1, enable only when the effective replica count
+# (replicaCount or autoscaling.minReplicas) is at least 2. Otherwise it blocks
+# voluntary eviction of the sole pod.
 podDisruptionBudget:
   enabled: false
   minAvailable: 1
@@ -96,6 +104,8 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage:
 
+# Set rollingUpdate.maxSurge: 1 and rollingUpdate.maxUnavailable: 0 for a
+# zero-unavailable rolling update.
 strategy: {}
 
 nodeSelector: {}
