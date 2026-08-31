@@ -66,7 +66,8 @@ Notes:
 
 - tests use sqlite fixtures and run locally
 - production-style DB config still uses `TIDB_*`
-- local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`
+- database limits default to a `10 + 10` connection pool, a 5-second pool/connect wait, a 30-second query/write deadline, and a 35-second read deadline; the query timeout must not exceed the read timeout; override them with the `CI_DASHBOARD_DB_POOL_SIZE`, `CI_DASHBOARD_DB_MAX_OVERFLOW`, `CI_DASHBOARD_DB_POOL_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_CONNECT_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_WRITE_TIMEOUT_SECONDS`, and `CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS` environment variables
+- local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`; MySQL/TiDB pool and timeout controls are ignored for SQLite URLs
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - the Cost and CI details insight tabs are always available

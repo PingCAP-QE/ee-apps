@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from ci_dashboard import __version__
+from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.routes.builds import router as builds_router
 from ci_dashboard.api.routes.failures import router as failures_router
 from ci_dashboard.api.routes.filters import router as filters_router
@@ -16,15 +21,28 @@ from ci_dashboard.api.routes.pages import router as pages_router
 from ci_dashboard.api.routes.status import router as status_router
 
 
-def healthz() -> dict[str, str]:
+LOG = logging.getLogger(__name__)
+
+
+async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def livez() -> dict[str, str]:
+async def livez() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def readyz() -> dict[str, str]:
+def _check_database() -> None:
+    with get_engine().connect() as connection:
+        connection.execute(text("SELECT 1")).scalar_one()
+
+
+async def readyz() -> dict[str, str]:
+    try:
+        await run_in_threadpool(_check_database)
+    except (SQLAlchemyError, ValueError):
+        LOG.exception("database readiness check failed")
+        raise HTTPException(status_code=503, detail="database unavailable") from None
     return {"status": "ok"}
 
 

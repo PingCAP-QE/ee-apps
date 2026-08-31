@@ -24,7 +24,6 @@ import {
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
   sameFilters,
-  WEEK_GRANULARITY_PATHS,
 } from "./lib/filterUrl";
 
 const REPO_OPTIONS = [
@@ -42,11 +41,15 @@ export default function App() {
   const [defaultRange] = useState(() => getDefaultDateRange());
   const location = useLocation();
   const navigate = useNavigate();
+  // Remember route-specific selections only when building links to other dashboard tabs.
   const [filtersByPath, setFiltersByPath] = useState(() => ({
     [location.pathname]: readFiltersFromSearch(defaultRange, location.pathname, location.search),
   }));
-  const filters = filtersByPath[location.pathname]
-    || readFiltersFromSearch(defaultRange, location.pathname, location.search);
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    location.pathname,
+    location.search,
+  );
   const isCostPage = location.pathname === COST_PATH;
   const isWeeklySummaryPage = location.pathname === "/";
 
@@ -64,6 +67,8 @@ export default function App() {
     });
   }, [defaultRange, location.pathname, location.search]);
 
+  // Canonicalize bookmarked and browser-history URLs. Local filter changes already
+  // navigate to the same canonical search string, so this is a no-op for those changes.
   useEffect(() => {
     const nextSearch = buildFilterSearch(filters, location.pathname);
     if (nextSearch === location.search) {
@@ -77,55 +82,6 @@ export default function App() {
       { replace: true },
     );
   }, [filters, location.pathname, location.search, navigate]);
-
-  useEffect(() => {
-    if (location.pathname !== "/flaky") {
-      return;
-    }
-
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      if (routeFilters.repo || routeFilters.branch || routeFilters.issue_status) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          repo: "pingcap/tidb",
-          branch: "master",
-          issue_status: "closed",
-        },
-      };
-    });
-  }, [defaultRange, location.pathname, location.search]);
-
-  useEffect(() => {
-    if (!WEEK_GRANULARITY_PATHS.has(location.pathname)) {
-      return;
-    }
-
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      const hasValidGranularity = location.pathname === COST_PATH
-        ? routeFilters.granularity === "week" || routeFilters.granularity === "month"
-        : routeFilters.granularity === "week";
-      if (hasValidGranularity) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          granularity: "week",
-        },
-      };
-    });
-  }, [defaultRange, location.pathname, location.search]);
 
   const jobs = useApiData(
     "/api/v1/filters/jobs",
@@ -165,38 +121,24 @@ export default function App() {
   ) || costSourceOptions[0];
 
   function handleFilterChange(key, value) {
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      if (key === "repo") {
-        return {
-          ...current,
-          [location.pathname]: {
-            ...routeFilters,
-            repo: value,
-            branch: "",
-            job_name: "",
-          },
-        };
-      }
-      if (key === "branch") {
-        return {
-          ...current,
-          [location.pathname]: {
-            ...routeFilters,
-            branch: value,
-            job_name: "",
-          },
-        };
-      }
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          [key]: value,
-        },
-      };
-    });
+    const nextFilters = {
+      ...filters,
+      [key]: value,
+    };
+    if (key === "repo") {
+      nextFilters.branch = "";
+      nextFilters.job_name = "";
+    }
+    if (key === "branch") {
+      nextFilters.job_name = "";
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: buildFilterSearch(nextFilters, location.pathname),
+      },
+      { replace: true },
+    );
   }
 
   const navSearchByPath = buildNavSearchByPath(filtersByPath, defaultRange, filters);
