@@ -193,7 +193,7 @@ func (r *rootHandler) initialize() error {
 	}
 	if r.Config.DevBuild != nil {
 		r.commandRegistry["/devbuild"] = CommandConfig{
-			Description:  "Trigger a devbuild or check build status",
+			Description:  "Trigger a devbuild",
 			Handler:      runCommandDevbuild,
 			Audit:        r.Config.DevBuild.Audit,
 			SetupContext: setupCtxDevbuild,

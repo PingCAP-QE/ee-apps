@@ -30,7 +30,7 @@ You can run it by following steps:
 
   # DevBuild configuration
   devbuild:
-    api_url: "https://tibuild.pingcap.net/api/devbuilds"
+    api_url: "https://tibuild.pingcap.net/api/v2/devbuilds"
 
   # RepoAdmins command configuration
   repo_admins:

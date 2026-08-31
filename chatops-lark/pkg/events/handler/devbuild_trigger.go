@@ -29,6 +29,29 @@ type triggerParams struct {
 	dryRun            bool
 }
 
+type devbuildCreateRequest struct {
+	CreatedBy string            `json:"createdBy"`
+	Request   devbuildSpecInput `json:"request"`
+}
+
+type devbuildSpecInput struct {
+	Product           string `json:"product"`
+	Edition           string `json:"edition"`
+	Version           string `json:"version"`
+	Platform          string `json:"platform,omitempty"`
+	GitRef            string `json:"gitRef"`
+	PluginGitRef      string `json:"pluginGitRef,omitempty"`
+	GithubRepo        string `json:"githubRepo,omitempty"`
+	Features          string `json:"features,omitempty"`
+	IsHotfix          bool   `json:"isHotfix,omitempty"`
+	BuildEnv          string `json:"buildEnv,omitempty"`
+	ProductDockerfile string `json:"productDockerfile,omitempty"`
+	ProductBaseImg    string `json:"productBaseImg,omitempty"`
+	BuilderImg        string `json:"builderImg,omitempty"`
+	TargetImg         string `json:"targetImg,omitempty"`
+	PipelineEngine    string `json:"pipelineEngine,omitempty"`
+}
+
 // Verify required params
 func (p triggerParams) Verify() error {
 	missingFlags := []string{}
@@ -75,34 +98,31 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 		return "", err
 	}
 
-	triggerParams := map[string]any{
-		"meta": map[string]any{
-			"createdBy": ctx.Value(ctxKeyLarkSenderEmail),
-		},
-		"spec": map[string]any{
-			"product":           params.product,
-			"edition":           params.edition,
-			"version":           params.version,
-			"platform":          params.platform,
-			"gitRef":            params.gitRef,
-			"pluginGitRef":      params.pluginGitRef,
-			"githubRepo":        params.githubRepo,
-			"isPushGCR":         params.pushGCR,
-			"features":          params.features,
-			"isHotfix":          params.hotfix,
-			"buildEnv":          strings.Join(params.buildEnvs, " "),
-			"productDockerfile": params.productDockerfile,
-			"productBaseImg":    params.productBaseImg,
-			"builderImg":        params.builderImg,
-			"targetImg":         params.targetImg,
-			"pipelineEngine":    params.engine,
+	triggerRequest := devbuildCreateRequest{
+		CreatedBy: ctx.Value(ctxKeyLarkSenderEmail).(string),
+		Request: devbuildSpecInput{
+			Product:           params.product,
+			Edition:           params.edition,
+			Version:           params.version,
+			Platform:          params.platform,
+			GitRef:            params.gitRef,
+			PluginGitRef:      params.pluginGitRef,
+			GithubRepo:        params.githubRepo,
+			Features:          params.features,
+			IsHotfix:          params.hotfix,
+			BuildEnv:          strings.Join(params.buildEnvs, " "),
+			ProductDockerfile: params.productDockerfile,
+			ProductBaseImg:    params.productBaseImg,
+			BuilderImg:        params.builderImg,
+			TargetImg:         params.targetImg,
+			PipelineEngine:    params.engine,
 		},
 	}
 
 	client := resty.New()
 	resp, err := client.R().
 		SetResult(triggerResult{}).
-		SetBody(triggerParams).
+		SetBody(triggerRequest).
 		SetQueryParam("dryrun", fmt.Sprint(params.dryRun)).
 		// TODO: add auth in header.
 		Post(apiURL)
@@ -115,7 +135,7 @@ func runCommandDevbuildTrigger(ctx context.Context, args []string) (string, erro
 
 	result := resp.Result().(*triggerResult)
 
-	return fmt.Sprintf("build id is %d\npolling: %s/%d", result.ID, apiURL, result.ID), nil
+	return fmt.Sprintf("build id is %d", result.ID), nil
 }
 
 func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
@@ -135,7 +155,8 @@ func parseCommandDevbuildTrigger(args []string) (*triggerParams, error) {
 		fs.StringVar(&ret.platform, "p", "", "platform to build, default is for all")
 		fs.StringVar(&ret.platform, "platform", "", "platform to build, default is for all")
 		fs.StringVar(&ret.pluginGitRef, "pluginGitRef", "", "only for build enterprise tidb, ignore if you dont know")
-		fs.BoolVar(&ret.pushGCR, "pushGCR", false, "whether to push GCR, default is no")
+		// Keep accepting this legacy option, but do not expose or forward it.
+		fs.BoolVar(&ret.pushGCR, "pushGCR", false, "")
 		fs.BoolVar(&ret.hotfix, "hotfix", false, "")
 		fs.StringVar(&ret.githubRepo, "githubRepo", "", "only for the forked github repo")
 		fs.StringVar(&ret.features, "features", "", "build features, eg failpoint")
