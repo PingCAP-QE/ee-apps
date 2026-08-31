@@ -271,12 +271,12 @@ def _allocation_tags_for_match_sql(expression: str) -> str:
     return f"""
 CASE
   WHEN {cluster_is_null} AND {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.cluster', '$.shared_pool')
+    THEN JSON_REMOVE({expression}, '$.tenant', '$.cluster', '$.shared_pool')
   WHEN {cluster_is_null}
-    THEN JSON_REMOVE({expression}, '$.cluster')
+    THEN JSON_REMOVE({expression}, '$.tenant', '$.cluster')
   WHEN {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.shared_pool')
-  ELSE {expression}
+    THEN JSON_REMOVE({expression}, '$.tenant', '$.shared_pool')
+  ELSE JSON_REMOVE({expression}, '$.tenant')
 END
 """.strip()
 
@@ -290,6 +290,13 @@ _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
 _ALLOCATION_MATCH_TAGS_JSON = _allocation_tags_for_match_sql(
     "allocation_raw.vendor_tags_json"
 )
+# AWS billing adapters normalize the vendor tenant tag into summary.org.
+_ALLOCATION_MATCH_TENANT = f"""
+CASE
+  WHEN {_json_tag_is_json_null_sql('allocation_raw.vendor_tags_json', 'tenant')} THEN NULL
+  ELSE {_json_tag_value_sql('allocation_raw.vendor_tags_json', 'tenant')}
+END
+""".strip()
 _ALLOCATION_SOURCE_COLUMNS = """
 allocation_raw.id,
 allocation_raw.vendor,
@@ -943,6 +950,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                     PARTITION BY summary.id
                     ORDER BY
                       JSON_LENGTH(allocation.match_tags_json) DESC,
+                      CASE WHEN allocation.match_tenant IS NULL THEN 0 ELSE 1 END DESC,
                       CASE WHEN allocation.account_id = summary.account_id THEN 0 ELSE 1 END,
                       COALESCE(allocation.valid_from, '1900-01-01') DESC,
                       allocation.id DESC
@@ -951,15 +959,25 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 JOIN (
                   SELECT
                     {_ALLOCATION_SOURCE_COLUMNS},
-                    {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json
+                    {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json,
+                    {_ALLOCATION_MATCH_TENANT} AS match_tenant
                   FROM {tcms_table} allocation_raw
                 ) allocation
-                  ON summary.vendor_tags_json IS NOT NULL
-                 AND allocation.vendor = summary.vendor
+                  ON allocation.vendor = summary.vendor
                  AND (allocation.account_id IS NULL OR allocation.account_id = summary.account_id)
                  AND allocation.match_tags_json IS NOT NULL
-                 AND JSON_LENGTH(allocation.match_tags_json) > 0
-                 AND JSON_CONTAINS(summary.vendor_tags_json, allocation.match_tags_json)
+                 AND (
+                   allocation.match_tenant IS NOT NULL
+                   OR JSON_LENGTH(allocation.match_tags_json) > 0
+                 )
+                 AND (allocation.match_tenant IS NULL OR allocation.match_tenant = summary.org)
+                 AND (
+                   JSON_LENGTH(allocation.match_tags_json) = 0
+                   OR (
+                     summary.vendor_tags_json IS NOT NULL
+                     AND JSON_CONTAINS(summary.vendor_tags_json, allocation.match_tags_json)
+                   )
+                 )
                  AND summary.usage_date >= COALESCE(allocation.valid_from, '1900-01-01')
                  AND summary.usage_date <= COALESCE(allocation.valid_to, '9999-12-31')
                 WHERE summary.usage_date BETWEEN :start_date AND :end_date
