@@ -18,11 +18,13 @@ import (
 	artifactsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/server"
 	devbuildsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/server"
 	hotfixsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/server"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, portalAuth config.PortalAuth, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -73,6 +75,12 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	mux.Handle("GET", "/livez", check)
 
 	var handler http.Handler = mux
+	handler = identity.Middleware(identity.Options{
+		Audience:     portalAuth.Audience,
+		Issuer:       portalAuth.Issuer,
+		HostedDomain: portalAuth.HostedDomain,
+		EmailDomain:  portalAuth.EmailDomain,
+	})(handler)
 	if dbg {
 		// Log query and response bodies if debug logs are enabled.
 		handler = debug.HTTP()(handler)

@@ -1,11 +1,12 @@
 package config
 
 type Service struct {
-	Store   Store   `yaml:"store" json:"store"`
-	Github  Github  `yaml:"github" json:"github"`
-	Jenkins Jenkins `yaml:"jenkins" json:"jenkins"`
-	Tekton  Tekton  `yaml:"tekton" json:"tekton"`
-	Lark    Lark    `yaml:"lark" json:"lark"`
+	Store      Store      `yaml:"store" json:"store"`
+	Github     Github     `yaml:"github" json:"github"`
+	Jenkins    Jenkins    `yaml:"jenkins" json:"jenkins"`
+	Tekton     Tekton     `yaml:"tekton" json:"tekton"`
+	Lark       Lark       `yaml:"lark" json:"lark"`
+	PortalAuth PortalAuth `yaml:"portal_auth" json:"portal_auth"`
 
 	// ProductRepoMap is a map of product names to their respective Github full repository names(<org>/<repo>).
 	ProductRepoMap map[string]string `yaml:"product_repo_map" json:"product_repo_map"`
@@ -13,6 +14,15 @@ type Service struct {
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map" json:"image_mirror_url_map"`
 	// ImageSync holds the image sync (copy) service configuration.
 	ImageSync ImageSync `yaml:"image_sync" json:"image_sync"`
+}
+
+// PortalAuth configures verification of the Google ID token forwarded by the
+// EE Portal Gateway. Empty Audience disables token acceptance.
+type PortalAuth struct {
+	Audience     string `yaml:"audience,omitempty" json:"audience,omitempty"`
+	Issuer       string `yaml:"issuer,omitempty" json:"issuer,omitempty"`
+	HostedDomain string `yaml:"hosted_domain,omitempty" json:"hosted_domain,omitempty"`
+	EmailDomain  string `yaml:"email_domain,omitempty" json:"email_domain,omitempty"`
 }
 
 // ImageSync configures the image sync (copy) service.

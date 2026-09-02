@@ -16,6 +16,8 @@ import (
 type Service interface {
 	// List devbuild with pagination support
 	List(context.Context, *ListPayload) (res []*DevBuild, err error)
+	// List products and options supported by the EE Portal build form
+	Capabilities(context.Context) (res *DevBuildCapabilities, err error)
 	// Create and trigger devbuild
 	Create(context.Context, *CreatePayload) (res *DevBuild, err error)
 	// Get devbuild
@@ -40,7 +42,7 @@ const ServiceName = "devbuild"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [5]string{"list", "create", "get", "update", "rerun"}
+var MethodNames = [6]string{"list", "capabilities", "create", "get", "update", "rerun"}
 
 type BinArtifact struct {
 	Component     *string
@@ -63,8 +65,8 @@ type BuildStatus string
 
 // CreatePayload is the payload type of the devbuild service create method.
 type CreatePayload struct {
-	// Creator of build
-	CreatedBy string
+	// Creator of build for legacy machine clients
+	CreatedBy *string
 	// Build to create, only spec field is required, others are ignored
 	Request *DevBuildSpec
 	// Dry run
@@ -73,16 +75,58 @@ type CreatePayload struct {
 
 // DevBuild is the result type of the devbuild service create method.
 type DevBuild struct {
-	ID     int
-	Meta   *DevBuildMeta
-	Spec   *DevBuildSpec
-	Status *DevBuildStatus
+	ID          int
+	Meta        *DevBuildMeta
+	Spec        *DevBuildSpec
+	Status      *DevBuildStatus
+	Permissions *DevBuildPermissions
+}
+
+type DevBuildBadRequestError struct {
+	Code    int
+	Message string
+}
+
+// DevBuildCapabilities is the result type of the devbuild service capabilities
+// method.
+type DevBuildCapabilities struct {
+	Products              []*DevBuildProductCapability
+	PipelineEngines       []string
+	DefaultPipelineEngine string
+}
+
+type DevBuildForbiddenError struct {
+	Code    int
+	Message string
+}
+
+type DevBuildInternalServerError struct {
+	Code    int
+	Message string
 }
 
 type DevBuildMeta struct {
 	CreatedBy string
 	CreatedAt string
 	UpdatedAt string
+}
+
+type DevBuildNotFoundError struct {
+	Code    int
+	Message string
+}
+
+type DevBuildPermissions struct {
+	CanRerun bool
+}
+
+type DevBuildProductCapability struct {
+	ID              string
+	Label           string
+	Editions        []string
+	Platforms       []string
+	DefaultEdition  string
+	DefaultPlatform string
 }
 
 type DevBuildSpec struct {
@@ -103,7 +147,7 @@ type DevBuildSpec struct {
 	ProductBaseImg    *string
 	ProductDockerfile *string
 	TargetImg         *string
-	Version           string
+	Version           *string
 }
 
 type DevBuildStatus struct {
@@ -118,15 +162,15 @@ type DevBuildStatus struct {
 	TektonStatus     *TektonStatus
 }
 
+type DevBuildUnauthorizedError struct {
+	Code    int
+	Message string
+}
+
 // GetPayload is the payload type of the devbuild service get method.
 type GetPayload struct {
 	// ID of build
 	ID int
-}
-
-type HTTPError struct {
-	Code    int
-	Message string
 }
 
 type ImageArtifact struct {
@@ -149,6 +193,14 @@ type ListPayload struct {
 	Direction string
 	// Filter created by
 	CreatedBy *string
+	// Filter builds by the authenticated owner
+	Scope string
+	// Filter by build status
+	Status *BuildStatus
+	// Filter by product
+	Product *string
+	// Search by build ID, Git ref, or creator
+	Q *string
 }
 
 type OciArtifact struct {
@@ -201,18 +253,86 @@ type UpdatePayload struct {
 }
 
 // Error returns an error description.
-func (e *HTTPError) Error() string {
+func (e *DevBuildBadRequestError) Error() string {
 	return ""
 }
 
 // ErrorName returns the error name.
 //
 // Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
-func (e *HTTPError) ErrorName() string {
+func (e *DevBuildBadRequestError) ErrorName() string {
 	return e.GoaErrorName()
 }
 
 // GoaErrorName returns the error name.
-func (e *HTTPError) GoaErrorName() string {
+func (e *DevBuildBadRequestError) GoaErrorName() string {
 	return "BadRequest"
+}
+
+// Error returns an error description.
+func (e *DevBuildForbiddenError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *DevBuildForbiddenError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *DevBuildForbiddenError) GoaErrorName() string {
+	return "Forbidden"
+}
+
+// Error returns an error description.
+func (e *DevBuildInternalServerError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *DevBuildInternalServerError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *DevBuildInternalServerError) GoaErrorName() string {
+	return "InternalServerError"
+}
+
+// Error returns an error description.
+func (e *DevBuildNotFoundError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *DevBuildNotFoundError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *DevBuildNotFoundError) GoaErrorName() string {
+	return "NotFound"
+}
+
+// Error returns an error description.
+func (e *DevBuildUnauthorizedError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *DevBuildUnauthorizedError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *DevBuildUnauthorizedError) GoaErrorName() string {
+	return "Unauthorized"
 }

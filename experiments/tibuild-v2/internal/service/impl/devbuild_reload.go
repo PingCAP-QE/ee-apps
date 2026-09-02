@@ -2,6 +2,7 @@ package impl
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
@@ -25,6 +26,7 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 
 	// Update Tekton dashboard URL.
 	s.dashboardURL = cfg.Tekton.ViewURL
+	s.ociFileDownloadURL = strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/")
 
 	// Update reconciler lookback duration.
 	if cfg.Tekton.ReconcilerSince != "" {

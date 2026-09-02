@@ -233,7 +233,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, cfg.Get().PortalAuth, &wg, errc, *dbgF)
 		}
 
 	case "product":
@@ -258,7 +258,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, cfg.Get().PortalAuth, &wg, errc, *dbgF)
 		}
 
 	default:

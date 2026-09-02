@@ -18,7 +18,7 @@ import (
 // CreateRequestBody is the type of the "devbuild" service "create" endpoint
 // HTTP request body.
 type CreateRequestBody struct {
-	// Creator of build
+	// Creator of build for legacy machine clients
 	CreatedBy *string `form:"createdBy,omitempty" json:"createdBy,omitempty" xml:"createdBy,omitempty"`
 	// Build to create, only spec field is required, others are ignored
 	Request *DevBuildSpecRequestBody `form:"request,omitempty" json:"request,omitempty" xml:"request,omitempty"`
@@ -35,45 +35,71 @@ type UpdateRequestBody struct {
 // response body.
 type ListResponseBody []*DevBuildResponse
 
+// CapabilitiesResponseBody is the type of the "devbuild" service
+// "capabilities" endpoint HTTP response body.
+type CapabilitiesResponseBody struct {
+	Products              []*DevBuildProductCapabilityResponseBody `form:"products" json:"products" xml:"products"`
+	PipelineEngines       []string                                 `form:"pipelineEngines" json:"pipelineEngines" xml:"pipelineEngines"`
+	DefaultPipelineEngine string                                   `form:"defaultPipelineEngine" json:"defaultPipelineEngine" xml:"defaultPipelineEngine"`
+}
+
 // CreateResponseBody is the type of the "devbuild" service "create" endpoint
 // HTTP response body.
 type CreateResponseBody struct {
-	ID     int                         `form:"id" json:"id" xml:"id"`
-	Meta   *DevBuildMetaResponseBody   `form:"meta" json:"meta" xml:"meta"`
-	Spec   *DevBuildSpecResponseBody   `form:"spec" json:"spec" xml:"spec"`
-	Status *DevBuildStatusResponseBody `form:"status" json:"status" xml:"status"`
+	ID          int                              `form:"id" json:"id" xml:"id"`
+	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
+	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
+	Status      *DevBuildStatusResponseBody      `form:"status" json:"status" xml:"status"`
+	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
 }
 
 // GetResponseBody is the type of the "devbuild" service "get" endpoint HTTP
 // response body.
 type GetResponseBody struct {
-	ID     int                         `form:"id" json:"id" xml:"id"`
-	Meta   *DevBuildMetaResponseBody   `form:"meta" json:"meta" xml:"meta"`
-	Spec   *DevBuildSpecResponseBody   `form:"spec" json:"spec" xml:"spec"`
-	Status *DevBuildStatusResponseBody `form:"status" json:"status" xml:"status"`
+	ID          int                              `form:"id" json:"id" xml:"id"`
+	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
+	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
+	Status      *DevBuildStatusResponseBody      `form:"status" json:"status" xml:"status"`
+	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
 }
 
 // UpdateResponseBody is the type of the "devbuild" service "update" endpoint
 // HTTP response body.
 type UpdateResponseBody struct {
-	ID     int                         `form:"id" json:"id" xml:"id"`
-	Meta   *DevBuildMetaResponseBody   `form:"meta" json:"meta" xml:"meta"`
-	Spec   *DevBuildSpecResponseBody   `form:"spec" json:"spec" xml:"spec"`
-	Status *DevBuildStatusResponseBody `form:"status" json:"status" xml:"status"`
+	ID          int                              `form:"id" json:"id" xml:"id"`
+	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
+	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
+	Status      *DevBuildStatusResponseBody      `form:"status" json:"status" xml:"status"`
+	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
 }
 
 // RerunResponseBody is the type of the "devbuild" service "rerun" endpoint
 // HTTP response body.
 type RerunResponseBody struct {
-	ID     int                         `form:"id" json:"id" xml:"id"`
-	Meta   *DevBuildMetaResponseBody   `form:"meta" json:"meta" xml:"meta"`
-	Spec   *DevBuildSpecResponseBody   `form:"spec" json:"spec" xml:"spec"`
-	Status *DevBuildStatusResponseBody `form:"status" json:"status" xml:"status"`
+	ID          int                              `form:"id" json:"id" xml:"id"`
+	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
+	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
+	Status      *DevBuildStatusResponseBody      `form:"status" json:"status" xml:"status"`
+	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
 }
 
 // ListBadRequestResponseBody is the type of the "devbuild" service "list"
 // endpoint HTTP response body for the "BadRequest" error.
 type ListBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// ListInternalServerErrorResponseBody is the type of the "devbuild" service
+// "list" endpoint HTTP response body for the "InternalServerError" error.
+type ListInternalServerErrorResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// ListUnauthorizedResponseBody is the type of the "devbuild" service "list"
+// endpoint HTTP response body for the "Unauthorized" error.
+type ListUnauthorizedResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -92,9 +118,9 @@ type CreateInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
-// GetBadRequestResponseBody is the type of the "devbuild" service "get"
-// endpoint HTTP response body for the "BadRequest" error.
-type GetBadRequestResponseBody struct {
+// CreateUnauthorizedResponseBody is the type of the "devbuild" service
+// "create" endpoint HTTP response body for the "Unauthorized" error.
+type CreateUnauthorizedResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -106,9 +132,9 @@ type GetInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
-// UpdateBadRequestResponseBody is the type of the "devbuild" service "update"
-// endpoint HTTP response body for the "BadRequest" error.
-type UpdateBadRequestResponseBody struct {
+// GetNotFoundResponseBody is the type of the "devbuild" service "get" endpoint
+// HTTP response body for the "NotFound" error.
+type GetNotFoundResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -120,9 +146,16 @@ type UpdateInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
-// RerunBadRequestResponseBody is the type of the "devbuild" service "rerun"
-// endpoint HTTP response body for the "BadRequest" error.
-type RerunBadRequestResponseBody struct {
+// UpdateNotFoundResponseBody is the type of the "devbuild" service "update"
+// endpoint HTTP response body for the "NotFound" error.
+type UpdateNotFoundResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// RerunForbiddenResponseBody is the type of the "devbuild" service "rerun"
+// endpoint HTTP response body for the "Forbidden" error.
+type RerunForbiddenResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -134,12 +167,27 @@ type RerunInternalServerErrorResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// RerunNotFoundResponseBody is the type of the "devbuild" service "rerun"
+// endpoint HTTP response body for the "NotFound" error.
+type RerunNotFoundResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// RerunUnauthorizedResponseBody is the type of the "devbuild" service "rerun"
+// endpoint HTTP response body for the "Unauthorized" error.
+type RerunUnauthorizedResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // DevBuildResponse is used to define fields on response body types.
 type DevBuildResponse struct {
-	ID     int                     `form:"id" json:"id" xml:"id"`
-	Meta   *DevBuildMetaResponse   `form:"meta" json:"meta" xml:"meta"`
-	Spec   *DevBuildSpecResponse   `form:"spec" json:"spec" xml:"spec"`
-	Status *DevBuildStatusResponse `form:"status" json:"status" xml:"status"`
+	ID          int                          `form:"id" json:"id" xml:"id"`
+	Meta        *DevBuildMetaResponse        `form:"meta" json:"meta" xml:"meta"`
+	Spec        *DevBuildSpecResponse        `form:"spec" json:"spec" xml:"spec"`
+	Status      *DevBuildStatusResponse      `form:"status" json:"status" xml:"status"`
+	Permissions *DevBuildPermissionsResponse `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
 }
 
 // DevBuildMetaResponse is used to define fields on response body types.
@@ -168,7 +216,7 @@ type DevBuildSpecResponse struct {
 	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
 	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
 	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
-	Version           string  `form:"version" json:"version" xml:"version"`
+	Version           *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
 // DevBuildStatusResponse is used to define fields on response body types.
@@ -243,6 +291,22 @@ type OciArtifactResponse struct {
 	Tag   string   `form:"tag" json:"tag" xml:"tag"`
 }
 
+// DevBuildPermissionsResponse is used to define fields on response body types.
+type DevBuildPermissionsResponse struct {
+	CanRerun bool `form:"canRerun" json:"canRerun" xml:"canRerun"`
+}
+
+// DevBuildProductCapabilityResponseBody is used to define fields on response
+// body types.
+type DevBuildProductCapabilityResponseBody struct {
+	ID              string   `form:"id" json:"id" xml:"id"`
+	Label           string   `form:"label" json:"label" xml:"label"`
+	Editions        []string `form:"editions" json:"editions" xml:"editions"`
+	Platforms       []string `form:"platforms" json:"platforms" xml:"platforms"`
+	DefaultEdition  string   `form:"defaultEdition" json:"defaultEdition" xml:"defaultEdition"`
+	DefaultPlatform string   `form:"defaultPlatform" json:"defaultPlatform" xml:"defaultPlatform"`
+}
+
 // DevBuildMetaResponseBody is used to define fields on response body types.
 type DevBuildMetaResponseBody struct {
 	CreatedBy string `form:"createdBy" json:"createdBy" xml:"createdBy"`
@@ -269,7 +333,7 @@ type DevBuildSpecResponseBody struct {
 	ProductBaseImg    *string `form:"productBaseImg,omitempty" json:"productBaseImg,omitempty" xml:"productBaseImg,omitempty"`
 	ProductDockerfile *string `form:"productDockerfile,omitempty" json:"productDockerfile,omitempty" xml:"productDockerfile,omitempty"`
 	TargetImg         *string `form:"targetImg,omitempty" json:"targetImg,omitempty" xml:"targetImg,omitempty"`
-	Version           string  `form:"version" json:"version" xml:"version"`
+	Version           *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
 // DevBuildStatusResponseBody is used to define fields on response body types.
@@ -342,6 +406,12 @@ type OciArtifactResponseBody struct {
 	Files []string `form:"files" json:"files" xml:"files"`
 	Repo  string   `form:"repo" json:"repo" xml:"repo"`
 	Tag   string   `form:"tag" json:"tag" xml:"tag"`
+}
+
+// DevBuildPermissionsResponseBody is used to define fields on response body
+// types.
+type DevBuildPermissionsResponseBody struct {
+	CanRerun bool `form:"canRerun" json:"canRerun" xml:"canRerun"`
 }
 
 // DevBuildSpecRequestBody is used to define fields on request body types.
@@ -452,6 +522,35 @@ func NewListResponseBody(res []*devbuild.DevBuild) ListResponseBody {
 	return body
 }
 
+// NewCapabilitiesResponseBody builds the HTTP response body from the result of
+// the "capabilities" endpoint of the "devbuild" service.
+func NewCapabilitiesResponseBody(res *devbuild.DevBuildCapabilities) *CapabilitiesResponseBody {
+	body := &CapabilitiesResponseBody{
+		DefaultPipelineEngine: res.DefaultPipelineEngine,
+	}
+	if res.Products != nil {
+		body.Products = make([]*DevBuildProductCapabilityResponseBody, len(res.Products))
+		for i, val := range res.Products {
+			if val == nil {
+				body.Products[i] = nil
+				continue
+			}
+			body.Products[i] = marshalDevbuildDevBuildProductCapabilityToDevBuildProductCapabilityResponseBody(val)
+		}
+	} else {
+		body.Products = []*DevBuildProductCapabilityResponseBody{}
+	}
+	if res.PipelineEngines != nil {
+		body.PipelineEngines = make([]string, len(res.PipelineEngines))
+		for i, val := range res.PipelineEngines {
+			body.PipelineEngines[i] = val
+		}
+	} else {
+		body.PipelineEngines = []string{}
+	}
+	return body
+}
+
 // NewCreateResponseBody builds the HTTP response body from the result of the
 // "create" endpoint of the "devbuild" service.
 func NewCreateResponseBody(res *devbuild.DevBuild) *CreateResponseBody {
@@ -466,6 +565,9 @@ func NewCreateResponseBody(res *devbuild.DevBuild) *CreateResponseBody {
 	}
 	if res.Status != nil {
 		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(res.Status)
+	}
+	if res.Permissions != nil {
+		body.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(res.Permissions)
 	}
 	return body
 }
@@ -485,6 +587,9 @@ func NewGetResponseBody(res *devbuild.DevBuild) *GetResponseBody {
 	if res.Status != nil {
 		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(res.Status)
 	}
+	if res.Permissions != nil {
+		body.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(res.Permissions)
+	}
 	return body
 }
 
@@ -502,6 +607,9 @@ func NewUpdateResponseBody(res *devbuild.DevBuild) *UpdateResponseBody {
 	}
 	if res.Status != nil {
 		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(res.Status)
+	}
+	if res.Permissions != nil {
+		body.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(res.Permissions)
 	}
 	return body
 }
@@ -521,13 +629,36 @@ func NewRerunResponseBody(res *devbuild.DevBuild) *RerunResponseBody {
 	if res.Status != nil {
 		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(res.Status)
 	}
+	if res.Permissions != nil {
+		body.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(res.Permissions)
+	}
 	return body
 }
 
 // NewListBadRequestResponseBody builds the HTTP response body from the result
 // of the "list" endpoint of the "devbuild" service.
-func NewListBadRequestResponseBody(res *devbuild.HTTPError) *ListBadRequestResponseBody {
+func NewListBadRequestResponseBody(res *devbuild.DevBuildBadRequestError) *ListBadRequestResponseBody {
 	body := &ListBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewListInternalServerErrorResponseBody builds the HTTP response body from
+// the result of the "list" endpoint of the "devbuild" service.
+func NewListInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *ListInternalServerErrorResponseBody {
+	body := &ListInternalServerErrorResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewListUnauthorizedResponseBody builds the HTTP response body from the
+// result of the "list" endpoint of the "devbuild" service.
+func NewListUnauthorizedResponseBody(res *devbuild.DevBuildUnauthorizedError) *ListUnauthorizedResponseBody {
+	body := &ListUnauthorizedResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
@@ -536,7 +667,7 @@ func NewListBadRequestResponseBody(res *devbuild.HTTPError) *ListBadRequestRespo
 
 // NewCreateBadRequestResponseBody builds the HTTP response body from the
 // result of the "create" endpoint of the "devbuild" service.
-func NewCreateBadRequestResponseBody(res *devbuild.HTTPError) *CreateBadRequestResponseBody {
+func NewCreateBadRequestResponseBody(res *devbuild.DevBuildBadRequestError) *CreateBadRequestResponseBody {
 	body := &CreateBadRequestResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -546,7 +677,7 @@ func NewCreateBadRequestResponseBody(res *devbuild.HTTPError) *CreateBadRequestR
 
 // NewCreateInternalServerErrorResponseBody builds the HTTP response body from
 // the result of the "create" endpoint of the "devbuild" service.
-func NewCreateInternalServerErrorResponseBody(res *devbuild.HTTPError) *CreateInternalServerErrorResponseBody {
+func NewCreateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *CreateInternalServerErrorResponseBody {
 	body := &CreateInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -554,10 +685,10 @@ func NewCreateInternalServerErrorResponseBody(res *devbuild.HTTPError) *CreateIn
 	return body
 }
 
-// NewGetBadRequestResponseBody builds the HTTP response body from the result
-// of the "get" endpoint of the "devbuild" service.
-func NewGetBadRequestResponseBody(res *devbuild.HTTPError) *GetBadRequestResponseBody {
-	body := &GetBadRequestResponseBody{
+// NewCreateUnauthorizedResponseBody builds the HTTP response body from the
+// result of the "create" endpoint of the "devbuild" service.
+func NewCreateUnauthorizedResponseBody(res *devbuild.DevBuildUnauthorizedError) *CreateUnauthorizedResponseBody {
+	body := &CreateUnauthorizedResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
@@ -566,7 +697,7 @@ func NewGetBadRequestResponseBody(res *devbuild.HTTPError) *GetBadRequestRespons
 
 // NewGetInternalServerErrorResponseBody builds the HTTP response body from the
 // result of the "get" endpoint of the "devbuild" service.
-func NewGetInternalServerErrorResponseBody(res *devbuild.HTTPError) *GetInternalServerErrorResponseBody {
+func NewGetInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *GetInternalServerErrorResponseBody {
 	body := &GetInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -574,10 +705,10 @@ func NewGetInternalServerErrorResponseBody(res *devbuild.HTTPError) *GetInternal
 	return body
 }
 
-// NewUpdateBadRequestResponseBody builds the HTTP response body from the
-// result of the "update" endpoint of the "devbuild" service.
-func NewUpdateBadRequestResponseBody(res *devbuild.HTTPError) *UpdateBadRequestResponseBody {
-	body := &UpdateBadRequestResponseBody{
+// NewGetNotFoundResponseBody builds the HTTP response body from the result of
+// the "get" endpoint of the "devbuild" service.
+func NewGetNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *GetNotFoundResponseBody {
+	body := &GetNotFoundResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
@@ -586,7 +717,7 @@ func NewUpdateBadRequestResponseBody(res *devbuild.HTTPError) *UpdateBadRequestR
 
 // NewUpdateInternalServerErrorResponseBody builds the HTTP response body from
 // the result of the "update" endpoint of the "devbuild" service.
-func NewUpdateInternalServerErrorResponseBody(res *devbuild.HTTPError) *UpdateInternalServerErrorResponseBody {
+func NewUpdateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *UpdateInternalServerErrorResponseBody {
 	body := &UpdateInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -594,10 +725,20 @@ func NewUpdateInternalServerErrorResponseBody(res *devbuild.HTTPError) *UpdateIn
 	return body
 }
 
-// NewRerunBadRequestResponseBody builds the HTTP response body from the result
+// NewUpdateNotFoundResponseBody builds the HTTP response body from the result
+// of the "update" endpoint of the "devbuild" service.
+func NewUpdateNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *UpdateNotFoundResponseBody {
+	body := &UpdateNotFoundResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewRerunForbiddenResponseBody builds the HTTP response body from the result
 // of the "rerun" endpoint of the "devbuild" service.
-func NewRerunBadRequestResponseBody(res *devbuild.HTTPError) *RerunBadRequestResponseBody {
-	body := &RerunBadRequestResponseBody{
+func NewRerunForbiddenResponseBody(res *devbuild.DevBuildForbiddenError) *RerunForbiddenResponseBody {
+	body := &RerunForbiddenResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
@@ -606,7 +747,7 @@ func NewRerunBadRequestResponseBody(res *devbuild.HTTPError) *RerunBadRequestRes
 
 // NewRerunInternalServerErrorResponseBody builds the HTTP response body from
 // the result of the "rerun" endpoint of the "devbuild" service.
-func NewRerunInternalServerErrorResponseBody(res *devbuild.HTTPError) *RerunInternalServerErrorResponseBody {
+func NewRerunInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *RerunInternalServerErrorResponseBody {
 	body := &RerunInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -614,8 +755,28 @@ func NewRerunInternalServerErrorResponseBody(res *devbuild.HTTPError) *RerunInte
 	return body
 }
 
+// NewRerunNotFoundResponseBody builds the HTTP response body from the result
+// of the "rerun" endpoint of the "devbuild" service.
+func NewRerunNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *RerunNotFoundResponseBody {
+	body := &RerunNotFoundResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewRerunUnauthorizedResponseBody builds the HTTP response body from the
+// result of the "rerun" endpoint of the "devbuild" service.
+func NewRerunUnauthorizedResponseBody(res *devbuild.DevBuildUnauthorizedError) *RerunUnauthorizedResponseBody {
+	body := &RerunUnauthorizedResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewListPayload builds a devbuild service list endpoint payload.
-func NewListPayload(page int, pageSize int, hotfix bool, sort string, direction string, createdBy *string) *devbuild.ListPayload {
+func NewListPayload(page int, pageSize int, hotfix bool, sort string, direction string, createdBy *string, scope string, status *string, product *string, q *string) *devbuild.ListPayload {
 	v := &devbuild.ListPayload{}
 	v.Page = page
 	v.PageSize = pageSize
@@ -623,6 +784,13 @@ func NewListPayload(page int, pageSize int, hotfix bool, sort string, direction 
 	v.Sort = sort
 	v.Direction = direction
 	v.CreatedBy = createdBy
+	v.Scope = scope
+	if status != nil {
+		tmpstatus := devbuild.BuildStatus(*status)
+		v.Status = &tmpstatus
+	}
+	v.Product = product
+	v.Q = q
 
 	return v
 }
@@ -630,7 +798,7 @@ func NewListPayload(page int, pageSize int, hotfix bool, sort string, direction 
 // NewCreatePayload builds a devbuild service create endpoint payload.
 func NewCreatePayload(body *CreateRequestBody, dryrun bool) *devbuild.CreatePayload {
 	v := &devbuild.CreatePayload{
-		CreatedBy: *body.CreatedBy,
+		CreatedBy: body.CreatedBy,
 	}
 	v.Request = unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(body.Request)
 	v.Dryrun = dryrun
@@ -667,9 +835,6 @@ func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 
 // ValidateCreateRequestBody runs the validations defined on CreateRequestBody
 func ValidateCreateRequestBody(body *CreateRequestBody) (err error) {
-	if body.CreatedBy == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("createdBy", "body"))
-	}
 	if body.Request == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("request", "body"))
 	}
@@ -702,9 +867,6 @@ func ValidateUpdateRequestBody(body *UpdateRequestBody) (err error) {
 func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) {
 	if body.Product == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("product", "body"))
-	}
-	if body.Version == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("version", "body"))
 	}
 	if body.Edition == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("edition", "body"))

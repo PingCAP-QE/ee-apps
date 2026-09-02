@@ -1,0 +1,13 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: exp-ee-portal
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: exp-ee-portal
+      docker:
+        dockerfile: Dockerfile
+    - image: exp-ee-portal-config
+      docker:
+        dockerfile: Dockerfile.config

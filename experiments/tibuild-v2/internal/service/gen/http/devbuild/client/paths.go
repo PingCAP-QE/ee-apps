@@ -17,6 +17,11 @@ func ListDevbuildPath() string {
 	return "/api/v2/devbuilds"
 }
 
+// CapabilitiesDevbuildPath returns the URL path to the devbuild service capabilities HTTP endpoint.
+func CapabilitiesDevbuildPath() string {
+	return "/api/v2/devbuilds/capabilities"
+}
+
 // CreateDevbuildPath returns the URL path to the devbuild service create HTTP endpoint.
 func CreateDevbuildPath() string {
 	return "/api/v2/devbuilds"

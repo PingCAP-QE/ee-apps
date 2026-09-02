@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/ci.yaml
       - .github/workflows/release.yaml
+      - "experiments/portal/**"
       - "**/Dockerfile*"
       - "**/skaffold.yaml"
       - "**/skaffold.yml"
@@ -21,6 +22,8 @@ on:
       - "**/*.html"
       - "**/*.js"
       - "**/*.jsx"
+      - "**/*.ts"
+      - "**/*.tsx"
       - "**/*.css"
       - "**/package.json"
       - "**/package-lock.json"
@@ -70,6 +73,8 @@ jobs:
               - 'publisher/**'
             chatops:
               - 'chatops-lark/**'
+            ee-portal:
+              - 'experiments/portal/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -138,5 +143,10 @@ jobs:
       - name: Publish image - chatops-lark
         if: steps.changes.outputs.chatops == 'true'
         working-directory: chatops-lark
+        run: |
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish images - ee-portal
+        if: steps.changes.outputs.ee-portal == 'true'
+        working-directory: experiments/portal
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps

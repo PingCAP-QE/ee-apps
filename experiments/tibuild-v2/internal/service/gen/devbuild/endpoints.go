@@ -16,27 +16,30 @@ import (
 
 // Endpoints wraps the "devbuild" service endpoints.
 type Endpoints struct {
-	List   goa.Endpoint
-	Create goa.Endpoint
-	Get    goa.Endpoint
-	Update goa.Endpoint
-	Rerun  goa.Endpoint
+	List         goa.Endpoint
+	Capabilities goa.Endpoint
+	Create       goa.Endpoint
+	Get          goa.Endpoint
+	Update       goa.Endpoint
+	Rerun        goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "devbuild" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		List:   NewListEndpoint(s),
-		Create: NewCreateEndpoint(s),
-		Get:    NewGetEndpoint(s),
-		Update: NewUpdateEndpoint(s),
-		Rerun:  NewRerunEndpoint(s),
+		List:         NewListEndpoint(s),
+		Capabilities: NewCapabilitiesEndpoint(s),
+		Create:       NewCreateEndpoint(s),
+		Get:          NewGetEndpoint(s),
+		Update:       NewUpdateEndpoint(s),
+		Rerun:        NewRerunEndpoint(s),
 	}
 }
 
 // Use applies the given middleware to all the "devbuild" service endpoints.
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.List = m(e.List)
+	e.Capabilities = m(e.Capabilities)
 	e.Create = m(e.Create)
 	e.Get = m(e.Get)
 	e.Update = m(e.Update)
@@ -49,6 +52,14 @@ func NewListEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*ListPayload)
 		return s.List(ctx, p)
+	}
+}
+
+// NewCapabilitiesEndpoint returns an endpoint function that calls the method
+// "capabilities" of service "devbuild".
+func NewCapabilitiesEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		return s.Capabilities(ctx)
 	}
 }
 

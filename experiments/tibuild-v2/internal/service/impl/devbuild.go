@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,9 +17,11 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 )
 
 // devbuild service example implementation.
@@ -30,6 +34,7 @@ type devbuildsrvc struct {
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardURL           string
+	ociFileDownloadURL     string
 	reconcilerSince        time.Duration
 	httpClient             *http.Client
 	larkNotifier           *LarkNotifier
@@ -69,6 +74,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
 		tektonCloudEventClient: client,
 		dashboardURL:           cfg.Tekton.ViewURL,
+		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
 	}
@@ -95,6 +101,30 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*de
 	if p.CreatedBy != nil {
 		query.Where(entdevbuild.CreatedBy(*p.CreatedBy))
 	}
+	if p.Scope == "mine" {
+		user, ok := identity.FromContext(ctx)
+		if !ok {
+			return nil, &devbuild.DevBuildUnauthorizedError{Code: http.StatusUnauthorized, Message: "authenticated identity required for mine scope"}
+		}
+		query.Where(entdevbuild.CreatedByEqualFold(user.Email))
+	}
+	if p.Status != nil {
+		query.Where(entdevbuild.Status(string(*p.Status)))
+	}
+	if p.Product != nil && *p.Product != "" {
+		query.Where(entdevbuild.Product(*p.Product))
+	}
+	if p.Q != nil && strings.TrimSpace(*p.Q) != "" {
+		term := strings.TrimSpace(*p.Q)
+		predicates := []predicate.DevBuild{
+			entdevbuild.GitRefContainsFold(term),
+			entdevbuild.CreatedByContainsFold(term),
+		}
+		if id, err := strconv.Atoi(term); err == nil {
+			predicates = append(predicates, entdevbuild.ID(id))
+		}
+		query.Where(entdevbuild.Or(predicates...))
+	}
 	// Map camelCase sort values to Ent column names
 	sortColumnMap := map[string]string{
 		"createdAt": "created_at",
@@ -115,25 +145,61 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*de
 			return nil, nil
 		}
 		s.logger.Err(err).Msg("internal error happened!")
-		return nil, &devbuild.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to list builds"}
 	}
 
 	var res []*devbuild.DevBuild
 	for _, build := range builds {
-		res = append(res, transformDevBuild(build))
+		item := transformDevBuild(build)
+		s.applyPermissions(ctx, item)
+		res = append(res, item)
 	}
 
 	return res, nil
 }
 
+// Capabilities lists the products currently configured by the service. Portal
+// defaults are deliberately conservative and do not change legacy API support.
+func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabilities, error) {
+	products := make([]string, 0, len(s.productRepoMap))
+	for product := range s.productRepoMap {
+		products = append(products, product)
+	}
+	sort.Strings(products)
+	result := &devbuild.DevBuildCapabilities{
+		PipelineEngines:       []string{tektonEngine},
+		DefaultPipelineEngine: tektonEngine,
+	}
+	for _, product := range products {
+		result.Products = append(result.Products, &devbuild.DevBuildProductCapability{
+			ID:              product,
+			Label:           productLabel(product),
+			Editions:        []string{"community"},
+			Platforms:       []string{"linux", "linux/amd64", "linux/arm64"},
+			DefaultEdition:  "community",
+			DefaultPlatform: "linux",
+		})
+	}
+	return result, nil
+}
+
 // Create and trigger devbuild
 func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.create")
+	if user, ok := identity.FromContext(ctx); ok {
+		p.CreatedBy = &user.Email
+	} else if p.CreatedBy == nil || strings.TrimSpace(*p.CreatedBy) == "" {
+		return nil, &devbuild.DevBuildUnauthorizedError{Code: http.StatusUnauthorized, Message: "createdBy or authenticated identity is required"}
+	}
 
 	// 1. insert a new record into the database
 	record, err := s.newBuildEntity(ctx, p)
 	if err != nil {
-		return nil, err
+		if _, ok := err.(*devbuild.DevBuildBadRequestError); ok {
+			return nil, err
+		}
+		s.logger.Err(err).Msg("failed to create build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to create build"}
 	}
 	s.logger.Debug().Any("record", record).Msg("record saved")
 	// 1.1 fast return when it is a dry run.
@@ -142,9 +208,11 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*
 	}
 
 	// 2. trigger the actual build process according to the record.
+	recordID := record.ID
 	record, err = s.triggerBuild(ctx, record)
 	if err != nil {
-		return nil, err
+		s.logger.Err(err).Int("build_id", recordID).Msg("failed to trigger build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to trigger build"}
 	}
 
 	s.logger.Debug().Any("record", record).Msg("record saved")
@@ -160,15 +228,18 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 	build, err := s.dbClient.DevBuild.Get(ctx, p.ID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, &devbuild.HTTPError{Code: http.StatusNotFound, Message: "Devbuild not found"}
+			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
 		}
-		return nil, err
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to get build"}
 	}
 
 	res := transformDevBuild(build)
+	s.applyPermissions(ctx, res)
 	if res.Status.BuildReport == nil {
 		return res, nil
 	}
+	s.addArtifactURLs(res)
 
 	// Append the internal image URL to the image list
 	for i, img := range res.Status.BuildReport.Images {
@@ -227,9 +298,10 @@ func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (r
 
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, &devbuild.HTTPError{Code: http.StatusNotFound, Message: "Devbuild not found"}
+			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
 		}
-		return nil, err
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to update build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to update build"}
 	}
 
 	return transformDevBuild(build), nil
@@ -243,9 +315,16 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	existingBuild, err := s.dbClient.DevBuild.Get(ctx, p.ID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, &devbuild.HTTPError{Code: http.StatusNotFound, Message: "Devbuild not found"}
+			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
 		}
-		return nil, err
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build for rerun")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to rerun build"}
+	}
+	if user, ok := identity.FromContext(ctx); ok && !strings.EqualFold(user.Email, existingBuild.CreatedBy) {
+		return nil, &devbuild.DevBuildForbiddenError{Code: http.StatusForbidden, Message: "only the build creator can rerun this build"}
+	}
+	if !isTerminalStatus(existingBuild.Status) {
+		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
 	}
 
 	// Create a new build with the same parameters
@@ -265,14 +344,65 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetCreatedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
-		return nil, err
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to create rerun build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to rerun build"}
 	}
 
 	if _, err := s.triggerTknBuild(ctx, newBuild); err != nil {
-		return nil, err
+		s.logger.Err(err).Int("build_id", newBuild.ID).Msg("failed to trigger rerun build")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to trigger rerun build"}
 	}
 
-	return transformDevBuild(newBuild), nil
+	res = transformDevBuild(newBuild)
+	s.applyPermissions(ctx, res)
+	return res, nil
+}
+
+func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.DevBuild) {
+	canRerun := false
+	if user, ok := identity.FromContext(ctx); ok {
+		canRerun = strings.EqualFold(user.Email, build.Meta.CreatedBy) && isTerminalStatus(string(build.Status.Status))
+	}
+	build.Permissions = &devbuild.DevBuildPermissions{CanRerun: canRerun}
+}
+
+func productLabel(product string) string {
+	labels := map[string]string{
+		"tidb": "TiDB", "tikv": "TiKV", "tiflash": "TiFlash", "pd": "PD", "ticdc": "TiCDC",
+		"dm": "DM", "br": "BR", "tiproxy": "TiProxy", "tidb-operator": "TiDB Operator",
+	}
+	if label := labels[product]; label != "" {
+		return label
+	}
+	return product
+}
+
+func (s *devbuildsrvc) addArtifactURLs(build *devbuild.DevBuild) {
+	if s.ociFileDownloadURL == "" || build.Status.BuildReport == nil {
+		return
+	}
+	for _, artifact := range build.Status.BuildReport.Binaries {
+		if artifact.OciFile != nil {
+			downloadURL := buildArtifactURL(s.ociFileDownloadURL, artifact.OciFile)
+			artifact.URL = &downloadURL
+		}
+		if artifact.Sha256OCIFile != nil {
+			shaURL := buildArtifactURL(s.ociFileDownloadURL, artifact.Sha256OCIFile)
+			artifact.Sha256URL = &shaURL
+		}
+	}
+}
+
+func buildArtifactURL(base string, file *devbuild.OciFile) string {
+	u, err := url.Parse(base + "/" + strings.TrimLeft(file.Repo, "/"))
+	if err != nil {
+		return ""
+	}
+	query := u.Query()
+	query.Set("tag", file.Tag)
+	query.Set("file", file.File)
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
