@@ -27,6 +27,7 @@ TiDB Cloud 相关 vendor tag，例如 AWS console 的 `shared-pool` 在 CUR/stag
    未命中的成本保持 unattributed，不回退到 author，避免绕过 TCMS 分账边界。
 6. 匹配优先级依次为：`cluster/shared_pool` 条件数量、是否包含 tenant 条件、account 精确匹配、有效期和 id。
    因而资源标签规则优先于 tenant-only 规则，tenant + 资源标签规则优先于相同资源标签的泛化规则。
+   若最具体规则的 `icost_project` 为空，则用匹配的 tenant-only 规则补齐 project；其他 `icost_*` 字段仍来自最具体规则。
 7. shared pool 固定成本：billing 行无 author、`cluster` 为空、`shared_pool` 非空；按同一 shared pool 下各
    `(service, project)` logical net_cost 占比分摊。
 8. fallback 必须守恒：未命中路径不得丢成本；仅当账户没有有效 owner allocation 时允许 author fallback，
@@ -112,8 +113,9 @@ sync 写入 TiDB 前会规范化 JSON，去掉 null/empty key，因此 shared_po
 INSERT A（非 shared 固定成本）：
 
 - tcms subset match 命中：`owner=allocation.icost_owner_email`，即使 `tag_used_by`/内部 `author` 非空也优先使用 TCMS；
-  `service/project/service_exec_id/vendor_tags_json` 填入。匹配条件包含 `cluster` 时 `allocate_method='logical'`；
-  只按 pool/tag 泛化命中时 `allocate_method='vendor_tag'`。
+  `service/project/service_exec_id/vendor_tags_json` 填入。最具体规则的 `icost_project` 为空时，由匹配的
+  tenant-only 规则补齐 project；owner/service/service_exec_id 不继承。匹配条件包含 `cluster` 时
+  `allocate_method='logical'`；只按 pool/tag 泛化命中时 `allocate_method='vendor_tag'`。
 - tcms 未命中、author 非空：仅当该账户没有有效 owner allocation 时按原 author roster 逻辑归属；
   否则保持 unattributed，避免未命中 TCMS 的成本绕过账户级分账边界。
 - tcms 未命中、author 为空、JSON `cluster` 非空：保留为 `missing_label_allocation/unattributed`。
