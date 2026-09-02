@@ -23,7 +23,6 @@ from cost_insight.common.row_utils import bind_decimal_rows
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
 _AMOUNTS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
-_DERIVED_BASES = ("kubernetes_allocated", "eq_allocated", "kubernetes_eq_allocated")
 
 
 @dataclass(frozen=True)
@@ -52,9 +51,7 @@ def run_materialize_resource_serving(
 ) -> MaterializeResourceServingSummary:
     """Stage and publish each daily source window independently.
 
-    A derived run snapshots the one allocation publication version before it
-    starts.  Every daily pointer is conditional on that version still being
-    active, so an allocation flip can never expose stale serving rows.
+    Resource serving is materialized from native attribution only.
     """
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
@@ -62,50 +59,31 @@ def run_materialize_resource_serving(
     processing_end = processing_end_date or end_date
     if not (start_date <= processing_start <= processing_end <= end_date):
         raise ValueError("processing dates must be within the requested range")
-    valid_bases = {"native", *_DERIVED_BASES}
-    if basis is not None and basis not in valid_bases:
+    if basis not in (None, "native"):
         raise ValueError(f"unsupported resource serving basis: {basis!r}")
 
     version = materialization_version or (now or datetime.now(UTC)).strftime(
         "resource_%Y%m%dT%H%M%S%f"
     )
-    with engine.begin() as connection:
-        active_allocation_version = _active_allocation_version(connection)
-    bases = (basis,) if basis else (
-        ("native", *_DERIVED_BASES) if active_allocation_version else ("native",)
-    )
+    bases = ("native",)
 
     windows_published = 0
     rows_written = 0
     for basis_key in bases:
-        source_allocation_version = (
-            active_allocation_version if basis_key in _DERIVED_BASES else None
-        )
-        if basis_key in _DERIVED_BASES and source_allocation_version is None:
-            continue
         with engine.begin() as connection:
             windows = _source_windows(
                 connection,
-                basis_key=basis_key,
-                allocation_version=source_allocation_version,
                 start_date=processing_start,
                 end_date=processing_end,
             )
         for window in windows:
             params = dict(window)
             with engine.begin() as connection:
-                source_rows = _load_source_rows(
-                    connection,
-                    basis_key=basis_key,
-                    allocation_version=source_allocation_version,
-                    **params,
-                )
+                source_rows = _load_source_rows(connection, **params)
                 detail_rows = _load_detail_rows(connection, **params)
-                group_lineage = _load_group_lineage(connection, **params)
             serving_rows = build_resource_serving_rows(
                 source_rows=source_rows,
                 detail_rows=detail_rows,
-                group_lineage=group_lineage,
                 basis_key=basis_key,
                 materialization_version=version,
                 calculated_at=(now or datetime.now(UTC)).replace(tzinfo=None),
@@ -124,7 +102,6 @@ def run_materialize_resource_serving(
                     engine,
                     basis_key=basis_key,
                     materialization_version=version,
-                    source_allocation_version=source_allocation_version,
                     rows=serving_rows,
                     source_rows=source_rows,
                     **params,
@@ -147,7 +124,6 @@ def build_resource_serving_rows(
     *,
     source_rows: Iterable[Mapping[str, Any]],
     detail_rows: Iterable[Mapping[str, Any]],
-    group_lineage: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     basis_key: str,
     materialization_version: str,
     calculated_at: datetime,
@@ -161,8 +137,7 @@ def build_resource_serving_rows(
 
     contributions: list[dict[str, Any]] = []
     for source in source_rows:
-        expanded = _expand_source_lineage(source, group_lineage or {})
-        for resolved in expanded:
+        for resolved in (dict(source),):
             source_hash = str(resolved.get("source_summary_row_hash") or "")
             details = details_by_summary.get(source_hash, ()) if source_hash else ()
             contributions.extend(
@@ -176,37 +151,6 @@ def build_resource_serving_rows(
             )
 
     return _aggregate_contributions(contributions)
-
-
-def _expand_source_lineage(
-    source: Mapping[str, Any], group_lineage: Mapping[str, Sequence[Mapping[str, Any]]]) -> tuple[dict[str, Any], ...]:
-    source_hash = str(source.get("source_summary_row_hash") or "")
-    if source_hash:
-        return (dict(source),)
-    mappings = group_lineage.get(str(source.get("source_fact_hash") or ""), ())
-    if not mappings:
-        return (dict(source),)
-    denominator = sum((_decimal(row.get("source_list_cost")) for row in mappings), Decimal())
-    if denominator <= 0:
-        return (dict(source),)
-    result: list[dict[str, Any]] = []
-    remaining = {name: _decimal_or_none(source.get(name)) for name in _AMOUNTS}
-    for index, mapping in enumerate(mappings):
-        weight = _decimal(mapping.get("source_list_cost")) / denominator
-        row = dict(source)
-        row["source_summary_row_hash"] = mapping.get("source_summary_row_hash")
-        row["source_fact_hash"] = f"{source.get('source_fact_hash') or source.get('dimension_hash') or ''}:{row['source_summary_row_hash']}"
-        for name, amount in remaining.items():
-            if amount is None:
-                row[name] = None
-            elif index == len(mappings) - 1:
-                row[name] = amount
-            else:
-                allocated = (amount * weight).quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
-                row[name] = allocated
-                remaining[name] = amount - allocated
-        result.append(row)
-    return tuple(result)
 
 
 def _detail_or_fallback_contributions(
@@ -388,41 +332,14 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
 
 
 def _source_windows(
-    connection: Connection,
-    *,
-    basis_key: str,
-    allocation_version: str | None,
-    start_date: date,
-    end_date: date,
+    connection: Connection, *, start_date: date, end_date: date
 ) -> tuple[dict[str, Any], ...]:
-    if basis_key == "native":
-        statement = _NATIVE_WINDOWS
-        params: dict[str, Any] = {"start_date": start_date, "end_date": end_date}
-    else:
-        statement = _DERIVED_WINDOWS
-        params = {
-            "basis_key": basis_key,
-            "allocation_version": allocation_version,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
     windows = {
         (_as_date(row["usage_date"]), str(row["vendor"]), str(row["account_id"]))
-        for row in connection.execute(statement, params).mappings()
+        for row in connection.execute(_NATIVE_WINDOWS, {"start_date": start_date, "end_date": end_date}).mappings()
     }
-    # A successful attribution refresh proves a date was processed even if it
-    # produced zero cost rows. Retain that completion marker so the Dashboard
-    # receives a published zero window rather than permanent pending state.
     windows.update(_refreshed_empty_windows(connection, start_date=start_date, end_date=end_date))
-    return tuple(
-        {
-            "usage_date": usage_date,
-            "vendor": vendor,
-            "account_id": account_id,
-        }
-        for usage_date, vendor, account_id in sorted(windows)
-    )
-
+    return tuple({"usage_date": d, "vendor": v, "account_id": a} for d, v, a in sorted(windows))
 
 def _as_date(value: Any) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
@@ -457,20 +374,11 @@ def _refreshed_empty_windows(
 
 
 def _load_source_rows(
-    connection: Connection,
-    *,
-    basis_key: str,
-    allocation_version: str | None,
-    usage_date: date,
-    vendor: str,
-    account_id: str,
+    connection: Connection, *, usage_date: date, vendor: str, account_id: str
 ) -> tuple[dict[str, Any], ...]:
-    statement = _NATIVE_SOURCES if basis_key == "native" else _DERIVED_SOURCES
-    params = {"usage_date": usage_date, "vendor": vendor, "account_id": account_id}
-    if basis_key != "native":
-        params.update({"basis_key": basis_key, "allocation_version": allocation_version})
-    return tuple(dict(row) for row in connection.execute(statement, params).mappings())
-
+    return tuple(dict(row) for row in connection.execute(_NATIVE_SOURCES, {
+        "usage_date": usage_date, "vendor": vendor, "account_id": account_id
+    }).mappings())
 
 def _load_detail_rows(
     connection: Connection, *, usage_date: date, vendor: str, account_id: str
@@ -478,28 +386,6 @@ def _load_detail_rows(
     return tuple(dict(row) for row in connection.execute(_DETAIL_ROWS, {
         "usage_date": usage_date, "vendor": vendor, "account_id": account_id
     }).mappings())
-
-
-def _load_group_lineage(
-    connection: Connection, *, usage_date: date, vendor: str, account_id: str
-) -> dict[str, tuple[dict[str, Any], ...]]:
-    """Map the allocation materializer's stable merged source hash to mappings."""
-    try:
-        rows = tuple(dict(row) for row in connection.execute(_GROUP_LINEAGE, {
-            "usage_date": usage_date, "vendor": vendor, "account_id": account_id
-        }).mappings())
-    except Exception:
-        return {}
-    by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        by_group[str(row["allocation_group_hash"] or "")].append(row)
-    result: dict[str, tuple[dict[str, Any], ...]] = {}
-    for mappings in by_group.values():
-        source_hash = hashlib.sha256(
-            "|".join(sorted(str(row.get("source_dimension_hash") or "") for row in mappings)).encode()
-        ).hexdigest()
-        result[source_hash] = tuple(sorted(mappings, key=lambda row: str(row["source_summary_row_hash"])))
-    return result
 
 
 def _replace_staged_window(
@@ -531,7 +417,6 @@ def _publish_window(
     *,
     basis_key: str,
     materialization_version: str,
-    source_allocation_version: str | None,
     rows: Sequence[Mapping[str, Any]],
     source_rows: Sequence[Mapping[str, Any]],
     usage_date: date,
@@ -539,12 +424,9 @@ def _publish_window(
     account_id: str,
 ) -> None:
     with engine.begin() as connection:
-        if basis_key in _DERIVED_BASES and _active_allocation_version(connection) != source_allocation_version:
-            raise RuntimeError("allocation publication changed while resource serving was materialized")
         params = {
             "basis_key": basis_key, "vendor": vendor, "account_id": account_id,
             "usage_date": usage_date, "materialization_version": materialization_version,
-            "source_allocation_version": source_allocation_version,
             "detail_list_cost": sum((_decimal(row.get("detail_list_cost")) for row in rows), Decimal()),
             "total_list_cost": sum((_decimal(row.get("list_cost")) for row in source_rows), Decimal()),
             "source_row_count": sum((int(row.get("source_rows") or 1) for row in source_rows)),
@@ -553,13 +435,6 @@ def _publish_window(
             _UPSERT_PUBLICATION_SQLITE if connection.dialect.name == "sqlite" else _UPSERT_PUBLICATION_MYSQL,
             bind_decimal_rows([params])[0] if connection.dialect.name == "sqlite" else params,
         )
-
-
-def _active_allocation_version(connection: Connection) -> str | None:
-    try:
-        return connection.execute(_ACTIVE_ALLOCATION_VERSION).scalar_one_or_none()
-    except Exception:  # Migration ordering: native serving does not need this table.
-        return None
 
 
 def _assert_conserved(source_rows: Iterable[Mapping[str, Any]], serving_rows: Iterable[Mapping[str, Any]]) -> None:
@@ -602,11 +477,6 @@ _NATIVE_WINDOWS = text("""
 SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
 WHERE usage_date BETWEEN :start_date AND :end_date ORDER BY usage_date, vendor, account_id
 """)
-_DERIVED_WINDOWS = text("""
-SELECT DISTINCT usage_date, vendor, account_id FROM cost_allocation_daily
-WHERE basis_key = :basis_key AND allocation_version = :allocation_version
-  AND usage_date BETWEEN :start_date AND :end_date ORDER BY usage_date, vendor, account_id
-""")
 _SOURCE_COLUMNS = """
 usage_date, vendor, account_id, service_name, sku_name, region, org, repo, target_branch,
 resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds, list_cost,
@@ -618,13 +488,6 @@ FROM cost_attribution_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
 ORDER BY dimension_hash
 """)
-_DERIVED_SOURCES = text(f"""
-SELECT {_SOURCE_COLUMNS}, source_fact_hash
-FROM cost_allocation_daily
-WHERE basis_key = :basis_key AND allocation_version = :allocation_version
-  AND usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
-ORDER BY dimension_hash
-""")
 _DETAIL_ROWS = text("""
 SELECT source_summary_row_hash, resource_name, parent_resource_name, service_name,
   vendor_tags_json, usage_seconds, list_cost
@@ -632,17 +495,6 @@ FROM cost_unmatched_resource_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
   AND source_summary_row_hash IS NOT NULL AND source_summary_row_hash <> ''
 ORDER BY source_row_hash
-""")
-_GROUP_LINEAGE = text("""
-SELECT mapping.allocation_group_hash, mapping.source_summary_row_hash, mapping.source_list_cost,
-  source.dimension_hash AS source_dimension_hash
-FROM cost_kubernetes_workload_allocation_source_daily mapping
-JOIN cost_attribution_daily source
-  ON source.vendor = mapping.vendor AND source.account_id = mapping.account_id
- AND source.usage_date = mapping.usage_date
- AND source.source_summary_row_hash = mapping.source_summary_row_hash
-WHERE mapping.usage_date = :usage_date AND mapping.vendor = :vendor AND mapping.account_id = :account_id
-  AND mapping.allocation_group_hash IS NOT NULL AND mapping.allocation_group_hash <> ''
 """)
 _DELETE_STAGED = text("""
 DELETE FROM cost_resource_serving_daily
@@ -664,20 +516,16 @@ INSERT INTO cost_resource_serving_daily (
   :net_cost, :source_row_count, :calculated_at
 )
 """)
-_ACTIVE_ALLOCATION_VERSION = text("""
-SELECT active_allocation_version FROM cost_allocation_publication WHERE publication_name = 'dashboard'
-""")
 _UPSERT_PUBLICATION_SQLITE = text("""
 INSERT INTO cost_resource_serving_publication (
   basis_key, vendor, account_id, usage_date, active_materialization_version,
-  source_allocation_version, detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
+  detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
 ) VALUES (
   :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
-  :source_allocation_version, :detail_list_cost, :total_list_cost, :source_row_count, NULL
+  :detail_list_cost, :total_list_cost, :source_row_count, NULL
 )
 ON CONFLICT(basis_key, vendor, account_id, usage_date) DO UPDATE SET
   active_materialization_version = excluded.active_materialization_version,
-  source_allocation_version = excluded.source_allocation_version,
   detail_list_cost = excluded.detail_list_cost, total_list_cost = excluded.total_list_cost,
   source_row_count = excluded.source_row_count, published_at = CURRENT_TIMESTAMP,
   tiflash_ready_at = NULL
@@ -685,14 +533,13 @@ ON CONFLICT(basis_key, vendor, account_id, usage_date) DO UPDATE SET
 _UPSERT_PUBLICATION_MYSQL = text("""
 INSERT INTO cost_resource_serving_publication (
   basis_key, vendor, account_id, usage_date, active_materialization_version,
-  source_allocation_version, detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
+  detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
 ) VALUES (
   :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
-  :source_allocation_version, :detail_list_cost, :total_list_cost, :source_row_count, NULL
+  :detail_list_cost, :total_list_cost, :source_row_count, NULL
 )
 ON DUPLICATE KEY UPDATE
   active_materialization_version = VALUES(active_materialization_version),
-  source_allocation_version = VALUES(source_allocation_version),
   detail_list_cost = VALUES(detail_list_cost), total_list_cost = VALUES(total_list_cost),
   source_row_count = VALUES(source_row_count), published_at = CURRENT_TIMESTAMP,
   tiflash_ready_at = NULL

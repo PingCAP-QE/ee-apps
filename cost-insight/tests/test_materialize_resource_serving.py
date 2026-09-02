@@ -119,37 +119,6 @@ def test_resource_serving_merges_different_roster_metadata_for_one_resource() ->
     assert rows[0]["source_row_count"] == 2
 
 
-def test_resource_serving_expands_grouped_kubernetes_lineage() -> None:
-    rows = build_resource_serving_rows(
-        source_rows=(_source(source_summary_row_hash=None, source_fact_hash="group-source"),),
-        detail_rows=(
-            {
-                "source_summary_row_hash": "summary-a", "resource_name": "instance-a",
-                "parent_resource_name": None, "service_name": "Compute Engine",
-                "vendor_tags_json": None, "usage_seconds": Decimal("60"), "list_cost": Decimal("60"),
-            },
-            {
-                "source_summary_row_hash": "summary-b", "resource_name": "instance-b",
-                "parent_resource_name": None, "service_name": "Compute Engine",
-                "vendor_tags_json": None, "usage_seconds": Decimal("40"), "list_cost": Decimal("40"),
-            },
-        ),
-        group_lineage={
-            "group-source": (
-                {"source_summary_row_hash": "summary-a", "source_list_cost": Decimal("60")},
-                {"source_summary_row_hash": "summary-b", "source_list_cost": Decimal("40")},
-            )
-        },
-        basis_key="kubernetes_allocated",
-        materialization_version="v1",
-        calculated_at=datetime(2026, 8, 11),
-    )
-
-    assert [(row["resource_name"], row["list_cost"]) for row in rows] == [
-        ("instance-a", Decimal("60")),
-        ("instance-b", Decimal("40")),
-    ]
-    assert all(row["fallback_list_cost"] == 0 for row in rows)
 
 
 def test_materialize_resource_serving_publishes_a_refreshed_zero_cost_window() -> None:

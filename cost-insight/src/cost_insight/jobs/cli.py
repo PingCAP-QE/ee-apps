@@ -251,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_resources.add_argument("--end-date", type=_parse_date, required=True)
     materialize_resources.add_argument(
         "--basis",
-        choices=("native", "kubernetes_allocated", "eq_allocated", "kubernetes_eq_allocated"),
+        choices=("native",),
     )
     materialize_resources.add_argument("--processing-start-date", type=_parse_date)
     materialize_resources.add_argument("--processing-end-date", type=_parse_date)
