@@ -12,6 +12,8 @@ export default function WeeklyCostPage() {
   const lastWeek = report.data?.last_week || {};
   const previousWeek = report.data?.previous_week || {};
   const previousMonth = report.data?.previous_month || {};
+  const lastWeekLabel = formatPeriodLabel("Last week", lastWeek);
+  const previousMonthLabel = formatPeriodLabel("Last natural month", previousMonth);
 
   return (
     <div className="page-stack weekly-cost">
@@ -24,7 +26,7 @@ export default function WeeklyCostPage() {
 
       <section className="stats-grid weekly-cost__summary">
         <StatCard
-          label="Last week cost"
+          label={lastWeekLabel}
           value={formatCurrency(summary.last_week_cost)}
           detail={formatDateRangeLabel(lastWeek.start_date, lastWeek.end_date)}
           delta={formatWeekOverWeek(summary.week_wow_pct)}
@@ -37,7 +39,7 @@ export default function WeeklyCostPage() {
           tone="teal"
         />
         <StatCard
-          label="Last natural month cost"
+          label={previousMonthLabel}
           value={formatCurrency(summary.previous_month_cost)}
           detail={formatDateRangeLabel(previousMonth.start_date, previousMonth.end_date)}
           tone="amber"
@@ -57,10 +59,9 @@ export default function WeeklyCostPage() {
                 <tr>
                   <th scope="col">Account</th>
                   <th scope="col">Purpose</th>
-                  <th scope="col">Last week</th>
-                  <th scope="col">WoW</th>
+                  <th scope="col">{lastWeekLabel}</th>
                   <th scope="col">QA share</th>
-                  <th scope="col">Last natural month</th>
+                  <th scope="col">{previousMonthLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -74,9 +75,6 @@ export default function WeeklyCostPage() {
                     </th>
                     <td className="weekly-cost__purpose">{item.purpose}</td>
                     <td>{formatCurrency(item.last_week_cost)}</td>
-                    <td className={`weekly-cost__delta weekly-cost__delta--${costDeltaTone(item.week_wow_pct)}`}>
-                      {formatWeekOverWeek(item.week_wow_pct)}
-                    </td>
                     <td>{formatNullablePercent(item.last_week_share_pct)}</td>
                     <td>{formatCurrency(item.previous_month_cost)}</td>
                   </tr>
@@ -94,6 +92,13 @@ export default function WeeklyCostPage() {
       </Panel>
     </div>
   );
+}
+
+function formatPeriodLabel(label, period) {
+  if (!period.start_date || !period.end_date) {
+    return label;
+  }
+  return `${label} (${period.start_date} – ${period.end_date})`;
 }
 
 function formatWeekOverWeek(value) {

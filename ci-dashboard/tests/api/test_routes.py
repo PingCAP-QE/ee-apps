@@ -4081,18 +4081,6 @@ def test_weekly_cost_report_uses_fixed_periods_net_cost_and_qa_share(
             "last_week_share_pct": 66.67,
         },
         {
-            "cost_source": "gcp:qa-infra-dev",
-            "vendor": "gcp",
-            "account_id": "qa-infra-dev",
-            "display_name": "qa-infra-dev",
-            "purpose": "机器统一资源池",
-            "last_week_cost": 60.0,
-            "previous_week_cost": 60.0,
-            "previous_month_cost": 100.0,
-            "week_wow_pct": 0.0,
-            "last_week_share_pct": 33.33,
-        },
-        {
             "cost_source": "gcp:future-qa",
             "vendor": "gcp",
             "account_id": "future-qa",
@@ -4103,6 +4091,18 @@ def test_weekly_cost_report_uses_fixed_periods_net_cost_and_qa_share(
             "previous_month_cost": 0.0,
             "week_wow_pct": None,
             "last_week_share_pct": 0.0,
+        },
+        {
+            "cost_source": "gcp:qa-infra-dev",
+            "vendor": "gcp",
+            "account_id": "qa-infra-dev",
+            "display_name": "qa-infra-dev",
+            "purpose": "机器统一资源池",
+            "last_week_cost": 60.0,
+            "previous_week_cost": 60.0,
+            "previous_month_cost": 100.0,
+            "week_wow_pct": 0.0,
+            "last_week_share_pct": 33.33,
         },
     ]
 

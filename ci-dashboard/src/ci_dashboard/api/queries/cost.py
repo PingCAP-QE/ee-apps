@@ -825,7 +825,13 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
                 WHERE s.is_active = :is_active
                   AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
                 GROUP BY s.vendor, s.account_id, s.display_name, s.purpose
-                ORDER BY last_week_cost DESC, s.vendor, s.account_id
+                ORDER BY
+                  CASE s.vendor
+                    WHEN 'aws' THEN 0
+                    WHEN 'gcp' THEN 1
+                    ELSE 2
+                  END,
+                  s.account_id
                 """
             ),
             {

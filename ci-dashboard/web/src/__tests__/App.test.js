@@ -134,8 +134,18 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
       ],
     });
     const rendered = await renderReport();
+    const headers = renderer.root
+      .findByType("thead")
+      .findAllByType("th")
+      .map((header) => header.children.join(""));
     assert.match(rendered, /Configured QA environment/);
-    assert.match(rendered, /WoW —/);
+    assert.deepEqual(headers, [
+      "Account",
+      "Purpose",
+      "Last week (2026-07-13 – 2026-07-19)",
+      "QA share",
+      "Last natural month (2026-06-01 – 2026-06-30)",
+    ]);
     assert.doesNotMatch(rendered, /No QA cost sources with a configured purpose/);
   } finally {
     await act(async () => renderer?.unmount());
