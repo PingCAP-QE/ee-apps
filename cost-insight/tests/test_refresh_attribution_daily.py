@@ -905,7 +905,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       ),
                       (
                         7, 'aws', NULL, '{"cluster":"cluster-tenant"}',
-                        'bob@pingcap.com', 'ClusterService', NULL,
+                        'bob@pingcap.com', 'ClusterService', '   ',
                         'exec-global-cluster', NULL, NULL
                       )
                     """
