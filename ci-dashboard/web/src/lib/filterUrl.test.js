@@ -7,6 +7,7 @@ import {
   buildNavSearchByPath,
   readFiltersFromSearch,
   sameFilters,
+  WEEKLY_COST_PATH,
 } from "./filterUrl.js";
 
 const defaultRange = {
@@ -58,6 +59,22 @@ test("weekly summary never serializes filters into the root URL", () => {
       end_date: "2026-06-01",
     },
     "/",
+  );
+
+  assert.equal(search, "");
+});
+
+test("QA Cost Weekly never serializes filters into its fixed-report URL", () => {
+  assert.equal(WEEKLY_COST_PATH, "/qa-cost-weekly");
+
+  const search = buildFilterSearch(
+    {
+      ...buildDefaultFilters(defaultRange, WEEKLY_COST_PATH),
+      repo: "pingcap/tidb",
+      start_date: "2026-05-01",
+      end_date: "2026-06-01",
+    },
+    WEEKLY_COST_PATH,
   );
 
   assert.equal(search, "");

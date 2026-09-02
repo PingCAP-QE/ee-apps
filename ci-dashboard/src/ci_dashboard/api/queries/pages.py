@@ -33,6 +33,7 @@ from ci_dashboard.api.queries.cost import (
     get_repo_group_cost_stack,
     get_unmatched_resources,
     get_weekly_account_summaries,
+    get_weekly_cost_report,
     get_weekly_overview,
     list_cost_sources,
 )
@@ -323,6 +324,10 @@ def get_cost_weekly_account_summaries_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_weekly_account_summaries(engine, _normalize_cost_filters(filters))
+
+
+def get_weekly_cost_report_page(engine: Engine) -> dict[str, Any]:
+    return get_weekly_cost_report(engine)
 
 
 def get_cost_repo_group_stack_page(

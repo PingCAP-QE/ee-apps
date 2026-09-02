@@ -529,6 +529,7 @@ def _insert_cost_source(
     account_id: str,
     display_name: str | None = None,
     billing_account_id: str | None = None,
+    purpose: str | None = None,
     is_active: int = 1,
 ) -> None:
     with sqlite_engine.begin() as connection:
@@ -536,9 +537,9 @@ def _insert_cost_source(
             text(
                 """
                 INSERT INTO cost_sources (
-                  vendor, account_id, billing_account_id, display_name, is_active
+                  vendor, account_id, billing_account_id, display_name, purpose, is_active
                 ) VALUES (
-                  :vendor, :account_id, :billing_account_id, :display_name, :is_active
+                  :vendor, :account_id, :billing_account_id, :display_name, :purpose, :is_active
                 )
                 """
             ),
@@ -547,6 +548,7 @@ def _insert_cost_source(
                 "account_id": account_id,
                 "billing_account_id": billing_account_id,
                 "display_name": display_name,
+                "purpose": purpose,
                 "is_active": is_active,
             },
         )
@@ -3994,6 +3996,446 @@ def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestCli
         ["2026-05-18", 0.0],
         ["2026-05-25", 0.0],
     ]
+
+
+def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    for vendor, account_id, purpose, is_active in [
+        ("aws", "946646677266", "机器统一资源池及重点项目测试", 1),
+        ("gcp", "qa-infra-dev", " 机器统一资源池 ", 1),
+        ("gcp", "future-qa", "新配置测试环境", 1),
+        ("gcp", "no-purpose", None, 1),
+        ("gcp", "blank-purpose", "", 1),
+        ("gcp", "whitespace-purpose", "   ", 1),
+        ("gcp", "inactive-qa", "已停用测试环境", 0),
+    ]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            display_name=account_id,
+            purpose=purpose,
+            is_active=is_active,
+        )
+    for usage_date, vendor, account_id, net_cost, list_cost, effective_cost in [
+        ("2026-06-15", "aws", "946646677266", 400, 1400, 900),
+        ("2026-06-20", "gcp", "qa-infra-dev", 100, 1100, 800),
+        ("2026-07-07", "aws", "946646677266", 80, 1080, 880),
+        ("2026-07-07", "gcp", "qa-infra-dev", 60, 1060, 860),
+        ("2026-07-13", "aws", "946646677266", 120, 1120, 920),
+        ("2026-07-14", "gcp", "qa-infra-dev", 80, 1080, 880),
+        ("2026-07-15", "gcp", "qa-infra-dev", -20, 980, 780),
+        ("2026-07-14", "gcp", "no-purpose", 500, 1500, 1000),
+        ("2026-07-14", "gcp", "inactive-qa", 600, 1600, 1100),
+        ("2026-07-20", "aws", "946646677266", 700, 1700, 1200),
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date=usage_date,
+            vendor=vendor,
+            account_id=account_id,
+            repo="tidb",
+            group_id=None,
+            net_cost=net_cost,
+            list_cost=list_cost,
+            effective_cost=effective_cost,
+            dimension_hash=f"{usage_date}-{vendor}-{account_id}",
+        )
+
+    response = api_client.get(
+        "/api/v1/pages/weekly-cost",
+        params={"start_date": "2020-01-01", "cost_source": "gcp:no-purpose"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"] == {
+        "calendar_timezone": "UTC",
+        "cost_metric": "list_cost",
+        "purpose_schema_available": True,
+    }
+    assert body["last_week"] == {"start_date": "2026-07-13", "end_date": "2026-07-19"}
+    assert body["previous_week"] == {"start_date": "2026-07-06", "end_date": "2026-07-12"}
+    assert body["previous_month"] == {"start_date": "2026-06-01", "end_date": "2026-06-30"}
+    assert body["summary"] == {
+        "last_week_cost": 3180.0,
+        "previous_week_cost": 2140.0,
+        "week_wow_pct": 48.6,
+        "previous_month_cost": 2500.0,
+    }
+    assert body["items"] == [
+        {
+            "cost_source": "aws:946646677266",
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "display_name": "946646677266",
+            "purpose": "机器统一资源池及重点项目测试",
+            "last_week_cost": 1120.0,
+            "previous_week_cost": 1080.0,
+            "previous_month_cost": 1400.0,
+            "week_wow_pct": 3.7,
+            "last_week_share_pct": 35.22,
+        },
+        {
+            "cost_source": "gcp:future-qa",
+            "vendor": "gcp",
+            "account_id": "future-qa",
+            "display_name": "future-qa",
+            "purpose": "新配置测试环境",
+            "last_week_cost": 0.0,
+            "previous_week_cost": 0.0,
+            "previous_month_cost": 0.0,
+            "week_wow_pct": None,
+            "last_week_share_pct": 0.0,
+        },
+        {
+            "cost_source": "gcp:qa-infra-dev",
+            "vendor": "gcp",
+            "account_id": "qa-infra-dev",
+            "display_name": "qa-infra-dev",
+            "purpose": "机器统一资源池",
+            "last_week_cost": 2060.0,
+            "previous_week_cost": 1060.0,
+            "previous_month_cost": 1100.0,
+            "week_wow_pct": 94.34,
+            "last_week_share_pct": 64.78,
+        },
+    ]
+    assert body["list_cost_history"] == {
+        "metric": "list_cost",
+        "start_date": "2026-05-25",
+        "end_date": "2026-07-19",
+        "weeks": [
+            {"start_date": "2026-05-25", "end_date": "2026-05-31"},
+            {"start_date": "2026-06-01", "end_date": "2026-06-07"},
+            {"start_date": "2026-06-08", "end_date": "2026-06-14"},
+            {"start_date": "2026-06-15", "end_date": "2026-06-21"},
+            {"start_date": "2026-06-22", "end_date": "2026-06-28"},
+            {"start_date": "2026-06-29", "end_date": "2026-07-05"},
+            {"start_date": "2026-07-06", "end_date": "2026-07-12"},
+            {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+        ],
+        "series": [
+            {
+                "cost_source": "gcp:qa-infra-dev",
+                "vendor": "gcp",
+                "account_id": "qa-infra-dev",
+                "display_name": "qa-infra-dev",
+                "purpose": "机器统一资源池",
+                "total_list_cost": 4220.0,
+                "points": [
+                    {"week_start": "2026-05-25", "list_cost": 0.0},
+                    {"week_start": "2026-06-01", "list_cost": 0.0},
+                    {"week_start": "2026-06-08", "list_cost": 0.0},
+                    {"week_start": "2026-06-15", "list_cost": 1100.0},
+                    {"week_start": "2026-06-22", "list_cost": 0.0},
+                    {"week_start": "2026-06-29", "list_cost": 0.0},
+                    {"week_start": "2026-07-06", "list_cost": 1060.0},
+                    {"week_start": "2026-07-13", "list_cost": 2060.0},
+                ],
+            },
+            {
+                "cost_source": "aws:946646677266",
+                "vendor": "aws",
+                "account_id": "946646677266",
+                "display_name": "946646677266",
+                "purpose": "机器统一资源池及重点项目测试",
+                "total_list_cost": 3600.0,
+                "points": [
+                    {"week_start": "2026-05-25", "list_cost": 0.0},
+                    {"week_start": "2026-06-01", "list_cost": 0.0},
+                    {"week_start": "2026-06-08", "list_cost": 0.0},
+                    {"week_start": "2026-06-15", "list_cost": 1400.0},
+                    {"week_start": "2026-06-22", "list_cost": 0.0},
+                    {"week_start": "2026-06-29", "list_cost": 0.0},
+                    {"week_start": "2026-07-06", "list_cost": 1080.0},
+                    {"week_start": "2026-07-13", "list_cost": 1120.0},
+                ],
+            },
+            {
+                "cost_source": "gcp:future-qa",
+                "vendor": "gcp",
+                "account_id": "future-qa",
+                "display_name": "future-qa",
+                "purpose": "新配置测试环境",
+                "total_list_cost": 0.0,
+                "points": [
+                    {"week_start": "2026-05-25", "list_cost": 0.0},
+                    {"week_start": "2026-06-01", "list_cost": 0.0},
+                    {"week_start": "2026-06-08", "list_cost": 0.0},
+                    {"week_start": "2026-06-15", "list_cost": 0.0},
+                    {"week_start": "2026-06-22", "list_cost": 0.0},
+                    {"week_start": "2026-06-29", "list_cost": 0.0},
+                    {"week_start": "2026-07-06", "list_cost": 0.0},
+                    {"week_start": "2026-07-13", "list_cost": 0.0},
+                ],
+            },
+        ],
+    }
+
+
+def test_weekly_cost_history_uses_list_cost_and_sorts_unrounded_totals(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    for vendor, account_id in [
+        ("aws", "largest"),
+        ("aws", "tie"),
+        ("aws", "equal"),
+        ("gcp", "alpha"),
+        ("gcp", "able"),
+        ("gcp", "zulu"),
+        ("gcp", "zero"),
+    ]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            display_name=account_id,
+            purpose="QA",
+        )
+    for kwargs in [
+        {"vendor": "aws", "account_id": "largest", "net_cost": 800, "list_cost": 200},
+        {
+            "vendor": "aws",
+            "account_id": "largest",
+            "net_cost": 900,
+            "list_cost": 90,
+            "sku_name": "Compute Flexible Committed Use Discounts",
+        },
+        {"vendor": "aws", "account_id": "tie", "net_cost": 700, "list_cost": 140.001},
+        {"vendor": "aws", "account_id": "equal", "net_cost": 700, "list_cost": 140},
+        {"vendor": "gcp", "account_id": "alpha", "net_cost": 1000, "list_cost": 100.004},
+        {
+            "vendor": "gcp",
+            "account_id": "alpha",
+            "net_cost": 500,
+            "list_cost": 90,
+            "sku_name": "Compute Flexible Committed Use Discounts v1",
+        },
+        {
+            "vendor": "gcp",
+            "account_id": "alpha",
+            "net_cost": 300,
+            "list_cost": 40,
+            "sku_name": "Compute Flexible Committed Use Discount v1",
+        },
+        {"vendor": "gcp", "account_id": "able", "net_cost": 700, "list_cost": 140},
+        {"vendor": "gcp", "account_id": "zulu", "net_cost": 700, "list_cost": 140},
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date="2026-07-13",
+            repo="tidb",
+            group_id=None,
+            dimension_hash=f"{kwargs['vendor']}-{kwargs['account_id']}-{kwargs['net_cost']}",
+            **kwargs,
+        )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+    assert response.status_code == 200
+    body = response.json()
+    history = body["list_cost_history"]
+
+    assert body["meta"]["cost_metric"] == "list_cost"
+    assert {item["cost_source"]: item for item in body["items"]}["gcp:alpha"][
+        "last_week_cost"
+    ] == 140.0
+    assert [week["start_date"] for week in history["weeks"]] == [
+        "2026-05-25",
+        "2026-06-01",
+        "2026-06-08",
+        "2026-06-15",
+        "2026-06-22",
+        "2026-06-29",
+        "2026-07-06",
+        "2026-07-13",
+    ]
+    assert [
+        (series["cost_source"], series["total_list_cost"])
+        for series in history["series"]
+    ] == [
+        ("aws:largest", 290.0),
+        ("gcp:alpha", 140.0),
+        ("aws:tie", 140.0),
+        ("aws:equal", 140.0),
+        ("gcp:able", 140.0),
+        ("gcp:zulu", 140.0),
+        ("gcp:zero", 0.0),
+    ]
+    assert history["series"][1]["points"][-1] == {
+        "week_start": "2026-07-13",
+        "list_cost": 140.0,
+    }
+    assert history["series"][-1]["points"] == [
+        {"week_start": week["start_date"], "list_cost": 0.0}
+        for week in history["weeks"]
+    ]
+
+
+def test_weekly_cost_report_returns_null_rates_for_zero_denominators(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 1, 5))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="configured-zero-cost",
+        display_name="configured-zero-cost",
+        purpose="已配置但没有成本",
+    )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "list_cost",
+            "purpose_schema_available": True,
+        },
+        "last_week": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+        "previous_week": {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+        "previous_month": {"start_date": "2025-12-01", "end_date": "2025-12-31"},
+        "summary": {
+            "last_week_cost": 0.0,
+            "previous_week_cost": 0.0,
+            "week_wow_pct": None,
+            "previous_month_cost": 0.0,
+        },
+        "items": [
+            {
+                "cost_source": "gcp:configured-zero-cost",
+                "vendor": "gcp",
+                "account_id": "configured-zero-cost",
+                "display_name": "configured-zero-cost",
+                "purpose": "已配置但没有成本",
+                "last_week_cost": 0.0,
+                "previous_week_cost": 0.0,
+                "previous_month_cost": 0.0,
+                "week_wow_pct": None,
+                "last_week_share_pct": None,
+            }
+        ],
+        "list_cost_history": {
+            "metric": "list_cost",
+            "start_date": "2025-11-10",
+            "end_date": "2026-01-04",
+            "weeks": [
+                {"start_date": "2025-11-10", "end_date": "2025-11-16"},
+                {"start_date": "2025-11-17", "end_date": "2025-11-23"},
+                {"start_date": "2025-11-24", "end_date": "2025-11-30"},
+                {"start_date": "2025-12-01", "end_date": "2025-12-07"},
+                {"start_date": "2025-12-08", "end_date": "2025-12-14"},
+                {"start_date": "2025-12-15", "end_date": "2025-12-21"},
+                {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+                {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+            ],
+            "series": [
+                {
+                    "cost_source": "gcp:configured-zero-cost",
+                    "vendor": "gcp",
+                    "account_id": "configured-zero-cost",
+                    "display_name": "configured-zero-cost",
+                    "purpose": "已配置但没有成本",
+                    "total_list_cost": 0.0,
+                    "points": [
+                        {"week_start": "2025-11-10", "list_cost": 0.0},
+                        {"week_start": "2025-11-17", "list_cost": 0.0},
+                        {"week_start": "2025-11-24", "list_cost": 0.0},
+                        {"week_start": "2025-12-01", "list_cost": 0.0},
+                        {"week_start": "2025-12-08", "list_cost": 0.0},
+                        {"week_start": "2025-12-15", "list_cost": 0.0},
+                        {"week_start": "2025-12-22", "list_cost": 0.0},
+                        {"week_start": "2025-12-29", "list_cost": 0.0},
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def test_weekly_cost_report_returns_empty_when_no_qa_sources_are_configured(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="not-qa",
+        display_name="not-qa",
+        purpose="   ",
+    )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == {
+        "last_week_cost": 0.0,
+        "previous_week_cost": 0.0,
+        "week_wow_pct": None,
+        "previous_month_cost": 0.0,
+    }
+    assert response.json()["items"] == []
+    assert response.json()["list_cost_history"]["series"] == []
+    assert response.json()["meta"]["purpose_schema_available"] is True
+
+
+def test_weekly_cost_report_handles_old_purpose_schema(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 1, 5))
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_sources DROP COLUMN purpose"))
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "list_cost",
+            "purpose_schema_available": False,
+        },
+        "last_week": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+        "previous_week": {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+        "previous_month": {"start_date": "2025-12-01", "end_date": "2025-12-31"},
+        "summary": {
+            "last_week_cost": 0.0,
+            "previous_week_cost": 0.0,
+            "week_wow_pct": None,
+            "previous_month_cost": 0.0,
+        },
+        "items": [],
+        "list_cost_history": {
+            "metric": "list_cost",
+            "start_date": "2025-11-10",
+            "end_date": "2026-01-04",
+            "weeks": [
+                {"start_date": "2025-11-10", "end_date": "2025-11-16"},
+                {"start_date": "2025-11-17", "end_date": "2025-11-23"},
+                {"start_date": "2025-11-24", "end_date": "2025-11-30"},
+                {"start_date": "2025-12-01", "end_date": "2025-12-07"},
+                {"start_date": "2025-12-08", "end_date": "2025-12-14"},
+                {"start_date": "2025-12-15", "end_date": "2025-12-21"},
+                {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+                {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+            ],
+            "series": [],
+        },
+    }
 
 
 def test_cost_weekly_account_summaries_route(
