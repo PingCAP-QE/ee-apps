@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from cost_insight.common.row_utils import bind_decimal_rows
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
 _AMOUNTS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
+LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ def run_materialize_resource_serving(
     )
     bases = ("native",)
     if not _serving_schema_ready(engine):
+        LOG.warning("resource serving materialization skipped because the resource_id migration is missing")
         return MaterializeResourceServingSummary(
             start_date=start_date,
             end_date=end_date,
@@ -404,23 +407,31 @@ def _source_windows(
     account_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
     if vendor is not None and account_id is not None:
-        return tuple(
-            {"usage_date": current, "vendor": vendor, "account_id": account_id}
-            for current in _usage_dates(start_date, end_date)
-        )
+        rows = connection.execute(
+            _NATIVE_WINDOWS_FOR_SOURCE,
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "vendor": vendor,
+                "account_id": account_id,
+            },
+        ).mappings()
+    else:
+        rows = connection.execute(
+            _NATIVE_WINDOWS, {"start_date": start_date, "end_date": end_date}
+        ).mappings()
     windows = {
         (_as_date(row["usage_date"]), str(row["vendor"]), str(row["account_id"]))
-        for row in connection.execute(_NATIVE_WINDOWS, {"start_date": start_date, "end_date": end_date}).mappings()
+        for row in rows
     }
-    windows.update(_refreshed_empty_windows(connection, start_date=start_date, end_date=end_date))
+    windows.update(
+        (usage_date, refreshed_vendor, refreshed_account_id)
+        for usage_date, refreshed_vendor, refreshed_account_id in _refreshed_empty_windows(
+            connection, start_date=start_date, end_date=end_date
+        )
+        if vendor is None or (refreshed_vendor, refreshed_account_id) == (vendor, account_id)
+    )
     return tuple({"usage_date": d, "vendor": v, "account_id": a} for d, v, a in sorted(windows))
-
-
-def _usage_dates(start_date: date, end_date: date) -> Iterable[date]:
-    current = start_date
-    while current <= end_date:
-        yield current
-        current += timedelta(days=1)
 
 def _as_date(value: Any) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
@@ -557,6 +568,12 @@ WHERE job_name LIKE 'refresh_cost_attribution_from_summary:%'
 _NATIVE_WINDOWS = text("""
 SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
 WHERE usage_date BETWEEN :start_date AND :end_date ORDER BY usage_date, vendor, account_id
+""")
+_NATIVE_WINDOWS_FOR_SOURCE = text("""
+SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
+WHERE usage_date BETWEEN :start_date AND :end_date
+  AND vendor = :vendor AND account_id = :account_id
+ORDER BY usage_date
 """)
 _SOURCE_COLUMNS = """
 usage_date, vendor, account_id, service_name, sku_name, region, org, repo, target_branch,

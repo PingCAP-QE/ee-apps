@@ -184,17 +184,18 @@ def cost_unmatched_resources_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_unmatched_resources_page(
-        engine,
-        filters,
-        owner=owner,
-        service_name=service_name,
-        sort_by=sort_by,
-        page_size=page_size,
-        cursor=cursor,
-    )
-
-
+    try:
+        return get_cost_unmatched_resources_page(
+            engine,
+            filters,
+            owner=owner,
+            service_name=service_name,
+            sort_by=sort_by,
+            page_size=page_size,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/cost-unattached-ebs-volumes")

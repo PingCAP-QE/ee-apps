@@ -163,6 +163,61 @@ def test_materialize_resource_serving_publishes_a_refreshed_zero_cost_window() -
     assert publication == (0, 0)
 
 
+def test_source_scoped_materializer_keeps_unrefreshed_empty_dates_pending() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _SCHEMA:
+            connection.execute(text(statement))
+
+    initial = run_materialize_resource_serving(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        vendor="gcp",
+        account_id="project-1",
+        materialization_version="v1",
+        now=datetime(2026, 8, 11),
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_job_state (job_name, watermark_json, last_status)
+                VALUES (:job_name, :watermark_json, 'succeeded')
+                """
+            ),
+            {
+                "job_name": "refresh_cost_attribution_from_summary:gcp:project-1",
+                "watermark_json": json.dumps(
+                    {
+                        "vendor": "gcp",
+                        "account_id": "project-1",
+                        "start_date": "2026-08-10",
+                        "end_date": "2026-08-10",
+                    }
+                ),
+            },
+        )
+
+    refreshed = run_materialize_resource_serving(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        vendor="gcp",
+        account_id="project-1",
+        materialization_version="v2",
+        now=datetime(2026, 8, 11),
+    )
+
+    with engine.begin() as connection:
+        publication_count = connection.execute(
+            text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+        ).scalar_one()
+    assert initial.windows_published == 0
+    assert refreshed.windows_published == 1
+    assert publication_count == 1
+
+
 def test_materialize_resource_serving_stages_and_publishes_native_window() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     with engine.begin() as connection:

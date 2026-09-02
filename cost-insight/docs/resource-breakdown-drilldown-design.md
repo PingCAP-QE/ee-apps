@@ -184,10 +184,12 @@ never aggregates a mix of published and unpublished dates.
 The missing piece is automatic, source-scoped rematerialization. Extend
 `run_materialize_resource_serving` with paired `vendor` and `account_id`
 filters (both supplied together or neither). When supplied, `_source_windows`
-materializes only that source and every requested usage date, including dates
-with no attribution rows; the standalone CLI without those filters retains its
-unscoped backfill/repair behavior. After a successful, non-dry-run mutation of
-a bounded `(vendor, account_id, usage_date)` range, both of these paths invoke
+materializes only that source's existing attribution dates, plus empty dates
+covered by a successful attribution-refresh watermark. A resource import alone
+must not publish an empty date before attribution has succeeded; that date stays
+pending. The standalone CLI without those filters retains its unscoped
+backfill/repair behavior. After a successful, non-dry-run mutation of a bounded
+`(vendor, account_id, usage_date)` range, both of these paths invoke
 `run_materialize_resource_serving` with that exact source and date range, only
 after their write transaction commits:
 

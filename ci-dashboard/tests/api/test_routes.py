@@ -37,6 +37,13 @@ def test_cost_routes_reject_non_native_allocation_basis(
     assert response.status_code == 422
 
 
+def test_cost_resource_cursor_rejects_bad_request(api_client: TestClient) -> None:
+    response = api_client.get("/api/v1/pages/cost-unmatched-resources", params={"cursor": "W10"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid resource cursor"
+
+
 def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     from ci_dashboard.api import dependencies as dependencies_module
 
