@@ -8,6 +8,7 @@ import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
+import WeeklyCostPage from "./pages/WeeklyCostPage";
 import {
   buildCostSourceOptions,
   buildScopeLabel,
@@ -21,6 +22,7 @@ import {
   COST_PATH,
   DEFAULT_COST_SOURCE,
   MIGRATE_STATUS_PATH,
+  WEEKLY_COST_PATH,
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
   sameFilters,
@@ -52,6 +54,7 @@ export default function App() {
   );
   const isCostPage = location.pathname === COST_PATH;
   const isWeeklySummaryPage = location.pathname === "/";
+  const isWeeklyCostPage = location.pathname === WEEKLY_COST_PATH;
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -91,14 +94,14 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage && !isWeeklySummaryPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage,
   );
   const branches = useApiData(
     "/api/v1/filters/branches",
     {
       repo: filters.repo,
     },
-    !isCostPage && !isWeeklySummaryPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -106,7 +109,7 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  }, !isCostPage && !isWeeklySummaryPage);
+  }, !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage);
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
@@ -159,7 +162,7 @@ export default function App() {
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
       navSearchByPath={navSearchByPath}
-      showFilters={!isWeeklySummaryPage}
+      showFilters={!isWeeklySummaryPage && !isWeeklyCostPage}
     >
       <Routes>
         <Route path="/" element={<WeeklySummaryPage />} />
@@ -171,6 +174,7 @@ export default function App() {
           element={<RuntimeInsightsPage filters={filters} />}
         />
         <Route path={COST_PATH} element={<CostPage filters={filters} />} />
+        <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
       </Routes>
     </DashboardLayout>
   );

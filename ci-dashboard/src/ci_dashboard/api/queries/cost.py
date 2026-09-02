@@ -756,6 +756,129 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
     return {"items": items}
 
 
+def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    previous_week_end = last_week_start - timedelta(days=1)
+    previous_week_start = previous_week_end - timedelta(days=6)
+    previous_month_end = today.replace(day=1) - timedelta(days=1)
+    previous_month_start = previous_month_end.replace(day=1)
+    data_start = min(previous_week_start, previous_month_start)
+    data_end = max(last_week_end, previous_month_end)
+    report: dict[str, Any] = {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "net_cost",
+            "purpose_schema_available": False,
+        },
+        "last_week": {
+            "start_date": last_week_start.isoformat(),
+            "end_date": last_week_end.isoformat(),
+        },
+        "previous_week": {
+            "start_date": previous_week_start.isoformat(),
+            "end_date": previous_week_end.isoformat(),
+        },
+        "previous_month": {
+            "start_date": previous_month_start.isoformat(),
+            "end_date": previous_month_end.isoformat(),
+        },
+        "summary": {
+            "last_week_cost": 0.0,
+            "previous_week_cost": 0.0,
+            "week_wow_pct": None,
+            "previous_month_cost": 0.0,
+        },
+        "items": [],
+    }
+
+    with engine.begin() as connection:
+        if not _table_has_column(connection, "cost_sources", "purpose"):
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        rows = connection.execute(
+            text(
+                """
+                SELECT
+                  s.vendor,
+                  s.account_id,
+                  s.display_name,
+                  TRIM(s.purpose) AS purpose,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :last_week_start AND :last_week_end
+                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                  ) AS last_week_cost,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :previous_week_start AND :previous_week_end
+                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                  ) AS previous_week_cost,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :previous_month_start AND :previous_month_end
+                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                  ) AS previous_month_cost
+                FROM cost_sources s
+                LEFT JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                 AND c.usage_date BETWEEN :data_start AND :data_end
+                WHERE s.is_active = :is_active
+                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+                GROUP BY s.vendor, s.account_id, s.display_name, s.purpose
+                ORDER BY last_week_cost DESC, s.vendor, s.account_id
+                """
+            ),
+            {
+                "last_week_start": last_week_start,
+                "last_week_end": last_week_end,
+                "previous_week_start": previous_week_start,
+                "previous_week_end": previous_week_end,
+                "previous_month_start": previous_month_start,
+                "previous_month_end": previous_month_end,
+                "data_start": data_start,
+                "data_end": data_end,
+                "is_active": 1,
+            },
+        ).mappings()
+        items = [
+            {
+                "cost_source": _cost_source_value(str(row["vendor"]), str(row["account_id"])),
+                "vendor": str(row["vendor"]),
+                "account_id": str(row["account_id"]),
+                "display_name": str(row["display_name"] or ""),
+                "purpose": str(row["purpose"] or ""),
+                "last_week_cost": _money(row["last_week_cost"]),
+                "previous_week_cost": _money(row["previous_week_cost"]),
+                "previous_month_cost": _money(row["previous_month_cost"]),
+            }
+            for row in rows
+        ]
+
+    total_last_week_cost = _money(sum(item["last_week_cost"] for item in items))
+    total_previous_week_cost = _money(sum(item["previous_week_cost"] for item in items))
+    total_previous_month_cost = _money(sum(item["previous_month_cost"] for item in items))
+    for item in items:
+        item["week_wow_pct"] = _nullable_rate_pct(
+            item["last_week_cost"] - item["previous_week_cost"],
+            item["previous_week_cost"],
+        )
+        item["last_week_share_pct"] = _nullable_rate_pct(
+            item["last_week_cost"], total_last_week_cost
+        )
+
+    report["summary"] = {
+        "last_week_cost": total_last_week_cost,
+        "previous_week_cost": total_previous_week_cost,
+        "week_wow_pct": _nullable_rate_pct(
+            total_last_week_cost - total_previous_week_cost,
+            total_previous_week_cost,
+        ),
+        "previous_month_cost": total_previous_month_cost,
+    }
+    report["items"] = items
+    return report
+
+
 def get_weekly_account_summaries(
     engine: Engine,
     filters: CommonFilters,
@@ -2477,6 +2600,12 @@ def _resource_vendor_tag_pairs(value: Any) -> list[tuple[str, str]]:
 def _money(value: Any) -> float:
     numeric = to_number(value)
     return round(float(numeric or 0), 2)
+
+
+def _nullable_rate_pct(numerator: int | float, denominator: int | float) -> float | None:
+    if not denominator:
+        return None
+    return round(float(numerator) * 100.0 / float(denominator), 2)
 
 
 def _today() -> date:

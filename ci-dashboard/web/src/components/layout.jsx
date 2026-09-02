@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import packageInfo from "../../package.json";
 
-import { COST_PATH } from "../lib/filterUrl";
+import { COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
   filters,
@@ -46,6 +46,12 @@ export function DashboardLayout({
             search={navSearchByPath["/migrate-status"]}
             label="GCP Migration"
             caption="GCP rollout and runtime drift"
+          />
+          <NavItem
+            to={WEEKLY_COST_PATH}
+            search={navSearchByPath[WEEKLY_COST_PATH]}
+            label="Weekly Cost"
+            caption="QA accounts, complete calendar periods"
           />
           <NavItem
             to="/cost"

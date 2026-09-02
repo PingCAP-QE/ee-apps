@@ -343,6 +343,7 @@ def _create_test_schema(engine: Engine) -> None:
           account_id TEXT NOT NULL,
           billing_account_id TEXT NULL,
           display_name TEXT NULL,
+          purpose TEXT NULL,
           is_active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

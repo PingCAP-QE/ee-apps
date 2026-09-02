@@ -855,6 +855,34 @@ select {
   gap: 0.9rem;
 }
 
+.weekly-cost__account {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.weekly-cost__account small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.weekly-cost__purpose {
+  min-width: 220px;
+  white-space: normal !important;
+}
+
+.weekly-cost__delta--improved {
+  color: var(--teal);
+}
+
+.weekly-cost__delta--regressed {
+  color: var(--rose);
+}
+
+.weekly-cost__delta--neutral {
+  color: var(--muted);
+}
+
 .cost-account-card {
   border: 1px solid rgba(49, 87, 114, 0.08);
   background: rgba(255, 253, 248, 0.82);
