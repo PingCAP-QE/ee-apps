@@ -83,48 +83,19 @@ def test_no_owner_resource_read_uses_only_published_serving_rows() -> None:
     assert "cost_attribution_daily" not in executed
 
 
-def test_stale_allocation_version_returns_pending_without_raw_fallback() -> None:
+def test_resource_read_is_native_only() -> None:
     engine = _engine()
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO cost_allocation_publication (publication_name, active_allocation_version)
-                VALUES ('dashboard', 'allocation-new')
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO cost_resource_serving_publication (
-                  basis_key, vendor, account_id, usage_date, active_materialization_version,
-                  source_allocation_version, detail_list_cost, total_list_cost, source_row_count
-                ) VALUES ('kubernetes_allocated', 'gcp', 'project-1', '2026-08-10',
-                  'v1', 'allocation-old', 100, 100, 1)
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO cost_resource_serving_daily (
-                  materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
-                  resource_group_key, resource_key, resource_name, resource_identity_kind,
-                  detail_list_cost, fallback_list_cost, list_cost, source_row_count
-                ) VALUES ('v1', 'kubernetes_allocated', '2026-08-10', 'gcp', 'project-1',
-                  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '',
-                  'group-1', 'detail-1', 'instance-1', 'resource_detail', 100, 0, 100, 1)
-                """
-            )
-        )
-
-    result = get_unmatched_resources(
-        engine, _filters(), allocation_basis="residual_allocated"
-    )
-
+        connection.execute(text("""
+            INSERT INTO cost_resource_serving_publication (
+              basis_key, vendor, account_id, usage_date, active_materialization_version,
+              source_allocation_version, detail_list_cost, total_list_cost, source_row_count
+            ) VALUES ('kubernetes_allocated', 'gcp', 'project-1', '2026-08-10',
+              'v1', NULL, 100, 100, 1)
+        """))
+    result = get_unmatched_resources(engine, _filters())
     assert result["items"] == []
-    assert result["meta"]["allocation_basis"] == "residual_allocated"
+    assert result["meta"]["allocation_basis"] == "current_attribution"
     assert result["meta"]["pending_dates"] == ["2026-08-10"]
 
 

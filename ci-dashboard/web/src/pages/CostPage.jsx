@@ -22,21 +22,10 @@ import {
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
-const COST_ALLOCATION_BASIS_OPTIONS = [
-  { key: "current_attribution", label: "Native" },
-  { key: "residual_allocated", label: "K8S allocated" },
-  { key: "eq_allocated", label: "EQ allocated" },
-  { key: "residual_eq_allocated", label: "K8S + EQ allocated" },
-];
-const COST_ALLOCATION_BASIS_LABELS = Object.fromEntries(
-  COST_ALLOCATION_BASIS_OPTIONS.map(({ key, label }) => [key, label]),
-);
 const NO_OWNER_LABEL = "(no owner)";
 
 export default function CostPage({ filters }) {
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
-  const [allocationBasis, setAllocationBasis] = useState("current_attribution");
-  const [allocationNotice, setAllocationNotice] = useState("");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const [selectedResourceOwner, setSelectedResourceOwner] = useState(NO_OWNER_LABEL);
@@ -80,33 +69,27 @@ export default function CostPage({ filters }) {
   const costTrendFilters = {
     ...costFilters,
     ...costDrilldownFilters,
-    allocation_basis: allocationBasis,
   };
   const costStackFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     group_by: effectiveCostBreakdownGroupBy,
-    allocation_basis: allocationBasis,
   };
   const costShareFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     dimension: effectiveCostBreakdownGroupBy,
-    allocation_basis: allocationBasis,
   };
   const engineeringGroupFilters = {
     ...costFilters,
-    allocation_basis: allocationBasis,
   };
   const unmatchedResourceFilters = {
     ...costFilters,
     owner: selectedResourceOwner,
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
-    allocation_basis: allocationBasis,
   };
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
-  const allocationOverview = useApiData("/api/v1/pages/cost-allocation-overview", costFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
@@ -142,22 +125,8 @@ export default function CostPage({ filters }) {
     Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
   const isOwnerResourceDrilldown = effectiveCostBreakdownGroupBy === "owner";
   const costBreakdownSubtitle = costBreakdownDrilldown
-    ? `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: ${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
-    : `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
-  const allocationOverviewMatchesFilters =
-    allocationOverview.data?.scope?.cost_source ===
-      (selectedCostSourceValue || null) &&
-    allocationOverview.data?.scope?.start_date === costFilters.start_date &&
-    allocationOverview.data?.scope?.end_date === costFilters.end_date;
-  const hasCurrentAllocationOverview =
-    allocationOverviewMatchesFilters &&
-    allocationOverview.data?.is_available &&
-    !allocationOverview.loading &&
-    !allocationOverview.error;
-  const showKubernetesAllocation =
-    allocationOverview.loading ||
-    Boolean(allocationOverview.error) ||
-    hasCurrentAllocationOverview;
+    ? `${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
+    : `Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
   const costShareItems = withCostBreakdownDrilldown(
     costShare.data?.items,
     canDrillDownCostBreakdown || isOwnerResourceDrilldown,
@@ -210,25 +179,6 @@ export default function CostPage({ filters }) {
       setUnmatchedServiceName("");
     }
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
-
-  useEffect(() => {
-    if (costShare.loading || costShare.error || costShare.responseKey !== JSON.stringify(costShareFilters)) {
-      return;
-    }
-    setAllocationNotice(
-      allocationBasis !== "current_attribution" &&
-        costShare.data?.meta?.allocation_basis !== allocationBasis
-        ? "This allocation is unavailable for the selected scope; showing native attribution."
-        : "",
-    );
-  }, [
-    allocationBasis,
-    costShare.data?.meta?.allocation_basis,
-    costShare.error,
-    costShare.loading,
-    costShare.responseKey,
-    JSON.stringify(costShareFilters),
-  ]);
 
   return (
     <div className="page-stack">
@@ -293,9 +243,7 @@ export default function CostPage({ filters }) {
       </Panel>
 
       <section
-        className={`stats-grid cost-summary-grid${
-          showKubernetesAllocation ? " cost-summary-grid--with-allocation" : ""
-        }`}
+        className="stats-grid cost-summary-grid"
       >
         <StatCard
           label={netCostLabel}
@@ -328,35 +276,6 @@ export default function CostPage({ filters }) {
           }
           tone="rose"
         />
-        {showKubernetesAllocation ? (
-          <div className="cost-allocation-slot">
-            <section
-              className="cost-allocation-overview stat-card stat-card--teal"
-              title="K8S cards exclude control-plane costs with a matched owner; those costs remain in the standard owner cost view."
-            >
-              <span className="stat-card__label">K8S allocated cost</span>
-              <strong className="stat-card__value">
-                {allocationOverview.loading
-                  ? "Loading..."
-                  : allocationOverview.error
-                    ? "Unavailable"
-                    : formatCurrency(allocationOverview.data.workload_split_cost)}
-              </strong>
-              <div className="stat-card__meta">
-                <span className="cost-allocation-overview__detail">
-                  {allocationOverview.loading
-                    ? "Loading Kubernetes allocation..."
-                    : allocationOverview.error
-                      ? `Could not load allocation: ${allocationOverview.error}`
-                      : <>
-                          <span>K8S unallocated cost</span>
-                          <strong>{formatCurrency(allocationOverview.data.kubernetes_unallocated_cost)}</strong>
-                        </>}
-                </span>
-              </div>
-            </section>
-          </div>
-        ) : null}
       </section>
 
       <Panel
@@ -369,14 +288,6 @@ export default function CostPage({ filters }) {
         className="cost-breakdown-panel"
         actions={
           <>
-            <CostAllocationBasisSelector
-              value={allocationBasis}
-              onChange={(nextBasis) => {
-                setAllocationBasis(nextBasis);
-                setAllocationNotice("");
-                setSelectedCostStackName("");
-              }}
-            />
             {costBreakdownDrilldown ? (
               <button
                 type="button"
@@ -397,7 +308,6 @@ export default function CostPage({ filters }) {
           </>
         }
       >
-        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
         <div className="cost-breakdown-grid">
           <DonutShareChart
             className="cost-share-donut"
@@ -486,22 +396,11 @@ export default function CostPage({ filters }) {
       </Panel>
 
       <Panel
-        title="Engineering Group allocation"
-        subtitle={`${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: list cost share under Engineering Group, split once by direct child groups and once by second-level groups.`}
+        title="Engineering Group cost share"
+        subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
         loading={engineeringGroupShare.loading}
         error={engineeringGroupShare.error}
-        actions={
-          <CostAllocationBasisSelector
-            value={allocationBasis}
-            onChange={(nextBasis) => {
-              setAllocationBasis(nextBasis);
-              setAllocationNotice("");
-              setSelectedCostStackName("");
-            }}
-          />
-        }
       >
-        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
         <div className="donut-grid">
           <DonutShareChart
             title="Level 1 groups"
@@ -557,17 +456,6 @@ function CostBreakdownGroupSelector({ value, onChange }) {
     <SegmentedControl
       ariaLabel="Cost breakdown grouping"
       options={COST_BREAKDOWN_GROUPS}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
-
-function CostAllocationBasisSelector({ value, onChange }) {
-  return (
-    <SegmentedControl
-      ariaLabel="Cost allocation basis"
-      options={COST_ALLOCATION_BASIS_OPTIONS}
       value={value}
       onChange={onChange}
     />
