@@ -8,6 +8,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 
 from cost_insight.jobs import state_store
+import cost_insight.jobs.refresh_attribution_daily as refresh_attribution_daily
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.refresh_attribution_daily import (
     _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,
@@ -313,6 +314,12 @@ def test_run_refresh_aws_attribution_requires_readable_tcms_before_writing() -> 
 def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None:
     engine = _sqlite_engine()
     executed = []
+    materializer_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        refresh_attribution_daily,
+        "run_materialize_resource_serving",
+        lambda _engine, **kwargs: materializer_calls.append(kwargs),
+    )
 
     with engine.begin() as connection:
         connection.execute(
@@ -384,6 +391,14 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
         assert summary.rows_deleted == 2
         assert summary.rows_inserted == 5
         assert [kind for kind, _params in executed] == ["delete", "insert-summary"]
+        assert materializer_calls == [
+            {
+                "start_date": date(2026, 5, 9),
+                "end_date": date(2026, 5, 10),
+                "vendor": "gcp",
+                "account_id": "pingcap-testing-account",
+            }
+        ]
         with engine.begin() as connection:
             state = state_store.get_job_state(
                 connection,

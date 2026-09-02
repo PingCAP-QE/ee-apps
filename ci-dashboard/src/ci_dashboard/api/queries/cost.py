@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import calendar
 import hashlib
 import json
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -41,8 +43,8 @@ COST_DRILLDOWN_CHILD_GROUPS = {
     "cost_driver": "sku",
 }
 LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
-UNMATCHED_RESOURCE_LIMIT = 10
-UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
+RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE = 50
+RESOURCE_BREAKDOWN_MAX_PAGE_SIZE = 100
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
 NO_OWNER_LABEL = "(no owner)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
@@ -1092,6 +1094,8 @@ def get_unmatched_resources(
     owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
+    page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
+    cursor: str | None = None,
 ) -> dict[str, Any]:
     return _get_published_unmatched_resources(
         engine,
@@ -1099,6 +1103,8 @@ def get_unmatched_resources(
         owner=owner,
         service_name=service_name,
         sort_by=sort_by,
+        page_size=page_size,
+        cursor=cursor,
     )
 
 
@@ -1109,6 +1115,8 @@ def _get_published_unmatched_resources(
     owner: str | None,
     service_name: str | None,
     sort_by: str,
+    page_size: int,
+    cursor: str | None,
 ) -> dict[str, Any]:
     """Read only complete resource-serving publications for this request.
 
@@ -1117,17 +1125,11 @@ def _get_published_unmatched_resources(
     response rather than a partial result or the retired raw-ledger join.
     """
     requested_filters = filters
-    if (
-        filters.start_date is not None
-        and filters.end_date is not None
-        and (filters.end_date - filters.start_date).days + 1 > UNMATCHED_RESOURCE_MAX_WINDOW_DAYS
-    ):
-        filters = replace(
-            filters,
-            start_date=filters.end_date - timedelta(days=UNMATCHED_RESOURCE_MAX_WINDOW_DAYS - 1),
-        )
     if sort_by not in UNMATCHED_RESOURCE_SORTS:
         sort_by = "list_cost"
+    if not 1 <= page_size <= RESOURCE_BREAKDOWN_MAX_PAGE_SIZE:
+        raise ValueError("page_size must be between 1 and 100")
+    cursor_values = _decode_resource_cursor(cursor, sort_by=sort_by)
     basis_key = "native"
     selected_owner = owner or NO_OWNER_LABEL
     owner_value = "" if selected_owner == NO_OWNER_LABEL else selected_owner
@@ -1237,6 +1239,7 @@ def _get_published_unmatched_resources(
                 detail_list_cost=0.0,
                 total_list_cost=0.0,
                 resource_data_source="attribution_fallback",
+                page_size=page_size,
             )
         if not has_serving_tables:
             # This only occurs before migration while no active source/date is
@@ -1247,6 +1250,7 @@ def _get_published_unmatched_resources(
                 services=[], pending_dates=[],
                 detail_list_cost=0.0, total_list_cost=0.0,
                 resource_data_source="attribution_fallback",
+                page_size=page_size,
             )
 
         branch_clause = "AND s.target_branch = :branch" if filters.branch else ""
@@ -1294,43 +1298,87 @@ def _get_published_unmatched_resources(
             {"value": str(row["service_name"]), "label": str(row["service_name"])}
             for row in service_rows
         ]
-        order_by = (
-            "usage_seconds DESC, list_cost DESC, resource_name"
-            if sort_by == "duration"
-            else "list_cost DESC, usage_seconds DESC, resource_name"
+        service_aggregate = (
+            "GROUP_CONCAT(service_name ORDER BY service_name)"
+            if connection.dialect.name != "sqlite"
+            else "GROUP_CONCAT(service_name)"
         )
-        rows = connection.execute(
-            text(
-                f"""
-                {scoped_prefix}
-                SELECT
-                  s.resource_group_key,
-                  MIN(s.resource_name) AS resource_name,
-                  GROUP_CONCAT(DISTINCT s.service_name) AS service_name,
-                  MIN(s.representative_labels_json) AS representative_labels_json,
-                  MIN(s.usage_date) AS first_seen_date,
-                  MAX(s.usage_date) AS last_seen_date,
-                  SUM(COALESCE(s.usage_seconds, 0)) AS usage_seconds,
-                  SUM(s.list_cost) AS list_cost,
-                  SUM(s.detail_list_cost) AS detail_list_cost,
-                  SUM(s.fallback_list_cost) AS fallback_list_cost
-                FROM cost_resource_serving_daily s
-                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
-                JOIN cost_resource_serving_publication p
-                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
-                 AND p.usage_date = s.usage_date
-                 AND p.active_materialization_version = s.materialization_version
-                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
-                  AND s.usage_date BETWEEN :start_date AND :end_date
-                  AND (:service_name IS NULL OR s.service_name = :service_name)
-                  AND {validity_clause} {branch_clause}
-                GROUP BY s.resource_group_key
-                ORDER BY {order_by}
-                LIMIT :limit
-                """
-            ),
-            {**params, "limit": UNMATCHED_RESOURCE_LIMIT},
-        ).mappings()
+        order_by = (
+            "a.usage_seconds IS NULL ASC, a.usage_seconds DESC, a.list_cost DESC, "
+            "a.resource_group_key ASC"
+            if sort_by == "duration"
+            else "a.list_cost DESC, a.usage_seconds IS NULL ASC, a.usage_seconds DESC, "
+            "a.resource_group_key ASC"
+        )
+        cursor_clause, cursor_params = _resource_cursor_clause(cursor_values, sort_by=sort_by)
+        page_rows = tuple(
+            connection.execute(
+                text(
+                    f"""
+                    {scoped_prefix},
+                    filtered AS (
+                      SELECT s.*
+                      FROM cost_resource_serving_daily s
+                      JOIN scoped_sources scope
+                        ON scope.vendor = s.vendor AND scope.account_id = s.account_id
+                      JOIN cost_resource_serving_publication p
+                        ON p.basis_key = s.basis_key AND p.vendor = s.vendor
+                       AND p.account_id = s.account_id AND p.usage_date = s.usage_date
+                       AND p.active_materialization_version = s.materialization_version
+                      WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                        AND s.usage_date BETWEEN :start_date AND :end_date
+                        AND (:service_name IS NULL OR s.service_name = :service_name)
+                        AND {validity_clause} {branch_clause}
+                    ),
+                    service_values AS (
+                      SELECT DISTINCT resource_group_key, service_name
+                      FROM filtered
+                      WHERE service_name IS NOT NULL
+                      ORDER BY resource_group_key, service_name
+                    ),
+                    service_names AS (
+                      SELECT resource_group_key, {service_aggregate} AS service_name
+                      FROM service_values
+                      GROUP BY resource_group_key
+                    ),
+                    labels AS (
+                      SELECT resource_group_key, representative_labels_json,
+                        ROW_NUMBER() OVER (
+                          PARTITION BY resource_group_key
+                          ORDER BY ABS(list_cost) DESC, usage_date ASC, resource_key ASC,
+                            COALESCE(target_branch, '') ASC,
+                            COALESCE(representative_labels_json, '') ASC
+                        ) AS label_rank
+                      FROM filtered
+                    ),
+                    aggregated AS (
+                      SELECT resource_group_key, MIN(resource_id) AS resource_id,
+                        MIN(resource_name) AS resource_name,
+                        SUM(usage_seconds) AS usage_seconds,
+                        SUM(list_cost) AS list_cost,
+                        SUM(detail_list_cost) AS detail_list_cost,
+                        SUM(fallback_list_cost) AS fallback_list_cost
+                      FROM filtered
+                      GROUP BY resource_group_key
+                      HAVING SUM(list_cost) <> 0
+                    )
+                    SELECT a.resource_group_key, a.resource_id, a.resource_name,
+                      n.service_name, l.representative_labels_json, a.usage_seconds,
+                      a.list_cost, a.detail_list_cost, a.fallback_list_cost
+                    FROM aggregated a
+                    LEFT JOIN service_names n ON n.resource_group_key = a.resource_group_key
+                    LEFT JOIN labels l
+                      ON l.resource_group_key = a.resource_group_key AND l.label_rank = 1
+                    WHERE {cursor_clause}
+                    ORDER BY {order_by}
+                    LIMIT :limit
+                    """
+                ),
+                {**params, **cursor_params, "limit": page_size + 1},
+            ).mappings()
+        )
+        has_next_page = len(page_rows) > page_size
+        rows = page_rows[:page_size]
         coverage = connection.execute(
             text(
                 f"""
@@ -1360,23 +1408,23 @@ def _get_published_unmatched_resources(
         for row in rows:
             detail = to_number(row["detail_list_cost"]) or 0
             fallback = to_number(row["fallback_list_cost"]) or 0
+            usage_seconds = to_number(row["usage_seconds"])
             items.append(
                 {
+                    "resource_key": str(row["resource_group_key"]),
+                    "resource_id": str(row["resource_id"]) if row["resource_id"] else None,
                     "resource_name": str(row["resource_name"] or "(no resource name)"),
                     "service_name": str(row["service_name"] or ""),
                     "sku_name": "",
                     "repo_name": "",
                     "labels": _format_vendor_labels(row["representative_labels_json"]),
                     "allocation_buckets": "",
-                    "first_seen_date": _date_text(row["first_seen_date"]),
-                    "last_seen_date": _date_text(row["last_seen_date"]),
-                    "observed_days": _observed_days(
-                        row["first_seen_date"], row["last_seen_date"],
-                        window_start=filters.start_date, window_end=filters.end_date,
-                    ),
+                    "first_seen_date": "",
+                    "last_seen_date": "",
+                    "observed_days": 0,
                     "attribution_source": "",
                     "attribution_status": "",
-                    "usage_seconds": round(float(to_number(row["usage_seconds"]) or 0), 2),
+                    "usage_seconds": None if usage_seconds is None else round(float(usage_seconds), 2),
                     "list_cost": _money(row["list_cost"]),
                     "resource_data_source": (
                         "mixed" if detail != 0 and fallback != 0 else
@@ -1394,6 +1442,10 @@ def _get_published_unmatched_resources(
         services=services, pending_dates=[],
         detail_list_cost=float(detail_list_cost), total_list_cost=float(total_list_cost),
         resource_data_source=resource_data_source,
+        page_size=page_size,
+        next_cursor=(
+            _encode_resource_cursor(rows[-1], sort_by=sort_by) if has_next_page and rows else None
+        ),
     )
 
 
@@ -1408,6 +1460,101 @@ def _resource_serving_dates(start_date: date | None, end_date: date | None) -> t
     return tuple(dates)
 
 
+def _encode_resource_cursor(row: Mapping[str, Any], *, sort_by: str) -> str:
+    list_cost = _cursor_decimal_text(row["list_cost"])
+    usage_seconds = (
+        None if row["usage_seconds"] is None else _cursor_decimal_text(row["usage_seconds"])
+    )
+    values = (
+        [list_cost, usage_seconds is None, usage_seconds, str(row["resource_group_key"])]
+        if sort_by == "list_cost"
+        else [usage_seconds is None, usage_seconds, list_cost, str(row["resource_group_key"])]
+    )
+    return base64.urlsafe_b64encode(json.dumps(values, separators=(",", ":")).encode()).decode().rstrip("=")
+
+
+def _decode_resource_cursor(cursor: str | None, *, sort_by: str) -> dict[str, Any] | None:
+    if cursor is None:
+        return None
+    try:
+        encoded = cursor + "=" * (-len(cursor) % 4)
+        values = json.loads(base64.urlsafe_b64decode(encoded.encode()))
+        if not isinstance(values, list) or len(values) != 4:
+            raise ValueError
+        if sort_by == "list_cost":
+            list_cost, usage_is_null, usage_seconds, resource_group_key = values
+        else:
+            usage_is_null, usage_seconds, list_cost, resource_group_key = values
+        if (
+            isinstance(usage_is_null, bool) is False
+            or (usage_is_null and usage_seconds is not None)
+            or not isinstance(resource_group_key, str)
+            or not resource_group_key
+        ):
+            raise ValueError
+        list_cost = _cursor_decimal_text(list_cost)
+        usage_seconds = None if usage_is_null else _cursor_decimal_text(usage_seconds)
+    except (binascii.Error, TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        raise ValueError("invalid resource cursor") from None
+    return {
+        "list_cost": list_cost,
+        "usage_is_null": usage_is_null,
+        "usage_seconds": usage_seconds,
+        "resource_group_key": resource_group_key,
+    }
+
+
+def _cursor_decimal_text(value: Any) -> str:
+    if isinstance(value, bool):
+        raise ValueError
+    decimal_value = Decimal(str(value))
+    if not decimal_value.is_finite():
+        raise ValueError
+    return format(decimal_value.normalize(), "f")
+
+
+def _resource_cursor_clause(
+    cursor: Mapping[str, Any] | None, *, sort_by: str
+) -> tuple[str, dict[str, Any]]:
+    if cursor is None:
+        return "1=1", {}
+    flag = "CASE WHEN a.usage_seconds IS NULL THEN 1 ELSE 0 END"
+    list_cost = "CAST(:cursor_list_cost AS DECIMAL(38,9))"
+    usage_seconds = "CAST(:cursor_usage_seconds AS DECIMAL(38,9))"
+    params = {
+        "cursor_list_cost": cursor["list_cost"],
+        "cursor_usage_is_null": int(cursor["usage_is_null"]),
+        "cursor_usage_seconds": cursor["usage_seconds"],
+        "cursor_resource_group_key": cursor["resource_group_key"],
+    }
+    if sort_by == "duration":
+        return (
+            f"""(
+              {flag} > :cursor_usage_is_null
+              OR ({flag} = :cursor_usage_is_null AND :cursor_usage_is_null = 0
+                  AND a.usage_seconds < {usage_seconds})
+              OR ({flag} = :cursor_usage_is_null
+                  AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+                  AND a.list_cost < {list_cost})
+              OR ({flag} = :cursor_usage_is_null
+                  AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+                  AND a.list_cost = {list_cost}
+                  AND a.resource_group_key > :cursor_resource_group_key)
+            )""",
+            params,
+        )
+    return (
+        f"""(
+          a.list_cost < {list_cost}
+          OR (a.list_cost = {list_cost} AND {flag} > :cursor_usage_is_null)
+          OR (a.list_cost = {list_cost} AND {flag} = :cursor_usage_is_null
+              AND :cursor_usage_is_null = 0 AND a.usage_seconds < {usage_seconds})
+          OR (a.list_cost = {list_cost} AND {flag} = :cursor_usage_is_null
+              AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+              AND a.resource_group_key > :cursor_resource_group_key)
+        )""",
+        params,
+    )
 
 
 def _resource_serving_window_is_valid(
@@ -1435,6 +1582,8 @@ def _resource_serving_response(
     detail_list_cost: float,
     total_list_cost: float,
     resource_data_source: str,
+    page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
+    next_cursor: str | None = None,
 ) -> dict[str, Any]:
     return {
         "items": items,
@@ -1443,9 +1592,9 @@ def _resource_serving_response(
             "requested_start_date": (
                 requested_filters.start_date.isoformat() if requested_filters.start_date else None
             ),
-            "window_limited": filters.start_date != requested_filters.start_date,
-            "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
-            "limit": UNMATCHED_RESOURCE_LIMIT,
+            "window_limited": False,
+            "limit": page_size,
+            "next_cursor": next_cursor,
             "owner": selected_owner,
             "service_name": service_name,
             "sort_by": sort_by,

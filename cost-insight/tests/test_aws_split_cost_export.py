@@ -85,7 +85,9 @@ def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
     assert "split_usage_amount" in query
     assert "SUM(usage_amount) * 3600" in query
     assert "DATE(line_item_usage_start_date) <= @usage_end_date" in query
-    assert "COALESCE(\n      NULLIF(line_item_resource_id, ''),\n      NULLIF(line_item_line_item_description, '')\n    ) AS resource_name" in query
+    assert "NULLIF(line_item_resource_id, '') AS resource_id" in query
+    assert "WHERE LOWER(kv.key) = 'name'" in query
+    assert "summary_vendor_tags_json" in query
     assert "AND resource_name IS NOT NULL" in query
     assert "CAST(NULL AS STRING) AS summary_resource_name" in query
 

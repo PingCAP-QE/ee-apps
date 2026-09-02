@@ -179,6 +179,8 @@ def cost_unmatched_resources_page(
     owner: str | None = Query(default=None, max_length=255),
     service_name: str | None = None,
     sort_by: str = Query("list_cost", pattern="^(list_cost|duration)$"),
+    page_size: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=512),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -188,6 +190,8 @@ def cost_unmatched_resources_page(
         owner=owner,
         service_name=service_name,
         sort_by=sort_by,
+        page_size=page_size,
+        cursor=cursor,
     )
 
 

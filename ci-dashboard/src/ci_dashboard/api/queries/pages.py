@@ -250,6 +250,8 @@ def get_cost_unmatched_resources_page(
     owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
+    page_size: int = 50,
+    cursor: str | None = None,
 ) -> dict[str, Any]:
     return get_unmatched_resources(
         engine,
@@ -257,6 +259,8 @@ def get_cost_unmatched_resources_page(
         owner=owner,
         service_name=service_name,
         sort_by=sort_by,
+        page_size=page_size,
+        cursor=cursor,
     )
 
 

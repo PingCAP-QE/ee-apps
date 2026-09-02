@@ -217,8 +217,23 @@ WITH normalized AS (
       WHERE kv.key = 'user_shared_pool' LIMIT 1
     ) AS shared_pool,
     NULLIF(tag_cluster, '') AS `cluster`,
-    COALESCE(NULLIF(line_item_resource_id, ''), NULLIF(split_line_item_parent_resource_id, ''),
-      NULLIF(line_item_line_item_description, '')) AS resource_name,
+    COALESCE(
+      NULLIF(line_item_resource_id, ''),
+      NULLIF(split_line_item_parent_resource_id, '')
+    ) AS resource_id,
+    (
+      SELECT NULLIF(kv.value, '')
+      FROM UNNEST(resource_tags.key_value) AS kv
+      WHERE LOWER(kv.key) = 'name'
+      LIMIT 1
+    ) AS resource_tag_name,
+    NULLIF(line_item_line_item_description, '') AS billing_description,
+    TO_JSON_STRING(
+      JSON_OBJECT(
+        ARRAY(SELECT kv.key FROM UNNEST(resource_tags.key_value) AS kv ORDER BY kv.key),
+        ARRAY(SELECT kv.value FROM UNNEST(resource_tags.key_value) AS kv ORDER BY kv.key)
+      )
+    ) AS vendor_tags_json,
     LOWER(pricing_unit) AS pricing_unit,
     line_item_usage_amount,
     CASE WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
@@ -238,8 +253,11 @@ SELECT
   CAST(NULL AS STRING) AS target_branch,
   CAST(NULL AS STRING) AS summary_resource_name,
   CASE WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool)) END AS vendor_tags_json,
-  resource_name,
+    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+  END AS summary_vendor_tags_json,
+  vendor_tags_json,
+  resource_id,
+  COALESCE(resource_id, resource_tag_name, billing_description) AS resource_name,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0 THEN NULL
     WHEN COUNTIF(pricing_unit = 'hour') = COUNT(*) THEN ROUND(SUM(line_item_usage_amount) * 3600, 2)
@@ -253,10 +271,10 @@ SELECT
   ROUND(SUM(net_cost), 9) AS net_cost,
   MAX(source_export_time) AS source_export_time
 FROM normalized
-WHERE resource_name IS NOT NULL AND resource_name <> ''
+WHERE COALESCE(resource_id, resource_tag_name, billing_description) IS NOT NULL
 GROUP BY
   account_id, billing_account_id, export_partition_date, usage_date,
   service_name, sku_name, region, namespace, author, org, repo,
-  vendor_tags_json, resource_name
+  summary_vendor_tags_json, vendor_tags_json, resource_id, resource_tag_name, billing_description
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()

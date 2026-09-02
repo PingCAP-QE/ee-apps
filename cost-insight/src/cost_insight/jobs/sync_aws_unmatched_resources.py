@@ -13,6 +13,7 @@ from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_cost_source
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.sync_gcp_unmatched_resources import (
     SyncGcpUnmatchedResourcesSummary,
     _normalize_resource_row,
@@ -173,6 +174,14 @@ def run_sync_aws_unmatched_resources(
                         display_name=account_id,
                     )
                 state_store.mark_job_succeeded(connection, job_name, watermark)
+
+            run_materialize_resource_serving(
+                engine,
+                start_date=usage_start_date,
+                end_date=usage_end_date,
+                vendor="aws",
+                account_id=account_id,
+            )
 
         return SyncAwsUnmatchedResourcesSummary(
             account_id=account_id,

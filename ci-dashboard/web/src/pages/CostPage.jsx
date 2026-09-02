@@ -18,7 +18,7 @@ import {
   StatCard,
   TrendChart,
   UnattachedBlockVolumeTable,
-  UnmatchedResourceTable,
+  ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
@@ -32,6 +32,8 @@ export default function CostPage({ filters }) {
   const [resourceBreakdownRequested, setResourceBreakdownRequested] = useState(false);
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
+  const [resourceCursor, setResourceCursor] = useState(null);
+  const [resourceItems, setResourceItems] = useState([]);
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
@@ -52,6 +54,7 @@ export default function CostPage({ filters }) {
     end_date: filters.end_date,
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
+    branch: filters.branch,
   };
   const costBreakdownDrilldownTargetGroup =
     COST_BREAKDOWN_DRILLDOWN_GROUPS[costBreakdownGroupBy] || null;
@@ -83,12 +86,18 @@ export default function CostPage({ filters }) {
   const engineeringGroupFilters = {
     ...costFilters,
   };
-  const unmatchedResourceFilters = {
+  const resourceBreakdownScope = {
     ...costFilters,
     owner: selectedResourceOwner,
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
   };
+  const resourceBreakdownScopeKey = JSON.stringify(resourceBreakdownScope);
+  const unmatchedResourceFilters = {
+    ...resourceBreakdownScope,
+    cursor: resourceCursor,
+  };
+  const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
@@ -136,6 +145,8 @@ export default function CostPage({ filters }) {
     setSelectedResourceOwner(item.name);
     setResourceBreakdownRequested(true);
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
 
   const startCostBreakdownDrilldown = (item) => {
@@ -158,6 +169,8 @@ export default function CostPage({ filters }) {
   const resetResourceOwner = () => {
     setSelectedResourceOwner(NO_OWNER_LABEL);
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
 
   useEffect(() => {
@@ -168,6 +181,29 @@ export default function CostPage({ filters }) {
       setSelectedCostStackName("");
     }
   }, [repoGroupStack.data?.items, selectedCostStackName]);
+
+  useEffect(() => {
+    setResourceCursor(null);
+    setResourceItems([]);
+  }, [resourceBreakdownScopeKey]);
+
+  useEffect(() => {
+    if (unmatchedResources.responseKey !== unmatchedResourceRequestKey) {
+      return;
+    }
+    if (unmatchedResources.data?.meta?.pending_dates?.length) {
+      setResourceItems([]);
+      return;
+    }
+    setResourceItems((current) => (
+      resourceCursor ? [...current, ...(unmatchedResources.data?.items || [])] : (unmatchedResources.data?.items || [])
+    ));
+  }, [
+    resourceCursor,
+    unmatchedResourceRequestKey,
+    unmatchedResources.data,
+    unmatchedResources.responseKey,
+  ]);
 
   useEffect(() => {
     if (!unmatchedServiceName || !unmatchedResources.data?.meta?.services) {
@@ -348,7 +384,7 @@ export default function CostPage({ filters }) {
         title={`Resource breakdown: ${selectedResourceOwner}`}
         subtitle={
           resourceBreakdownRequested
-            ? "Top 10 billable resource rows for the selected Owner share segment, with their available labels."
+            ? "Complete resource list for the selected Owner share segment."
             : "Load resource details for the selected Owner share segment on demand."
         }
         loading={unmatchedResources.loading}
@@ -360,8 +396,16 @@ export default function CostPage({ filters }) {
                 serviceName={unmatchedServiceName}
                 serviceOptions={unmatchedResources.data?.meta?.services}
                 sortBy={unmatchedSortBy}
-                onServiceChange={setUnmatchedServiceName}
-                onSortChange={setUnmatchedSortBy}
+                onServiceChange={(value) => {
+                  setUnmatchedServiceName(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
+                onSortChange={(value) => {
+                  setUnmatchedSortBy(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
               />
               {selectedResourceOwner !== NO_OWNER_LABEL ? (
                 <button
@@ -379,10 +423,25 @@ export default function CostPage({ filters }) {
         {resourceBreakdownRequested ? (
           unmatchedResources.data?.meta?.pending_dates?.length ? (
             <div className="empty-state">
-              Resource details are being materialized. Please retry on the next refresh.
+              Resource data is unavailable for {unmatchedResources.data.meta.pending_dates.join(", ")}.{" "}
+              <a href="https://github.com/PingCAP-QE/ee-apps/tree/main/cost-insight#billing-summary-pipeline">
+                Refresh the resource-serving projection
+              </a>{" "}
+              before retrying.
             </div>
           ) : (
-            <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+            <>
+              <ResourceBreakdownTable items={resourceItems} />
+              {unmatchedResources.data?.meta?.next_cursor ? (
+                <button
+                  type="button"
+                  className="donut-card__action"
+                  onClick={() => setResourceCursor(unmatchedResources.data.meta.next_cursor)}
+                >
+                  Load more
+                </button>
+              ) : null}
+            </>
           )
         ) : (
           <button

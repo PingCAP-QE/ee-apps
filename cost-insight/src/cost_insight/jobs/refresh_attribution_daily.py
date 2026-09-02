@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 
 LOG = logging.getLogger(__name__)
 
@@ -89,6 +90,13 @@ def run_refresh_cost_attribution_from_summary(
             _invalidate_cost_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
 
+        run_materialize_resource_serving(
+            engine,
+            start_date=start_date,
+            end_date=end_date,
+            vendor=source.vendor,
+            account_id=source.account_id,
+        )
         return RefreshAttributionSummary(
             vendor=source.vendor,
             account_id=source.account_id,
