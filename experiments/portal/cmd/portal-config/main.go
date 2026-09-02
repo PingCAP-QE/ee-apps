@@ -77,6 +77,55 @@ func normalizePage(value document) document {
 }
 
 func stringValue(value any) string { s, _ := value.(string); return s }
+
+func inspect(value any, path string, dataSources map[string]bool) error {
+	switch item := value.(type) {
+	case []any:
+		for _, child := range item {
+			if err := inspect(child, path, dataSources); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		if _, named := item["name"]; named {
+			if _, labeled := item["label"]; labeled {
+				if !map[string]bool{"request": true, "navigate": true, "confirm": true, "notify": true, "copy": true, "open-link": true, "refresh": true}[stringValue(item["type"])] {
+					return fmt.Errorf("%s: unsupported action %q", path, item["type"])
+				}
+			}
+		}
+		for key, child := range item {
+			for _, forbidden := range []string{"script", "javascript", "headers", "secret", "token"} {
+				if key == forbidden {
+					return fmt.Errorf("%s: forbidden key %q", path, key)
+				}
+			}
+			if key == "plugin" && stringValue(child) != "core.dynamic-select" {
+				return fmt.Errorf("%s: unknown plugin %q", path, child)
+			}
+			if key == "from" && !map[string]bool{"form": true, "route": true, "query": true, "state": true, "response": true}[stringValue(child)] {
+				return fmt.Errorf("%s: unsupported value source %q", path, child)
+			}
+			if key == "dataSource" && !dataSources[stringValue(child)] {
+				return fmt.Errorf("%s: unknown data source %q", path, child)
+			}
+			if key == "method" && !map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}[stringValue(child)] {
+				return fmt.Errorf("%s: unsupported HTTP method %q", path, child)
+			}
+			if key == "path" {
+				p := stringValue(child)
+				if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(strings.ToLower(p), "http:") || strings.HasPrefix(strings.ToLower(p), "https:") {
+					return fmt.Errorf("%s: request path must be a relative path", path)
+				}
+			}
+			if err := inspect(child, path, dataSources); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func validatePage(page document, path, module string, routes map[string]bool) error {
 	if stringValue(page["id"]) == "" || stringValue(page["title"]) == "" {
 		return fmt.Errorf("%s: id and title are required", path)
@@ -154,6 +203,9 @@ func compile(input string) ([]byte, error) {
 			}
 			page := normalizePage(rawPage)
 			if err := validatePage(page, path, id, routes); err != nil {
+				return nil, err
+			}
+			if err := inspect(page, path, dataSources); err != nil {
 				return nil, err
 			}
 			pageNames[stringValue(page["id"])] = true
