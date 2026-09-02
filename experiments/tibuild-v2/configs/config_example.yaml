@@ -12,13 +12,6 @@ store:
 github:
   token: ""
 
-# Browser identity forwarded by the EE Portal's Envoy Gateway SecurityPolicy.
-portal_auth:
-  audience: "<google-oauth-client-id>"
-  issuer: "https://accounts.google.com"
-  hosted_domain: "pingcap.com"
-  email_domain: "pingcap.com"
-
 jenkins:
   url: "https://<jenkins-url>"
   username: "your-jenkins-account"
