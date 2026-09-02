@@ -12,10 +12,10 @@ const FormPage = lazy(() => import("./components/FormPage").then((module) => ({ 
 const ListPage = lazy(() => import("./components/ListPage").then((module) => ({ default: module.ListPage })));
 
 function ManifestPage({ module, page }: { module: ModuleManifest; page: PageManifest }) {
-  if (page.spec.type === "list") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><ListPage module={module} page={page} /></Suspense>;
-  if (page.spec.type === "form") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><FormPage module={module} page={page} /></Suspense>;
-  if (page.spec.type === "detail") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><DetailPage module={module} page={page} /></Suspense>;
-  throw new Error(`Unsupported page type: ${(page.spec as { type: string }).type}`);
+  if (page.type === "list") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><ListPage module={module} page={page} /></Suspense>;
+  if (page.type === "form") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><FormPage module={module} page={page} /></Suspense>;
+  if (page.type === "detail") return <Suspense fallback={<Box className="full-center"><CircularProgress size={28} /></Box>}><DetailPage module={module} page={page} /></Suspense>;
+  throw new Error(`Unsupported page type: ${(page as { type: string }).type}`);
 }
 
 export default function App() {
@@ -35,8 +35,8 @@ export default function App() {
       <Shell modules={registry.modules}>
         <Routes>
           <Route path="/" element={<CatalogPage modules={registry.modules} />} />
-          {registry.modules.flatMap((module) => module.spec.pages.map((page) => (
-            <Route key={`${module.metadata.name}-${page.metadata.name}`} path={page.spec.route} element={<ModuleBoundary module={module.metadata.name}><ManifestPage module={module} page={page} /></ModuleBoundary>} />
+          {registry.modules.flatMap((module) => module.pages.map((page) => (
+            <Route key={`${module.id}-${page.id}`} path={page.route} element={<ModuleBoundary module={module.id}><ManifestPage module={module} page={page} /></ModuleBoundary>} />
           )))}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

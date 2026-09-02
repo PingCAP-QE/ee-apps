@@ -4,8 +4,7 @@ import { validateRegistry } from "./registry";
 describe("registry compatibility", () => {
   it("accepts the current contract", () => {
     const registry = validateRegistry({
-      apiVersion: "ee.pingcap.net/v1alpha1",
-      kind: "Registry",
+      registryVersion: 1,
       compilerVersion: "0.1.0",
       minimumRuntimeVersion: "0.1.0",
       sourceDigest: "digest",
@@ -16,8 +15,7 @@ describe("registry compatibility", () => {
 
   it("isolates incompatible configuration before rendering", () => {
     expect(() => validateRegistry({
-      apiVersion: "ee.pingcap.net/v1alpha1",
-      kind: "Registry",
+      registryVersion: 1,
       minimumRuntimeVersion: "99.0.0",
       modules: [],
     })).toThrow(/requires Portal/);

@@ -1,4 +1,4 @@
-import { MANIFEST_API_VERSION, RUNTIME_VERSION, type PortalRegistry } from "../types";
+import { REGISTRY_VERSION, RUNTIME_VERSION, type PortalRegistry } from "../types";
 
 function compatible(minimum: string): boolean {
   const parse = (value: string) => value.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -14,8 +14,8 @@ function compatible(minimum: string): boolean {
 export function validateRegistry(value: unknown): PortalRegistry {
   if (!value || typeof value !== "object") throw new Error("Registry is not an object");
   const registry = value as PortalRegistry;
-  if (registry.apiVersion !== MANIFEST_API_VERSION || registry.kind !== "Registry") {
-    throw new Error(`Unsupported registry API version: ${registry.apiVersion || "unknown"}`);
+  if (registry.registryVersion !== REGISTRY_VERSION) {
+    throw new Error(`Unsupported registry version: ${registry.registryVersion || "unknown"}`);
   }
   if (!compatible(registry.minimumRuntimeVersion)) {
     throw new Error(`Registry requires Portal ${registry.minimumRuntimeVersion} or newer`);

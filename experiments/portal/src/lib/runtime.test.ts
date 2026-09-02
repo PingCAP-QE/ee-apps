@@ -22,8 +22,8 @@ describe("configuration runtime", () => {
       method: "POST",
       path: "/devbuilds",
       body: { request: { product: { from: "form", pointer: "/product" }, edition: { const: "community" } } },
-    }, [{ name: "tibuild", basePath: "/ee/api/tibuild/v2" }], { form: { product: "pd" } })).resolves.toEqual({ id: 12 });
-    expect(fetch).toHaveBeenCalledWith(new URL("https://prow.tidb.net/ee/api/tibuild/v2/devbuilds"), expect.objectContaining({
+    }, [{ name: "tibuild", apiUrl: "/tibuild/api/v2" }], { form: { product: "pd" } })).resolves.toEqual({ id: 12 });
+    expect(fetch).toHaveBeenCalledWith(new URL("https://prow.tidb.net/tibuild/api/v2/devbuilds"), expect.objectContaining({
       method: "POST",
       body: JSON.stringify({ request: { product: "pd", edition: "community" } }),
     }));

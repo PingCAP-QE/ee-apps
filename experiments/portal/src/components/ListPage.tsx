@@ -39,7 +39,7 @@ export function listNeedsPolling(items: unknown[], polling?: ListPageSpec["polli
 }
 
 export function ListPage({ module, page }: { module: ModuleManifest; page: PageManifest }) {
-  const spec = page.spec as ListPageSpec;
+  const spec = page as ListPageSpec;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<unknown[]>([]);
@@ -59,7 +59,7 @@ export function ListPage({ module, page }: { module: ModuleManifest; page: PageM
     if (!silent) setLoading(true);
     setError(undefined);
     try {
-      const response = await executeRequest(spec.request, module.spec.dataSources, { state });
+      const response = await executeRequest(spec.request, module.dataSources, { state });
       const selected = getPointer(response, spec.response.itemsPointer);
       setItems(Array.isArray(selected) ? selected : []);
     } catch (err) {
@@ -67,7 +67,7 @@ export function ListPage({ module, page }: { module: ModuleManifest; page: PageM
     } finally {
       setLoading(false);
     }
-  }, [module.spec.dataSources, spec, state]);
+  }, [module.dataSources, spec, state]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -90,9 +90,9 @@ export function ListPage({ module, page }: { module: ModuleManifest; page: PageM
   const itemPath = (item: unknown) => interpolate(spec.itemRoute, { id: getPointer(item, spec.itemIDPointer) });
   return (
     <PageFrame
-      eyebrow={module.metadata.title}
-      title={page.metadata.title}
-      description={page.metadata.description}
+      eyebrow={module.title}
+      title={page.title}
+      description={page.description}
       action={spec.primaryAction && <Button component={Link} to={spec.primaryAction.navigate} variant="contained" startIcon={<AddRounded />}>{spec.primaryAction.label}</Button>}
     >
       <Card variant="outlined" sx={{ mb: 2, p: 2 }}>

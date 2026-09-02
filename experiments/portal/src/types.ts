@@ -1,6 +1,6 @@
 import type { RJSFSchema, UiSchema } from "@rjsf/utils";
 
-export const MANIFEST_API_VERSION = "ee.pingcap.net/v1alpha1";
+export const REGISTRY_VERSION = 1;
 export const RUNTIME_VERSION = "0.1.0";
 
 export type PageType = "list" | "form" | "detail";
@@ -17,7 +17,7 @@ export interface ObjectMeta {
 
 export interface DataSource {
   name: string;
-  basePath: string;
+  apiUrl: string;
 }
 
 export interface NavigationItem {
@@ -27,14 +27,14 @@ export interface NavigationItem {
 }
 
 export interface ModuleManifest {
-  apiVersion: typeof MANIFEST_API_VERSION;
-  kind: "Module";
-  metadata: ObjectMeta;
-  spec: {
-    dataSources: DataSource[];
-    navigation: NavigationItem[];
-    pages: PageManifest[];
-  };
+  id: string;
+  title: string;
+  description?: string;
+  icon?: string;
+  tags?: string[];
+  dataSources: DataSource[];
+  navigation: NavigationItem[];
+  pages: PageManifest[];
 }
 
 export interface ValueExpression {
@@ -156,16 +156,15 @@ export interface DetailPageSpec {
   polling?: PollingDefinition;
 }
 
-export interface PageManifest {
-  apiVersion: typeof MANIFEST_API_VERSION;
-  kind: "Page";
-  metadata: ObjectMeta & { module: string };
-  spec: ListPageSpec | FormPageSpec | DetailPageSpec;
-}
+export type PageManifest = (ListPageSpec | FormPageSpec | DetailPageSpec) & {
+  id: string;
+  module: string;
+  title: string;
+  description?: string;
+};
 
 export interface PortalRegistry {
-  apiVersion: typeof MANIFEST_API_VERSION;
-  kind: "Registry";
+  registryVersion: typeof REGISTRY_VERSION;
   compilerVersion: string;
   minimumRuntimeVersion: string;
   sourceDigest: string;

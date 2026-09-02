@@ -36,7 +36,7 @@ export function nextPollDelay(base: number, maximum: number, failures: number): 
 }
 
 export function DetailPage({ module, page }: { module: ModuleManifest; page: PageManifest }) {
-  const spec = page.spec as DetailPageSpec;
+  const spec = page as DetailPageSpec;
   const params = useParams();
   const route = useMemo(() => ({ id: params.id || "" }), [params.id]);
   const navigate = useNavigate();
@@ -54,7 +54,7 @@ export function DetailPage({ module, page }: { module: ModuleManifest; page: Pag
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await executeRequest(spec.request, module.spec.dataSources, { route });
+      const response = await executeRequest(spec.request, module.dataSources, { route });
       setData(response);
       setError(undefined);
       failureCount.current = 0;
@@ -65,7 +65,7 @@ export function DetailPage({ module, page }: { module: ModuleManifest; page: Pag
       setLoading(false);
       if (silent) setPollRevision((value) => value + 1);
     }
-  }, [module.spec.dataSources, route, spec.request]);
+  }, [module.dataSources, route, spec.request]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -98,7 +98,7 @@ export function DetailPage({ module, page }: { module: ModuleManifest; page: Pag
     if (action.type === "request" && action.request) {
       setRunningAction(true);
       try {
-        const result = await executeRequest(action.request, module.spec.dataSources, { route, response: data });
+        const result = await executeRequest(action.request, module.dataSources, { route, response: data });
         if (action.successNavigate) {
           const id = getPointer(result, action.resultIDPointer || "/id");
           navigate(interpolate(action.successNavigate, { ...route, id }));
@@ -119,7 +119,7 @@ export function DetailPage({ module, page }: { module: ModuleManifest; page: Pag
   return (
     <PageFrame
       back="/tibuild/builds"
-      eyebrow={module.metadata.title}
+      eyebrow={module.title}
       title={title}
       description={spec.header.subtitleFields?.map((field) => `${field.label}: ${String(getPointer(data, field.pointer) ?? "—")}`).join(" · ")}
       action={<Stack direction="row" sx={{ gap: 1 }}>{(spec.actions || []).filter((action) => actionVisible(data, action.visibleWhen)).map((action) => <Button key={action.name} variant={action.type === "request" ? "contained" : "outlined"} startIcon={action.type === "request" ? <ReplayRounded /> : <RefreshRounded />} disabled={runningAction} onClick={() => runAction(action)}>{action.label}</Button>)}</Stack>}

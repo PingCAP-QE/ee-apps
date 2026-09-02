@@ -14,7 +14,7 @@ function cloneSchema(schema: RJSFSchema): RJSFSchema {
 }
 
 export function FormPage({ module, page }: { module: ModuleManifest; page: PageManifest }) {
-  const spec = page.spec as FormPageSpec;
+  const spec = page as FormPageSpec;
   const navigate = useNavigate();
   const [schema, setSchema] = useState<RJSFSchema>(() => cloneSchema(spec.schema));
   const [optionsLoading, setOptionsLoading] = useState(Boolean(spec.dynamicOptions?.length));
@@ -35,7 +35,7 @@ export function FormPage({ module, page }: { module: ModuleManifest; page: PageM
       const next = cloneSchema(spec.schema);
       try {
         for (const dynamic of spec.dynamicOptions || []) {
-          const response = await executeRequest(dynamic.request, module.spec.dataSources, {});
+          const response = await executeRequest(dynamic.request, module.dataSources, {});
           const items = getPointer(response, dynamic.itemsPointer);
           if (!Array.isArray(items)) throw new Error(`Options for ${dynamic.field} are not an array`);
           const property = next.properties?.[dynamic.field];
@@ -54,10 +54,10 @@ export function FormPage({ module, page }: { module: ModuleManifest; page: PageM
     }
     void loadOptions();
     return () => { active = false; };
-  }, [module.spec.dataSources, spec.dynamicOptions, spec.schema]);
+  }, [module.dataSources, spec.dynamicOptions, spec.schema]);
 
   return (
-    <PageFrame back="/tibuild/builds" eyebrow={module.metadata.title} title={page.metadata.title} description={page.metadata.description}>
+    <PageFrame back="/tibuild/builds" eyebrow={module.title} title={page.title} description={page.description}>
       <Card variant="outlined" sx={{ maxWidth: 760, p: { xs: 2, sm: 3 } }}>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {optionsLoading ? <Box className="center-state"><CircularProgress size={28} /><Typography>Loading build options…</Typography></Box> : (
@@ -72,7 +72,7 @@ export function FormPage({ module, page }: { module: ModuleManifest; page: PageM
               setSubmitting(true);
               setError(undefined);
               try {
-                const result = await executeRequest(spec.submit.request, module.spec.dataSources, { form: formData });
+                const result = await executeRequest(spec.submit.request, module.dataSources, { form: formData });
                 const id = getPointer(result, spec.submit.resultIDPointer);
                 navigate(interpolate(spec.submit.successNavigate, { id }));
               } catch (err) {

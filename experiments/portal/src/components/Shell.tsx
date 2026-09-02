@@ -39,12 +39,12 @@ function Navigation({ modules, close }: { modules: ModuleManifest[]; close?: () 
           <ListItemIcon><AppsRounded fontSize="small" /></ListItemIcon>
           <ListItemText primary="All tools" />
         </ListItemButton>
-        {modules.flatMap((module) => module.spec.navigation.map((item) => {
-          const page = module.spec.pages.find((candidate) => candidate.metadata.name === item.page);
+        {modules.flatMap((module) => module.navigation.map((item) => {
+          const page = module.pages.find((candidate) => candidate.id === item.page);
           if (!page) return null;
-          const route = page.spec.route.replace(/:\w+/g, "");
+          const route = page.route.replace(/:\w+/g, "");
           return (
-            <ListItemButton key={`${module.metadata.name}-${item.page}`} component={Link} to={route} selected={location.pathname.startsWith(route)} onClick={close}>
+            <ListItemButton key={`${module.id}-${item.page}`} component={Link} to={route} selected={location.pathname.startsWith(route)} onClick={close}>
               <ListItemIcon><ConstructionRounded fontSize="small" /></ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>

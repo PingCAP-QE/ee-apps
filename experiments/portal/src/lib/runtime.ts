@@ -68,8 +68,10 @@ export async function executeRequest(
   if (!source) throw new Error(`Unknown data source: ${request.dataSource}`);
   const routeValues = context.route || {};
   const path = interpolate(request.path, routeValues);
-  const url = new URL(`${source.basePath}${path}`, window.location.origin);
-  if (url.origin !== window.location.origin) throw new Error("Cross-origin data sources are not allowed");
+  const base = new URL(source.apiUrl, window.location.origin);
+  const joinedPath = `${base.pathname.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+  base.pathname = joinedPath;
+  const url = base;
 
   for (const [name, expression] of Object.entries(request.query || {})) {
     const value = evaluate(expression, context);
@@ -78,7 +80,7 @@ export async function executeRequest(
 
   const response = await fetch(url, {
     method: request.method,
-    credentials: "same-origin",
+    credentials: "include",
     headers: request.body === undefined ? undefined : { "Content-Type": "application/json" },
     body: request.body === undefined ? undefined : JSON.stringify(mapValue(request.body, context)),
     signal,

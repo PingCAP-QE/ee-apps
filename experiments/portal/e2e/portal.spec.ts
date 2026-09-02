@@ -17,7 +17,7 @@ const build = {
 };
 
 async function mockAPI(page: Page) {
-  await page.route("**/ee/api/tibuild/v2/devbuilds**", async (route) => {
+  await page.route("**/tibuild/api/v2/devbuilds**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/capabilities")) return route.fulfill({
       json: { products: [{ id: "tidb", label: "TiDB", editions: ["community"], platforms: ["linux", "linux/amd64", "linux/arm64"] }], pipelineEngines: ["tekton"] },
