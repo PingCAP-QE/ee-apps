@@ -304,7 +304,7 @@ allocation_raw.account_id,
 allocation_raw.vendor_tags_json,
 allocation_raw.icost_owner_email AS owner_email,
 allocation_raw.icost_service AS service,
-allocation_raw.icost_project AS project,
+NULLIF(TRIM(allocation_raw.icost_project), '') AS project,
 allocation_raw.icost_service_exec_id AS service_exec_id,
 allocation_raw.valid_from,
 allocation_raw.valid_to
