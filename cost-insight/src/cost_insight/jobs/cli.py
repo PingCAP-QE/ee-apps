@@ -49,6 +49,10 @@ from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
+from cost_insight.jobs.validate_aws_reconciliation import (
+    resolve_reconciliation_source,
+    run_aws_reconciliation,
+)
 
 
 class _ConnectionBoundEngine:
@@ -201,6 +205,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--split-by-day",
         action="store_true",
         help="Refresh one usage date at a time; recommended for larger ranges.",
+    )
+
+    validate_aws = subparsers.add_parser(
+        "validate-aws-reconciliation",
+        help="Read-only AWS CE, BigQuery, summary, and attribution reconciliation",
+    )
+    validate_aws.add_argument("--start-date", type=_parse_date, required=True)
+    validate_aws.add_argument("--end-date", type=_parse_date, required=True)
+    validate_aws.add_argument("--account-id", required=True)
+    validate_aws.add_argument("--tenant", required=True)
+    validate_aws.add_argument(
+        "--aws-region",
+        default="us-east-1",
+        help="AWS region for Cost Explorer (default: us-east-1)",
+    )
+    validate_aws.add_argument(
+        "--tenant-tag-key",
+        default="tenant",
+        help="AWS cost allocation tag key used by Cost Explorer (default: tenant)",
     )
 
     materialize_allocations = subparsers.add_parser(
@@ -674,6 +697,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "validate-aws-reconciliation":
+        if args.start_date >= args.end_date:
+            raise ValueError("--start-date must be before --end-date")
+        from google.cloud import bigquery
+        import boto3
+
+        engine = build_engine(settings)
+        try:
+            result = run_aws_reconciliation(
+                engine,
+                bq_client=bigquery.Client(),
+                ce_client=boto3.client("ce", region_name=args.aws_region),
+                source=resolve_reconciliation_source(
+                    engine,
+                    account_id=args.account_id,
+                    legacy_table=settings.aws_billing.billing_table,
+                ),
+                tenant=args.tenant,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                tenant_tag_key=args.tenant_tag_key,
+            )
+            print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+            return 0 if result.passed else 1
         finally:
             engine.dispose()
 

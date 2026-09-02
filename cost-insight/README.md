@@ -111,6 +111,29 @@ cost-insight refresh-cost-attribution-from-summary \
   --split-by-day
 ```
 
+### AWS reconciliation canary
+
+`validate-aws-reconciliation` is a read-only check: it only issues AWS Cost
+Explorer, BigQuery, and TiDB `SELECT` requests. It neither runs imports nor
+updates job state. It compares the CE `UnblendedCost` stream (Usage and
+SavingsPlanCoveredUsage) with the AWS raw export, summary, and attribution
+facts after independently rounding each amount to cents.
+
+```bash
+cost-insight validate-aws-reconciliation \
+  --start-date 2026-08-10 \
+  --end-date 2026-08-11 \
+  --account-id 296171618728 \
+  --tenant 1372813089209272198
+```
+
+The caller must use AWS credentials for the payer/management account and have
+read access to Cost Explorer; the source table and schema version are read from
+`cost_sources` when registered. Cost Explorer uses `us-east-1` by default; pass
+`--aws-region` when your AWS setup requires another region. Set
+`--tenant-tag-key` if Cost Explorer uses a cost-allocation tag name other than
+`tenant`.
+
 Resource-level investigation data is imported separately for a stable usage
 week:
 

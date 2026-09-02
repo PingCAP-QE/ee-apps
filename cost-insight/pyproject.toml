@@ -9,6 +9,7 @@ description = "Cloud cost collection, attribution, and budget jobs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "boto3>=1.34.0",
   "google-auth>=2.0.0",
   "google-cloud-bigquery>=3.25.0",
   "google-cloud-storage>=2.19.0",
