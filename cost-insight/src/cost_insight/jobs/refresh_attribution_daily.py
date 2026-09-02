@@ -917,8 +917,9 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 ELSE allocation.service
               END AS service,
               CASE
-                WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.project, allocation.project)
-                ELSE allocation.project
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE}
+                  THEN COALESCE(summary.project, allocation.project, allocation.tenant_project)
+                ELSE COALESCE(allocation.project, allocation.tenant_project)
               END AS project,
               CASE
                 WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.service_exec_id, allocation.service_exec_id)
@@ -946,6 +947,26 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                   allocation.project,
                   allocation.service_exec_id,
                   allocation.match_tags_json,
+                  FIRST_VALUE(
+                    CASE
+                      WHEN JSON_LENGTH(allocation.match_tags_json) = 0
+                        AND allocation.match_tenant IS NOT NULL
+                        THEN allocation.project
+                      ELSE NULL
+                    END
+                  ) OVER (
+                    PARTITION BY summary.id
+                    ORDER BY
+                      CASE
+                        WHEN JSON_LENGTH(allocation.match_tags_json) = 0
+                          AND allocation.match_tenant IS NOT NULL
+                          THEN 0
+                        ELSE 1
+                      END,
+                      CASE WHEN allocation.account_id = summary.account_id THEN 0 ELSE 1 END,
+                      COALESCE(allocation.valid_from, '1900-01-01') DESC,
+                      allocation.id DESC
+                  ) AS tenant_project,
                   ROW_NUMBER() OVER (
                     PARTITION BY summary.id
                     ORDER BY

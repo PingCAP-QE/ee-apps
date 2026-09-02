@@ -905,7 +905,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       ),
                       (
                         7, 'aws', NULL, '{"cluster":"cluster-tenant"}',
-                        'bob@pingcap.com', 'TestInfra', 'project-global-cluster',
+                        'bob@pingcap.com', 'ClusterService', NULL,
                         'exec-global-cluster', NULL, NULL
                       )
                     """
@@ -1030,6 +1030,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       owner,
                       service,
                       project,
+                      service_exec_id,
                       attribution_source,
                       attribution_status,
                       allocate_method,
@@ -1089,7 +1090,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         missing_tenant_pool_row = find_row(sku_name="MissingTenantPoolUsage", author="alice")
         tenant_cluster_row = find_row(
             sku_name="TenantClusterUsage",
-            project="project-global-cluster",
+            project="project-tenant",
             author="alice",
             allocate_method="logical",
         )
@@ -1121,6 +1122,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert missing_tenant_pool_row["attribution_status"] == "unattributed"
         assert missing_tenant_pool_row["employee_id"] is None
         assert tenant_cluster_row["owner"] == "bob@pingcap.com"
+        assert tenant_cluster_row["service"] == "ClusterService"
+        assert tenant_cluster_row["service_exec_id"] == "exec-global-cluster"
         assert tenant_cluster_row["attribution_source"] == "owner_email"
         assert tenant_cluster_row["attribution_status"] == "matched"
         assert tenant_cluster_row["employee_id"] == 2
