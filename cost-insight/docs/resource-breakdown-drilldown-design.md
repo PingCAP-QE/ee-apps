@@ -1,7 +1,7 @@
 # Cost Breakdown Resource Drilldown
 
-Status: Proposed  
-Date: 2026-09-02  
+Status: Proposed
+Date: 2026-09-02
 Owners: Cost Insight (projection writer), CI Dashboard (read API and UI)
 
 ## Problem and evidence
