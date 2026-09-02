@@ -766,10 +766,18 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
     previous_month_start = previous_month_end.replace(day=1)
     data_start = min(previous_week_start, previous_month_start)
     data_end = max(last_week_end, previous_month_end)
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
     report: dict[str, Any] = {
         "meta": {
             "calendar_timezone": "UTC",
-            "cost_metric": "net_cost",
+            "cost_metric": "list_cost",
             "purpose_schema_available": False,
         },
         "last_week": {
@@ -791,15 +799,23 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
             "previous_month_cost": 0.0,
         },
         "items": [],
+        "list_cost_history": {
+            "metric": "list_cost",
+            "start_date": history_start.isoformat(),
+            "end_date": last_week_end.isoformat(),
+            "weeks": history_weeks,
+            "series": [],
+        },
     }
 
     with engine.begin() as connection:
         if not _table_has_column(connection, "cost_sources", "purpose"):
             return report
         report["meta"]["purpose_schema_available"] = True
+        list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
-                """
+                f"""
                 SELECT
                   s.vendor,
                   s.account_id,
@@ -807,15 +823,15 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
                   TRIM(s.purpose) AS purpose,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :last_week_start AND :last_week_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
                   ) AS last_week_cost,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :previous_week_start AND :previous_week_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
                   ) AS previous_week_cost,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :previous_month_start AND :previous_month_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
                   ) AS previous_month_cost
                 FROM cost_sources s
                 LEFT JOIN cost_attribution_daily c
@@ -859,6 +875,67 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
             }
             for row in rows
         ]
+        history_rows = connection.execute(
+            text(
+                f"""
+                SELECT
+                  s.vendor,
+                  s.account_id,
+                  c.usage_date,
+                  SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
+                FROM cost_sources s
+                LEFT JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                 AND c.usage_date BETWEEN :history_start AND :last_week_end
+                WHERE s.is_active = :is_active
+                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+                GROUP BY s.vendor, s.account_id, c.usage_date
+                """
+            ),
+            {
+                "history_start": history_start,
+                "last_week_end": last_week_end,
+                "is_active": 1,
+            },
+        ).mappings()
+        history_values = {
+            item["cost_source"]: {week["start_date"]: Decimal(0) for week in history_weeks}
+            for item in items
+        }
+        for row in history_rows:
+            if row["usage_date"] is None:
+                continue
+            usage_date = date.fromisoformat(str(row["usage_date"]))
+            week_start = usage_date - timedelta(days=usage_date.weekday())
+            source = _cost_source_value(str(row["vendor"]), str(row["account_id"]))
+            history_values[source][week_start.isoformat()] += Decimal(str(row["list_cost"] or 0))
+
+    history_series = []
+    for item in items:
+        values = history_values[item["cost_source"]]
+        total_list_cost = sum(values.values())
+        history_series.append(
+            {
+                "cost_source": item["cost_source"],
+                "vendor": item["vendor"],
+                "account_id": item["account_id"],
+                "display_name": item["display_name"],
+                "purpose": item["purpose"],
+                "total_list_cost": _money(total_list_cost),
+                "points": [
+                    {"week_start": week["start_date"], "list_cost": _money(values[week["start_date"]])}
+                    for week in history_weeks
+                ],
+            }
+        )
+    history_series.sort(
+        key=lambda item: (
+            -sum(history_values[item["cost_source"]].values()),
+            item["vendor"],
+            item["account_id"],
+        )
+    )
 
     total_last_week_cost = _money(sum(item["last_week_cost"] for item in items))
     total_previous_week_cost = _money(sum(item["previous_week_cost"] for item in items))
@@ -882,6 +959,7 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
         "previous_month_cost": total_previous_month_cost,
     }
     report["items"] = items
+    report["list_cost_history"]["series"] = history_series
     return report
 
 

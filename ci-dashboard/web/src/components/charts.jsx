@@ -196,6 +196,8 @@ export function TrendChart({
   rightYTickMode = "default",
   axisLabelSize = 11,
   bottomLabelSize = 11,
+  rotateBottomLabels = false,
+  showAllBottomLabels = false,
   annotationLabelSize = 10,
   barGroupWidthFactor = 0.66,
   barMaxWidth = 46,
@@ -204,7 +206,9 @@ export function TrendChart({
   onBucketSelect = null,
   preserveLabelOrder = false,
   xLabelFormatter = formatBottomAxisLabel,
+  tooltipLabelFormatter = xLabelFormatter,
   showTooltipSum = false,
+  showLegend = true,
 }) {
   const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -307,7 +311,7 @@ export function TrendChart({
   const padding = {
     top: annotationMap.size ? 54 : compactY ? 6 : 20,
     right: hasRightAxis ? 58 : 20,
-    bottom: compactY ? 22 : 42,
+    bottom: rotateBottomLabels ? 70 : compactY ? 22 : 42,
     left: leftPadding,
   };
   const plotWidth = width - padding.left - padding.right;
@@ -324,8 +328,11 @@ export function TrendChart({
   const xForIndex = (index) =>
     labels.length > 1 ? padding.left + xInset + index * xStep : padding.left + plotWidth / 2;
   const displayLabels = labels.map((label) => String(xLabelFormatter(label)));
+  const effectiveBottomLabelSize = rotateBottomLabels
+    ? Math.min(bottomLabelSize, 9)
+    : bottomLabelSize;
   const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
-  const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
+  const estimatedBottomLabelWidth = longestDisplayLabelLength * (effectiveBottomLabelSize * 0.62) + 14;
   const maxBottomLabels = Math.max(2, Math.floor(plotWidth / estimatedBottomLabelWidth));
   const bottomLabelStep =
     labels.length > maxBottomLabels
@@ -335,11 +342,13 @@ export function TrendChart({
     1,
     Math.ceil(estimatedBottomLabelWidth / Math.max(xStep, 1)),
   );
-  const visibleBottomLabelIndices = buildVisibleBottomLabelIndices(
-    labels.length,
-    bottomLabelStep,
-    minBottomLabelIndexGap,
-  );
+  const visibleBottomLabelIndices = showAllBottomLabels
+    ? new Set(labels.map((_label, index) => index))
+    : buildVisibleBottomLabelIndices(
+        labels.length,
+        bottomLabelStep,
+        minBottomLabelIndexGap,
+      );
   const interactiveBuckets = typeof onBucketSelect === "function";
   const selectedBucketIndex = selectedBucketLabel ? labels.indexOf(selectedBucketLabel) : -1;
   const getBucketArea = (index) => {
@@ -366,7 +375,7 @@ export function TrendChart({
           height,
           padding,
           showSum: showTooltipSum,
-          labelFormatter: xLabelFormatter,
+          labelFormatter: tooltipLabelFormatter,
         });
   const handleBucketHoverStart = (index) => {
     if (hoverTimerRef.current) {
@@ -483,7 +492,7 @@ export function TrendChart({
                 width={barWidth}
                 height={barHeight}
                 rx={stackBars ? 2 : 6}
-                fill={seriesColor(item.key)}
+                fill={seriesColor(item.key, item.color)}
                 opacity="0.78"
               />
             );
@@ -530,7 +539,7 @@ export function TrendChart({
                   key={`${item.key}-segment-${index}`}
                   points={segment.map((point) => `${point.x},${point.y}`).join(" ")}
                   fill="none"
-                  stroke={seriesColor(item.key)}
+                  stroke={seriesColor(item.key, item.color)}
                   strokeWidth="3"
                   strokeDasharray={item.dash ? "7 6" : undefined}
                   strokeLinejoin="round"
@@ -546,7 +555,7 @@ export function TrendChart({
                         cx={point.x}
                         cy={point.y}
                         r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
-                        fill={seriesColor(item.key)}
+                        fill={seriesColor(item.key, item.color)}
                         stroke="#fcf7ef"
                         strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
                         style={interactiveBuckets ? { cursor: "pointer" } : undefined}
@@ -611,15 +620,23 @@ export function TrendChart({
           const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
           const x = xForIndex(index);
-          const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
+          const y = height - 14;
+          const textAnchor = rotateBottomLabels
+            ? "end"
+            : isLastLabel
+              ? "end"
+              : isFirstLabel
+                ? "start"
+                : "middle";
           return (
             <text
               key={label}
               x={x}
-              y={height - 14}
+              y={y}
               textAnchor={textAnchor}
+              transform={rotateBottomLabels ? `rotate(45 ${x} ${y})` : undefined}
               className="chart-axis-label chart-axis-label--bottom"
-              style={{ fontSize: `${bottomLabelSize}px` }}
+              style={{ fontSize: `${effectiveBottomLabelSize}px` }}
             >
               {displayLabels[index]}
             </text>
@@ -639,7 +656,7 @@ export function TrendChart({
             </text>
             {hoveredBucket.rows.map((row, index) => (
               <g key={`${hoveredBucket.label}-${row.key}`} transform={`translate(0, ${34 + index * 18})`}>
-                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key, row.color)} />
                 <text x="25" y="0" className="chart-tooltip__text">
                   {row.label}: {row.value}
                 </text>
@@ -669,7 +686,7 @@ export function TrendChart({
                       key={`${hoveredBucket.label}-${row.key}`}
                       transform={`translate(0, ${12 + index * 18})`}
                     >
-                      <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                      <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key, row.color)} />
                       <text x="25" y="0" className="chart-tooltip__text">
                         {row.label}: {row.value}
                       </text>
@@ -705,17 +722,19 @@ export function TrendChart({
         })}
       </svg>
 
-      <div className="chart-legend">
-        {series.map((item) => (
-          <div key={item.key} className="chart-legend__item">
-            <span
-              className="chart-legend__swatch"
-              style={{ backgroundColor: seriesColor(item.key) }}
-            />
-            <span>{item.label || formatSeriesLabel(item.key)}</span>
-          </div>
-        ))}
-      </div>
+      {showLegend ? (
+        <div className="chart-legend">
+          {series.map((item) => (
+            <div key={item.key} className="chart-legend__item">
+              <span
+                className="chart-legend__swatch"
+                style={{ backgroundColor: seriesColor(item.key, item.color) }}
+              />
+              <span>{item.label || formatSeriesLabel(item.key)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1840,6 +1859,7 @@ function buildBucketTooltip({
         value: formatter(rawValue),
         rawValue: Number(rawValue || 0),
         type: item.type,
+        color: item.color,
       };
     })
     .filter(Boolean);
@@ -1884,7 +1904,10 @@ function buildBucketTooltip({
   };
 }
 
-function seriesColor(key) {
+function seriesColor(key, color) {
+  if (color) {
+    return color;
+  }
   if (SERIES_COLORS[key]) {
     return SERIES_COLORS[key];
   }

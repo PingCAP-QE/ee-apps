@@ -64,7 +64,9 @@ test("weekly summary never serializes filters into the root URL", () => {
   assert.equal(search, "");
 });
 
-test("weekly cost never serializes filters into its fixed-report URL", () => {
+test("QA Cost Weekly never serializes filters into its fixed-report URL", () => {
+  assert.equal(WEEKLY_COST_PATH, "/qa-cost-weekly");
+
   const search = buildFilterSearch(
     {
       ...buildDefaultFilters(defaultRange, WEEKLY_COST_PATH),

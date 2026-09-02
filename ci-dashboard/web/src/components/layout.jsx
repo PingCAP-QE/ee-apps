@@ -50,7 +50,7 @@ export function DashboardLayout({
           <NavItem
             to={WEEKLY_COST_PATH}
             search={navSearchByPath[WEEKLY_COST_PATH]}
-            label="Weekly Cost"
+            label="QA Cost Weekly"
             caption="QA accounts, complete calendar periods"
           />
           <NavItem

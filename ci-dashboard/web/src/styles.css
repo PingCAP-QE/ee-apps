@@ -855,9 +855,33 @@ select {
   gap: 0.9rem;
 }
 
+.weekly-cost__table {
+  --weekly-cost-account-width: 14rem;
+  --weekly-cost-purpose-width: 21rem;
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.weekly-cost__table thead th:first-child,
+.weekly-cost__table tbody th {
+  width: var(--weekly-cost-account-width);
+  min-width: var(--weekly-cost-account-width);
+  max-width: var(--weekly-cost-account-width);
+}
+
+.weekly-cost__table th:nth-child(2),
+.weekly-cost__table .weekly-cost__purpose {
+  width: var(--weekly-cost-purpose-width);
+  min-width: 0;
+  max-width: var(--weekly-cost-purpose-width);
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
 .weekly-cost__account {
   display: grid;
   gap: 0.18rem;
+  overflow-wrap: anywhere;
 }
 
 .weekly-cost__account small {
@@ -866,9 +890,26 @@ select {
   font-weight: 500;
 }
 
-.weekly-cost__purpose {
-  min-width: 220px;
-  white-space: normal !important;
+.weekly-cost__number {
+  text-align: right !important;
+}
+
+.weekly-cost__wow--alert {
+  color: var(--rose);
+  font-weight: 700;
+}
+
+.weekly-cost__period-label {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.weekly-cost__period-range {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .weekly-cost__delta--improved {
@@ -881,6 +922,31 @@ select {
 
 .weekly-cost__delta--neutral {
   color: var(--muted);
+}
+
+.weekly-cost__trend-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 16rem);
+  gap: 1rem;
+  align-items: start;
+}
+
+.dimension-selector.weekly-cost__account-selector {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+}
+
+.weekly-cost__account-selector .dimension-chip {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.weekly-cost__account-selector-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  flex: none;
 }
 
 .cost-account-card {
@@ -2491,6 +2557,10 @@ select {
 
   .migration-rate-card {
     grid-column: span 1;
+  }
+
+  .weekly-cost__trend-layout {
+    grid-template-columns: 1fr;
   }
 
   .weekly-summary__flaky-grid {

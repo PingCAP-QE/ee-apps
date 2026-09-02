@@ -29,11 +29,11 @@ after(async () => {
   await server?.close();
 });
 
-function weeklyCostReport({ items = [] } = {}) {
+function weeklyCostReport({ items = [], listCostHistory } = {}) {
   return {
     meta: {
       calendar_timezone: "UTC",
-      cost_metric: "net_cost",
+      cost_metric: "list_cost",
       purpose_schema_available: true,
     },
     last_week: { start_date: "2026-07-13", end_date: "2026-07-19" },
@@ -46,10 +46,30 @@ function weeklyCostReport({ items = [] } = {}) {
       previous_month_cost: 0,
     },
     items,
+    ...(listCostHistory ? { list_cost_history: listCostHistory } : {}),
   };
 }
 
-test("weekly cost uses its fixed API URL and explains an old source schema", async () => {
+function weeklyCostHistory(series = []) {
+  return {
+    metric: "list_cost",
+    start_date: "2026-05-25",
+    end_date: "2026-07-19",
+    weeks: [
+      { start_date: "2026-05-25", end_date: "2026-05-31" },
+      { start_date: "2026-06-01", end_date: "2026-06-07" },
+      { start_date: "2026-06-08", end_date: "2026-06-14" },
+      { start_date: "2026-06-15", end_date: "2026-06-21" },
+      { start_date: "2026-06-22", end_date: "2026-06-28" },
+      { start_date: "2026-06-29", end_date: "2026-07-05" },
+      { start_date: "2026-07-06", end_date: "2026-07-12" },
+      { start_date: "2026-07-13", end_date: "2026-07-19" },
+    ],
+    series,
+  };
+}
+
+test("QA Cost Weekly direct route uses its fixed API URL and explains an old source schema", async () => {
   const requests = [];
   const originalFetch = globalThis.fetch;
   let renderer;
@@ -61,7 +81,7 @@ test("weekly cost uses its fixed API URL and explains an old source schema", asy
       json: async () => ({
         meta: {
           calendar_timezone: "UTC",
-          cost_metric: "net_cost",
+          cost_metric: "list_cost",
           purpose_schema_available: false,
         },
         last_week: { start_date: "2026-07-13", end_date: "2026-07-19" },
@@ -83,7 +103,7 @@ test("weekly cost uses its fixed API URL and explains an old source schema", asy
       renderer = TestRenderer.create(
         React.createElement(
           MemoryRouter,
-          { initialEntries: ["/weekly-cost?start_date=2020-01-01&repo=pingcap%2Ftidb"] },
+          { initialEntries: ["/qa-cost-weekly?start_date=2020-01-01&repo=pingcap%2Ftidb"] },
           React.createElement(App),
         ),
       );
@@ -91,7 +111,9 @@ test("weekly cost uses its fixed API URL and explains an old source schema", asy
     });
 
     assert.deepEqual(requests, ["/api/v1/pages/weekly-cost"]);
-    assert.match(JSON.stringify(renderer.toJSON()), /QA source metadata is not deployed yet/);
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /QA Cost Weekly/);
+    assert.match(rendered, /QA source metadata is not deployed yet/);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
@@ -134,17 +156,15 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
       ],
     });
     const rendered = await renderReport();
-    const headers = renderer.root
-      .findByType("thead")
-      .findAllByType("th")
-      .map((header) => header.children.join(""));
+    const periodLabels = renderer.root
+      .findAllByProps({ className: "weekly-cost__period-label" })
+      .map((label) => label.children.map((part) => part.children.join("")));
     assert.match(rendered, /Configured QA environment/);
-    assert.deepEqual(headers, [
-      "Account",
-      "Purpose",
-      "Last week (2026-07-13 – 2026-07-19)",
-      "QA share",
-      "Last natural month (2026-06-01 – 2026-06-30)",
+    assert.deepEqual(periodLabels, [
+      ["Last week", "2026-07-13 – 2026-07-19"],
+      ["Last natural month", "2026-06-01 – 2026-06-30"],
+      ["Last week", "2026-07-13 – 2026-07-19"],
+      ["Last natural month", "2026-06-01 – 2026-06-30"],
     ]);
     assert.doesNotMatch(rendered, /No QA cost sources with a configured purpose/);
   } finally {
@@ -152,6 +172,281 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
     globalThis.fetch = originalFetch;
   }
 });
+
+test("weekly cost flags only row WoW values above 30%", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () =>
+      weeklyCostReport({
+        items: [
+          {
+            cost_source: "gcp:at-threshold",
+            vendor: "gcp",
+            account_id: "at-threshold",
+            display_name: "at-threshold",
+            purpose: "QA",
+            last_week_cost: 130,
+            previous_week_cost: 100,
+            week_wow_pct: 30,
+            last_week_share_pct: 33.33,
+            previous_month_cost: 100,
+          },
+          {
+            cost_source: "gcp:above-threshold",
+            vendor: "gcp",
+            account_id: "above-threshold",
+            display_name: "above-threshold",
+            purpose: "QA",
+            last_week_cost: 130.01,
+            previous_week_cost: 100,
+            week_wow_pct: 30.01,
+            last_week_share_pct: 33.33,
+            previous_month_cost: 100,
+          },
+          {
+            cost_source: "gcp:no-comparison",
+            vendor: "gcp",
+            account_id: "no-comparison",
+            display_name: "no-comparison",
+            purpose: "QA",
+            last_week_cost: 0,
+            previous_week_cost: 0,
+            week_wow_pct: null,
+            last_week_share_pct: 33.34,
+            previous_month_cost: 0,
+          },
+        ],
+      }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+
+    const headers = renderer.root
+      .findByType("thead")
+      .findAllByType("th")
+      .map((header) => header.children.join(""));
+    const wowCells = renderer.root
+      .findByType("tbody")
+      .findAllByType("tr")
+      .map((row) => row.findAllByType("td")[2]);
+
+    assert.equal(headers[3], "WoW");
+    assert.deepEqual(
+      wowCells.map((cell) => cell.children.join("")),
+      ["30.0%", "30.0%", "—"],
+    );
+    assert.deepEqual(
+      wowCells.map((cell) => cell.props.className),
+      [
+        "weekly-cost__number weekly-cost__wow",
+        "weekly-cost__number weekly-cost__wow weekly-cost__wow--alert",
+        "weekly-cost__number weekly-cost__wow",
+      ],
+    );
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("weekly cost renders and focuses list-cost history without refetching", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let renderer;
+  const points = (first, second) => [
+    ["2026-05-25", first],
+    ["2026-06-01", 0],
+    ["2026-06-08", 0],
+    ["2026-06-15", 0],
+    ["2026-06-22", 0],
+    ["2026-06-29", 0],
+    ["2026-07-06", 0],
+    ["2026-07-13", second],
+  ].map(([week_start, list_cost]) => ({ week_start, list_cost }));
+  const report = weeklyCostReport({
+    items: [
+      {
+        cost_source: "gcp:alpha",
+        vendor: "gcp",
+        account_id: "alpha",
+        display_name: "alpha",
+        purpose: "A long configured QA purpose",
+        last_week_cost: 10,
+        previous_week_cost: 0,
+        week_wow_pct: null,
+        last_week_share_pct: 100,
+        previous_month_cost: 10,
+      },
+    ],
+    listCostHistory: weeklyCostHistory([
+      {
+        cost_source: "gcp:alpha",
+        vendor: "gcp",
+        account_id: "alpha",
+        display_name: "alpha",
+        purpose: "A long configured QA purpose",
+        total_list_cost: 30,
+        points: points(10, 20),
+      },
+      {
+        cost_source: "aws:beta",
+        vendor: "aws",
+        account_id: "beta",
+        display_name: "beta",
+        purpose: "Another QA purpose",
+        total_list_cost: 15,
+        points: points(5, 10),
+      },
+      ...Array.from({ length: 10 }, (_value, index) => ({
+        cost_source: `gcp:filler-${index}`,
+        vendor: "gcp",
+        account_id: `filler-${index}`,
+        display_name: `filler-${index}`,
+        purpose: "Additional QA purpose",
+        total_list_cost: 2,
+        points: points(1, 1),
+      })),
+      {
+        cost_source: "gcp:overflow",
+        vendor: "gcp",
+        account_id: "overflow",
+        display_name: "overflow",
+        purpose: "Additional QA purpose",
+        total_list_cost: 2,
+        points: points(1, 1),
+      },
+    ]),
+  });
+
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return { ok: true, json: async () => report };
+  };
+  globalThis.window = {
+    setTimeout(callback) {
+      callback();
+      return 1;
+    },
+    clearTimeout() {},
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+
+    assert.equal(requests.length, 1);
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Trend chart" }));
+    assert.ok(
+      renderer.root.findAllByType("h3").some((heading) => heading.children.join("") === "Cost trend"),
+    );
+    const costTrendLabels = renderer.root
+      .findAll((node) => node.props.className === "chart-axis-label chart-axis-label--bottom");
+    assert.deepEqual(
+      costTrendLabels.map((label) => label.children.join("")),
+      [
+        "2026-05-25",
+        "2026-06-01",
+        "2026-06-08",
+        "2026-06-15",
+        "2026-06-22",
+        "2026-06-29",
+        "2026-07-06",
+        "2026-07-13",
+      ],
+    );
+    assert.ok(
+      costTrendLabels.every(
+        (label) =>
+          label.props.style.fontSize === "9px" &&
+          label.props.textAnchor === "end" &&
+          label.props.transform === `rotate(45 ${label.props.x} ${label.props.y})`,
+      ),
+    );
+    const overflowColor = "hsl(280 68% 38%)";
+    assert.equal(renderer.root.findAllByProps({ className: "chart-legend" }).length, 0);
+    assert.deepEqual(accountSelectorLabels(renderer).slice(0, 3), ["All", "GCP · alpha", "AWS · beta"]);
+    assert.equal(accountSelectorLabels(renderer).at(-1), "GCP · overflow");
+    assert.deepEqual(accountSelectorColors(renderer).slice(0, 2), ["#0072b2", "#d55e00"]);
+    assert.equal(accountSelectorColors(renderer).at(-1), overflowColor);
+    assert.ok(chartBarColors(renderer).includes(overflowColor));
+
+    const lastHitArea = renderer.root.findAllByProps({ className: "chart-hit-area" }).at(-1);
+    await act(async () => {
+      lastHitArea.props.onMouseEnter();
+    });
+    assert.equal(
+      renderer.root.findByProps({ className: "chart-tooltip__title" }).children.join(""),
+      "2026-07-13 – 2026-07-19",
+    );
+    await act(async () => {
+      lastHitArea.props.onMouseLeave();
+    });
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.props["aria-label"] === "Show GCP · overflow")
+        .props.onClick();
+    });
+    assert.equal(requests.length, 1);
+    assert.ok(
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.props["aria-label"] === "Show GCP · overflow")
+        .props["aria-pressed"],
+    );
+    assert.ok(chartBarColors(renderer).every((color) => color === overflowColor));
+    assert.equal(accountSelectorColors(renderer).at(-1), overflowColor);
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.props["aria-label"] === "Show all accounts")
+        .props.onClick();
+    });
+    assert.equal(requests.length, 1);
+    assert.ok(
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.props["aria-label"] === "Show all accounts")
+        .props["aria-pressed"],
+    );
+    assert.ok(chartBarColors(renderer).includes("#0072b2"));
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  }
+});
+
+function accountSelectorLabels(renderer) {
+  return renderer.root
+    .findByProps({ className: "dimension-selector weekly-cost__account-selector" })
+    .findAllByType("button")
+    .map((button) => button.findAllByType("span").at(-1).children.join(""));
+}
+
+function accountSelectorColors(renderer) {
+  return renderer.root
+    .findAllByProps({ className: "weekly-cost__account-selector-dot" })
+    .map((dot) => dot.props.style.backgroundColor);
+}
+
+function chartBarColors(renderer) {
+  return renderer.root
+    .findAllByType("rect")
+    .filter((rect) => rect.props.opacity === "0.78")
+    .map((rect) => rect.props.fill);
+}
 
 test("incoming route filters win over cached filters without URL or request oscillation", async () => {
   const requests = [];
