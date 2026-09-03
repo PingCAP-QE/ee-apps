@@ -7,6 +7,33 @@ from typing import Any
 
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
 _AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
+_AWS_SPLIT_COST_TAG_COLUMNS = (
+    ("application", "resource_tags_user_application"),
+    ("aws_apn_id", "resource_tags_user_aws_apn_id"),
+    ("aws_application", "resource_tags_user_aws_application"),
+    ("aws_eks_deployment", "resource_tags_aws_eks_deployment"),
+    ("aws_eks_namespace", "resource_tags_aws_eks_namespace"),
+    ("aws_eks_node", "resource_tags_aws_eks_node"),
+    ("aws_eks_workload_name", "resource_tags_aws_eks_workload_name"),
+    ("aws_eks_workload_type", "resource_tags_aws_eks_workload_type"),
+    ("cluster", "resource_tags_user_cluster"),
+    ("component", "resource_tags_user_component"),
+    ("department", "resource_tags_user_department"),
+    ("env", "resource_tags_user_env"),
+    ("environment", "resource_tags_user_environment"),
+    ("icost_owner_email", "resource_tags_user_icost_owner_email"),
+    ("icost_project", "resource_tags_user_icost_project"),
+    ("icost_service", "resource_tags_user_icost_service"),
+    ("icost_service_exec_id", "resource_tags_user_icost_service_exec_id"),
+    ("kubernetes_io_service_name", "resource_tags_user_kubernetes_io_service_name"),
+    ("name", "resource_tags_user_name"),
+    ("owner", "resource_tags_user_owner"),
+    ("project", "resource_tags_user_project"),
+    ("servicetype", "resource_tags_user_servicetype"),
+    ("shared_pool", "resource_tags_user_shared_pool"),
+    ("tenant", "resource_tags_user_tenant"),
+    ("usedby", "resource_tags_user_usedby"),
+)
 
 
 def fetch_aws_split_cost_summary_rows(
@@ -460,6 +487,7 @@ def _build_split_cost_query(
         resource_ordering = ""
         resource_name_filter = ""
     vendor_tags_grouping = ",\n  vendor_tags_json" if resource_level else ""
+    vendor_tags_json = _flattened_vendor_tags_json_sql()
 
     return f"""
 WITH raw AS (
@@ -471,8 +499,7 @@ WITH raw AS (
     NULLIF(line_item_resource_id, '') AS resource_id,
     COALESCE(
       NULLIF(line_item_resource_id, ''),
-      (SELECT NULLIF(kv.value, '') FROM UNNEST(resource_tags.key_value) AS kv
-       WHERE LOWER(kv.key) = 'name' LIMIT 1),
+      NULLIF(TRIM(resource_tags_user_name), ''),
       NULLIF(line_item_line_item_description, '')
     ) AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
@@ -501,12 +528,7 @@ WITH raw AS (
     NULLIF(TRIM(resource_tags_aws_eks_namespace), '') AS namespace,
     NULLIF(TRIM(resource_tags_aws_eks_workload_name), '') AS workload_name,
     NULLIF(TRIM(resource_tags_aws_eks_workload_type), '') AS workload_type,
-    TO_JSON_STRING(
-      JSON_OBJECT(
-        ARRAY(SELECT kv.key FROM UNNEST(resource_tags.key_value) AS kv ORDER BY kv.key),
-        ARRAY(SELECT kv.value FROM UNNEST(resource_tags.key_value) AS kv ORDER BY kv.key)
-      )
-    ) AS vendor_tags_json,
+    {vendor_tags_json} AS vendor_tags_json,
     LOWER(NULLIF(pricing_unit, '')) AS pricing_unit,
     COALESCE(line_item_usage_amount, 0) AS usage_amount,
     COALESCE(split_line_item_split_usage, 0) AS split_usage_amount,
@@ -866,6 +888,16 @@ GROUP BY
   shared_pool{vendor_tags_grouping}{resource_grouping}
 ORDER BY usage_date, service_name, sku_name, source_allocation_scope{resource_ordering}{limit_clause}
 """.strip()
+
+
+def _flattened_vendor_tags_json_sql() -> str:
+    fields = ",\n        ".join(
+        f"'{label}', NULLIF(TRIM({column}), '')"
+        for label, column in _AWS_SPLIT_COST_TAG_COLUMNS
+    )
+    return f"""TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+        {fields}
+      )))"""
 
 
 def _quote_bigquery_table(table: str) -> str:
