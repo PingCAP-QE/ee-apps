@@ -15,7 +15,6 @@ import {
   Panel,
   StatCard,
   TrendChart,
-  UnattachedBlockVolumeTable,
   ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
@@ -117,10 +116,6 @@ export default function CostPage({ filters }) {
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
     resourceBreakdownRequested,
-  );
-  const unattachedBlockVolumes = useApiData(
-    "/api/v1/pages/cost-unattached-block-volumes",
-    costFilters,
   );
   const summary = trend.data?.meta?.summary || {};
   const budgetHealth = budgetPace.data?.budget_health;
@@ -471,14 +466,6 @@ export default function CostPage({ filters }) {
         </Panel>
       </section>
 
-      <Panel
-        title="Unattached Block Volumes"
-        subtitle="AWS available EBS volumes and GCP Persistent Disk / Hyperdisk volumes with no users. Cost is shown when billing rows can be matched by volume id."
-        loading={unattachedBlockVolumes.loading}
-        error={unattachedBlockVolumes.error}
-      >
-        <UnattachedBlockVolumeTable items={unattachedBlockVolumes.data?.items} />
-      </Panel>
     </div>
   );
 }

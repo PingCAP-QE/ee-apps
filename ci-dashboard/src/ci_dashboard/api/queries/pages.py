@@ -37,7 +37,6 @@ from ci_dashboard.api.queries.cost import (
     get_weekly_cost_report,
     list_cost_sources,
 )
-from ci_dashboard.api.queries.ebs import get_unattached_block_volumes
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
     get_failure_category_trend,
@@ -266,20 +265,6 @@ def get_cost_unmatched_resources_page(
         scope_dimension=scope_dimension,
         scope_value=scope_value,
     )
-
-
-def get_cost_unattached_block_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_unattached_block_volumes(engine, _normalize_cost_filters(filters))
-
-
-def get_cost_unattached_ebs_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_cost_unattached_block_volumes_page(engine, filters)
 
 
 def get_cost_trend_page(

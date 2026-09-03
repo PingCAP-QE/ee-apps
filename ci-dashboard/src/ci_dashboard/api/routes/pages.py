@@ -15,8 +15,6 @@ from ci_dashboard.api.queries.pages import (
     get_cost_share_page,
     get_cost_sources_page,
     get_cost_trend_page,
-    get_cost_unattached_block_volumes_page,
-    get_cost_unattached_ebs_volumes_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
     get_weekly_cost_report_page,
@@ -199,22 +197,6 @@ def cost_unmatched_resources_page(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-
-
-@router.get("/cost-unattached-ebs-volumes")
-def cost_unattached_ebs_volumes_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_unattached_ebs_volumes_page(engine, filters)
-
-
-@router.get("/cost-unattached-block-volumes")
-def cost_unattached_block_volumes_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_unattached_block_volumes_page(engine, filters)
 
 
 def _validate_cost_drilldown_child(child_group: str, drilldown_group: str | None) -> None:
