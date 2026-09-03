@@ -1745,57 +1745,6 @@ export function ResourceBreakdownTable({ items }) {
   );
 }
 
-export function UnattachedBlockVolumeTable({ items }) {
-  if (!items?.length) {
-    return <EmptyState message="No scanned unattached block volumes." />;
-  }
-
-  return (
-    <div className="table-scroll table-scroll--compact-y">
-      <table className="data-table data-table--compact">
-        <thead>
-          <tr>
-            <th>Vendor</th>
-            <th>Volume ID</th>
-            <th>Tags / labels</th>
-            <th>Owner</th>
-            <th>Owner status</th>
-            <th>Team</th>
-            <th>Manager</th>
-            <th>Size</th>
-            <th title="Actual billed cost in the selected date range when billing can be matched by volume id.">Cost</th>
-            <th title="Days since provider creation time. Actual unattached duration is lower-bound by the first scan that observed it unattached.">Age</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={`${item.vendor || "unknown"}:${item.volume_id}`}>
-              <td>{formatVendor(item.vendor)}</td>
-              <th scope="row">
-                <div className="resource-table__name">{item.volume_id}</div>
-              </th>
-              <td className="resource-table__labels">{item.tags || "--"}</td>
-              <td>{item.owner || "--"}</td>
-              <td>
-                <span className={`owner-status owner-status--${item.owner_status || "missing"}`}>
-                  {item.owner_status || "missing"}
-                </span>
-              </td>
-              <td>{item.team || "--"}</td>
-              <td>{item.manager || "--"}</td>
-              <td>{formatGib(item.size_gib)}</td>
-              <td>{item.cost == null ? "--" : formatCurrency(item.cost)}</td>
-              <td>{formatDaysDuration(item.age ?? item.duration)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export const UnattachedEbsVolumeTable = UnattachedBlockVolumeTable;
-
 export function EmptyState({ message, compact = false }) {
   return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
 }
@@ -2230,30 +2179,6 @@ function formatResourceDuration(value) {
     return `${(seconds / 86400).toFixed(1)}d`;
   }
   return formatSeconds(seconds);
-}
-
-function formatVendor(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return "--";
-  }
-  return text.toUpperCase();
-}
-
-function formatGib(value) {
-  const numeric = Number(value || 0);
-  if (numeric <= 0) {
-    return "--";
-  }
-  return `${Number.isInteger(numeric) ? numeric.toFixed(0) : numeric.toFixed(1)} GiB`;
-}
-
-function formatDaysDuration(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return "--";
-  }
-  return `${numeric.toFixed(0)}d`;
 }
 
 function getAnnotationY({

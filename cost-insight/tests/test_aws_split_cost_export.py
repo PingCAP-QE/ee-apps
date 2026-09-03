@@ -86,10 +86,18 @@ def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
     assert "SUM(usage_amount) * 3600" in query
     assert "DATE(line_item_usage_start_date) <= @usage_end_date" in query
     assert "NULLIF(line_item_resource_id, '') AS resource_id" in query
-    assert "WHERE LOWER(kv.key) = 'name'" in query
+    assert "NULLIF(TRIM(resource_tags_user_name), '')" in query
+    assert "JSON_STRIP_NULLS(JSON_OBJECT(" in query
+    assert "resource_tags.key_value" not in query
     assert "summary_vendor_tags_json" in query
     assert "AND resource_name IS NOT NULL" in query
     assert "CAST(NULL AS STRING) AS summary_resource_name" in query
+
+
+def test_split_cost_tags_include_downstream_routing_labels() -> None:
+    labels = {label for label, _ in aws_split_cost_export._AWS_SPLIT_COST_TAG_COLUMNS}
+
+    assert {"cluster", "shared_pool", "tenant"} <= labels
 
 
 def test_split_guardrail_uses_ce_list_cost_before_import() -> None:

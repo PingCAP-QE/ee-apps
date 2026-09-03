@@ -26,6 +26,7 @@ from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
 )
 from ci_dashboard.api.queries.cost import (
+    get_budget_pace,
     get_cost_page,
     get_cost_share,
     get_cost_trend,
@@ -34,10 +35,8 @@ from ci_dashboard.api.queries.cost import (
     get_unmatched_resources,
     get_weekly_account_summaries,
     get_weekly_cost_report,
-    get_weekly_overview,
     list_cost_sources,
 )
-from ci_dashboard.api.queries.ebs import get_unattached_block_volumes
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
     get_failure_category_trend,
@@ -268,20 +267,6 @@ def get_cost_unmatched_resources_page(
     )
 
 
-def get_cost_unattached_block_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_unattached_block_volumes(engine, _normalize_cost_filters(filters))
-
-
-def get_cost_unattached_ebs_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_cost_unattached_block_volumes_page(engine, filters)
-
-
 def get_cost_trend_page(
     engine: Engine,
     filters: CommonFilters,
@@ -314,13 +299,11 @@ def get_cost_share_page(
     )
 
 
-def get_cost_weekly_overview_page(
+def get_cost_budget_pace_page(
     engine: Engine,
     filters: CommonFilters,
 ) -> dict[str, Any]:
-    return get_weekly_overview(engine, _normalize_cost_filters(filters))
-
-
+    return get_budget_pace(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_weekly_account_summaries_page(

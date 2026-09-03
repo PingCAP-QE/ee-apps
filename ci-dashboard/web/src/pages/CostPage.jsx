@@ -4,9 +4,7 @@ import {
   formatCostSourceLabel,
   formatCompactCurrency,
   formatCurrency,
-  formatDateRangeLabel,
   formatPercent,
-  getLaggedTrailingDateRange,
   useApiData,
 } from "../lib/api";
 import { ALL_COST_SOURCES, DEFAULT_COST_SOURCE } from "../lib/filterUrl";
@@ -17,7 +15,6 @@ import {
   Panel,
   StatCard,
   TrendChart,
-  UnattachedBlockVolumeTable,
   ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
@@ -37,7 +34,6 @@ export default function CostPage({ filters }) {
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const [resourceCursor, setResourceCursor] = useState(null);
   const [resourceItems, setResourceItems] = useState([]);
-  const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
@@ -47,11 +43,7 @@ export default function CostPage({ filters }) {
     ? "Net cost (excluding credits)"
     : "Net cost";
 
-  const weeklyOverviewFilters = {
-    ...weeklyOverviewRange,
-    granularity: "week",
-    cost_source: selectedCostSourceValue,
-  };
+  const budgetPaceFilters = { cost_source: selectedCostSourceValue };
   const costFilters = {
     start_date: filters.start_date,
     end_date: filters.end_date,
@@ -112,7 +104,7 @@ export default function CostPage({ filters }) {
     cursor: resourceCursor,
   };
   const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
-  const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
+  const budgetPace = useApiData("/api/v1/pages/cost-budget-pace", budgetPaceFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
@@ -125,14 +117,9 @@ export default function CostPage({ filters }) {
     unmatchedResourceFilters,
     resourceBreakdownRequested,
   );
-  const unattachedBlockVolumes = useApiData(
-    "/api/v1/pages/cost-unattached-block-volumes",
-    costFilters,
-  );
   const summary = trend.data?.meta?.summary || {};
-  const budgetHealth = weeklyOverview.data?.budget_health;
+  const budgetHealth = budgetPace.data?.budget_health;
   const configuredAnnualBudget = Number(budgetHealth?.annual_budget || 0);
-  const weeklyBudget = Number(budgetHealth?.weekly_budget || 0);
   const hasConfiguredBudget = configuredAnnualBudget > 0;
   const budgetPeriodLabel =
     budgetHealth?.budget_start_date && budgetHealth?.budget_end_date
@@ -257,59 +244,6 @@ export default function CostPage({ filters }) {
         description="Cloud cost attribution across configured billing sources after billing rows are joined with roster ownership."
         kicker={`${costFilters.granularity} buckets · ${selectedCostSourceLabel}`}
       />
-
-      <Panel
-        title="Weekly overview"
-        subtitle={formatDateRangeLabel(weeklyOverviewRange.start_date, weeklyOverviewRange.end_date)}
-        loading={weeklyOverview.loading}
-        error={weeklyOverview.error}
-        className="cost-weekly-overview"
-      >
-        <div className="cost-weekly-overview__grid">
-          <div className="cost-weekly-overview__cards">
-            <StatCard
-              label="List cost"
-              value={formatCurrency(weeklyOverview.data?.summary?.list_cost)}
-              detail="Previous complete week"
-              delta={formatDelta(weeklyOverview.data?.summary?.list_cost_wow_pct)}
-              tone="teal"
-            />
-            <StatCard
-              label={netCostLabel}
-              value={formatCurrency(weeklyOverview.data?.summary?.net_cost)}
-              detail={
-                hasConfiguredBudget
-                  ? `Weekly budget ${formatCurrency(weeklyBudget)}`
-                  : "Budget not configured for this source"
-              }
-              delta={formatDelta(weeklyOverview.data?.summary?.net_cost_wow_pct)}
-              tone="amber"
-            />
-          </div>
-          <DonutShareChart
-            title="Level 2 groups"
-            subtitle="Groups above 1% of list cost."
-            items={weeklyOverview.data?.level2_share?.items}
-            totalValue={weeklyOverview.data?.level2_share?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No Level 2 group above 1% for the previous complete week."
-          />
-          <DonutShareChart
-            title="services rate"
-            subtitle="Services above 1% of list cost."
-            items={weeklyOverview.data?.service_share?.items}
-            totalValue={weeklyOverview.data?.service_share?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No service cost data for the previous complete week."
-          />
-          <BudgetHealthGauge
-            title="Budget pace"
-            subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-            data={weeklyOverview.data?.budget_health}
-            emptyMessage="Budget pace is not configured for this source yet."
-          />
-        </div>
-      </Panel>
 
       <section
         className="stats-grid cost-summary-grid"
@@ -492,38 +426,48 @@ export default function CostPage({ filters }) {
         )}
       </Panel>
 
-      <Panel
-        title="Engineering Group cost share"
-        subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
-        loading={engineeringGroupShare.loading}
-        error={engineeringGroupShare.error}
-      >
-        <div className="donut-grid">
-          <DonutShareChart
-            title="Level 1 groups"
-            subtitle="Direct children under Engineering Group."
-            items={engineeringGroupShare.data?.level1?.items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-1 cost share data yet."
-          />
-          <DonutShareChart
-            title="Level 2 groups"
-            subtitle="Second-level teams under Engineering Group."
-            items={engineeringGroupShare.data?.level2?.items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-2 cost share data yet."
-          />
-        </div>
-      </Panel>
+      <section className="cost-analysis-grid">
+        <Panel
+          title="Engineering Group cost share"
+          subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
+          loading={engineeringGroupShare.loading}
+          error={engineeringGroupShare.error}
+        >
+          <div className="donut-grid">
+            <DonutShareChart
+              className="engineering-group-share__chart"
+              title="Level 1 groups"
+              subtitle="Direct children under Engineering Group."
+              items={engineeringGroupShare.data?.level1?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-1 cost share data yet."
+            />
+            <DonutShareChart
+              className="engineering-group-share__chart"
+              title="Level 2 groups"
+              subtitle="Second-level teams under Engineering Group."
+              items={engineeringGroupShare.data?.level2?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-2 cost share data yet."
+            />
+          </div>
+        </Panel>
 
-      <Panel
-        title="Unattached Block Volumes"
-        subtitle="AWS available EBS volumes and GCP Persistent Disk / Hyperdisk volumes with no users. Cost is shown when billing rows can be matched by volume id."
-        loading={unattachedBlockVolumes.loading}
-        error={unattachedBlockVolumes.error}
-      >
-        <UnattachedBlockVolumeTable items={unattachedBlockVolumes.data?.items} />
-      </Panel>
+        <Panel
+          title="Budget pace"
+          subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
+          loading={budgetPace.loading}
+          error={budgetPace.error}
+          className="cost-budget-pace"
+        >
+          <BudgetHealthGauge
+            title="Fiscal-period forecast"
+            data={budgetHealth}
+            emptyMessage="Budget pace is not configured for this source yet."
+          />
+        </Panel>
+      </section>
+
     </div>
   );
 }
@@ -698,12 +642,6 @@ function withCostBreakdownDrilldown(items, enabled) {
     ...item,
     interactive: item.name !== "Others",
   }));
-}
-
-function formatDelta(value) {
-  const numeric = Number(value || 0);
-  const sign = numeric > 0 ? "+" : "";
-  return `WoW ${sign}${formatPercent(numeric)}`;
 }
 
 function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTargets) {

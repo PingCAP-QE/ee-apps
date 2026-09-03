@@ -229,120 +229,14 @@ def get_cost_trend(
 
 
 
-def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_budget_pace(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     cost_filters = _cost_filters(filters)
-    previous_start, previous_end = _previous_window(cost_filters)
-    previous_filters = CommonFilters(
-        start_date=previous_start,
-        end_date=previous_end,
-        branch=cost_filters.branch,
-        granularity=cost_filters.granularity,
-        cost_vendor=cost_filters.cost_vendor,
-        cost_account_id=cost_filters.cost_account_id,
-    )
-    if engine.dialect.name == "sqlite":
-        with engine.begin() as connection:
-            current_summary = _cost_summary(connection, cost_filters)
-            previous_summary = _cost_summary(connection, previous_filters)
-            budget_health = _budget_health_snapshot(connection, cost_filters)
-            service_share = _service_share_by_threshold(
-                connection,
-                cost_filters,
-                min_share_pct=1.0,
-            )
-            level2_share = _engineering_share_by_level_threshold(
-                connection,
-                cost_filters,
-                level=2,
-                min_share_pct=1.0,
-            )
-    else:
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                "current_summary": executor.submit(_get_cost_summary, engine, cost_filters),
-                "previous_summary": executor.submit(_get_cost_summary, engine, previous_filters),
-                "budget_health": executor.submit(_get_budget_health_snapshot, engine, cost_filters),
-                "service_share": executor.submit(
-                    _get_service_share_by_threshold,
-                    engine,
-                    cost_filters,
-                    min_share_pct=1.0,
-                ),
-                "level2_share": executor.submit(
-                    _get_engineering_share_by_level_threshold,
-                    engine,
-                    cost_filters,
-                    level=2,
-                    min_share_pct=1.0,
-                ),
-            }
-            sections = {name: future.result() for name, future in futures.items()}
-        current_summary = sections["current_summary"]
-        previous_summary = sections["previous_summary"]
-        budget_health = sections["budget_health"]
-        service_share = sections["service_share"]
-        level2_share = sections["level2_share"]
-
+    with engine.begin() as connection:
+        budget_health = _budget_health_snapshot(connection, cost_filters)
     return {
         "scope": cost_filters.meta(),
-        "previous_scope": previous_filters.meta(),
-        "summary": {
-            "list_cost": current_summary["list_cost"],
-            "net_cost": current_summary["net_cost"],
-            "previous_list_cost": previous_summary["list_cost"],
-            "previous_net_cost": previous_summary["net_cost"],
-            "list_cost_wow_pct": rate_pct(
-                current_summary["list_cost"] - previous_summary["list_cost"],
-                previous_summary["list_cost"],
-            ),
-            "net_cost_wow_pct": rate_pct(
-                current_summary["net_cost"] - previous_summary["net_cost"],
-                previous_summary["net_cost"],
-            ),
-        },
         "budget_health": budget_health,
-        "service_share": service_share,
-        "level2_share": level2_share,
     }
-
-
-def _get_cost_summary(engine: Engine, filters: CommonFilters) -> dict[str, float]:
-    with engine.begin() as connection:
-        return _cost_summary(connection, filters)
-
-
-def _get_service_share_by_threshold(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    with engine.begin() as connection:
-        return _service_share_by_threshold(connection, filters, min_share_pct=min_share_pct)
-
-
-def _get_budget_health_snapshot(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any] | None:
-    with engine.begin() as connection:
-        return _budget_health_snapshot(connection, filters)
-
-
-def _get_engineering_share_by_level_threshold(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    level: int,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    with engine.begin() as connection:
-        return _engineering_share_by_level_threshold(
-            connection,
-            filters,
-            level=level,
-            min_share_pct=min_share_pct,
-        )
 
 
 def get_repo_group_cost_stack(
@@ -1736,126 +1630,6 @@ def _resource_serving_response(
     }
 
 
-def _engineering_share_by_level(
-    connection: Connection,
-    filters: CommonFilters,
-    root: Any,
-    *,
-    level: int,
-    ) -> dict[str, Any]:
-    where_clause, params = _build_cost_where(filters, table_alias="c")
-    index_hint = _cost_aggregate_read_hint(connection, filters)
-    like_expr = _like_prefix_expr(connection, "c_group.path", "target_group.path")
-    list_cost_expr = _billing_report_list_cost_expr("c")
-    if level == 1:
-        hierarchy_joins = f"""
-            JOIN roster_groups target_group
-              ON target_group.is_active = 1
-             AND target_group.parent_id = :root_id
-             AND {like_expr}
-        """
-    else:
-        hierarchy_joins = f"""
-            JOIN roster_groups target_parent
-              ON target_parent.is_active = 1
-             AND target_parent.parent_id = :root_id
-            JOIN roster_groups target_group
-              ON target_group.is_active = 1
-             AND target_group.parent_id = target_parent.id
-             AND {like_expr}
-        """
-    rows = connection.execute(
-        text(
-            f"""
-            SELECT {index_hint}
-              target_group.name AS group_name,
-              SUM({list_cost_expr}) AS list_cost
-            FROM cost_attribution_daily c
-            JOIN roster_groups c_group ON c_group.id = c.group_id
-            {hierarchy_joins}
-            WHERE {where_clause}
-              AND c_group.path IS NOT NULL
-              AND c_group.path LIKE :root_path_like
-            GROUP BY target_group.id, target_group.name
-            ORDER BY list_cost DESC, target_group.name
-            """
-        ),
-        {
-            **params,
-            "root_id": root["id"],
-            "root_path_like": f"{root['path']}%",
-        },
-    ).mappings()
-    items = [
-        {
-            "name": str(row["group_name"]),
-            "value": _money(row["list_cost"]),
-        }
-        for row in rows
-    ]
-    total = sum(item["value"] for item in items)
-    for item in items:
-        item["share_pct"] = rate_pct(item["value"], total)
-        item["interactive"] = False
-
-    return {
-        "items": items,
-        "meta": {
-            **filters.meta(),
-            "group_name": ENGINEERING_GROUP_NAME,
-            "level": level,
-            "total_list_cost": round(total, 2),
-            "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
-        },
-    }
-
-
-def _engineering_share_by_level_threshold(
-    connection: Connection,
-    filters: CommonFilters,
-    *,
-    level: int,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    root = connection.execute(
-        text(
-            """
-            SELECT id, path
-            FROM roster_groups
-            WHERE name = :group_name
-              AND is_active = 1
-            ORDER BY id
-            LIMIT 1
-            """
-        ),
-        {"group_name": ENGINEERING_GROUP_NAME},
-    ).mappings().first()
-    if root is None:
-        return {
-            "items": [],
-            "meta": {
-                **filters.meta(),
-                "group_name": ENGINEERING_GROUP_NAME,
-                "level": level,
-                "min_share_pct": min_share_pct,
-                "total_list_cost": 0.0,
-            },
-        }
-
-    share = _engineering_share_by_level(connection, filters, root, level=level)
-    return {
-        "items": _share_items_above_threshold_with_others(
-            share["items"],
-            min_share_pct=min_share_pct,
-            total=_number_or_zero(share["meta"].get("total_list_cost")),
-        ),
-        "meta": {
-            **share["meta"],
-            "min_share_pct": min_share_pct,
-        },
-    }
-
-
 def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
     index_hint = _cost_aggregate_read_hint(connection, filters)
@@ -1875,54 +1649,6 @@ def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, f
     return {
         "list_cost": _money(row["list_cost"]) if row else 0.0,
         "net_cost": _money(row["net_cost"]) if row else 0.0,
-    }
-
-
-def _service_share_by_threshold(
-    connection: Connection,
-    filters: CommonFilters,
-    *,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    where_clause, params = _build_cost_where(filters, table_alias="c")
-    index_hint = _cost_aggregate_read_hint(connection, filters)
-    list_cost_expr = _billing_report_list_cost_expr("c")
-    rows = connection.execute(
-        text(
-            f"""
-            SELECT {index_hint}
-              COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
-              SUM({list_cost_expr}) AS list_cost
-            FROM cost_attribution_daily c
-            WHERE {where_clause}
-            GROUP BY service_name
-            ORDER BY list_cost DESC, service_name
-            """
-        ),
-        params,
-    ).mappings()
-    all_items = [
-        {
-            "name": str(row["service_name"]),
-            "value": _money(row["list_cost"]),
-        }
-        for row in rows
-    ]
-    total = sum(item["value"] for item in all_items)
-    for item in all_items:
-        item["share_pct"] = rate_pct(item["value"], total)
-        item["interactive"] = False
-    return {
-        "items": _share_items_above_threshold_with_others(
-            all_items,
-            min_share_pct=min_share_pct,
-            total=total,
-        ),
-        "meta": {
-            **filters.meta(),
-            "min_share_pct": min_share_pct,
-            "total_list_cost": round(total, 2),
-        },
     }
 
 
@@ -2004,35 +1730,6 @@ def _budget_health_snapshot(
         "status": "healthy" if is_healthy else "warning",
         "status_label": "Healthy" if is_healthy else "Warning",
     }
-
-
-def _share_items_above_threshold_with_others(
-    all_items: list[dict[str, Any]],
-    *,
-    min_share_pct: float,
-    total: float,
-) -> list[dict[str, Any]]:
-    items = [
-        item
-        for item in all_items
-        if _number_or_zero(item.get("share_pct")) > min_share_pct
-    ]
-    if len(items) == len(all_items):
-        return items
-
-    others_value = total - sum(_number_or_zero(item.get("value")) for item in items)
-    if others_value <= 0:
-        return items
-
-    return [
-        *items,
-        {
-            "name": "Others",
-            "value": _money(others_value),
-            "share_pct": rate_pct(others_value, total),
-            "interactive": False,
-        },
-    ]
 
 
 def _share_items_limited_with_others(
