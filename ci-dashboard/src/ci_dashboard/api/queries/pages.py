@@ -252,6 +252,8 @@ def get_cost_unmatched_resources_page(
     sort_by: str = "list_cost",
     page_size: int = 50,
     cursor: str | None = None,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
 ) -> dict[str, Any]:
     return get_unmatched_resources(
         engine,
@@ -261,11 +263,9 @@ def get_cost_unmatched_resources_page(
         sort_by=sort_by,
         page_size=page_size,
         cursor=cursor,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
     )
-
-
-
-
 
 
 def get_cost_unattached_block_volumes_page(

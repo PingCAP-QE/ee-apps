@@ -5,7 +5,7 @@ import binascii
 import calendar
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -46,6 +46,7 @@ LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE = 50
 RESOURCE_BREAKDOWN_MAX_PAGE_SIZE = 100
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
+RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS = frozenset({"team", "project"})
 NO_OWNER_LABEL = "(no owner)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
@@ -1096,6 +1097,8 @@ def get_unmatched_resources(
     sort_by: str = "list_cost",
     page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
     cursor: str | None = None,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
 ) -> dict[str, Any]:
     return _get_published_unmatched_resources(
         engine,
@@ -1105,6 +1108,8 @@ def get_unmatched_resources(
         sort_by=sort_by,
         page_size=page_size,
         cursor=cursor,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
     )
 
 
@@ -1117,6 +1122,8 @@ def _get_published_unmatched_resources(
     sort_by: str,
     page_size: int,
     cursor: str | None,
+    scope_dimension: str | None,
+    scope_value: str | None,
 ) -> dict[str, Any]:
     """Read only complete resource-serving publications for this request.
 
@@ -1129,11 +1136,13 @@ def _get_published_unmatched_resources(
         sort_by = "list_cost"
     if not 1 <= page_size <= RESOURCE_BREAKDOWN_MAX_PAGE_SIZE:
         raise ValueError("page_size must be between 1 and 100")
+    if scope_dimension is not None and scope_dimension not in RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS:
+        raise ValueError("scope_dimension must be team or project")
+    if scope_dimension is not None and not scope_value:
+        raise ValueError("scope_value is required when scope_dimension is set")
     cursor_values = _decode_resource_cursor(cursor, sort_by=sort_by)
     basis_key = "native"
-    selected_owner = owner or NO_OWNER_LABEL
-    owner_value = "" if selected_owner == NO_OWNER_LABEL else selected_owner
-    owner_key = hashlib.sha256(owner_value.encode("utf-8")).hexdigest()
+    selected_owner = owner or (scope_value if scope_dimension else NO_OWNER_LABEL)
     service_filter_name = service_name or None
     expected_dates = _resource_serving_dates(filters.start_date, filters.end_date)
 
@@ -1239,6 +1248,8 @@ def _get_published_unmatched_resources(
                 detail_list_cost=0.0,
                 total_list_cost=0.0,
                 resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
                 page_size=page_size,
             )
         if not has_serving_tables:
@@ -1250,44 +1261,56 @@ def _get_published_unmatched_resources(
                 services=[], pending_dates=[],
                 detail_list_cost=0.0, total_list_cost=0.0,
                 resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
+                page_size=page_size,
+            )
+        if scope_dimension == "project" and not _table_has_column(
+            connection, "cost_resource_serving_daily", "project"
+        ):
+            return _resource_serving_response(
+                items=[], filters=filters, requested_filters=requested_filters,
+                selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+                services=[],
+                pending_dates=sorted({usage_date.isoformat() for _, _, usage_date in expected_windows}),
+                detail_list_cost=0.0, total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
                 page_size=page_size,
             )
 
         branch_clause = "AND s.target_branch = :branch" if filters.branch else ""
+        source_clause, source_params = _resource_serving_source_clause(sources)
+        scope_clause, scope_params = _resource_serving_scope_clause(
+            connection,
+            owner=owner,
+            scope_dimension=scope_dimension,
+            scope_value=scope_value,
+        )
         params = {
             "basis_key": basis_key,
-            "owner_key": owner_key,
             "start_date": filters.start_date,
             "end_date": filters.end_date,
-            "cost_vendor": filters.cost_vendor,
-            "cost_account_id": filters.cost_account_id,
             "service_name": service_filter_name,
+            **source_params,
+            **scope_params,
         }
         if filters.branch:
             params["branch"] = filters.branch
         validity_clause = "s.basis_key = 'native'"
-        scoped_prefix = """
-            WITH scoped_sources AS (
-              SELECT vendor, account_id
-              FROM cost_sources
-              WHERE is_active = 1
-                AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
-                AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
-            )
-        """
         service_rows = connection.execute(
             text(
                 f"""
-                {scoped_prefix}
                 SELECT DISTINCT COALESCE(NULLIF(s.service_name, ''), '(no service)') AS service_name
                 FROM cost_resource_serving_daily s
-                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
                 JOIN cost_resource_serving_publication p
                   ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
                  AND p.usage_date = s.usage_date
                  AND p.active_materialization_version = s.materialization_version
-                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                WHERE s.basis_key = :basis_key AND ({scope_clause})
                   AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND ({source_clause})
                   AND {validity_clause} {branch_clause}
                 ORDER BY service_name
                 """
@@ -1315,18 +1338,16 @@ def _get_published_unmatched_resources(
             connection.execute(
                 text(
                     f"""
-                    {scoped_prefix},
-                    filtered AS (
+                    WITH filtered AS (
                       SELECT s.*
                       FROM cost_resource_serving_daily s
-                      JOIN scoped_sources scope
-                        ON scope.vendor = s.vendor AND scope.account_id = s.account_id
                       JOIN cost_resource_serving_publication p
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
                        AND p.account_id = s.account_id AND p.usage_date = s.usage_date
                        AND p.active_materialization_version = s.materialization_version
-                      WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                      WHERE s.basis_key = :basis_key AND ({scope_clause})
                         AND s.usage_date BETWEEN :start_date AND :end_date
+                        AND ({source_clause})
                         AND (:service_name IS NULL OR s.service_name = :service_name)
                         AND {validity_clause} {branch_clause}
                     ),
@@ -1352,7 +1373,7 @@ def _get_published_unmatched_resources(
                       FROM filtered
                     ),
                     aggregated AS (
-                      SELECT resource_group_key, MIN(resource_id) AS resource_id,
+                      SELECT /*+ STREAM_AGG() */ resource_group_key, MIN(resource_id) AS resource_id,
                         MIN(resource_name) AS resource_name,
                         SUM(usage_seconds) AS usage_seconds,
                         SUM(list_cost) AS list_cost,
@@ -1382,19 +1403,18 @@ def _get_published_unmatched_resources(
         coverage = connection.execute(
             text(
                 f"""
-                {scoped_prefix}
                 SELECT
                   COALESCE(SUM(s.detail_list_cost), 0) AS detail_list_cost,
                   COALESCE(SUM(s.fallback_list_cost), 0) AS fallback_list_cost,
                   COALESCE(SUM(s.list_cost), 0) AS total_list_cost
                 FROM cost_resource_serving_daily s
-                JOIN scoped_sources scope ON scope.vendor = s.vendor AND scope.account_id = s.account_id
                 JOIN cost_resource_serving_publication p
                   ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
                  AND p.usage_date = s.usage_date
                  AND p.active_materialization_version = s.materialization_version
-                WHERE s.basis_key = :basis_key AND s.owner_key = :owner_key
+                WHERE s.basis_key = :basis_key AND ({scope_clause})
                   AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND ({source_clause})
                   AND (:service_name IS NULL OR s.service_name = :service_name)
                   AND {validity_clause} {branch_clause}
                 """
@@ -1442,6 +1462,8 @@ def _get_published_unmatched_resources(
         services=services, pending_dates=[],
         detail_list_cost=float(detail_list_cost), total_list_cost=float(total_list_cost),
         resource_data_source=resource_data_source,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
         page_size=page_size,
         next_cursor=(
             _encode_resource_cursor(rows[-1], sort_by=sort_by) if has_next_page and rows else None
@@ -1458,6 +1480,103 @@ def _resource_serving_dates(start_date: date | None, end_date: date | None) -> t
         dates.append(current)
         current += timedelta(days=1)
     return tuple(dates)
+
+
+def _resource_serving_source_clause(
+    sources: Sequence[Mapping[str, Any]],
+) -> tuple[str, dict[str, str]]:
+    """Constrain serving reads with literal source pairs so TiDB uses the owner/date index."""
+    clauses = []
+    params: dict[str, str] = {}
+    for index, source in enumerate(sources):
+        vendor_key = f"resource_vendor_{index}"
+        account_key = f"resource_account_{index}"
+        clauses.append(f"(s.vendor = :{vendor_key} AND s.account_id = :{account_key})")
+        params[vendor_key] = str(source["vendor"])
+        params[account_key] = str(source["account_id"])
+    return " OR ".join(clauses) or "1 = 0", params
+
+
+def _resource_serving_scope_clause(
+    connection: Connection,
+    *,
+    owner: str | None,
+    scope_dimension: str | None,
+    scope_value: str | None,
+) -> tuple[str, dict[str, Any]]:
+    clauses = []
+    params: dict[str, Any] = {}
+    if scope_dimension is None or owner is not None:
+        owner_value = "" if owner in (None, NO_OWNER_LABEL) else owner
+        clauses.append("s.owner_key = :resource_owner_key")
+        params["resource_owner_key"] = hashlib.sha256(owner_value.encode("utf-8")).hexdigest()
+
+    if scope_dimension == "project":
+        if scope_value == "(no project)":
+            clauses.append("(s.project IS NULL OR s.project = '')")
+        else:
+            clauses.append("s.project = :resource_scope_project")
+            params["resource_scope_project"] = scope_value
+    elif scope_dimension == "team":
+        team_clause, team_params = _resource_serving_team_clause(connection, scope_value or "")
+        clauses.append(team_clause)
+        params.update(team_params)
+
+    return " AND ".join(clauses) or "1 = 1", params
+
+
+def _resource_serving_team_clause(
+    connection: Connection,
+    scope_value: str,
+) -> tuple[str, dict[str, int]]:
+    if not _table_exists(connection, "roster_groups"):
+        return "1 = 0", {}
+
+    target_rows = connection.execute(
+        text(
+            """
+            SELECT target_group.path
+            FROM roster_groups root_group
+            JOIN roster_groups target_parent
+              ON target_parent.is_active = 1 AND target_parent.parent_id = root_group.id
+            JOIN roster_groups target_group
+              ON target_group.is_active = 1 AND target_group.parent_id = target_parent.id
+            WHERE root_group.name = :root_group_name AND root_group.is_active = 1
+            """
+            + ("AND target_group.name = :resource_scope_team" if scope_value != "(no team)" else "")
+        ),
+        {
+            "root_group_name": ENGINEERING_GROUP_NAME,
+            **({"resource_scope_team": scope_value} if scope_value != "(no team)" else {}),
+        },
+    ).mappings()
+    target_paths = tuple(str(row["path"]) for row in target_rows if row["path"])
+    if not target_paths:
+        return "1 = 0", {}
+
+    group_rows = connection.execute(
+        text("SELECT id, path FROM roster_groups WHERE path IS NOT NULL")
+    ).mappings()
+    group_ids = tuple(
+        int(row["id"])
+        for row in group_rows
+        if row["id"] is not None and any(str(row["path"]).startswith(path) for path in target_paths)
+    )
+    if scope_value == "(no team)":
+        if not group_ids:
+            return "1 = 1", {}
+        bind_names = [f"resource_scope_group_{index}" for index in range(len(group_ids))]
+        return (
+            "(s.group_id IS NULL OR s.group_id NOT IN (" + ", ".join(f":{name}" for name in bind_names) + "))",
+            dict(zip(bind_names, group_ids, strict=True)),
+        )
+    if not group_ids:
+        return "1 = 0", {}
+    bind_names = [f"resource_scope_group_{index}" for index in range(len(group_ids))]
+    return (
+        "s.group_id IN (" + ", ".join(f":{name}" for name in bind_names) + ")",
+        dict(zip(bind_names, group_ids, strict=True)),
+    )
 
 
 def _encode_resource_cursor(row: Mapping[str, Any], *, sort_by: str) -> str:
@@ -1582,6 +1701,8 @@ def _resource_serving_response(
     detail_list_cost: float,
     total_list_cost: float,
     resource_data_source: str,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
     page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
     next_cursor: str | None = None,
 ) -> dict[str, Any]:
@@ -1596,6 +1717,8 @@ def _resource_serving_response(
             "limit": page_size,
             "next_cursor": next_cursor,
             "owner": selected_owner,
+            "scope_dimension": scope_dimension,
+            "scope_value": scope_value,
             "service_name": service_name,
             "sort_by": sort_by,
             "allocation_basis": CURRENT_ATTRIBUTION_BASIS,

@@ -73,7 +73,7 @@ def run_materialize_resource_serving(
     )
     bases = ("native",)
     if not _serving_schema_ready(engine):
-        LOG.warning("resource serving materialization skipped because the resource_id migration is missing")
+        LOG.warning("resource serving materialization skipped because required serving migrations are missing")
         return MaterializeResourceServingSummary(
             start_date=start_date,
             end_date=end_date,
@@ -274,13 +274,25 @@ def _base_serving_row(
             if resource_id is not None
             else (vendor, account_id, resource_name, parent)
         )
-        identity = (*group_identity, str(service_name or ""))
+        identity = (
+            *group_identity,
+            str(service_name or ""),
+            source.get("group_id"),
+            source.get("project"),
+        )
         labels = detail.get("vendor_tags_json")
     else:
         resource_id = None
         resource_name = str(source.get("resource_name") or "(resource detail unavailable)")
         service_name = source.get("service_name")
-        identity = (vendor, account_id, source_identity, "attribution_fallback")
+        identity = (
+            vendor,
+            account_id,
+            source_identity,
+            "attribution_fallback",
+            source.get("group_id"),
+            source.get("project"),
+        )
         group_identity = identity
         labels = source.get("vendor_tags_json")
     return {
@@ -293,6 +305,7 @@ def _base_serving_row(
         "owner": owner,
         "group_id": source.get("group_id"),
         "manager_id": source.get("manager_id"),
+        "project": source.get("project"),
         "target_branch": source.get("target_branch"),
         "resource_group_key": _hash_identity(group_identity),
         "resource_key": _hash_identity(identity),
@@ -319,9 +332,9 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
     label_variants: dict[tuple[Any, ...], set[str]] = defaultdict(set)
     largest_label: dict[tuple[Any, ...], tuple[Decimal, str]] = {}
     for row in rows:
-        # Keep this exactly aligned with uk_resource_serving_versioned. Roster
-        # metadata can differ between source facts for one owner/resource, but
-        # it is display context rather than part of serving-row identity.
+        # Keep this exactly aligned with uk_resource_serving_versioned. Resource
+        # keys include the attribution scopes that the Dashboard can filter, so
+        # a resource's contributions never collapse across teams or projects.
         key = (
             row["materialization_version"],
             row["basis_key"],
@@ -366,8 +379,12 @@ def _serving_schema_ready(engine: Engine) -> bool:
     )
     with engine.connect() as connection:
         return all(_table_exists(connection, table) for table in required_tables) and all(
-            _table_has_column(connection, table, "resource_id")
-            for table in ("cost_unmatched_resource_daily", "cost_resource_serving_daily")
+            _table_has_column(connection, table, column)
+            for table, column in (
+                ("cost_unmatched_resource_daily", "resource_id"),
+                ("cost_resource_serving_daily", "resource_id"),
+                ("cost_resource_serving_daily", "project"),
+            )
         )
 
 
@@ -576,7 +593,7 @@ WHERE usage_date BETWEEN :start_date AND :end_date
 ORDER BY usage_date
 """)
 _SOURCE_COLUMNS = """
-usage_date, vendor, account_id, service_name, sku_name, region, org, repo, target_branch,
+usage_date, vendor, account_id, service_name, sku_name, region, org, repo, project, target_branch,
 resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds,
 effective_cost, credit_amount, net_cost, source_rows, source_summary_row_hash
 """
@@ -608,13 +625,13 @@ WHERE materialization_version = :materialization_version AND basis_key = :basis_
 _INSERT_SERVING = text("""
 INSERT INTO cost_resource_serving_daily (
   materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
-  group_id, manager_id, target_branch, resource_group_key, resource_key, resource_name, resource_id,
+  group_id, manager_id, project, target_branch, resource_group_key, resource_key, resource_name, resource_id,
   service_name, resource_identity_kind, representative_labels_json, metadata_variant_count,
   detail_list_cost, fallback_list_cost, usage_seconds, list_cost, effective_cost, credit_amount,
   net_cost, source_row_count, calculated_at
 ) VALUES (
   :materialization_version, :basis_key, :usage_date, :vendor, :account_id, :owner_key, :owner,
-  :group_id, :manager_id, :target_branch, :resource_group_key, :resource_key, :resource_name, :resource_id,
+  :group_id, :manager_id, :project, :target_branch, :resource_group_key, :resource_key, :resource_name, :resource_id,
   :service_name, :resource_identity_kind, :representative_labels_json, :metadata_variant_count,
   :detail_list_cost, :fallback_list_cost, :usage_seconds, :list_cost, :effective_cost, :credit_amount,
   :net_cost, :source_row_count, :calculated_at

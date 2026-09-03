@@ -170,6 +170,15 @@ validated keyset cursor. It performs no raw-ledger join, total-row count, or
 per-page materialization/validation; those would add cost without improving the
 user's investigation workflow.
 
+`cost_resource_serving_daily` also retains source `project` and `group_id`.
+A resource's physical serving key includes those attribution scopes, while its
+response `resource_group_key` stays provider-resource based. This lets the
+Dashboard filter the same resource to a selected Project or Engineering Group
+Team before aggregating its displayed row; resource costs cannot leak across
+those selected scopes. The Project column is introduced by migration `021` and
+requires the standard bounded rematerialization before Project drilldown is
+available.
+
 The materializer copies `resource_id` to every concrete serving row. Fallbacks
 have `resource_id = NULL`. It recomputes group/resource keys using the rule
 above and writes a new staged version before moving the daily publication
@@ -216,7 +225,10 @@ presents normal refresh lag as an expected user action.
 
 Keep `GET /api/v1/pages/cost-unmatched-resources` for compatibility, but make
 its product name and response a resource drilldown. Existing `owner`,
-`service_name`, and `sort_by=list_cost|duration` parameters remain. Add:
+`service_name`, and `sort_by=list_cost|duration` parameters remain. A selected
+Cost breakdown Team or Project passes `scope_dimension=team|project` and
+`scope_value`; an Owner selected beneath a Team passes both the Owner and Team
+scope. Add:
 
 ```text
 page_size: 1..100 (default 50)

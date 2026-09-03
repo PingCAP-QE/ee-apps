@@ -1707,7 +1707,15 @@ export function ResourceBreakdownTable({ items }) {
 
   return (
     <div className="table-scroll table-scroll--compact-y">
-      <table className="data-table data-table--compact">
+      <table className="data-table data-table--compact data-table--resource-breakdown">
+        <colgroup>
+          <col className="resource-breakdown__id-column" />
+          <col className="resource-breakdown__name-column" />
+          <col className="resource-breakdown__service-column" />
+          <col className="resource-breakdown__cost-column" />
+          <col className="resource-breakdown__duration-column" />
+          <col className="resource-breakdown__labels-column" />
+        </colgroup>
         <thead>
           <tr>
             <th>Resource ID</th>

@@ -2212,6 +2212,32 @@ select {
   min-width: 420px;
 }
 
+.data-table--resource-breakdown {
+  min-width: 1150px;
+  table-layout: fixed;
+}
+
+.resource-breakdown__id-column {
+  width: 15rem;
+}
+
+.resource-breakdown__name-column {
+  width: 32rem;
+}
+
+.resource-breakdown__service-column {
+  width: 14rem;
+}
+
+.resource-breakdown__cost-column,
+.resource-breakdown__duration-column {
+  width: 11rem;
+}
+
+.resource-breakdown__labels-column {
+  width: 24rem;
+}
+
 .data-table--issue-weekly {
   --issue-case-column-width: 360px;
   --issue-week-column-width: 170px;

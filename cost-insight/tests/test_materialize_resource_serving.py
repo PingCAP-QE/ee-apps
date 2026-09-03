@@ -20,6 +20,7 @@ def _source(**overrides):
         "owner": None,
         "group_id": 1,
         "manager_id": 10,
+        "project": "prow",
         "target_branch": "master",
         "vendor_tags_json": '{"cluster":"prow"}',
         "source_fact_hash": "source-1",
@@ -63,7 +64,7 @@ def test_resource_serving_retains_partial_detail_as_explicit_fallback() -> None:
     assert {row["owner"] for row in rows} == {""}
 
 
-def test_resource_serving_merges_different_roster_metadata_for_one_resource() -> None:
+def test_resource_serving_keeps_team_scopes_separate_for_one_resource() -> None:
     rows = build_resource_serving_rows(
         source_rows=(
             _source(
@@ -114,9 +115,11 @@ def test_resource_serving_merges_different_roster_metadata_for_one_resource() ->
         calculated_at=datetime(2026, 8, 11),
     )
 
-    assert len(rows) == 1
-    assert rows[0]["list_cost"] == Decimal("30")
-    assert rows[0]["source_row_count"] == 2
+    assert len(rows) == 2
+    assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("30")
+    assert len({row["resource_group_key"] for row in rows}) == 1
+    assert len({row["resource_key"] for row in rows}) == 2
+    assert {row["group_id"] for row in rows} == {None, 229}
 
 
 
@@ -372,7 +375,7 @@ _SCHEMA = (
     """
     CREATE TABLE cost_attribution_daily (
       usage_date TEXT, vendor TEXT, account_id TEXT, service_name TEXT, sku_name TEXT,
-      region TEXT, org TEXT, repo TEXT, target_branch TEXT, resource_name TEXT,
+      region TEXT, org TEXT, repo TEXT, project TEXT, target_branch TEXT, resource_name TEXT,
       vendor_tags_json TEXT, owner TEXT, group_id INTEGER, manager_id INTEGER,
       usage_seconds REAL, list_cost REAL, effective_cost REAL, credit_amount REAL,
       net_cost REAL, source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
@@ -389,7 +392,7 @@ _SCHEMA = (
     CREATE TABLE cost_resource_serving_daily (
       id INTEGER PRIMARY KEY AUTOINCREMENT, materialization_version TEXT, basis_key TEXT,
       usage_date TEXT, vendor TEXT, account_id TEXT, owner_key TEXT, owner TEXT,
-      group_id INTEGER, manager_id INTEGER, target_branch TEXT, resource_group_key TEXT,
+      group_id INTEGER, manager_id INTEGER, project TEXT, target_branch TEXT, resource_group_key TEXT,
       resource_key TEXT, resource_name TEXT, resource_id TEXT, service_name TEXT, resource_identity_kind TEXT,
       representative_labels_json TEXT, metadata_variant_count INTEGER, detail_list_cost REAL,
       fallback_list_cost REAL, usage_seconds REAL, list_cost REAL, effective_cost REAL,

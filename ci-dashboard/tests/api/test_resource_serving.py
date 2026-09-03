@@ -10,6 +10,7 @@ from ci_dashboard.api.queries.cost import (
     _decode_resource_cursor,
     _encode_resource_cursor,
     _format_vendor_labels,
+    _resource_serving_dates,
     get_unmatched_resources,
 )
 
@@ -68,19 +69,21 @@ def _serving_row(
     list_cost: float,
     detail_list_cost: float | None = None,
     fallback_list_cost: float = 0,
+    group_id: int | None = None,
+    project: str | None = None,
 ) -> None:
     connection.execute(
         text(
             """
             INSERT INTO cost_resource_serving_daily (
               materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
-              target_branch, resource_group_key, resource_key, resource_name, resource_id, service_name,
+              group_id, project, target_branch, resource_group_key, resource_key, resource_name, resource_id, service_name,
               resource_identity_kind, representative_labels_json, metadata_variant_count,
               detail_list_cost, fallback_list_cost, usage_seconds, list_cost, source_row_count
             ) VALUES (
               'v1', 'native', :usage_date, 'gcp', 'project-1',
               'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '',
-              'master', :resource_group_key, :resource_key, :resource_name, :resource_id, :service_name,
+              :group_id, :project, 'master', :resource_group_key, :resource_key, :resource_name, :resource_id, :service_name,
               'resource_detail', :labels, 1, :detail_list_cost, :fallback_list_cost,
               :usage_seconds, :list_cost, 1
             )
@@ -96,6 +99,8 @@ def _serving_row(
             "labels": labels,
             "detail_list_cost": list_cost if detail_list_cost is None else detail_list_cost,
             "fallback_list_cost": fallback_list_cost,
+            "group_id": group_id,
+            "project": project,
             "usage_seconds": usage_seconds,
             "list_cost": list_cost,
         },
@@ -257,6 +262,60 @@ def test_resource_drilldown_aggregates_ids_labels_services_and_pages() -> None:
     assert duration_second_page["items"][0]["resource_name"] == "bucket-name"
 
 
+def test_resource_drilldown_filters_project_and_team_scopes() -> None:
+    engine = _engine()
+    with engine.begin() as connection:
+        _publish(connection, "2026-08-10")
+        connection.execute(text("""
+            INSERT INTO roster_groups (id, name, path, parent_id, is_active) VALUES
+              (1, 'Engineering Group', '/1/', NULL, 1),
+              (2, 'Platform', '/1/2/', 1, 1),
+              (3, 'Compute', '/1/2/3/', 2, 1),
+              (4, 'Compute child', '/1/2/3/4/', 3, 1),
+              (5, 'Storage', '/1/2/5/', 2, 1)
+        """))
+        _serving_row(
+            connection,
+            usage_date="2026-08-10",
+            resource_group_key="compute-resource",
+            resource_key="compute-resource-1",
+            resource_name="compute-resource",
+            resource_id="compute-resource",
+            service_name="Compute Engine",
+            labels=None,
+            usage_seconds=10,
+            list_cost=10,
+            group_id=4,
+            project="prow",
+        )
+        _serving_row(
+            connection,
+            usage_date="2026-08-10",
+            resource_group_key="storage-resource",
+            resource_key="storage-resource-1",
+            resource_name="storage-resource",
+            resource_id="storage-resource",
+            service_name="Cloud Storage",
+            labels=None,
+            usage_seconds=10,
+            list_cost=20,
+            group_id=5,
+            project="storage",
+        )
+
+    project = get_unmatched_resources(
+        engine, _filters(), scope_dimension="project", scope_value="prow"
+    )
+    team = get_unmatched_resources(
+        engine, _filters(), scope_dimension="team", scope_value="Compute"
+    )
+
+    assert [item["resource_name"] for item in project["items"]] == ["compute-resource"]
+    assert [item["resource_name"] for item in team["items"]] == ["compute-resource"]
+    assert project["meta"]["scope_dimension"] == "project"
+    assert team["meta"]["scope_value"] == "Compute"
+
+
 def test_resource_read_is_native_only() -> None:
     engine = _engine()
     with engine.begin() as connection:
@@ -334,7 +393,12 @@ def test_resource_request_validates_pagination_and_normalizes_sort() -> None:
         get_unmatched_resources(_engine(), _filters(), page_size=0)
     with pytest.raises(ValueError, match="invalid resource cursor"):
         get_unmatched_resources(_engine(), _filters(), cursor="W10")  # base64url for []
+    with pytest.raises(ValueError, match="scope_dimension"):
+        get_unmatched_resources(_engine(), _filters(), scope_dimension="region", scope_value="us")
+    with pytest.raises(ValueError, match="scope_value"):
+        get_unmatched_resources(_engine(), _filters(), scope_dimension="team")
 
+    assert _resource_serving_dates(None, date(2026, 8, 10)) == ()
     response = get_unmatched_resources(_engine(), _filters(), sort_by="unknown")
     assert response["meta"]["sort_by"] == "list_cost"
 
@@ -354,11 +418,16 @@ _SCHEMA = (
     CREATE TABLE cost_resource_serving_daily (
       id INTEGER PRIMARY KEY AUTOINCREMENT, materialization_version TEXT, basis_key TEXT,
       usage_date TEXT, vendor TEXT, account_id TEXT, owner_key TEXT, owner TEXT,
-      group_id INTEGER, manager_id INTEGER, target_branch TEXT, resource_group_key TEXT,
+      group_id INTEGER, manager_id INTEGER, project TEXT, target_branch TEXT, resource_group_key TEXT,
       resource_key TEXT, resource_name TEXT, resource_id TEXT, service_name TEXT,
       resource_identity_kind TEXT, representative_labels_json TEXT, metadata_variant_count INTEGER,
       detail_list_cost REAL, fallback_list_cost REAL, usage_seconds REAL, list_cost REAL,
       effective_cost REAL, credit_amount REAL, net_cost REAL, source_row_count INTEGER
+    )
+    """,
+    """
+    CREATE TABLE roster_groups (
+      id INTEGER PRIMARY KEY, name TEXT, path TEXT, parent_id INTEGER, is_active INTEGER
     )
     """,
     """

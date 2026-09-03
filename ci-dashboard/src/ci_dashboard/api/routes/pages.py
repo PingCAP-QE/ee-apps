@@ -181,6 +181,8 @@ def cost_unmatched_resources_page(
     sort_by: str = Query("list_cost", pattern="^(list_cost|duration)$"),
     page_size: int = Query(50, ge=1, le=100),
     cursor: str | None = Query(default=None, max_length=512),
+    scope_dimension: str | None = Query(default=None, pattern="^(team|project)$"),
+    scope_value: str | None = Query(default=None, max_length=255),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -193,6 +195,8 @@ def cost_unmatched_resources_page(
             sort_by=sort_by,
             page_size=page_size,
             cursor=cursor,
+            scope_dimension=scope_dimension,
+            scope_value=scope_value,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
