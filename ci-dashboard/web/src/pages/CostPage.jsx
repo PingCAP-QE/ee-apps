@@ -15,6 +15,7 @@ import {
   Panel,
   StatCard,
   TrendChart,
+  UnattachedBlockVolumeTable,
   ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
@@ -116,6 +117,10 @@ export default function CostPage({ filters }) {
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
     resourceBreakdownRequested,
+  );
+  const unattachedBlockVolumes = useApiData(
+    "/api/v1/pages/cost-unattached-block-volumes",
+    costFilters,
   );
   const summary = trend.data?.meta?.summary || {};
   const budgetHealth = budgetPace.data?.budget_health;
@@ -245,19 +250,6 @@ export default function CostPage({ filters }) {
         kicker={`${costFilters.granularity} buckets · ${selectedCostSourceLabel}`}
       />
 
-      <Panel
-        title="Budget pace"
-        subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-        loading={budgetPace.loading}
-        error={budgetPace.error}
-        className="cost-budget-pace"
-      >
-        <BudgetHealthGauge
-          title="Fiscal-period forecast"
-          data={budgetHealth}
-          emptyMessage="Budget pace is not configured for this source yet."
-        />
-      </Panel>
       <section
         className="stats-grid cost-summary-grid"
       >
@@ -448,7 +440,6 @@ export default function CostPage({ filters }) {
         >
           <div className="donut-grid">
             <DonutShareChart
-              className="engineering-group-share__chart"
               title="Level 1 groups"
               subtitle="Direct children under Engineering Group."
               items={engineeringGroupShare.data?.level1?.items}
@@ -456,7 +447,6 @@ export default function CostPage({ filters }) {
               emptyMessage="No Engineering Group level-1 cost share data yet."
             />
             <DonutShareChart
-              className="engineering-group-share__chart"
               title="Level 2 groups"
               subtitle="Second-level teams under Engineering Group."
               items={engineeringGroupShare.data?.level2?.items}
@@ -481,6 +471,14 @@ export default function CostPage({ filters }) {
         </Panel>
       </section>
 
+      <Panel
+        title="Unattached Block Volumes"
+        subtitle="AWS available EBS volumes and GCP Persistent Disk / Hyperdisk volumes with no users. Cost is shown when billing rows can be matched by volume id."
+        loading={unattachedBlockVolumes.loading}
+        error={unattachedBlockVolumes.error}
+      >
+        <UnattachedBlockVolumeTable items={unattachedBlockVolumes.data?.items} />
+      </Panel>
     </div>
   );
 }
