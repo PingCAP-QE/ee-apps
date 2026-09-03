@@ -23,6 +23,9 @@
         <mxCell id="title" value="&lt;b&gt;Cost 数据流（当前实现：Native Attribution）&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;账单日汇总 → 原生 owner 归因 → 有界资源服务投影 → Dashboard；派生 Kubernetes / EQ 分摊已退出 Dashboard&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1f2937;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="230" y="15" width="1800" height="65" as="geometry"/>
         </mxCell>
+        <mxCell id="lane_logic" value="&lt;b&gt;泳道划分逻辑（按职责与数据状态，而非部署或执行时序）&lt;/b&gt;　① 外部权威数据与控制　→　② ETL 读取、规范化与幂等写入　→　③ 持久化、可审计事实　→　④ 归因与物化读模型　→　⑤ 已发布的 Dashboard 查询 / API" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontSize=13;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="350" y="1555" width="1650" height="50" as="geometry"/>
+        </mxCell>
         <mxCell id="note" value="&lt;font color=&quot;#b85450&quot;&gt;&lt;b&gt;Dashboard 只读原生口径：&lt;/b&gt;&lt;/font&gt;聚合查询只读 cost_attribution_daily；资源页只读已发布的 native resource-serving。API 不动态分摊、不在线 join 高基数资源账本；发票 / 原始资源排查回 BigQuery。" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
           <mxGeometry x="230" y="1630" width="1800" height="55" as="geometry"/>
         </mxCell>
