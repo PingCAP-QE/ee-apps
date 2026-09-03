@@ -514,9 +514,24 @@ select {
 
 .cost-analysis-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.68fr) minmax(360px, 0.92fr);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.3fr);
   gap: 1rem;
   align-items: stretch;
+}
+
+.engineering-group-share__chart .donut-card__body {
+  grid-template-columns: 1fr;
+}
+
+.engineering-group-share__chart .donut-legend {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+}
+
+.engineering-group-share__chart .donut-legend__name {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .cost-analysis-grid > *,
@@ -2429,6 +2444,10 @@ select {
 
   .weekly-summary__flaky-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .cost-analysis-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.3fr);
   }
 }
 

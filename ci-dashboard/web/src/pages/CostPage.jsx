@@ -435,6 +435,7 @@ export default function CostPage({ filters }) {
         >
           <div className="donut-grid">
             <DonutShareChart
+              className="engineering-group-share__chart"
               title="Level 1 groups"
               subtitle="Direct children under Engineering Group."
               items={engineeringGroupShare.data?.level1?.items}
@@ -442,6 +443,7 @@ export default function CostPage({ filters }) {
               emptyMessage="No Engineering Group level-1 cost share data yet."
             />
             <DonutShareChart
+              className="engineering-group-share__chart"
               title="Level 2 groups"
               subtitle="Second-level teams under Engineering Group."
               items={engineeringGroupShare.data?.level2?.items}
