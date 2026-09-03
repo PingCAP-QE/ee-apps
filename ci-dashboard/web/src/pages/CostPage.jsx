@@ -250,20 +250,6 @@ export default function CostPage({ filters }) {
         kicker={`${costFilters.granularity} buckets · ${selectedCostSourceLabel}`}
       />
 
-      <Panel
-        title="Budget pace"
-        subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-        loading={budgetPace.loading}
-        error={budgetPace.error}
-        className="cost-budget-pace"
-      >
-        <BudgetHealthGauge
-          title="Fiscal-period forecast"
-          data={budgetHealth}
-          emptyMessage="Budget pace is not configured for this source yet."
-        />
-      </Panel>
-
       <section
         className="stats-grid cost-summary-grid"
       >
@@ -445,29 +431,45 @@ export default function CostPage({ filters }) {
         )}
       </Panel>
 
-      <Panel
-        title="Engineering Group cost share"
-        subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
-        loading={engineeringGroupShare.loading}
-        error={engineeringGroupShare.error}
-      >
-        <div className="donut-grid">
-          <DonutShareChart
-            title="Level 1 groups"
-            subtitle="Direct children under Engineering Group."
-            items={engineeringGroupShare.data?.level1?.items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-1 cost share data yet."
+      <section className="cost-analysis-grid">
+        <Panel
+          title="Engineering Group cost share"
+          subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
+          loading={engineeringGroupShare.loading}
+          error={engineeringGroupShare.error}
+        >
+          <div className="donut-grid">
+            <DonutShareChart
+              title="Level 1 groups"
+              subtitle="Direct children under Engineering Group."
+              items={engineeringGroupShare.data?.level1?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-1 cost share data yet."
+            />
+            <DonutShareChart
+              title="Level 2 groups"
+              subtitle="Second-level teams under Engineering Group."
+              items={engineeringGroupShare.data?.level2?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-2 cost share data yet."
+            />
+          </div>
+        </Panel>
+
+        <Panel
+          title="Budget pace"
+          subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
+          loading={budgetPace.loading}
+          error={budgetPace.error}
+          className="cost-budget-pace"
+        >
+          <BudgetHealthGauge
+            title="Fiscal-period forecast"
+            data={budgetHealth}
+            emptyMessage="Budget pace is not configured for this source yet."
           />
-          <DonutShareChart
-            title="Level 2 groups"
-            subtitle="Second-level teams under Engineering Group."
-            items={engineeringGroupShare.data?.level2?.items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-2 cost share data yet."
-          />
-        </div>
-      </Panel>
+        </Panel>
+      </section>
 
       <Panel
         title="Unattached Block Volumes"
