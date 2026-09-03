@@ -508,104 +508,8 @@ select {
   color: var(--muted);
 }
 
-.cost-weekly-overview__grid {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.95fr) repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  align-items: stretch;
-}
-
-.cost-weekly-overview__cards {
-  display: grid;
-  gap: 0.9rem;
-  align-content: start;
-}
-
-.cost-weekly-overview > .panel__body,
-.cost-weekly-overview__grid > * {
-  min-width: 0;
-}
-
-.cost-weekly-overview .budget-gauge,
-.cost-weekly-overview .donut-card {
-  height: 100%;
-}
-
-.cost-weekly-overview .budget-gauge,
-.cost-weekly-overview .donut-card,
-.cost-weekly-overview .stat-card {
-  border-radius: 22px;
-}
-
-.cost-weekly-overview .budget-gauge,
-.cost-weekly-overview .donut-card {
-  padding: 0.9rem;
-}
-
-.cost-weekly-overview .budget-gauge {
-  gap: 0.72rem;
-}
-
-.cost-weekly-overview .budget-gauge__chart svg {
-  max-width: 204px;
-}
-
-.cost-weekly-overview .budget-gauge__summary {
-  font-size: 0.92rem;
-}
-
-.cost-weekly-overview .budget-gauge__metrics {
-  gap: 0.6rem;
-}
-
-.cost-weekly-overview .donut-card__header,
-.cost-weekly-overview .budget-gauge__header {
-  gap: 0.55rem;
-}
-
-.cost-weekly-overview .donut-card__header strong,
-.cost-weekly-overview .budget-gauge__header strong {
-  font-size: 0.98rem;
-}
-
-.cost-weekly-overview .donut-card__header p,
-.cost-weekly-overview .budget-gauge__header p {
-  font-size: 0.84rem;
-}
-
-.cost-weekly-overview .donut-card__body {
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
-  align-items: start;
-}
-
-.cost-weekly-overview .donut-chart svg {
-  max-width: 182px;
-}
-
-.cost-weekly-overview .donut-legend {
-  gap: 0.45rem;
-}
-
-.cost-weekly-overview .donut-legend__item {
-  padding: 0.58rem 0.64rem;
-  border-radius: 16px;
-  gap: 0.4rem;
-}
-
-.cost-weekly-overview .donut-legend__name,
-.cost-weekly-overview .donut-legend__value,
-.cost-weekly-overview .donut-legend__share {
-  font-size: 0.8rem;
-}
-
-.cost-weekly-overview .panel-badge {
-  font-size: 0.8rem;
-}
-
-.cost-weekly-overview .donut-card__action {
-  min-height: 2.05rem;
-  padding: 0.3rem 0.58rem;
+.cost-budget-pace .budget-gauge {
+  max-width: 640px;
 }
 
 .cost-analysis-grid {
@@ -2509,7 +2413,6 @@ select {
   .stats-grid,
   .progress-summary-grid,
   .weekly-summary__cost-grid,
-  .cost-weekly-overview__grid,
   .cost-analysis-grid,
   .cost-breakdown-grid,
   .page-grid--overview,
@@ -2548,7 +2451,6 @@ select {
   .stats-grid,
   .progress-summary-grid,
   .weekly-summary__cost-grid,
-  .cost-weekly-overview__grid,
   .cost-analysis-grid,
   .cost-breakdown-grid,
   .page-grid--overview,

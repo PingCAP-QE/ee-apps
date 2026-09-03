@@ -615,6 +615,10 @@ test("resource breakdown renders identifiers and loads the next page", async () 
       await Promise.resolve();
     });
 
+    assert.ok(requests.some((request) => request.startsWith("/api/v1/pages/cost-budget-pace?")));
+    assert.ok(!requests.some((request) => request.startsWith("/api/v1/pages/cost-weekly-overview")));
+    assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Weekly overview/);
+
     const ownerLabel = renderer.root
       .findAllByProps({ className: "donut-legend__name" })
       .find((node) => node.children.join("") === "alice");

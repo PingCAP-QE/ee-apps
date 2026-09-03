@@ -8,6 +8,7 @@ from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
 from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
+    get_cost_budget_pace_page,
     get_cost_engineering_group_share_page,
     get_cost_insight_page,
     get_cost_repo_group_stack_page,
@@ -18,7 +19,6 @@ from ci_dashboard.api.queries.pages import (
     get_cost_unattached_ebs_volumes_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
-    get_cost_weekly_overview_page,
     get_weekly_cost_report_page,
     get_flaky_page,
     get_overview_page,
@@ -115,13 +115,12 @@ def cost_share_page(
     )
 
 
-@router.get("/cost-weekly-overview")
-def cost_weekly_overview_page(
+@router.get("/cost-budget-pace")
+def cost_budget_pace_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_weekly_overview_page(engine, filters)
-
+    return get_cost_budget_pace_page(engine, filters)
 
 
 @router.get("/cost-weekly-account-summaries")

@@ -3849,11 +3849,6 @@ def test_cost_routes_use_billing_report_list_cost(sqlite_engine, api_client: Tes
         }
     ]
 
-    overview_body = api_client.get("/api/v1/pages/cost-weekly-overview", params=params).json()
-    assert overview_body["summary"]["list_cost"] == 10.0
-    assert overview_body["summary"]["net_cost"] == 8.0
-    assert overview_body["service_share"]["meta"]["total_list_cost"] == 10.0
-
 
 def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestClient) -> None:
     _insert_cost_source(
@@ -4715,7 +4710,7 @@ def test_cost_weekly_account_summaries_filter_by_target_branch(
     assert body["items"][0]["net_cost_wow_pct"] == 50.0
 
 
-def test_cost_weekly_overview_route(
+def test_cost_budget_pace_route(
     sqlite_engine,
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -4731,51 +4726,6 @@ def test_cost_weekly_overview_route(
         budget_name="PingCAP Testing 2026",
     )
 
-    _insert_roster_group(
-        sqlite_engine,
-        group_id=100,
-        lark_group_id="eng",
-        name="Engineering Group",
-        path="/100/",
-    )
-    for group_id, lark_group_id, name, parent_id, path in [
-        (110, "database", "Database", 100, "/100/110/"),
-        (111, "tidb", "TiDB", 110, "/100/110/111/"),
-        (112, "storage", "Storage", 110, "/100/110/112/"),
-        (120, "infra", "Infra", 100, "/100/120/"),
-        (121, "platform", "Platform", 120, "/100/120/121/"),
-        (122, "data", "Data", 120, "/100/120/122/"),
-        (123, "tiny-parent", "Tiny Parent", 100, "/100/123/"),
-        (124, "tiny", "Tiny", 123, "/100/123/124/"),
-    ]:
-        _insert_roster_group(
-            sqlite_engine,
-            group_id=group_id,
-            lark_group_id=lark_group_id,
-            name=name,
-            parent_id=parent_id,
-            path=path,
-        )
-
-    for service_name, group_id, list_cost, net_cost in [
-        ("Compute Engine", 111, 490, 330),
-        ("Cloud Storage", 112, 250, 175),
-        ("Cloud SQL", 121, 100, 70),
-        ("BigQuery", 122, 80, 56),
-        ("Networking", 111, 70, 49),
-        ("Cloud Monitoring", 111, 20, 0),
-        ("Cloud Logging", 124, 10, 20),
-    ]:
-        _insert_cost_attribution(
-            sqlite_engine,
-            usage_date="2026-05-18",
-            repo="tidb",
-            group_id=group_id,
-            list_cost=list_cost,
-            net_cost=net_cost,
-            service_name=service_name,
-            dimension_hash=f"current-{service_name}",
-        )
     _insert_cost_attribution(
         sqlite_engine,
         usage_date="2026-05-12",
@@ -4788,7 +4738,7 @@ def test_cost_weekly_overview_route(
     )
 
     response = api_client.get(
-        "/api/v1/pages/cost-weekly-overview",
+        "/api/v1/pages/cost-budget-pace",
         params={
             "start_date": "2026-05-16",
             "end_date": "2026-05-22",
@@ -4803,16 +4753,6 @@ def test_cost_weekly_overview_route(
     assert body["scope"]["end_date"] == "2026-05-22"
     assert body["scope"]["granularity"] == "week"
     assert body["scope"]["cost_source"] == "gcp:pingcap-testing-account"
-    assert body["previous_scope"]["start_date"] == "2026-05-09"
-    assert body["previous_scope"]["end_date"] == "2026-05-15"
-    assert body["summary"] == {
-        "list_cost": 1020.0,
-        "net_cost": 700.0,
-        "previous_list_cost": 500.0,
-        "previous_net_cost": 350.0,
-        "list_cost_wow_pct": 104.0,
-        "net_cost_wow_pct": 100.0,
-    }
     assert body["budget_health"] == {
         "metric_key": "net_cost",
         "annual_budget": 207600.0,
@@ -4841,65 +4781,6 @@ def test_cost_weekly_overview_route(
         "status": "healthy",
         "status_label": "Healthy",
     }
-    assert [item["name"] for item in body["service_share"]["items"]] == [
-        "Compute Engine",
-        "Cloud Storage",
-        "Cloud SQL",
-        "BigQuery",
-        "Networking",
-        "Cloud Monitoring",
-        "Others",
-    ]
-    service_others = body["service_share"]["items"][-1]
-    assert service_others["name"] == "Others"
-    assert service_others["value"] == 10.0
-    assert service_others["share_pct"] == pytest.approx(0.98)
-    assert service_others["interactive"] is False
-    assert body["service_share"]["meta"]["min_share_pct"] == 1.0
-    assert body["service_share"]["meta"]["total_list_cost"] == 1020.0
-    level2_names = [item["name"] for item in body["level2_share"]["items"]]
-    assert level2_names == ["TiDB", "Storage", "Platform", "Data", "Others"]
-    assert "Tiny" not in level2_names
-    assert body["level2_share"]["items"][-1]["value"] == 10.0
-
-
-def test_cost_weekly_overview_previous_window_filters_by_target_branch(
-    sqlite_engine,
-    api_client: TestClient,
-) -> None:
-    for usage_date, target_branch, list_cost, net_cost in [
-        ("2026-05-18", "master", 10, 8),
-        ("2026-05-12", "master", 5, 4),
-        ("2026-05-18", "release-8.5", 100, 80),
-        ("2026-05-12", "release-8.5", 500, 400),
-    ]:
-        _insert_cost_attribution(
-            sqlite_engine,
-            usage_date=usage_date,
-            repo="tidb",
-            group_id=None,
-            target_branch=target_branch,
-            list_cost=list_cost,
-            net_cost=net_cost,
-            dimension_hash=f"{usage_date}-{target_branch}",
-        )
-
-    response = api_client.get(
-        "/api/v1/pages/cost-weekly-overview",
-        params={
-            "start_date": "2026-05-16",
-            "end_date": "2026-05-22",
-            "branch": "master",
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["scope"]["branch"] == "master"
-    assert body["summary"]["list_cost"] == 10.0
-    assert body["summary"]["net_cost"] == 8.0
-    assert body["summary"]["previous_list_cost"] == 5.0
-    assert body["summary"]["previous_net_cost"] == 4.0
 
 
 def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5022,27 +4903,7 @@ def test_get_cost_page_parallelizes_for_non_sqlite(monkeypatch: pytest.MonkeyPat
     assert captured_granularities == ["week", "week", "week"]
 
 
-def test_get_weekly_overview_parallelizes_for_non_sqlite(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _ImmediateFuture:
-        def __init__(self, value):
-            self._value = value
-
-        def result(self):
-            return self._value
-
-    class _InlineExecutor:
-        def __init__(self, *, max_workers: int):
-            self.max_workers = max_workers
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def submit(self, task, *args, **kwargs):
-            return _ImmediateFuture(task(*args, **kwargs))
-
+def test_get_budget_pace_for_non_sqlite(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Begin:
         def __enter__(self):
             return object()
@@ -5056,41 +4917,17 @@ def test_get_weekly_overview_parallelizes_for_non_sqlite(monkeypatch: pytest.Mon
         def begin(self):
             return _Begin()
 
-    def _summary(_connection, filters: CommonFilters):
-        if filters.start_date == date(2026, 5, 16):
-            return {"list_cost": 120.0, "net_cost": 90.0}
-        return {"list_cost": 100.0, "net_cost": 80.0}
-
-    monkeypatch.setattr(cost_queries, "ThreadPoolExecutor", _InlineExecutor)
-    monkeypatch.setattr(cost_queries, "_cost_summary", _summary)
     monkeypatch.setattr(
         cost_queries,
-        "_get_budget_health_snapshot",
-        lambda _engine, _filters: {
+        "_budget_health_snapshot",
+        lambda _connection, _filters: {
             "status": "healthy",
             "current_cost": 90.0,
             "budget_to_date": 120.0,
             "annual_budget": 240.0,
         },
     )
-    monkeypatch.setattr(
-        cost_queries,
-        "_service_share_by_threshold",
-        lambda _connection, _filters, *, min_share_pct: {
-            "items": [{"name": "Compute Engine", "value": 120.0, "share_pct": 100.0}],
-            "meta": {"min_share_pct": min_share_pct, "total_list_cost": 120.0},
-        },
-    )
-    monkeypatch.setattr(
-        cost_queries,
-        "_engineering_share_by_level_threshold",
-        lambda _connection, _filters, *, level, min_share_pct: {
-            "items": [{"name": "TiDB", "value": 120.0, "share_pct": 100.0}],
-            "meta": {"level": level, "min_share_pct": min_share_pct, "total_list_cost": 120.0},
-        },
-    )
-
-    result = cost_queries.get_weekly_overview(
+    result = cost_queries.get_budget_pace(
         _Engine(),
         CommonFilters(
             start_date=date(2026, 5, 16),
@@ -5099,11 +4936,8 @@ def test_get_weekly_overview_parallelizes_for_non_sqlite(monkeypatch: pytest.Mon
         ),
     )
 
-    assert result["summary"]["list_cost_wow_pct"] == 20.0
-    assert result["summary"]["net_cost_wow_pct"] == 12.5
+    assert result["scope"]["granularity"] == "week"
     assert result["budget_health"]["status"] == "healthy"
-    assert result["service_share"]["items"][0]["name"] == "Compute Engine"
-    assert result["level2_share"]["items"][0]["name"] == "TiDB"
 
 
 def test_cost_query_helpers_cover_edge_cases(sqlite_engine) -> None:
@@ -5186,6 +5020,17 @@ def test_cost_query_helpers_cover_edge_cases(sqlite_engine) -> None:
     assert cost_queries._cost_stack_key("author", "(unknown author)", 0) == "author__unknown_author"
     assert cost_queries._cost_stack_key("team", "(no team)", 0) == "team__no_team"
     assert cost_queries._cost_stack_key("service", "(no service)", 0) == "service__no_service"
+    assert cost_queries._previous_window(CommonFilters()) == (None, None)
+    assert cost_queries._share_items_limited_with_others(
+        [{"value": 5}, {"value": 4}, {"value": 3}],
+        limit=2,
+        total=5,
+    ) == [{"value": 5}]
+    assert cost_queries._share_items_limited_with_others(
+        [{"value": 5}, {"value": 4, "highlight": True}, {"value": 3}],
+        limit=2,
+        total=12,
+    )[-1]["highlight"] is True
 
 
 def test_budget_health_snapshot_marks_warning_when_over_pace(
