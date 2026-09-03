@@ -2356,6 +2356,7 @@ select {
 }
 
 .resource-table__name {
+  max-width: 28rem;
   white-space: normal;
   word-break: break-word;
 }

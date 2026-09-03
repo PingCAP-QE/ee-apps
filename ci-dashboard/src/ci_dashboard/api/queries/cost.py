@@ -1400,19 +1400,27 @@ def _get_published_unmatched_resources(
                 text(
                     f"""
                     SELECT
-                      COALESCE(SUM(s.detail_list_cost), 0) AS detail_list_cost,
-                      COALESCE(SUM(s.fallback_list_cost), 0) AS fallback_list_cost,
-                      COALESCE(SUM(s.list_cost), 0) AS total_list_cost
-                    FROM cost_resource_serving_daily s
-                    JOIN cost_resource_serving_publication p
-                      ON p.basis_key = s.basis_key AND p.vendor = s.vendor
-                     AND p.account_id = s.account_id AND p.usage_date = s.usage_date
-                     AND p.active_materialization_version = s.materialization_version
-                    WHERE s.basis_key = :basis_key AND ({scope_clause})
-                      AND s.usage_date BETWEEN :start_date AND :end_date
-                      AND ({source_clause})
-                      AND (:service_name IS NULL OR s.service_name = :service_name)
-                      AND {validity_clause} {branch_clause}
+                      COALESCE(SUM(g.detail_list_cost), 0) AS detail_list_cost,
+                      COALESCE(SUM(g.fallback_list_cost), 0) AS fallback_list_cost,
+                      COALESCE(SUM(g.list_cost), 0) AS total_list_cost
+                    FROM (
+                      SELECT resource_group_key,
+                        SUM(s.detail_list_cost) AS detail_list_cost,
+                        SUM(s.fallback_list_cost) AS fallback_list_cost,
+                        SUM(s.list_cost) AS list_cost
+                      FROM cost_resource_serving_daily s
+                      JOIN cost_resource_serving_publication p
+                        ON p.basis_key = s.basis_key AND p.vendor = s.vendor
+                       AND p.account_id = s.account_id AND p.usage_date = s.usage_date
+                       AND p.active_materialization_version = s.materialization_version
+                      WHERE s.basis_key = :basis_key AND ({scope_clause})
+                        AND s.usage_date BETWEEN :start_date AND :end_date
+                        AND ({source_clause})
+                        AND (:service_name IS NULL OR s.service_name = :service_name)
+                        AND {validity_clause} {branch_clause}
+                      GROUP BY s.resource_group_key
+                      HAVING SUM(s.list_cost) <> 0
+                    ) g
                     """
                 ),
                 params,
