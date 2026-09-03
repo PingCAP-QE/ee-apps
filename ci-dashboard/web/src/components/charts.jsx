@@ -1700,35 +1700,42 @@ export function BucketFlakyRateTable({
   );
 }
 
-export function UnmatchedResourceTable({ items }) {
+export function ResourceBreakdownTable({ items }) {
   if (!items?.length) {
     return <EmptyState message="No resource rows for the selected owner and filters." />;
   }
 
   return (
     <div className="table-scroll table-scroll--compact-y">
-      <table className="data-table data-table--compact">
+      <table className="data-table data-table--compact data-table--resource-breakdown">
+        <colgroup>
+          <col className="resource-breakdown__id-column" />
+          <col className="resource-breakdown__name-column" />
+          <col className="resource-breakdown__service-column" />
+          <col className="resource-breakdown__cost-column" />
+          <col className="resource-breakdown__duration-column" />
+          <col className="resource-breakdown__labels-column" />
+        </colgroup>
         <thead>
           <tr>
-            <th>Resource ID or name</th>
+            <th>Resource ID</th>
+            <th>Name</th>
+            <th>Service</th>
             <th>List cost</th>
             <th>Duration</th>
-            <th>Service</th>
             <th>Labels</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item, index) => (
-            <tr key={`${item.resource_name}:${item.service_name}:${item.sku_name}:${index}`}>
-              <th scope="row">
-                <div className="resource-table__name">{item.resource_name}</div>
-                {item.repo_name ? (
-                  <div className="resource-table__meta">repo: {item.repo_name}</div>
-                ) : null}
-              </th>
-              <td>{formatCurrency(item.list_cost)}</td>
-              <td>{formatResourceDuration(item.usage_seconds)}</td>
+          {items.map((item) => (
+            <tr key={item.resource_key}>
+              <th scope="row">{item.resource_id || "--"}</th>
+              <td>
+                <div className="resource-table__name">{item.resource_name || "--"}</div>
+              </td>
               <td>{item.service_name || "--"}</td>
+              <td>{formatCurrency(item.list_cost)}</td>
+              <td>{item.usage_seconds == null ? "--" : formatResourceDuration(item.usage_seconds)}</td>
               <td className="resource-table__labels">{item.labels || "--"}</td>
             </tr>
           ))}

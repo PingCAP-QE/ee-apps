@@ -11,6 +11,7 @@ const ciStatusUrl = "/ci-status?start_date=2026-08-10&end_date=2026-08-10&granul
 const incomingCostUrl = "/cost?start_date=2026-08-10&end_date=2026-08-10&cost_source=gcp%3Apingcap-testing-account&granularity=week";
 
 let App;
+let CostPage;
 let WeeklyCostPage;
 let server;
 
@@ -22,6 +23,7 @@ before(async () => {
     server: { middlewareMode: true },
   });
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
+  ({ default: CostPage } = await server.ssrLoadModule("/src/pages/CostPage.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
 });
 
@@ -536,5 +538,133 @@ test("incoming route filters win over cached filters without URL or request osci
       state,
       key: String(locationKey += 1),
     };
+  }
+});
+
+test("resource breakdown renders identifiers and loads the next page", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  let returnPending = false;
+  let renderer;
+
+  globalThis.fetch = async (url) => {
+    const request = String(url);
+    requests.push(request);
+    if (request.startsWith("/api/v1/pages/cost-share")) {
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ name: "alice", value: 5, share_pct: 100 }],
+          meta: { total_list_cost: 5 },
+        }),
+      };
+    }
+    if (request.startsWith("/api/v1/pages/cost-unmatched-resources")) {
+      const secondPage = request.includes("cursor=next-page");
+      return {
+        ok: true,
+        json: async () => ({
+          items: returnPending ? [] : [
+            secondPage
+              ? {
+                  resource_key: "bucket",
+                  resource_id: null,
+                  resource_name: "billing-bucket",
+                  service_name: "AmazonS3",
+                  labels: "Name=billing-bucket",
+                  list_cost: 2,
+                  usage_seconds: null,
+                }
+              : {
+                  resource_key: "instance",
+                  resource_id: "i-0123456789abcdef0",
+                  resource_name: "i-0123456789abcdef0",
+                  service_name: "AmazonEC2",
+                  labels: "Name=runner",
+                  list_cost: 3,
+                  usage_seconds: 3600,
+                },
+          ],
+          meta: {
+            services: [],
+            pending_dates: returnPending ? ["2026-08-10"] : [],
+            next_cursor: returnPending || secondPage ? null : "next-page",
+          },
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ items: [], meta: { summary: {} }, summary: {} }),
+    };
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(CostPage, {
+          filters: {
+            start_date: "2026-08-10",
+            end_date: "2026-08-10",
+            granularity: "week",
+            cost_source: "gcp:pingcap-testing-account",
+          },
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ownerLabel = renderer.root
+      .findAllByProps({ className: "donut-legend__name" })
+      .find((node) => node.children.join("") === "alice");
+    await act(async () => {
+      ownerLabel.parent.props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const headers = renderer.root
+      .findByType("thead")
+      .findAllByType("th")
+      .map((header) => header.children.join(""));
+    assert.deepEqual(headers, ["Resource ID", "Name", "Service", "List cost", "Duration", "Labels"]);
+    assert.match(JSON.stringify(renderer.toJSON()), /i-0123456789abcdef0/);
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "Load more")
+        .props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    assert.match(JSON.stringify(renderer.toJSON()), /billing-bucket/);
+    assert.ok(requests.some((request) => request.includes("cursor=next-page")));
+
+    returnPending = true;
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "Duration")
+        .props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    assert.ok(
+      renderer.root
+        .findAllByProps({ className: "empty-state" })
+        .some((node) => node.children.some(
+          (child) => typeof child === "string" && child.includes("Resource data is unavailable for"),
+        )),
+    );
+    assert.equal(
+      renderer.root.findByType("a").children.join(""),
+      "Refresh the resource-serving projection",
+    );
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
   }
 });

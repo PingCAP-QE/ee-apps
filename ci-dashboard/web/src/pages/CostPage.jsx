@@ -18,7 +18,7 @@ import {
   StatCard,
   TrendChart,
   UnattachedBlockVolumeTable,
-  UnmatchedResourceTable,
+  ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
@@ -28,10 +28,15 @@ export default function CostPage({ filters }) {
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
-  const [selectedResourceOwner, setSelectedResourceOwner] = useState(NO_OWNER_LABEL);
+  const [resourceScope, setResourceScope] = useState({
+    dimension: "owner",
+    value: NO_OWNER_LABEL,
+  });
   const [resourceBreakdownRequested, setResourceBreakdownRequested] = useState(false);
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
+  const [resourceCursor, setResourceCursor] = useState(null);
+  const [resourceItems, setResourceItems] = useState([]);
   const weeklyOverviewRange = getLaggedTrailingDateRange();
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
@@ -52,6 +57,7 @@ export default function CostPage({ filters }) {
     end_date: filters.end_date,
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
+    branch: filters.branch,
   };
   const costBreakdownDrilldownTargetGroup =
     COST_BREAKDOWN_DRILLDOWN_GROUPS[costBreakdownGroupBy] || null;
@@ -83,12 +89,29 @@ export default function CostPage({ filters }) {
   const engineeringGroupFilters = {
     ...costFilters,
   };
-  const unmatchedResourceFilters = {
+  const resourceBreakdownScope = {
     ...costFilters,
-    owner: selectedResourceOwner,
+    ...(resourceScope.owner
+      ? {
+          owner: resourceScope.owner,
+          scope_dimension: resourceScope.dimension,
+          scope_value: resourceScope.value,
+        }
+      : resourceScope.dimension === "owner"
+        ? { owner: resourceScope.value }
+        : {
+            scope_dimension: resourceScope.dimension,
+            scope_value: resourceScope.value,
+          }),
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
   };
+  const resourceBreakdownScopeKey = JSON.stringify(resourceBreakdownScope);
+  const unmatchedResourceFilters = {
+    ...resourceBreakdownScope,
+    cursor: resourceCursor,
+  };
+  const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
   const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
@@ -123,19 +146,33 @@ export default function CostPage({ filters }) {
   );
   const canDrillDownCostBreakdown =
     Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
-  const isOwnerResourceDrilldown = effectiveCostBreakdownGroupBy === "owner";
+  const isResourceScopeGroup = ["owner", "team", "project"].includes(
+    effectiveCostBreakdownGroupBy,
+  );
   const costBreakdownSubtitle = costBreakdownDrilldown
     ? `${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
     : `Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
   const costShareItems = withCostBreakdownDrilldown(
     costShare.data?.items,
-    canDrillDownCostBreakdown || isOwnerResourceDrilldown,
+    canDrillDownCostBreakdown || isResourceScopeGroup,
   );
 
-  const selectResourceOwner = (item) => {
-    setSelectedResourceOwner(item.name);
+  const selectResourceScope = (dimension, item) => {
+    const teamOwnerDrilldown =
+      dimension === "owner" && costBreakdownDrilldown?.parentGroup === "team";
+    setResourceScope(
+      teamOwnerDrilldown
+        ? {
+            dimension: "team",
+            value: costBreakdownDrilldown.parentName,
+            owner: item.name,
+          }
+        : { dimension, value: item.name },
+    );
     setResourceBreakdownRequested(true);
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
 
   const startCostBreakdownDrilldown = (item) => {
@@ -147,6 +184,13 @@ export default function CostPage({ filters }) {
       parentName: item.name,
       childGroup: costBreakdownDrilldownTargetGroup,
     });
+    if (costBreakdownGroupBy === "team") {
+      setResourceScope({ dimension: "team", value: item.name });
+      setResourceBreakdownRequested(true);
+      setUnmatchedServiceName("");
+      setResourceCursor(null);
+      setResourceItems([]);
+    }
     setSelectedCostStackName("");
   };
 
@@ -155,9 +199,11 @@ export default function CostPage({ filters }) {
     setSelectedCostStackName("");
   };
 
-  const resetResourceOwner = () => {
-    setSelectedResourceOwner(NO_OWNER_LABEL);
+  const resetResourceScope = () => {
+    setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
 
   useEffect(() => {
@@ -168,6 +214,29 @@ export default function CostPage({ filters }) {
       setSelectedCostStackName("");
     }
   }, [repoGroupStack.data?.items, selectedCostStackName]);
+
+  useEffect(() => {
+    setResourceCursor(null);
+    setResourceItems([]);
+  }, [resourceBreakdownScopeKey]);
+
+  useEffect(() => {
+    if (unmatchedResources.responseKey !== unmatchedResourceRequestKey) {
+      return;
+    }
+    if (unmatchedResources.data?.meta?.pending_dates?.length) {
+      setResourceItems([]);
+      return;
+    }
+    setResourceItems((current) => (
+      resourceCursor ? [...current, ...(unmatchedResources.data?.items || [])] : (unmatchedResources.data?.items || [])
+    ));
+  }, [
+    resourceCursor,
+    unmatchedResourceRequestKey,
+    unmatchedResources.data,
+    unmatchedResources.responseKey,
+  ]);
 
   useEffect(() => {
     if (!unmatchedServiceName || !unmatchedResources.data?.meta?.services) {
@@ -303,6 +372,11 @@ export default function CostPage({ filters }) {
                 setCostBreakdownGroupBy(nextGroup);
                 setCostBreakdownDrilldown(null);
                 setSelectedCostStackName("");
+                setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
+                setResourceBreakdownRequested(false);
+                setUnmatchedServiceName("");
+                setResourceCursor(null);
+                setResourceItems([]);
               }}
             />
           </>
@@ -317,10 +391,10 @@ export default function CostPage({ filters }) {
             totalLabel="list cost"
             emptyMessage="No cost share data for the current filters."
             onItemSelect={
-              isOwnerResourceDrilldown
-                ? selectResourceOwner
-                : canDrillDownCostBreakdown
-                  ? startCostBreakdownDrilldown
+              canDrillDownCostBreakdown
+                ? startCostBreakdownDrilldown
+                : isResourceScopeGroup
+                  ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
                   : undefined
             }
           />
@@ -345,11 +419,11 @@ export default function CostPage({ filters }) {
       </Panel>
 
       <Panel
-        title={`Resource breakdown: ${selectedResourceOwner}`}
+        title={`Resource breakdown: ${resourceScope.owner || resourceScope.value}`}
         subtitle={
           resourceBreakdownRequested
-            ? "Top 10 billable resource rows for the selected Owner share segment, with their available labels."
-            : "Load resource details for the selected Owner share segment on demand."
+            ? "Complete resource list for the selected Cost breakdown segment."
+            : "Load resource details for the selected Cost breakdown segment on demand."
         }
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
@@ -360,16 +434,24 @@ export default function CostPage({ filters }) {
                 serviceName={unmatchedServiceName}
                 serviceOptions={unmatchedResources.data?.meta?.services}
                 sortBy={unmatchedSortBy}
-                onServiceChange={setUnmatchedServiceName}
-                onSortChange={setUnmatchedSortBy}
+                onServiceChange={(value) => {
+                  setUnmatchedServiceName(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
+                onSortChange={(value) => {
+                  setUnmatchedSortBy(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
               />
-              {selectedResourceOwner !== NO_OWNER_LABEL ? (
+              {resourceScope.dimension !== "owner" || resourceScope.value !== NO_OWNER_LABEL ? (
                 <button
                   type="button"
                   className="donut-card__action"
-                  onClick={resetResourceOwner}
+                  onClick={resetResourceScope}
                 >
-                  Reset owner
+                  Reset scope
                 </button>
               ) : null}
             </>
@@ -379,10 +461,25 @@ export default function CostPage({ filters }) {
         {resourceBreakdownRequested ? (
           unmatchedResources.data?.meta?.pending_dates?.length ? (
             <div className="empty-state">
-              Resource details are being materialized. Please retry on the next refresh.
+              Resource data is unavailable for {unmatchedResources.data.meta.pending_dates.join(", ")}.{" "}
+              <a href="https://github.com/PingCAP-QE/ee-apps/tree/main/cost-insight#billing-summary-pipeline">
+                Refresh the resource-serving projection
+              </a>{" "}
+              before retrying.
             </div>
           ) : (
-            <UnmatchedResourceTable items={unmatchedResources.data?.items} />
+            <>
+              <ResourceBreakdownTable items={resourceItems} />
+              {unmatchedResources.data?.meta?.next_cursor ? (
+                <button
+                  type="button"
+                  className="donut-card__action"
+                  onClick={() => setResourceCursor(unmatchedResources.data.meta.next_cursor)}
+                >
+                  Load more
+                </button>
+              ) : null}
+            </>
           )
         ) : (
           <button

@@ -80,13 +80,17 @@ def test_build_aws_unmatched_resource_query_contains_usage_seconds_logic() -> No
     )
 
     assert "WHEN COUNTIF(pricing_unit = 'hour') = COUNT(*)" in query
-    assert "resource_name IS NOT NULL" in query
+    assert "COALESCE(resource_id, resource_tag_name, billing_description) IS NOT NULL" in query
+    assert "AS resource_id" in query
+    assert "summary_vendor_tags_json" in query
+    assert "WHERE LOWER(kv.key) = 'name'" in query
     assert "NULLIF(tag_project, '') AS repo" in query
     assert "r'^([a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)'" in query
     assert "tag_icost_project" not in query
     assert "WHERE kv.key = 'user_shared_pool'" in query
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
-    assert "END AS vendor_tags_json" in query
+    assert "END AS summary_vendor_tags_json" in query
+    assert "TO_JSON_STRING(\n      JSON_OBJECT(" in query
     assert "ROUND(SUM(net_cost), 9) AS net_cost" in query
     assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
     assert "SavingsPlanNegation" not in query

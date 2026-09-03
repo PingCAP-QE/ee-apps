@@ -279,6 +279,7 @@ WITH normalized AS (
     CAST(NULL AS STRING) AS service,
     CAST(NULL AS STRING) AS project,
     CAST(NULL AS STRING) AS service_exec_id,
+    COALESCE(NULLIF(resource.global_name, ''), NULLIF(resource.name, '')) AS resource_id,
     COALESCE(
       NULLIF(resource.name, ''),
       NULLIF(resource.global_name, ''),
@@ -314,7 +315,7 @@ SELECT
   source_schema_version, source_allocation_scope, cluster_name, cluster_location,
   kubernetes_cost_class, kubernetes_residual_type, kubernetes_cost_component,
   workload_name, workload_type, owner, service, project, service_exec_id,
-  resource_name, summary_resource_name, vendor_tags_json,
+  resource_id, resource_name, summary_resource_name, vendor_tags_json,
   CASE
     WHEN COUNTIF(pricing_unit IS NULL OR pricing_unit NOT IN ('hour', 'minute', 'second')) > 0
       THEN NULL
@@ -335,7 +336,7 @@ GROUP BY
   source_schema_version, source_allocation_scope, cluster_name, cluster_location,
   kubernetes_cost_class, kubernetes_residual_type, kubernetes_cost_component,
   workload_name, workload_type, owner, service, project, service_exec_id,
-  resource_name, summary_resource_name, vendor_tags_json
+  resource_id, resource_name, summary_resource_name, vendor_tags_json
 ORDER BY usage_date, service_name, sku_name, resource_name{limit_clause}
 """.strip()
 

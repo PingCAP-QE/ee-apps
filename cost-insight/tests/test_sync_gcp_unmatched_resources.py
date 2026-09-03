@@ -91,6 +91,7 @@ def _sqlite_engine():
                   vendor_tags_json TEXT,
                   author TEXT,
                   resource_name TEXT NOT NULL,
+                  resource_id TEXT,
                   parent_resource_name TEXT,
                   source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
                   workload_name TEXT,
@@ -381,6 +382,41 @@ def test_gcp_resource_lineage_matches_the_summary_identity() -> None:
     assert resource["source_summary_row_hash"] == summary["source_row_hash"]
 
 
+def test_aws_resource_lineage_uses_compact_tags_when_full_labels_exist() -> None:
+    resource = _normalize_resource_row(
+        {
+            **_resource_row(),
+            "vendor": "aws",
+            "summary_vendor_tags_json": None,
+            "vendor_tags_json": '{"Name":"runner-a"}',
+        }
+    )
+    summary = _normalize_summary_row(
+        {
+            **_resource_row(),
+            "vendor": "aws",
+            "usage_type": None,
+            "resource_name": resource["summary_resource_name"],
+            "vendor_tags_json": None,
+        }
+    )
+
+    assert resource["source_summary_row_hash"] == summary["source_row_hash"]
+
+
+def test_aws_resource_hash_uses_summary_tags_not_full_labels() -> None:
+    row = {
+        **_resource_row(),
+        "vendor": "aws",
+        "summary_vendor_tags_json": '{"cluster":"prow"}',
+        "vendor_tags_json": '{"Name":"runner-a","cluster":"prow"}',
+    }
+
+    assert build_unmatched_resource_row_hash(row) == build_unmatched_resource_row_hash(
+        {**row, "vendor_tags_json": '{"Name":"runner-b","cluster":"prow"}'}
+    )
+
+
 def test_unmatched_resource_hash_ignores_amount_changes() -> None:
     row = _normalize_resource_row(_resource_row())
     changed = {**row, "net_cost": "99.00"}
@@ -532,6 +568,63 @@ def test_run_sync_gcp_unmatched_resources_removes_superseded_unlabeled_row() -> 
             ).all()
         assert rows == [
             ('{"cluster":"10149878793099322221","shared_pool":"2076551309477019648"}', 7.0)
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_resource_identifier_enrichment_updates_the_existing_raw_row() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    try:
+        run_sync_gcp_unmatched_resources(
+            engine,
+            settings=settings,
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+        run_sync_gcp_unmatched_resources(
+            engine,
+            settings=settings,
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 18),
+            fetch_rows=lambda **_kwargs: [{**_resource_row(), "resource_id": "projects/p/instances/i-1"}],
+        )
+        with engine.begin() as connection:
+            count, resource_id = connection.execute(
+                text("SELECT COUNT(*), MAX(resource_id) FROM cost_unmatched_resource_daily")
+            ).one()
+        assert (count, resource_id) == (1, "projects/p/instances/i-1")
+    finally:
+        engine.dispose()
+
+
+def test_gcp_resource_sync_rematerializes_its_source_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        gcp_unmatched_resources,
+        "run_materialize_resource_serving",
+        lambda _engine, **kwargs: calls.append(kwargs),
+    )
+    try:
+        run_sync_gcp_unmatched_resources(
+            engine,
+            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            usage_start_date=date(2026, 5, 18),
+            usage_end_date=date(2026, 5, 19),
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+        assert calls == [
+            {
+                "start_date": date(2026, 5, 18),
+                "end_date": date(2026, 5, 19),
+                "vendor": "gcp",
+                "account_id": "pingcap-testing-account",
+            }
         ]
     finally:
         engine.dispose()

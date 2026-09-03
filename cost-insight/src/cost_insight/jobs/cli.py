@@ -256,6 +256,8 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_resources.add_argument("--processing-start-date", type=_parse_date)
     materialize_resources.add_argument("--processing-end-date", type=_parse_date)
     materialize_resources.add_argument("--materialization-version")
+    materialize_resources.add_argument("--vendor")
+    materialize_resources.add_argument("--account-id")
     materialize_resources.add_argument("--dry-run", action="store_true")
 
     sync_gcs_cache = subparsers.add_parser(
@@ -777,6 +779,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "materialize-resource-serving":
         if (args.processing_start_date is None) != (args.processing_end_date is None):
             raise ValueError("processing start and end dates must be provided together")
+        if (args.vendor is None) != (args.account_id is None):
+            raise ValueError("--vendor and --account-id must be provided together")
         engine = build_engine(settings)
         try:
             summary = run_materialize_resource_serving(
@@ -787,6 +791,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 processing_start_date=args.processing_start_date,
                 processing_end_date=args.processing_end_date,
                 materialization_version=args.materialization_version,
+                vendor=args.vendor,
+                account_id=args.account_id,
                 dry_run=args.dry_run,
                 batch_size=settings.gcp_billing.page_size,
             )

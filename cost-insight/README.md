@@ -216,7 +216,9 @@ Each materialization window and GKE date replacement logs its percentage and
 progress. A GKE replacement commits one usage date atomically: a failure rolls
 back that date's delete and writes, while completed dates are safely rerunnable.
 
-AWS unmatched resources use the same investigation table:
+AWS unmatched resources use the same investigation table. Successful resource imports and
+attribution refreshes automatically republish their affected source/date resource-serving
+windows; `materialize-resource-serving` remains available for standalone repair/backfill.
 
 ```bash
 cost-insight sync-aws-unmatched-resources \

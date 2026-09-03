@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, text
 
+import cost_insight.jobs.sync_aws_unmatched_resources as aws_unmatched_resources
 import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
 from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
@@ -117,6 +118,7 @@ def _sqlite_engine():
               vendor_tags_json TEXT,
               author TEXT,
               resource_name TEXT NOT NULL,
+              resource_id TEXT,
               parent_resource_name TEXT,
               source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
               workload_name TEXT,
@@ -764,6 +766,65 @@ def test_split_unmatched_replacement_rejects_empty_source() -> None:
                 replace_existing_usage_dates=True,
                 fetch_rows=lambda **_kwargs: [],
             )
+    finally:
+        engine.dispose()
+
+
+def test_aws_label_enrichment_updates_existing_raw_resource_row() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266")
+    first_row = {
+        **_resource_row(),
+        "summary_vendor_tags_json": '{"cluster":"prow"}',
+        "vendor_tags_json": '{"Name":"old-name","cluster":"prow"}',
+    }
+    updated_row = {**first_row, "vendor_tags_json": '{"Name":"new-name","cluster":"prow"}'}
+    try:
+        for row in (first_row, updated_row):
+            run_sync_aws_unmatched_resources(
+                engine,
+                settings=settings,
+                account_id="946646677266",
+                usage_start_date=date(2026, 5, 1),
+                usage_end_date=date(2026, 5, 1),
+                fetch_rows=lambda **_kwargs: [row],
+            )
+        with engine.begin() as connection:
+            count, vendor_tags_json = connection.execute(
+                text("SELECT COUNT(*), MAX(vendor_tags_json) FROM cost_unmatched_resource_daily")
+            ).one()
+        assert (count, vendor_tags_json) == (1, '{"Name":"new-name","cluster":"prow"}')
+    finally:
+        engine.dispose()
+
+
+def test_aws_resource_sync_rematerializes_its_source_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        aws_unmatched_resources,
+        "run_materialize_resource_serving",
+        lambda _engine, **kwargs: calls.append(kwargs),
+    )
+    try:
+        run_sync_aws_unmatched_resources(
+            engine,
+            settings=AwsBillingSettings(account_id="946646677266"),
+            account_id="946646677266",
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 2),
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+        assert calls == [
+            {
+                "start_date": date(2026, 5, 1),
+                "end_date": date(2026, 5, 2),
+                "vendor": "aws",
+                "account_id": "946646677266",
+            }
+        ]
     finally:
         engine.dispose()
 

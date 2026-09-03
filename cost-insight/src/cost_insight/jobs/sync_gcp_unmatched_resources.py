@@ -25,6 +25,7 @@ from cost_insight.common.row_utils import (
 from cost_insight.jobs import state_store
 from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_cost_source
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.sources.gcp_billing_export import (
     decimal_or_none,
     fetch_gcp_unmatched_resource_rows,
@@ -168,6 +169,14 @@ def run_sync_gcp_unmatched_resources(
                     )
                 state_store.mark_job_succeeded(connection, job_name, watermark)
 
+            run_materialize_resource_serving(
+                engine,
+                start_date=usage_start_date,
+                end_date=usage_end_date,
+                vendor="gcp",
+                account_id=settings.account_id,
+            )
+
         return SyncGcpUnmatchedResourcesSummary(
             account_id=settings.account_id,
             usage_start_date=usage_start_date,
@@ -221,9 +230,13 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
+        "summary_vendor_tags_json": normalize_vendor_tags_json(
+            row.get("summary_vendor_tags_json")
+        ),
         # ``resource_name`` is concrete display identity. The source summary can
         # intentionally use a workload name (or NULL), so keep it separately.
         "resource_name": nullable_text(row.get("resource_name")),
+        "resource_id": nullable_text(row.get("resource_id")),
         "summary_resource_name": nullable_text(row.get("summary_resource_name")),
         "parent_resource_name": nullable_text(row.get("parent_resource_name")),
         "source_schema_version": nullable_text(row.get("source_schema_version")),
@@ -259,6 +272,13 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
     summary_identity = {
         **normalized,
         "resource_name": normalized["summary_resource_name"],
+        # AWS summaries retain only compact routing tags. A full provider-label
+        # fallback here would produce a detail hash with no matching summary.
+        "vendor_tags_json": (
+            normalized["summary_vendor_tags_json"]
+            if normalized["vendor"] == "aws"
+            else normalized["summary_vendor_tags_json"] or normalized["vendor_tags_json"]
+        ),
     }
     # GCP's summary query intentionally rolls all resource labels into one
     # attribution fact; labels remain resource metadata, not summary identity.
@@ -271,9 +291,14 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def build_unmatched_resource_row_hash(row: dict[str, Any]) -> str:
     hash_fields = SPLIT_HASH_FIELDS if row.get("is_split_source") else HASH_FIELDS
-    if row.get("vendor_tags_json") is None:
+    hash_row = row
+    # AWS summary lineage uses only its compact routing tags. Full provider
+    # labels are resource metadata and must not create a second raw billing row.
+    if row.get("vendor") == "aws" and "summary_vendor_tags_json" in row:
+        hash_row = {**row, "vendor_tags_json": row["summary_vendor_tags_json"]}
+    if hash_row.get("vendor_tags_json") is None:
         hash_fields = tuple(field for field in hash_fields if field != "vendor_tags_json")
-    payload = {field: hash_value(row.get(field)) for field in hash_fields}
+    payload = {field: hash_value(hash_row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -545,6 +570,7 @@ def _build_upsert_statement(
               vendor_tags_json,
               author,
               resource_name,
+              resource_id,
               parent_resource_name,
               source_allocation_scope,
               workload_name,
@@ -577,6 +603,7 @@ def _build_upsert_statement(
               :vendor_tags_json,
               :author,
               :resource_name,
+              :resource_id,
               :parent_resource_name,
               :source_allocation_scope,
               :workload_name,
@@ -597,6 +624,9 @@ def _build_upsert_statement(
             ON CONFLICT(vendor, account_id, export_partition_date, source_row_hash)
             DO UPDATE SET
               billing_account_id = excluded.billing_account_id,
+              vendor_tags_json = excluded.vendor_tags_json,
+              resource_id = excluded.resource_id,
+              resource_name = excluded.resource_name,
               usage_seconds = excluded.usage_seconds,
               list_cost = excluded.list_cost,
               effective_cost = excluded.effective_cost,
@@ -634,6 +664,7 @@ def _build_upsert_statement(
           vendor_tags_json,
           author,
           resource_name,
+          resource_id,
           parent_resource_name,
           source_allocation_scope,
           workload_name,
@@ -666,6 +697,7 @@ def _build_upsert_statement(
           :vendor_tags_json,
           :author,
           :resource_name,
+          :resource_id,
           :parent_resource_name,
           :source_allocation_scope,
           :workload_name,
@@ -686,6 +718,9 @@ def _build_upsert_statement(
         ON DUPLICATE KEY UPDATE
           -- Dimension columns are part of source_row_hash; same hash means same dimensions.
           billing_account_id = VALUES(billing_account_id),
+          vendor_tags_json = VALUES(vendor_tags_json),
+          resource_id = VALUES(resource_id),
+          resource_name = VALUES(resource_name),
           usage_seconds = VALUES(usage_seconds),
           list_cost = VALUES(list_cost),
           effective_cost = VALUES(effective_cost),

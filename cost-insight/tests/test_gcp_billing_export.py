@@ -108,6 +108,7 @@ def test_build_gcp_unmatched_resource_query_preserves_native_resource_name_and_l
     assert "TO_JSON_STRING(" in query
     assert "JSON_OBJECT(" in query
     assert "AS vendor_tags_json" in query
+    assert "COALESCE(NULLIF(resource.global_name, ''), NULLIF(resource.name, '')) AS resource_id" in query
     concrete_resource = query[
         query.index("COALESCE(\n      NULLIF(resource.name, '')") : query.index("AS resource_name")
     ]

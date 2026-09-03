@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from cost_insight.common.row_utils import bind_decimal_rows
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
 _AMOUNTS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
+LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,8 @@ def run_materialize_resource_serving(
     processing_start_date: date | None = None,
     processing_end_date: date | None = None,
     materialization_version: str | None = None,
+    vendor: str | None = None,
+    account_id: str | None = None,
     dry_run: bool = False,
     batch_size: int = 1_000,
     now: datetime | None = None,
@@ -61,11 +65,24 @@ def run_materialize_resource_serving(
         raise ValueError("processing dates must be within the requested range")
     if basis not in (None, "native"):
         raise ValueError(f"unsupported resource serving basis: {basis!r}")
+    if (vendor is None) != (account_id is None):
+        raise ValueError("vendor and account_id must be supplied together")
 
     version = materialization_version or (now or datetime.now(UTC)).strftime(
         "resource_%Y%m%dT%H%M%S%f"
     )
     bases = ("native",)
+    if not _serving_schema_ready(engine):
+        LOG.warning("resource serving materialization skipped because required serving migrations are missing")
+        return MaterializeResourceServingSummary(
+            start_date=start_date,
+            end_date=end_date,
+            materialization_version=version,
+            bases=bases,
+            windows_published=0,
+            rows_written=0,
+            dry_run=dry_run,
+        )
 
     windows_published = 0
     rows_written = 0
@@ -75,6 +92,8 @@ def run_materialize_resource_serving(
                 connection,
                 start_date=processing_start,
                 end_date=processing_end,
+                vendor=vendor,
+                account_id=account_id,
             )
         for window in windows:
             params = dict(window)
@@ -246,16 +265,34 @@ def _base_serving_row(
     owner = str(source.get("owner") or "")
     source_identity = str(source.get("source_fact_hash") or source.get("dimension_hash") or "")
     if detail is not None:
+        resource_id = str(detail.get("resource_id") or "") or None
         resource_name = str(detail.get("resource_name") or "(resource detail unavailable)")
         parent = str(detail.get("parent_resource_name") or "")
         service_name = detail.get("service_name") or source.get("service_name")
-        identity = (vendor, account_id, resource_name, parent, str(service_name or ""))
-        group_identity = identity[:-1]
+        group_identity = (
+            (vendor, account_id, resource_id)
+            if resource_id is not None
+            else (vendor, account_id, resource_name, parent)
+        )
+        identity = (
+            *group_identity,
+            str(service_name or ""),
+            source.get("group_id"),
+            source.get("project"),
+        )
         labels = detail.get("vendor_tags_json")
     else:
+        resource_id = None
         resource_name = str(source.get("resource_name") or "(resource detail unavailable)")
         service_name = source.get("service_name")
-        identity = (vendor, account_id, source_identity, "attribution_fallback")
+        identity = (
+            vendor,
+            account_id,
+            source_identity,
+            "attribution_fallback",
+            source.get("group_id"),
+            source.get("project"),
+        )
         group_identity = identity
         labels = source.get("vendor_tags_json")
     return {
@@ -268,10 +305,12 @@ def _base_serving_row(
         "owner": owner,
         "group_id": source.get("group_id"),
         "manager_id": source.get("manager_id"),
+        "project": source.get("project"),
         "target_branch": source.get("target_branch"),
         "resource_group_key": _hash_identity(group_identity),
         "resource_key": _hash_identity(identity),
         "resource_name": resource_name,
+        "resource_id": resource_id,
         "service_name": service_name,
         "resource_identity_kind": identity_kind,
         "representative_labels_json": labels,
@@ -293,9 +332,9 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
     label_variants: dict[tuple[Any, ...], set[str]] = defaultdict(set)
     largest_label: dict[tuple[Any, ...], tuple[Decimal, str]] = {}
     for row in rows:
-        # Keep this exactly aligned with uk_resource_serving_versioned. Roster
-        # metadata can differ between source facts for one owner/resource, but
-        # it is display context rather than part of serving-row identity.
+        # Keep this exactly aligned with uk_resource_serving_versioned. Resource
+        # keys include the attribution scopes that the Dashboard can filter, so
+        # a resource's contributions never collapse across teams or projects.
         key = (
             row["materialization_version"],
             row["basis_key"],
@@ -331,14 +370,84 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
     return tuple(grouped.values())
 
 
+def _serving_schema_ready(engine: Engine) -> bool:
+    required_tables = (
+        "cost_attribution_daily",
+        "cost_unmatched_resource_daily",
+        "cost_resource_serving_daily",
+        "cost_resource_serving_publication",
+    )
+    with engine.connect() as connection:
+        return all(_table_exists(connection, table) for table in required_tables) and all(
+            _table_has_column(connection, table, column)
+            for table, column in (
+                ("cost_unmatched_resource_daily", "resource_id"),
+                ("cost_resource_serving_daily", "resource_id"),
+                ("cost_resource_serving_daily", "project"),
+            )
+        )
+
+
+def _table_exists(connection: Connection, table: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return connection.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table"),
+            {"table": table},
+        ).first() is not None
+    return connection.execute(
+        text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_name = :table"
+        ),
+        {"table": table},
+    ).first() is not None
+
+
+def _table_has_column(connection: Connection, table: str, column: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return any(row[1] == column for row in connection.execute(text(f"PRAGMA table_info({table})")))
+    return connection.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column"
+        ),
+        {"table": table, "column": column},
+    ).first() is not None
+
+
 def _source_windows(
-    connection: Connection, *, start_date: date, end_date: date
+    connection: Connection,
+    *,
+    start_date: date,
+    end_date: date,
+    vendor: str | None = None,
+    account_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
+    if vendor is not None and account_id is not None:
+        rows = connection.execute(
+            _NATIVE_WINDOWS_FOR_SOURCE,
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "vendor": vendor,
+                "account_id": account_id,
+            },
+        ).mappings()
+    else:
+        rows = connection.execute(
+            _NATIVE_WINDOWS, {"start_date": start_date, "end_date": end_date}
+        ).mappings()
     windows = {
         (_as_date(row["usage_date"]), str(row["vendor"]), str(row["account_id"]))
-        for row in connection.execute(_NATIVE_WINDOWS, {"start_date": start_date, "end_date": end_date}).mappings()
+        for row in rows
     }
-    windows.update(_refreshed_empty_windows(connection, start_date=start_date, end_date=end_date))
+    windows.update(
+        (usage_date, refreshed_vendor, refreshed_account_id)
+        for usage_date, refreshed_vendor, refreshed_account_id in _refreshed_empty_windows(
+            connection, start_date=start_date, end_date=end_date
+        )
+        if vendor is None or (refreshed_vendor, refreshed_account_id) == (vendor, account_id)
+    )
     return tuple({"usage_date": d, "vendor": v, "account_id": a} for d, v, a in sorted(windows))
 
 def _as_date(value: Any) -> date:
@@ -477,19 +586,31 @@ _NATIVE_WINDOWS = text("""
 SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
 WHERE usage_date BETWEEN :start_date AND :end_date ORDER BY usage_date, vendor, account_id
 """)
+_NATIVE_WINDOWS_FOR_SOURCE = text("""
+SELECT DISTINCT usage_date, vendor, account_id FROM cost_attribution_daily
+WHERE usage_date BETWEEN :start_date AND :end_date
+  AND vendor = :vendor AND account_id = :account_id
+ORDER BY usage_date
+""")
 _SOURCE_COLUMNS = """
-usage_date, vendor, account_id, service_name, sku_name, region, org, repo, target_branch,
-resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds, list_cost,
+usage_date, vendor, account_id, service_name, sku_name, region, org, repo, project, target_branch,
+resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds,
 effective_cost, credit_amount, net_cost, source_rows, source_summary_row_hash
 """
 _NATIVE_SOURCES = text(f"""
-SELECT {_SOURCE_COLUMNS}, dimension_hash AS source_fact_hash
+SELECT {_SOURCE_COLUMNS},
+  CASE
+    WHEN vendor = 'gcp' AND sku_name LIKE 'Compute Flexible Committed Use Discounts%'
+      THEN 0
+    ELSE list_cost
+  END AS list_cost,
+  dimension_hash AS source_fact_hash
 FROM cost_attribution_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
 ORDER BY dimension_hash
 """)
 _DETAIL_ROWS = text("""
-SELECT source_summary_row_hash, resource_name, parent_resource_name, service_name,
+SELECT source_summary_row_hash, resource_name, resource_id, parent_resource_name, service_name,
   vendor_tags_json, usage_seconds, list_cost
 FROM cost_unmatched_resource_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
@@ -504,13 +625,13 @@ WHERE materialization_version = :materialization_version AND basis_key = :basis_
 _INSERT_SERVING = text("""
 INSERT INTO cost_resource_serving_daily (
   materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
-  group_id, manager_id, target_branch, resource_group_key, resource_key, resource_name,
+  group_id, manager_id, project, target_branch, resource_group_key, resource_key, resource_name, resource_id,
   service_name, resource_identity_kind, representative_labels_json, metadata_variant_count,
   detail_list_cost, fallback_list_cost, usage_seconds, list_cost, effective_cost, credit_amount,
   net_cost, source_row_count, calculated_at
 ) VALUES (
   :materialization_version, :basis_key, :usage_date, :vendor, :account_id, :owner_key, :owner,
-  :group_id, :manager_id, :target_branch, :resource_group_key, :resource_key, :resource_name,
+  :group_id, :manager_id, :project, :target_branch, :resource_group_key, :resource_key, :resource_name, :resource_id,
   :service_name, :resource_identity_kind, :representative_labels_json, :metadata_variant_count,
   :detail_list_cost, :fallback_list_cost, :usage_seconds, :list_cost, :effective_cost, :credit_amount,
   :net_cost, :source_row_count, :calculated_at
