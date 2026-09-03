@@ -163,6 +163,64 @@ def test_no_owner_resource_read_uses_only_published_serving_rows() -> None:
     assert "cost_attribution_daily" not in executed
 
 
+def test_resource_drilldown_embeds_coverage_in_the_page_aggregation() -> None:
+    engine = _engine()
+    with engine.begin() as connection:
+        _publish(connection, "2026-08-10")
+        _serving_row(
+            connection,
+            usage_date="2026-08-10",
+            resource_group_key="group-1",
+            resource_key="detail-1",
+            resource_name="instance-1",
+            resource_id="instance-1",
+            service_name="Compute Engine",
+            labels='{"cluster":"prow"}',
+            usage_seconds=40,
+            list_cost=40,
+        )
+
+    statements: list[str] = []
+    event.listen(engine, "before_cursor_execute", lambda *_args: statements.append(_args[2]))
+    get_unmatched_resources(engine, _filters())
+
+    executed = "\n".join(statements)
+    assert "NO_DECORRELATE()" in executed
+    assert "SUM(SUM(detail_list_cost)) OVER ()" in executed
+    assert "COALESCE(SUM(s.detail_list_cost), 0)" not in executed
+
+
+def test_resource_drilldown_keeps_coverage_when_cursor_has_no_remaining_rows() -> None:
+    engine = _engine()
+    with engine.begin() as connection:
+        _publish(connection, "2026-08-10")
+        _serving_row(
+            connection,
+            usage_date="2026-08-10",
+            resource_group_key="group-1",
+            resource_key="detail-1",
+            resource_name="instance-1",
+            resource_id="instance-1",
+            service_name="Compute Engine",
+            labels='{"cluster":"prow"}',
+            usage_seconds=40,
+            list_cost=40,
+        )
+
+    result = get_unmatched_resources(
+        engine,
+        _filters(),
+        cursor=_encode_resource_cursor(
+            {"resource_group_key": "cursor", "list_cost": Decimal("0"), "usage_seconds": 0},
+            sort_by="list_cost",
+        ),
+    )
+
+    assert result["items"] == []
+    assert result["meta"]["resource_detail_cost"] == 40
+    assert result["meta"]["resource_detail_coverage_pct"] == 100.0
+
+
 def test_resource_drilldown_aggregates_ids_labels_services_and_pages() -> None:
     engine = _engine()
     with engine.begin() as connection:
