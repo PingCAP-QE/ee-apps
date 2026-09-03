@@ -2218,11 +2218,11 @@ select {
 }
 
 .resource-breakdown__id-column {
-  width: 15rem;
+  width: 11rem;
 }
 
 .resource-breakdown__name-column {
-  width: 32rem;
+  width: 22rem;
 }
 
 .resource-breakdown__service-column {
@@ -2235,7 +2235,7 @@ select {
 }
 
 .resource-breakdown__labels-column {
-  width: 24rem;
+  width: 38rem;
 }
 
 .data-table--issue-weekly {
@@ -2345,8 +2345,17 @@ select {
   --data-table-sticky-bg: rgba(227, 243, 241, 0.96) !important;
 }
 
+.data-table--resource-breakdown tbody th {
+  min-width: 11rem;
+  max-width: 11rem;
+  overflow-wrap: anywhere;
+}
+
+.data-table--resource-breakdown .resource-table__name {
+  max-width: 22rem;
+}
+
 .resource-table__name {
-  max-width: 28rem;
   white-space: normal;
   word-break: break-word;
 }
