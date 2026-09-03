@@ -49,7 +49,7 @@ export function compileRegistry(input: string): { registry: Document; json: stri
     const pages = existsSync(pageDirectory) ? filesRecursively(pageDirectory).map((file) => {
       let page = parse(readFileSync(file, "utf8")) as Document;
       if (page.metadata && page.spec) page = { id: page.metadata.name, module: page.metadata.module, title: page.metadata.title, description: page.metadata.description, ...page.spec };
-      const pageID = requiredString(page, "id", file); requiredString(page, "title", file);
+      requiredString(page, "id", file); requiredString(page, "title", file);
       if (page.module !== id) fail(file, `module must be '${id}'`); if (!ALLOWED_PAGE_TYPES.has(page.type)) fail(file, `unsupported page type '${page.type}'`);
       if (page.schema && page.schema.$schema !== JSON_SCHEMA_VERSION) fail(file, `form schema must use ${JSON_SCHEMA_VERSION}`); if (page.type === "form" && !page.schema) fail(file, "form pages require a JSON Schema");
       for (const action of page.actions || []) if (!ALLOWED_ACTIONS.has(action.type)) fail(file, `unsupported action '${action.type}'`);
