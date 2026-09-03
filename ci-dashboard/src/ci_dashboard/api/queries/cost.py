@@ -1194,21 +1194,22 @@ def _get_published_unmatched_resources(
                         AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
                         AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
                     )
-                    SELECT p.vendor, p.account_id, p.usage_date,
-                      p.source_row_count,
-                      COUNT(s.id) AS serving_row_count
+                    SELECT p.vendor, p.account_id, p.usage_date, p.source_row_count,
+                      CASE WHEN p.source_row_count = 0 THEN 0
+                        WHEN EXISTS (
+                          SELECT /*+ NO_DECORRELATE() */ 1
+                          FROM cost_resource_serving_daily s
+                          WHERE s.basis_key = p.basis_key AND s.vendor = p.vendor
+                            AND s.account_id = p.account_id AND s.usage_date = p.usage_date
+                            AND s.materialization_version = p.active_materialization_version
+                          LIMIT 1
+                        ) THEN 1 ELSE 0
+                      END AS serving_row_count
                     FROM cost_resource_serving_publication p
                     JOIN scoped_sources scope
                       ON scope.vendor = p.vendor AND scope.account_id = p.account_id
-                    LEFT JOIN cost_resource_serving_daily s
-                      ON s.basis_key = p.basis_key
-                     AND s.vendor = p.vendor AND s.account_id = p.account_id
-                     AND s.usage_date = p.usage_date
-                     AND s.materialization_version = p.active_materialization_version
                     WHERE p.basis_key = :basis_key
                       AND p.usage_date BETWEEN :start_date AND :end_date
-                    GROUP BY p.vendor, p.account_id, p.usage_date,
-                      p.source_row_count
                     """
                 ),
                 {
@@ -1321,11 +1322,6 @@ def _get_published_unmatched_resources(
             {"value": str(row["service_name"]), "label": str(row["service_name"])}
             for row in service_rows
         ]
-        service_aggregate = (
-            "GROUP_CONCAT(service_name ORDER BY service_name)"
-            if connection.dialect.name != "sqlite"
-            else "GROUP_CONCAT(service_name)"
-        )
         order_by = (
             "a.usage_seconds IS NULL ASC, a.usage_seconds DESC, a.list_cost DESC, "
             "a.resource_group_key ASC"
@@ -1339,7 +1335,10 @@ def _get_published_unmatched_resources(
                 text(
                     f"""
                     WITH filtered AS (
-                      SELECT s.*
+                      SELECT s.resource_group_key, s.resource_id, s.resource_name, s.service_name,
+                        s.representative_labels_json, s.usage_seconds, s.list_cost,
+                        s.detail_list_cost, s.fallback_list_cost, s.usage_date, s.resource_key,
+                        s.target_branch
                       FROM cost_resource_serving_daily s
                       JOIN cost_resource_serving_publication p
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
@@ -1351,45 +1350,37 @@ def _get_published_unmatched_resources(
                         AND (:service_name IS NULL OR s.service_name = :service_name)
                         AND {validity_clause} {branch_clause}
                     ),
-                    service_values AS (
-                      SELECT DISTINCT resource_group_key, service_name
-                      FROM filtered
-                      WHERE service_name IS NOT NULL
-                      ORDER BY resource_group_key, service_name
-                    ),
-                    service_names AS (
-                      SELECT resource_group_key, {service_aggregate} AS service_name
-                      FROM service_values
-                      GROUP BY resource_group_key
-                    ),
-                    labels AS (
-                      SELECT resource_group_key, representative_labels_json,
-                        ROW_NUMBER() OVER (
-                          PARTITION BY resource_group_key
-                          ORDER BY ABS(list_cost) DESC, usage_date ASC, resource_key ASC,
-                            COALESCE(target_branch, '') ASC,
-                            COALESCE(representative_labels_json, '') ASC
-                        ) AS label_rank
+                    ranked AS (
+                      SELECT *, ROW_NUMBER() OVER (
+                        PARTITION BY resource_group_key
+                        ORDER BY ABS(list_cost) DESC, usage_date ASC, resource_key ASC,
+                          COALESCE(target_branch, '') ASC,
+                          COALESCE(representative_labels_json, '') ASC
+                      ) AS label_rank
                       FROM filtered
                     ),
                     aggregated AS (
                       SELECT /*+ STREAM_AGG() */ resource_group_key, MIN(resource_id) AS resource_id,
                         MIN(resource_name) AS resource_name,
+                        GROUP_CONCAT(DISTINCT service_name ORDER BY service_name) AS service_name,
+                        MAX(CASE WHEN label_rank = 1 THEN representative_labels_json END)
+                          AS representative_labels_json,
                         SUM(usage_seconds) AS usage_seconds,
                         SUM(list_cost) AS list_cost,
                         SUM(detail_list_cost) AS detail_list_cost,
-                        SUM(fallback_list_cost) AS fallback_list_cost
-                      FROM filtered
+                        SUM(fallback_list_cost) AS fallback_list_cost,
+                        SUM(SUM(detail_list_cost)) OVER () AS total_detail_list_cost,
+                        SUM(SUM(fallback_list_cost)) OVER () AS total_fallback_list_cost,
+                        SUM(SUM(list_cost)) OVER () AS total_list_cost
+                      FROM ranked
                       GROUP BY resource_group_key
                       HAVING SUM(list_cost) <> 0
                     )
                     SELECT a.resource_group_key, a.resource_id, a.resource_name,
-                      n.service_name, l.representative_labels_json, a.usage_seconds,
-                      a.list_cost, a.detail_list_cost, a.fallback_list_cost
+                      a.service_name, a.representative_labels_json, a.usage_seconds,
+                      a.list_cost, a.detail_list_cost, a.fallback_list_cost,
+                      a.total_detail_list_cost, a.total_fallback_list_cost, a.total_list_cost
                     FROM aggregated a
-                    LEFT JOIN service_names n ON n.resource_group_key = a.resource_group_key
-                    LEFT JOIN labels l
-                      ON l.resource_group_key = a.resource_group_key AND l.label_rank = 1
                     WHERE {cursor_clause}
                     ORDER BY {order_by}
                     LIMIT :limit
@@ -1400,30 +1391,35 @@ def _get_published_unmatched_resources(
         )
         has_next_page = len(page_rows) > page_size
         rows = page_rows[:page_size]
-        coverage = connection.execute(
-            text(
-                f"""
-                SELECT
-                  COALESCE(SUM(s.detail_list_cost), 0) AS detail_list_cost,
-                  COALESCE(SUM(s.fallback_list_cost), 0) AS fallback_list_cost,
-                  COALESCE(SUM(s.list_cost), 0) AS total_list_cost
-                FROM cost_resource_serving_daily s
-                JOIN cost_resource_serving_publication p
-                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
-                 AND p.usage_date = s.usage_date
-                 AND p.active_materialization_version = s.materialization_version
-                WHERE s.basis_key = :basis_key AND ({scope_clause})
-                  AND s.usage_date BETWEEN :start_date AND :end_date
-                  AND ({source_clause})
-                  AND (:service_name IS NULL OR s.service_name = :service_name)
-                  AND {validity_clause} {branch_clause}
-                """
-            ),
-            params,
-        ).mappings().one()
-        detail_list_cost = Decimal(str(to_number(coverage["detail_list_cost"]) or 0))
-        fallback_list_cost = Decimal(str(to_number(coverage["fallback_list_cost"]) or 0))
-        total_list_cost = Decimal(str(to_number(coverage["total_list_cost"]) or 0))
+        if rows:
+            detail_list_cost = Decimal(str(to_number(rows[0]["total_detail_list_cost"]) or 0))
+            fallback_list_cost = Decimal(str(to_number(rows[0]["total_fallback_list_cost"]) or 0))
+            total_list_cost = Decimal(str(to_number(rows[0]["total_list_cost"]) or 0))
+        else:
+            coverage = connection.execute(
+                text(
+                    f"""
+                    SELECT
+                      COALESCE(SUM(s.detail_list_cost), 0) AS detail_list_cost,
+                      COALESCE(SUM(s.fallback_list_cost), 0) AS fallback_list_cost,
+                      COALESCE(SUM(s.list_cost), 0) AS total_list_cost
+                    FROM cost_resource_serving_daily s
+                    JOIN cost_resource_serving_publication p
+                      ON p.basis_key = s.basis_key AND p.vendor = s.vendor
+                     AND p.account_id = s.account_id AND p.usage_date = s.usage_date
+                     AND p.active_materialization_version = s.materialization_version
+                    WHERE s.basis_key = :basis_key AND ({scope_clause})
+                      AND s.usage_date BETWEEN :start_date AND :end_date
+                      AND ({source_clause})
+                      AND (:service_name IS NULL OR s.service_name = :service_name)
+                      AND {validity_clause} {branch_clause}
+                    """
+                ),
+                params,
+            ).mappings().one()
+            detail_list_cost = Decimal(str(to_number(coverage["detail_list_cost"]) or 0))
+            fallback_list_cost = Decimal(str(to_number(coverage["fallback_list_cost"]) or 0))
+            total_list_cost = Decimal(str(to_number(coverage["total_list_cost"]) or 0))
         items = []
         for row in rows:
             detail = to_number(row["detail_list_cost"]) or 0
