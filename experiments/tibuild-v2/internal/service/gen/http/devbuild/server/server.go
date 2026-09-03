@@ -19,12 +19,13 @@ import (
 
 // Server lists the devbuild service endpoint HTTP handlers.
 type Server struct {
-	Mounts []*MountPoint
-	List   http.Handler
-	Create http.Handler
-	Get    http.Handler
-	Update http.Handler
-	Rerun  http.Handler
+	Mounts       []*MountPoint
+	List         http.Handler
+	Capabilities http.Handler
+	Create       http.Handler
+	Get          http.Handler
+	Update       http.Handler
+	Rerun        http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -55,16 +56,18 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"List", "GET", "/api/v2/devbuilds"},
+			{"Capabilities", "GET", "/api/v2/devbuilds/capabilities"},
 			{"Create", "POST", "/api/v2/devbuilds"},
 			{"Get", "GET", "/api/v2/devbuilds/{id}"},
 			{"Update", "PUT", "/api/v2/devbuilds/{id}"},
 			{"Rerun", "POST", "/api/v2/devbuilds/{id}/rerun"},
 		},
-		List:   NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
-		Create: NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
-		Get:    NewGetHandler(e.Get, mux, decoder, encoder, errhandler, formatter),
-		Update: NewUpdateHandler(e.Update, mux, decoder, encoder, errhandler, formatter),
-		Rerun:  NewRerunHandler(e.Rerun, mux, decoder, encoder, errhandler, formatter),
+		List:         NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
+		Capabilities: NewCapabilitiesHandler(e.Capabilities, mux, decoder, encoder, errhandler, formatter),
+		Create:       NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
+		Get:          NewGetHandler(e.Get, mux, decoder, encoder, errhandler, formatter),
+		Update:       NewUpdateHandler(e.Update, mux, decoder, encoder, errhandler, formatter),
+		Rerun:        NewRerunHandler(e.Rerun, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -74,6 +77,7 @@ func (s *Server) Service() string { return "devbuild" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.List = m(s.List)
+	s.Capabilities = m(s.Capabilities)
 	s.Create = m(s.Create)
 	s.Get = m(s.Get)
 	s.Update = m(s.Update)
@@ -86,6 +90,7 @@ func (s *Server) MethodNames() []string { return devbuild.MethodNames[:] }
 // Mount configures the mux to serve the devbuild endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountListHandler(mux, h.List)
+	MountCapabilitiesHandler(mux, h.Capabilities)
 	MountCreateHandler(mux, h.Create)
 	MountGetHandler(mux, h.Get)
 	MountUpdateHandler(mux, h.Update)
@@ -136,6 +141,52 @@ func NewListHandler(
 			return
 		}
 		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountCapabilitiesHandler configures the mux to serve the "devbuild" service
+// "capabilities" endpoint.
+func MountCapabilitiesHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/devbuilds/capabilities", f)
+}
+
+// NewCapabilitiesHandler creates a HTTP handler which loads the HTTP request
+// and calls the "devbuild" service "capabilities" endpoint.
+func NewCapabilitiesHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		encodeResponse = EncodeCapabilitiesResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "capabilities")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "devbuild")
+		var err error
+		res, err := endpoint(ctx, nil)
 		if err != nil {
 			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
 				errhandler(ctx, w, err)

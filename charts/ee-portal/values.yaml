@@ -1,0 +1,57 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/pingcap-qe/ee-apps/exp-ee-portal
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 8080
+
+registry:
+  configMapName: ee-portal-registry
+  key: registry.json
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: http
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

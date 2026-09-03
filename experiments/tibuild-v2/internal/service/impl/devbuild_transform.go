@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
@@ -9,11 +10,13 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 )
 
+var sensitiveErrorValue = regexp.MustCompile(`(?i)(token|password|secret|authorization|cookie)\s*[:=]\s*\S+`)
+
 // transformDevBuild converts an ent.DevBuild to a devbuild.DevBuild
 func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 	status := &devbuild.DevBuildStatus{
 		BuildReport:     transformBuildReport(&build.BuildReport),
-		ErrMsg:          &build.ErrMsg,
+		ErrMsg:          safeErrorSummary(build.ErrMsg),
 		PipelineBuildID: &build.PipelineBuildID,
 		PipelineStartAt: formatTime(build.PipelineStartAt),
 		PipelineEndAt:   formatTime(build.PipelineEndAt),
@@ -30,6 +33,7 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			}
 		}
 		if len(urls) > 0 {
+			status.PipelineViewURL = &urls[0]
 			status.PipelineViewURLs = urls
 		}
 	}
@@ -58,10 +62,31 @@ func transformDevBuild(build *ent.DevBuild) *devbuild.DevBuild {
 			ProductBaseImg:    &build.ProductBaseImg,
 			ProductDockerfile: &build.ProductDockerfile,
 			TargetImg:         &build.TargetImg,
-			Version:           build.Version,
+			Version:           nonEmptyPtr(build.Version),
 		},
 		Status: status,
 	}
+}
+
+// safeErrorSummary keeps the API useful without turning the detail page into
+// a log viewer or reflecting common credential material into the browser.
+func safeErrorSummary(raw string) *string {
+	line := strings.TrimSpace(strings.SplitN(raw, "\n", 2)[0])
+	if line == "" {
+		return nil
+	}
+	line = strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\t' {
+			return -1
+		}
+		return r
+	}, line)
+	line = sensitiveErrorValue.ReplaceAllString(line, "$1=[redacted]")
+	runes := []rune(line)
+	if len(runes) > 500 {
+		line = string(runes[:500]) + "…"
+	}
+	return &line
 }
 
 // transformBuildReport converts a schema.BuildReport to a devbuild.BuildReport

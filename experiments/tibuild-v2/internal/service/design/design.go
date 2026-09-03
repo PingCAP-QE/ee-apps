@@ -104,8 +104,11 @@ var _ = Service("artifact", func() {
 
 var _ = Service("devbuild", func() {
 	Description("The devbuild service provides operations to manage dev builds.")
-	Error("BadRequest", HTTPError, "Bad Request")
-	Error("InternalServerError", HTTPError, "Internal Server Error")
+	Error("BadRequest", DevBuildBadRequestError, "Bad Request")
+	Error("Unauthorized", DevBuildUnauthorizedError, "Unauthorized")
+	Error("Forbidden", DevBuildForbiddenError, "Forbidden")
+	Error("NotFound", DevBuildNotFoundError, "Not Found")
+	Error("InternalServerError", DevBuildInternalServerError, "Internal Server Error")
 	HTTP(func() {
 		Path("/devbuilds")
 	})
@@ -130,6 +133,13 @@ var _ = Service("devbuild", func() {
 				Default("desc")
 			})
 			Attribute("createdBy", String, "Filter created by")
+			Attribute("scope", String, "Filter builds by the authenticated owner", func() {
+				Enum("all", "mine")
+				Default("all")
+			})
+			Attribute("status", BuildStatus, "Filter by build status")
+			Attribute("product", String, "Filter by product")
+			Attribute("q", String, "Search by build ID, Git ref, or creator")
 		})
 		Result(ArrayOf(DevBuild), "List of dev builds")
 		HTTP(func() {
@@ -140,24 +150,39 @@ var _ = Service("devbuild", func() {
 			Param("sort")
 			Param("direction")
 			Param("createdBy")
+			Param("scope")
+			Param("status")
+			Param("product")
+			Param("q")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Unauthorized", StatusUnauthorized)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+
+	Method("capabilities", func() {
+		Description("List products and options supported by the EE Portal build form")
+		Result(DevBuildCapabilities)
+		HTTP(func() {
+			GET("/capabilities")
+			Response(StatusOK)
 		})
 	})
 
 	Method("create", func() {
 		Description("Create and trigger devbuild")
 		Payload(func() {
-			Attribute("createdBy", String, "Creator of build", func() {
+			Attribute("createdBy", String, "Creator of build for legacy machine clients", func() {
 				Format(FormatEmail)
 			})
 			Attribute("request", DevBuildSpec, "Build to create, only spec field is required, others are ignored", func() {
-				Required("product", "version", "edition", "gitRef")
+				Required("product", "edition", "gitRef")
 			})
 			Attribute("dryrun", Boolean, "Dry run", func() {
 				Default(false)
 			})
-			Required("createdBy", "request")
+			Required("request")
 		})
 		Result(DevBuild)
 		HTTP(func() {
@@ -165,6 +190,7 @@ var _ = Service("devbuild", func() {
 			Param("dryrun")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Unauthorized", StatusUnauthorized)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -178,11 +204,10 @@ var _ = Service("devbuild", func() {
 			Required("id")
 		})
 		Result(DevBuild)
-		Error("http_error", HTTPError, "Bad Request")
 		HTTP(func() {
 			GET("/{id}")
 			Response(StatusOK)
-			Response("BadRequest", StatusBadRequest)
+			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -204,7 +229,7 @@ var _ = Service("devbuild", func() {
 			PUT("/{id}")
 			Param("dryrun")
 			Response(StatusOK)
-			Response("BadRequest", StatusBadRequest)
+			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -225,7 +250,9 @@ var _ = Service("devbuild", func() {
 			POST("/{id}/rerun")
 			Param("dryrun")
 			Response(StatusOK)
-			Response("BadRequest", StatusBadRequest)
+			Response("Unauthorized", StatusUnauthorized)
+			Response("Forbidden", StatusForbidden)
+			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -314,7 +341,30 @@ var DevBuild = Type("DevBuild", func() {
 	Attribute("meta", DevBuildMeta)
 	Attribute("spec", DevBuildSpec)
 	Attribute("status", DevBuildStatus)
+	Attribute("permissions", DevBuildPermissions)
 	Required("id", "meta", "spec", "status")
+})
+
+var DevBuildPermissions = Type("DevBuildPermissions", func() {
+	Attribute("canRerun", Boolean)
+	Required("canRerun")
+})
+
+var DevBuildCapabilities = Type("DevBuildCapabilities", func() {
+	Attribute("products", ArrayOf(DevBuildProductCapability))
+	Attribute("pipelineEngines", ArrayOf(String))
+	Attribute("defaultPipelineEngine", String)
+	Required("products", "pipelineEngines", "defaultPipelineEngine")
+})
+
+var DevBuildProductCapability = Type("DevBuildProductCapability", func() {
+	Attribute("id", String)
+	Attribute("label", String)
+	Attribute("editions", ArrayOf(String))
+	Attribute("platforms", ArrayOf(String))
+	Attribute("defaultEdition", String)
+	Attribute("defaultPlatform", String)
+	Required("id", "label", "editions", "platforms", "defaultEdition", "defaultPlatform")
 })
 
 var DevBuildMeta = Type("DevBuildMeta", func() {
@@ -462,6 +512,36 @@ var TektonPipelineRunStatus = Type("TektonPipelineRunStatus", String, func() {
 })
 
 var HTTPError = Type("HTTPError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var DevBuildBadRequestError = Type("DevBuildBadRequestError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var DevBuildUnauthorizedError = Type("DevBuildUnauthorizedError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var DevBuildForbiddenError = Type("DevBuildForbiddenError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var DevBuildNotFoundError = Type("DevBuildNotFoundError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var DevBuildInternalServerError = Type("DevBuildInternalServerError", func() {
 	Attribute("code", Int)
 	Attribute("message", String)
 	Required("code", "message")

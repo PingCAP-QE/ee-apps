@@ -1,0 +1,47 @@
+{
+  "name": "@pingcap-qe/ee-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "config:compile": "cd cmd/portal-config && go run . --input ../../testdata/modules --output ../../public/config/registry.json",
+    "config:check": "cd cmd/portal-config && go run . --input ../../testdata/modules --output ../../public/config/registry.json --check"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
+    "@rjsf/core": "^6.8.0",
+    "@rjsf/mui": "^6.8.0",
+    "@rjsf/utils": "^6.8.0",
+    "@rjsf/validator-ajv8": "^6.8.0",
+    "@rjsf/validator-cfworker": "^6.8.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.13.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.10.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^28.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.0",
+    "yaml": "^2.9.0"
+  }
+}

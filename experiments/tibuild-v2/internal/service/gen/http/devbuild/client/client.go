@@ -21,6 +21,10 @@ type Client struct {
 	// List Doer is the HTTP client used to make requests to the list endpoint.
 	ListDoer goahttp.Doer
 
+	// Capabilities Doer is the HTTP client used to make requests to the
+	// capabilities endpoint.
+	CapabilitiesDoer goahttp.Doer
+
 	// Create Doer is the HTTP client used to make requests to the create endpoint.
 	CreateDoer goahttp.Doer
 
@@ -54,6 +58,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		ListDoer:            doer,
+		CapabilitiesDoer:    doer,
 		CreateDoer:          doer,
 		GetDoer:             doer,
 		UpdateDoer:          doer,
@@ -85,6 +90,25 @@ func (c *Client) List() goa.Endpoint {
 		resp, err := c.ListDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("devbuild", "list", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// Capabilities returns an endpoint that makes HTTP requests to the devbuild
+// service capabilities server.
+func (c *Client) Capabilities() goa.Endpoint {
+	var (
+		decodeResponse = DecodeCapabilitiesResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildCapabilitiesRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.CapabilitiesDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("devbuild", "capabilities", err)
 		}
 		return decodeResponse(resp)
 	}
