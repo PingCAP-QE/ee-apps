@@ -1024,6 +1024,26 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                     """
                 )
             )
+            connection.execute(
+                text("UPDATE cost_bq_export_summary_daily SET source_row_hash = 'summary-' || id")
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      usage_date, vendor, account_id, service_name, sku_name, region,
+                      usage_type, cost_driver_key, source_row_hash, list_cost,
+                      effective_cost, credit_amount, net_cost
+                    ) VALUES
+                      ('2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                       'CollisionUsage', 'us-east-1', 'USE1-BoxUsage:m6i.large', 'compute',
+                       'summary-collision-a', 2, 2, 0, 2),
+                      ('2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                       'CollisionUsage', 'us-east-1', 'USE1-BoxUsage:m6i.large', 'compute',
+                       'summary-collision-b', 3, 3, 0, 3)
+                    """
+                )
+            )
 
         summary = run_refresh_cost_attribution_from_summary(
             engine,
@@ -1033,7 +1053,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 12
+        assert summary.rows_inserted == 14
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -1052,6 +1072,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       attribution_status,
                       allocate_method,
                       employee_id,
+                      source_summary_row_hash,
+                      dimension_hash,
                       ROUND(net_cost, 2) AS net_cost
                     FROM cost_attribution_daily
                     ORDER BY COALESCE(allocate_method, ''), sku_name, project
@@ -1112,8 +1134,14 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             allocate_method="logical",
         )
 
-        assert total_net_cost == 215.0
+        assert total_net_cost == 220.0
         assert {row["region"] for row in rows} == {"us-east-1"}
+        collision_rows = [row for row in rows if row["sku_name"] == "CollisionUsage"]
+        assert {row["source_summary_row_hash"] for row in collision_rows} == {
+            "summary-collision-a",
+            "summary-collision-b",
+        }
+        assert len({row["dimension_hash"] for row in collision_rows}) == 2
         assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
         assert cluster_x_row["cost_driver_key"] == "compute"
         assert shared_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
@@ -1196,7 +1224,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert subset_summary.rows_inserted == 12
+        assert subset_summary.rows_inserted == 14
         with engine.begin() as connection:
             subset_rows = connection.execute(
                 text(
@@ -1219,7 +1247,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert subset_total_net_cost == 215.0
+        assert subset_total_net_cost == 220.0
         subset_authored_cluster = next(
             row
             for row in subset_rows
@@ -1280,7 +1308,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert expired_tcms_summary.rows_inserted == 12
+        assert expired_tcms_summary.rows_inserted == 14
         with engine.begin() as connection:
             fallback_rows = connection.execute(
                 text(
@@ -1309,7 +1337,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert fallback_total_net_cost == 215.0
+        assert fallback_total_net_cost == 220.0
         fallback_auth = next(row for row in fallback_rows if row["sku_name"] == "BoxUsage")
         fallback_auth_cluster = next(
             row for row in fallback_rows if row["sku_name"] == "AuthClusterUsage"

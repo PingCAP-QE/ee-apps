@@ -750,7 +750,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
             ELSE SHA2(CONCAT_WS(
               '|',
@@ -778,7 +779,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
           END AS dimension_hash,
           attributed.source_summary_row_hash
