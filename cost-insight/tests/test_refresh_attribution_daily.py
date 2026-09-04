@@ -769,6 +769,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       service TEXT,
                       project TEXT,
                       service_exec_id TEXT,
+                      source_row_hash TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
@@ -816,7 +817,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       credit_amount REAL,
                       net_cost REAL,
                       source_rows INTEGER,
-                      dimension_hash TEXT
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
                     )
                     """
                 )
@@ -1363,6 +1365,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       service TEXT,
                       project TEXT,
                       service_exec_id TEXT,
+                      source_row_hash TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
@@ -1410,7 +1413,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       credit_amount REAL,
                       net_cost REAL,
                       source_rows INTEGER,
-                      dimension_hash TEXT
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
                     )
                     """
                 )
