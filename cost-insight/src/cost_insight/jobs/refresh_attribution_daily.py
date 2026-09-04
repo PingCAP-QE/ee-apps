@@ -676,7 +676,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           credit_amount,
           net_cost,
           source_rows,
-          dimension_hash
+          dimension_hash,
+          source_summary_row_hash
         )
         SELECT
           attributed.usage_date,
@@ -749,7 +750,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
             ELSE SHA2(CONCAT_WS(
               '|',
@@ -777,9 +779,11 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
-          END AS dimension_hash
+          END AS dimension_hash,
+          attributed.source_summary_row_hash
         FROM (
           SELECT
             base.usage_date,
@@ -803,6 +807,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.service,
             base.project,
             base.service_exec_id,
+            base.source_summary_row_hash,
             CASE
               WHEN COALESCE(
                 owner_email_employee.id,
@@ -889,6 +894,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.org,
               summary.repo,
               summary.target_branch,
+              summary.source_row_hash AS source_summary_row_hash,
               COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
               summary.namespace,
               summary.workload_name,
@@ -1112,6 +1118,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.allocate_method,
           attributed.employee_id,
           attributed.group_id,
-          attributed.manager_id
+          attributed.manager_id,
+          attributed.source_summary_row_hash
         """
     )
