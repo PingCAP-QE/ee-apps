@@ -29,6 +29,22 @@ INSERT INTO cost_sources (
   'qa-infra-dev',
   '机器统一资源池及重点项目测试',
   1
+),
+(
+  'azure',
+  'aaa5414d-7537-4e24-99bd-a7a841221810',
+  NULL,
+  'azure-testing-infra-dev',
+  NULL,
+  1
+),
+(
+  'azure',
+  'abd27163-b965-4217-8cba-2a4c799579fe',
+  NULL,
+  'azure-testing-infra-prod-dataplane',
+  NULL,
+  1
 )
 ON DUPLICATE KEY UPDATE
   billing_account_id = VALUES(billing_account_id),

@@ -9,6 +9,8 @@ The current implementation supports multiple active sources through
 - GCP project `pingcap-testing-account`
 - GCP project `qa-infra-dev`
 - AWS account `946646677266` (`qa-infra-dev`)
+- Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
+- Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
 
 Current design:
 
@@ -51,6 +53,21 @@ Allocation publication settings:
 | --- | --- |
 | `COST_ALLOCATION_EARLIEST_DATE` | required |
 | `COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID` | required unless passed by CLI |
+
+Useful Azure settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_AZURE_BILLING_TABLE` | `gcp-digital-bi.azure_billing.azure_billing_cost_*` |
+| `COST_INSIGHT_AZURE_EARLIEST_USAGE_DATE` | `2026-01-01` |
+| `COST_INSIGHT_AZURE_SYNC_LAG_DAYS` | `5` |
+| `COST_INSIGHT_AZURE_EXPORT_OVERLAP_DAYS` | `0` |
+| `COST_INSIGHT_AZURE_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
+| `COST_INSIGHT_AZURE_SYNC_PAGE_SIZE` | `5000` |
+
+Azure billing exports are monthly tables with `YYYYMMDD` suffixes. The sync
+normalizes requested dates to month starts, accepts at most a five-day CLI
+request window, and filters out non-numeric wildcard suffixes.
 
 Useful AWS settings:
 
@@ -95,6 +112,21 @@ cost-insight sync-gcp-billing-summary \
   --export-partition-start 2026-05-17 \
   --export-partition-end 2026-05-23
 ```
+
+Azure summary import uses the same `cost_bq_export_summary_daily` table:
+
+```bash
+cost-insight sync-azure-billing-summary \
+  --account-id aaa5414d-7537-4e24-99bd-a7a841221810 \
+  --export-partition-start 2026-04-01 \
+  --export-partition-end 2026-04-05
+```
+
+Use `--account-id` to import one subscription; omitting it imports both registered
+subscriptions. `--replace-existing-partitions` requires explicit partition bounds,
+and scoped replacement additionally requires `--replace-usage-start-date`,
+`--replace-usage-end-date`, and a single export partition. Each explicit request
+may span at most five calendar days.
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
 
