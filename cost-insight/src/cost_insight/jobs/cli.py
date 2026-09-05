@@ -26,7 +26,8 @@ from cost_insight.jobs.materialize_cost_allocations import (
     run_materialize_cost_allocations,
 )
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
-from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
+from cost_insight.jobs.refresh_attribution_daily import (
+    CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
 from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
@@ -44,6 +45,10 @@ from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
+from cost_insight.jobs.sync_azure_billing_summary import (
+    AZURE_SUBSCRIPTIONS,
+    run_sync_azure_billing_summary,
+)
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -96,6 +101,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
     sync_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_azure_summary = subparsers.add_parser(
+        "sync-azure-billing-summary",
+        help="Sync Azure billing export into cost_bq_export_summary_daily",
+    )
+    sync_azure_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_azure_summary.add_argument(
+        "--account-id",
+        choices=tuple(account_id for account_id, _ in AZURE_SUBSCRIPTIONS),
+        default=None,
+    )
+    sync_azure_summary.add_argument("--dry-run", action="store_true")
+    sync_azure_summary.add_argument("--limit", type=int, default=None)
+    sync_azure_summary.add_argument("--replace-existing-partitions", action="store_true")
+    sync_azure_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -168,7 +191,9 @@ def build_parser() -> argparse.ArgumentParser:
         "snapshot-aws-split-cost-shadow-legacy",
         help="Create the fixed legacy snapshot for the AWS 7266 split-cost shadow window.",
     )
-    snapshot_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    snapshot_aws_shadow.add_argument(
+        "--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID
+    )
     snapshot_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
     snapshot_aws_shadow.add_argument("--dry-run", action="store_true")
 
@@ -176,7 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-aws-split-cost-shadow",
         help="Write the fixed AWS 7266 split-cost validation window to allowlisted shadow tables.",
     )
-    sync_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    sync_aws_shadow.add_argument(
+        "--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID
+    )
     sync_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
     sync_aws_shadow.add_argument("--dry-run", action="store_true")
     sync_aws_shadow.add_argument("--limit", type=int, default=None)
@@ -363,7 +390,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
             )
         if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
-            raise ValueError("--replace-usage-start-date and --replace-usage-end-date must be set together")
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
         if args.replace_usage_start_date and not args.replace_existing_partitions:
             raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
         if args.replace_usage_start_date and not args.account_id:
@@ -395,6 +424,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
+    if args.command == "sync-azure-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        if args.replace_usage_start_date and not args.account_id:
+            raise ValueError("scoped usage-date replacement requires --account-id")
+        if (
+            args.replace_usage_start_date
+            and args.export_partition_start != args.export_partition_end
+        ):
+            raise ValueError("scoped usage-date replacement requires one export partition")
+        if args.export_partition_start and args.export_partition_end:
+            if args.export_partition_start > args.export_partition_end:
+                raise ValueError("export partition start date must be before or equal to end date")
+            if (args.export_partition_end - args.export_partition_start).days + 1 > 5:
+                raise ValueError("Azure sync supports a maximum five-day export window")
+        engine = build_engine(settings)
+        try:
+            selected = [
+                item
+                for item in AZURE_SUBSCRIPTIONS
+                if args.account_id is None or item[0] == args.account_id
+            ]
+            summaries = []
+            for account_id, display_name in selected:
+                summaries.append(
+                    run_sync_azure_billing_summary(
+                        engine,
+                        settings=settings.azure_billing,
+                        account_id=account_id,
+                        display_name=display_name,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        earliest_usage_date=args.earliest_usage_date,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                        replace_existing_partitions=args.replace_existing_partitions,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
     if args.command == "sync-aws-billing-summary":
         if args.replace_existing_partitions and (
             args.export_partition_start is None or args.export_partition_end is None
@@ -405,7 +487,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.replace_existing_dates and (
             args.usage_start_date is None or args.usage_end_date is None
         ):
-            raise ValueError("--replace-existing-dates requires --usage-start-date and --usage-end-date")
+            raise ValueError(
+                "--replace-existing-dates requires --usage-start-date and --usage-end-date"
+            )
         engine = build_engine(settings)
         try:
             summaries = []
@@ -668,7 +752,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     tcms_allocation_table=settings.tcms_allocation.allocation_table,
                 )
-                cutover_summaries.extend((residual_allocations, kubernetes_allocations, attribution))
+                cutover_summaries.extend(
+                    (residual_allocations, kubernetes_allocations, attribution)
+                )
             print(
                 json.dumps(
                     _summaries_to_json(cutover_summaries),
@@ -756,7 +842,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     earliest_date=earliest_date,
                     allocation_version=args.allocation_version,
                 )
-                print(json.dumps({"allocation_version": args.allocation_version, "published": True}))
+                print(
+                    json.dumps({"allocation_version": args.allocation_version, "published": True})
+                )
                 return 0
             summary = run_materialize_cost_allocations(
                 engine,
