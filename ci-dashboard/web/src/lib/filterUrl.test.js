@@ -29,7 +29,18 @@ test("reads shareable filters from the current URL search", () => {
   assert.equal(filters.issue_status, "closed");
   assert.equal(filters.start_date, "2026-05-25");
   assert.equal(filters.end_date, "2026-06-01");
-  assert.equal(filters.granularity, "week");
+  assert.equal(filters.granularity, "month");
+});
+
+test("keeps the selected bucket on the CI Status page", () => {
+  assert.equal(
+    readFiltersFromSearch(defaultRange, "/ci-status", "?granularity=day").granularity,
+    "day",
+  );
+  assert.equal(
+    readFiltersFromSearch(defaultRange, "/ci-status", "?granularity=month").granularity,
+    "month",
+  );
 });
 
 test("serializes non-empty filters into request-compatible URL parameters", () => {
