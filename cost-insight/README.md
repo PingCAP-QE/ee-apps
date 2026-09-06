@@ -67,7 +67,9 @@ Useful Azure settings:
 
 Azure billing exports are monthly tables with `YYYYMMDD` suffixes. The sync
 normalizes requested dates to month starts, accepts at most a five-day CLI
-request window, and filters out non-numeric wildcard suffixes.
+request window, and filters out non-numeric wildcard suffixes. A non-empty Azure
+`tenant` resource tag is projected to summary `org` for attribution matching,
+while the normalized tag object remains in `vendor_tags_json` for lineage.
 
 Useful AWS settings:
 

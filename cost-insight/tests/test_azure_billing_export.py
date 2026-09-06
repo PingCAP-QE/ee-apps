@@ -10,6 +10,7 @@ from cost_insight.jobs.sync_azure_billing_summary import (
     _normalize_summary_row,
     _start_from_state,
 )
+from cost_insight.jobs import sync_gcp_billing_summary
 from cost_insight.sources.azure_billing_export import build_azure_billing_summary_query
 
 
@@ -70,6 +71,47 @@ def test_azure_query_rejects_non_wildcard_table_identifier() -> None:
         build_azure_billing_summary_query(billing_table="project.dataset.table")
 
 
+def test_azure_normalization_projects_tenant_tag_to_org() -> None:
+    row = _normalize_summary_row(
+        {
+            "account_id": "sub-1",
+            "export_partition_date": date(2026, 4, 1),
+            "usage_date": date(2026, 4, 2),
+            "vendor_tags_json": {"tenant": "  tenant-1 ", "cluster": "shared"},
+        }
+    )
+
+    assert row["org"] == "tenant-1"
+    assert row["vendor_tags_json"] == '{"cluster":"shared","tenant":"tenant-1"}'
+
+
+@pytest.mark.parametrize(
+    ("tags", "expected_org"),
+    [
+        (None, None),
+        ({"tenant": "   "}, None),
+        ({"tenant": 1372813089209308952}, "1372813089209308952"),
+        ({"cluster": "shared"}, None),
+    ],
+)
+def test_azure_normalization_handles_tenant_tag_variants(tags, expected_org) -> None:
+    row = _normalize_summary_row(
+        {
+            "account_id": "sub-1",
+            "export_partition_date": date(2026, 4, 1),
+            "usage_date": date(2026, 4, 2),
+            "vendor_tags_json": tags,
+        }
+    )
+
+    assert row["org"] == expected_org
+
+
+def test_azure_normalization_rejects_non_object_tags() -> None:
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        _normalize_summary_row({"vendor_tags_json": '["tenant-1"]'})
+
+
 def test_azure_normalization_preserves_decimal_values_and_hash_dimensions() -> None:
     row = _normalize_summary_row(
         {
@@ -94,6 +136,15 @@ def test_azure_normalization_preserves_decimal_values_and_hash_dimensions() -> N
     assert row["credit_amount"] == 0
     changed = dict(row, currency="EUR")
     assert _build_hash(row) != _build_hash(changed)
+
+
+def test_summary_upsert_refreshes_azure_org_and_tags() -> None:
+    statement = sync_gcp_billing_summary._build_upsert_statement(
+        type("Connection", (), {"dialect": type("Dialect", (), {"name": "sqlite"})()})()
+    )
+    sql = str(statement)
+    assert "org = excluded.org" in sql
+    assert "vendor_tags_json = excluded.vendor_tags_json" in sql
 
 
 def test_azure_state_advances_by_month_and_keeps_initial_lookback_month_aligned() -> None:

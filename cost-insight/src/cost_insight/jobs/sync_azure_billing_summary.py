@@ -250,6 +250,10 @@ def _start_from_state(
 
 
 def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
+    vendor_tags_json = normalize_vendor_tags_json(row.get("vendor_tags_json"))
+    tenant = None
+    if vendor_tags_json is not None:
+        tenant = nullable_text(json.loads(vendor_tags_json).get("tenant"))
     normalized = {
         "vendor": "azure",
         "account_id": nullable_text(row.get("account_id")),
@@ -262,9 +266,9 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "currency": nullable_text(row.get("currency")),
         "region": nullable_text(row.get("region")),
         "resource_name": nullable_text(row.get("resource_name")),
-        "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
+        "vendor_tags_json": vendor_tags_json,
         "author": None,
-        "org": None,
+        "org": tenant,
         "repo": None,
         "target_branch": None,
         "source_schema_version": None,
