@@ -19,7 +19,7 @@ TiDB Cloud 相关 vendor tag，例如 AWS console 的 `shared-pool` 在 CUR/stag
 
 1. tcms 事实表建在独立 db：`tcms_cost.resource_allocation`。tcms 直接写，cost 跨库只读。
 2. 分账条件存于 `vendor_tags_json`。`shared_pool` 和 `cluster` 与 billing `vendor_tags_json` 做包含关系匹配；
-   AWS `tenant` 已被 source adapter 标准化到 summary `org` 列，因此单独与 `org` 做精确匹配。
+   AWS 和 Azure 的 `tenant` 都被 source adapter 标准化到 summary `org` 列，因此单独与 `org` 做精确匹配；Azure 同时保留规范化后的完整 vendor tags 以便审计和其他资源标签匹配。
    JSON 中只保存有值的条件，key 缺失表示不约束该维度；不要写 JSON null/空字符串表达 wildcard。
 3. TCMS label 字段使用 `icost_` 前缀：`icost_owner_email/icost_service/icost_project/icost_service_exec_id`。
 4. Cost 结果不新建表，直接扩展 `cost_attribution_daily`。
@@ -99,7 +99,7 @@ END AS vendor_tags_json
 ```
 
 其中 `shared_pool` 来自 nested `resource_tags.key_value` 的 `user_shared_pool`；`cluster` 来自扁平字段
-`tag_cluster`；`tenant` 来自 AWS tenant tag，并写入 summary `org`，不重复写入 `vendor_tags_json`。
+`tag_cluster`；AWS `tenant` 来自 tenant tag 并写入 summary `org`，不重复写入 `vendor_tags_json`；Azure `tenant` 同样写入 summary `org`，但保留在规范化 `vendor_tags_json` 中以保留 Azure 原始标签血缘。
 已确认 account `946646677266` 近 30 天 staging key 是 `user_shared_pool`，不是
 AWS console 上看到的 `shared-pool`。
 AWS split-cost 资源 tag key 由 `project` 重命名为 `icost_project`；legacy CUR
