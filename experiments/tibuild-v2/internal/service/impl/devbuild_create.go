@@ -22,10 +22,11 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	// fill for fips
 	// set for default pipeline engine.
 
-	// 1. get the github full repo by product.
-	githubFullRepo := s.productRepoMap[p.Request.Product]
-	if githubFullRepo == "" {
-		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "unknown product"}
+	// 1. get the github full repo. Honor an explicit repo from the request,
+	// and fall back to the product default only when it is not provided.
+	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), s.productRepoMap, p.Request.Product)
+	if err != nil {
+		return nil, err
 	}
 	if !validGitRef(p.Request.GitRef) {
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "gitRef must use branch/<name>, tag/<name>, pull/<number>, commit/<40-char SHA>, or a raw 40-char SHA"}
@@ -58,6 +59,24 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetStatus("PENDING")
 
 	return create.Save(ctx)
+}
+
+// resolveGithubRepo returns the repository a build should use. An explicit
+// repo from the request wins; otherwise the product default is used. It
+// returns a bad request error when neither is available or the repo is not in
+// the <owner>/<repo> form.
+func resolveGithubRepo(explicitRepo string, productRepoMap map[string]string, product string) (string, error) {
+	githubFullRepo := explicitRepo
+	if githubFullRepo == "" {
+		githubFullRepo = productRepoMap[product]
+	}
+	if githubFullRepo == "" {
+		return "", &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "unknown product or githubRepo"}
+	}
+	if parts := strings.SplitN(githubFullRepo, "/", 3); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "githubRepo must be in the form <owner>/<repo>"}
+	}
+	return githubFullRepo, nil
 }
 
 func validGitRef(ref string) bool {
