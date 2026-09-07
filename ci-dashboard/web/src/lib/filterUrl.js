@@ -17,7 +17,6 @@ export const FILTER_QUERY_KEYS = [
   "granularity",
 ];
 export const WEEK_GRANULARITY_PATHS = new Set([
-  CI_STATUS_PATH,
   MIGRATE_STATUS_PATH,
   RUNTIME_INSIGHTS_PATH,
   COST_PATH,
