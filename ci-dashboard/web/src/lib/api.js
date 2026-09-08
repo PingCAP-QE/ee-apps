@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { ALL_COST_SOURCES, COST_DATA_LAG_DAYS, COST_PATH } from "./filterUrl.js";
 
+// Re-exported for backward compatibility; filterUrl.js owns the canonical value.
 export { COST_DATA_LAG_DAYS };
 
 function normalizePrefix(value) {

@@ -66,11 +66,7 @@ def cost_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    if filters.budget_scope:
-        raise HTTPException(
-            status_code=400,
-            detail="budget_scope is supported by cost-trend and cost-budget-pace only",
-        )
+    _reject_budget_scope(filters)
     return get_cost_insight_page(engine, filters)
 
 
@@ -119,6 +115,7 @@ def cost_share_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    _reject_budget_scope(filters)
     _validate_cost_drilldown_child(dimension, drilldown_group)
     return get_cost_share_page(
         engine,
@@ -145,6 +142,7 @@ def cost_weekly_account_summaries_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    _reject_budget_scope(filters)
     return get_cost_weekly_account_summaries_page(engine, filters)
 
 
@@ -167,6 +165,7 @@ def cost_repo_group_stack_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    _reject_budget_scope(filters)
     _validate_cost_drilldown_child(group_by, drilldown_group)
     return get_cost_repo_group_stack_page(
         engine,
@@ -183,6 +182,7 @@ def cost_engineering_group_share_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    _reject_budget_scope(filters)
     return get_cost_engineering_group_share_page(
         engine,
         filters,
@@ -202,6 +202,7 @@ def cost_unmatched_resources_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    _reject_budget_scope(filters)
     try:
         return get_cost_unmatched_resources_page(
             engine,
@@ -216,6 +217,14 @@ def cost_unmatched_resources_page(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def _reject_budget_scope(filters: CommonFilters) -> None:
+    if filters.budget_scope:
+        raise HTTPException(
+            status_code=400,
+            detail="budget_scope is supported by cost-trend and cost-budget-pace only",
+        )
 
 
 def _validate_cost_drilldown_child(child_group: str, drilldown_group: str | None) -> None:

@@ -541,6 +541,59 @@ test("incoming route filters win over cached filters without URL or request osci
   }
 });
 
+test("Budget mode derives from the selected URL scope", async () => {
+  const originalFetch = globalThis.fetch;
+  const scopeKey = "a".repeat(64);
+  const changes = [];
+  let renderer;
+
+  globalThis.fetch = async (url) => {
+    if (String(url).startsWith("/api/v1/pages/cost-budget-scopes")) {
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ scope_key: scopeKey, label: "Testing", projects: [] }],
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ items: [], meta: { summary: {} }, summary: {} }),
+    };
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(CostPage, {
+          filters: {
+            start_date: "2026-08-10",
+            end_date: "2026-08-10",
+            granularity: "week",
+            cost_source: "gcp:pingcap-testing-account",
+          },
+          onFilterChange: (key, value) => changes.push([key, value]),
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "Budget")
+        .props.onClick();
+    });
+
+    assert.deepEqual(changes, [["budget_scope", scopeKey]]);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
 test("resource breakdown renders identifiers and loads the next page", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];

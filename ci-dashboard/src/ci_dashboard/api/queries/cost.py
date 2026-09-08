@@ -5,6 +5,7 @@ import binascii
 import calendar
 import hashlib
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
+
+LOG = logging.getLogger(__name__)
 
 COST_STACK_LIMIT = 8
 COST_STACK_OTHERS_DIMENSION = "__cost_stack_others__"
@@ -286,7 +289,8 @@ def list_budget_scopes(engine: Engine) -> dict[str, Any]:
         for row in rows:
             try:
                 scope = _budget_scope_from_row(row)
-            except ValueError:
+            except ValueError as exc:
+                LOG.warning("Skipping invalid budget scope %s: %s", row["scope_key"], exc)
                 continue
             if scope.key in seen:
                 continue
@@ -953,7 +957,7 @@ def get_weekly_account_summaries(
         or previous_start is None
         or previous_end is None
     ):
-        return {"scope": cost_filters.meta(), "items": []}
+        return {"metric": "list_cost", "scope": cost_filters.meta(), "items": []}
 
     branch_join_clause = "AND c.target_branch = :branch" if cost_filters.branch else ""
     params = {
@@ -1043,6 +1047,7 @@ def get_weekly_account_summaries(
             )
 
     return {
+        "metric": "list_cost",
         "scope": cost_filters.meta(),
         "previous_scope": {
             **cost_filters.meta(),
@@ -1986,8 +1991,8 @@ def _budget_scope_for_filters(
     for row in rows:
         try:
             return _budget_scope_from_row(row)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            LOG.warning("Skipping invalid budget scope %s: %s", row["scope_key"], exc)
     return None
 
 
@@ -2007,8 +2012,8 @@ def _budget_scope_for_key(connection: Connection, scope_key: str) -> BudgetScope
     for row in rows:
         try:
             return _budget_scope_from_row(row)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            LOG.warning("Skipping invalid budget scope %s: %s", row["scope_key"], exc)
     raise BudgetScopeNotFound(f"budget scope {scope_key!r} was not found")
 
 
@@ -2064,7 +2069,8 @@ def _budget_account_scope_key(vendor: str, account_id: str) -> str:
 
 
 def _budget_project_scope_key(projects: tuple[str, ...]) -> str:
-    canonical = json.dumps({"project": list(projects)}, separators=(",", ":"))
+    # Match cost_insight.budgets.build_filter_hash for its canonical project-only scope.
+    canonical = json.dumps({"project": list(projects)}, sort_keys=True, separators=(",", ":"))
     filter_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return hashlib.sha256(f"project_set\0{filter_hash}".encode("utf-8")).hexdigest()
 

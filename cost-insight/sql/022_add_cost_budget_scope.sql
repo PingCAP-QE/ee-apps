@@ -4,8 +4,11 @@ ALTER TABLE cost_budgets
   MODIFY COLUMN account_id VARCHAR(128) NULL,
   ADD COLUMN scope_key CHAR(64) NULL AFTER account_id;
 
+-- Preflight guarantees every existing row is an account scope; this backfills only those rows.
 UPDATE cost_budgets
-SET scope_key = SHA2(CONCAT('account', CHAR(0), vendor, CHAR(0), account_id), 256);
+SET scope_key = SHA2(CONCAT('account', CHAR(0), vendor, CHAR(0), account_id), 256)
+WHERE vendor IS NOT NULL
+  AND account_id IS NOT NULL;
 
 ALTER TABLE cost_budgets
   MODIFY COLUMN scope_key CHAR(64) NOT NULL,

@@ -25,9 +25,8 @@ const COST_MODE_OPTIONS = [
   { key: "explore", label: "Explore" },
 ];
 
-export default function CostPage({ filters, onFilterChange }) {
-  const [costMode, setCostMode] = useState("explore");
-  const [selectedBudgetScopeKey, setSelectedBudgetScopeKey] = useState(filters.budget_scope || "");
+export default function CostPage({ filters, onFilterChange = () => {} }) {
+  const selectedBudgetScopeKey = filters.budget_scope || "";
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
@@ -40,7 +39,7 @@ export default function CostPage({ filters, onFilterChange }) {
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const [resourceCursor, setResourceCursor] = useState(null);
   const [resourceItems, setResourceItems] = useState([]);
-  const isBudgetMode = costMode === "budget" || Boolean(filters.budget_scope);
+  const isBudgetMode = Boolean(filters.budget_scope);
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
@@ -110,7 +109,7 @@ export default function CostPage({ filters, onFilterChange }) {
     cursor: resourceCursor,
   };
   const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
-  const budgetScopes = useApiData("/api/v1/pages/cost-budget-scopes", {}, isBudgetMode);
+  const budgetScopes = useApiData("/api/v1/pages/cost-budget-scopes");
   const budgetScopeOptions = budgetScopes.data?.items || [];
   const selectedBudgetScope = budgetScopeOptions.find(
     (item) => item.scope_key === selectedBudgetScopeKey,
@@ -261,35 +260,17 @@ export default function CostPage({ filters, onFilterChange }) {
     }
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
 
-  useEffect(() => {
-    if (
-      isBudgetMode
-      && budgetScopeOptions.length
-      && !budgetScopeOptions.some((item) => item.scope_key === selectedBudgetScopeKey)
-    ) {
-      const scopeKey = budgetScopeOptions[0].scope_key;
-      setSelectedBudgetScopeKey(scopeKey);
-      onFilterChange("budget_scope", scopeKey);
-    }
-  }, [budgetScopeOptions, isBudgetMode, onFilterChange, selectedBudgetScopeKey]);
-
-  useEffect(() => {
-    if (filters.budget_scope && filters.budget_scope !== selectedBudgetScopeKey) {
-      setSelectedBudgetScopeKey(filters.budget_scope);
-    }
-  }, [filters.budget_scope, selectedBudgetScopeKey]);
-
   const changeCostMode = (mode) => {
-    setCostMode(mode);
     if (mode === "explore") {
       onFilterChange("budget_scope", "");
+      return;
+    }
+    if (budgetScopeOptions[0]) {
+      onFilterChange("budget_scope", budgetScopeOptions[0].scope_key);
     }
   };
 
-  const changeBudgetScope = (scopeKey) => {
-    setSelectedBudgetScopeKey(scopeKey);
-    onFilterChange("budget_scope", scopeKey);
-  };
+  const changeBudgetScope = (scopeKey) => onFilterChange("budget_scope", scopeKey);
 
   if (isBudgetMode) {
     return (

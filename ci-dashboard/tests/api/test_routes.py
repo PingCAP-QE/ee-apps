@@ -562,8 +562,26 @@ def _insert_cost_source(
 
 
 def _budget_filter_hash(label_filters: dict | list | str | None) -> str:
-    value = json.dumps(label_filters, sort_keys=True, separators=(",", ":"))
+    value = json.dumps(
+        _canonicalize_budget_filter(label_filters),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _canonicalize_budget_filter(value):
+    if isinstance(value, dict):
+        return {
+            str(key): _canonicalize_budget_filter(value[key])
+            for key in sorted(value, key=str)
+        }
+    if isinstance(value, (list, set)):
+        return sorted(
+            (_canonicalize_budget_filter(item) for item in value),
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
+        )
+    return value
 
 
 def _budget_scope_key(
@@ -4229,6 +4247,7 @@ def test_cost_weekly_account_summaries_route(
 
     assert response.status_code == 200
     body = response.json()
+    assert body["metric"] == "list_cost"
     assert body["previous_scope"]["start_date"] == "2026-05-25"
     assert body["previous_scope"]["end_date"] == "2026-05-31"
     assert body["items"] == [
@@ -4520,8 +4539,9 @@ def test_cost_budget_pace_route(
 def test_budget_scope_routes_project_sets_across_accounts_with_list_cost_only(
     sqlite_engine,
     api_client: TestClient,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    label_filters = {"project": ["alpha", "beta"]}
+    label_filters = {"project": ["beta", "alpha"]}
     scope_key = _budget_scope_key(None, None, label_filters)
     _insert_cost_budget(
         sqlite_engine,
@@ -4533,6 +4553,16 @@ def test_budget_scope_routes_project_sets_across_accounts_with_list_cost_only(
         budget_name="Shared test projects",
         label_filters=label_filters,
         scope_key=scope_key,
+    )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor=None,
+        account_id=None,
+        period_start_date="2026-05-05",
+        period_end_date="2026-05-05",
+        budget_amount=1.0,
+        label_filters={"project": ["invalid"]},
+        scope_key="f" * 64,
     )
     _insert_cost_attribution(
         sqlite_engine,
@@ -4596,6 +4626,7 @@ def test_budget_scope_routes_project_sets_across_accounts_with_list_cost_only(
             "projects": ["alpha", "beta"],
         }
     ]
+    assert "Skipping invalid budget scope" in caplog.text
 
     trend = api_client.get(
         "/api/v1/pages/cost-trend",
@@ -4626,8 +4657,15 @@ def test_budget_scope_routes_project_sets_across_accounts_with_list_cost_only(
     )
     assert invalid.status_code == 400
 
-    composite = api_client.get("/api/v1/pages/cost", params={"budget_scope": scope_key})
-    assert composite.status_code == 400
+    for path in (
+        "/api/v1/pages/cost",
+        "/api/v1/pages/cost-share",
+        "/api/v1/pages/cost-weekly-account-summaries",
+        "/api/v1/pages/cost-repo-group-stack",
+        "/api/v1/pages/cost-engineering-group-share",
+        "/api/v1/pages/cost-unmatched-resources",
+    ):
+        assert api_client.get(path, params={"budget_scope": scope_key}).status_code == 400
 
 
 def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.MonkeyPatch) -> None:
