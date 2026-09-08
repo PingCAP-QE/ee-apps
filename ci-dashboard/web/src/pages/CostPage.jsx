@@ -9,7 +9,6 @@ import {
 } from "../lib/api";
 import { ALL_COST_SOURCES, DEFAULT_COST_SOURCE } from "../lib/filterUrl";
 import {
-  BudgetHealthGauge,
   DonutShareChart,
   PageIntro,
   Panel,
@@ -43,7 +42,6 @@ export default function CostPage({ filters }) {
     ? "Net cost (excluding credits)"
     : "Net cost";
 
-  const budgetPaceFilters = { cost_source: selectedCostSourceValue };
   const costFilters = {
     start_date: filters.start_date,
     end_date: filters.end_date,
@@ -104,7 +102,6 @@ export default function CostPage({ filters }) {
     cursor: resourceCursor,
   };
   const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
-  const budgetPace = useApiData("/api/v1/pages/cost-budget-pace", budgetPaceFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
@@ -118,13 +115,6 @@ export default function CostPage({ filters }) {
     resourceBreakdownRequested,
   );
   const summary = trend.data?.meta?.summary || {};
-  const budgetHealth = budgetPace.data?.budget_health;
-  const configuredAnnualBudget = Number(budgetHealth?.annual_budget || 0);
-  const hasConfiguredBudget = configuredAnnualBudget > 0;
-  const budgetPeriodLabel =
-    budgetHealth?.budget_start_date && budgetHealth?.budget_end_date
-      ? `${budgetHealth.budget_start_date}～${budgetHealth.budget_end_date}`
-      : "Budget period unavailable";
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
     (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
@@ -268,16 +258,6 @@ export default function CostPage({ filters }) {
           value={formatPercent(summary.matched_resource_pct)}
           detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`}
           tone="amber"
-        />
-        <StatCard
-          label="Fiscal budget"
-          value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
-          detail={
-            hasConfiguredBudget
-              ? budgetPeriodLabel
-              : "Budget not configured for the selected source"
-          }
-          tone="rose"
         />
       </section>
 
@@ -453,19 +433,6 @@ export default function CostPage({ filters }) {
           </div>
         </Panel>
 
-        <Panel
-          title="Budget pace"
-          subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-          loading={budgetPace.loading}
-          error={budgetPace.error}
-          className="cost-budget-pace"
-        >
-          <BudgetHealthGauge
-            title="Fiscal-period forecast"
-            data={budgetHealth}
-            emptyMessage="Budget pace is not configured for this source yet."
-          />
-        </Panel>
       </section>
 
     </div>
@@ -551,12 +518,7 @@ function CostStackTrend({
   const series = selectedName
     ? baseSeries
     : showComparisonLines
-      ? withCostComparisonLines(
-          baseSeries,
-          trendData?.series,
-          granularity,
-          trendData?.meta?.budget_targets,
-        )
+      ? withCostNetComparisonLine(baseSeries, trendData?.series)
       : baseSeries;
 
   if (!items.length || !series?.length) {
@@ -644,7 +606,7 @@ function withCostBreakdownDrilldown(items, enabled) {
   }));
 }
 
-function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTargets) {
+function withCostNetComparisonLine(baseSeries, trendSeries) {
   if (!baseSeries?.length) {
     return baseSeries;
   }
@@ -670,32 +632,5 @@ function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTar
     }
   }
 
-  const targetsByBucket =
-    budgetTargets && typeof budgetTargets === "object" ? budgetTargets : {};
-  if (!Object.keys(targetsByBucket).length) {
-    return [...baseSeries, ...overlays];
-  }
-  const budgetPoints = labels.map((label) => {
-    const budgetTarget = Number(targetsByBucket[label] || 0);
-    if (!budgetTarget) {
-      return [label, null];
-    }
-    return [label, budgetTarget];
-  });
-  if (!budgetPoints.some(([, value]) => value != null)) {
-    return [...baseSeries, ...overlays];
-  }
-
-  return [
-    ...baseSeries,
-    ...overlays,
-    {
-      key: "budget_target",
-      label: granularity === "month" ? "Monthly budget" : "Weekly budget",
-      type: "line",
-      dash: true,
-      showPoints: false,
-      points: budgetPoints,
-    },
-  ];
+  return [...baseSeries, ...overlays];
 }

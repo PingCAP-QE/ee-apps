@@ -3565,7 +3565,15 @@ def test_cost_routes_use_billing_report_list_cost(sqlite_engine, api_client: Tes
     ]
 
 
-def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestClient) -> None:
+def test_cost_source_filter_and_sources_route(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_if_budget_is_read(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("cost trend must not read the unfinished budget schema")
+
+    monkeypatch.setattr(cost_queries, "_budget_targets_for_filters", fail_if_budget_is_read)
     _insert_cost_source(
         sqlite_engine,
         vendor="gcp",
@@ -3697,13 +3705,7 @@ def test_cost_source_filter_and_sources_route(sqlite_engine, api_client: TestCli
     assert trend_body["meta"]["cost_vendor"] == "aws"
     assert trend_body["meta"]["cost_account_id"] == "946646677266"
     assert trend_body["meta"]["cost_source"] == "aws:946646677266"
-    assert trend_body["meta"]["budget_targets"] == {
-        "2026-04-27": 690.41,
-        "2026-05-04": 690.41,
-        "2026-05-11": 690.41,
-        "2026-05-18": 690.41,
-        "2026-05-25": 690.41,
-    }
+    assert "budget_targets" not in trend_body["meta"]
     assert trend_body["meta"]["summary"]["list_cost"] == 30.0
     assert trend_body["meta"]["summary"]["net_cost"] == 28.0
     assert {series["key"]: series["points"] for series in trend_body["series"]}["list_cost"] == [

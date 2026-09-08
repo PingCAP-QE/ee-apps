@@ -166,11 +166,6 @@ def get_cost_trend(
         ).mappings()
         data_rows = [dict(row) for row in rows]
         buckets = _bucket_starts(filters, data_rows)
-        budget_targets = _budget_targets_for_filters(
-            connection,
-            filters,
-            buckets=buckets,
-        )
     summary_net_cost = sum(_money(row["net_cost"]) for row in data_rows)
     summary_effective_cost = sum(_money(row["effective_cost"]) for row in data_rows)
     summary_list_cost = sum(_money(row["list_cost"]) for row in data_rows)
@@ -209,7 +204,6 @@ def get_cost_trend(
                 if drilldown
                 else {}
             ),
-            "budget_targets": budget_targets,
             "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
             "summary": {
                 "net_cost": round(summary_net_cost, 2),
