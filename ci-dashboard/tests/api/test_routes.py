@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -560,6 +561,23 @@ def _insert_cost_source(
         )
 
 
+def _budget_filter_hash(label_filters: dict | list | str | None) -> str:
+    value = json.dumps(label_filters, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _budget_scope_key(
+    vendor: str | None,
+    account_id: str | None,
+    label_filters: dict | list | str | None,
+) -> str:
+    if vendor and account_id:
+        identity = f"account\0{vendor}\0{account_id}"
+    else:
+        identity = f"project_set\0{_budget_filter_hash(label_filters)}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
 def _insert_cost_budget(
     sqlite_engine,
     *,
@@ -576,17 +594,18 @@ def _insert_cost_budget(
     filter_hash: str | None = None,
     source_type: str = "manual",
     source_ref: str | None = None,
+    scope_key: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
             text(
                 """
                 INSERT INTO cost_budgets (
-                  vendor, account_id, period_start_date, period_end_date, budget_name,
+                  vendor, account_id, scope_key, period_start_date, period_end_date, budget_name,
                   label_filters, filter_hash, group_id, manager_id, repo, budget_amount,
                   source_type, source_ref
                 ) VALUES (
-                  :vendor, :account_id, :period_start_date, :period_end_date, :budget_name,
+                  :vendor, :account_id, :scope_key, :period_start_date, :period_end_date, :budget_name,
                   :label_filters, :filter_hash, :group_id, :manager_id, :repo, :budget_amount,
                   :source_type, :source_ref
                 )
@@ -603,8 +622,8 @@ def _insert_cost_budget(
                     if isinstance(label_filters, (dict, list))
                     else label_filters
                 ),
-                "filter_hash": filter_hash
-                or f"{vendor}:{account_id}:{period_start_date}:{period_end_date}:{budget_name or 'scope'}",
+                "filter_hash": filter_hash or _budget_filter_hash(label_filters),
+                "scope_key": scope_key or _budget_scope_key(vendor, account_id, label_filters),
                 "group_id": group_id,
                 "manager_id": manager_id,
                 "repo": repo,
@@ -4298,7 +4317,7 @@ def test_cost_weekly_account_summaries_splits_budget_across_fiscal_boundary(
     assert item["weekly_budget"] == 700.0
 
 
-def test_cost_weekly_account_summaries_falls_back_to_recent_finished_budget(
+def test_cost_weekly_account_summaries_does_not_use_expired_budget(
     sqlite_engine,
     api_client: TestClient,
 ) -> None:
@@ -4328,9 +4347,9 @@ def test_cost_weekly_account_summaries_falls_back_to_recent_finished_budget(
 
     assert response.status_code == 200
     item = response.json()["items"][0]
-    assert item["annual_budget"] == 9000.0
-    assert item["period_budget"] == 9000.0
-    assert item["weekly_budget"] == 700.0
+    assert item["annual_budget"] is None
+    assert item["period_budget"] is None
+    assert item["weekly_budget"] is None
 
 
 def test_cost_weekly_account_summaries_batches_budget_queries(
@@ -4376,7 +4395,7 @@ def test_cost_weekly_account_summaries_batches_budget_queries(
 
     assert response.status_code == 200
     assert len(response.json()["items"]) == 5
-    assert budget_query_count == 2
+    assert budget_query_count == 1
 
 
 def test_cost_weekly_account_summaries_filter_by_target_branch(
@@ -4469,33 +4488,146 @@ def test_cost_budget_pace_route(
     assert body["scope"]["granularity"] == "week"
     assert body["scope"]["cost_source"] == "gcp:pingcap-testing-account"
     assert body["budget_health"] == {
-        "metric_key": "net_cost",
+        "metric_key": "list_cost",
         "annual_budget": 207600.0,
         "period_budget": 207600.0,
         "budget_start_date": "2026-01-01",
         "budget_end_date": "2026-12-31",
         "weekly_budget": 3981.37,
         "budget_to_date": 77352.33,
-        "current_cost": 350.0,
+        "current_cost": 500.0,
         "through_date": "2026-05-16",
         "days_elapsed": 136,
         "period_days": 365,
         "days_remaining": 229,
-        "annual_budget_pct": 0.17,
-        "budget_to_date_pct": 0.45,
-        "variance": -77002.33,
-        "variance_pct": -99.55,
+        "annual_budget_pct": 0.24,
+        "budget_to_date_pct": 0.65,
+        "variance": -76852.33,
+        "variance_pct": -99.35,
         "recent_window_days": 14,
-        "recent_window_cost": 350.0,
-        "recent_daily_cost": 25.0,
-        "forecast_remaining_cost": 5725.0,
-        "forecast_total_cost": 6075.0,
-        "forecast_budget_pct": 2.93,
-        "forecast_variance": -201525.0,
-        "forecast_variance_pct": -97.07,
+        "recent_window_cost": 500.0,
+        "recent_daily_cost": 35.71,
+        "forecast_remaining_cost": 8177.59,
+        "forecast_total_cost": 8677.59,
+        "forecast_budget_pct": 4.18,
+        "forecast_variance": -198922.41,
+        "forecast_variance_pct": -95.82,
         "status": "healthy",
         "status_label": "Healthy",
     }
+
+
+def test_budget_scope_routes_project_sets_across_accounts_with_list_cost_only(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    label_filters = {"project": ["alpha", "beta"]}
+    scope_key = _budget_scope_key(None, None, label_filters)
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor=None,
+        account_id=None,
+        period_start_date="2026-05-05",
+        period_end_date="2026-05-05",
+        budget_amount=500.0,
+        budget_name="Shared test projects",
+        label_filters=label_filters,
+        scope_key=scope_key,
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        vendor="gcp",
+        account_id="account-a",
+        repo="tidb",
+        group_id=100,
+        project="alpha",
+        list_cost=100.0,
+        net_cost=10.0,
+        dimension_hash="project-scope-alpha",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        vendor="aws",
+        account_id="account-b",
+        repo="tikv",
+        group_id=100,
+        project="beta",
+        list_cost=200.0,
+        net_cost=20.0,
+        dimension_hash="project-scope-beta",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        vendor="gcp",
+        account_id="account-a",
+        repo="tidb",
+        group_id=100,
+        project="alpha",
+        list_cost=50.0,
+        net_cost=0.0,
+        sku_name="Compute Flexible Committed Use Discounts credit",
+        dimension_hash="project-scope-flexible-cud",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-05",
+        vendor="gcp",
+        account_id="account-c",
+        repo="tiflash",
+        group_id=100,
+        project="outside",
+        list_cost=900.0,
+        net_cost=900.0,
+        dimension_hash="project-scope-outside",
+    )
+
+    scopes = api_client.get("/api/v1/pages/cost-budget-scopes")
+    assert scopes.status_code == 200
+    assert scopes.json()["items"] == [
+        {
+            "scope_key": scope_key,
+            "scope_type": "project_set",
+            "label": "Shared test projects",
+            "vendor": None,
+            "account_id": None,
+            "projects": ["alpha", "beta"],
+        }
+    ]
+
+    trend = api_client.get(
+        "/api/v1/pages/cost-trend",
+        params={
+            "start_date": "2026-05-05",
+            "end_date": "2026-05-05",
+            "granularity": "week",
+            "budget_scope": scope_key,
+        },
+    )
+    assert trend.status_code == 200
+    trend_body = trend.json()
+    assert trend_body["meta"]["summary"]["list_cost"] == 300.0
+    assert trend_body["meta"]["summary"]["net_cost"] == 300.0
+    assert trend_body["series"] == [
+        {
+            "key": "list_cost",
+            "label": "List cost",
+            "type": "bar",
+            "points": [["2026-05-04", 300.0]],
+        }
+    ]
+    assert trend_body["meta"]["budget_targets"] == {"2026-05-04": 500.0}
+
+    invalid = api_client.get(
+        "/api/v1/pages/cost-trend",
+        params={"budget_scope": scope_key, "cost_source": "gcp:account-a"},
+    )
+    assert invalid.status_code == 400
+
+    composite = api_client.get("/api/v1/pages/cost", params={"budget_scope": scope_key})
+    assert composite.status_code == 400
 
 
 def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4792,7 +4924,7 @@ def test_budget_health_snapshot_marks_warning_when_over_pace(
         )
 
     assert snapshot == {
-        "metric_key": "net_cost",
+        "metric_key": "list_cost",
         "annual_budget": 100.0,
         "period_budget": 100.0,
         "budget_start_date": "2026-01-01",
@@ -4999,7 +5131,7 @@ def test_budget_targets_include_period_fully_inside_bucket(
     assert targets == {"2026-03-30": 200.0}
 
 
-def test_budget_health_snapshot_falls_back_to_latest_finished_period(
+def test_budget_health_snapshot_does_not_use_finished_period(
     sqlite_engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5034,10 +5166,7 @@ def test_budget_health_snapshot_falls_back_to_latest_finished_period(
             ),
         )
 
-    assert snapshot["budget_start_date"] == "2026-04-01"
-    assert snapshot["budget_end_date"] == "2027-03-31"
-    assert snapshot["through_date"] == "2027-03-31"
-    assert snapshot["days_remaining"] == 0
+    assert snapshot is None
 
 
 def test_budget_health_snapshot_ignores_stale_finished_period(
@@ -5067,7 +5196,7 @@ def test_budget_health_snapshot_ignores_stale_finished_period(
     assert snapshot is None
 
 
-def test_budget_period_for_filters_falls_back_to_summing_partitioned_budget_rows(
+def test_budget_period_for_filters_ignores_legacy_partitioned_budget_rows(
     sqlite_engine,
 ) -> None:
     _insert_cost_budget(
@@ -5103,7 +5232,7 @@ def test_budget_period_for_filters_falls_back_to_summing_partitioned_budget_rows
             target_date=date(2026, 6, 1),
         )
 
-    assert budget == cost_queries.BudgetPeriod(200.0, date(2026, 1, 1), date(2026, 12, 31))
+    assert budget is None
 
 
 def test_budget_period_for_filters_prefers_source_wide_budget_rows(

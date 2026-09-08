@@ -55,6 +55,7 @@ export default function App() {
   const isCostPage = location.pathname === COST_PATH;
   const isWeeklySummaryPage = location.pathname === "/";
   const isWeeklyCostPage = location.pathname === WEEKLY_COST_PATH;
+  const isCostBudgetMode = isCostPage && Boolean(filters.budget_scope);
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -113,7 +114,7 @@ export default function App() {
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
-    isCostPage,
+    isCostPage && !isCostBudgetMode,
   );
   const costSourceOptions = buildCostSourceOptions(
     costSources.data?.items,
@@ -148,12 +149,15 @@ export default function App() {
 
   const filterOptions = {
     isCostPage,
+    isCostBudgetMode,
     repos: REPO_OPTIONS,
     branches: branches.data?.items || [],
     jobs: jobs.data?.items || [],
     cloudPhases: cloudPhases.data?.items || [],
     costSources: costSourceOptions,
-    scopeLabel: buildScopeLabel(filters, location.pathname, selectedCostSource?.label),
+    scopeLabel: isCostBudgetMode
+      ? "Cost budget"
+      : buildScopeLabel(filters, location.pathname, selectedCostSource?.label),
   };
 
   return (
@@ -173,7 +177,10 @@ export default function App() {
           path={RUNTIME_INSIGHTS_PATH}
           element={<RuntimeInsightsPage filters={filters} />}
         />
-        <Route path={COST_PATH} element={<CostPage filters={filters} />} />
+        <Route
+          path={COST_PATH}
+          element={<CostPage filters={filters} onFilterChange={handleFilterChange} />}
+        />
         <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
       </Routes>
     </DashboardLayout>

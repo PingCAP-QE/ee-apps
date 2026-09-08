@@ -26,9 +26,10 @@ class CommonFilters:
     granularity: str = "day"
     cost_vendor: str | None = None
     cost_account_id: str | None = None
+    budget_scope: str | None = None
 
     def meta(self) -> dict[str, Any]:
-        return {
+        meta = {
             "repo": self.repo,
             "branch": self.branch,
             "job_name": self.job_name,
@@ -46,6 +47,9 @@ class CommonFilters:
                 else None
             ),
         }
+        if self.budget_scope:
+            meta["budget_scope"] = self.budget_scope
+        return meta
 
     @property
     def job_names(self) -> tuple[str, ...]:

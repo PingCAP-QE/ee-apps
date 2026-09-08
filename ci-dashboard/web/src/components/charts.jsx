@@ -1347,7 +1347,7 @@ export function BudgetHealthGauge({
   title,
   subtitle,
   data,
-  emptyMessage = "Budget pace is not configured for the selected cost source yet.",
+  emptyMessage = "Budget pace is not configured for the selected scope yet.",
 }) {
   if (!data) {
     return <EmptyState message={emptyMessage} compact />;
@@ -1420,7 +1420,7 @@ export function BudgetHealthGauge({
             {formatCurrency(currentCost)}
           </text>
           <text x={centerX} y={128} textAnchor="middle" className="budget-gauge__label">
-            observed net cost
+            observed list cost
           </text>
         </svg>
       </div>

@@ -20,8 +20,14 @@ import {
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
 
 const NO_OWNER_LABEL = "(no owner)";
+const COST_MODE_OPTIONS = [
+  { key: "budget", label: "Budget" },
+  { key: "explore", label: "Explore" },
+];
 
-export default function CostPage({ filters }) {
+export default function CostPage({ filters, onFilterChange }) {
+  const [costMode, setCostMode] = useState("explore");
+  const [selectedBudgetScopeKey, setSelectedBudgetScopeKey] = useState(filters.budget_scope || "");
   const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
@@ -34,6 +40,7 @@ export default function CostPage({ filters }) {
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const [resourceCursor, setResourceCursor] = useState(null);
   const [resourceItems, setResourceItems] = useState([]);
+  const isBudgetMode = costMode === "budget" || Boolean(filters.budget_scope);
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
@@ -43,7 +50,6 @@ export default function CostPage({ filters }) {
     ? "Net cost (excluding credits)"
     : "Net cost";
 
-  const budgetPaceFilters = { cost_source: selectedCostSourceValue };
   const costFilters = {
     start_date: filters.start_date,
     end_date: filters.end_date,
@@ -104,27 +110,46 @@ export default function CostPage({ filters }) {
     cursor: resourceCursor,
   };
   const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
-  const budgetPace = useApiData("/api/v1/pages/cost-budget-pace", budgetPaceFilters);
-  const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
-  const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
-  const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
+  const budgetScopes = useApiData("/api/v1/pages/cost-budget-scopes", {}, isBudgetMode);
+  const budgetScopeOptions = budgetScopes.data?.items || [];
+  const selectedBudgetScope = budgetScopeOptions.find(
+    (item) => item.scope_key === selectedBudgetScopeKey,
+  );
+  const budgetFilters = {
+    start_date: filters.start_date,
+    end_date: filters.end_date,
+    granularity: filters.granularity === "month" ? "month" : "week",
+    budget_scope: selectedBudgetScopeKey,
+  };
+  const budgetPace = useApiData(
+    "/api/v1/pages/cost-budget-pace",
+    { budget_scope: selectedBudgetScopeKey },
+    isBudgetMode && Boolean(selectedBudgetScopeKey),
+  );
+  const budgetTrend = useApiData(
+    "/api/v1/pages/cost-trend",
+    budgetFilters,
+    isBudgetMode && Boolean(selectedBudgetScopeKey),
+  );
+  const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters, !isBudgetMode);
+  const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters, !isBudgetMode);
+  const repoGroupStack = useApiData(
+    "/api/v1/pages/cost-repo-group-stack",
+    costStackFilters,
+    !isBudgetMode,
+  );
   const engineeringGroupShare = useApiData(
     "/api/v1/pages/cost-engineering-group-share",
     engineeringGroupFilters,
+    !isBudgetMode,
   );
   const unmatchedResources = useApiData(
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
-    resourceBreakdownRequested,
+    resourceBreakdownRequested && !isBudgetMode,
   );
   const summary = trend.data?.meta?.summary || {};
   const budgetHealth = budgetPace.data?.budget_health;
-  const configuredAnnualBudget = Number(budgetHealth?.annual_budget || 0);
-  const hasConfiguredBudget = configuredAnnualBudget > 0;
-  const budgetPeriodLabel =
-    budgetHealth?.budget_start_date && budgetHealth?.budget_end_date
-      ? `${budgetHealth.budget_start_date}～${budgetHealth.budget_end_date}`
-      : "Budget period unavailable";
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
     (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
@@ -236,6 +261,88 @@ export default function CostPage({ filters }) {
     }
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
 
+  useEffect(() => {
+    if (
+      isBudgetMode
+      && budgetScopeOptions.length
+      && !budgetScopeOptions.some((item) => item.scope_key === selectedBudgetScopeKey)
+    ) {
+      const scopeKey = budgetScopeOptions[0].scope_key;
+      setSelectedBudgetScopeKey(scopeKey);
+      onFilterChange("budget_scope", scopeKey);
+    }
+  }, [budgetScopeOptions, isBudgetMode, onFilterChange, selectedBudgetScopeKey]);
+
+  useEffect(() => {
+    if (filters.budget_scope && filters.budget_scope !== selectedBudgetScopeKey) {
+      setSelectedBudgetScopeKey(filters.budget_scope);
+    }
+  }, [filters.budget_scope, selectedBudgetScopeKey]);
+
+  const changeCostMode = (mode) => {
+    setCostMode(mode);
+    if (mode === "explore") {
+      onFilterChange("budget_scope", "");
+    }
+  };
+
+  const changeBudgetScope = (scopeKey) => {
+    setSelectedBudgetScopeKey(scopeKey);
+    onFilterChange("budget_scope", scopeKey);
+  };
+
+  if (isBudgetMode) {
+    return (
+      <div className="page-stack">
+        <PageIntro
+          eyebrow="Cost Insight"
+          title="Budget"
+          description="List Cost against one configured account or project-set budget scope."
+          kicker={selectedBudgetScope?.label || "Select a budget scope"}
+        />
+        <BudgetModeSelector value={isBudgetMode ? "budget" : "explore"} onChange={changeCostMode} />
+        <Panel
+          title="Budget scope"
+          subtitle="Budget mode fixes the accounting scope; exploration filters do not alter budget actuals."
+          loading={budgetScopes.loading}
+          error={budgetScopes.error}
+          actions={
+            <label className="control-field">
+              <span>Scope</span>
+              <select
+                aria-label="Budget scope"
+                value={selectedBudgetScopeKey}
+                onChange={(event) => changeBudgetScope(event.target.value)}
+              >
+                <option value="">Select scope</option>
+                {budgetScopeOptions.map((scope) => (
+                  <option key={scope.scope_key} value={scope.scope_key}>
+                    {scope.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          }
+        >
+          <BudgetHealthGauge
+            title="Fiscal-period List Cost forecast"
+            subtitle="Observed cost, lag-adjusted checkpoint, and forecast from the prior 14 observed days."
+            data={budgetHealth}
+            emptyMessage="Select a configured budget scope."
+          />
+        </Panel>
+        <Panel
+          title="List Cost vs budget"
+          subtitle="Actual List Cost and prorated budget target for the selected scope."
+          loading={budgetTrend.loading}
+          error={budgetTrend.error}
+        >
+          <BudgetTrend data={budgetTrend.data} />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="page-stack">
       <PageIntro
@@ -244,6 +351,7 @@ export default function CostPage({ filters }) {
         description="Cloud cost attribution across configured billing sources after billing rows are joined with roster ownership."
         kicker={`${costFilters.granularity} buckets · ${selectedCostSourceLabel}`}
       />
+      <BudgetModeSelector value={isBudgetMode ? "budget" : "explore"} onChange={changeCostMode} />
 
       <section
         className="stats-grid cost-summary-grid"
@@ -268,16 +376,6 @@ export default function CostPage({ filters }) {
           value={formatPercent(summary.matched_resource_pct)}
           detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`}
           tone="amber"
-        />
-        <StatCard
-          label="Fiscal budget"
-          value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
-          detail={
-            hasConfiguredBudget
-              ? budgetPeriodLabel
-              : "Budget not configured for the selected source"
-          }
-          tone="rose"
         />
       </section>
 
@@ -453,19 +551,6 @@ export default function CostPage({ filters }) {
           </div>
         </Panel>
 
-        <Panel
-          title="Budget pace"
-          subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-          loading={budgetPace.loading}
-          error={budgetPace.error}
-          className="cost-budget-pace"
-        >
-          <BudgetHealthGauge
-            title="Fiscal-period forecast"
-            data={budgetHealth}
-            emptyMessage="Budget pace is not configured for this source yet."
-          />
-        </Panel>
       </section>
 
     </div>
@@ -491,6 +576,52 @@ const UNMATCHED_RESOURCE_SORT_OPTIONS = [
   { key: "list_cost", label: "List cost" },
   { key: "duration", label: "Duration" },
 ];
+
+function BudgetModeSelector({ value, onChange }) {
+  return (
+    <SegmentedControl
+      ariaLabel="Cost mode"
+      options={COST_MODE_OPTIONS}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function BudgetTrend({ data }) {
+  const listCost = data?.series?.find((series) => series.key === "list_cost");
+  if (!listCost?.points?.length) {
+    return <div className="empty-state">No List Cost data for the selected scope.</div>;
+  }
+  const targets = data?.meta?.budget_targets || {};
+  const budgetPoints = listCost.points.map(([bucket]) => [
+    bucket,
+    targets[bucket] == null ? null : Number(targets[bucket]),
+  ]);
+  const series = [
+    listCost,
+    {
+      key: "budget_target",
+      label: "Budget target",
+      type: "line",
+      dash: true,
+      showPoints: false,
+      points: budgetPoints,
+    },
+  ];
+  return (
+    <TrendChart
+      series={series}
+      yFormatter={formatCompactCurrency}
+      height={340}
+      compactY
+      yTickMode="thousands-rounded"
+      yTickSegments={5}
+      barGroupWidthFactor={0.56}
+      barMaxWidth={58}
+    />
+  );
+}
 
 function CostBreakdownGroupSelector({ value, onChange }) {
   return (

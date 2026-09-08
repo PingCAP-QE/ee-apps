@@ -5,7 +5,7 @@ from sqlalchemy.engine import Engine
 
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
-from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
+from ci_dashboard.api.queries.cost import BudgetScopeNotFound, COST_DRILLDOWN_CHILD_GROUPS
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_budget_pace_page,
@@ -17,6 +17,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
+    get_budget_scopes_page,
     get_weekly_cost_report_page,
     get_flaky_page,
     get_overview_page,
@@ -65,6 +66,11 @@ def cost_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
+    if filters.budget_scope:
+        raise HTTPException(
+            status_code=400,
+            detail="budget_scope is supported by cost-trend and cost-budget-pace only",
+        )
     return get_cost_insight_page(engine, filters)
 
 
@@ -75,6 +81,13 @@ def cost_sources_page(
     return get_cost_sources_page(engine)
 
 
+@router.get("/cost-budget-scopes")
+def cost_budget_scopes_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_budget_scopes_page(engine)
+
+
 @router.get("/cost-trend")
 def cost_trend_page(
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
@@ -83,12 +96,15 @@ def cost_trend_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_trend_page(
-        engine,
-        filters,
-        drilldown_group=drilldown_group,
-        drilldown_value=drilldown_value,
-    )
+    try:
+        return get_cost_trend_page(
+            engine,
+            filters,
+            drilldown_group=drilldown_group,
+            drilldown_value=drilldown_value,
+        )
+    except BudgetScopeNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.get("/cost-share")
@@ -118,7 +134,10 @@ def cost_budget_pace_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_budget_pace_page(engine, filters)
+    try:
+        return get_cost_budget_pace_page(engine, filters)
+    except BudgetScopeNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.get("/cost-weekly-account-summaries")

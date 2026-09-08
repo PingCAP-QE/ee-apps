@@ -109,12 +109,15 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
   const [isCompact, setIsCompact] = useState(false);
   const location = useLocation();
   const isCostPage = location.pathname === COST_PATH;
+  const isCostBudgetMode = isCostPage && filterOptions.isCostBudgetMode;
   const selectedCostSource = filterOptions.costSources?.find(
     (item) => item.value === filters.cost_source,
   ) || filterOptions.costSources?.[0];
   const scopePills = isCostPage
     ? [
-        { label: "Source", value: selectedCostSource?.label || "All sources" },
+        ...(isCostBudgetMode
+          ? [{ label: "Mode", value: "Budget" }]
+          : [{ label: "Source", value: selectedCostSource?.label || "All sources" }]),
         { label: "Bucket", value: filters.granularity },
       ]
     : [
@@ -171,7 +174,9 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
 
       <p className="filter-bar__note">
         {isCostPage
-          ? "Each tab keeps its own filter state. Source only changes cost panels."
+          ? isCostBudgetMode
+            ? "Budget mode fixes the configured scope; only the date range and bucket change the view."
+            : "Each tab keeps its own filter state. Source only changes exploration panels."
           : "Each tab keeps its own filter state. Ingestion stays all-repo and all-branch."}
       </p>
 
@@ -198,21 +203,23 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
         />
         {isCostPage ? (
           <>
-            <FilterField
-              label="Source"
-              control={
-                <select
-                  value={filters.cost_source}
-                  onChange={(event) => onFilterChange("cost_source", event.target.value)}
-                >
-                  {filterOptions.costSources.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              }
-            />
+            {!isCostBudgetMode ? (
+              <FilterField
+                label="Source"
+                control={
+                  <select
+                    value={filters.cost_source}
+                    onChange={(event) => onFilterChange("cost_source", event.target.value)}
+                  >
+                    {filterOptions.costSources.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+            ) : null}
             <FilterField
               label="Bucket"
               control={

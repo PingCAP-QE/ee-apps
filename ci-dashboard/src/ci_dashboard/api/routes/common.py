@@ -17,10 +17,13 @@ def get_common_filters(
     end_date: date | None = None,
     granularity: str = Query(default="day"),
     cost_source: str | None = None,
+    budget_scope: str | None = Query(default=None, pattern="^[a-f0-9]{64}$"),
 ) -> CommonFilters:
     validate_granularity(granularity)
     validate_date_range(start_date, end_date)
     validate_issue_status(issue_status)
+    if budget_scope and cost_source:
+        raise HTTPException(status_code=400, detail="budget_scope cannot be combined with cost_source")
     cost_vendor, cost_account_id = parse_cost_source(cost_source)
     return CommonFilters(
         repo=repo,
@@ -33,6 +36,7 @@ def get_common_filters(
         granularity=granularity,
         cost_vendor=cost_vendor,
         cost_account_id=cost_account_id,
+        budget_scope=budget_scope,
     )
 
 

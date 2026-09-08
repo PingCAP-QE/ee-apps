@@ -51,7 +51,6 @@ NO_OWNER_LABEL = "(no owner)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 FORECAST_WINDOW_DAYS = 14
-BUDGET_FALLBACK_MAX_DAYS = 31
 CURRENT_ATTRIBUTION_BASIS = "current_attribution"
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
 TIFLASH_COST_SOURCES = frozenset(
@@ -81,6 +80,20 @@ class BudgetPeriod:
     @property
     def days(self) -> int:
         return max((self.end_date - self.start_date).days + 1, 1)
+
+
+@dataclass(frozen=True)
+class BudgetScope:
+    key: str
+    scope_type: str
+    label: str
+    vendor: str | None = None
+    account_id: str | None = None
+    projects: tuple[str, ...] = ()
+
+
+class BudgetScopeNotFound(ValueError):
+    pass
 
 
 def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -122,7 +135,15 @@ def get_cost_trend(
     drilldown_value: str | None = None,
 ) -> dict[str, Any]:
     with engine.begin() as connection:
+        selected_budget_scope = _budget_scope_for_filters(connection, filters)
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        if selected_budget_scope:
+            budget_scope_clause, budget_scope_params = _budget_scope_clause(
+                selected_budget_scope,
+                table_alias="c",
+            )
+            where_clause = f"{where_clause} AND {budget_scope_clause}"
+            params.update(budget_scope_params)
         drilldown = _cost_drilldown_filter(
             connection,
             child_group=None,
@@ -137,14 +158,16 @@ def get_cost_trend(
             params = {**params, **drilldown["params"]}
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         list_cost_expr = _billing_report_list_cost_expr("c")
+        actual_cost_expr = list_cost_expr if filters.budget_scope else "c.net_cost"
+        effective_cost_expr = list_cost_expr if filters.budget_scope else "c.effective_cost"
         rows = connection.execute(
             text(
                 f"""
                 WITH bucketed AS (
                   SELECT {index_hint}
                     {bucket} AS bucket_start,
-                    SUM(c.net_cost) AS net_cost,
-                    SUM(c.effective_cost) AS effective_cost,
+                    SUM({actual_cost_expr}) AS net_cost,
+                    SUM({effective_cost_expr}) AS effective_cost,
                     SUM({list_cost_expr}) AS list_cost,
                     SUM(CASE WHEN c.list_cost IS NOT NULL THEN {list_cost_expr} ELSE 0 END) AS total_resource_cost,
                     SUM(CASE WHEN c.list_cost IS NOT NULL AND c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
@@ -170,6 +193,7 @@ def get_cost_trend(
             connection,
             filters,
             buckets=buckets,
+            selected_scope=selected_budget_scope,
         )
     summary_net_cost = sum(_money(row["net_cost"]) for row in data_rows)
     summary_effective_cost = sum(_money(row["effective_cost"]) for row in data_rows)
@@ -192,12 +216,18 @@ def get_cost_trend(
                 "type": "bar",
                 "points": [[bucket, list_cost_by_bucket[bucket]] for bucket in buckets],
             },
-            {
-                "key": "net_cost",
-                "label": "Net cost",
-                "type": "line",
-                "points": [[bucket, net_cost_by_bucket[bucket]] for bucket in buckets],
-            },
+            *(
+                []
+                if filters.budget_scope
+                else [
+                    {
+                        "key": "net_cost",
+                        "label": "Net cost",
+                        "type": "line",
+                        "points": [[bucket, net_cost_by_bucket[bucket]] for bucket in buckets],
+                    }
+                ]
+            ),
         ],
         "meta": {
             **filters.meta(),
@@ -239,6 +269,41 @@ def get_budget_pace(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     }
 
 
+def list_budget_scopes(engine: Engine) -> dict[str, Any]:
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT scope_key, vendor, account_id, label_filters, budget_name,
+                       period_start_date, period_end_date
+                FROM cost_budgets
+                ORDER BY scope_key, period_start_date DESC, period_end_date DESC
+                """
+            )
+        ).mappings()
+        scopes: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            try:
+                scope = _budget_scope_from_row(row)
+            except ValueError:
+                continue
+            if scope.key in seen:
+                continue
+            seen.add(scope.key)
+            scopes.append(
+                {
+                    "scope_key": scope.key,
+                    "scope_type": scope.scope_type,
+                    "label": scope.label,
+                    "vendor": scope.vendor,
+                    "account_id": scope.account_id,
+                    "projects": list(scope.projects),
+                }
+            )
+    return {"items": scopes}
+
+
 def get_repo_group_cost_stack(
     engine: Engine,
     filters: CommonFilters,
@@ -251,7 +316,15 @@ def get_repo_group_cost_stack(
         group_by = "repo"
 
     with engine.begin() as connection:
+        selected_budget_scope = _budget_scope_for_filters(connection, filters)
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        if selected_budget_scope:
+            budget_scope_clause, budget_scope_params = _budget_scope_clause(
+                selected_budget_scope,
+                table_alias="c",
+            )
+            where_clause = f"{where_clause} AND {budget_scope_clause}"
+            params.update(budget_scope_params)
         index_hint = _cost_aggregate_read_hint(connection, filters)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
@@ -530,7 +603,15 @@ def get_engineering_group_share(
                 },
             }
 
+        selected_budget_scope = _budget_scope_for_filters(connection, filters)
         where_clause, params = _build_cost_where(filters, table_alias="c")
+        if selected_budget_scope:
+            budget_scope_clause, budget_scope_params = _budget_scope_clause(
+                selected_budget_scope,
+                table_alias="c",
+            )
+            where_clause = f"{where_clause} AND {budget_scope_clause}"
+            params.update(budget_scope_params)
         index_hint = _cost_aggregate_read_hint(connection, filters)
         list_cost_expr = _billing_report_list_cost_expr("c")
         level1_match = _like_prefix_expr(connection, "c_group.path", "level1_group.path")
@@ -886,6 +967,7 @@ def get_weekly_account_summaries(
         params["branch"] = cost_filters.branch
 
     with engine.begin() as connection:
+        list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
                 f"""
@@ -895,11 +977,11 @@ def get_weekly_account_summaries(
                   s.display_name,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :current_start AND :current_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
                   ) AS net_cost,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :previous_start AND :previous_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
                   ) AS previous_net_cost
                 FROM cost_sources s
                 LEFT JOIN cost_attribution_daily c
@@ -919,11 +1001,6 @@ def get_weekly_account_summaries(
             start_date=cost_filters.start_date,
             end_date=cost_filters.end_date,
         )
-        previous_budget_periods_by_account = _budget_periods_by_account_for_window(
-            connection,
-            start_date=cost_filters.end_date - timedelta(days=BUDGET_FALLBACK_MAX_DAYS),
-            end_date=cost_filters.end_date - timedelta(days=1),
-        )
         items = []
         for row in rows:
             vendor = str(row["vendor"])
@@ -931,24 +1008,18 @@ def get_weekly_account_summaries(
             budget_key = (vendor, account_id)
             budget_periods = budget_periods_by_account.get(budget_key, [])
             budget_period = _budget_period_for_date(budget_periods, cost_filters.end_date)
-            if budget_period is None:
-                budget_period = _recent_previous_budget_period(
-                    previous_budget_periods_by_account.get(budget_key, []),
-                    cost_filters.end_date,
-                )
             annual_budget = budget_period.amount if budget_period else None
             net_cost = _money(row["net_cost"])
             previous_net_cost = _money(row["previous_net_cost"])
-            weekly_budget = _budget_amount_for_periods(
-                budget_periods,
-                cost_filters.start_date,
-                cost_filters.end_date,
-            )
-            if weekly_budget is None and budget_period:
-                weekly_budget = _budget_amount_for_days(
-                    budget_period,
-                    (cost_filters.end_date - cost_filters.start_date).days + 1,
+            weekly_budget = (
+                _budget_amount_for_periods(
+                    budget_periods,
+                    cost_filters.start_date,
+                    cost_filters.end_date,
                 )
+                if budget_period
+                else None
+            )
             items.append(
                 {
                     "cost_source": _cost_source_value(
@@ -1630,8 +1701,16 @@ def _resource_serving_response(
     }
 
 
-def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
+def _cost_summary(
+    connection: Connection,
+    filters: CommonFilters,
+    selected_scope: BudgetScope | None = None,
+) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    if selected_scope:
+        scope_clause, scope_params = _budget_scope_clause(selected_scope, table_alias="c")
+        where_clause = f"{where_clause} AND {scope_clause}"
+        params.update(scope_params)
     index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     row = connection.execute(
@@ -1658,27 +1737,25 @@ def _budget_health_snapshot(
 ) -> dict[str, Any] | None:
     today = _today()
     observed_through = today - timedelta(days=COST_DATA_LAG_DAYS)
+    selected_scope = _budget_scope_for_filters(connection, filters)
     budget_period = _budget_period_for_filters(
         connection,
         filters,
         target_date=observed_through,
-        allow_previous=True,
+        selected_scope=selected_scope,
     )
     if budget_period is None:
         return None
     annual_budget = budget_period.amount
     period_start = budget_period.start_date
     period_end = budget_period.end_date
-    observed_through = min(max(period_start, observed_through), period_end)
     current_scope = CommonFilters(
         start_date=period_start,
         end_date=observed_through,
         granularity=filters.granularity,
-        cost_vendor=filters.cost_vendor,
-        cost_account_id=filters.cost_account_id,
     )
-    current_summary = _cost_summary(connection, current_scope)
-    current_cost = current_summary["net_cost"]
+    current_summary = _cost_summary(connection, current_scope, selected_scope)
+    current_cost = current_summary["list_cost"]
     days_elapsed = max((observed_through - period_start).days + 1, 1)
     period_days = budget_period.days
     days_remaining = max((period_end - observed_through).days, 0)
@@ -1691,11 +1768,9 @@ def _budget_health_snapshot(
         start_date=recent_window_start,
         end_date=observed_through,
         granularity=filters.granularity,
-        cost_vendor=filters.cost_vendor,
-        cost_account_id=filters.cost_account_id,
     )
-    recent_summary = _cost_summary(connection, recent_scope)
-    recent_window_cost = recent_summary["net_cost"]
+    recent_summary = _cost_summary(connection, recent_scope, selected_scope)
+    recent_window_cost = recent_summary["list_cost"]
     recent_daily_cost = round(recent_window_cost / recent_window_days, 2) if recent_window_days else 0.0
     forecast_remaining_cost = round(recent_daily_cost * days_remaining, 2)
     forecast_total_cost = round(current_cost + forecast_remaining_cost, 2)
@@ -1703,7 +1778,7 @@ def _budget_health_snapshot(
     is_healthy = forecast_total_cost <= annual_budget
 
     return {
-        "metric_key": "net_cost",
+        "metric_key": "list_cost",
         "annual_budget": round(annual_budget, 2),
         "period_budget": round(annual_budget, 2),
         "budget_start_date": period_start.isoformat(),
@@ -1824,27 +1899,18 @@ def _budget_period_for_filters(
     filters: CommonFilters,
     *,
     target_date: date,
-    allow_previous: bool = False,
+    selected_scope: BudgetScope | None = None,
 ) -> BudgetPeriod | None:
-    if not filters.cost_vendor or not filters.cost_account_id:
+    scope = selected_scope or _budget_scope_for_filters(connection, filters)
+    if scope is None:
         return None
-
-    periods = _budget_periods_for_window(
+    periods = _budget_periods_for_scope(
         connection,
-        filters,
+        scope.key,
         start_date=target_date,
         end_date=target_date,
     )
-    period = _budget_period_for_date(periods, target_date)
-    if period or not allow_previous:
-        return period
-    previous_periods = _budget_periods_for_window(
-        connection,
-        filters,
-        start_date=target_date - timedelta(days=BUDGET_FALLBACK_MAX_DAYS),
-        end_date=target_date - timedelta(days=1),
-    )
-    return _recent_previous_budget_period(previous_periods, target_date)
+    return _budget_period_for_date(periods, target_date)
 
 
 def _budget_targets_for_filters(
@@ -1852,6 +1918,7 @@ def _budget_targets_for_filters(
     filters: CommonFilters,
     *,
     buckets: list[str],
+    selected_scope: BudgetScope | None = None,
 ) -> dict[str, float]:
     bucket_ranges = []
     for bucket in buckets:
@@ -1859,11 +1926,12 @@ def _budget_targets_for_filters(
         if bucket_start is None:
             continue
         bucket_ranges.append((bucket, bucket_start, _bucket_end(bucket_start, filters.granularity)))
-    if not bucket_ranges:
+    scope = selected_scope or _budget_scope_for_filters(connection, filters)
+    if not bucket_ranges or scope is None:
         return {}
-    periods = _budget_periods_for_window(
+    periods = _budget_periods_for_scope(
         connection,
-        filters,
+        scope.key,
         start_date=min(start_date for _, start_date, _ in bucket_ranges),
         end_date=max(end_date for _, _, end_date in bucket_ranges),
     )
@@ -1893,24 +1961,153 @@ def _budget_amount_for_periods(
     )
 
 
-def _budget_periods_for_window(
+def _budget_scope_for_filters(
     connection: Connection,
     filters: CommonFilters,
+) -> BudgetScope | None:
+    if filters.budget_scope:
+        return _budget_scope_for_key(connection, filters.budget_scope)
+    if not filters.cost_vendor or not filters.cost_account_id:
+        return None
+    rows = connection.execute(
+        text(
+            """
+            SELECT scope_key, vendor, account_id, label_filters, budget_name,
+                   period_start_date, period_end_date
+            FROM cost_budgets
+            WHERE vendor = :vendor
+              AND account_id = :account_id
+              AND label_filters IS NULL
+            ORDER BY period_start_date DESC, period_end_date DESC
+            """
+        ),
+        {"vendor": filters.cost_vendor, "account_id": filters.cost_account_id},
+    ).mappings()
+    for row in rows:
+        try:
+            return _budget_scope_from_row(row)
+        except ValueError:
+            continue
+    return None
+
+
+def _budget_scope_for_key(connection: Connection, scope_key: str) -> BudgetScope:
+    rows = connection.execute(
+        text(
+            """
+            SELECT scope_key, vendor, account_id, label_filters, budget_name,
+                   period_start_date, period_end_date
+            FROM cost_budgets
+            WHERE scope_key = :scope_key
+            ORDER BY period_start_date DESC, period_end_date DESC
+            """
+        ),
+        {"scope_key": scope_key},
+    ).mappings()
+    for row in rows:
+        try:
+            return _budget_scope_from_row(row)
+        except ValueError:
+            continue
+    raise BudgetScopeNotFound(f"budget scope {scope_key!r} was not found")
+
+
+def _budget_scope_from_row(row: Mapping[str, Any]) -> BudgetScope:
+    scope_key = str(row["scope_key"])
+    vendor = str(row["vendor"]) if row["vendor"] is not None else None
+    account_id = str(row["account_id"]) if row["account_id"] is not None else None
+    budget_name = str(row["budget_name"] or "").strip()
+    if vendor and account_id and row["label_filters"] is None:
+        if scope_key != _budget_account_scope_key(vendor, account_id):
+            raise ValueError(f"budget scope {scope_key!r} has an invalid account scope key")
+        return BudgetScope(
+            key=scope_key,
+            scope_type="account",
+            label=budget_name or f"{vendor} / {account_id}",
+            vendor=vendor,
+            account_id=account_id,
+        )
+    if vendor is not None or account_id is not None:
+        raise ValueError(f"budget scope {scope_key!r} has mixed account identity")
+    projects = _budget_scope_projects(row["label_filters"])
+    if scope_key != _budget_project_scope_key(projects):
+        raise ValueError(f"budget scope {scope_key!r} has an invalid project-set scope key")
+    return BudgetScope(
+        key=scope_key,
+        scope_type="project_set",
+        label=budget_name or ", ".join(projects),
+        projects=projects,
+    )
+
+
+def _budget_scope_projects(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("budget project scope has invalid label_filters") from exc
+    if not isinstance(value, Mapping) or set(value) != {"project"}:
+        raise ValueError("budget project scope must contain only project")
+    projects = value["project"]
+    if (
+        not isinstance(projects, list)
+        or not projects
+        or any(not isinstance(project, str) or not project.strip() for project in projects)
+        or len(set(projects)) != len(projects)
+    ):
+        raise ValueError("budget project scope must have unique non-empty projects")
+    return tuple(sorted(projects))
+
+
+def _budget_account_scope_key(vendor: str, account_id: str) -> str:
+    return hashlib.sha256(f"account\0{vendor}\0{account_id}".encode("utf-8")).hexdigest()
+
+
+def _budget_project_scope_key(projects: tuple[str, ...]) -> str:
+    canonical = json.dumps({"project": list(projects)}, separators=(",", ":"))
+    filter_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"project_set\0{filter_hash}".encode("utf-8")).hexdigest()
+
+
+def _budget_scope_clause(
+    scope: BudgetScope,
+    *,
+    table_alias: str,
+) -> tuple[str, dict[str, Any]]:
+    prefix = f"{table_alias}." if table_alias else ""
+    if scope.scope_type == "account":
+        return (
+            f"{prefix}vendor = :budget_vendor AND {prefix}account_id = :budget_account_id",
+            {"budget_vendor": scope.vendor, "budget_account_id": scope.account_id},
+        )
+    bind_names = [f"budget_project_{index}" for index in range(len(scope.projects))]
+    return (
+        f"{prefix}project IN ({', '.join(f':{name}' for name in bind_names)})",
+        {name: project for name, project in zip(bind_names, scope.projects, strict=True)},
+    )
+
+
+def _budget_periods_for_scope(
+    connection: Connection,
+    scope_key: str,
     *,
     start_date: date,
     end_date: date,
 ) -> list[BudgetPeriod]:
-    if not filters.cost_vendor or not filters.cost_account_id:
-        return []
-
-    periods_by_account = _budget_periods_by_account_for_window(
-        connection,
-        start_date=start_date,
-        end_date=end_date,
-        vendor=filters.cost_vendor,
-        account_id=filters.cost_account_id,
-    )
-    return periods_by_account.get((filters.cost_vendor, filters.cost_account_id), [])
+    rows = connection.execute(
+        text(
+            """
+            SELECT period_start_date, period_end_date, budget_amount
+            FROM cost_budgets
+            WHERE scope_key = :scope_key
+              AND period_start_date <= :end_date
+              AND period_end_date >= :start_date
+            ORDER BY period_start_date
+            """
+        ),
+        {"scope_key": scope_key, "start_date": start_date, "end_date": end_date},
+    ).mappings()
+    return _budget_periods_from_rows(rows)
 
 
 def _budget_periods_by_account_for_window(
@@ -1918,101 +2115,45 @@ def _budget_periods_by_account_for_window(
     *,
     start_date: date,
     end_date: date,
-    vendor: str | None = None,
-    account_id: str | None = None,
 ) -> dict[tuple[str, str], list[BudgetPeriod]]:
-    vendor_filter = "AND vendor = :vendor" if vendor else ""
-    account_filter = "AND account_id = :account_id" if account_id else ""
     rows = connection.execute(
         text(
-            f"""
-            SELECT
-              vendor,
-              account_id,
-              period_start_date,
-              period_end_date,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL
-                    AND manager_id IS NULL
-                    AND repo IS NULL
-                    AND label_filters IS NULL
-                  THEN budget_amount
-                  ELSE 0
-                END
-              ) AS source_wide_budget,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL
-                    AND manager_id IS NULL
-                    AND repo IS NULL
-                    AND label_filters IS NULL
-                  THEN 1
-                  ELSE 0
-                END
-              ) AS source_wide_budget_count,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL AND manager_id IS NULL
-                  THEN budget_amount
-                  ELSE 0
-                END
-              ) AS fallback_budget,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL AND manager_id IS NULL
-                  THEN 1
-                  ELSE 0
-                END
-              ) AS fallback_budget_count
+            """
+            SELECT vendor, account_id, period_start_date, period_end_date, budget_amount
             FROM cost_budgets
-            WHERE period_start_date <= :end_date
+            WHERE vendor IS NOT NULL
+              AND account_id IS NOT NULL
+              AND label_filters IS NULL
+              AND period_start_date <= :end_date
               AND period_end_date >= :start_date
-              {vendor_filter}
-              {account_filter}
-            GROUP BY vendor, account_id, period_start_date, period_end_date
             ORDER BY vendor, account_id, period_start_date
             """
         ),
-        {
-            "vendor": vendor,
-            "account_id": account_id,
-            "start_date": start_date,
-            "end_date": end_date,
-        },
+        {"start_date": start_date, "end_date": end_date},
     ).mappings()
-
     periods_by_account: dict[tuple[str, str], list[BudgetPeriod]] = {}
     for row in rows:
-        start = _parse_date(row["period_start_date"])
-        end = _parse_date(row["period_end_date"])
-        if start is None or end is None:
-            continue
-        if int(row["source_wide_budget_count"] or 0) > 0:
-            amount = row["source_wide_budget"]
-        elif int(row["fallback_budget_count"] or 0) > 0:
-            amount = row["fallback_budget"]
-        else:
-            continue
         key = (str(row["vendor"]), str(row["account_id"]))
-        periods_by_account.setdefault(key, []).append(BudgetPeriod(_money(amount), start, end))
+        periods_by_account.setdefault(key, []).extend(_budget_periods_from_rows([row]))
     return periods_by_account
 
 
+def _budget_periods_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[BudgetPeriod]:
+    periods = []
+    for row in rows:
+        start = _parse_date(row["period_start_date"])
+        end = _parse_date(row["period_end_date"])
+        if start is not None and end is not None:
+            periods.append(BudgetPeriod(_money(row["budget_amount"]), start, end))
+    return periods
+
+
 def _budget_period_for_date(periods: list[BudgetPeriod], target_date: date) -> BudgetPeriod | None:
-    matching = [
-        period
-        for period in periods
-        if period.start_date <= target_date <= period.end_date
-    ]
-    return max(matching, key=lambda period: period.start_date, default=None)
-
-
-def _recent_previous_budget_period(periods: list[BudgetPeriod], target_date: date) -> BudgetPeriod | None:
-    previous_period = max(periods, key=lambda period: period.end_date, default=None)
-    if previous_period and (target_date - previous_period.end_date).days <= BUDGET_FALLBACK_MAX_DAYS:
-        return previous_period
-    return None
+    return max(
+        (period for period in periods if period.start_date <= target_date <= period.end_date),
+        key=lambda period: period.start_date,
+        default=None,
+    )
 
 
 def _budget_amount_for_window(
@@ -2028,10 +2169,6 @@ def _budget_amount_for_window(
     return round(budget_period.amount * overlap_days / budget_period.days, 2)
 
 
-def _budget_amount_for_days(budget_period: BudgetPeriod, days: int) -> float:
-    return round(budget_period.amount * max(days, 0) / budget_period.days, 2)
-
-
 def _cost_filters(filters: CommonFilters) -> CommonFilters:
     granularity = filters.granularity if filters.granularity in {"week", "month"} else "week"
     return CommonFilters(
@@ -2041,6 +2178,7 @@ def _cost_filters(filters: CommonFilters) -> CommonFilters:
         granularity=granularity,
         cost_vendor=filters.cost_vendor,
         cost_account_id=filters.cost_account_id,
+        budget_scope=filters.budget_scope,
     )
 
 

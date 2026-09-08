@@ -35,6 +35,7 @@ from ci_dashboard.api.queries.cost import (
     get_unmatched_resources,
     get_weekly_account_summaries,
     get_weekly_cost_report,
+    list_budget_scopes,
     list_cost_sources,
 )
 from ci_dashboard.api.queries.failures import (
@@ -304,6 +305,10 @@ def get_cost_budget_pace_page(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     return get_budget_pace(engine, _normalize_cost_filters(filters))
+
+
+def get_budget_scopes_page(engine: Engine) -> dict[str, Any]:
+    return list_budget_scopes(engine)
 
 
 def get_cost_weekly_account_summaries_page(

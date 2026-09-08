@@ -91,6 +91,21 @@ test("QA Cost Weekly never serializes filters into its fixed-report URL", () => 
   assert.equal(search, "");
 });
 
+test("defaults Cost to the latest available billing date", () => {
+  assert.deepEqual(buildDefaultFilters(defaultRange, "/cost"), {
+    repo: "",
+    branch: "",
+    job_name: "",
+    cloud_phase: "",
+    issue_status: "",
+    cost_source: "gcp:pingcap-testing-account",
+    budget_scope: "",
+    granularity: "week",
+    start_date: "2026-05-01",
+    end_date: "2026-05-28",
+  });
+});
+
 test("keeps cost dashboard month buckets but normalizes invalid values", () => {
   assert.equal(
     readFiltersFromSearch(defaultRange, "/cost", "?granularity=month").granularity,
@@ -116,6 +131,21 @@ test("keeps cost source on the cost tab and drops unrelated filters", () => {
   assert.equal(filters.issue_status, "");
   assert.equal(filters.cost_source, "aws:946646677266");
   assert.equal(filters.granularity, "month");
+});
+
+test("uses a budget scope instead of a cost source on the cost tab", () => {
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    "/cost",
+    "?cost_source=aws%3A946646677266&budget_scope=scope-key",
+  );
+
+  assert.equal(filters.budget_scope, "scope-key");
+  assert.equal(filters.cost_source, "");
+  assert.equal(
+    new URLSearchParams(buildFilterSearch(filters, "/cost")).get("cost_source"),
+    null,
+  );
 });
 
 test("does not keep cost source outside the cost tab", () => {
@@ -158,6 +188,22 @@ test("compares filter values without being sensitive to object identity", () => 
     ),
     false,
   );
+});
+
+test("uses the Cost tab's lagged default dates when navigating to it", () => {
+  const navSearchByPath = buildNavSearchByPath(
+    {},
+    defaultRange,
+    {
+      ...buildDefaultFilters(defaultRange, "/ci-status"),
+      start_date: "2026-05-25",
+      end_date: "2026-06-01",
+    },
+  );
+  const costParams = new URLSearchParams(navSearchByPath["/cost"]);
+
+  assert.equal(costParams.get("start_date"), "2026-05-01");
+  assert.equal(costParams.get("end_date"), "2026-05-28");
 });
 
 test("keeps the active date range when building links to other tabs", () => {

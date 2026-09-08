@@ -454,8 +454,9 @@ def _create_test_schema(engine: Engine) -> None:
         """
         CREATE TABLE cost_budgets (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          vendor TEXT NOT NULL,
-          account_id TEXT NOT NULL,
+          vendor TEXT NULL,
+          account_id TEXT NULL,
+          scope_key TEXT NOT NULL,
           period_start_date TEXT NOT NULL,
           period_end_date TEXT NOT NULL,
           budget_name TEXT NULL,

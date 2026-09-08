@@ -5,6 +5,7 @@ export const COST_PATH = "/cost";
 export const WEEKLY_COST_PATH = "/qa-cost-weekly";
 export const ALL_COST_SOURCES = "all";
 export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
+export const COST_DATA_LAG_DAYS = 4;
 export const FILTER_QUERY_KEYS = [
   "start_date",
   "end_date",
@@ -14,6 +15,7 @@ export const FILTER_QUERY_KEYS = [
   "cloud_phase",
   "issue_status",
   "cost_source",
+  "budget_scope",
   "granularity",
 ];
 export const WEEK_GRANULARITY_PATHS = new Set([
@@ -34,10 +36,7 @@ export const NAV_PATHS = [
 export function buildDefaultFilters(defaultRange, pathname) {
   const costRange =
     pathname === COST_PATH
-      ? {
-          start_date: defaultRange.end_date.slice(0, 8) + "01",
-          end_date: defaultRange.end_date,
-        }
+      ? laggedCostDateRange(defaultRange)
       : defaultRange;
   const baseFilters = {
     repo: "",
@@ -46,6 +45,7 @@ export function buildDefaultFilters(defaultRange, pathname) {
     cloud_phase: "",
     issue_status: "",
     cost_source: pathname === COST_PATH ? DEFAULT_COST_SOURCE : "",
+    budget_scope: "",
     granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
     start_date: costRange.start_date,
     end_date: costRange.end_date,
@@ -61,6 +61,16 @@ export function buildDefaultFilters(defaultRange, pathname) {
   }
 
   return baseFilters;
+}
+
+function laggedCostDateRange(defaultRange) {
+  const end = new Date(`${defaultRange.end_date}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - COST_DATA_LAG_DAYS);
+  const endDate = end.toISOString().slice(0, 10);
+  return {
+    start_date: endDate.slice(0, 8) + "01",
+    end_date: endDate,
+  };
 }
 
 export function normalizeFiltersForPath(pathname, filters) {
@@ -80,9 +90,10 @@ export function normalizeFiltersForPath(pathname, filters) {
     next.job_name = "";
     next.cloud_phase = "";
     next.issue_status = "";
-    next.cost_source = next.cost_source || DEFAULT_COST_SOURCE;
+    next.cost_source = next.budget_scope ? "" : next.cost_source || DEFAULT_COST_SOURCE;
   } else {
     next.cost_source = "";
+    next.budget_scope = "";
   }
   return next;
 }
@@ -121,16 +132,16 @@ export function sameFilters(left, right) {
 export function buildNavSearchByPath(filtersByPath, defaultRange, currentFilters) {
   return NAV_PATHS.reduce((accumulator, pathname) => {
     const routeFilters = filtersByPath[pathname] || buildDefaultFilters(defaultRange, pathname);
-    return {
-      ...accumulator,
-      [pathname]: buildFilterSearch(
-        {
+    const nextFilters = pathname === COST_PATH
+      ? routeFilters
+      : {
           ...routeFilters,
           start_date: currentFilters.start_date,
           end_date: currentFilters.end_date,
-        },
-        pathname,
-      ),
+        };
+    return {
+      ...accumulator,
+      [pathname]: buildFilterSearch(nextFilters, pathname),
     };
   }, {});
 }

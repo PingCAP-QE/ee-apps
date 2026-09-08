@@ -379,7 +379,7 @@ function CostAccountCard({ item }) {
       }`}
     >
       <span className="cost-account-card__account">{accountLabel}</span>
-      <span className="stat-card__label">Net cost</span>
+      <span className="stat-card__label">List cost</span>
       <strong className="stat-card__value">{formatWeeklyCost(item.net_cost)}</strong>
       <div className="stat-card__meta">
         <span>

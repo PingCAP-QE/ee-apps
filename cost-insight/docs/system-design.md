@@ -247,16 +247,16 @@ Attribution rules for V1:
 
 ### `cost_budgets`
 
-Budget table for later Lark sync. Budgets are requested for a period, usually a
-year, with explicit start and end dates. Monthly budget views and alerts should
-derive a monthly allocation from this period budget instead of storing budgets
-as if they were requested month by month.
+Manual budget configuration table. A budget covers one explicit inclusive
+period, usually a year. Monthly budget views and alerts derive a prorated
+allocation from that period rather than storing separate monthly rows.
 
 ```sql
 CREATE TABLE cost_budgets (
   id BIGINT NOT NULL AUTO_INCREMENT,
-  vendor VARCHAR(32) NOT NULL,
-  account_id VARCHAR(128) NOT NULL,
+  vendor VARCHAR(32) NULL,
+  account_id VARCHAR(128) NULL,
+  scope_key CHAR(64) NOT NULL,
   period_start_date DATE NOT NULL,
   period_end_date DATE NOT NULL,
   budget_name VARCHAR(255) NULL,
@@ -271,12 +271,10 @@ CREATE TABLE cost_budgets (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_cost_budgets_scope (
-    vendor,
-    account_id,
+  UNIQUE KEY uk_cost_budgets_scope_period (
+    scope_key,
     period_start_date,
-    period_end_date,
-    filter_hash
+    period_end_date
   ),
   KEY idx_cost_budgets_period (period_start_date, period_end_date),
   KEY idx_cost_budgets_group (group_id),
@@ -287,22 +285,23 @@ CREATE TABLE cost_budgets (
 
 Sample:
 
-| period_start_date | period_end_date | vendor | account_id | budget_name | label_filters | repo | budget_amount |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `2026-01-01` | `2026-12-31` | `gcp` | `pingcap-testing-account` | `TiCDC CI` | `{"repo":"ticdc","org":"pingcap"}` | `ticdc` | `60000.00` |
-| `2026-01-01` | `2026-12-31` | `gcp` | `pingcap-testing-account` | `Other CI` | `{"repo":["tidb","pd","tikv"]}` | `NULL` | `144000.00` |
+| period_start_date | period_end_date | vendor | account_id | scope type | label_filters | budget_amount |
+| --- | --- | --- | --- | --- | --- | --- |
+| `2026-01-01` | `2026-12-31` | `gcp` | `pingcap-testing-account` | account | `NULL` | `60000.00` |
+| `2026-01-01` | `2026-12-31` | `NULL` | `NULL` | project set | `{"project":["apps","infra"]}` | `144000.00` |
 
 Notes:
 
-- `label_filters = NULL` means the whole source account/project.
-- JSON filter semantics are AND across keys. A scalar value means equality; an
-  array means `IN`.
+- An account budget has non-null `vendor` and `account_id` with
+  `label_filters = NULL`.
+- A cross-account project-set budget has null `vendor` and `account_id` with
+  exactly `{"project":[...]}`; it aggregates those attribution projects across
+  every account.
+- `scope_key` is the stable typed scope identity; its periods must not overlap.
 - `filter_hash` is SHA256 over canonicalized `label_filters`, with keys sorted
-  and array values sorted. The helper lives in `cost_insight.budgets` so budget
-  sync can reuse one deterministic implementation.
-- `group_id`, `manager_id`, and `repo` are optional denormalized fields for fast
-  filtering in common views. The authoritative matching condition is
-  `label_filters`.
+  and array values sorted. The helper lives in `cost_insight.budgets`.
+- Other label filters, `group_id`, `manager_id`, and `repo` are legacy metadata,
+  not supported budget scopes.
 
 ### `cost_job_state`
 
