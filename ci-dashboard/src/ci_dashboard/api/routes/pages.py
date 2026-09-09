@@ -17,7 +17,9 @@ from ci_dashboard.api.queries.pages import (
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
+    get_weekly_cost_allocation_page,
     get_weekly_cost_report_page,
+    get_weekly_cost_trend_page,
     get_flaky_page,
     get_overview_page,
     get_runtime_insights_page,
@@ -131,9 +133,25 @@ def cost_weekly_account_summaries_page(
 
 @router.get("/weekly-cost")
 def weekly_cost_report_page(
+    include_trend: bool = Query(True),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_weekly_cost_report_page(engine)
+    return get_weekly_cost_report_page(engine, include_trend=include_trend)
+
+
+@router.get("/weekly-cost/trend")
+def weekly_cost_trend_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_weekly_cost_trend_page(engine)
+
+
+@router.get("/weekly-cost/allocation")
+def weekly_cost_allocation_page(
+    period: str = Query("month", pattern="^(week|month)$"),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_weekly_cost_allocation_page(engine, period)
 
 
 @router.get("/cost-repo-group-stack")

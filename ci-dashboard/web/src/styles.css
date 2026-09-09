@@ -809,8 +809,57 @@ select {
   font-weight: 500;
 }
 
+.weekly-cost__vendor-total {
+  background: rgba(15, 124, 130, 0.08);
+}
+
+.weekly-cost__vendor-total th,
+.weekly-cost__vendor-total td {
+  font-weight: 700;
+}
+
+.weekly-cost__vendor-total .weekly-cost__purpose,
+.weekly-cost__vendor-total small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .weekly-cost__number {
   text-align: right !important;
+}
+
+.weekly-cost__sortable-header {
+  padding: 0 !important;
+}
+
+.weekly-cost__sort-button {
+  display: inline-flex;
+  width: 100%;
+  min-height: 3.1rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  padding: 0.7rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.weekly-cost__sort-button:hover,
+.weekly-cost__sort-button:focus-visible {
+  color: var(--accent);
+}
+
+.weekly-cost__sort-indicator {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.weekly-cost__sort-button[aria-pressed="true"] .weekly-cost__sort-indicator {
+  color: var(--accent);
 }
 
 .weekly-cost__wow--alert {
@@ -866,6 +915,216 @@ select {
   height: 0.7rem;
   border-radius: 999px;
   flex: none;
+}
+
+.weekly-cost__budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.weekly-cost__budget-lane {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.weekly-cost__budget-projects {
+  min-height: 100%;
+}
+
+.weekly-cost__budget-project-share {
+  align-self: start;
+}
+
+.weekly-cost__share-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.weekly-cost__budget-card {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(49, 87, 114, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.weekly-cost__budget-card--overall {
+  background: linear-gradient(145deg, rgba(42, 157, 143, 0.14), rgba(255, 253, 248, 0.88));
+}
+
+.weekly-cost__budget-card h4,
+.weekly-cost__budget-title {
+  margin: 0;
+  color: var(--navy);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.weekly-cost__budget-value {
+  color: var(--ink);
+  font-size: clamp(1.65rem, 2.7vw, 2.25rem);
+  line-height: 1;
+}
+
+.weekly-cost__budget-gauge {
+  display: grid;
+  place-items: center;
+}
+
+.weekly-cost__budget-gauge svg {
+  width: min(100%, 15rem);
+  overflow: visible;
+}
+
+.weekly-cost__budget-gauge-track,
+.weekly-cost__budget-gauge-fill {
+  fill: none;
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+
+.weekly-cost__budget-gauge-track {
+  stroke: rgba(49, 87, 114, 0.12);
+}
+
+.weekly-cost__budget-gauge-fill--healthy {
+  stroke: var(--accent);
+}
+
+.weekly-cost__budget-gauge-fill--warning {
+  stroke: #c97917;
+}
+
+.weekly-cost__budget-gauge-fill--danger {
+  stroke: var(--rose);
+}
+
+.weekly-cost__budget-gauge-value {
+  fill: var(--ink);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.weekly-cost__budget-amount,
+.weekly-cost__budget-row span,
+.weekly-cost__budget-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.weekly-cost__budget-meter {
+  height: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(49, 87, 114, 0.12);
+}
+
+.weekly-cost__budget-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.weekly-cost__budget-fill--healthy {
+  background: var(--accent);
+}
+
+.weekly-cost__budget-fill--warning {
+  background: #c97917;
+}
+
+.weekly-cost__budget-fill--danger {
+  background: var(--rose);
+}
+
+.weekly-cost__team-cost-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--navy);
+}
+
+.weekly-cost__budget-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.weekly-cost__budget-row {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(49, 87, 114, 0.08);
+}
+
+.weekly-cost__budget-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.weekly-cost__budget-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.weekly-cost__budget-row-head strong {
+  overflow-wrap: anywhere;
+}
+
+.weekly-cost__budget-row-head span {
+  flex: none;
+  text-align: right;
+}
+
+.weekly-cost__budget-empty {
+  margin: 0;
+}
+
+.weekly-cost__share-card {
+  min-width: 0;
+  align-content: start;
+}
+
+.weekly-cost__share-card .donut-card__body {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.weekly-cost__share-card .donut-chart svg {
+  max-width: min(100%, 18rem);
+}
+
+.weekly-cost__share-card .donut-legend {
+  gap: 0.3rem;
+}
+
+.weekly-cost__share-card .donut-legend__item {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 0.3rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+}
+
+.weekly-cost__share-card .donut-legend__name,
+.weekly-cost__share-card .donut-legend__value,
+.weekly-cost__share-card .donut-legend__share {
+  font-size: 0.68rem;
+}
+
+.weekly-cost__share-card .chart-legend__swatch {
+  width: 0.58rem;
+  height: 0.58rem;
 }
 
 .cost-account-card {
@@ -2516,7 +2775,9 @@ select {
     grid-column: span 1;
   }
 
-  .weekly-cost__trend-layout {
+  .weekly-cost__trend-layout,
+  .weekly-cost__budget-grid,
+  .weekly-cost__share-grid {
     grid-template-columns: 1fr;
   }
 

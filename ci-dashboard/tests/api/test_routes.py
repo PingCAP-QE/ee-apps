@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,19 @@ from ci_dashboard.api.queries import cost as cost_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
+
+
+def test_weekly_cost_share_items_limit_legends_to_eight_non_zero_displayed_shares() -> None:
+    values = {
+        f"owner:{index}": {"key": f"owner:{index}", "name": f"owner-{index}", "value": Decimal(100 - index)}
+        for index in range(9)
+    }
+    values["owner:tiny"] = {"key": "owner:tiny", "name": "tiny", "value": Decimal("0.001")}
+
+    items, _ = cost_queries._weekly_cost_share_items(values)
+
+    assert len(items) == 8
+    assert all(item["share_pct"] >= 0.05 for item in items)
 
 
 @pytest.mark.parametrize(
@@ -3897,6 +3911,557 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
     }
 
 
+def test_weekly_cost_report_adds_list_cost_budget_pace_and_team_share(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    for vendor, account_id in [("aws", "qa-aws"), ("gcp", "qa-gcp")]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            display_name=account_id,
+            purpose="QA",
+        )
+    for group_id, name, path, parent_id in [
+        (1, "Engineering Group", "/1/", None),
+        (2, "Database", "/1/2/", 1),
+        (3, "TiDB", "/1/2/3/", 2),
+        (4, "Cloud", "/1/4/", 1),
+        (9, "Outside Engineering", "/9/", None),
+    ]:
+        _insert_roster_group(
+            sqlite_engine,
+            group_id=group_id,
+            lark_group_id=f"group-{group_id}",
+            name=name,
+            path=path,
+            parent_id=parent_id,
+        )
+    for index, (vendor, account_id, group_id, project, list_cost, sku_name, owner) in enumerate(
+        [
+            ("aws", "qa-aws", 3, "Alpha", 100, "runner", "alice"),
+            ("gcp", "qa-gcp", 2, "Alpha", 50, "runner", "bob"),
+            ("aws", "qa-aws", 4, "Beta", 50, "runner", "alice"),
+            ("gcp", "qa-gcp", None, None, 20, "runner", None),
+            ("gcp", "qa-gcp", 3, "Alpha", 100, "Compute Flexible Committed Use Discounts", "alice"),
+        ]
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date="2026-07-13",
+            vendor=vendor,
+            account_id=account_id,
+            repo="tidb",
+            group_id=group_id,
+            project=project,
+            list_cost=list_cost,
+            net_cost=list_cost,
+            sku_name=sku_name,
+            owner=owner,
+            dimension_hash=f"weekly-budget-share-{index}",
+        )
+    for vendor, account_id, amount, label_filters, group_id in [
+        ("aws", "qa-aws", 36500, None, None),
+        ("gcp", "qa-gcp", 18250, None, None),
+        ("aws", "qa-aws", 5200, {"project": "Alpha"}, None),
+        ("gcp", "qa-gcp", 2600, {"project": "Alpha"}, None),
+        ("aws", "qa-aws", 7300, None, 3),
+        ("gcp", "qa-gcp", 3650, None, 2),
+        ("aws", "qa-aws", 3650, None, 4),
+    ]:
+        _insert_cost_budget(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            period_start_date="2026-01-01",
+            period_end_date="2026-12-31",
+            budget_amount=amount,
+            label_filters=label_filters,
+            group_id=group_id,
+            budget_name=f"{vendor}-{account_id}-{amount}-{group_id or label_filters or 'overall'}",
+        )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["budget_pace"] == {
+        "metric": "list_cost",
+        "period": {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+        "overall": {
+            "actual_list_cost": 220.0,
+            "period_budget": 1199.59,
+            "utilization_pct": 18.34,
+        },
+        "projects": [
+            {
+                "key": "project:Alpha",
+                "name": "Alpha",
+                "actual_list_cost": 150.0,
+                "period_budget": 149.59,
+                "utilization_pct": 100.27,
+            },
+            {
+                "key": "project:Beta",
+                "name": "Beta",
+                "actual_list_cost": 50.0,
+                "period_budget": None,
+                "utilization_pct": None,
+            },
+            {
+                "key": "project:(no project)",
+                "name": "(no project)",
+                "actual_list_cost": 20.0,
+                "period_budget": None,
+                "utilization_pct": None,
+            },
+        ],
+        "team_cost": {
+            "metric": "list_cost",
+            "total_list_cost": 220.0,
+            "items": [
+                {
+                    "key": "team:none",
+                    "name": "(no team)",
+                    "actual_list_cost": 120.0,
+                    "share_pct": 54.55,
+                    "interactive": False,
+                },
+                {
+                    "key": "team:3",
+                    "name": "TiDB",
+                    "actual_list_cost": 100.0,
+                    "share_pct": 45.45,
+                    "interactive": False,
+                },
+            ],
+        },
+    }
+    assert body["team_share"] == {
+        "metric": "list_cost",
+        "total_list_cost": 220.0,
+        "root_group_name": "Engineering Group",
+        "root_group_available": True,
+        "level1": {
+            "items": [
+                {"key": "team:2", "name": "Database", "value": 150.0, "interactive": False, "share_pct": 68.18},
+                {"key": "team:4", "name": "Cloud", "value": 50.0, "interactive": False, "share_pct": 22.73},
+                {"key": "team:unattributed", "name": "Unattributed", "value": 20.0, "interactive": False, "share_pct": 9.09},
+            ]
+        },
+        "level2": {
+            "items": [
+                {"key": "team:3", "name": "TiDB", "value": 100.0, "interactive": False, "share_pct": 45.45},
+                {"key": "team:4:unassigned", "name": "(not in a level 2 team)", "value": 50.0, "interactive": False, "share_pct": 22.73},
+                {"key": "team:2:unassigned", "name": "(not in a level 2 team)", "value": 50.0, "interactive": False, "share_pct": 22.73},
+                {"key": "team:unattributed", "name": "Unattributed", "value": 20.0, "interactive": False, "share_pct": 9.09},
+            ]
+        },
+        "projects": {
+            "items": [
+                {"key": "project:Alpha", "name": "Alpha", "value": 150.0, "interactive": False, "share_pct": 68.18},
+                {"key": "project:Beta", "name": "Beta", "value": 50.0, "interactive": False, "share_pct": 22.73},
+                {"key": "project:(no project)", "name": "(no project)", "value": 20.0, "interactive": False, "share_pct": 9.09},
+            ]
+        },
+        "owners": {
+            "items": [
+                {"key": "owner:alice", "name": "alice", "value": 150.0, "interactive": False, "share_pct": 68.18},
+                {"key": "owner:bob", "name": "bob", "value": 50.0, "interactive": False, "share_pct": 22.73},
+                {"key": "owner:(no owner)", "name": "(no owner)", "value": 20.0, "interactive": False, "share_pct": 9.09},
+            ]
+        },
+    }
+
+
+def test_weekly_cost_report_can_defer_list_cost_history_to_the_trend_endpoint(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="qa-gcp",
+        display_name="qa-gcp",
+        purpose="QA",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-13",
+        vendor="gcp",
+        account_id="qa-gcp",
+        repo="tidb",
+        group_id=None,
+        project=None,
+        list_cost=100,
+        net_cost=100,
+        dimension_hash="weekly-deferred-trend",
+    )
+
+    summary_response = api_client.get("/api/v1/pages/weekly-cost", params={"include_trend": "false"})
+    trend_response = api_client.get("/api/v1/pages/weekly-cost/trend")
+
+    assert summary_response.status_code == 200
+    assert "list_cost_history" not in summary_response.json()
+    assert trend_response.status_code == 200
+    assert trend_response.json() == {
+        "meta": {"purpose_schema_available": True},
+        "list_cost_history": {
+            "metric": "list_cost",
+            "start_date": "2026-05-25",
+            "end_date": "2026-07-19",
+            "weeks": [
+                {"start_date": "2026-05-25", "end_date": "2026-05-31"},
+                {"start_date": "2026-06-01", "end_date": "2026-06-07"},
+                {"start_date": "2026-06-08", "end_date": "2026-06-14"},
+                {"start_date": "2026-06-15", "end_date": "2026-06-21"},
+                {"start_date": "2026-06-22", "end_date": "2026-06-28"},
+                {"start_date": "2026-06-29", "end_date": "2026-07-05"},
+                {"start_date": "2026-07-06", "end_date": "2026-07-12"},
+                {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+            ],
+            "series": [
+                {
+                    "cost_source": "gcp:qa-gcp",
+                    "vendor": "gcp",
+                    "account_id": "qa-gcp",
+                    "display_name": "qa-gcp",
+                    "purpose": "QA",
+                    "total_list_cost": 100.0,
+                    "points": [
+                        {"week_start": "2026-05-25", "list_cost": 0.0},
+                        {"week_start": "2026-06-01", "list_cost": 0.0},
+                        {"week_start": "2026-06-08", "list_cost": 0.0},
+                        {"week_start": "2026-06-15", "list_cost": 0.0},
+                        {"week_start": "2026-06-22", "list_cost": 0.0},
+                        {"week_start": "2026-06-29", "list_cost": 0.0},
+                        {"week_start": "2026-07-06", "list_cost": 0.0},
+                        {"week_start": "2026-07-13", "list_cost": 100.0},
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def test_weekly_cost_allocation_page_supports_last_natural_month(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="aws",
+        account_id="qa-aws",
+        display_name="qa-aws",
+        purpose="QA",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-06-15",
+        vendor="aws",
+        account_id="qa-aws",
+        repo="tidb",
+        group_id=None,
+        project="Monthly QA",
+        list_cost=100,
+        net_cost=100,
+        dimension_hash="weekly-allocation-month",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-13",
+        vendor="aws",
+        account_id="qa-aws",
+        repo="tidb",
+        group_id=None,
+        project="Weekly QA",
+        list_cost=50,
+        net_cost=50,
+        dimension_hash="weekly-allocation-week",
+    )
+
+    response = api_client.get("/api/v1/pages/weekly-cost/allocation", params={"period": "month"})
+    week_response = api_client.get("/api/v1/pages/weekly-cost/allocation", params={"period": "week"})
+
+    assert response.status_code == 200
+    assert week_response.status_code == 200
+    assert week_response.json()["period"] == {"start_date": "2026-07-13", "end_date": "2026-07-19"}
+    assert week_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 50.0
+    assert response.json() == {
+        "period": {"start_date": "2026-06-01", "end_date": "2026-06-30"},
+        "meta": {"purpose_schema_available": True},
+        "budget_pace": {
+            "metric": "list_cost",
+            "period": {"start_date": "2026-06-01", "end_date": "2026-06-30"},
+            "overall": {
+                "actual_list_cost": 100.0,
+                "period_budget": None,
+                "utilization_pct": None,
+            },
+            "projects": [
+                {
+                    "key": "project:Monthly QA",
+                    "name": "Monthly QA",
+                    "actual_list_cost": 100.0,
+                    "period_budget": None,
+                    "utilization_pct": None,
+                }
+            ],
+            "team_cost": {
+                "metric": "list_cost",
+                "total_list_cost": 100.0,
+                "items": [
+                    {
+                        "key": "team:none",
+                        "name": "(no team)",
+                        "actual_list_cost": 100.0,
+                        "share_pct": 100.0,
+                        "interactive": False,
+                    }
+                ],
+            },
+        },
+        "team_share": {
+            "metric": "list_cost",
+            "total_list_cost": 100.0,
+            "root_group_name": "Engineering Group",
+            "root_group_available": False,
+            "level1": {
+                "items": [
+                    {
+                        "key": "team:unattributed",
+                        "name": "Unattributed",
+                        "value": 100.0,
+                        "share_pct": 100.0,
+                        "interactive": False,
+                    }
+                ]
+            },
+            "level2": {
+                "items": [
+                    {
+                        "key": "team:unattributed",
+                        "name": "Unattributed",
+                        "value": 100.0,
+                        "share_pct": 100.0,
+                        "interactive": False,
+                    }
+                ]
+            },
+            "projects": {
+                "items": [
+                    {
+                        "key": "project:Monthly QA",
+                        "name": "Monthly QA",
+                        "value": 100.0,
+                        "share_pct": 100.0,
+                        "interactive": False,
+                    }
+                ]
+            },
+            "owners": {
+                "items": [
+                    {
+                        "key": "owner:alice",
+                        "name": "alice",
+                        "value": 100.0,
+                        "share_pct": 100.0,
+                        "interactive": False,
+                    }
+                ]
+            },
+        },
+    }
+
+
+def test_weekly_cost_allocation_rejects_unsupported_period(sqlite_engine) -> None:
+    with pytest.raises(ValueError, match="unsupported allocation period: quarter"):
+        cost_queries.get_weekly_cost_allocation(sqlite_engine, "quarter")
+
+
+def test_weekly_cost_legacy_budget_pace_excludes_unsupported_filters(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="aws",
+        account_id="qa-aws",
+        display_name="qa-aws",
+        purpose="QA",
+    )
+    for kwargs in [
+        {},
+        {"group_id": 1},
+        {"manager_id": 2},
+        {"repo": "tidb"},
+    ]:
+        _insert_cost_budget(
+            sqlite_engine,
+            vendor="aws",
+            account_id="qa-aws",
+            period_start_date="2026-01-01",
+            period_end_date="2026-12-31",
+            budget_amount=100,
+            budget_name=f"legacy-{kwargs or 'overall'}",
+            **kwargs,
+        )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    assert response.json()["budget_pace"]["overall"]["period_budget"] == 1.92
+
+
+def test_weekly_cost_team_dimensions_use_path_boundaries() -> None:
+    dimensions = cost_queries._weekly_cost_team_dimensions(
+        [
+                {
+                    "vendor": "aws",
+                    "account_id": "qa-aws",
+                    "group_id": 20,
+                    "usage_date": "2026-07-13",
+                    "owner": "alice",
+                "project": "project",
+                "list_cost": 10,
+            }
+        ],
+        [
+            {"id": 1, "parent_id": None, "name": "Engineering Group", "path": "/1/"},
+            {"id": 2, "parent_id": 1, "name": "Team 2", "path": "/1/2/"},
+            {"id": 20, "parent_id": 1, "name": "Team 20", "path": "/1/20/"},
+        ],
+    )
+
+    assert dimensions["level1"]["team:20"]["value"] == 10
+
+
+def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    _insert_cost_source(
+        sqlite_engine,
+        vendor="aws",
+        account_id="qa-aws",
+        display_name="qa-aws",
+        purpose="QA",
+    )
+    for index, (project, list_cost) in enumerate([("Alpha", 100), ("Beta", 50)]):
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date="2026-07-13",
+            vendor="aws",
+            account_id="qa-aws",
+            repo="tidb",
+            group_id=None,
+            project=project,
+            list_cost=list_cost,
+            net_cost=list_cost,
+            dimension_hash=f"weekly-current-budget-{index}",
+        )
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN accounts TEXT"))
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN projects TEXT"))
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
+    for budget_name, amount, projects in [
+        ("QA source plan", 36500, None),
+        ("QA Alpha and Beta plan", 7300, '["Alpha", "Beta"]'),
+    ]:
+        _insert_cost_budget(
+            sqlite_engine,
+            vendor="aws",
+            account_id="qa-aws",
+            period_start_date="2026-01-01",
+            period_end_date="2026-12-31",
+            budget_amount=amount,
+            budget_name=budget_name,
+        )
+        with sqlite_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_budgets
+                    SET accounts = :accounts,
+                        projects = :projects,
+                        team = :team,
+                        platform = :platform
+                    WHERE budget_name = :budget_name
+                    """
+                ),
+                {
+                    "accounts": '["qa-aws"]',
+                    "projects": projects,
+                    "team": "Efficiency & Quality",
+                    "platform": "QA",
+                    "budget_name": budget_name,
+                },
+            )
+
+    response = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert response.status_code == 200
+    budget_pace = response.json()["budget_pace"]
+    assert budget_pace["overall"] == {
+        "actual_list_cost": 150.0,
+        "period_budget": 840.0,
+        "utilization_pct": 17.86,
+    }
+    assert budget_pace["projects"] == [
+        {
+            "key": "budget-plan:2",
+            "name": "QA Alpha and Beta plan",
+            "actual_list_cost": 150.0,
+            "period_budget": 140.0,
+            "utilization_pct": 107.14,
+        }
+    ]
+    assert budget_pace["team_cost"] == {
+        "metric": "list_cost",
+        "total_list_cost": 150.0,
+        "items": [
+            {
+                "key": "team:none",
+                "name": "(no team)",
+                "actual_list_cost": 150.0,
+                "share_pct": 100.0,
+                "interactive": False,
+            }
+        ],
+    }
+
+
+def test_weekly_cost_budget_plan_actual_uses_only_its_date_overlap() -> None:
+    dimensions = {
+        "source_project_values": {
+            ("aws", "qa-aws", date(2026, 7, 13), "Alpha"): 100,
+            ("aws", "qa-aws", date(2026, 7, 14), "Alpha"): 50,
+        }
+    }
+
+    actual = cost_queries._weekly_cost_scoped_actual(
+        dimensions,
+        {("aws", "qa-aws")},
+        {"Alpha"},
+        date(2026, 7, 14),
+        date(2026, 7, 19),
+    )
+
+    assert actual == 50
+
+
 def test_weekly_cost_history_uses_list_cost_and_sorts_unrounded_totals(
     sqlite_engine,
     api_client: TestClient,
@@ -4078,6 +4643,31 @@ def test_weekly_cost_report_returns_null_rates_for_zero_denominators(
                     ],
                 }
             ],
+        },
+        "budget_pace": {
+            "metric": "list_cost",
+            "period": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+            "overall": {
+                "actual_list_cost": 0.0,
+                "period_budget": None,
+                "utilization_pct": None,
+            },
+            "projects": [],
+            "team_cost": {
+                "metric": "list_cost",
+                "total_list_cost": 0.0,
+                "items": [],
+            },
+        },
+        "team_share": {
+            "metric": "list_cost",
+            "total_list_cost": 0.0,
+            "root_group_name": "Engineering Group",
+            "root_group_available": False,
+            "level1": {"items": []},
+            "level2": {"items": []},
+            "projects": {"items": []},
+            "owners": {"items": []},
         },
     }
 

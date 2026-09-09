@@ -16,9 +16,9 @@ function normalizePrefix(value) {
   return trimmed ? `/${trimmed}` : "";
 }
 
-function buildProxy(targetPrefix, rewritePrefix) {
+function buildProxy(targetPrefix, rewritePrefix, target) {
   return {
-    target: "http://127.0.0.1:8000",
+    target,
     changeOrigin: true,
     rewrite: (path) => `${rewritePrefix}${path.slice(targetPrefix.length)}`,
   };
@@ -30,18 +30,22 @@ export default defineConfig(({ mode }) => {
   const apiPrefix = normalizePrefix(
     env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || basePath,
   );
+  const apiTarget =
+    env.CI_DASHBOARD_DEV_API_TARGET ||
+    process.env.CI_DASHBOARD_DEV_API_TARGET ||
+    "http://127.0.0.1:8000";
   const proxy = {
-    "/api": "http://127.0.0.1:8000",
-    "/healthz": "http://127.0.0.1:8000",
-    "/livez": "http://127.0.0.1:8000",
-    "/readyz": "http://127.0.0.1:8000",
+    "/api": apiTarget,
+    "/healthz": apiTarget,
+    "/livez": apiTarget,
+    "/readyz": apiTarget,
   };
 
   if (apiPrefix) {
-    proxy[`${apiPrefix}/api`] = buildProxy(`${apiPrefix}/api`, "/api");
-    proxy[`${apiPrefix}/healthz`] = buildProxy(`${apiPrefix}/healthz`, "/healthz");
-    proxy[`${apiPrefix}/livez`] = buildProxy(`${apiPrefix}/livez`, "/livez");
-    proxy[`${apiPrefix}/readyz`] = buildProxy(`${apiPrefix}/readyz`, "/readyz");
+    proxy[`${apiPrefix}/api`] = buildProxy(`${apiPrefix}/api`, "/api", apiTarget);
+    proxy[`${apiPrefix}/healthz`] = buildProxy(`${apiPrefix}/healthz`, "/healthz", apiTarget);
+    proxy[`${apiPrefix}/livez`] = buildProxy(`${apiPrefix}/livez`, "/livez", apiTarget);
+    proxy[`${apiPrefix}/readyz`] = buildProxy(`${apiPrefix}/readyz`, "/readyz", apiTarget);
   }
 
   return {

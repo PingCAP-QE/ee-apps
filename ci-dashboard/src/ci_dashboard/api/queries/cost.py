@@ -35,6 +35,9 @@ VALID_COST_STACK_GROUPS = frozenset(
     }
 )
 COST_SHARE_LIMIT = 8
+WEEKLY_COST_TEAM_SHARE_LIMIT = 8
+WEEKLY_COST_UNATTRIBUTED_TEAM_NAME = "Unattributed"
+WEEKLY_COST_NO_PROJECT_NAME = "(no project)"
 VALID_COST_SHARE_DIMENSIONS = frozenset(
     {"owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
@@ -647,7 +650,7 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
     return {"items": items}
 
 
-def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
+def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
     today = _today()
     last_week_start = today - timedelta(days=today.weekday() + 7)
     last_week_end = last_week_start + timedelta(days=6)
@@ -690,14 +693,14 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
             "previous_month_cost": 0.0,
         },
         "items": [],
-        "list_cost_history": {
-            "metric": "list_cost",
-            "start_date": history_start.isoformat(),
-            "end_date": last_week_end.isoformat(),
-            "weeks": history_weeks,
-            "series": [],
-        },
     }
+    list_cost_history: dict[str, Any] | None = None
+    if include_trend:
+        report["list_cost_history"] = _weekly_cost_empty_list_cost_history(
+            history_start,
+            last_week_end,
+            history_weeks,
+        )
 
     with engine.begin() as connection:
         if not _table_has_column(connection, "cost_sources", "purpose"):
@@ -766,67 +769,18 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
             }
             for row in rows
         ]
-        history_rows = connection.execute(
-            text(
-                f"""
-                SELECT
-                  s.vendor,
-                  s.account_id,
-                  c.usage_date,
-                  SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
-                FROM cost_sources s
-                LEFT JOIN cost_attribution_daily c
-                  ON c.vendor = s.vendor
-                 AND c.account_id = s.account_id
-                 AND c.usage_date BETWEEN :history_start AND :last_week_end
-                WHERE s.is_active = :is_active
-                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
-                GROUP BY s.vendor, s.account_id, c.usage_date
-                """
-            ),
-            {
-                "history_start": history_start,
-                "last_week_end": last_week_end,
-                "is_active": 1,
-            },
-        ).mappings()
-        history_values = {
-            item["cost_source"]: {week["start_date"]: Decimal(0) for week in history_weeks}
-            for item in items
-        }
-        for row in history_rows:
-            if row["usage_date"] is None:
-                continue
-            usage_date = date.fromisoformat(str(row["usage_date"]))
-            week_start = usage_date - timedelta(days=usage_date.weekday())
-            source = _cost_source_value(str(row["vendor"]), str(row["account_id"]))
-            history_values[source][week_start.isoformat()] += Decimal(str(row["list_cost"] or 0))
-
-    history_series = []
-    for item in items:
-        values = history_values[item["cost_source"]]
-        total_list_cost = sum(values.values())
-        history_series.append(
-            {
-                "cost_source": item["cost_source"],
-                "vendor": item["vendor"],
-                "account_id": item["account_id"],
-                "display_name": item["display_name"],
-                "purpose": item["purpose"],
-                "total_list_cost": _money(total_list_cost),
-                "points": [
-                    {"week_start": week["start_date"], "list_cost": _money(values[week["start_date"]])}
-                    for week in history_weeks
-                ],
-            }
+        if include_trend:
+            list_cost_history = _weekly_cost_list_cost_history(
+                connection,
+                items,
+                last_week_start,
+                last_week_end,
+            )
+        weekly_dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
+            connection,
+            last_week_start,
+            last_week_end,
         )
-    history_series.sort(
-        key=lambda item: (
-            -sum(history_values[item["cost_source"]].values()),
-            item["vendor"],
-            item["account_id"],
-        )
-    )
 
     total_last_week_cost = _money(sum(item["last_week_cost"] for item in items))
     total_previous_week_cost = _money(sum(item["previous_week_cost"] for item in items))
@@ -850,8 +804,886 @@ def get_weekly_cost_report(engine: Engine) -> dict[str, Any]:
         "previous_month_cost": total_previous_month_cost,
     }
     report["items"] = items
-    report["list_cost_history"]["series"] = history_series
+    if list_cost_history is not None:
+        report["list_cost_history"] = list_cost_history
+    allocation = _weekly_cost_allocation_response(
+        weekly_dimension_rows,
+        roster_group_rows,
+        budget_rows,
+        last_week_start,
+        last_week_end,
+        total_last_week_cost,
+        {(item["vendor"], item["account_id"]) for item in items},
+    )
+    report["team_share"] = allocation["team_share"]
+    report["budget_pace"] = allocation["budget_pace"]
     return report
+
+
+def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
+    report: dict[str, Any] = {
+        "meta": {"purpose_schema_available": False},
+        "list_cost_history": _weekly_cost_empty_list_cost_history(
+            history_start,
+            last_week_end,
+            history_weeks,
+        ),
+    }
+    with engine.begin() as connection:
+        if not _table_has_column(connection, "cost_sources", "purpose"):
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        items = _weekly_cost_active_source_items(connection)
+        report["list_cost_history"] = _weekly_cost_list_cost_history(
+            connection,
+            items,
+            last_week_start,
+            last_week_end,
+        )
+    return report
+
+
+def _weekly_cost_active_source_items(connection: Connection) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        text(
+            """
+            SELECT vendor, account_id, display_name, TRIM(purpose) AS purpose
+            FROM cost_sources
+            WHERE is_active = :is_active
+              AND NULLIF(TRIM(purpose), '') IS NOT NULL
+            ORDER BY
+              CASE vendor
+                WHEN 'aws' THEN 0
+                WHEN 'gcp' THEN 1
+                ELSE 2
+              END,
+              account_id
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    return [
+        {
+            "cost_source": _cost_source_value(str(row["vendor"]), str(row["account_id"])),
+            "vendor": str(row["vendor"]),
+            "account_id": str(row["account_id"]),
+            "display_name": str(row["display_name"] or ""),
+            "purpose": str(row["purpose"] or ""),
+        }
+        for row in rows
+    ]
+
+
+def _weekly_cost_empty_list_cost_history(
+    history_start: date,
+    last_week_end: date,
+    history_weeks: Sequence[Mapping[str, str]],
+) -> dict[str, Any]:
+    return {
+        "metric": "list_cost",
+        "start_date": history_start.isoformat(),
+        "end_date": last_week_end.isoformat(),
+        "weeks": list(history_weeks),
+        "series": [],
+    }
+
+
+def _weekly_cost_list_cost_history(
+    connection: Connection,
+    items: Sequence[Mapping[str, Any]],
+    last_week_start: date,
+    last_week_end: date,
+) -> dict[str, Any]:
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
+    history_rows = connection.execute(
+        text(
+            f"""
+            SELECT
+              s.vendor,
+              s.account_id,
+              c.usage_date,
+              SUM(COALESCE({_billing_report_list_cost_expr("c")}, 0)) AS list_cost
+            FROM cost_sources s
+            LEFT JOIN cost_attribution_daily c
+              ON c.vendor = s.vendor
+             AND c.account_id = s.account_id
+             AND c.usage_date BETWEEN :history_start AND :last_week_end
+            WHERE s.is_active = :is_active
+              AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+            GROUP BY s.vendor, s.account_id, c.usage_date
+            """
+        ),
+        {
+            "history_start": history_start,
+            "last_week_end": last_week_end,
+            "is_active": 1,
+        },
+    ).mappings()
+    history_values = {
+        item["cost_source"]: {week["start_date"]: Decimal(0) for week in history_weeks}
+        for item in items
+    }
+    for row in history_rows:
+        if row["usage_date"] is None:
+            continue
+        usage_date = date.fromisoformat(str(row["usage_date"]))
+        week_start = usage_date - timedelta(days=usage_date.weekday())
+        source = _cost_source_value(str(row["vendor"]), str(row["account_id"]))
+        if source in history_values:
+            history_values[source][week_start.isoformat()] += Decimal(str(row["list_cost"] or 0))
+    series = []
+    for item in items:
+        values = history_values[item["cost_source"]]
+        total_list_cost = sum(values.values())
+        series.append(
+            {
+                "cost_source": item["cost_source"],
+                "vendor": item["vendor"],
+                "account_id": item["account_id"],
+                "display_name": item["display_name"],
+                "purpose": item["purpose"],
+                "total_list_cost": _money(total_list_cost),
+                "points": [
+                    {"week_start": week["start_date"], "list_cost": _money(values[week["start_date"]])}
+                    for week in history_weeks
+                ],
+            }
+        )
+    series.sort(
+        key=lambda item: (
+            -sum(history_values[item["cost_source"]].values()),
+            item["vendor"],
+            item["account_id"],
+        )
+    )
+    return {
+        **_weekly_cost_empty_list_cost_history(history_start, last_week_end, history_weeks),
+        "series": series,
+    }
+
+
+def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str, Any]:
+    today = _today()
+    if period == "week":
+        start_date = today - timedelta(days=today.weekday() + 7)
+        end_date = start_date + timedelta(days=6)
+    elif period == "month":
+        end_date = today.replace(day=1) - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    else:
+        raise ValueError(f"unsupported allocation period: {period}")
+
+    report: dict[str, Any] = {
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "meta": {"purpose_schema_available": False},
+    }
+    with engine.begin() as connection:
+        if not _table_has_column(connection, "cost_sources", "purpose"):
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        qa_sources = _weekly_cost_qa_sources(connection)
+        dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
+            connection,
+            start_date,
+            end_date,
+        )
+
+    total_actual = _money(sum((Decimal(str(row["list_cost"] or 0)) for row in dimension_rows), Decimal(0)))
+    report.update(
+        _weekly_cost_allocation_response(
+            dimension_rows,
+            roster_group_rows,
+            budget_rows,
+            start_date,
+            end_date,
+            total_actual,
+            qa_sources,
+        )
+    )
+    return report
+
+
+def _weekly_cost_qa_sources(connection: Connection) -> set[tuple[str, str]]:
+    rows = connection.execute(
+        text(
+            """
+            SELECT vendor, account_id
+            FROM cost_sources
+            WHERE is_active = :is_active
+              AND NULLIF(TRIM(purpose), '') IS NOT NULL
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    return {(str(row["vendor"]), str(row["account_id"])) for row in rows}
+
+
+def _weekly_cost_allocation_inputs(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    dimension_rows = tuple(
+        connection.execute(
+            text(
+                f"""
+                SELECT
+                  c.vendor,
+                  c.account_id,
+                  c.usage_date,
+                  c.group_id,
+                  c.owner,
+                  c.project,
+                  SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
+                FROM cost_sources s
+                JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                WHERE s.is_active = :is_active
+                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+                  AND c.usage_date BETWEEN :start_date AND :end_date
+                GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project
+                """
+            ),
+            {"is_active": 1, "start_date": start_date, "end_date": end_date},
+        ).mappings()
+    )
+    roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
+        connection,
+        start_date,
+        end_date,
+    )
+    return dimension_rows, roster_group_rows, budget_rows
+
+
+def _weekly_cost_allocation_metadata(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
+    roster_group_rows = tuple(
+        connection.execute(
+            text(
+                """
+                SELECT id, parent_id, name, path
+                FROM roster_groups
+                WHERE is_active = :is_active
+                ORDER BY id
+                """
+            ),
+            {"is_active": 1},
+        ).mappings()
+    )
+    return roster_group_rows, _weekly_cost_budget_rows(connection, start_date, end_date)
+
+
+def _weekly_cost_allocation_response(
+    dimension_rows: Sequence[Mapping[str, Any]],
+    roster_group_rows: Sequence[Mapping[str, Any]],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    total_actual: float,
+    qa_sources: set[tuple[str, str]],
+) -> dict[str, Any]:
+    team_dimensions = _weekly_cost_team_dimensions(dimension_rows, roster_group_rows)
+    budget_pace = _weekly_cost_budget_pace(
+        team_dimensions,
+        budget_rows,
+        start_date,
+        end_date,
+        total_actual,
+        qa_sources,
+    )
+    budget_pace["team_cost"] = _weekly_cost_team_cost(team_dimensions)
+    return {
+        "team_share": _weekly_cost_team_share(team_dimensions),
+        "budget_pace": budget_pace,
+    }
+
+
+def _weekly_cost_team_dimensions(
+    dimension_rows: Sequence[Mapping[str, Any]],
+    roster_group_rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    groups_by_id = {
+        group_id: {
+            "id": group_id,
+            "parent_id": _weekly_cost_group_id(row["parent_id"]),
+            "name": str(row["name"] or "(unnamed team)"),
+            "path": str(row["path"] or ""),
+        }
+        for row in roster_group_rows
+        if (group_id := _weekly_cost_group_id(row["id"])) is not None
+    }
+    root = next(
+        (
+            group
+            for group in groups_by_id.values()
+            if group["name"] == ENGINEERING_GROUP_NAME
+        ),
+        None,
+    )
+    level1_groups = (
+        [group for group in groups_by_id.values() if group["parent_id"] == root["id"]]
+        if root
+        else []
+    )
+    unallocated_level1 = {
+        "key": "team:unattributed",
+        "name": WEEKLY_COST_UNATTRIBUTED_TEAM_NAME,
+    }
+    unallocated_level2 = {
+        "key": "team:unattributed",
+        "name": WEEKLY_COST_UNATTRIBUTED_TEAM_NAME,
+    }
+
+    def level_descriptors(group_id: int | None) -> tuple[dict[str, str], dict[str, str]]:
+        group = groups_by_id.get(group_id) if group_id is not None else None
+        if not root or not group or not _weekly_cost_path_contains(root["path"], group["path"]):
+            return unallocated_level1, unallocated_level2
+        level1 = next(
+            (
+                candidate
+                for candidate in level1_groups
+                if _weekly_cost_path_contains(candidate["path"], group["path"])
+            ),
+            None,
+        )
+        if level1 is None:
+            return unallocated_level1, unallocated_level2
+        level1_descriptor = {
+            "key": f"team:{level1['id']}",
+            "name": level1["name"],
+        }
+        level2 = next(
+            (
+                candidate
+                for candidate in groups_by_id.values()
+                if candidate["parent_id"] == level1["id"]
+                and candidate["path"]
+                and _weekly_cost_path_contains(candidate["path"], group["path"])
+            ),
+            None,
+        )
+        if level2 is None:
+            return level1_descriptor, {
+                "key": f"team:{level1['id']}:unassigned",
+                "name": "(not in a level 2 team)",
+            }
+        return level1_descriptor, {
+            "key": f"team:{level2['id']}",
+            "name": level2["name"],
+        }
+
+    def cross_account_team_descriptor(group_id: int | None) -> dict[str, str]:
+        level2 = level_descriptors(group_id)[1]
+        if level2["key"] == "team:unattributed" or level2["key"].endswith(":unassigned"):
+            return {"key": "team:none", "name": "(no team)"}
+        return {
+            "key": level2["key"],
+            "name": level2["name"],
+        }
+
+    level1_values: dict[str, dict[str, Any]] = {}
+    level2_values: dict[str, dict[str, Any]] = {}
+    project_values: dict[str, dict[str, Any]] = {}
+    cross_account_team_values: dict[str, dict[str, Any]] = {}
+    owner_values: dict[str, dict[str, Any]] = {}
+    source_project_values: dict[tuple[str, str, date, str], Decimal] = {}
+    for row in dimension_rows:
+        amount = Decimal(str(row["list_cost"] or 0))
+        group_id = _weekly_cost_group_id(row["group_id"])
+        level1, level2 = level_descriptors(group_id)
+        cross_account_team = cross_account_team_descriptor(group_id)
+        owner_name = _weekly_cost_owner_name(row["owner"])
+        project_name = _weekly_cost_project_name(row["project"])
+        usage_date = _parse_date(row["usage_date"])
+        if usage_date is None:
+            continue
+        source = (str(row["vendor"]), str(row["account_id"]), usage_date)
+        source_project_key = (*source, project_name)
+        source_project_values[source_project_key] = (
+            source_project_values.get(source_project_key, Decimal(0)) + amount
+        )
+        _add_weekly_cost_dimension_value(level1_values, level1, amount)
+        _add_weekly_cost_dimension_value(level2_values, level2, amount)
+        _add_weekly_cost_dimension_value(cross_account_team_values, cross_account_team, amount)
+        _add_weekly_cost_dimension_value(
+            owner_values,
+            {"key": f"owner:{owner_name}", "name": owner_name},
+            amount,
+        )
+        _add_weekly_cost_dimension_value(
+            project_values,
+            {"key": f"project:{project_name}", "name": project_name},
+            amount,
+        )
+    return {
+        "root_available": root is not None,
+        "level1": level1_values,
+        "level2": level2_values,
+        "projects": project_values,
+        "cross_account_teams": cross_account_team_values,
+        "owners": owner_values,
+        "source_project_values": source_project_values,
+    }
+
+
+def _weekly_cost_path_contains(parent_path: str, child_path: str) -> bool:
+    if not parent_path or not child_path:
+        return False
+    normalized_parent = parent_path.rstrip("/")
+    normalized_child = child_path.rstrip("/")
+    return normalized_child == normalized_parent or normalized_child.startswith(
+        f"{normalized_parent}/"
+    )
+
+
+def _weekly_cost_team_share(dimensions: Mapping[str, Any]) -> dict[str, Any]:
+    level1_items, total_list_cost = _weekly_cost_share_items(dimensions["level1"])
+    level2_items, _ = _weekly_cost_share_items(dimensions["level2"])
+    project_items, _ = _weekly_cost_share_items(dimensions["projects"])
+    owner_items, _ = _weekly_cost_share_items(dimensions["owners"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total_list_cost),
+        "root_group_name": ENGINEERING_GROUP_NAME,
+        "root_group_available": bool(dimensions["root_available"]),
+        "level1": {"items": level1_items},
+        "level2": {"items": level2_items},
+        "projects": {"items": project_items},
+        "owners": {"items": owner_items},
+    }
+
+
+def _weekly_cost_team_cost(dimensions: Mapping[str, Any]) -> dict[str, Any]:
+    items, total_list_cost = _weekly_cost_share_items(dimensions["cross_account_teams"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total_list_cost),
+        "items": [
+            {
+                "key": item["key"],
+                "name": item["name"],
+                "actual_list_cost": item["value"],
+                "share_pct": item["share_pct"],
+                "interactive": False,
+            }
+            for item in items
+        ],
+    }
+
+
+def _weekly_cost_budget_pace(
+    dimensions: Mapping[str, Any],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    overall_actual: float,
+    qa_sources: set[tuple[str, str]],
+) -> dict[str, Any]:
+    if budget_rows and "accounts" in budget_rows[0]:
+        return _weekly_cost_current_budget_pace(
+            dimensions,
+            budget_rows,
+            start_date,
+            end_date,
+            overall_actual,
+            qa_sources,
+        )
+    overall_budget = Decimal(0)
+    has_overall_budget = False
+    project_budgets: dict[str, Decimal] = {}
+    project_names: dict[str, str] = {}
+    for row in budget_rows:
+        period_budget = _weekly_cost_budget_amount_for_window(row, start_date, end_date)
+        if period_budget is None:
+            continue
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        has_group = row["group_id"] is not None
+        has_manager = row["manager_id"] is not None
+        has_repo = bool(str(row["repo"] or "").strip())
+        if not has_group and not has_manager and not has_repo and not label_filters:
+            overall_budget += period_budget
+            has_overall_budget = True
+            continue
+        project = label_filters.get("project") if len(label_filters) == 1 else None
+        if (
+            not has_group
+            and not has_manager
+            and not has_repo
+            and isinstance(project, str)
+            and project.strip()
+        ):
+            overall_budget += period_budget
+            has_overall_budget = True
+            project_name = _weekly_cost_project_name(project)
+            project_key = f"project:{project_name}"
+            project_names[project_key] = project_name
+            project_budgets[project_key] = project_budgets.get(project_key, Decimal(0)) + period_budget
+            continue
+    return {
+        "metric": "list_cost",
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "overall": {
+            "actual_list_cost": _money(overall_actual),
+            "period_budget": _money(overall_budget) if has_overall_budget else None,
+            "utilization_pct": (
+                _nullable_rate_pct(overall_actual, _money(overall_budget))
+                if has_overall_budget
+                else None
+            ),
+        },
+        "projects": _weekly_cost_budget_items(
+            dimensions["projects"],
+            project_budgets,
+            project_names,
+        ),
+    }
+
+
+def _weekly_cost_current_budget_pace(
+    dimensions: Mapping[str, Any],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    overall_actual: float,
+    qa_sources: set[tuple[str, str]],
+) -> dict[str, Any]:
+    overall_budget = Decimal(0)
+    has_overall_budget = False
+    project_values: dict[str, dict[str, Any]] = {}
+    planned_projects: set[str] = set()
+    project_budgets: dict[str, Decimal] = {}
+    project_names: dict[str, str] = {}
+
+    for row in budget_rows:
+        budget_window = _weekly_cost_budget_window(row, start_date, end_date)
+        if budget_window is None:
+            continue
+        period_budget, scope_start, scope_end = budget_window
+        sources = _weekly_cost_budget_sources(row, qa_sources)
+        if not sources:
+            continue
+        projects = _weekly_cost_string_list(row["projects"])
+        if not projects:
+            projects = _weekly_cost_string_list(
+                _weekly_cost_label_filters(row["label_filters"]).get("project")
+            )
+        overall_budget += period_budget
+        has_overall_budget = True
+        if projects:
+            planned_projects.update(projects)
+            plan_key = f"budget-plan:{row['id']}"
+            plan_name = str(row["budget_name"] or " / ".join(projects))
+            project_values[plan_key] = {
+                "name": plan_name,
+                "value": _weekly_cost_scoped_actual(
+                    dimensions,
+                    sources,
+                    set(projects),
+                    scope_start,
+                    scope_end,
+                ),
+            }
+            project_names[plan_key] = plan_name
+            project_budgets[plan_key] = period_budget
+
+    for key, item in dimensions["projects"].items():
+        if item["name"] not in planned_projects:
+            project_values[key] = {"name": item["name"], "value": item["value"]}
+
+    return {
+        "metric": "list_cost",
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "overall": {
+            "actual_list_cost": _money(overall_actual),
+            "period_budget": _money(overall_budget) if has_overall_budget else None,
+            "utilization_pct": (
+                _nullable_rate_pct(overall_actual, _money(overall_budget))
+                if has_overall_budget
+                else None
+            ),
+        },
+        "projects": _weekly_cost_budget_items(project_values, project_budgets, project_names),
+    }
+
+
+def _weekly_cost_budget_rows(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[Mapping[str, Any], ...]:
+    if _table_has_column(connection, "cost_budgets", "accounts"):
+        rows = connection.execute(
+            text(
+                """
+                SELECT
+                  id,
+                  vendor,
+                  accounts,
+                  projects,
+                  team,
+                  platform,
+                  period_start_date,
+                  period_end_date,
+                  budget_name,
+                  label_filters,
+                  group_id,
+                  manager_id,
+                  repo,
+                  budget_amount
+                FROM cost_budgets
+                WHERE LOWER(TRIM(platform)) = 'qa'
+                  AND period_start_date <= :end_date
+                  AND period_end_date >= :start_date
+                """
+            ),
+            {"start_date": start_date, "end_date": end_date},
+        ).mappings()
+        return tuple(rows)
+    rows = connection.execute(
+        text(
+            """
+            SELECT
+              b.vendor,
+              b.account_id,
+              b.period_start_date,
+              b.period_end_date,
+              b.label_filters,
+              b.group_id,
+              b.manager_id,
+              b.repo,
+              b.budget_amount
+            FROM cost_budgets b
+            JOIN cost_sources s
+              ON s.vendor = b.vendor
+             AND s.account_id = b.account_id
+            WHERE s.is_active = :is_active
+              AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+              AND b.period_start_date <= :end_date
+              AND b.period_end_date >= :start_date
+            """
+        ),
+        {"is_active": 1, "start_date": start_date, "end_date": end_date},
+    ).mappings()
+    return tuple(rows)
+
+
+def _weekly_cost_budget_sources(
+    row: Mapping[str, Any],
+    qa_sources: set[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    vendor = str(row["vendor"] or "")
+    accounts = _weekly_cost_string_list(row["accounts"])
+    return {(vendor, account_id) for account_id in accounts if (vendor, account_id) in qa_sources}
+
+
+def _weekly_cost_scoped_actual(
+    dimensions: Mapping[str, Any],
+    sources: set[tuple[str, str]],
+    projects: set[str],
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    return sum(
+        (
+            amount
+            for (vendor, account_id, usage_date, project), amount in dimensions[
+                "source_project_values"
+            ].items()
+            if (vendor, account_id) in sources
+            and project in projects
+            and start_date <= usage_date <= end_date
+        ),
+        Decimal(0),
+    )
+
+
+
+def _weekly_cost_budget_items(
+    actual_values: Mapping[str, Mapping[str, Any]],
+    budgets: Mapping[str, Decimal],
+    budget_names: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    items = []
+    for key in sorted(set(actual_values) | set(budgets)):
+        actual = Decimal(str(actual_values.get(key, {}).get("value", 0)))
+        budget = budgets.get(key)
+        items.append(
+            {
+                "key": key,
+                "name": str(actual_values.get(key, {}).get("name") or budget_names[key]),
+                "actual_list_cost": _money(actual),
+                "period_budget": _money(budget) if budget is not None else None,
+                "utilization_pct": _nullable_rate_pct(_money(actual), _money(budget))
+                if budget is not None
+                else None,
+            }
+        )
+    return sorted(
+        items,
+        key=lambda item: (
+            item["period_budget"] is None,
+            -(item["utilization_pct"] if item["utilization_pct"] is not None else -1),
+            -item["actual_list_cost"],
+            item["name"],
+        ),
+    )
+
+
+def _weekly_cost_share_items(
+    values: Mapping[str, Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], Decimal]:
+    positive_items = [
+        {
+            "key": key,
+            "name": str(item["name"]),
+            "value": Decimal(str(item["value"])),
+            "interactive": False,
+        }
+        for key, item in values.items()
+        if Decimal(str(item["value"])) > 0
+    ]
+    positive_items.sort(key=lambda item: (-item["value"], item["name"]))
+    total = sum((item["value"] for item in positive_items), Decimal(0))
+    visible_items = positive_items
+    if len(positive_items) > WEEKLY_COST_TEAM_SHARE_LIMIT:
+        visible_items = positive_items[: WEEKLY_COST_TEAM_SHARE_LIMIT - 1]
+        visible_items.append(
+            {
+                "key": "others",
+                "name": "Others",
+                "value": total - sum((item["value"] for item in visible_items), Decimal(0)),
+                "interactive": False,
+            }
+        )
+    items = []
+    for item in visible_items:
+        value = _money(item["value"])
+        share_pct = rate_pct(value, _money(total))
+        # The UI renders shares to one decimal place; avoid a visible "0.0%"
+        # legend entry even when a tiny positive allocation rounds down.
+        if share_pct < 0.05:
+            continue
+        items.append({**item, "value": value, "share_pct": share_pct})
+    return items, total
+
+
+def _add_weekly_cost_dimension_value(
+    values: dict[str, dict[str, Any]],
+    descriptor: Mapping[str, str],
+    amount: Decimal,
+) -> None:
+    key = descriptor["key"]
+    current = values.setdefault(key, {"name": descriptor["name"], "value": Decimal(0)})
+    current["value"] += amount
+
+
+def _weekly_cost_budget_amount_for_window(
+    row: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> Decimal | None:
+    window = _weekly_cost_budget_window(row, start_date, end_date)
+    return window[0] if window else None
+
+
+def _weekly_cost_budget_window(
+    row: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> tuple[Decimal, date, date] | None:
+    period_start = _parse_date(row["period_start_date"])
+    period_end = _parse_date(row["period_end_date"])
+    if period_start is None or period_end is None or period_start > period_end:
+        return None
+    overlap_start = max(start_date, period_start)
+    overlap_end = min(end_date, period_end)
+    if overlap_start > overlap_end:
+        return None
+    amount = Decimal(
+        str(
+            _budget_amount_for_window(
+                BudgetPeriod(_money(row["budget_amount"]), period_start, period_end),
+                start_date,
+                end_date,
+            )
+        )
+    )
+    return amount, overlap_start, overlap_end
+
+
+def _weekly_cost_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            value = [value]
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [normalized for item in value if (normalized := str(item).strip())]
+
+
+def _weekly_cost_label_filters(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if not isinstance(value, str):
+        return {"__unsupported__": value}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {"__unsupported__": value}
+    if not isinstance(decoded, Mapping):
+        return {"__unsupported__": decoded}
+    return {str(key): item for key, item in decoded.items()}
+
+
+def _weekly_cost_group_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _weekly_cost_owner_name(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized or NO_OWNER_LABEL
+
+
+def _weekly_cost_project_name(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized or WEEKLY_COST_NO_PROJECT_NAME
 
 
 def get_weekly_account_summaries(
