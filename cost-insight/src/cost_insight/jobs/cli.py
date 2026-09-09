@@ -49,6 +49,10 @@ from cost_insight.jobs.sync_azure_billing_summary import (
     AZURE_SUBSCRIPTIONS,
     run_sync_azure_billing_summary,
 )
+from cost_insight.jobs.sync_alibaba_billing_summary import (
+    ALIBABA_ACCOUNT_DISPLAY_NAMES,
+    run_sync_alibaba_billing_summary,
+)
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -119,6 +123,20 @@ def build_parser() -> argparse.ArgumentParser:
     sync_azure_summary.add_argument("--replace-existing-partitions", action="store_true")
     sync_azure_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
     sync_azure_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_alibaba_summary = subparsers.add_parser(
+        "sync-alibaba-billing-summary",
+        help="Sync Alibaba Cloud billing export into cost_bq_export_summary_daily",
+    )
+    sync_alibaba_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--account-id", default=None)
+    sync_alibaba_summary.add_argument("--dry-run", action="store_true")
+    sync_alibaba_summary.add_argument("--limit", type=int, default=None)
+    sync_alibaba_summary.add_argument("--replace-existing-partitions", action="store_true")
+    sync_alibaba_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -473,6 +491,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-alibaba-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        account_id = args.account_id or settings.alibaba_billing.account_id
+        engine = build_engine(settings)
+        try:
+            summary = run_sync_alibaba_billing_summary(
+                engine,
+                settings=settings.alibaba_billing,
+                account_id=account_id,
+                display_name=ALIBABA_ACCOUNT_DISPLAY_NAMES.get(account_id, account_id),
+                export_partition_start=args.export_partition_start,
+                export_partition_end=args.export_partition_end,
+                earliest_usage_date=args.earliest_usage_date,
+                dry_run=args.dry_run,
+                limit=args.limit,
+                replace_existing_partitions=args.replace_existing_partitions,
+                replacement_usage_start_date=args.replace_usage_start_date,
+                replacement_usage_end_date=args.replace_usage_end_date,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()

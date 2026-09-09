@@ -11,12 +11,14 @@ The current implementation supports multiple active sources through
 - AWS account `946646677266` (`qa-infra-dev`)
 - Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
 - Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
+- Alibaba Cloud owner account `5028760335873601` (`alicloud-testing-infra-dev`)
 
 Current design:
 
 - [System design](docs/system-design.md)
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
+- [Alibaba billing import design](docs/alibaba-billing-import-design.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
@@ -70,6 +72,18 @@ normalizes requested dates to month starts, accepts at most a five-day CLI
 request window, and filters out non-numeric wildcard suffixes. A non-empty Azure
 `tenant` resource tag is projected to summary `org` for attribution matching,
 while the normalized tag object remains in `vendor_tags_json` for lineage.
+
+Useful Alibaba Cloud settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_ALIBABA_BILLING_TABLE` | `gcp-digital-bi.alibaba_cloud.daily_en_*` |
+| `COST_INSIGHT_ALIBABA_ACCOUNT_ID` | `5028760335873601` |
+| `COST_INSIGHT_ALIBABA_EARLIEST_USAGE_DATE` | `2026-01-01` |
+| `COST_INSIGHT_ALIBABA_SYNC_LAG_DAYS` | `5` |
+| `COST_INSIGHT_ALIBABA_EXPORT_OVERLAP_DAYS` | `0` |
+| `COST_INSIGHT_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
+| `COST_INSIGHT_ALIBABA_SYNC_PAGE_SIZE` | `5000` |
 
 Useful AWS settings:
 
@@ -129,6 +143,21 @@ subscriptions. `--replace-existing-partitions` requires explicit partition bound
 and scoped replacement additionally requires `--replace-usage-start-date`,
 `--replace-usage-end-date`, and a single export partition. Each explicit request
 may span at most five calendar days.
+
+Alibaba Cloud summary import uses the same `cost_bq_export_summary_daily` table:
+
+```bash
+cost-insight sync-alibaba-billing-summary \
+  --account-id 5028760335873601 \
+  --export-partition-start 2026-08-01 \
+  --export-partition-end 2026-08-31 \
+  --earliest-usage-date 2026-08-01
+```
+
+The importer selects `owner_account_id`, preserves `partition_date` as the export
+partition independently from `DATE(usage_start_time)`, and maps the Alibaba gross
+amount to `list_cost`. See [Alibaba billing import design](docs/alibaba-billing-import-design.md)
+for all dimensions and amount mappings.
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
 
