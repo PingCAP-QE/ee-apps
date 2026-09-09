@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -445,6 +445,69 @@ def test_staged_materialization_is_idempotent_and_publishable_after_chunks() -> 
         assert connection.execute(
             text("SELECT active_allocation_version FROM cost_allocation_publication")
         ).scalar_one() == "v1"
+
+
+def test_scoped_materialization_writes_only_requested_source() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        for statement in _MATERIALIZE_SCHEMA:
+            connection.execute(text(statement))
+        connection.execute(
+            text(
+                "INSERT INTO roster_groups (id, lark_group_id, path, manager_id, is_active) "
+                "VALUES (1, 'eq', '/1/', 10, 1), (2, 'database', '/2/', 20, 1)"
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_attribution_daily (
+                  usage_date, vendor, account_id, source_allocation_scope,
+                  attribution_source, attribution_status, group_id, manager_id,
+                  list_cost, effective_cost, credit_amount, net_cost, source_rows,
+                  dimension_hash
+                ) VALUES
+                  ('2026-08-10', 'gcp', 'project-1', 'direct', 'author', 'matched',
+                   2, 20, 10, 10, 0, 10, 1, 'gcp-source'),
+                  ('2026-08-10', 'alibaba', '5028760335873601', 'direct', 'author', 'matched',
+                   2, 20, 20, 20, 0, 20, 1, 'alibaba-source')
+                """
+            )
+        )
+
+    result = run_materialize_cost_allocations(
+        engine,
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+        earliest_date=date(2026, 8, 10),
+        eq_root_lark_group_id="eq",
+        allocation_version="v1",
+        publish=False,
+        source_vendor="alibaba",
+        source_account_id="5028760335873601",
+        now=datetime(2026, 8, 21, tzinfo=UTC),
+    )
+
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT DISTINCT vendor, account_id FROM cost_allocation_daily "
+                "WHERE allocation_version = 'v1'"
+            )
+        ).all()
+    assert result.rows_written == 3
+    assert rows == [("alibaba", "5028760335873601")]
+
+    with pytest.raises(ValueError, match="cannot publish"):
+        run_materialize_cost_allocations(
+            engine,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            earliest_date=date(2026, 8, 10),
+            eq_root_lark_group_id="eq",
+            source_vendor="alibaba",
+            source_account_id="5028760335873601",
+        )
 
 
 def test_materialization_rejects_an_empty_publish() -> None:
