@@ -5,6 +5,7 @@ export const COST_PATH = "/cost";
 export const WEEKLY_COST_PATH = "/qa-cost-weekly";
 export const ALL_COST_SOURCES = "all";
 export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
+export const COST_DEFAULT_LAG_DAYS = 4;
 export const FILTER_QUERY_KEYS = [
   "start_date",
   "end_date",
@@ -32,13 +33,7 @@ export const NAV_PATHS = [
 ];
 
 export function buildDefaultFilters(defaultRange, pathname) {
-  const costRange =
-    pathname === COST_PATH
-      ? {
-          start_date: defaultRange.end_date.slice(0, 8) + "01",
-          end_date: defaultRange.end_date,
-        }
-      : defaultRange;
+  const costRange = pathname === COST_PATH ? getLaggedCostDefaultRange(defaultRange) : defaultRange;
   const baseFilters = {
     repo: "",
     branch: "",
@@ -119,18 +114,40 @@ export function sameFilters(left, right) {
 }
 
 export function buildNavSearchByPath(filtersByPath, defaultRange, currentFilters) {
+  const activeRangeIsDefault =
+    currentFilters.start_date === defaultRange.start_date && currentFilters.end_date === defaultRange.end_date;
+
   return NAV_PATHS.reduce((accumulator, pathname) => {
+    const hasRouteFilters = Boolean(filtersByPath[pathname]);
     const routeFilters = filtersByPath[pathname] || buildDefaultFilters(defaultRange, pathname);
+    const useLaggedCostDefault = pathname === COST_PATH && !hasRouteFilters && activeRangeIsDefault;
     return {
       ...accumulator,
       [pathname]: buildFilterSearch(
         {
           ...routeFilters,
-          start_date: currentFilters.start_date,
-          end_date: currentFilters.end_date,
+          start_date: useLaggedCostDefault ? routeFilters.start_date : currentFilters.start_date,
+          end_date: useLaggedCostDefault ? routeFilters.end_date : currentFilters.end_date,
         },
         pathname,
       ),
     };
   }, {});
+}
+
+function getLaggedCostDefaultRange(defaultRange) {
+  const end = new Date(`${defaultRange.end_date}T00:00:00`);
+  end.setDate(end.getDate() - COST_DEFAULT_LAG_DAYS);
+  const endDate = formatDate(end);
+  return {
+    start_date: `${endDate.slice(0, 8)}01`,
+    end_date: endDate,
+  };
+}
+
+function formatDate(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

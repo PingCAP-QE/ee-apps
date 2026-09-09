@@ -31,7 +31,7 @@ after(async () => {
   await server?.close();
 });
 
-function weeklyCostReport({ items = [], listCostHistory } = {}) {
+function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare } = {}) {
   return {
     meta: {
       calendar_timezone: "UTC",
@@ -49,6 +49,8 @@ function weeklyCostReport({ items = [], listCostHistory } = {}) {
     },
     items,
     ...(listCostHistory ? { list_cost_history: listCostHistory } : {}),
+    ...(budgetPace ? { budget_pace: budgetPace } : {}),
+    ...(teamShare ? { team_share: teamShare } : {}),
   };
 }
 
@@ -112,7 +114,7 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
       await Promise.resolve();
     });
 
-    assert.deepEqual(requests, ["/api/v1/pages/weekly-cost"]);
+    assert.deepEqual(requests, ["/api/v1/pages/weekly-cost?include_trend=false"]);
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /QA Cost Weekly/);
     assert.match(rendered, /QA source metadata is not deployed yet/);
@@ -175,6 +177,256 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
   }
 });
 
+test("weekly cost renders configured and unconfigured budget pace plus team shares", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  const report = weeklyCostReport({
+    budgetPace: {
+      metric: "list_cost",
+      period: { start_date: "2026-07-13", end_date: "2026-07-19" },
+      overall: { actual_list_cost: 220, period_budget: 1050, utilization_pct: 20.95 },
+      projects: [
+        { key: "project:alpha", name: "Alpha", actual_list_cost: 150, period_budget: 149.59, utilization_pct: 100.27 },
+        { key: "project:beta", name: "Beta", actual_list_cost: 50, period_budget: null, utilization_pct: null },
+        { key: "project:gamma", name: "Gamma", actual_list_cost: 90, period_budget: 100, utilization_pct: 90 },
+      ],
+      team_cost: {
+        metric: "list_cost",
+        total_list_cost: 220,
+        items: [
+          { key: "team:database", name: "Database", actual_list_cost: 150, share_pct: 68.18, interactive: false },
+        ],
+      },
+    },
+    teamShare: {
+      metric: "list_cost",
+      total_list_cost: 220,
+      root_group_available: true,
+      level1: { items: [{ key: "team:database", name: "Database", value: 150, share_pct: 68.18, interactive: false }] },
+      level2: { items: [{ key: "team:tidb", name: "Database / TiDB", value: 150, share_pct: 68.18, interactive: false }] },
+      projects: { items: [{ key: "project:alpha", name: "Alpha", value: 150, share_pct: 68.18, interactive: false }] },
+      owners: { items: [{ key: "owner:alice", name: "alice", value: 150, share_pct: 68.18, interactive: false }] },
+    },
+  });
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return { ok: true, json: async () => report };
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.equal(requests.length, 2);
+    assert.match(rendered, /Budget pace/);
+    assert.match(rendered, /Overall budget pace/);
+    assert.match(rendered, /Project test budget utilization/);
+    assert.match(rendered, /Not configured/);
+    assert.match(rendered, /Team test cost/);
+    assert.match(rendered, /Team share/);
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 1 groups share chart" }));
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 2 teams share chart" }));
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Project allocation share chart" }));
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Owner share share chart" }));
+    const overallGauge = renderer.root.findByProps({
+      "aria-label": "Overall budget pace utilization gauge",
+    });
+    assert.equal(overallGauge.props["aria-valuenow"], 21);
+    assert.match(
+      overallGauge
+        .findAllByType("path")
+        .find((path) => path.props.className.includes("budget-gauge-fill")).props.className,
+      /weekly-cost__budget-gauge-fill--healthy/,
+    );
+    assert.match(
+      renderer.root
+        .findByProps({ "aria-label": "Alpha budget utilization" })
+        .findByType("span").props.className,
+      /weekly-cost__budget-fill--danger/,
+    );
+    assert.match(
+      renderer.root
+        .findByProps({ "aria-label": "Gamma budget utilization" })
+        .findByType("span").props.className,
+      /weekly-cost__budget-fill--warning/,
+    );
+    assert.match(
+      renderer.root
+        .findByProps({ "aria-label": "Database QA team cost share" })
+        .findByType("span").props.className,
+      /weekly-cost__team-cost-fill/,
+    );
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("weekly cost switches budget pace and team share to the last natural month", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  const weekBudgetPace = {
+    metric: "list_cost",
+    period: { start_date: "2026-07-13", end_date: "2026-07-19" },
+    overall: { actual_list_cost: 100, period_budget: 200, utilization_pct: 50 },
+    projects: [],
+    team_cost: { metric: "list_cost", total_list_cost: 100, items: [] },
+  };
+  const monthBudgetPace = {
+    metric: "list_cost",
+    period: { start_date: "2026-06-01", end_date: "2026-06-30" },
+    overall: { actual_list_cost: 300, period_budget: 500, utilization_pct: 60 },
+    projects: [],
+    team_cost: { metric: "list_cost", total_list_cost: 300, items: [] },
+  };
+  const teamShare = {
+    metric: "list_cost",
+    total_list_cost: 100,
+    root_group_available: false,
+    level1: { items: [] },
+    level2: { items: [] },
+    projects: { items: [] },
+    owners: { items: [] },
+  };
+  const report = weeklyCostReport({ budgetPace: weekBudgetPace, teamShare });
+  const monthlyAllocation = {
+    period: { start_date: "2026-06-01", end_date: "2026-06-30" },
+    meta: { purpose_schema_available: true },
+    budget_pace: monthBudgetPace,
+    team_share: { ...teamShare, total_list_cost: 300 },
+  };
+  let resolveMonthlyResponse;
+  globalThis.fetch = (url) => {
+    requests.push(String(url));
+    if (String(url).includes("/allocation")) {
+      return new Promise((resolve) => {
+        resolveMonthlyResponse = () => resolve({ ok: true, json: async () => monthlyAllocation });
+      });
+    }
+    return Promise.resolve({ ok: true, json: async () => report });
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+    assert.deepEqual(requests, [
+      "/api/v1/pages/weekly-cost?include_trend=false",
+      "/api/v1/pages/weekly-cost/trend",
+    ]);
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "Last natural month")
+        .props.onClick();
+      await Promise.resolve();
+    });
+
+    assert.deepEqual(requests, [
+      "/api/v1/pages/weekly-cost?include_trend=false",
+      "/api/v1/pages/weekly-cost/trend",
+      "/api/v1/pages/weekly-cost/allocation?period=month",
+    ]);
+    assert.match(JSON.stringify(renderer.toJSON()), /Last natural month Jun 1 - Jun 30, 2026/);
+
+    await act(async () => {
+      resolveMonthlyResponse();
+      await Promise.resolve();
+    });
+
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /2026-06-01 – 2026-06-30/);
+    assert.deepEqual(
+      renderer.root.findByProps({ className: "weekly-cost__budget-amount" }).children,
+      ["$300.00", " actual", " / $500.00 budget"],
+    );
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("weekly cost sorts account breakdown numeric columns on demand", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () =>
+      weeklyCostReport({
+        items: [
+          {
+            cost_source: "gcp:low",
+            vendor: "gcp",
+            account_id: "low",
+            display_name: "low",
+            purpose: "QA",
+            last_week_cost: 100,
+            previous_week_cost: 200,
+            week_wow_pct: -50,
+            last_week_share_pct: 25,
+            previous_month_cost: 300,
+          },
+          {
+            cost_source: "aws:high",
+            vendor: "aws",
+            account_id: "high",
+            display_name: "high",
+            purpose: "QA",
+            last_week_cost: 300,
+            previous_week_cost: 100,
+            week_wow_pct: 200,
+            last_week_share_pct: 75,
+            previous_month_cost: 200,
+          },
+        ],
+      }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+
+    const rowsByClassName = (className) =>
+      renderer.root
+        .findByType("tbody")
+        .findAllByType("tr")
+        .filter((row) => row.props.className === className);
+    const accountNames = () =>
+      rowsByClassName("weekly-cost__account-row").map((row) => row.findByType("strong").children.join(""));
+    assert.deepEqual(
+      rowsByClassName("weekly-cost__vendor-total").map((row) => row.findByType("strong").children.join("")),
+      ["AWS Sum", "GCP Sum", "AZURE Sum"],
+    );
+    assert.deepEqual(accountNames(), ["GCP · low", "AWS · high"]);
+
+    await act(async () => {
+      renderer.root
+        .findByProps({ "aria-label": "Sort Last week descending" })
+        .props.onClick();
+    });
+    assert.deepEqual(accountNames(), ["AWS · high", "GCP · low"]);
+
+    await act(async () => {
+      renderer.root
+        .findByProps({ "aria-label": "Sort Last week ascending" })
+        .props.onClick();
+    });
+    assert.deepEqual(accountNames(), ["GCP · low", "AWS · high"]);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("weekly cost flags only row WoW values above 30%", async () => {
   const originalFetch = globalThis.fetch;
   let renderer;
@@ -229,16 +481,13 @@ test("weekly cost flags only row WoW values above 30%", async () => {
       await Promise.resolve();
     });
 
-    const headers = renderer.root
-      .findByType("thead")
-      .findAllByType("th")
-      .map((header) => header.children.join(""));
     const wowCells = renderer.root
       .findByType("tbody")
       .findAllByType("tr")
+      .filter((row) => row.props.className === "weekly-cost__account-row")
       .map((row) => row.findAllByType("td")[2]);
 
-    assert.equal(headers[3], "WoW");
+    assert.ok(renderer.root.findByProps({ "aria-label": "Sort WoW descending" }));
     assert.deepEqual(
       wowCells.map((cell) => cell.children.join("")),
       ["30.0%", "30.0%", "—"],
@@ -345,7 +594,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
       await Promise.resolve();
     });
 
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 2);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Trend chart" }));
     assert.ok(
       renderer.root.findAllByType("h3").some((heading) => heading.children.join("") === "Cost trend"),
@@ -399,7 +648,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
         .find((button) => button.props["aria-label"] === "Show GCP · overflow")
         .props.onClick();
     });
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 2);
     assert.ok(
       renderer.root
         .findAllByType("button")
@@ -415,7 +664,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
         .find((button) => button.props["aria-label"] === "Show all accounts")
         .props.onClick();
     });
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 2);
     assert.ok(
       renderer.root
         .findAllByType("button")

@@ -20,8 +20,8 @@ filters to the endpoint. The endpoint has no supported filter parameters and
 always calculates the periods below.
 
 Out of scope: cost anomaly detection, idle-resource governance, cleanup
-recommendations, source CRUD, budget/forecast views, and arbitrary historical
-period selection.
+recommendations, source CRUD, **current-period forecasting**, and arbitrary
+historical period selection.
 
 ## Calendar and data contract
 
@@ -186,6 +186,26 @@ For `D = 2026-07-20`, the response shape (shown with one source) is:
 }
 ```
 
+The additive `budget_pace` object contains `{metric, period, overall,
+projects, team_cost}`. `overall` and every project item provide
+`actual_list_cost`, nullable `period_budget`, and nullable `utilization_pct`;
+plan-scoped project items additionally use a stable `budget-plan:<id>` key.
+`team_cost` has its own list-cost total and cross-account team items with
+`actual_list_cost` and `share_pct`, but no budget fields.
+The additive `team_share` object contains the same metric, the positive
+`total_list_cost` denominator, and `level1`, `level2`, `projects`, and `owners` item lists.
+Each share item has `{key, name, value, share_pct, interactive:false}`. These
+objects are absent only when the old `purpose` schema is absent, preserving the
+old-schema compatibility response described above. The default report remains
+last-natural-week. The additive `/api/v1/pages/weekly-cost/allocation?period=month`
+endpoint returns only `{period, meta, budget_pace, team_share}` for the previous
+natural month, so changing the allocation views does not refetch the account
+table or trend data. The page initially requests
+`/api/v1/pages/weekly-cost?include_trend=false`, then starts the independent
+`/api/v1/pages/weekly-cost/trend` request only after that response completes.
+The default `include_trend=true` API behavior remains available for compatible
+callers.
+
 `weeks` and each series' `points` are ascending by Monday and contain exactly
 eight entries. The first history week is `last_week.start_date - 49 days`; the
 last is the existing `last_week` exactly, so `list_cost_history.start_date` and
@@ -202,6 +222,78 @@ amounts, so configuration is visible; its WoW and QA-share percentages are
 `summary.week_wow_pct` is `null`. Zero denominators always use `null`, never a
 fabricated `0%`.
 
+## Budget pace and team share
+
+The report also shows the Demo's report-level budget and allocation views, but
+keeps the existing fixed QA scope and last-complete-week calendar. It adds no
+page filters and creates no new database table or snapshot. Budget pace and Team
+share each expose a synchronized browser-state switch between **Last natural
+week** (the default) and **Last natural month**; the month view is loaded from
+the allocation-only endpoint.
+
+### Budget pace
+
+Every budget value and actual uses the same billing-report **list-cost**
+expression as the existing report. The budget period for this page is exactly
+`last_week`; an annual or fiscal-period budget is prorated by inclusive date
+overlap. This is completed-period utilization, not a forecast.
+
+- **Overall Budget pace** is all qualifying QA sources' `last_week_cost` divided
+  by the sum of both source-wide **and project-scoped** QA budget-plan targets
+  for that week. A current plan is selected only when `platform = 'QA'` and its
+  `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
+  plan amount is counted once, even when it names several accounts or projects.
+- **Project test budget** lists each configured project plan by `budget_name`.
+  Its actual is scoped to the plan's `vendor`, JSON `accounts`, JSON
+  `projects` membership, and date overlap with the report week. This preserves the one plan target for a
+  multi-account/multi-project plan instead of copying it into every named
+  project; attributed projects not covered by a plan remain separate
+  "Not configured" rows.
+- **Team test cost** is not a budget view. It aggregates list cost across all
+  qualifying QA sources by the same cross-account Level-2 roster-team mapping
+  used by Cost Insight's `Team` dimension. Costs without such a Level-2 mapping
+  are retained as `(no team)`. Each row shows its QA-cost share; no budget,
+  target, utilization, or plan `team` label is involved.
+
+Only a missing target is `null` / "Not configured"; it is never converted to a
+zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
+older `vendor`/`account_id` schema, but current QA plans use JSON memberships.
+Budget rows with unsupported group, manager, or repo filters are excluded from
+legacy aggregate cards. Legacy rows scoped to a `group_id` are also excluded because
+the legacy schema does not provide group-aware aggregate budget matching. A
+single logical plan still must not be duplicated across
+separate budget rows merely to model cross-account reporting. Every configured
+Budget pace utilization uses the same capped threshold: green below 80%, yellow
+from 80% through 95%, and red above 95%. `Overall budget pace` uses a
+semi-circular gauge and `Project test budget utilization` uses linear progress
+bars. `Team test cost` uses a neutral QA-cost-share bar rather than a budget
+utilization color. In the desktop three-lane layout, `Overall budget pace` and
+`Team test cost` stack in the first lane, the project budget list is in the
+second lane, and the Project share donut is in the third lane.
+
+### Team share
+
+For the last complete week, the page displays four list-cost shares:
+
+1. Level 1 groups — the direct children of the active `Engineering Group` roster
+   node;
+2. Level 2 teams — direct children of those Level-1 groups; and
+3. Project share — normalized project names aggregated across every qualifying
+   QA source; and
+4. Owner share — normalized billing-report `owner` values aggregated across
+   every qualifying QA source, with `(no owner)` for blank values.
+
+Current `roster_groups.path` determines the hierarchy. Cost with a missing
+`group_id`, a removed group, or a group outside Engineering is retained in the
+explicit `Unattributed` bucket rather than being omitted. Level-2 legend labels
+use only that Level-2 group's name; they do not repeat the Level-1 parent.
+The charts render at most eight non-zero-share entries: the largest categories
+and, when needed, an `Others` segment that combines the tail, matching the
+existing Cost Insight share-chart behavior. Values rounded to the UI's displayed `0.0%` are not shown. The Project share
+donut is presented in Budget pace's third lane; Team share's three lanes contain
+Level 1, Level 2, and Owner share. A `(no project)` bucket remains visible for
+missing project attribution.
+
 ## Table and chart presentation
 
 The account table displays list-cost fields: **Account**, **Purpose**, **Last
@@ -214,6 +306,13 @@ week**, **WoW**, **QA share**, and **Last natural month**. The compatible
 - Account and Purpose are left-aligned. Every money or percentage header and
   cell is right-aligned, including Last week, WoW, QA share, and Last natural
   month.
+- Three fixed vendor-summary rows (`AWS Sum`, `GCP Sum`, and `AZURE Sum`) appear
+  above the account rows. They sum every qualifying QA account for their vendor
+  and are not moved by account-column sorting.
+- Each of the four numeric columns (Last week, WoW, QA share, and Last natural
+  month) is sortable by its header. The first selection sorts descending; a
+  second selection of the same column switches to ascending. Missing values
+  remain last.
 - A row's WoW contains only the existing percent formatter's percentage text,
   with no `WoW` prefix. Only a strictly positive value greater than `30%` is
   bold red; zero, null, negative values, and values up to exactly `30%` are

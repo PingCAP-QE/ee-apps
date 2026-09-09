@@ -91,6 +91,29 @@ test("QA Cost Weekly never serializes filters into its fixed-report URL", () => 
   assert.equal(search, "");
 });
 
+test("defaults the cost tab to data available four days ago", () => {
+  assert.deepEqual(buildDefaultFilters(defaultRange, "/cost"), {
+    repo: "",
+    branch: "",
+    job_name: "",
+    cloud_phase: "",
+    issue_status: "",
+    cost_source: "gcp:pingcap-testing-account",
+    granularity: "week",
+    start_date: "2026-05-01",
+    end_date: "2026-05-28",
+  });
+
+  const navSearchByPath = buildNavSearchByPath(
+    {},
+    defaultRange,
+    buildDefaultFilters(defaultRange, "/ci-status"),
+  );
+  const costParams = new URLSearchParams(navSearchByPath["/cost"]);
+  assert.equal(costParams.get("start_date"), "2026-05-01");
+  assert.equal(costParams.get("end_date"), "2026-05-28");
+});
+
 test("keeps cost dashboard month buckets but normalizes invalid values", () => {
   assert.equal(
     readFiltersFromSearch(defaultRange, "/cost", "?granularity=month").granularity,
