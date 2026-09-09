@@ -1,7 +1,7 @@
 # QA Cost Weekly production baseline
 
-Captured: 2026-09-08 12:16–12:20 UTC  
-Endpoint: `GET /api/v1/pages/weekly-cost`  
+Captured: 2026-09-08 12:16–12:20 UTC
+Endpoint: `GET /api/v1/pages/weekly-cost`
 Calendar window returned: `2026-08-31` through `2026-09-06` UTC
 
 ## Serving environment
