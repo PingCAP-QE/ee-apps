@@ -311,7 +311,15 @@ def test_run_refresh_aws_attribution_requires_readable_tcms_before_writing() -> 
         engine.dispose()
 
 
-def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("invalidate_cost_allocation_publication", "expected_allocation_publications"),
+    ((True, 0), (False, 1)),
+)
+def test_run_refresh_attribution_from_summary_marks_success(
+    monkeypatch,
+    invalidate_cost_allocation_publication,
+    expected_allocation_publications,
+) -> None:
     engine = _sqlite_engine()
     executed = []
     materializer_calls: list[dict[str, object]] = []
@@ -386,6 +394,7 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
             source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
+            invalidate_cost_allocation_publication=invalidate_cost_allocation_publication,
         )
 
         assert summary.rows_deleted == 2
@@ -413,7 +422,7 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
         with engine.begin() as connection:
             assert connection.execute(
                 text("SELECT COUNT(*) FROM cost_allocation_publication")
-            ).scalar_one() == 0
+            ).scalar_one() == expected_allocation_publications
             remaining_publications = connection.execute(
                 text(
                     """

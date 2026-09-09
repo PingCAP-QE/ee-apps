@@ -51,12 +51,18 @@ def run_materialize_cost_allocations(
     processing_start_date: date | None = None,
     processing_end_date: date | None = None,
     publish: bool = True,
+    source_vendor: str | None = None,
+    source_account_id: str | None = None,
     now: datetime | None = None,
 ) -> MaterializeCostAllocationsSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
     if start_date != earliest_date:
         raise ValueError("start_date must equal the configured allocation earliest date")
+    if (source_vendor is None) != (source_account_id is None):
+        raise ValueError("source vendor and account ID must be set together")
+    if source_vendor and publish and not dry_run:
+        raise ValueError("source-scoped materialization cannot publish a global allocation version")
     processing_start = processing_start_date or start_date
     processing_end = processing_end_date or end_date
     if not (start_date <= processing_start <= processing_end <= end_date):
@@ -106,16 +112,24 @@ def run_materialize_cost_allocations(
             raise ValueError(
                 f"end_date must cover the latest native cost date {latest_native_date}"
             )
+        source_params: dict[str, Any] = {"start_date": start_date, "end_date": end_date}
+        source_filter = ""
+        if source_vendor:
+            source_filter = " AND vendor = :source_vendor AND account_id = :source_account_id"
+            source_params.update(
+                source_vendor=source_vendor,
+                source_account_id=source_account_id,
+            )
         sources = tuple(
             connection.execute(
                 text(
                     """
                     SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
-                    WHERE usage_date BETWEEN :start_date AND :end_date
-                    ORDER BY vendor, account_id
-                    """
+                    WHERE usage_date BETWEEN :start_date AND :end_date"""
+                    + source_filter
+                    + " ORDER BY vendor, account_id"
                 ),
-                {"start_date": start_date, "end_date": end_date},
+                source_params,
             ).mappings()
         )
 
