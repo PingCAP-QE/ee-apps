@@ -12,6 +12,8 @@ DEFAULT_GCP_BILLING_TABLE = (
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
 DEFAULT_AZURE_BILLING_TABLE = "gcp-digital-bi.azure_billing.azure_billing_cost_*"
+DEFAULT_ALIBABA_BILLING_TABLE = "gcp-digital-bi.alibaba_cloud.daily_en_*"
+DEFAULT_ALIBABA_ACCOUNT_ID = "5028760335873601"
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 DEFAULT_GCS_CACHE_BUCKET = "pingcap-ci-bazel-remote-cache-us-central1"
 DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"
@@ -73,6 +75,17 @@ class AzureBillingSettings:
 
 
 @dataclass(frozen=True)
+class AlibabaBillingSettings:
+    billing_table: str = DEFAULT_ALIBABA_BILLING_TABLE
+    account_id: str = DEFAULT_ALIBABA_ACCOUNT_ID
+    earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
+    sync_lag_days: int = 5
+    export_overlap_days: int = 0
+    sync_initial_lookback_days: int | None = None
+    page_size: int = 5000
+
+
+@dataclass(frozen=True)
 class GcsCacheSettings:
     project_id: str = DEFAULT_GCP_ACCOUNT_ID
     bucket_name: str = DEFAULT_GCS_CACHE_BUCKET
@@ -126,6 +139,7 @@ class Settings:
     gcp_billing: GcpBillingSettings = GcpBillingSettings()
     aws_billing: AwsBillingSettings = AwsBillingSettings()
     azure_billing: AzureBillingSettings = AzureBillingSettings()
+    alibaba_billing: AlibabaBillingSettings = AlibabaBillingSettings()
     gcs_cache: GcsCacheSettings = GcsCacheSettings()
     tcms_allocation: TcmsAllocationSettings = TcmsAllocationSettings()
     log_level: str = "INFO"
@@ -262,6 +276,50 @@ def load_settings(
             page_size=_read_int_any(
                 env,
                 ("COST_INSIGHT_AZURE_SYNC_PAGE_SIZE", "COST_AZURE_SYNC_PAGE_SIZE"),
+                5000,
+            ),
+        ),
+        alibaba_billing=AlibabaBillingSettings(
+            billing_table=_read_any(
+                env,
+                DEFAULT_ALIBABA_BILLING_TABLE,
+                "COST_INSIGHT_ALIBABA_BILLING_TABLE",
+                "COST_ALIBABA_BILLING_TABLE",
+            ),
+            account_id=_read_any(
+                env,
+                DEFAULT_ALIBABA_ACCOUNT_ID,
+                "COST_INSIGHT_ALIBABA_ACCOUNT_ID",
+                "COST_ALIBABA_ACCOUNT_ID",
+            ),
+            earliest_usage_date=_read_date_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_EARLIEST_USAGE_DATE", "COST_ALIBABA_EARLIEST_USAGE_DATE"),
+                DEFAULT_EARLIEST_USAGE_DATE,
+            ),
+            sync_lag_days=_read_int_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_SYNC_LAG_DAYS", "COST_ALIBABA_SYNC_LAG_DAYS"),
+                5,
+            ),
+            export_overlap_days=_read_non_negative_int_any(
+                env,
+                (
+                    "COST_INSIGHT_ALIBABA_EXPORT_OVERLAP_DAYS",
+                    "COST_ALIBABA_EXPORT_OVERLAP_DAYS",
+                ),
+                0,
+            ),
+            sync_initial_lookback_days=_read_optional_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS",
+                    "COST_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS",
+                ),
+            ),
+            page_size=_read_int_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_SYNC_PAGE_SIZE", "COST_ALIBABA_SYNC_PAGE_SIZE"),
                 5000,
             ),
         ),

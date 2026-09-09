@@ -45,6 +45,14 @@ INSERT INTO cost_sources (
   'azure-testing-infra-prod-dataplane',
   NULL,
   1
+),
+(
+  'alibaba',
+  '5028760335873601',
+  '5028760335873601',
+  'alicloud-testing-infra-dev',
+  NULL,
+  1
 )
 ON DUPLICATE KEY UPDATE
   billing_account_id = VALUES(billing_account_id),

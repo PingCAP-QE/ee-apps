@@ -12,7 +12,7 @@ from typing import Any, BinaryIO
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
-from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.config import AlibabaBillingSettings, GcpBillingSettings
 from cost_insight.common.cost_drivers import classify_cost_driver
 from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
@@ -53,10 +53,13 @@ class SyncGcpBillingSummaryResult:
     touched_usage_dates: tuple[date, ...] = ()
 
 
-def run_sync_gcp_billing_summary(
+def run_sync_billing_summary(
     engine: Engine,
     *,
-    settings: GcpBillingSettings,
+    settings: GcpBillingSettings | AlibabaBillingSettings,
+    vendor: str,
+    job_name: str,
+    display_name: str | None = None,
     export_partition_start: date | None = None,
     export_partition_end: date | None = None,
     earliest_usage_date: date | None = None,
@@ -75,20 +78,24 @@ def run_sync_gcp_billing_summary(
         raise ValueError("replacement usage start date must be before or equal to end date")
     if replacement_usage_start_date and not replace_existing_partitions:
         raise ValueError("scoped usage-date replacement requires replace_existing_partitions")
+    if not vendor:
+        raise ValueError("vendor must not be empty")
+    if not job_name:
+        raise ValueError("job_name must not be empty")
 
     resolved_end = export_partition_end or (
         datetime.now(UTC).date() - timedelta(days=settings.sync_lag_days)
     )
-    job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
+    state_job_name = source_job_name(job_name, vendor=vendor, account_id=settings.account_id)
     with engine.begin() as connection:
         ensure_cost_source_enabled(
             connection,
-            vendor="gcp",
+            vendor=vendor,
             account_id=settings.account_id,
             dry_run=dry_run,
-            display_name=settings.account_id,
+            display_name=display_name or settings.account_id,
         )
-        state = state_store.get_job_state(connection, job_name)
+        state = state_store.get_job_state(connection, state_job_name)
         resolved_start = export_partition_start or _start_partition_from_state(
             state.watermark if state else {},
             end_date=resolved_end,
@@ -103,7 +110,7 @@ def run_sync_gcp_billing_summary(
             export_partition_end=resolved_end,
         )
         if not dry_run:
-            state_store.mark_job_started(connection, job_name, watermark)
+            state_store.mark_job_started(connection, state_job_name, watermark)
 
     try:
         rows_seen = 0
@@ -123,6 +130,10 @@ def run_sync_gcp_billing_summary(
                 ):
                     rows_seen += 1
                     normalized = _normalize_summary_row(source_row)
+                    if normalized["vendor"] != vendor:
+                        raise ValueError(
+                            f"Billing summary row vendor {normalized['vendor']!r} does not match {vendor!r}"
+                        )
                     if replacement_usage_start_date and not (
                         replacement_usage_start_date
                         <= normalized["usage_date"]
@@ -137,7 +148,7 @@ def run_sync_gcp_billing_summary(
                     rows_written += replace_summary_partition_usage_dates(
                         engine,
                         _iter_spooled_rows(row_spool),
-                        vendor="gcp",
+                        vendor=vendor,
                         account_id=settings.account_id,
                         export_partition_date=resolved_start,
                         usage_start_date=replacement_usage_start_date,
@@ -150,7 +161,7 @@ def run_sync_gcp_billing_summary(
                         engine,
                         _iter_spooled_rows(row_spool),
                         row_count=rows_seen,
-                        vendor="gcp",
+                        vendor=vendor,
                         account_id=settings.account_id,
                         export_partition_start=resolved_start,
                         export_partition_end=resolved_end,
@@ -169,6 +180,10 @@ def run_sync_gcp_billing_summary(
             ):
                 rows_seen += 1
                 normalized = _normalize_summary_row(source_row)
+                if normalized["vendor"] != vendor:
+                    raise ValueError(
+                        f"Billing summary row vendor {normalized['vendor']!r} does not match {vendor!r}"
+                    )
                 if normalized["billing_account_id"]:
                     source_billing_account_ids.add(normalized["billing_account_id"])
                 batch.append(normalized)
@@ -184,10 +199,10 @@ def run_sync_gcp_billing_summary(
                 if source_billing_account_id:
                     upsert_cost_source(
                         connection,
-                        vendor="gcp",
+                        vendor=vendor,
                         account_id=settings.account_id,
                         billing_account_id=source_billing_account_id,
-                        display_name=settings.account_id,
+                        display_name=display_name or settings.account_id,
                     )
                 touched_usage_dates = (
                     tuple(
@@ -199,12 +214,13 @@ def run_sync_gcp_billing_summary(
                     if replacement_usage_start_date
                     else _get_touched_usage_dates(
                         connection,
+                        vendor=vendor,
                         account_id=settings.account_id,
                         export_partition_start=resolved_start,
                         export_partition_end=resolved_end,
                     )
                 )
-                state_store.mark_job_succeeded(connection, job_name, watermark)
+                state_store.mark_job_succeeded(connection, state_job_name, watermark)
 
         return SyncGcpBillingSummaryResult(
             account_id=settings.account_id,
@@ -216,11 +232,43 @@ def run_sync_gcp_billing_summary(
             touched_usage_dates=touched_usage_dates,
         )
     except Exception as exc:
-        LOG.exception("sync_gcp_billing_summary failed")
+        LOG.exception("sync_billing_summary failed")
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+                state_store.mark_job_failed(connection, state_job_name, watermark, repr(exc))
         raise
+
+
+def run_sync_gcp_billing_summary(
+    engine: Engine,
+    *,
+    settings: GcpBillingSettings,
+    export_partition_start: date | None = None,
+    export_partition_end: date | None = None,
+    earliest_usage_date: date | None = None,
+    dry_run: bool = False,
+    limit: int | None = None,
+    replace_existing_partitions: bool = False,
+    replacement_usage_start_date: date | None = None,
+    replacement_usage_end_date: date | None = None,
+    fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
+) -> SyncGcpBillingSummaryResult:
+    return run_sync_billing_summary(
+        engine,
+        settings=settings,
+        vendor="gcp",
+        job_name=JOB_NAME,
+        display_name=settings.account_id,
+        export_partition_start=export_partition_start,
+        export_partition_end=export_partition_end,
+        earliest_usage_date=earliest_usage_date,
+        dry_run=dry_run,
+        limit=limit,
+        replace_existing_partitions=replace_existing_partitions,
+        replacement_usage_start_date=replacement_usage_start_date,
+        replacement_usage_end_date=replacement_usage_end_date,
+        fetch_rows=fetch_rows,
+    )
 
 
 def _start_partition_from_state(
@@ -662,6 +710,7 @@ def _is_owner_override_row(row: dict[str, Any]) -> bool:
 def _get_touched_usage_dates(
     connection: Connection,
     *,
+    vendor: str = "gcp",
     account_id: str,
     export_partition_start: date,
     export_partition_end: date,
@@ -669,7 +718,7 @@ def _get_touched_usage_dates(
     rows = connection.execute(
         _SELECT_TOUCHED_USAGE_DATES,
         {
-            "vendor": "gcp",
+            "vendor": vendor,
             "account_id": account_id,
             "export_partition_start": export_partition_start,
             "export_partition_end": export_partition_end,
