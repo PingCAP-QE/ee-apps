@@ -102,14 +102,18 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
             return None
         return value
 
+    def json_key(path):
+        if not path.startswith("$."):
+            return None
+        key = path[2:]
+        return json.loads(key) if key.startswith('"') and key.endswith('"') else key
+
     def json_extract(value, path):
         if value is None:
             return None
         parsed = json.loads(value)
-        if not isinstance(parsed, dict) or not path.startswith("$."):
-            return None
-        key = path[2:]
-        if key not in parsed:
+        key = json_key(path)
+        if not isinstance(parsed, dict) or key not in parsed:
             return None
         extracted = parsed[key]
         if extracted is None:
@@ -132,8 +136,17 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
         if not isinstance(parsed, dict):
             return value
         for path in paths:
-            if path.startswith("$."):
-                parsed.pop(path[2:], None)
+            key = json_key(path)
+            if key is not None:
+                parsed.pop(key, None)
+        return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+
+    def json_set(value, *path_values):
+        parsed = json.loads(value)
+        for path, replacement in zip(path_values[::2], path_values[1::2], strict=True):
+            key = json_key(path)
+            if key is not None:
+                parsed[key] = replacement
         return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
 
     def json_contains(target, candidate):
@@ -161,6 +174,7 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     raw_connection.create_function("JSON_EXTRACT", 2, json_extract)
     raw_connection.create_function("JSON_LENGTH", 1, json_length)
     raw_connection.create_function("JSON_REMOVE", -1, json_remove)
+    raw_connection.create_function("JSON_SET", -1, json_set)
     raw_connection.create_function("JSON_TYPE", 1, json_type)
     raw_connection.create_function("JSON_UNQUOTE", 1, json_unquote)
     raw_connection.create_function("SHA2", 2, sha2)
@@ -925,7 +939,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       ),
                       (
                         6, 'aws', '946646677266',
-                        '{"tenant":"tenant-0858","shared_pool":"pool-tenant"}',
+                        '{"tenant":"tenant-0858","shared-pool":"pool-tenant"}',
                         'carol@pingcap.com', 'TestInfra', 'project-tenant-pool',
                         'exec-tenant-pool', NULL, NULL
                       ),

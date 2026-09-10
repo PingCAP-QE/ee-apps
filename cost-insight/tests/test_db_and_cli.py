@@ -1081,10 +1081,16 @@ def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
     exit_code = cli.main(
         [
             "sync-aws-billing-summary",
+            "--account-id",
+            "131464424160",
             "--export-partition-start",
             "2026-05-01",
             "--export-partition-end",
             "2026-05-01",
+            "--usage-start-date",
+            "2026-05-01",
+            "--usage-end-date",
+            "2026-05-05",
             "--replace-existing-partitions",
             "--dry-run",
         ]
@@ -1093,10 +1099,47 @@ def test_cli_runs_sync_aws_billing_summary_command(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert exit_code == 0
     assert disposed == [True]
-    assert captured["account_id"] == "946646677266"
+    assert captured["account_id"] == "131464424160"
+    assert captured["usage_start_date"] == date(2026, 5, 1)
+    assert captured["usage_end_date"] == date(2026, 5, 5)
     assert captured["replace_existing_partitions"] is True
-    assert '"account_id": "946646677266"' in output
+    assert '"account_id": "131464424160"' in output
     assert '"rows_written": 4' in output
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    (
+        (
+            ("--usage-start-date", "2026-06-01"),
+            "must be set together",
+        ),
+        (
+            (
+                "--usage-start-date",
+                "2026-06-05",
+                "--usage-end-date",
+                "2026-06-01",
+            ),
+            "usage start date must be before",
+        ),
+        (
+            (
+                "--usage-start-date",
+                "2026-06-01",
+                "--usage-end-date",
+                "2026-06-06",
+            ),
+            "maximum five-day usage window",
+        ),
+    ),
+)
+def test_cli_rejects_unsafe_aws_summary_usage_windows(monkeypatch, arguments, message) -> None:
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: SimpleNamespace(log_level="INFO"))
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
+    with pytest.raises(ValueError, match=message):
+        cli.main(["sync-aws-billing-summary", *arguments])
 
 
 def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, capsys) -> None:
@@ -1328,6 +1371,21 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
             "qa-infra-dev",
         ]
         assert [source.account_id for source in aws_sources] == ["946646677266"]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_sources (vendor, account_id, display_name, is_active)
+                    VALUES ('aws', '131464424160', 'QA Infra Prod AWS', 1)
+                    """
+                )
+            )
+        selected_aws_sources = cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+            account_id="131464424160",
+        )
+        assert [source.account_id for source in selected_aws_sources] == ["131464424160"]
         assert [(source.vendor, source.account_id) for source in attribution_sources] == [
             ("aws", "946646677266"),
             ("gcp", "pingcap-testing-account"),

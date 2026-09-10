@@ -31,6 +31,14 @@ INSERT INTO cost_sources (
   1
 ),
 (
+  'aws',
+  '131464424160',
+  '317766989874',
+  'qa-infra-prod',
+  'essential v2 canary release PRD env',
+  1
+),
+(
   'azure',
   'aaa5414d-7537-4e24-99bd-a7a841221810',
   NULL,

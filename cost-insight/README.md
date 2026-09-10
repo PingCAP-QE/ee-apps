@@ -9,6 +9,7 @@ The current implementation supports multiple active sources through
 - GCP project `pingcap-testing-account`
 - GCP project `qa-infra-dev`
 - AWS account `946646677266` (`qa-infra-dev`)
+- AWS account `131464424160` (`qa-infra-prod`, Essential V2 canary-release PRD)
 - Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
 - Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
 - Alibaba Cloud owner account `5028760335873601` (`alicloud-testing-infra-dev`)
