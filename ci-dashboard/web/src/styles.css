@@ -1090,6 +1090,71 @@ select {
   margin: 0;
 }
 
+.weekly-cost__budget-usage {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.weekly-cost__budget-usage summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.weekly-cost__budget-usage-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+}
+
+.weekly-cost__budget-usage-chart {
+  min-width: 0;
+  padding: 0.65rem;
+  border: 1px solid rgba(49, 87, 114, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.weekly-cost__budget-usage-chart .donut-card__header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.weekly-cost__budget-usage-chart .donut-card__header-actions {
+  justify-content: space-between;
+}
+
+.weekly-cost__budget-usage-chart .donut-card__body {
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+
+.weekly-cost__budget-usage-chart .donut-chart svg {
+  max-width: 10rem;
+}
+
+.weekly-cost__budget-usage-chart .donut-legend {
+  gap: 0.25rem;
+}
+
+.weekly-cost__budget-usage-chart .donut-legend__item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.25rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+}
+
+.weekly-cost__budget-usage-chart .donut-legend__name,
+.weekly-cost__budget-usage-chart .donut-legend__value,
+.weekly-cost__budget-usage-chart .donut-legend__share {
+  font-size: 0.64rem;
+}
+
+.weekly-cost__budget-usage-chart .donut-legend__share {
+  grid-column: 2 / -1;
+  text-align: right;
+}
+
 .weekly-cost__share-card {
   min-width: 0;
   align-content: start;
@@ -2777,7 +2842,8 @@ select {
 
   .weekly-cost__trend-layout,
   .weekly-cost__budget-grid,
-  .weekly-cost__share-grid {
+  .weekly-cost__share-grid,
+  .weekly-cost__budget-usage-charts {
     grid-template-columns: 1fr;
   }
 

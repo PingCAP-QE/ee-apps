@@ -226,29 +226,35 @@ fabricated `0%`.
 
 The report also shows the Demo's report-level budget and allocation views, but
 keeps the existing fixed QA scope and last-complete-week calendar. It adds no
-page filters and creates no new database table or snapshot. Budget pace and Team
-share each expose a synchronized browser-state switch between **Last natural
-week** (the default) and **Last natural month**; the month view is loaded from
-the allocation-only endpoint.
+page filters and creates no new database table or snapshot. Budget pace exposes the browser-state switch between **Last natural week**
+(the default) and **Last natural month**; Team share follows that selected
+period without duplicating the control. The month view is loaded from the
+allocation-only endpoint.
 
 ### Budget pace
 
 Every budget value and actual uses the same billing-report **list-cost**
 expression as the existing report. The budget period for this page is exactly
 `last_week`; an annual or fiscal-period budget is prorated by inclusive date
-overlap. This is completed-period utilization, not a forecast.
+overlap. This is completed-period utilization, not a forecast. In the month view,
+**Overall Budget pace** renders the QA list cost accumulated across each natural
+calendar day instead of the weekly gauge, annotating the peak with its budget
+utilization percentage.
 
 - **Overall Budget pace** is all qualifying QA sources' `last_week_cost` divided
   by the sum of both source-wide **and project-scoped** QA budget-plan targets
-  for that week. A current plan is selected only when `platform = 'QA'` and its
+  for that week. In the week view, a second gauge shows actual cost as a
+  percentage of the current natural month's full budget. A current plan is selected only when `platform = 'QA'` and its
   `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
   plan amount is counted once, even when it names several accounts or projects.
 - **Project test budget** lists each configured project plan by `budget_name`.
   Its actual is scoped to the plan's `vendor`, JSON `accounts`, JSON
   `projects` membership, and date overlap with the report week. This preserves the one plan target for a
   multi-account/multi-project plan instead of copying it into every named
-  project; attributed projects not covered by a plan remain separate
-  "Not configured" rows.
+  project. Multi-project plan rows can reveal account and project allocation
+  donuts: their segments sum to the plan's actual spend, while each donut
+  center retains the plan's utilization of its single budget. Attributed
+  projects not covered by a plan remain separate "Not configured" rows.
 - **Team test cost** is not a budget view. It aggregates list cost across all
   qualifying QA sources by the same cross-account Level-2 roster-team mapping
   used by Cost Insight's `Team` dimension. Costs without such a Level-2 mapping

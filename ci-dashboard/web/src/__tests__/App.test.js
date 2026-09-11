@@ -187,7 +187,31 @@ test("weekly cost renders configured and unconfigured budget pace plus team shar
       period: { start_date: "2026-07-13", end_date: "2026-07-19" },
       overall: { actual_list_cost: 220, period_budget: 1050, utilization_pct: 20.95 },
       projects: [
-        { key: "project:alpha", name: "Alpha", actual_list_cost: 150, period_budget: 149.59, utilization_pct: 100.27 },
+        {
+          key: "project:alpha",
+          name: "Alpha",
+          actual_list_cost: 150,
+          period_budget: 149.59,
+          utilization_pct: 100.27,
+          project_account_usage: [
+            {
+              key: "project-account:Alpha:aws:qa-aws",
+              project: "Alpha",
+              vendor: "aws",
+              account_id: "qa-aws",
+              actual_list_cost: 120,
+              utilization_pct: 80.22,
+            },
+            {
+              key: "project-account:Beta:aws:qa-aws",
+              project: "Beta",
+              vendor: "aws",
+              account_id: "qa-aws",
+              actual_list_cost: 30,
+              utilization_pct: 20.05,
+            },
+          ],
+        },
         { key: "project:beta", name: "Beta", actual_list_cost: 50, period_budget: null, utilization_pct: null },
         { key: "project:gamma", name: "Gamma", actual_list_cost: 90, period_budget: 100, utilization_pct: 90 },
       ],
@@ -221,13 +245,31 @@ test("weekly cost renders configured and unconfigured budget pace plus team shar
     });
 
     const rendered = JSON.stringify(renderer.toJSON());
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.match(rendered, /Budget pace/);
     assert.match(rendered, /Overall budget pace/);
+    assert.match(rendered, /Current month budget utilization/);
     assert.match(rendered, /Project test budget utilization/);
     assert.match(rendered, /Not configured/);
     assert.match(rendered, /Team test cost/);
     assert.match(rendered, /Team share/);
+    assert.equal(
+      renderer.root.findByType("summary").children.join(""),
+      "2 project/account allocations",
+    );
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Budget pace period" }).length, 1);
+    assert.equal(
+      renderer.root.findAllByProps({ "aria-label": "Budget pace and team share period" }).length,
+      0,
+    );
+    assert.equal(renderer.root.findAllByType("details").length, 1);
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Account usage share chart" }));
+    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Project usage share chart" }));
+    assert.ok(
+      renderer.root
+        .findAllByProps({ className: "donut-chart__center-value" })
+        .some((value) => value.children.join("") === "100.3%"),
+    );
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 1 groups share chart" }));
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 2 teams share chart" }));
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Project allocation share chart" }));
@@ -280,7 +322,16 @@ test("weekly cost switches budget pace and team share to the last natural month"
   const monthBudgetPace = {
     metric: "list_cost",
     period: { start_date: "2026-06-01", end_date: "2026-06-30" },
-    overall: { actual_list_cost: 300, period_budget: 500, utilization_pct: 60 },
+    overall: {
+      actual_list_cost: 300,
+      period_budget: 500,
+      utilization_pct: 60,
+      daily_list_cost: [
+        { date: "2026-06-01", list_cost: 100, cumulative_list_cost: 100 },
+        { date: "2026-06-02", list_cost: 125, cumulative_list_cost: 225 },
+        { date: "2026-06-03", list_cost: 75, cumulative_list_cost: 300 },
+      ],
+    },
     projects: [],
     team_cost: { metric: "list_cost", total_list_cost: 300, items: [] },
   };
@@ -300,9 +351,21 @@ test("weekly cost switches budget pace and team share to the last natural month"
     budget_pace: monthBudgetPace,
     team_share: { ...teamShare, total_list_cost: 300 },
   };
+  const currentMonthAllocation = {
+    period: { start_date: "2026-07-01", end_date: "2026-07-31" },
+    meta: { purpose_schema_available: true },
+    budget_pace: {
+      ...weekBudgetPace,
+      overall: { actual_list_cost: 25, period_budget: 500, utilization_pct: 5 },
+    },
+    team_share: teamShare,
+  };
   let resolveMonthlyResponse;
   globalThis.fetch = (url) => {
     requests.push(String(url));
+    if (String(url).includes("current_month")) {
+      return Promise.resolve({ ok: true, json: async () => currentMonthAllocation });
+    }
     if (String(url).includes("/allocation")) {
       return new Promise((resolve) => {
         resolveMonthlyResponse = () => resolve({ ok: true, json: async () => monthlyAllocation });
@@ -319,6 +382,7 @@ test("weekly cost switches budget pace and team share to the last natural month"
     assert.deepEqual(requests, [
       "/api/v1/pages/weekly-cost?include_trend=false",
       "/api/v1/pages/weekly-cost/trend",
+      "/api/v1/pages/weekly-cost/allocation?period=current_month",
     ]);
 
     await act(async () => {
@@ -332,6 +396,7 @@ test("weekly cost switches budget pace and team share to the last natural month"
     assert.deepEqual(requests, [
       "/api/v1/pages/weekly-cost?include_trend=false",
       "/api/v1/pages/weekly-cost/trend",
+      "/api/v1/pages/weekly-cost/allocation?period=current_month",
       "/api/v1/pages/weekly-cost/allocation?period=month",
     ]);
     assert.match(JSON.stringify(renderer.toJSON()), /Last natural month Jun 1 - Jun 30, 2026/);
@@ -346,6 +411,23 @@ test("weekly cost switches budget pace and team share to the last natural month"
     assert.deepEqual(
       renderer.root.findByProps({ className: "weekly-cost__budget-amount" }).children,
       ["$300.00", " actual", " / $500.00 budget"],
+    );
+    assert.ok(
+      renderer.root.findByProps({
+        role: "img",
+        "aria-label": "Overall budget pace cumulative cost chart",
+      }),
+    );
+    assert.equal(
+      renderer.root.findAllByProps({ "aria-label": "Overall budget pace utilization gauge" }).length,
+      0,
+    );
+    assert.ok(
+      renderer.root
+        .findAllByProps({ className: "chart-axis-label chart-axis-label--annotation" })
+        .some((label) =>
+          label.findAllByType("tspan").some((line) => line.children.join("") === "60.0%"),
+        ),
     );
   } finally {
     await act(async () => renderer?.unmount());
@@ -594,7 +676,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
       await Promise.resolve();
     });
 
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Trend chart" }));
     assert.ok(
       renderer.root.findAllByType("h3").some((heading) => heading.children.join("") === "Cost trend"),
@@ -648,7 +730,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
         .find((button) => button.props["aria-label"] === "Show GCP · overflow")
         .props.onClick();
     });
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.ok(
       renderer.root
         .findAllByType("button")
@@ -664,7 +746,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
         .find((button) => button.props["aria-label"] === "Show all accounts")
         .props.onClick();
     });
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.ok(
       renderer.root
         .findAllByType("button")

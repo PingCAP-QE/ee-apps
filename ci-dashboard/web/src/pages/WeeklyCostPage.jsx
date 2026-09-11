@@ -47,9 +47,16 @@ export default function WeeklyCostPage() {
     { period: "month" },
     allocationPeriod === "month",
   );
+  const currentMonthAllocation = useApiData(
+    "/api/v1/pages/weekly-cost/allocation",
+    { period: "current_month" },
+    allocationPeriod === "week" && report.data?.meta?.purpose_schema_available === true,
+  );
   const allocation = allocationPeriod === "month" ? monthlyAllocation.data : report.data;
   const budgetPace = allocation?.budget_pace || report.data?.budget_pace;
   const teamCost = budgetPace?.team_cost;
+  const currentMonthBudget =
+    allocationPeriod === "week" ? currentMonthAllocation.data?.budget_pace?.overall : null;
   const teamShare = allocation?.team_share || report.data?.team_share;
   const allocationPeriodRange =
     allocation?.period ||
@@ -121,7 +128,17 @@ export default function WeeklyCostPage() {
         >
           <div className="weekly-cost__budget-grid">
             <div className="weekly-cost__budget-lane">
-              <BudgetPaceCard title="Overall budget pace" item={budgetPace.overall} />
+              <BudgetPaceCard
+                title="Overall budget pace"
+                item={budgetPace.overall}
+                showMonthlyCumulativeCost={allocationPeriod === "month"}
+              />
+              {currentMonthBudget ? (
+                <BudgetPaceCard
+                  title="Current month budget utilization"
+                  item={currentMonthBudget}
+                />
+              ) : null}
               <TeamCostList
                 title="Team test cost"
                 items={teamCost?.items}
@@ -157,7 +174,6 @@ export default function WeeklyCostPage() {
           }
           loading={allocationLoading}
           error={allocationError}
-          actions={<AllocationPeriodToggle value={allocationPeriod} onChange={setAllocationPeriod} />}
         >
           <div className="weekly-cost__share-grid">
             <DonutShareChart
@@ -342,7 +358,7 @@ export default function WeeklyCostPage() {
 function AllocationPeriodToggle({ value, onChange }) {
   return (
     <SegmentedControl
-      ariaLabel="Budget pace and team share period"
+      ariaLabel="Budget pace period"
       value={value}
       onChange={onChange}
       options={[
@@ -376,18 +392,60 @@ function SortableCostHeader({ field, label, sortLabel, sort, onSort }) {
   );
 }
 
-function BudgetPaceCard({ title, item = {} }) {
+function BudgetPaceCard({ title, item = {}, showMonthlyCumulativeCost = false }) {
   const budget = item.period_budget;
   const isConfigured = budget !== null && budget !== undefined;
   const utilization = Number(item.utilization_pct || 0);
   const progress = Math.min(Math.max(utilization, 0), 100);
   const tone = budgetUtilizationTone(item.utilization_pct);
   const gaugeEndAngle = Math.PI + (progress / 100) * Math.PI;
+  const dailyListCost = item.daily_list_cost || [];
+  const showCumulativeCost = showMonthlyCumulativeCost && dailyListCost.length > 0;
+  const highestDailyCost = dailyListCost.reduce(
+    (highest, point) =>
+      !highest || Number(point.cumulative_list_cost) > Number(highest.cumulative_list_cost)
+        ? point
+        : highest,
+    null,
+  );
+  const highestBudgetUsage =
+    isConfigured && highestDailyCost
+      ? (Number(highestDailyCost.cumulative_list_cost) / Number(budget)) * 100
+      : null;
 
   return (
     <article className="weekly-cost__budget-card weekly-cost__budget-card--overall">
       <span className="weekly-cost__budget-title">{title}</span>
-      {isConfigured ? (
+      {showCumulativeCost ? (
+        <div className="weekly-cost__budget-cumulative">
+          <TrendChart
+            series={[
+              {
+                key: "cumulative-cost",
+                label: "Cumulative cost",
+                color: "#0f7c82",
+                type: "line",
+                points: dailyListCost.map((point) => [point.date, point.cumulative_list_cost]),
+              },
+            ]}
+            ariaLabel={`${title} cumulative cost chart`}
+            bucketAnnotations={
+              highestDailyCost && highestBudgetUsage !== null
+                ? [{ label: highestDailyCost.date, text: formatNullablePercent(highestBudgetUsage) }]
+                : null
+            }
+            yFormatter={formatCompactCurrency}
+            height={190}
+            compactY
+            leftPadding={48}
+            bottomLabelSize={9}
+            xLabelFormatter={formatMonthlyCostDay}
+            tooltipLabelFormatter={formatMonthlyCostDay}
+            annotationLabelSize={12}
+            showLegend={false}
+          />
+        </div>
+      ) : isConfigured ? (
         <div
           className="weekly-cost__budget-gauge"
           role="progressbar"
@@ -461,6 +519,9 @@ function BudgetPaceList({ title, items = [], emptyMessage, className = "" }) {
                     />
                   </div>
                 ) : null}
+                {item.project_account_usage?.length > 1 ? (
+                  <BudgetUsageCharts item={item} />
+                ) : null}
               </div>
             );
           })}
@@ -470,6 +531,65 @@ function BudgetPaceList({ title, items = [], emptyMessage, className = "" }) {
       )}
     </article>
   );
+}
+
+function BudgetUsageCharts({ item }) {
+  const accountItems = budgetUsageShareItems(item.project_account_usage, "account");
+  const projectItems = budgetUsageShareItems(item.project_account_usage, "project");
+  const planUsage = formatNullablePercent(item.utilization_pct);
+
+  return (
+    <details className="weekly-cost__budget-usage">
+      <summary>{item.project_account_usage.length} project/account allocations</summary>
+      <div className="weekly-cost__budget-usage-charts">
+        <DonutShareChart
+          title="Account usage"
+          subtitle="100% = this plan's spend"
+          items={accountItems}
+          totalValue={item.actual_list_cost}
+          totalLabel="plan spend"
+          centerValue={planUsage}
+          centerLabel="of plan budget"
+          emptyMessage="No account usage for this plan."
+          className="weekly-cost__budget-usage-chart"
+        />
+        <DonutShareChart
+          title="Project usage"
+          subtitle="100% = this plan's spend"
+          items={projectItems}
+          totalValue={item.actual_list_cost}
+          totalLabel="plan spend"
+          centerValue={planUsage}
+          centerLabel="of plan budget"
+          emptyMessage="No project usage for this plan."
+          className="weekly-cost__budget-usage-chart"
+        />
+      </div>
+    </details>
+  );
+}
+
+function budgetUsageShareItems(items, dimension) {
+  const groups = new Map();
+  for (const item of items || []) {
+    const value = Number(item.actual_list_cost || 0);
+    if (value <= 0) {
+      continue;
+    }
+    const isAccount = dimension === "account";
+    const key = isAccount ? `${item.vendor}:${item.account_id}` : item.project;
+    const name = isAccount
+      ? `${String(item.vendor || "").toUpperCase()} / ${item.account_id}`
+      : item.project;
+    const group = groups.get(key) || { key, name, value: 0 };
+    group.value += value;
+    groups.set(key, group);
+  }
+
+  const total = [...groups.values()].reduce((sum, item) => sum + item.value, 0);
+  return [...groups.values()]
+    .map((item) => ({ ...item, share_pct: total ? (item.value / total) * 100 : 0 }))
+    .sort((left, right) => right.value - left.value || left.name.localeCompare(right.name));
 }
 
 function TeamCostList({ title, items = [], emptyMessage }) {
@@ -600,6 +720,18 @@ function sortWeeklyCostItems(items, sort) {
       ? formatAccountLabel(left).localeCompare(formatAccountLabel(right))
       : difference * direction;
   });
+}
+
+function formatMonthlyCostDay(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "");
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 function formatIsoDateRange(period) {
