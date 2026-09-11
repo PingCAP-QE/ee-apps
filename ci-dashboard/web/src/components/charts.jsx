@@ -209,6 +209,7 @@ export function TrendChart({
   tooltipLabelFormatter = xLabelFormatter,
   showTooltipSum = false,
   showLegend = true,
+  ariaLabel = "Trend chart",
 }) {
   const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -398,7 +399,7 @@ export function TrendChart({
 
   return (
     <div className="trend-chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
         {leftTickValues.map((value, index) => {
           const ratio =
             leftTickValues.length > 1 ? index / (leftTickValues.length - 1) : 0;
@@ -597,6 +598,7 @@ export function TrendChart({
               key={`${label}-annotation`}
               x={x}
               y={annotationY}
+              textAnchor={index === labels.length - 1 ? "end" : index === 0 ? "start" : "middle"}
               className="chart-axis-label chart-axis-label--annotation"
               style={{ fontSize: `${annotationLabelSize}px` }}
             >
@@ -999,6 +1001,8 @@ export function DonutShareChart({
   items,
   totalValue = null,
   totalLabel = "builds",
+  centerValue = null,
+  centerLabel = null,
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
   headerAction,
@@ -1099,10 +1103,10 @@ export function DonutShareChart({
             })}
             <circle cx={center} cy={center} r={innerRadius - 3} fill="#fcf7ef" />
             <text x={center} y={center - 6} textAnchor="middle" className="donut-chart__center-value">
-              {formatCompact(total)}
+              {centerValue ?? formatCompact(total)}
             </text>
             <text x={center} y={center + 16} textAnchor="middle" className="donut-chart__center-label">
-              {totalLabel}
+              {centerLabel || totalLabel}
             </text>
             {hoveredSegment ? (
               <g className="donut-tooltip" transform={`translate(${center - 84}, ${center - 35})`}>

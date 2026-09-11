@@ -4189,12 +4189,40 @@ def test_weekly_cost_allocation_page_supports_last_natural_month(
 
     response = api_client.get("/api/v1/pages/weekly-cost/allocation", params={"period": "month"})
     week_response = api_client.get("/api/v1/pages/weekly-cost/allocation", params={"period": "week"})
+    current_month_response = api_client.get(
+        "/api/v1/pages/weekly-cost/allocation",
+        params={"period": "current_month"},
+    )
 
     assert response.status_code == 200
     assert week_response.status_code == 200
+    assert current_month_response.status_code == 200
     assert week_response.json()["period"] == {"start_date": "2026-07-13", "end_date": "2026-07-19"}
     assert week_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 50.0
-    assert response.json() == {
+    assert current_month_response.json()["period"] == {
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-31",
+    }
+    assert current_month_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 50.0
+    monthly_response = response.json()
+    daily_list_cost = monthly_response["budget_pace"]["overall"].pop("daily_list_cost")
+    assert len(daily_list_cost) == 30
+    assert daily_list_cost[0] == {
+        "date": "2026-06-01",
+        "list_cost": 0.0,
+        "cumulative_list_cost": 0.0,
+    }
+    assert daily_list_cost[14] == {
+        "date": "2026-06-15",
+        "list_cost": 100.0,
+        "cumulative_list_cost": 100.0,
+    }
+    assert daily_list_cost[-1] == {
+        "date": "2026-06-30",
+        "list_cost": 0.0,
+        "cumulative_list_cost": 100.0,
+    }
+    assert monthly_response == {
         "period": {"start_date": "2026-06-01", "end_date": "2026-06-30"},
         "meta": {"purpose_schema_available": True},
         "budget_pace": {
@@ -4426,6 +4454,24 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
             "actual_list_cost": 150.0,
             "period_budget": 140.0,
             "utilization_pct": 107.14,
+            "project_account_usage": [
+                {
+                    "key": "project-account:Alpha:aws:qa-aws",
+                    "project": "Alpha",
+                    "vendor": "aws",
+                    "account_id": "qa-aws",
+                    "actual_list_cost": 100.0,
+                    "utilization_pct": 71.43,
+                },
+                {
+                    "key": "project-account:Beta:aws:qa-aws",
+                    "project": "Beta",
+                    "vendor": "aws",
+                    "account_id": "qa-aws",
+                    "actual_list_cost": 50.0,
+                    "utilization_pct": 35.71,
+                },
+            ],
         }
     ]
     assert budget_pace["team_cost"] == {

@@ -988,6 +988,14 @@ def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str
     elif period == "month":
         end_date = today.replace(day=1) - timedelta(days=1)
         start_date = end_date.replace(day=1)
+    elif period == "current_month":
+        start_date = today.replace(day=1)
+        next_month = date(
+            start_date.year + (start_date.month == 12),
+            start_date.month % 12 + 1,
+            1,
+        )
+        end_date = next_month - timedelta(days=1)
     else:
         raise ValueError(f"unsupported allocation period: {period}")
 
@@ -1016,6 +1024,7 @@ def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str
             end_date,
             total_actual,
             qa_sources,
+            include_daily_cost=period == "month",
         )
     )
     return report
@@ -1104,6 +1113,7 @@ def _weekly_cost_allocation_response(
     end_date: date,
     total_actual: float,
     qa_sources: set[tuple[str, str]],
+    include_daily_cost: bool = False,
 ) -> dict[str, Any]:
     team_dimensions = _weekly_cost_team_dimensions(dimension_rows, roster_group_rows)
     budget_pace = _weekly_cost_budget_pace(
@@ -1115,6 +1125,12 @@ def _weekly_cost_allocation_response(
         qa_sources,
     )
     budget_pace["team_cost"] = _weekly_cost_team_cost(team_dimensions)
+    if include_daily_cost:
+        budget_pace["overall"]["daily_list_cost"] = _weekly_cost_cumulative_daily_cost(
+            team_dimensions,
+            start_date,
+            end_date,
+        )
     return {
         "team_share": _weekly_cost_team_share(team_dimensions),
         "budget_pace": budget_pace,
@@ -1210,6 +1226,7 @@ def _weekly_cost_team_dimensions(
     cross_account_team_values: dict[str, dict[str, Any]] = {}
     owner_values: dict[str, dict[str, Any]] = {}
     source_project_values: dict[tuple[str, str, date, str], Decimal] = {}
+    daily_list_cost: dict[date, Decimal] = {}
     for row in dimension_rows:
         amount = Decimal(str(row["list_cost"] or 0))
         group_id = _weekly_cost_group_id(row["group_id"])
@@ -1225,6 +1242,7 @@ def _weekly_cost_team_dimensions(
         source_project_values[source_project_key] = (
             source_project_values.get(source_project_key, Decimal(0)) + amount
         )
+        daily_list_cost[usage_date] = daily_list_cost.get(usage_date, Decimal(0)) + amount
         _add_weekly_cost_dimension_value(level1_values, level1, amount)
         _add_weekly_cost_dimension_value(level2_values, level2, amount)
         _add_weekly_cost_dimension_value(cross_account_team_values, cross_account_team, amount)
@@ -1246,7 +1264,31 @@ def _weekly_cost_team_dimensions(
         "cross_account_teams": cross_account_team_values,
         "owners": owner_values,
         "source_project_values": source_project_values,
+        "daily_list_cost": daily_list_cost,
     }
+
+
+def _weekly_cost_cumulative_daily_cost(
+    dimensions: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    daily_values = dimensions["daily_list_cost"]
+    cumulative = Decimal(0)
+    days = (end_date - start_date).days + 1
+    items = []
+    for offset in range(days):
+        usage_date = start_date + timedelta(days=offset)
+        list_cost = daily_values.get(usage_date, Decimal(0))
+        cumulative += list_cost
+        items.append(
+            {
+                "date": usage_date.isoformat(),
+                "list_cost": _money(list_cost),
+                "cumulative_list_cost": _money(cumulative),
+            }
+        )
+    return items
 
 
 def _weekly_cost_path_contains(parent_path: str, child_path: str) -> bool:
@@ -1405,6 +1447,14 @@ def _weekly_cost_current_budget_pace(
                     scope_start,
                     scope_end,
                 ),
+                "project_account_usage": _weekly_cost_project_account_usage(
+                    dimensions,
+                    sources,
+                    set(projects),
+                    scope_start,
+                    scope_end,
+                    period_budget,
+                ),
             }
             project_names[plan_key] = plan_name
             project_budgets[plan_key] = period_budget
@@ -1521,6 +1571,44 @@ def _weekly_cost_scoped_actual(
 
 
 
+def _weekly_cost_project_account_usage(
+    dimensions: Mapping[str, Any],
+    sources: set[tuple[str, str]],
+    projects: set[str],
+    start_date: date,
+    end_date: date,
+    period_budget: Decimal,
+) -> list[dict[str, Any]]:
+    values: dict[tuple[str, str, str], Decimal] = {}
+    for (vendor, account_id, usage_date, project), amount in dimensions[
+        "source_project_values"
+    ].items():
+        if (
+            (vendor, account_id) not in sources
+            or project not in projects
+            or not start_date <= usage_date <= end_date
+        ):
+            continue
+        key = (project, vendor, account_id)
+        values[key] = values.get(key, Decimal(0)) + amount
+
+    budget = _money(period_budget)
+    return [
+        {
+            "key": f"project-account:{project}:{vendor}:{account_id}",
+            "project": project,
+            "vendor": vendor,
+            "account_id": account_id,
+            "actual_list_cost": _money(actual),
+            "utilization_pct": _nullable_rate_pct(_money(actual), budget),
+        }
+        for (project, vendor, account_id), actual in sorted(
+            values.items(), key=lambda item: (-item[1], *item[0])
+        )
+        if actual
+    ]
+
+
 def _weekly_cost_budget_items(
     actual_values: Mapping[str, Mapping[str, Any]],
     budgets: Mapping[str, Decimal],
@@ -1530,17 +1618,18 @@ def _weekly_cost_budget_items(
     for key in sorted(set(actual_values) | set(budgets)):
         actual = Decimal(str(actual_values.get(key, {}).get("value", 0)))
         budget = budgets.get(key)
-        items.append(
-            {
-                "key": key,
-                "name": str(actual_values.get(key, {}).get("name") or budget_names[key]),
-                "actual_list_cost": _money(actual),
-                "period_budget": _money(budget) if budget is not None else None,
-                "utilization_pct": _nullable_rate_pct(_money(actual), _money(budget))
-                if budget is not None
-                else None,
-            }
-        )
+        item = {
+            "key": key,
+            "name": str(actual_values.get(key, {}).get("name") or budget_names[key]),
+            "actual_list_cost": _money(actual),
+            "period_budget": _money(budget) if budget is not None else None,
+            "utilization_pct": _nullable_rate_pct(_money(actual), _money(budget))
+            if budget is not None
+            else None,
+        }
+        if usage := actual_values.get(key, {}).get("project_account_usage"):
+            item["project_account_usage"] = usage
+        items.append(item)
     return sorted(
         items,
         key=lambda item: (

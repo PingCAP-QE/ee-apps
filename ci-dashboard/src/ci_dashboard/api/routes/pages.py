@@ -148,7 +148,7 @@ def weekly_cost_trend_page(
 
 @router.get("/weekly-cost/allocation")
 def weekly_cost_allocation_page(
-    period: str = Query("month", pattern="^(week|month)$"),
+    period: str = Query("month", pattern="^(week|month|current_month)$"),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_weekly_cost_allocation_page(engine, period)
