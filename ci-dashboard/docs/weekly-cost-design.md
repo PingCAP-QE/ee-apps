@@ -247,22 +247,22 @@ utilization percentage.
   percentage of the current natural month's full budget. A current plan is selected only when `platform = 'QA'` and its
   `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
   plan amount is counted once, even when it names several accounts or projects.
-- **Project test budget** lists each configured project plan by `budget_name`.
+- **Budget Scenario utilization** lists each configured project plan by `budget_name`.
   Its actual is scoped to the plan's `vendor`, JSON `accounts`, JSON
   `projects` membership, and date overlap with the report week. This preserves the one plan target for a
   multi-account/multi-project plan instead of copying it into every named
   project. Multi-project plan rows can reveal account and project allocation
   donuts: their segments sum to the plan's actual spend, while each donut
   center retains the plan's utilization of its single budget. Attributed
-  projects not covered by a plan remain separate "Not configured" rows.
+  projects not covered by a plan are omitted from this card.
 - **Team test cost** is not a budget view. It aggregates list cost across all
   qualifying QA sources by the same cross-account Level-2 roster-team mapping
   used by Cost Insight's `Team` dimension. Costs without such a Level-2 mapping
   are retained as `(no team)`. Each row shows its QA-cost share; no budget,
   target, utilization, or plan `team` label is involved.
 
-Only a missing target is `null` / "Not configured"; it is never converted to a
-zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
+An unmatched project target remains `null` in the API response and is omitted
+from **Budget Scenario utilization**; it is never converted to a zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
 older `vendor`/`account_id` schema, but current QA plans use JSON memberships.
 Budget rows with unsupported group, manager, or repo filters are excluded from
 legacy aggregate cards. Legacy rows scoped to a `group_id` are also excluded because
@@ -271,7 +271,7 @@ single logical plan still must not be duplicated across
 separate budget rows merely to model cross-account reporting. Every configured
 Budget pace utilization uses the same capped threshold: green below 80%, yellow
 from 80% through 95%, and red above 95%. `Overall budget pace` uses a
-semi-circular gauge and `Project test budget utilization` uses linear progress
+semi-circular gauge and `Budget Scenario utilization` uses linear progress
 bars. `Team test cost` uses a neutral QA-cost-share bar rather than a budget
 utilization color. In the desktop three-lane layout, `Overall budget pace` and
 `Team test cost` stack in the first lane, the project budget list is in the

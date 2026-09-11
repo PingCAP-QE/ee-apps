@@ -147,9 +147,9 @@ export default function WeeklyCostPage() {
             </div>
             <BudgetPaceList
               className="weekly-cost__budget-projects"
-              title="Project test budget utilization"
+              title="Budget Scenario utilization"
               items={budgetPace.projects}
-              emptyMessage="No project cost was attributed in this week."
+              emptyMessage="No budget scenario matched this period."
             />
             <DonutShareChart
               title="Project allocation"
@@ -482,12 +482,16 @@ function BudgetPaceCard({ title, item = {}, showMonthlyCumulativeCost = false })
 }
 
 function BudgetPaceList({ title, items = [], emptyMessage, className = "" }) {
+  const matchedItems = items.filter(
+    (item) => item.period_budget !== null && item.period_budget !== undefined,
+  );
+
   return (
     <article className={["weekly-cost__budget-card", className].filter(Boolean).join(" ")}>
       <h4>{title}</h4>
-      {items.length ? (
+      {matchedItems.length ? (
         <div className="weekly-cost__budget-list">
-          {items.map((item) => {
+          {matchedItems.map((item) => {
             const isConfigured = item.period_budget !== null && item.period_budget !== undefined;
             const utilization = Number(item.utilization_pct || 0);
             const progress = Math.min(Math.max(utilization, 0), 100);

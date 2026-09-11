@@ -177,7 +177,7 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
   }
 });
 
-test("weekly cost renders configured and unconfigured budget pace plus team shares", async () => {
+test("weekly cost renders only matched budget scenarios plus team shares", async () => {
   const requests = [];
   const originalFetch = globalThis.fetch;
   let renderer;
@@ -249,8 +249,8 @@ test("weekly cost renders configured and unconfigured budget pace plus team shar
     assert.match(rendered, /Budget pace/);
     assert.match(rendered, /Overall budget pace/);
     assert.match(rendered, /Current month budget utilization/);
-    assert.match(rendered, /Project test budget utilization/);
-    assert.match(rendered, /Not configured/);
+    assert.match(rendered, /Budget Scenario utilization/);
+    assert.doesNotMatch(rendered, /Not configured/);
     assert.match(rendered, /Team test cost/);
     assert.match(rendered, /Team share/);
     assert.equal(
@@ -332,7 +332,22 @@ test("weekly cost switches budget pace and team share to the last natural month"
         { date: "2026-06-03", list_cost: 75, cumulative_list_cost: 300 },
       ],
     },
-    projects: [],
+    projects: [
+      {
+        key: "budget-plan:monthly-matched",
+        name: "Monthly matched scenario",
+        actual_list_cost: 300,
+        period_budget: 500,
+        utilization_pct: 60,
+      },
+      {
+        key: "project:monthly-unmatched",
+        name: "Monthly unmatched project",
+        actual_list_cost: 50,
+        period_budget: null,
+        utilization_pct: null,
+      },
+    ],
     team_cost: { metric: "list_cost", total_list_cost: 300, items: [] },
   };
   const teamShare = {
@@ -408,6 +423,8 @@ test("weekly cost switches budget pace and team share to the last natural month"
 
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /2026-06-01 – 2026-06-30/);
+    assert.match(rendered, /Monthly matched scenario/);
+    assert.doesNotMatch(rendered, /Monthly unmatched project/);
     assert.deepEqual(
       renderer.root.findByProps({ className: "weekly-cost__budget-amount" }).children,
       ["$300.00", " actual", " / $500.00 budget"],
