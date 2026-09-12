@@ -73,6 +73,14 @@ def run_sync_aws_billing_summary(
     )
     if resolved_source.account_id != account_id:
         raise ValueError("AWS source account_id must match the requested account_id")
+    if (usage_start_date is None) != (usage_end_date is None):
+        raise ValueError("usage_start_date and usage_end_date must be set together")
+    if (
+        usage_start_date is not None
+        and usage_end_date is not None
+        and usage_start_date > usage_end_date
+    ):
+        raise ValueError("usage_start_date must be before or equal to usage_end_date")
     if resolved_source.schema_version not in {
         AWS_CUR_LEGACY_SCHEMA_VERSION,
         AWS_SPLIT_COST_SCHEMA_VERSION,
@@ -304,7 +312,7 @@ def _fetch_source_rows(
         "page_size": page_size,
         "limit": limit,
     }
-    if source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION and usage_end_date is not None:
+    if usage_end_date is not None:
         kwargs["usage_end_date"] = usage_end_date
     if source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION:
         kwargs["validate_guardrail"] = validate_guardrail

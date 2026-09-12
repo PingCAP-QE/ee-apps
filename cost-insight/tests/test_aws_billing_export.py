@@ -121,7 +121,8 @@ def test_fetch_aws_billing_rows_use_bigquery_client(monkeypatch) -> None:
             account_id="946646677266",
             export_partition_start=date(2026, 5, 1),
             export_partition_end=date(2026, 5, 1),
-            earliest_usage_date=date(2026, 1, 1),
+            earliest_usage_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 5),
             page_size=50,
         )
     )
@@ -140,12 +141,14 @@ def test_fetch_aws_billing_rows_use_bigquery_client(monkeypatch) -> None:
     assert summary_rows == [{"account_id": "946646677266", "usage_date": "2026-05-01"}]
     assert unmatched_rows == [{"account_id": "946646677266", "resource_name": "i-123"}]
     assert "line_item_usage_account_id = @account_id" in summary_client.query_text
+    assert "DATE(line_item_usage_start_date) <= @usage_end_date" in summary_client.query_text
     assert summary_client.page_size == 50
     assert [param.name for param in summary_client.job_config.query_parameters] == [
         "account_id",
         "export_partition_start",
         "export_partition_end",
         "earliest_usage_date",
+        "usage_end_date",
     ]
     assert "DATE(line_item_usage_start_date) BETWEEN @usage_start_date AND @usage_end_date" in unmatched_client.query_text
     assert unmatched_client.page_size == 25

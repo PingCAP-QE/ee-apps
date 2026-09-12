@@ -9,6 +9,7 @@ The current implementation supports multiple active sources through
 - GCP project `pingcap-testing-account`
 - GCP project `qa-infra-dev`
 - AWS account `946646677266` (`qa-infra-dev`)
+- AWS account `131464424160` (`qa-infra-prod`, Essential V2 canary-release PRD)
 - Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
 - Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
 - Alibaba Cloud owner account `5028760335873601` (`alicloud-testing-infra-dev`)
@@ -106,10 +107,11 @@ gcloud auth application-default set-quota-project pingcap-testing-account
 
 ## Seed Active Sources
 
-After `sql/001_create_cost_tables.sql` is applied, apply the forward source-purpose
-migration before the seed:
+After `sql/001_create_cost_tables.sql` is applied, apply the forward source-profile
+and source-purpose migrations before the seed:
 
 ```bash
+mysql < sql/010_add_aws_split_cost_dimensions.sql
 mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
 ```

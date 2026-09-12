@@ -16,32 +16,40 @@ def fetch_aws_billing_summary_rows(
     export_partition_end: date,
     earliest_usage_date: date,
     page_size: int,
+    usage_end_date: date | None = None,
     limit: int | None = None,
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
     client = bigquery.Client()
-    query = build_aws_billing_summary_query(billing_table=billing_table, limit=limit)
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("account_id", "STRING", account_id),
-            bigquery.ScalarQueryParameter(
-                "export_partition_start",
-                "DATE",
-                export_partition_start.isoformat(),
-            ),
-            bigquery.ScalarQueryParameter(
-                "export_partition_end",
-                "DATE",
-                export_partition_end.isoformat(),
-            ),
-            bigquery.ScalarQueryParameter(
-                "earliest_usage_date",
-                "DATE",
-                earliest_usage_date.isoformat(),
-            ),
-        ]
+    query = build_aws_billing_summary_query(
+        billing_table=billing_table,
+        usage_end_date=usage_end_date,
+        limit=limit,
     )
+    query_parameters = [
+        bigquery.ScalarQueryParameter("account_id", "STRING", account_id),
+        bigquery.ScalarQueryParameter(
+            "export_partition_start",
+            "DATE",
+            export_partition_start.isoformat(),
+        ),
+        bigquery.ScalarQueryParameter(
+            "export_partition_end",
+            "DATE",
+            export_partition_end.isoformat(),
+        ),
+        bigquery.ScalarQueryParameter(
+            "earliest_usage_date",
+            "DATE",
+            earliest_usage_date.isoformat(),
+        ),
+    ]
+    if usage_end_date is not None:
+        query_parameters.append(
+            bigquery.ScalarQueryParameter("usage_end_date", "DATE", usage_end_date.isoformat())
+        )
+    job_config = bigquery.QueryJobConfig(query_parameters=query_parameters)
     rows = client.query(query, job_config=job_config).result(page_size=page_size)
     for row in rows:
         yield dict(row.items())
@@ -84,7 +92,17 @@ def fetch_aws_unmatched_resource_rows(
         yield dict(row.items())
 
 
-def build_aws_billing_summary_query(*, billing_table: str, limit: int | None = None) -> str:
+def build_aws_billing_summary_query(
+    *,
+    billing_table: str,
+    usage_end_date: date | None = None,
+    limit: int | None = None,
+) -> str:
+    usage_end_clause = (
+        "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date"
+        if usage_end_date is not None
+        else ""
+    )
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     return f"""
 WITH normalized AS (
@@ -137,7 +155,7 @@ WITH normalized AS (
   FROM `{billing_table}`
   WHERE line_item_usage_account_id = @account_id
     AND PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end
-    AND DATE(line_item_usage_start_date) >= @earliest_usage_date
+    AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
 )
 SELECT
   'aws' AS vendor,

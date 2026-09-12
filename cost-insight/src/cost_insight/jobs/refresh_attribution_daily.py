@@ -284,16 +284,26 @@ def _json_tag_is_json_null_sql(expression: str, key: str) -> str:
 
 def _allocation_tags_for_match_sql(expression: str) -> str:
     cluster_is_null = _json_tag_is_json_null_sql(expression, "cluster")
-    shared_pool_is_null = _json_tag_is_json_null_sql(expression, "shared_pool")
+    canonical_shared_pool = f"""
+COALESCE(
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT({expression}, '$.shared_pool')), 'null'),
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT({expression}, '$.\"shared-pool\"')), 'null')
+)
+""".strip()
+    tags_with_canonical_shared_pool = f"""
+CASE
+  WHEN {canonical_shared_pool} IS NULL
+    THEN JSON_REMOVE({expression}, '$.tenant', '$.shared_pool', '$.\"shared-pool\"')
+  ELSE JSON_SET(
+    JSON_REMOVE({expression}, '$.tenant', '$.shared_pool', '$.\"shared-pool\"'),
+    '$.shared_pool', {canonical_shared_pool}
+  )
+END
+""".strip()
     return f"""
 CASE
-  WHEN {cluster_is_null} AND {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.tenant', '$.cluster', '$.shared_pool')
-  WHEN {cluster_is_null}
-    THEN JSON_REMOVE({expression}, '$.tenant', '$.cluster')
-  WHEN {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.tenant', '$.shared_pool')
-  ELSE JSON_REMOVE({expression}, '$.tenant')
+  WHEN {cluster_is_null} THEN JSON_REMOVE(({tags_with_canonical_shared_pool}), '$.cluster')
+  ELSE ({tags_with_canonical_shared_pool})
 END
 """.strip()
 

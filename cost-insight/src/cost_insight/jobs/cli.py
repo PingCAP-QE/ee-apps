@@ -145,6 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_aws_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
     sync_aws_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_aws_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--account-id", default=None)
     sync_aws_summary.add_argument("--dry-run", action="store_true")
     sync_aws_summary.add_argument("--limit", type=int, default=None)
     sync_aws_summary.add_argument(
@@ -531,6 +532,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.command == "sync-aws-billing-summary":
+        if (args.usage_start_date is None) != (args.usage_end_date is None):
+            raise ValueError("--usage-start-date and --usage-end-date must be set together")
+        if args.usage_start_date and args.usage_end_date:
+            if args.usage_start_date > args.usage_end_date:
+                raise ValueError("usage start date must be before or equal to usage end date")
+            if (args.usage_end_date - args.usage_start_date).days + 1 > 5:
+                raise ValueError("AWS sync supports a maximum five-day usage window")
         if args.replace_existing_partitions and (
             args.export_partition_start is None or args.export_partition_end is None
         ):
@@ -546,7 +554,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         engine = build_engine(settings)
         try:
             summaries = []
-            sources = _resolve_aws_sources(engine, settings=settings.aws_billing)
+            sources = _resolve_aws_sources(
+                engine,
+                settings=settings.aws_billing,
+                account_id=args.account_id,
+            )
             if args.replace_existing_dates and any(
                 source.schema_version != AWS_SPLIT_COST_SCHEMA_VERSION for source in sources
             ):
@@ -1090,8 +1102,17 @@ def _resolve_gcp_sources(
     return tuple(replace(settings, account_id=source.account_id) for source in sources)
 
 
-def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[AwsBillingSource, ...]:
+def _resolve_aws_sources(
+    engine,
+    *,
+    settings: AwsBillingSettings,
+    account_id: str | None = None,
+) -> tuple[AwsBillingSource, ...]:
     sources = _list_sources(engine, vendor="aws")
+    if account_id and sources:
+        sources = tuple(source for source in sources if source.account_id == account_id)
+        if not sources:
+            raise ValueError(f"AWS cost source is not active: {account_id}")
     if sources:
         resolved_sources = []
         for source in sources:
@@ -1110,10 +1131,11 @@ def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[AwsBi
                 )
             )
         return tuple(resolved_sources)
-    if settings.account_id:
+    fallback_account_id = account_id or settings.account_id
+    if fallback_account_id:
         return (
             AwsBillingSource(
-                account_id=settings.account_id,
+                account_id=fallback_account_id,
                 billing_table=settings.billing_table,
             ),
         )

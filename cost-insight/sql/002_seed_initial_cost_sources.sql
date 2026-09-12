@@ -4,6 +4,7 @@ INSERT INTO cost_sources (
   billing_account_id,
   display_name,
   purpose,
+  source_available_from,
   is_active
 ) VALUES
 (
@@ -11,6 +12,7 @@ INSERT INTO cost_sources (
   'pingcap-testing-account',
   '01D088-8F9CF2-8AF1C6',
   'pingcap-testing-account',
+  NULL,
   NULL,
   1
 ),
@@ -20,6 +22,7 @@ INSERT INTO cost_sources (
   '01D088-8F9CF2-8AF1C6',
   'qa-infra-dev',
   '机器统一资源池',
+  NULL,
   1
 ),
 (
@@ -28,6 +31,16 @@ INSERT INTO cost_sources (
   '946646677266',
   'qa-infra-dev',
   '机器统一资源池及重点项目测试',
+  NULL,
+  1
+),
+(
+  'aws',
+  '131464424160',
+  '317766989874',
+  'qa-infra-prod',
+  'essential v2 canary release PRD env',
+  '2026-06-01',
   1
 ),
 (
@@ -35,6 +48,7 @@ INSERT INTO cost_sources (
   'aaa5414d-7537-4e24-99bd-a7a841221810',
   NULL,
   'azure-testing-infra-dev',
+  NULL,
   NULL,
   1
 ),
@@ -44,6 +58,7 @@ INSERT INTO cost_sources (
   NULL,
   'azure-testing-infra-prod-dataplane',
   NULL,
+  NULL,
   1
 ),
 (
@@ -51,6 +66,7 @@ INSERT INTO cost_sources (
   '5028760335873601',
   '5028760335873601',
   'alicloud-testing-infra-dev',
+  NULL,
   NULL,
   1
 )

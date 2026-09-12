@@ -199,6 +199,34 @@ def test_split_source_profile_selects_its_table_and_available_date() -> None:
     assert seen["earliest_usage_date"] == date(2026, 8, 2)
 
 
+def test_legacy_source_passes_a_bounded_usage_window_to_the_fetcher() -> None:
+    engine = _sqlite_engine()
+    seen: dict[str, object] = {}
+
+    def fetch_rows(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=AwsBillingSettings(account_id="946646677266"),
+            account_id="946646677266",
+            export_partition_start=date(2026, 6, 1),
+            export_partition_end=date(2026, 6, 1),
+            earliest_usage_date=date(2026, 6, 1),
+            usage_start_date=date(2026, 6, 1),
+            usage_end_date=date(2026, 6, 5),
+            dry_run=True,
+            fetch_rows=fetch_rows,
+        )
+    finally:
+        engine.dispose()
+
+    assert seen["earliest_usage_date"] == date(2026, 6, 1)
+    assert seen["usage_end_date"] == date(2026, 6, 5)
+
+
 def _resource_row() -> dict[str, object]:
     return {
         "vendor": "aws",
