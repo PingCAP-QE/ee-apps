@@ -107,10 +107,11 @@ gcloud auth application-default set-quota-project pingcap-testing-account
 
 ## Seed Active Sources
 
-After `sql/001_create_cost_tables.sql` is applied, apply the forward source-purpose
-migration before the seed:
+After `sql/001_create_cost_tables.sql` is applied, apply the forward source-profile
+and source-purpose migrations before the seed:
 
 ```bash
+mysql < sql/010_add_aws_split_cost_dimensions.sql
 mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
 ```

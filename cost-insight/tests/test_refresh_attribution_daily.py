@@ -7,8 +7,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 
-from cost_insight.jobs import state_store
-import cost_insight.jobs.refresh_attribution_daily as refresh_attribution_daily
+from cost_insight.jobs import refresh_attribution_daily, state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.refresh_attribution_daily import (
     _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,
@@ -179,6 +178,26 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     raw_connection.create_function("JSON_UNQUOTE", 1, json_unquote)
     raw_connection.create_function("SHA2", 2, sha2)
     raw_connection.create_function("SUBSTRING_INDEX", 3, substring_index)
+
+
+def test_allocation_tag_match_prefers_underscore_shared_pool() -> None:
+    engine = _sqlite_engine()
+    expression = refresh_attribution_daily._allocation_tags_for_match_sql(":vendor_tags_json")
+    try:
+        with engine.connect() as connection:
+            matched_tags = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": (
+                        '{"tenant":"tenant-0858","shared_pool":"canonical-pool",'
+                        '"shared-pool":"legacy-pool"}'
+                    )
+                },
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert json.loads(matched_tags) == {"shared_pool": "canonical-pool"}
 
 
 def test_watermark_formats_dates() -> None:
