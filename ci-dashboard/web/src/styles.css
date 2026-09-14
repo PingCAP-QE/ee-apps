@@ -933,8 +933,47 @@ select {
   min-height: 100%;
 }
 
+.weekly-cost__budget-scenario {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
 .weekly-cost__budget-project-share {
   align-self: start;
+}
+
+.weekly-cost__budget-scenario-trend {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(49, 87, 114, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.weekly-cost__budget-scenario-trend header {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.weekly-cost__budget-scenario-trend header strong {
+  color: var(--navy);
+  font-size: 0.84rem;
+}
+
+.weekly-cost__budget-scenario-trend header span,
+.weekly-cost__budget-scenario-trend .chart-legend {
+  font-size: 0.68rem;
+}
+
+.weekly-cost__budget-scenario-trend .chart-legend__item {
+  max-width: 100%;
+}
+
+.weekly-cost__budget-scenario-trend .chart-legend__item span:last-child {
+  overflow-wrap: anywhere;
 }
 
 .weekly-cost__share-grid {
@@ -1069,6 +1108,21 @@ select {
   border-top: 0;
 }
 
+.weekly-cost__budget-row--selectable {
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.weekly-cost__budget-row--selectable:hover,
+.weekly-cost__budget-row--selectable:focus-visible {
+  background: rgba(42, 157, 143, 0.08);
+  outline: none;
+}
+
+.weekly-cost__budget-row--selected {
+  background: rgba(42, 157, 143, 0.14);
+}
+
 .weekly-cost__budget-row-head {
   display: flex;
   align-items: baseline;
@@ -1088,71 +1142,6 @@ select {
 
 .weekly-cost__budget-empty {
   margin: 0;
-}
-
-.weekly-cost__budget-usage {
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.weekly-cost__budget-usage summary {
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.weekly-cost__budget-usage-charts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.6rem;
-  margin-top: 0.55rem;
-}
-
-.weekly-cost__budget-usage-chart {
-  min-width: 0;
-  padding: 0.65rem;
-  border: 1px solid rgba(49, 87, 114, 0.1);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.6);
-}
-
-.weekly-cost__budget-usage-chart .donut-card__header {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.weekly-cost__budget-usage-chart .donut-card__header-actions {
-  justify-content: space-between;
-}
-
-.weekly-cost__budget-usage-chart .donut-card__body {
-  grid-template-columns: 1fr;
-  gap: 0.45rem;
-}
-
-.weekly-cost__budget-usage-chart .donut-chart svg {
-  max-width: 10rem;
-}
-
-.weekly-cost__budget-usage-chart .donut-legend {
-  gap: 0.25rem;
-}
-
-.weekly-cost__budget-usage-chart .donut-legend__item {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.25rem;
-  padding: 0.35rem 0.4rem;
-  border-radius: 8px;
-}
-
-.weekly-cost__budget-usage-chart .donut-legend__name,
-.weekly-cost__budget-usage-chart .donut-legend__value,
-.weekly-cost__budget-usage-chart .donut-legend__share {
-  font-size: 0.64rem;
-}
-
-.weekly-cost__budget-usage-chart .donut-legend__share {
-  grid-column: 2 / -1;
-  text-align: right;
 }
 
 .weekly-cost__share-card {
@@ -1190,6 +1179,23 @@ select {
 .weekly-cost__share-card .chart-legend__swatch {
   width: 0.58rem;
   height: 0.58rem;
+}
+
+.weekly-cost__scenario-pie.donut-card--labeled {
+  min-height: 0;
+}
+
+.weekly-cost__scenario-pie .labeled-donut-chart {
+  min-height: 220px;
+}
+
+.weekly-cost__scenario-pie .labeled-donut-chart__label text {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.weekly-cost__scenario-pie .labeled-donut-chart__label-metric {
+  font-size: 0.76rem;
 }
 
 .cost-account-card {
@@ -2842,8 +2848,7 @@ select {
 
   .weekly-cost__trend-layout,
   .weekly-cost__budget-grid,
-  .weekly-cost__share-grid,
-  .weekly-cost__budget-usage-charts {
+  .weekly-cost__share-grid {
     grid-template-columns: 1fr;
   }
 

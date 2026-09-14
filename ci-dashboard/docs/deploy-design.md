@@ -384,6 +384,9 @@ Recommended release model:
 - `ee-ops` owns the `HelmRelease`
 - the `HelmRelease` enables `httpRoute`
 - the `HelmRelease` pins the application image tag
+- the `HelmRelease` sets `CI_DASHBOARD_VERSION` to the displayed release SemVer;
+  FastAPI injects it into the served SPA HTML, while an unset local value displays
+  as `local`
 
 This matches the existing deployment split already used by services such as `cloudevents-server`.
 

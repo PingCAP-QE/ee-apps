@@ -24,6 +24,9 @@ const DONUT_COLORS = [
   "#8d5a97",
   "#4f772d",
 ];
+const LABELED_DONUT_MIN_LABEL_Y = 36;
+const LABELED_DONUT_BOTTOM_PADDING = 28;
+const LABELED_DONUT_LABEL_GAP = 8;
 
 const SERIES_COLORS = {
   total_count: "#315772",
@@ -1173,9 +1176,13 @@ export function LabeledDonutShareChart({
   items,
   totalValue,
   totalLabel = "builds",
+  centerValue,
+  centerLabel,
+  metricValueFormatter = formatCompact,
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
   headerAction,
+  className = "",
 }) {
   if (!items?.length) {
     return <EmptyState message={emptyMessage} compact />;
@@ -1188,9 +1195,7 @@ export function LabeledDonutShareChart({
   }
 
   const width = 640;
-  const height = 390;
   const centerX = width / 2;
-  const centerY = 205;
   const radius = 106;
   const innerRadius = 64;
   const labelRadius = 128;
@@ -1204,6 +1209,7 @@ export function LabeledDonutShareChart({
     const angle = (value / chartTotal) * Math.PI * 2;
     const endAngle = startAngle + angle;
     const midAngle = startAngle + angle / 2;
+    const nameLines = wrapLabel(item.name, 20);
     const segment = {
       item,
       index,
@@ -1213,11 +1219,28 @@ export function LabeledDonutShareChart({
       endAngle,
       midAngle,
       fill: donutColor(item.name, index),
-      nameLines: wrapLabel(item.name, 20),
+      nameLines,
+      labelHeight: nameLines.length * 15 + 18,
     };
     startAngle = endAngle;
     return segment;
   });
+  const maximumLabelStackHeight = Math.max(
+    ...["left", "right"].map((side) => {
+      const sideSegments = segments.filter(
+        (segment) => (Math.cos(segment.midAngle) >= 0 ? "right" : "left") === side,
+      );
+      return (
+        sideSegments.reduce((sum, segment) => sum + segment.labelHeight, 0) +
+        Math.max(sideSegments.length - 1, 0) * LABELED_DONUT_LABEL_GAP
+      );
+    }),
+  );
+  const height = Math.max(
+    390,
+    LABELED_DONUT_MIN_LABEL_Y + maximumLabelStackHeight + LABELED_DONUT_BOTTOM_PADDING,
+  );
+  const centerY = Math.max(205, height / 2);
 
   const labels = arrangeDonutLabels(
     segments.map((segment) => {
@@ -1226,14 +1249,14 @@ export function LabeledDonutShareChart({
         ...segment,
         side,
         rawY: centerY + Math.sin(segment.midAngle) * labelRadius,
-        height: segment.nameLines.length * 15 + 18,
+        height: segment.labelHeight,
       };
     }),
     height,
   );
 
   return (
-    <article className="donut-card donut-card--labeled">
+    <article className={["donut-card", "donut-card--labeled", className].filter(Boolean).join(" ")}>
       <header className="donut-card__header">
         <div>
           <strong>{title}</strong>
@@ -1288,10 +1311,10 @@ export function LabeledDonutShareChart({
         })}
         <circle cx={centerX} cy={centerY} r={innerRadius - 4} fill="#fcf7ef" />
         <text x={centerX} y={centerY - 7} textAnchor="middle" className="donut-chart__center-value">
-          {formatCompact(chartTotal)}
+          {centerValue ?? formatCompact(chartTotal)}
         </text>
         <text x={centerX} y={centerY + 17} textAnchor="middle" className="donut-chart__center-label">
-          {totalLabel}
+          {centerLabel ?? totalLabel}
         </text>
 
         {labels.map((label) => {
@@ -1302,7 +1325,7 @@ export function LabeledDonutShareChart({
           const anchorX = label.side === "right" ? labelX : labelX + labelWidth;
           const endX = label.side === "right" ? labelX - 8 : labelX + labelWidth + 8;
           const textAnchor = label.side === "right" ? "start" : "end";
-          const metric = `${formatCompact(label.value)} · ${formatPercent(label.percent)}`;
+          const metric = `${metricValueFormatter(label.value)} · ${formatPercent(label.percent)}`;
 
           return (
             <g
@@ -1874,7 +1897,7 @@ function seriesColor(key, color) {
   return DONUT_COLORS[Math.abs(hashString(String(key || ""))) % DONUT_COLORS.length];
 }
 
-function donutColor(name, index) {
+export function donutColor(name, index) {
   if (name && SERIES_COLORS[name]) {
     return SERIES_COLORS[name];
   }
@@ -1948,6 +1971,17 @@ function formatUtcCloseTime(isoValue) {
 }
 
 function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+  if (endAngle - startAngle >= Math.PI * 2 - 0.000001) {
+    return [
+      `M ${cx} ${cy - outerRadius}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${cx} ${cy + outerRadius}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${cx} ${cy - outerRadius}`,
+      `M ${cx} ${cy - innerRadius}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${cx} ${cy + innerRadius}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${cx} ${cy - innerRadius}`,
+      "Z",
+    ].join(" ");
+  }
   const outerStart = polarToCartesian(cx, cy, outerRadius, endAngle);
   const outerEnd = polarToCartesian(cx, cy, outerRadius, startAngle);
   const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
@@ -2006,9 +2040,9 @@ function wrapLabel(value, maxLength) {
 }
 
 function arrangeDonutLabels(labels, height) {
-  const minY = 36;
-  const maxY = height - 28;
-  const minGap = 48;
+  const minY = LABELED_DONUT_MIN_LABEL_Y;
+  const maxY = height - LABELED_DONUT_BOTTOM_PADDING;
+  const minGap = LABELED_DONUT_LABEL_GAP;
 
   return ["left", "right"].flatMap((side) => {
     const sideLabels = labels
@@ -2020,13 +2054,17 @@ function arrangeDonutLabels(labels, height) {
       }));
 
     for (let index = 1; index < sideLabels.length; index += 1) {
-      sideLabels[index].y = Math.max(sideLabels[index].y, sideLabels[index - 1].y + minGap);
+      const previous = sideLabels[index - 1];
+      const requiredGap = (previous.height + sideLabels[index].height) / 2 + minGap;
+      sideLabels[index].y = Math.max(sideLabels[index].y, previous.y + requiredGap);
     }
     for (let index = sideLabels.length - 2; index >= 0; index -= 1) {
-      if (sideLabels[index + 1].y > maxY) {
-        sideLabels[index + 1].y = maxY;
+      const next = sideLabels[index + 1];
+      const requiredGap = (sideLabels[index].height + next.height) / 2 + minGap;
+      if (next.y > maxY) {
+        next.y = maxY;
       }
-      sideLabels[index].y = Math.min(sideLabels[index].y, sideLabels[index + 1].y - minGap);
+      sideLabels[index].y = Math.min(sideLabels[index].y, next.y - requiredGap);
     }
     return sideLabels.map((label) => ({
       ...label,
