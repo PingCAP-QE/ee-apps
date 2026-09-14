@@ -34,9 +34,9 @@ const SERIES_COLORS = {
   failure_count: "#d1495b",
   success_rate_pct: "#f4a261",
   baseline_avg_total_s: "#7d8597",
-  recent_gcp_avg_total_s: "#2a9d8f",
+  recent_tencent_avg_total_s: "#2a9d8f",
   gcp_build_count: "#315772",
-  idc_build_count: "#bc6c25",
+  tencent_build_count: "#2a9d8f",
   queue_avg_s: "#7f5539",
   run_avg_s: "#2a9d8f",
   total_avg_s: "#315772",
@@ -935,7 +935,7 @@ export function RuntimeComparisonBoard({
 
   const allItems = [...(improved || []), ...(regressed || [])];
   const maxRunSeconds = Math.max(
-    ...allItems.flatMap((item) => [item.idc_baseline_avg_run_s, item.gcp_recent_avg_run_s]),
+    ...allItems.flatMap((item) => [item.gcp_baseline_avg_run_s, item.tencent_recent_avg_run_s]),
     1,
   );
 
@@ -943,7 +943,7 @@ export function RuntimeComparisonBoard({
     <div className="runtime-compare-grid">
       <RuntimeChangeList
         title="Top 10 improved jobs"
-        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        subtitle={`${windowDays}d GCP Jenkins baseline before first Tencent Jenkins success vs latest ${windowDays}d Tencent Jenkins. Min ${minSuccessRuns} success runs each side.`}
         tone="improved"
         items={improved}
         maxRunSeconds={maxRunSeconds}
@@ -951,7 +951,7 @@ export function RuntimeComparisonBoard({
       />
       <RuntimeChangeList
         title="Top 10 regressed jobs"
-        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        subtitle={`${windowDays}d GCP Jenkins baseline before first Tencent Jenkins success vs latest ${windowDays}d Tencent Jenkins. Min ${minSuccessRuns} success runs each side.`}
         tone="regressed"
         items={regressed}
         maxRunSeconds={maxRunSeconds}
@@ -972,24 +972,26 @@ export function MigrationFixedWindowComparisonTable({ rows }) {
         <thead>
           <tr>
             <th>Scope</th>
-            <th>Baseline avg duration</th>
-            <th>Baseline success count</th>
-            <th>Baseline success rate</th>
-            <th>Recent GCP avg duration</th>
-            <th>Recent GCP success count</th>
-            <th>Recent GCP success rate</th>
+            <th>Matched jobs</th>
+            <th>GCP avg duration (Tencent-weighted)</th>
+            <th>GCP source success count</th>
+            <th>GCP source success rate</th>
+            <th>Recent Tencent avg duration</th>
+            <th>Tencent success count</th>
+            <th>Tencent success rate</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.scope_key}>
               <th scope="row">{row.scope_label}</th>
+              <td>{formatNumber(row.matched_job_count)}</td>
               <td>{formatSeconds(row.baseline?.success_avg_total_s)}</td>
               <td>{formatNumber(row.baseline?.success_count)}</td>
               <td>{formatPercent(row.baseline?.success_rate_pct)}</td>
-              <td>{formatSeconds(row.recent_gcp?.success_avg_total_s)}</td>
-              <td>{formatNumber(row.recent_gcp?.success_count)}</td>
-              <td>{formatPercent(row.recent_gcp?.success_rate_pct)}</td>
+              <td>{formatSeconds(row.recent_tencent?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.recent_tencent?.success_count)}</td>
+              <td>{formatPercent(row.recent_tencent?.success_rate_pct)}</td>
             </tr>
           ))}
         </tbody>
@@ -2104,11 +2106,11 @@ function RuntimeChangeList({
       <div className="runtime-compare-legend">
         <span className="runtime-compare-legend__item">
           <span className="runtime-compare-track__dot runtime-compare-track__dot--baseline runtime-compare-legend__dot" />
-          IDC baseline
+          GCP baseline
         </span>
         <span className="runtime-compare-legend__item">
           <span className={`runtime-compare-track__dot runtime-compare-track__dot--${tone} runtime-compare-legend__dot`} />
-          GCP recent
+          Tencent recent
         </span>
         <span className={`runtime-compare-legend__swatch runtime-compare-legend__swatch--${tone}`} />
         <span className="runtime-compare-legend__caption">
@@ -2146,24 +2148,24 @@ function RuntimeChangeList({
                 />
                 <span
                   className="runtime-compare-track__dot runtime-compare-track__dot--baseline"
-                  style={{ left: `${ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds)}%` }}
-                  title={`IDC baseline ${formatSeconds(item.idc_baseline_avg_run_s)}`}
+                  style={{ left: `${ratioPct(item.gcp_baseline_avg_run_s, maxRunSeconds)}%` }}
+                  title={`GCP baseline ${formatSeconds(item.gcp_baseline_avg_run_s)}`}
                 />
                 <span
                   className={`runtime-compare-track__dot runtime-compare-track__dot--${tone}`}
-                  style={{ left: `${ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds)}%` }}
-                  title={`GCP recent ${formatSeconds(item.gcp_recent_avg_run_s)}`}
+                  style={{ left: `${ratioPct(item.tencent_recent_avg_run_s, maxRunSeconds)}%` }}
+                  title={`Tencent recent ${formatSeconds(item.tencent_recent_avg_run_s)}`}
                 />
               </div>
 
               <div className="runtime-compare-item__meta">
                 <span>
-                  IDC {formatSeconds(item.idc_baseline_avg_run_s)} ({item.idc_success_count})
+                  GCP {formatSeconds(item.gcp_baseline_avg_run_s)} ({item.gcp_success_count})
                 </span>
                 <span>
-                  GCP {formatSeconds(item.gcp_recent_avg_run_s)} ({item.gcp_success_count})
+                  Tencent {formatSeconds(item.tencent_recent_avg_run_s)} ({item.tencent_success_count})
                 </span>
-                <span>First GCP {formatShortDate(item.first_gcp_success_at)}</span>
+                <span>First Tencent {formatShortDate(item.first_tencent_success_at)}</span>
               </div>
             </article>
           ))}
@@ -2181,8 +2183,8 @@ function ratioPct(value, maxValue) {
 }
 
 function buildConnectorStyle(item, maxRunSeconds) {
-  const start = ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds);
-  const end = ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds);
+  const start = ratioPct(item.gcp_baseline_avg_run_s, maxRunSeconds);
+  const end = ratioPct(item.tencent_recent_avg_run_s, maxRunSeconds);
   return {
     left: `${Math.min(start, end)}%`,
     width: `${Math.max(Math.abs(end - start), 0.8)}%`,

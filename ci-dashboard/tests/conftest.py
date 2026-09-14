@@ -80,7 +80,7 @@ def _create_test_schema(engine: Engine) -> None:
           total_seconds INTEGER NULL,
           head_sha TEXT NULL,
           target_branch TEXT NULL,
-          cloud_phase TEXT NOT NULL DEFAULT 'IDC',
+          cloud_phase TEXT NOT NULL DEFAULT 'TENCENT',
           build_system TEXT NOT NULL DEFAULT 'UNKNOWN',
           jenkins_blocked_subtasks_sum INTEGER NULL,
           jenkins_buildable_subtasks_sum INTEGER NULL,

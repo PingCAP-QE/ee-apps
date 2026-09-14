@@ -7,6 +7,7 @@ import {
   buildNavSearchByPath,
   readFiltersFromSearch,
   sameFilters,
+  MIGRATE_STATUS_PATH,
   WEEKLY_COST_PATH,
 } from "./filterUrl.js";
 
@@ -40,6 +41,14 @@ test("keeps the selected bucket on the CI Status page", () => {
   assert.equal(
     readFiltersFromSearch(defaultRange, "/ci-status", "?granularity=month").granularity,
     "month",
+  );
+});
+
+test("allows day buckets on the Tencent Migration page", () => {
+  assert.equal(buildDefaultFilters(defaultRange, MIGRATE_STATUS_PATH).granularity, "day");
+  assert.equal(
+    readFiltersFromSearch(defaultRange, MIGRATE_STATUS_PATH, "?granularity=day").granularity,
+    "day",
   );
 });
 
@@ -210,5 +219,5 @@ test("keeps the active date range when building links to other tabs", () => {
   assert.equal(flakyParams.get("issue_status"), "closed");
   assert.equal(migrateParams.get("start_date"), "2026-05-25");
   assert.equal(migrateParams.get("end_date"), "2026-06-01");
-  assert.equal(migrateParams.get("granularity"), "week");
+  assert.equal(migrateParams.get("granularity"), "day");
 });

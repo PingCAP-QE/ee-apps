@@ -172,7 +172,7 @@ UPDATE_BUILD_FROM_JENKINS = text(
     UPDATE ci_l1_builds
     SET source_prow_job_id = COALESCE(source_prow_job_id, :source_prow_job_id),
         state = :state,
-        normalized_build_url = COALESCE(normalized_build_url, :normalized_build_url),
+        normalized_build_url = COALESCE(:normalized_build_url, normalized_build_url),
         job_name = CASE
           WHEN :job_name IS NULL THEN job_name
           WHEN job_name IS NULL OR job_name = '' THEN :job_name
@@ -198,10 +198,7 @@ UPDATE_BUILD_FROM_JENKINS = text(
         total_seconds = COALESCE(total_seconds, :total_seconds),
         head_sha = COALESCE(head_sha, :head_sha),
         target_branch = COALESCE(target_branch, :target_branch),
-        cloud_phase = CASE
-          WHEN cloud_phase = 'IDC' AND :cloud_phase = 'GCP' THEN :cloud_phase
-          ELSE cloud_phase
-        END,
+        cloud_phase = :cloud_phase,
         build_system = CASE
           WHEN build_system = 'UNKNOWN' THEN :build_system
           ELSE build_system

@@ -43,8 +43,8 @@ export function DashboardLayout({
           <NavItem
             to="/migrate-status"
             search={navSearchByPath["/migrate-status"]}
-            label="GCP Migration"
-            caption="GCP rollout and runtime drift"
+            label="Tencent Migration"
+            caption="Tencent rollout and runtime drift"
           />
           <NavItem
             to={WEEKLY_COST_PATH}
