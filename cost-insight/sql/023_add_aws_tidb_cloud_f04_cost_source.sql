@@ -17,7 +17,7 @@ INSERT INTO cost_sources (
   'aws_tidb_cloud_f04_v1',
   '2026-09-02',
   'TiDB Cloud production us-west-2 f04',
-  1
+  0
 )
 ON DUPLICATE KEY UPDATE
   billing_account_id = VALUES(billing_account_id),

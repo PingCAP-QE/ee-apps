@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -1407,6 +1408,14 @@ def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
         ),
     ]
     assert '"start_date": "2026-05-09"' in capsys.readouterr().out
+
+
+def test_f04_cost_source_migration_seeds_inactive_source() -> None:
+    migration = (
+        Path(__file__).parents[1] / "sql" / "023_add_aws_tidb_cloud_f04_cost_source.sql"
+    ).read_text()
+
+    assert "'TiDB Cloud production us-west-2 f04',\n  0\n)\nON DUPLICATE" in migration
 
 
 def test_cli_source_resolution_prefers_active_registry() -> None:
