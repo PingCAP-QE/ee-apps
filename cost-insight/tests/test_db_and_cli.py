@@ -23,6 +23,7 @@ from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSour
 )
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_SPLIT_COST_SCHEMA_VERSION,
+    AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     AwsBillingSource,
 )
 from cost_insight.jobs.sync_aws_parent_residual_allocations import (
@@ -1276,6 +1277,62 @@ def test_cli_runs_sync_aws_unmatched_resources_command(monkeypatch, capsys) -> N
     assert captured["account_id"] == "946646677266"
     assert captured["usage_start_date"] == date(2026, 5, 17)
     assert '"rows_seen": 5' in output
+
+
+def test_cli_sync_aws_unmatched_resources_skips_f04_source(monkeypatch) -> None:
+    engine = _sqlite_source_engine()
+    calls = []
+    settings = SimpleNamespace(
+        aws_billing=AwsBillingSettings(account_id="946646677266"),
+        log_level="INFO",
+    )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_sources (
+                  vendor, account_id, display_name, source_schema_version, is_active
+                ) VALUES ('aws', '380838443567', 'F04', :schema_version, 1)
+                """
+            ),
+            {"schema_version": AWS_TIDB_CLOUD_F04_SCHEMA_VERSION},
+        )
+
+    def fake_run(_engine, **kwargs):
+        calls.append(kwargs["account_id"])
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=kwargs["account_id"],
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            rows_seen=1,
+            rows_written=1,
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: engine)
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fake_run)
+
+    try:
+        assert (
+            cli.main(
+                [
+                    "sync-aws-unmatched-resources",
+                    "--usage-start-date",
+                    "2026-05-17",
+                    "--usage-end-date",
+                    "2026-05-18",
+                ]
+            )
+            == 0
+        )
+        assert calls == ["946646677266"]
+    finally:
+        engine.dispose()
 
 
 def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
