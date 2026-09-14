@@ -89,6 +89,7 @@ WITH normalized AS (
       NULLIF(product_from_region_code, ''),
       NULLIF(savings_plan_region, '')
     ) AS region,
+    -- `usedby` is the F04 tenant boundary and its dashboard author identity.
     NULLIF(TRIM(resource_tags_user_usedby), '') AS author,
     NULLIF(TRIM(resource_tags_user_tenant), '') AS org,
     NULLIF(TRIM(resource_tags_user_project), '') AS repo,
